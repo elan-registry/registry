@@ -2,6 +2,35 @@ const { test, expect } = require('@playwright/test');
 const { CAR_ID_STANDARD, CAR_ID_REDIRECT_TEST } = require('../fixtures.js');
 const { assertPageTitle } = require('../auth-helper.js');
 
+// True when running against Local/Dev MAMP rather than a deployed Test/Prod
+// environment. E2E_AUTH_TIER is set to 'test'/'prod' only by
+// playwright.config.test.js/.prod.js — unset under Local/Dev's
+// playwright.config.js/.dev.js. Local MAMP does not reliably apply
+// .htaccess Redirect/RedirectMatch/RewriteRule directives (confirmed
+// directly: even a bare root-path request that should 301 instead 404s) —
+// tests asserting that behavior only run against the real deployed
+// environment (#2055). A second, narrower environment gap (case-insensitive
+// local filesystem) is documented separately at its one call site below.
+const IS_LOCAL_DEV_TIER = !process.env.E2E_AUTH_TIER;
+const HTACCESS_SKIP_REASON = '.htaccess rules are not reliably applied on Local/Dev MAMP (#2055)';
+
+// Helper: skip test if running on Local/Dev (for .htaccess-dependent tests)
+const skipOnLocalDev = (condition = IS_LOCAL_DEV_TIER, reason = HTACCESS_SKIP_REASON) => {
+  test.skip(condition, reason);
+};
+
+// Helper: strip leading slash from a path before resolving against baseURL
+// (new URL() joining a leading-slash path against baseURL discards
+// baseURL's own path segment under a non-root mount, the exact bug fixed in #2055)
+const stripLeadingSlash = (path) => path.replace(/^\//, '');
+
+// Helper: normalize Location headers (absolute URLs or relative paths) to
+// path + query for comparison
+const toLocationPath = (location) =>
+  location.startsWith('http')
+    ? new URL(location).pathname + new URL(location).search
+    : location;
+
 test.describe('Elan Registry - All Pages (Not Logged In)', () => {
   // Skip these tests if running in logged-in project
   test.beforeEach(async ({ }, testInfo) => {
@@ -11,13 +40,13 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
   });
   const pages = [
     {
-      path: '/',
+      path: '',
       name: 'Home',
       selector: 'h1',
       expectedText: 'Lotus Elan Registry',
     },
     {
-      path: '/app/owner/cars/index.php',
+      path: 'app/owner/cars/index.php',
       name: 'List Cars',
       selector: 'h2',
       expectedText: 'Registry Cars',
@@ -25,13 +54,13 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Search and browse every Lotus Elan and Elan Plus 2 currently registered, with chassis, model, and ownership history details.',
     },
     {
-      path: '/users/join.php',
+      path: 'users/join.php',
       name: 'Register',
       selector: 'h1.h3.text-primary',
       expectedText: 'Join the Lotus Elan Registry',
     },
     {
-      path: '/app/owner/reports/statistics.php',
+      path: 'app/owner/reports/statistics.php',
       name: 'Statistics',
       selector: 'h1',
       expectedText: 'Registry Analytics & Statistics',
@@ -39,7 +68,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Explore production trends, geographic distribution, paint colour popularity, and data-completeness statistics across the Lotus Elan Registry.',
     },
     {
-      path: '/docs/reference/identification-guide.php',
+      path: 'docs/reference/identification-guide.php',
       name: 'Identification Guide',
       selector: 'h1',
       expectedText: 'Lotus Elan Identification Guide',
@@ -47,7 +76,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Identify your Lotus Elan or Elan Plus 2 variant by chassis number, body style, and distinguishing features like Roadster, Drophead, and Coupé.',
     },
     {
-      path: '/app/owner/cars/factory.php',
+      path: 'app/owner/cars/factory.php',
       name: 'Factory Data',
       selector: 'h2',
       expectedText: 'Elan Factory Information',
@@ -55,7 +84,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Browse original factory build records for registered Lotus Elan and Elan Plus 2 cars, cross-referenced against registry ownership data.',
     },
     {
-      path: '/docs/',
+      path: 'docs/',
       name: 'Docs Index',
       selector: 'h1',
       expectedText: 'Documentation',
@@ -63,7 +92,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Guides, technical references, and car histories for Lotus Elan and Elan Plus 2 owners, organized by topic.',
     },
     {
-      path: '/docs/reference/index.php',
+      path: 'docs/reference/index.php',
       name: 'Reference Index',
       selector: 'h1',
       expectedText: 'Technical Reference',
@@ -71,7 +100,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Workshop manuals, parts lists, technical articles, and identification guides for the Lotus Elan and Elan Plus 2.',
     },
     {
-      path: '/docs/reference/chassis-validation.php',
+      path: 'docs/reference/chassis-validation.php',
       name: 'Chassis Validation',
       selector: 'h1',
       expectedText: 'Chassis Validation Rules',
@@ -79,7 +108,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Reference guide to the chassis numbering formats the Lotus Elan Registry recognizes and validates during car registration.',
     },
     {
-      path: '/docs/reference/paint-colors.php',
+      path: 'docs/reference/paint-colors.php',
       name: 'Paint Colors',
       selector: 'h1',
       expectedText: 'Lotus Elan',
@@ -87,7 +116,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Complete reference for Lotus Elan and Elan Plus 2 paint codes L01–L26 with colour chips, date ranges, model applicability, and early pre-code colours.',
     },
     {
-      path: '/docs/reference/technical-articles.php',
+      path: 'docs/reference/technical-articles.php',
       name: 'Technical Articles',
       selector: 'h1',
       expectedText: 'Technical Articles',
@@ -95,7 +124,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Historical Club Lotus technical articles covering maintenance, engineering, and restoration topics for the Lotus Elan and Elan Plus 2.',
     },
     {
-      path: '/docs/reference/workshop.php',
+      path: 'docs/reference/workshop.php',
       name: 'Workshop & Parts',
       selector: 'h1',
       expectedText: 'Workshop',
@@ -103,7 +132,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Workshop manuals, parts lists, and engine reference documents for maintaining and restoring the Lotus Elan and Elan Plus 2.',
     },
     {
-      path: '/docs/car-stories.php',
+      path: 'docs/car-stories.php',
       name: 'Car Stories',
       selector: 'h1',
       expectedText: 'Car Stories',
@@ -111,25 +140,25 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Read individual ownership histories and stories for Lotus Elan and Elan Plus 2 cars in the registry.',
     },
     {
-      path: '/docs/stories/brian_walton/index.php',
+      path: 'docs/stories/brian_walton/index.php',
       name: 'Brian Walton Story',
       selector: 'h1',
       expectedText: 'Elan Experimental Rally Car',
     },
     {
-      path: '/docs/stories/SGO_2F/index.php',
+      path: 'docs/stories/SGO_2F/index.php',
       name: 'SGO 2F Story',
       selector: 'h1',
       expectedText: 'SGO 2F',
     },
     {
-      path: '/docs/stories/type26register.php',
+      path: 'docs/stories/type26register.php',
       name: 'Type 26 Register',
       selector: 'h2',
       expectedText: 'type26register.com',
     },
     {
-      path: '/docs/guides/index.php',
+      path: 'docs/guides/index.php',
       name: 'Owner Guides',
       selector: 'h1',
       expectedText: 'Owner Guides',
@@ -137,13 +166,13 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'Practical guides for Lotus Elan and Elan Plus 2 owners, covering registration, transfers, and car management.',
     },
     {
-      path: '/docs/guides/car-transfer-faq.php',
+      path: 'docs/guides/car-transfer-faq.php',
       name: 'Car Transfer FAQ',
       selector: 'h1',
       expectedText: 'Car Transfer FAQ',
     },
     {
-      path: '/docs/pdf-viewer.php',
+      path: 'docs/pdf-viewer.php',
       name: 'PDF Viewer',
       selector: 'h1',
       expectedText: 'Document Viewer',
@@ -151,7 +180,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedDescription: 'View and download PDF reference documents from the Lotus Elan Registry technical library, including workshop manuals, parts lists, and technical articles.',
     },
     {
-      path: `/docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('All Elan and Elan Plus 2 Paint Codes.pdf')}`,
+      path: `docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('All Elan and Elan Plus 2 Paint Codes.pdf')}`,
       name: 'PDF Viewer — Paint Codes',
       selector: 'h1',
       // h1 renders the metadata-map title when the doc/subdir resolve to a
@@ -170,7 +199,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       isLoginPage: true,
     },
     {
-      path: '/users/forgot_password.php',
+      path: 'users/forgot_password.php',
       name: 'Forgot Password',
       selector: 'h2',
       expectedText: 'Reset Password',
@@ -229,7 +258,7 @@ test('docs/guides/car-transfer-faq.php still renders the generic site title/desc
     testInfo.skip();
   }
 
-  await page.goto('/docs/guides/car-transfer-faq.php');
+  await page.goto('docs/guides/car-transfer-faq.php');
 
   await expect(page).toHaveTitle(/^Lotus Elan Registry$/);
 
@@ -250,17 +279,17 @@ test('docs/guides/car-transfer-faq.php still renders the generic site title/desc
 
 test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
   const pages = [
-    { path: '/', name: 'Home' },
-    { path: '/app/owner/cars/index.php', name: 'List Cars' },
-    { path: '/users/join.php', name: 'Register' },
-    { path: '/app/owner/reports/statistics.php', name: 'Statistics' },
-    { path: '/docs/reference/identification-guide.php', name: 'Identification Guide' },
-    { path: '/app/owner/cars/factory.php', name: 'Factory Data' },
-    { path: '/docs/reference/index.php', name: 'Reference Index' },
-    { path: '/docs/car-stories.php', name: 'Car Stories' },
-    { path: '/docs/guides/index.php', name: 'Owner Guides' },
+    { path: '', name: 'Home' },
+    { path: 'app/owner/cars/index.php', name: 'List Cars' },
+    { path: 'users/join.php', name: 'Register' },
+    { path: 'app/owner/reports/statistics.php', name: 'Statistics' },
+    { path: 'docs/reference/identification-guide.php', name: 'Identification Guide' },
+    { path: 'app/owner/cars/factory.php', name: 'Factory Data' },
+    { path: 'docs/reference/index.php', name: 'Reference Index' },
+    { path: 'docs/car-stories.php', name: 'Car Stories' },
+    { path: 'docs/guides/index.php', name: 'Owner Guides' },
     { path: 'usersc/login.php', name: 'Log In' },
-    { path: '/users/forgot_password.php', name: 'Forgot Password' },
+    { path: 'users/forgot_password.php', name: 'Forgot Password' },
   ];
 
   test('find all internal links across all pages (excluding header)', async ({ page }) => {
@@ -511,73 +540,75 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip();
     }
+    // Entire block asserts .htaccess Redirect/RedirectMatch behavior — Test/Prod only (#2055)
+    skipOnLocalDev();
   });
 
   const redirects = [
     {
-      from: '/docs/embed.php?doc=Elan_26_36_Workshop_Manual.pdf',
+      from: 'docs/embed.php?doc=Elan_26_36_Workshop_Manual.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=Elan_26_36_Workshop_Manual.pdf',
       label: 'embed.php soft 404 → pdf-viewer.php with subdir',
     },
     {
-      from: '/docs/pdf-viewer.php?doc=Elan_26_36_Workshop_Manual.pdf',
+      from: 'docs/pdf-viewer.php?doc=Elan_26_36_Workshop_Manual.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=Elan_26_36_Workshop_Manual.pdf',
       label: 'pdf-viewer.php single-param → two-param format',
     },
     {
-      from: '/stories/type26register.com/index.html',
+      from: 'stories/type26register.com/index.html',
       to: '/docs/stories/type26register.com/index.html',
       label: 'stories/* migration',
     },
     // Legacy doc viewer removed in #911
     {
-      from: '/docs/view.php?doc=IDENTIFICATION_GUIDE.md',
+      from: 'docs/view.php?doc=IDENTIFICATION_GUIDE.md',
       to: '/docs/reference/identification-guide.php',
       label: 'docs/view.php IDENTIFICATION_GUIDE.md',
     },
     {
-      from: '/docs/view.php?doc=CAR_TRANSFER_FAQ.md',
+      from: 'docs/view.php?doc=CAR_TRANSFER_FAQ.md',
       to: '/docs/guides/car-transfer-faq.php',
       label: 'docs/view.php CAR_TRANSFER_FAQ.md',
     },
     {
-      from: '/docs/guide-viewer.php?doc=CAR_TRANSFER_FAQ.md',
+      from: 'docs/guide-viewer.php?doc=CAR_TRANSFER_FAQ.md',
       to: '/docs/guides/car-transfer-faq.php',
       label: 'docs/guide-viewer.php CAR_TRANSFER_FAQ.md',
     },
     {
-      from: '/docs/guide-viewer.php?doc=CAR_TRANSFER_USER_GUIDE.md',
+      from: 'docs/guide-viewer.php?doc=CAR_TRANSFER_USER_GUIDE.md',
       to: '/docs/guides/',
       label: 'docs/guide-viewer.php CAR_TRANSFER_USER_GUIDE.md',
     },
     {
-      from: `/app/car_details.php?car_id=${CAR_ID_REDIRECT_TEST}`,
+      from: `app/car_details.php?car_id=${CAR_ID_REDIRECT_TEST}`,
       to: `/app/owner/cars/details.php?car_id=${CAR_ID_REDIRECT_TEST}`,
       label: '/app/car_details.php preserves car_id query string',
     },
     {
-      from: '/app/identification.php',
+      from: 'app/identification.php',
       to: '/docs/reference/identification-guide.php',
       label: '/app/identification.php legacy path',
     },
     {
-      from: '/app/list_cars.php',
+      from: 'app/list_cars.php',
       to: '/app/owner/cars/index.php',
       label: '/app/list_cars.php legacy path',
     },
     {
-      from: '/list_cars.php',
+      from: 'list_cars.php',
       to: '/app/owner/cars/index.php',
       label: '/list_cars.php root-level legacy path',
     },
     {
-      from: '/guide.php',
+      from: 'guide.php',
       to: '/docs/',
       label: '/guide.php legacy guide index',
     },
     // Duplicate PDF path: /docs/assets/ renamed to /docs/reference/assets/ in #715
     {
-      from: '/docs/assets/Elan_26_36_Workshop_Manual.pdf',
+      from: 'docs/assets/Elan_26_36_Workshop_Manual.pdf',
       to: '/docs/reference/assets/Elan_26_36_Workshop_Manual.pdf',
       label: '/docs/assets/ → /docs/reference/assets/ (duplicate PDF path)',
     },
@@ -588,10 +619,7 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
       const location = response.headers()['location'] ?? '';
-      // Normalize absolute Location headers to path + query for comparison
-      const locationPath = location.startsWith('http')
-        ? new URL(location).pathname + new URL(location).search
-        : location;
+      const locationPath = toLocationPath(location);
       expect(locationPath, `Expected Location: ${to} for ${from}`).toBe(to);
     });
   });
@@ -604,25 +632,19 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
     }
   });
 
-  // Normalizes absolute Location headers to path + query for comparison
-  const toLocationPath = (location) =>
-    location.startsWith('http')
-      ? new URL(location).pathname + new URL(location).search
-      : location;
-
   const redirects = [
     {
-      from: '/app/owner/reports/',
+      from: 'app/owner/reports/',
       to: '/app/owner/reports/statistics.php',
       label: 'app/owner/reports/ bare-directory 403 → statistics.php',
     },
     {
-      from: '/app/owner/',
+      from: 'app/owner/',
       to: '/app/owner/cars/',
       label: 'app/owner/ bare-directory 403 → cars/',
     },
     {
-      from: '/docs/stories/',
+      from: 'docs/stories/',
       to: '/docs/car-stories.php',
       label: 'docs/stories/ bare-directory 403 → car-stories.php',
     },
@@ -630,14 +652,16 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
       // The exact URL GSC originally flagged (Context section of #1539) — the
       // legacy #1040 bare-directory rule must land in a single hop, not chain
       // through /app/owner/reports/ first.
-      from: '/app/reports/',
+      from: 'app/reports/',
       to: '/app/owner/reports/statistics.php',
       label: 'app/reports/ (legacy, GSC-flagged) → statistics.php, single hop',
     },
   ];
 
   redirects.forEach(({ from, to, label }) => {
-    test(`301: ${label}`, async ({ request }) => {
+    test(`301: ${label}`, async ({ request, baseURL }) => {
+      // .htaccess RedirectMatch behavior — Test/Prod only (#2055)
+      skipOnLocalDev();
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
       const location = response.headers()['location'] ?? '';
@@ -647,8 +671,10 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
       // Follow through to the destination — a redirect to a page that's been
       // locked down to authenticated-only would silently send anonymous
       // visitors/crawlers into a login wall instead of the intended content,
-      // and the assertions above alone wouldn't catch that regression.
-      const followed = await request.get(to);
+      // and the assertions above alone wouldn't catch that regression. `to`
+      // is an absolute path (asserted against the server's Location header
+      // above) — strip its leading slash before resolving against baseURL (#2055).
+      const followed = await request.get(new URL(stripLeadingSlash(to), baseURL).href);
       expect(followed.status(), `Expected 200 for redirect target ${to}`).toBe(200);
     });
   });
@@ -658,17 +684,19 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
     // unanchored Redirect on /app/owner/reports/ would also prefix-match this
     // exact file path and mangle it into .../statistics.phpstatistics.php.
     // This guards that the anchored rule does NOT catch the file itself.
-    const response = await request.get(`/app/owner/reports/statistics.php`, { maxRedirects: 0 });
+    const response = await request.get(`app/owner/reports/statistics.php`, { maxRedirects: 0 });
     expect(response.status()).toBe(200);
   });
 
   test('regression guard: /app/reports/statistics.php redirects in a single hop, not a 301->301 chain', async ({ request }) => {
+    // .htaccess redirect-chain behavior — Test/Prod only (#2055)
+    skipOnLocalDev();
     // Before this fix, the bare-directory rule for /app/reports/ could catch
     // this specific-file path first depending on rule order, chaining through
     // /app/owner/reports/ (itself now a 403->redirect) before finally landing
     // on statistics.php. The specific-file rule must be matched first so this
     // resolves in exactly one hop.
-    const response = await request.get(`/app/reports/statistics.php`, { maxRedirects: 0 });
+    const response = await request.get(`app/reports/statistics.php`, { maxRedirects: 0 });
     expect(response.status()).toBe(301);
     const location = response.headers()['location'] ?? '';
     const locationPath = toLocationPath(location);
@@ -676,6 +704,8 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 
   test('GET /app/ bare directory renders the branded error/500.php handler, not a raw server 403', async ({ request }) => {
+    // .htaccess ErrorDocument 403 routing — Test/Prod only (#2055)
+    skipOnLocalDev();
     // Options -Indexes with no index.php in app/ produces a genuine 403, but
     // .htaccess's ErrorDocument 403 (line 5) already routes that to the
     // branded handler — this is existing behavior, locked in as a regression
@@ -686,14 +716,16 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
     // "raw" — this couples the test to error/500.php's copy, which is an
     // accepted, maintainable trade-off since that text is stable, non-dynamic
     // page chrome, not user data.
-    const response = await request.get(`/app/`, { maxRedirects: 0 });
+    const response = await request.get(`app/`, { maxRedirects: 0 });
     expect(response.status()).toBe(403);
     const body = await response.text();
     expect(body).toContain('error-card');
     expect(body).toContain('Access Forbidden');
   });
 
-  test('GET /docs/assets/document-content.css (old path) redirects to docs/reference/assets/, which 404s — the file was moved, not copied', async ({ request }) => {
+  test('GET /docs/assets/document-content.css (old path) redirects to docs/reference/assets/, which 404s — the file was moved, not copied', async ({ request, baseURL }) => {
+    // .htaccess Redirect 301 behavior — Test/Prod only (#2055)
+    skipOnLocalDev();
     // document-content.css was relocated to app/assets/css/, not copied. The
     // pre-existing blanket rule (Redirect 301 /docs/assets/ /docs/reference/assets/,
     // #1369) still fires for this now-nonexistent old path, since the rule
@@ -701,20 +733,22 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
     // file. This test locks in that the old path still 301s (unchanged
     // legacy behavior) rather than asserting a direct 404, which would be
     // incorrect given the blanket rule is still in place.
-    const response = await request.get(`/docs/assets/document-content.css`, { maxRedirects: 0 });
+    const response = await request.get(`docs/assets/document-content.css`, { maxRedirects: 0 });
     expect(response.status()).toBe(301);
     const location = response.headers()['location'] ?? '';
     const locationPath = toLocationPath(location);
     expect(locationPath).toBe('/docs/reference/assets/document-content.css');
 
     // Follow the redirect: nothing was ever copied to docs/reference/assets/,
-    // so the chain terminates in a 404, not a working asset.
-    const followed = await request.get(locationPath);
+    // so the chain terminates in a 404, not a working asset. locationPath is
+    // an absolute path (parsed from the server's Location header above) —
+    // strip its leading slash before resolving against baseURL (#2055).
+    const followed = await request.get(new URL(stripLeadingSlash(locationPath), baseURL).href);
     expect(followed.status()).toBe(404);
   });
 
   test('GET /app/assets/css/document-content.min.css (new path) resolves 200 with no redirect', async ({ request }) => {
-    const response = await request.get(`/app/assets/css/document-content.min.css`, { maxRedirects: 0 });
+    const response = await request.get(`app/assets/css/document-content.min.css`, { maxRedirects: 0 });
     expect(response.status()).toBe(200);
   });
 });
@@ -728,42 +762,42 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
 
   const redirects = [
     {
-      from: '/docs/guide-viewer.php?doc=ADD_CAR_GUIDE.md',
+      from: 'docs/guide-viewer.php?doc=ADD_CAR_GUIDE.md',
       to: '/docs/guides/',
       label: 'docs/guide-viewer.php ADD_CAR_GUIDE.md',
     },
     {
-      from: '/app/manage_cars.php',
+      from: 'app/manage_cars.php',
       to: '/app/owner/cars/index.php',
       label: '/app/manage_cars.php legacy path',
     },
     {
-      from: '/app/edit_car.php',
+      from: 'app/edit_car.php',
       to: '/app/owner/cars/edit.php',
       label: '/app/edit_car.php legacy path',
     },
     {
-      from: '/app/statistics.php',
+      from: 'app/statistics.php',
       to: '/app/owner/reports/statistics.php',
       label: '/app/statistics.php legacy path',
     },
     {
-      from: '/docs/guide-viewer.php?doc=PRIVACY.md',
+      from: 'docs/guide-viewer.php?doc=PRIVACY.md',
       to: '/app/owner/privacy.php',
       label: 'docs/guide-viewer.php PRIVACY.md',
     },
     {
-      from: '/docs/stories/type26registry/',
+      from: 'docs/stories/type26registry/',
       to: '/docs/stories/type26register.com/',
       label: 'docs/stories/type26registry/ typo-fix redirect',
     },
     {
-      from: '/docs/reference/assets/Elan_S1_S2_Coupe_Masterpartslist.pdf',
+      from: 'docs/reference/assets/Elan_S1_S2_Coupe_Masterpartslist.pdf',
       to: '/docs/reference/assets/elan_s1_s2_coupe_masterpartslist.pdf',
       label: 'PDF asset case mismatch: capitalized legacy URL → renamed lowercase asset',
     },
     {
-      from: '/embed.php?doc=elan_s1_s2_coupe_masterpartslist.pdf',
+      from: 'embed.php?doc=elan_s1_s2_coupe_masterpartslist.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
       label: 'root embed.php soft 404 → pdf-viewer.php',
     },
@@ -771,26 +805,27 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
 
   redirects.forEach(({ from, to, label }) => {
     test(`301: ${label}`, async ({ request }) => {
+      // .htaccess redirect behavior — Test/Prod only (#2055)
+      skipOnLocalDev();
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
       const location = response.headers()['location'] ?? '';
-      // Normalize absolute Location headers to path + query for comparison
-      const locationPath = location.startsWith('http')
-        ? new URL(location).pathname + new URL(location).search
-        : location;
+      const locationPath = toLocationPath(location);
       expect(locationPath, `Expected Location: ${to} for ${from}`).toBe(to);
     });
   });
 
   test('renamed PDF asset (lowercase) returns 200', async ({ request }) => {
     const response = await request.get(
-      `/docs/reference/assets/elan_s1_s2_coupe_masterpartslist.pdf`
+      `docs/reference/assets/elan_s1_s2_coupe_masterpartslist.pdf`
     );
     expect(response.status()).toBe(200);
   });
 
   test('embed.php?doc=... regression: lands on a working pdf-viewer.php page, not "Invalid document path."', async ({ page }) => {
-    const response = await page.goto(`/embed.php?doc=elan_s1_s2_coupe_masterpartslist.pdf`);
+    // Relies on the embed.php .htaccess soft-404 rewrite — Test/Prod only (#2055)
+    skipOnLocalDev();
+    const response = await page.goto(`embed.php?doc=elan_s1_s2_coupe_masterpartslist.pdf`);
 
     expect(response.status()).toBeLessThan(400);
     await page.waitForLoadState('domcontentloaded');
@@ -829,12 +864,12 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 
   const redirects = [
     {
-      from: '/docs/pdf-viewer.php?subdir=reference/assets&doc=elan_s1_s2_coupe_masterpartslist.pdf',
+      from: 'docs/pdf-viewer.php?subdir=reference/assets&doc=elan_s1_s2_coupe_masterpartslist.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
       label: 'pdf-viewer.php legacy subdir=reference/assets → subdir=reference',
     },
     {
-      from: `/docs/pdf-viewer.php?subdir=stories/assets&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
+      from: `docs/pdf-viewer.php?subdir=stories/assets&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
       to: `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
       label: 'pdf-viewer.php legacy subdir=stories/assets → subdir=stories',
     },
@@ -845,46 +880,68 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
     // right subdir but wrong case, or both wrong at once. All three should
     // 301 to the canonical subdir + on-disk exact case.
     {
-      from: `/docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
+      from: `docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
       to: `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
       label: 'pdf-viewer.php #1594 correct filename/case but wrong subdir (reference → stories)',
     },
     {
-      from: '/docs/pdf-viewer.php?subdir=reference&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
+      from: 'docs/pdf-viewer.php?subdir=reference&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
       label: 'pdf-viewer.php #1594 correct subdir but wrong filename case',
+      // Local MAMP's default macOS filesystem is case-insensitive, so this
+      // exact-case-mismatch file resolves directly (200) without ever
+      // reaching the case-normalization redirect branch. Test/Prod run on a
+      // case-sensitive filesystem where the mismatch, and therefore the
+      // redirect, is real. Unrelated to #2055; pre-existing (confirmed via
+      // git stash against pre-fix code).
+      caseSensitiveFsOnly: true,
     },
     {
-      from: '/docs/pdf-viewer.php?subdir=stories&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
+      from: 'docs/pdf-viewer.php?subdir=stories&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
       label: 'pdf-viewer.php #1594 wrong subdir AND wrong filename case',
     },
   ];
 
-  redirects.forEach(({ from, to, label }) => {
-    test(`301: ${label}`, async ({ request }) => {
+  redirects.forEach(({ from, to, label, caseSensitiveFsOnly }) => {
+    test(`301: ${label}`, async ({ request, baseURL }) => {
+      // Local/Dev MAMP runs on a case-insensitive filesystem — Test/Prod only (#2055)
+      test.skip(
+        IS_LOCAL_DEV_TIER && caseSensitiveFsOnly,
+        'filename case mismatches only redirect on a case-sensitive filesystem'
+      );
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
       const location = response.headers()['location'] ?? '';
-      // Normalize absolute Location headers to path + query for comparison
-      const locationPath = location.startsWith('http')
-        ? new URL(location).pathname + new URL(location).search
-        : location;
-      expect(locationPath, `Expected Location: ${to} for ${from}`).toBe(to);
+      // pdf-viewer.php builds its own redirect target via UserSpice's
+      // $us_url_root, so under a non-root mount the real Location header is
+      // itself mount-prefixed (e.g. /ElanRegistry/Registry2/docs/...), unlike
+      // the .htaccess-driven redirects elsewhere in this file, which are
+      // origin-root absolute. Resolve both sides against baseURL rather than
+      // comparing `to` as a bare absolute string (#2055).
+      const actual = new URL(location, baseURL);
+      const expected = new URL(stripLeadingSlash(to), baseURL);
+      expect(
+        actual.pathname + actual.search,
+        `Expected Location: ${expected.pathname}${expected.search} for ${from}`
+      ).toBe(expected.pathname + expected.search);
     });
   });
 
-  test('200: pdf-viewer.php valid subdir and existing document', async ({ page }) => {
-    const targetUrl = `/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf`;
-    const response = await page.goto(targetUrl, { waitUntil: 'networkidle' });
+  test('200: pdf-viewer.php valid subdir and existing document', async ({ page, baseURL }) => {
+    const targetPath = `docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf`;
+    const response = await page.goto(targetPath, { waitUntil: 'networkidle' });
     expect(response?.status()).toBe(200);
 
     // #1594 regression: the case-insensitive/cross-subdir resolution step
     // only runs when the direct subdir+doc path does not exist on disk — an
     // already-canonical request like this one must never be bounced through
-    // the glob/301 path.
+    // the glob/301 path. Compare against the absolute URL targetPath resolves
+    // to (not the bare relative string) — page.url() is always absolute
+    // (#2055).
     const landed = new URL(page.url());
-    expect(landed.pathname + landed.search).toBe(targetUrl);
+    const target = new URL(targetPath, baseURL);
+    expect(landed.pathname + landed.search).toBe(target.pathname + target.search);
 
     // Also discriminate on the error text, not just the status: a real render
     // and any 200-status error branch would both pass a bare status check
@@ -908,7 +965,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 
   test('404: pdf-viewer.php directory traversal attempt in doc param (#1538)', async ({ page }) => {
     const response = await page.goto(
-      `/docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('../../../etc/passwd')}`,
+      `docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('../../../etc/passwd')}`,
       { waitUntil: 'networkidle' }
     );
     expect(response?.status()).toBe(404);
@@ -916,7 +973,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 
   test('404: pdf-viewer.php invalid document extension (#1538)', async ({ page }) => {
     const response = await page.goto(
-      `/docs/pdf-viewer.php?subdir=reference&doc=readme.txt`,
+      `docs/pdf-viewer.php?subdir=reference&doc=readme.txt`,
       { waitUntil: 'networkidle' }
     );
     expect(response?.status()).toBe(404);
@@ -924,7 +981,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 
   test('404: pdf-viewer.php genuinely invalid subdir value', async ({ page }) => {
     const response = await page.goto(
-      `/docs/pdf-viewer.php?subdir=etc&doc=elan_s1_s2_coupe_masterpartslist.pdf`,
+      `docs/pdf-viewer.php?subdir=etc&doc=elan_s1_s2_coupe_masterpartslist.pdf`,
       { waitUntil: 'networkidle' }
     );
     expect(response?.status()).toBe(404);
@@ -932,7 +989,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 
   test('404: pdf-viewer.php valid subdir but non-existent document', async ({ page }) => {
     const response = await page.goto(
-      `/docs/pdf-viewer.php?subdir=reference&doc=does-not-exist-12345.pdf`,
+      `docs/pdf-viewer.php?subdir=reference&doc=does-not-exist-12345.pdf`,
       { waitUntil: 'networkidle' }
     );
     expect(response?.status()).toBe(404);
@@ -953,7 +1010,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
     // 301'd by the existing .htaccess rule (#1369), which would mask this
     // regression by never reaching PHP with subdir omitted.
     const response = await page.goto(
-      `/docs/pdf-viewer.php?amp&doc=${encodeURIComponent('Lotus Elan Plus 2 serial numbers.pdf')}`,
+      `docs/pdf-viewer.php?amp&doc=${encodeURIComponent('Lotus Elan Plus 2 serial numbers.pdf')}`,
       { waitUntil: 'networkidle' }
     );
     expect(response?.status()).toBe(404);
@@ -964,7 +1021,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
     // throws an uncaught TypeError under declare(strict_types=1) — a fatal 500,
     // not a soft failure. An array-valued doc is now coerced to '' and falls
     // through to the unchanged "No document specified" branch.
-    const response = await page.goto(`/docs/pdf-viewer.php?doc[]=x`, {
+    const response = await page.goto(`docs/pdf-viewer.php?doc[]=x`, {
       waitUntil: 'networkidle',
     });
     expect(response?.status()).toBe(200);
@@ -977,7 +1034,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
     // adds for subdir validation would throw a TypeError on an array value — a
     // real doc value is required to reach that branch at all.
     const response = await page.goto(
-      `/docs/pdf-viewer.php?subdir[]=x&doc=elan_s1_s2_coupe_masterpartslist.pdf`,
+      `docs/pdf-viewer.php?subdir[]=x&doc=elan_s1_s2_coupe_masterpartslist.pdf`,
       { waitUntil: 'networkidle' }
     );
     expect(response?.status()).toBe(404);
@@ -985,7 +1042,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 
   test('200: pdf-viewer.php representative document renders description prose and direct download link (#1538)', async ({ page }) => {
     const response = await page.goto(
-      `/docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('All Elan and Elan Plus 2 Paint Codes.pdf')}`,
+      `docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('All Elan and Elan Plus 2 Paint Codes.pdf')}`,
       { waitUntil: 'networkidle' }
     );
     expect(response?.status()).toBe(200);
@@ -1001,7 +1058,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 
   test('200: pdf-viewer.php stories document with no metadata entry still renders generic fallback and download link (#1538)', async ({ page }) => {
     const response = await page.goto(
-      `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
+      `docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
       { waitUntil: 'networkidle' }
     );
     expect(response?.status()).toBe(200);
@@ -1019,10 +1076,12 @@ test.describe('Sitemap endpoint (#1373)', () => {
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip();
     }
+    // /sitemap.xml is served via an .htaccess RewriteRule — Test/Prod only (#2055)
+    skipOnLocalDev();
   });
 
   test('GET /sitemap.xml returns a valid sitemap with at least one car entry', async ({ page }) => {
-    const response = await page.goto('/sitemap.xml');
+    const response = await page.goto('sitemap.xml');
 
     // Layer 1: HTTP response must be successful
     expect(response.status()).toBeLessThan(400);
@@ -1049,7 +1108,7 @@ test.describe('llms.txt AI crawler guidance (#1413)', () => {
   });
 
   test('GET /llms.txt returns the AI crawler policy as plain text', async ({ page }) => {
-    const response = await page.goto('/llms.txt');
+    const response = await page.goto('llms.txt');
 
     // Layer 1: HTTP response must be successful
     expect(response.status()).toBeLessThan(400);
@@ -1081,14 +1140,14 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
     // failed on the environment, not the feature. The list's Details links
     // are rendered client-side by DataTables (car-list.js), so wait for the
     // first one to appear instead of reading server HTML.
-    await page.goto('/app/owner/cars/index.php');
+    await page.goto('app/owner/cars/index.php');
     const firstDetailsLink = page.locator('a[href*="details.php?car_id="]').first();
     await firstDetailsLink.waitFor();
     const href = await firstDetailsLink.getAttribute('href');
     const carId = new URL(href, page.url()).searchParams.get('car_id');
     expect(carId, 'first Details link must carry a car_id').toMatch(/^\d+$/);
 
-    const response = await page.goto(`/app/owner/cars/details.php?car_id=${carId}`);
+    const response = await page.goto(`app/owner/cars/details.php?car_id=${carId}`);
 
     // Layer 1: HTTP response must be successful
     expect(response.status()).toBeLessThan(400);
@@ -1117,8 +1176,8 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
   });
 
   const noindexPages = [
-    { path: '/app/owner/cars/factory.php', name: 'Factory Data' },
-    { path: '/app/owner/privacy.php', name: 'Privacy' },
+    { path: 'app/owner/cars/factory.php', name: 'Factory Data' },
+    { path: 'app/owner/privacy.php', name: 'Privacy' },
   ];
 
   noindexPages.forEach(({ path, name }) => {
@@ -1139,8 +1198,8 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
   });
 
   const appleTouchIcons = [
-    '/apple-touch-icon.png',
-    '/apple-touch-icon-precomposed.png',
+    'apple-touch-icon.png',
+    'apple-touch-icon-precomposed.png',
   ];
 
   appleTouchIcons.forEach((path) => {
@@ -1179,7 +1238,7 @@ test.describe('Location picker city disambiguation (#1400)', () => {
   // this asserts on distinct *same-country* (United States) result text
   // instead of a raw count.
   test('searching an ambiguous city name shows multiple distinct same-country results (regression guard)', async ({ page }) => {
-    await page.goto('/users/join.php');
+    await page.goto('users/join.php');
 
     const input = page.locator('#location-picker-registration-input');
     const resultsContainer = page.locator('#location-picker-registration-results');
