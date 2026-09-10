@@ -107,6 +107,14 @@ function parseMultipart(body, boundary) {
 test.describe('Car edit form — text-only save (regression #796)', () => {
 
     test.beforeEach(async ({ page }) => {
+        // Every test here needs an authenticated session against the local
+        // MAMP DB. Without credentials the login helper falls back to a
+        // placeholder account that cannot exist, so skip on the real cause
+        // rather than letting each test guard on "did we land on login.php".
+        test.skip(
+            !process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD,
+            'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests'
+        );
         await ensureLoggedIn(page);
     });
 
@@ -150,20 +158,12 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // ------------------------------------------------------------------
         // 2. Navigate to the car edit form for a fake car ID.
         //    The page loads PHP server-side, but all JS API calls are mocked.
-        //    The PHP page may redirect to login or show a 404/403 for this car ID
-        //    if the DB is unavailable — we intercept at the JS layer only, so
-        //    we need the page DOM to be present. We therefore also mock the
-        //    page navigation itself only when the page is inaccessible.
         // ------------------------------------------------------------------
         await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
 
-        // If the page redirected to login, skip rather than fail — this test
-        // requires an authenticated session with a page that renders the form.
-        const currentUrl = page.url();
-        if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
-            test.skip('Session not established — skipping network-payload assertion');
-            return;
-        }
+        // beforeEach has established an authenticated session, so edit.php must
+        // render the form rather than bouncing to the login page.
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
         // Wait for FilePond to initialise (it registers itself on DOMContentLoaded)
         await page.waitForFunction(
@@ -232,11 +232,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         //    present in FilePond at this point.
         // ------------------------------------------------------------------
         const submitBtn = page.locator('#submit');
-        const submitVisible = await submitBtn.isVisible().catch(() => false);
-        if (!submitVisible) {
-            test.skip('Submit button not found — form did not render (DB unavailable)');
-            return;
-        }
+        await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
         await submitBtn.click();
 
@@ -328,11 +324,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
 
-        const currentUrl = page.url();
-        if (currentUrl.includes('login')) {
-            test.skip('Session not established');
-            return;
-        }
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
         await page.waitForFunction(
             () => typeof window.FilePond !== 'undefined' && document.querySelector('.filepond--root') !== null,
@@ -364,9 +356,9 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // without involving the file picker dialog.
         const fileAdded = await page.evaluate(() => {
             const root = document.querySelector('.filepond--root');
-            if (!root) { return false; }
+            if (!root) { return 'no .filepond--root element'; }
             const instance = window.FilePond && window.FilePond.find(root);
-            if (!instance) { return false; }
+            if (!instance) { return 'window.FilePond.find() returned no instance for .filepond--root'; }
 
             // Create a minimal 1x1 JPEG blob to act as a new (non-LOCAL) file
             const jpegBytes = new Uint8Array([
@@ -420,12 +412,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             return true;
         });
 
-        if (!fileAdded) {
-            test.skip('FilePond instance not found — cannot add synthetic file');
-            return;
-        }
+        expect(fileAdded, 'Could not add a synthetic file to FilePond').toBe(true);
 
-        // Wait for FilePond to register the synthetic file
+        // Wait for FilePond to register the synthetic file. This must succeed —
+        // a rejected synthetic file would leave the pond empty and make the
+        // sentinel assertion below vacuously true.
         await page.waitForFunction(
             () => {
                 const root = document.querySelector('.filepond--root');
@@ -433,34 +424,23 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                 return instance && instance.getFiles().length > 0;
             },
             { timeout: 5000 }
-        ).catch(() => {});
+        );
 
         // Verify the file is present and is NOT a LOCAL file (it has no metadata.serverFilename)
         const fileOrigin = await page.evaluate(() => {
             const root = document.querySelector('.filepond--root');
-            const instance = window.FilePond && window.FilePond.find(root);
-            if (!instance) { return null; }
-            const files = instance.getFiles();
-            if (files.length === 0) { return null; }
-            return files[0].origin;
+            const instance = window.FilePond.find(root);
+            return instance.getFiles()[0].origin;
         });
 
         // FileOrigin.INPUT === 1 (user-added), FileOrigin.LOCAL === 3 (already on server)
-        if (fileOrigin === null) {
-            test.skip('No file in pond after addFile — FilePond may have rejected the synthetic file');
-            return;
-        }
-
         const FILEPOND_FILE_ORIGIN_LOCAL = 3;
         expect(fileOrigin).not.toBe(FILEPOND_FILE_ORIGIN_LOCAL);
 
         // Click submit — FilePond will process the new file via the mock server.process
         // handler (which just calls load() immediately), then submitCarForm() fires.
         const submitBtn = page.locator('#submit');
-        if (!await submitBtn.isVisible().catch(() => false)) {
-            test.skip('Submit button not rendered');
-            return;
-        }
+        await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
         await submitBtn.click();
 
@@ -470,12 +450,12 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await page.waitForTimeout(100);
         }
 
-        if (capturedRequest === null) {
-            // The new-file path may not have fired if processFiles timed out;
-            // we only assert the negative (no sentinel) when we have a payload.
-            test.skip('POST not captured — processFiles may not have resolved for synthetic file');
-            return;
-        }
+        // The payload is the whole point of this test — the "no sentinel"
+        // assertion below is vacuously true without it, so require it.
+        expect(
+            capturedRequest,
+            'Form submit POST was not captured — processFiles() did not resolve for the synthetic file'
+        ).not.toBeNull();
 
         const contentType = capturedRequest.contentType;
         expect(contentType).toContain('multipart/form-data');
@@ -542,11 +522,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // ------------------------------------------------------------------
         await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, { waitUntil: 'domcontentloaded' });
 
-        const currentUrl = page.url();
-        if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
-            test.skip('Session not established — skipping special-characters regression test');
-            return;
-        }
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
         // Wait for FilePond to initialise (confirms the full form JS has loaded)
         await page.waitForFunction(
@@ -556,11 +532,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         // Verify the comments textarea rendered in the DOM
         const commentsTextarea = page.locator('#comments');
-        const textareaVisible = await commentsTextarea.isVisible().catch(() => false);
-        if (!textareaVisible) {
-            test.skip('Comments textarea not found — form did not render (DB unavailable or car not found)');
-            return;
-        }
+        await expect(commentsTextarea, 'edit.php must render a #comments textarea').toBeVisible();
 
         // ------------------------------------------------------------------
         // 3. Fill the comments textarea with the special-character string and
@@ -625,11 +597,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // 4. Click submit to trigger the form save.
         // ------------------------------------------------------------------
         const submitBtn = page.locator('#submit');
-        const submitVisible = await submitBtn.isVisible().catch(() => false);
-        if (!submitVisible) {
-            test.skip('Submit button not found — form did not render');
-            return;
-        }
+        await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
         await submitBtn.click();
 
@@ -748,11 +716,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // whether E2E_DEV_ADMIN_USERNAME owns this specific car.
         await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
-        const initialUrl = page.url();
-        if (initialUrl.includes('login') || initialUrl.includes('Please Log In')) {
-            test.skip('Session not established');
-            return;
-        }
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
         const csrfToken = await page.locator('#csrf').inputValue();
         expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
@@ -840,19 +804,19 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         const fileAdded = await page.evaluate(() => {
             const root = document.querySelector('.filepond--root');
             const instance = window.FilePond && window.FilePond.find(root);
-            if (!instance) { return false; }
+            if (!instance) { return 'window.FilePond.find() returned no instance for .filepond--root'; }
             const jpegBytes = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xD9]);
             const file = new File([new Blob([jpegBytes], { type: 'image/jpeg' })], 'new-photo.jpg', { type: 'image/jpeg' });
             instance.addFile(file);
             return true;
         });
 
-        if (!fileAdded) {
-            test.skip('FilePond instance not found');
-            return;
-        }
+        expect(fileAdded, 'Could not add a synthetic file to FilePond').toBe(true);
 
-        // Wait for new file to register (pond should now have 2 items: LOCAL + new)
+        // Wait for new file to register (pond should now have 2 items: LOCAL + new).
+        // This must succeed — if the synthetic file were rejected the pond would
+        // hold only the LOCAL image, and the "exactly one new upload" assertion
+        // below would fail confusingly rather than reporting the real cause.
         await page.waitForFunction(
             () => {
                 const root = document.querySelector('.filepond--root');
@@ -860,13 +824,10 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                 return instance && instance.getFiles().length >= 2;
             },
             { timeout: 5000 }
-        ).catch(() => {});
+        );
 
         const submitBtn = page.locator('#submit');
-        if (!await submitBtn.isVisible().catch(() => false)) {
-            test.skip('Submit button not rendered');
-            return;
-        }
+        await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
         await submitBtn.click();
 
@@ -875,10 +836,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await page.waitForTimeout(100);
         }
 
-        if (capturedRequest === null) {
-            test.skip('POST not captured — processFiles may not have resolved');
-            return;
-        }
+        // Every assertion below reads this payload — without it they are vacuous.
+        expect(
+            capturedRequest,
+            'Form submit POST was not captured — processFiles() did not resolve for the synthetic file'
+        ).not.toBeNull();
 
         const contentType = capturedRequest.contentType;
         expect(contentType).toContain('multipart/form-data');
@@ -930,6 +892,10 @@ test.describe('encode-at-output regression — special chars in car text fields 
     const SPECIAL_CHARS = "O'Brien & Co <é> \"test\"";
 
     test.beforeEach(async ({ page }) => {
+        test.skip(
+            !process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD,
+            'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests'
+        );
         await ensureLoggedIn(page);
     });
 
@@ -956,21 +922,14 @@ test.describe('encode-at-output regression — special chars in car text fields 
         // 2. Navigate to edit form
         await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
 
-        const currentUrl = page.url();
-        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
-            test.skip(true, 'Session not established — skipping form submit test');
-            return;
-        }
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
         // 3. Fill text fields with special characters
         const commentsField = page.locator('#comments');
         const engineField   = page.locator('#engine');
         const colorField    = page.locator('#color');
 
-        if (!(await commentsField.isVisible().catch(() => false))) {
-            test.skip(true, 'Car edit form did not render — skipping');
-            return;
-        }
+        await expect(commentsField, 'edit.php must render a #comments textarea').toBeVisible();
 
         await commentsField.fill(SPECIAL_CHARS);
         await engineField.fill(SPECIAL_CHARS);
@@ -1004,18 +963,17 @@ test.describe('encode-at-output regression — special chars in car text fields 
             waitUntil: 'domcontentloaded',
         });
 
-        const currentUrl = page.url();
-        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
-            test.skip(true, 'Not authenticated — skipping details page test');
-            return;
-        }
+        expect(page.url(), 'details.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
-        // Check for 404/not found indicators
+        // CAR_ID_WITH_SPECIAL_CHARS is a required fixture (see fixtures.js) —
+        // if the row is missing the page renders a not-found message with no
+        // special characters in it, and the entity assertions below would pass
+        // vacuously. Fail loudly instead.
         const bodyText = await page.locator('body').textContent();
-        if (bodyText.includes('not found') || bodyText.includes('does not exist') || bodyText.includes('404')) {
-            test.skip(true, `Car ${CAR_ID_WITH_SPECIAL_CHARS} not found in MAMP DB — skipping`);
-            return;
-        }
+        expect(
+            bodyText,
+            `Car ${CAR_ID_WITH_SPECIAL_CHARS} must exist in the MAMP DB with migrated special-character text — see fixtures.js`
+        ).not.toMatch(/not found|does not exist/i);
 
         // Assert no visible HTML entity strings in any text content
         expect(bodyText, 'Details page must not render literal &amp; entity strings').not.toContain('&amp;');
@@ -1029,17 +987,13 @@ test.describe('encode-at-output regression — special chars in car text fields 
             waitUntil: 'domcontentloaded',
         });
 
-        const currentUrl = page.url();
-        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
-            test.skip(true, 'Not authenticated — skipping edit form pre-fill test');
-            return;
-        }
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
         const commentsField = page.locator('#comments');
-        if (!(await commentsField.isVisible().catch(() => false))) {
-            test.skip(true, 'Comments field not visible — car may not be in MAMP DB, skipping');
-            return;
-        }
+        await expect(
+            commentsField,
+            `edit.php must render a #comments textarea for car ${CAR_ID_WITH_SPECIAL_CHARS} — see fixtures.js`
+        ).toBeVisible();
 
         const textareaValue = await commentsField.inputValue();
 

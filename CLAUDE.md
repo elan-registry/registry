@@ -258,6 +258,15 @@ When adding, moving, removing, or renaming any page, update tests **in the same 
 - **Public pages** → add or update an e2e smoke test in `tests/playwright/e2e/not-logged-in.spec.js`
 - **Owner/authenticated pages** → add or update a local Playwright test in `tests/playwright/`
 - **Removed or moved pages** → update any test referencing the old path — stale paths silently test 404s without failing
+- **Moved or renamed DOM elements/classes and JS globals** → update every guard
+  that depends on them **in the same PR**. A defensive guard (a bare `return`
+  after `test.skip('reason')`, or `if (await x.count() > 0) { assert }` with no
+  `else`) silently absorbs a moved class or renamed global — the test passes
+  having run zero real assertions, and CI never goes red (#1949, #1950). Prefer
+  asserting directly; when a guard is genuinely needed for environmental
+  variation (missing local credentials, absent fixture data), use the two-arg
+  `test.skip(condition, reason)` form with `reason` naming the actual cause,
+  not the symptom — this reports as `skipped` in CI, not a false `passed`.
 
 Run `npm run test:e2e` to verify public pages against production. See `playwright.config.prod.js` for config.
 
