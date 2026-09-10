@@ -49,12 +49,27 @@ try {
 	);
 } catch (\ElanRegistry\Exceptions\CarDatabaseException | \PDOException $e) {
 	$verificationLoadError = true;
-	logger(
-		$user_id,
-		\ElanRegistry\LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-		'user_form_hook: verification/email panel failed to load for user_id=' . $user_id
-			. ': ' . $e->getMessage()
-	);
+	// logger() itself writes to the DB (DB::query()'s prepare() is not guarded
+	// by its own try/catch — see the file-header comment on why \Throwable is
+	// not caught above). If the failure that landed us in this catch block is
+	// connection-level rather than query-level, logger() can throw the same
+	// \PDOException it is meant to record, which would otherwise escape this
+	// "safe" catch and take down the whole admin user-view page. Best-effort:
+	// swallow a logging failure rather than let it defeat the degradation this
+	// catch exists to provide.
+	try {
+		logger(
+			$user_id,
+			\ElanRegistry\LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+			'user_form_hook: verification/email panel failed to load for user_id=' . $user_id
+				. ': ' . $e->getMessage()
+		);
+	} catch (\Throwable $loggerException) {
+		error_log(
+			'user_form_hook: verification/email panel failed to load for user_id=' . $user_id
+				. ': ' . $e->getMessage() . ' (logger() itself also failed: ' . $loggerException->getMessage() . ')'
+		);
+	}
 }
 
 $bouncedCount    = 0;
@@ -95,12 +110,22 @@ $isFreshCar = static function ($car) use ($user_id): ?bool {
 			(string) $car->owner_last_updated
 		);
 	} catch (\ElanRegistry\Exceptions\CarValidationException $e) {
-		logger(
-			$user_id,
-			\ElanRegistry\LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
-			'user_form_hook: unusable verification timestamps for car_id=' . (int) $car->id
-				. ': ' . $e->getMessage()
-		);
+		// Same logger()-can-itself-throw hazard as the outer catch above:
+		// best-effort logging so a DB hiccup here can't escape this per-row
+		// handler and blank the whole table instead of just this row.
+		try {
+			logger(
+				$user_id,
+				\ElanRegistry\LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
+				'user_form_hook: unusable verification timestamps for car_id=' . (int) $car->id
+					. ': ' . $e->getMessage()
+			);
+		} catch (\Throwable $loggerException) {
+			error_log(
+				'user_form_hook: unusable verification timestamps for car_id=' . (int) $car->id
+					. ': ' . $e->getMessage() . ' (logger() itself also failed: ' . $loggerException->getMessage() . ')'
+			);
+		}
 		return null;
 	}
 };
@@ -109,17 +134,26 @@ $isFreshCar = static function ($car) use ($user_id): ?bool {
 $pluralize = static fn(int $count, string $singular): string =>
 	$singular . ($count === 1 ? '' : 's');
 
-// Renders a timestamp as "<value> (N days ago)". UserSpice's own ago() helper
-// lives in users/helpers/audit.php, which nothing requires, so it is not
-// callable from this hook's scope — the relative part is formatted here.
+// Renders a timestamp as "<value> (N days ago)" or "<value> (in N days)" for a
+// future timestamp. UserSpice's own ago() helper lives in users/helpers/audit.php,
+// which nothing requires, so it is not callable from this hook's scope — the
+// relative part is formatted here.
 $relativeTime = static function ($value) use ($esc, $pluralize): string {
+	// Bare strtotime() is too permissive to trust here: it silently rolls a
+	// zero-date ('0000-00-00 00:00:00') over to a huge negative timestamp
+	// instead of failing, and this table's rows can carry exactly that value —
+	// DB.php sets sql_mode = '', so MySQL both stores and returns zero-dates in
+	// a DATETIME column (see CarRepository::parseTimestamp()'s own comment on
+	// this same reachability). Rejecting ts <= 0 catches that corruption
+	// instead of rendering a nonsense "740266 days ago" beside a row the
+	// Verification column has already flagged "Unknown" for the same reason.
 	$ts = $value !== null ? strtotime((string) $value) : false;
-	if ($ts === false) {
+	if ($ts === false || $ts <= 0) {
 		return $esc($value);
 	}
 
-	$relative = (new DateTimeImmutable('@' . $ts))
-		->diff(new DateTimeImmutable('now'));
+	$now      = new DateTimeImmutable('now');
+	$relative = (new DateTimeImmutable('@' . $ts))->diff($now);
 
 	if ($relative->days >= 1) {
 		$span = $relative->days . ' ' . $pluralize($relative->days, 'day');
@@ -129,7 +163,15 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 		$span = $relative->i . ' ' . $pluralize($relative->i, 'minute');
 	}
 
-	return $esc($value) . ' <span class="text-muted">(' . $esc($span) . ' ago)</span>';
+	// occurred_at values originate from Brevo's payload, not this server's
+	// clock, so a future timestamp (clock skew, a backdated event) is
+	// possible. DateInterval::$invert is 1 when the diff() base (`$now`) is
+	// EARLIER than the target — i.e. the target is in the future — and 0
+	// otherwise; without checking it, a future timestamp renders the
+	// misleading "in N days" as "N days ago".
+	$suffix = $relative->invert === 1 ? 'from now' : 'ago';
+
+	return $esc($value) . ' <span class="text-muted">(' . $esc($span) . ' ' . $suffix . ')</span>';
 };
 
 ?>
