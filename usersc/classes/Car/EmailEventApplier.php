@@ -40,20 +40,24 @@ use ElanRegistry\LogCategories;
  *   scoped to occur after the most recent `delivered` row), so there is no
  *   separate "clear escalation" write. `unique_opened` never touches flags or
  *   the escalation count under any circumstance.
- * - `spam` flags the car as suppressed (a distinct signal from a bounce).
+ * - `spam` and `unsubscribed` flag the car as suppressed (a distinct signal
+ *   from a bounce). Each is recorded under its own event name so the two
+ *   remain distinguishable in `er_email_events`.
  *
  * Not `final`, for the same reason {@see CarRepository} and
  * {@see CarVerificationManager} are not: it is an injected collaborator of
- * both {@see BrevoWebhookEventProcessor} and
- * {@see \ElanRegistry\Cron\BrevoEventReconciliationJob}, whose unit tests must
+ * {@see BrevoWebhookEventProcessor},
+ * {@see \ElanRegistry\Cron\BrevoEventReconciliationJob}, and
+ * {@see \ElanRegistry\Cron\BrevoSuppressionSyncJob}, whose unit tests must
  * substitute it. Subclassing outside of test doubles is not intended — the
  * escalation rules above are meant to have exactly one implementation, which
- * is precisely why both callers share this class.
+ * is precisely why all three callers share this class.
  *
  * @package ElanRegistry\Car
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1887 Original webhook caller
  * @see https://github.com/elan-registry/registry/issues/1889 Reconciliation job caller
+ * @see https://github.com/elan-registry/registry/issues/1923 Suppression sync caller
  */
 class EmailEventApplier
 {
@@ -83,6 +87,16 @@ class EmailEventApplier
      * more likely a payload-contract change than routine traffic.
      */
     private const KNOWN_INERT_EVENTS = ['delivered', 'unique_opened'];
+
+    /**
+     * Brevo event names that flag the car as suppressed rather than bounced.
+     *
+     * `unsubscribed` originates from the suppression-list import job (#1923)
+     * rather than a webhook. It is recorded under its own event name — never
+     * aliased to `spam` — so the two remain distinguishable in
+     * `er_email_events` for later audit.
+     */
+    private const SUPPRESSION_EVENTS = ['spam', 'unsubscribed'];
 
     public function __construct(
         private CarRepository $repo,
@@ -117,7 +131,7 @@ class EmailEventApplier
             return;
         }
 
-        if ($event === 'spam') {
+        if (in_array($event, self::SUPPRESSION_EVENTS, true)) {
             $this->verificationManager->setSuppressed((object) ['id' => $carId]);
             return;
         }
@@ -131,13 +145,14 @@ class EmailEventApplier
         // silently disable bounce detection for that event type.
         if (!in_array($event, self::KNOWN_INERT_EVENTS, true)) {
             // The message is deliberately caller-agnostic ("Brevo:", not
-            // "Brevo webhook:"): both the webhook and the #1889 reconciliation
-            // job reach this line, and naming the webhook would send an
-            // operator investigating a reconciliation-discovered event off to
-            // check webhook traffic that never carried it.
+            // "Brevo webhook:"): the webhook, the #1889 reconciliation job, and
+            // the #1923 suppression sync job all reach this line, and naming
+            // any one of them would send an operator investigating a
+            // differently-discovered event off to check traffic that never
+            // carried it.
             // LOG_CATEGORY_EMAIL_WEBHOOK is kept for the same reason — it
             // reads as "Brevo email event tracking" regardless of how the
-            // event was discovered, so both call paths' unrecognized events
+            // event was discovered, so all three call paths' unrecognized events
             // land in one searchable category.
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo: unrecognized event "%s" recorded for car %d with no flag change'

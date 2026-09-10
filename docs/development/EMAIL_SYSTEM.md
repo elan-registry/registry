@@ -338,6 +338,52 @@ hook continues silently (this is a background repair, not a user-facing operatio
 - `CarRepository::updateEmailBounced()` — the write method that sets the bounce
   flag (forbids writing a null/empty address at the same time)
 
+### Brevo Suppression List Import (#1923)
+
+Brevo maintains an account-level suppression list (`GET /v3/smtp/blockedContacts`)
+of addresses it will no longer deliver to — hard bounces, spam complaints, and
+unsubscribes — separate from and predating any per-event webhook coverage. A
+suppressed address produces no bounce and no delivery event, just silence, so
+without importing this list the registry keeps re-sending verification mail to
+addresses that can never receive it.
+
+**Job:** `BrevoSuppressionSyncJob` (`usersc/classes/Cron/`), the second job
+registered under `users/cron/`, alongside #1889's reconciliation job. Applies
+every suppression through the same `EmailEventApplier` the webhook and
+reconciliation job use, so an imported suppression flags a car identically to a
+live event.
+
+**Two fetch modes:**
+
+- **Nightly incremental** (`execute()`, via the guarded `run()`) — one bounded
+  page over a 48-hour lookback window, matching #1889's shape.
+- **Manual full backfill** (`runFullBackfill()`, reachable only from the admin
+  script's `runNowWithSummary()`, never from the scheduled path) — walks the
+  entire suppression list with no date window, bounded by a page-count safety
+  cap.
+
+**Reason-code mapping** (Brevo's raw `reason.code` → the event name applied):
+
+| Brevo reason code | Applied event | Effect |
+| --- | --- | --- |
+| `hardBounce` | `blocked` | flags the car bounced |
+| `contactFlaggedAsSpam` | `spam` | flags the car suppressed |
+| `unsubscribedViaEmail`, `unsubscribedViaMA`, `unsubscribedViaApi`, `adminBlocked` | `unsubscribed` | flags the car suppressed |
+| anything else | (none) | logged, tallied under `'unrecognized'`, skipped |
+
+`adminBlocked` maps to `unsubscribed` rather than `blocked` deliberately: it
+means a human suppressed the address at Brevo, a suppression decision rather
+than evidence the mailbox is dead. See the job class's own docblock for the
+full rationale and the count-accuracy notes behind its `SuppressionSyncSummary`
+return value.
+
+**Admin UI:** `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
+— the manual "run now" wrapper, mirroring `27-Reconcile-Brevo-Events.php`'s
+gate/two-phase-UI pattern but additionally rendering the run's summary inline
+(matched/unmatched/already-flagged/skipped counts, a per-reason-code breakdown,
+and warnings when the backfill was capped, a Brevo poll failed mid-run, or any
+contact was skipped).
+
 ### Feature Switch Related Documentation
 
 - [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager) — the 10-minute interval constant referenced by `cronReady()`
