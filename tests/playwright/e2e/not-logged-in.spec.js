@@ -320,7 +320,17 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
         }
 
         if (isInternalLink) {
-          // Convert to relative path if it's a full URL
+          // Convert to relative path if it's a full URL. A root-relative
+          // href (e.g. '/docs/...') is NOT stripped of its leading slash
+          // like the literals fixed elsewhere in this file for #2055 —
+          // these are scraped from the app's own rendered markup, which
+          // UserSpice's $us_url_root already mount-prefixes (e.g.
+          // '/ElanRegistry/Registry2/docs/...'), so re-resolving against a
+          // non-root baseURL at line ~450/~507 below is a correct no-op,
+          // not the leading-slash bug. This only holds because every href
+          // the app emits is mount-prefixed — a hand-written or
+          // third-party partial emitting a genuinely origin-root href
+          // would silently navigate to the wrong mount here.
           const relativePath = href.startsWith('http')
             ? new URL(href).pathname
             : href;
@@ -625,6 +635,12 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
   });
 });
 
+// This block mixes .htaccess-dependent tests (each calls skipOnLocalDev()
+// individually, since not every test here needs it) with plain
+// static-file/direct-hit tests that don't. A new test added below that
+// asserts real .htaccess Redirect/RedirectMatch/ErrorDocument behavior must
+// call skipOnLocalDev() itself — nothing here enforces that structurally
+// (#2055).
 test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
@@ -753,6 +769,8 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 });
 
+// Same mixed-block caveat as #1539 above: new .htaccess-dependent tests must
+// call skipOnLocalDev() themselves (#2055).
 test.describe('GSC 404 cleanup redirects (#1409)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
@@ -855,6 +873,9 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
   });
 });
 
+// Same mixed-block caveat as #1539/#1409 above. This block's forEach also
+// supports a per-entry `caseSensitiveFsOnly: true` flag for redirects that
+// depend on filesystem case-sensitivity rather than .htaccess (#2055).
 test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
