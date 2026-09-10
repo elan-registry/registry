@@ -161,6 +161,10 @@ split *is* the permission boundary:
   gated on live Brevo/cron readiness checks. Admin can toggle it; enabling
   while a prerequisite has failed is refused, disabling always succeeds. See
   [EMAIL_SYSTEM.md § Verification System Feature Switch](EMAIL_SYSTEM.md#verification-system-feature-switch).
+- **User verification & email status** — the admin user-detail page surfaces
+  per-car verification state (freshness badge), bounce status, and Brevo
+  suppression reasons via the user form hook, letting admins diagnose email
+  delivery problems directly from the user profile.
 
 **`app/admin/maintenance.php` — administrators only**
 

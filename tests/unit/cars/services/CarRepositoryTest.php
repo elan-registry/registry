@@ -1146,4 +1146,262 @@ final class CarRepositoryTest extends TestCase
             . 'not a bug this test suite should paper over.'
         );
     }
+
+    // =========================================================================
+    // findVerificationStateByOwner() / findLatestEmailEventsByCarIds() tests
+    // (issue #1924)
+    // =========================================================================
+
+    /**
+     * findVerificationStateByOwner() must issue exactly the documented SELECT,
+     * ordered `model, year` to match the car-button list's own ordering in
+     * user_form_hook.php, and return the rows from DB::results() unmodified.
+     */
+    public function testFindVerificationStateByOwnerSendsExpectedSqlAndReturnsRows(): void
+    {
+        $rows = [
+            (object) [
+                'id' => 1,
+                'model' => 'Elan',
+                'series' => '2',
+                'variant' => 'S/E',
+                'year' => 1971,
+                'email' => 'owner@example.com',
+                'email_bounced' => 1,
+                'email_bounced_address' => 'owner@example.com',
+                'email_suppressed' => 0,
+                'owner_last_updated' => '2026-01-01 00:00:00',
+                'last_verified' => '2025-01-01 00:00:00',
+            ],
+        ];
+
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'SELECT id, model, series, variant, year, email, email_bounced, email_bounced_address,
+                    email_suppressed, owner_last_updated, last_verified
+               FROM cars
+              WHERE user_id = ?
+              ORDER BY model, year',
+                [42]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn($rows);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findVerificationStateByOwner(42);
+
+        $this->assertSame($rows, $result);
+    }
+
+    /**
+     * Spot-checks every column of the returned row, and specifically pins
+     * email_bounced/email_suppressed as ints (tinyint columns), not bool —
+     * a correction made during implementation of #1924 and worth guarding
+     * against regressing back to a bool assumption.
+     */
+    public function testFindVerificationStateByOwnerMapsAllColumnsAndKeepsBounceFlagsAsInt(): void
+    {
+        $row = (object) [
+            'id' => 7,
+            'model' => 'Elan',
+            'series' => '2',
+            'variant' => 'S/E',
+            'year' => 1971,
+            'email' => 'owner@example.com',
+            'email_bounced' => 1,
+            'email_bounced_address' => 'owner@example.com',
+            'email_suppressed' => 0,
+            'owner_last_updated' => '2026-01-01 00:00:00',
+            'last_verified' => null,
+        ];
+
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn([$row]);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findVerificationStateByOwner(42);
+
+        $this->assertCount(1, $result);
+        $car = $result[0];
+        $this->assertSame(7, $car->id);
+        $this->assertSame('Elan', $car->model);
+        $this->assertSame('2', $car->series);
+        $this->assertSame('S/E', $car->variant);
+        $this->assertSame(1971, $car->year);
+        $this->assertSame('owner@example.com', $car->email);
+        $this->assertSame('owner@example.com', $car->email_bounced_address);
+        $this->assertSame('2026-01-01 00:00:00', $car->owner_last_updated);
+        $this->assertNull($car->last_verified);
+
+        $this->assertIsInt($car->email_bounced, 'email_bounced must come back as int (tinyint), not bool');
+        $this->assertSame(1, $car->email_bounced);
+        $this->assertFalse(is_bool($car->email_bounced), 'email_bounced must not be a bool');
+
+        $this->assertIsInt($car->email_suppressed, 'email_suppressed must come back as int (tinyint), not bool');
+        $this->assertSame(0, $car->email_suppressed);
+        $this->assertFalse(is_bool($car->email_suppressed), 'email_suppressed must not be a bool');
+    }
+
+    /**
+     * A user with no cars must yield an empty array — no special-casing of
+     * zero rows, just DB::results()'s own empty-array behavior passed through.
+     */
+    public function testFindVerificationStateByOwnerReturnsEmptyArrayWhenNoCars(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn([]);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findVerificationStateByOwner(999);
+
+        $this->assertSame([], $result);
+    }
+
+    /**
+     * A query error must throw CarDatabaseException rather than silently
+     * returning an empty/partial verification-state list.
+     */
+    public function testFindVerificationStateByOwnerThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/findVerificationStateByOwner failed/');
+        $repo->findVerificationStateByOwner(42);
+    }
+
+    /**
+     * findLatestEmailEventsByCarIds() must return the latest (max occurred_at)
+     * event per car id, keyed by (int) car_id — simulating the self-join's
+     * output directly, since the join logic itself lives in SQL and this test
+     * only needs to verify the PHP-side keying/mapping of whatever rows the
+     * query returns.
+     */
+    public function testFindLatestEmailEventsByCarIdsKeysResultByCarId(): void
+    {
+        $rows = [
+            (object) ['car_id' => 10, 'event' => 'delivered', 'occurred_at' => '2026-01-01 00:00:00', 'reason' => null],
+            (object) ['car_id' => 20, 'event' => 'hard_bounce', 'occurred_at' => '2026-02-01 00:00:00', 'reason' => 'mailbox full'],
+        ];
+
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn($rows);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findLatestEmailEventsByCarIds([10, 20]);
+
+        $this->assertArrayHasKey(10, $result);
+        $this->assertArrayHasKey(20, $result);
+        $this->assertSame('delivered', $result[10]->event);
+        $this->assertSame('2026-01-01 00:00:00', $result[10]->occurred_at);
+        $this->assertSame('hard_bounce', $result[20]->event);
+        $this->assertSame('mailbox full', $result[20]->reason);
+    }
+
+    /**
+     * When one car has multiple events on record, only the row carrying the
+     * max occurred_at for that car_id must survive in the returned map — the
+     * self-join is expected to have already filtered to that row before PHP
+     * ever sees it, so this test asserts the max-occurred_at row wins when it
+     * is the only one DB::results() returns for that car id (mirroring what
+     * the real self-join would produce), and that an earlier-dated row for
+     * the same car id would be overwritten if it appeared after in the result
+     * set — pinning the "later-joined row wins on a tie" documented behavior.
+     */
+    public function testFindLatestEmailEventsByCarIdsReturnsMaxOccurredAtRowWhenMultipleEventsExist(): void
+    {
+        // Simulates the self-join already having picked the max-occurred_at
+        // row per car_id (that filtering is SQL, not PHP) — but exercises the
+        // documented "later-joined row wins" tie-break by returning two rows
+        // for the same car_id with equal occurred_at values.
+        $rows = [
+            (object) ['car_id' => 10, 'event' => 'soft_bounce', 'occurred_at' => '2026-03-01 00:00:00', 'reason' => 'first'],
+            (object) ['car_id' => 10, 'event' => 'hard_bounce', 'occurred_at' => '2026-03-01 00:00:00', 'reason' => 'second'],
+        ];
+
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn($rows);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findLatestEmailEventsByCarIds([10]);
+
+        $this->assertCount(1, $result);
+        $this->assertSame('hard_bounce', $result[10]->event, 'The later-joined row must win on a tie');
+        $this->assertSame('second', $result[10]->reason);
+    }
+
+    /**
+     * A car with zero er_email_events rows must simply be absent from the
+     * returned map — callers must treat a missing key as "no events
+     * recorded," not as an error.
+     */
+    public function testFindLatestEmailEventsByCarIdsOmitsCarWithNoEvents(): void
+    {
+        // Only car_id 10 has an event; car_id 30 (also requested) has none,
+        // matching what the self-join would produce (an INNER JOIN naturally
+        // omits car ids with no rows in er_email_events).
+        $rows = [
+            (object) ['car_id' => 10, 'event' => 'delivered', 'occurred_at' => '2026-01-01 00:00:00', 'reason' => null],
+        ];
+
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn($rows);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findLatestEmailEventsByCarIds([10, 30]);
+
+        $this->assertArrayHasKey(10, $result);
+        $this->assertArrayNotHasKey(30, $result);
+    }
+
+    /**
+     * An empty $carIds array must return an empty array with NO query issued
+     * at all — the no-op path documented alongside deleteEmailEventsForCarIds().
+     */
+    public function testFindLatestEmailEventsByCarIdsReturnsEmptyArrayAndIssuesNoQueryOnEmptyInput(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->never())->method('query');
+
+        $repo = new CarRepository($db);
+        $result = $repo->findLatestEmailEventsByCarIds([]);
+
+        $this->assertSame([], $result);
+    }
+
+    /**
+     * A query error must throw CarDatabaseException rather than silently
+     * returning an empty/partial event map.
+     */
+    public function testFindLatestEmailEventsByCarIdsThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/findLatestEmailEventsByCarIds failed/');
+        $repo->findLatestEmailEventsByCarIds([10, 20]);
+    }
 }

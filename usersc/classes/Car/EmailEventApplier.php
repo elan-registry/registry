@@ -77,8 +77,14 @@ class EmailEventApplier
      * `invalid` — neither has been confirmed against real Brevo traffic.
      * Accepting both costs nothing (they're mutually exclusive event names)
      * and avoids a silent miss on whichever one Brevo actually sends.
+     *
+     * Public for the same reason as {@see self::SUPPRESSION_EVENTS}: read-only
+     * consumers need this vocabulary to tell whether a stored
+     * `er_email_events.event` value is the bounce that set a car's flag (the
+     * admin user form only dates its Bounced column from a matching event).
+     * This class stays the single owner of the list.
      */
-    private const HARD_BOUNCE_EVENTS = ['hard_bounce', 'blocked', 'invalid', 'invalid_email'];
+    public const HARD_BOUNCE_EVENTS = ['hard_bounce', 'blocked', 'invalid', 'invalid_email'];
 
     /**
      * Brevo event names known to have no flag/escalation effect. Anything
@@ -95,8 +101,13 @@ class EmailEventApplier
      * rather than a webhook. It is recorded under its own event name — never
      * aliased to `spam` — so the two remain distinguishable in
      * `er_email_events` for later audit.
+     *
+     * Public because read-only consumers outside this class need the same
+     * vocabulary to interpret stored `er_email_events.event` values (e.g. the
+     * admin user form's suppression-reason display). This class remains the
+     * single owner of the list — callers read it, never redefine it.
      */
-    private const SUPPRESSION_EVENTS = ['spam', 'unsubscribed'];
+    public const SUPPRESSION_EVENTS = ['spam', 'unsubscribed'];
 
     public function __construct(
         private CarRepository $repo,
