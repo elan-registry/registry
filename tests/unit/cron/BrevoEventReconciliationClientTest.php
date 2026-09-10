@@ -19,10 +19,10 @@ require_once __DIR__ . '/../../Support/SendinblueSettingsFakeDatabase.php';
  * reaching past the credential and SDK gates makes a live call to
  * api.brevo.com — see the note at the foot of this class.
  *
- * Every path here must return [] *and* log. The class's whole contract is
- * that a failed poll is never distinguishable in the return value (see its
- * class docblock), which makes the log the only signal an operator has — so a
- * silent [] is the one outcome that must never happen.
+ * Every path here must return null *and* log (#2061: null means the poll
+ * failed, distinct from a genuine empty page). The log is the only signal an
+ * operator has beyond the return value, so a silent null is the one outcome
+ * that must never happen.
  */
 #[Group('fast')]
 final class BrevoEventReconciliationClientTest extends TestCase
@@ -33,7 +33,7 @@ final class BrevoEventReconciliationClientTest extends TestCase
         $mockLogEntries = [];
     }
 
-    private function fetch(SendinblueSettingsFakeDatabase $db): array
+    private function fetch(SendinblueSettingsFakeDatabase $db): ?array
     {
         return (new BrevoEventReconciliationClient($db))->fetchEvents(
             new DateTimeImmutable('2026-09-07'),
@@ -53,7 +53,7 @@ final class BrevoEventReconciliationClientTest extends TestCase
     {
         global $mockLogEntries;
 
-        $this->assertSame([], $this->fetch(new SendinblueSettingsFakeDatabase(sqlState: '42S02')));
+        $this->assertNull($this->fetch(new SendinblueSettingsFakeDatabase(sqlState: '42S02')));
 
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, $mockLogEntries[0]['category']);
@@ -69,7 +69,7 @@ final class BrevoEventReconciliationClientTest extends TestCase
     {
         global $mockLogEntries;
 
-        $this->assertSame([], $this->fetch(new SendinblueSettingsFakeDatabase(sqlState: 'HY000')));
+        $this->assertNull($this->fetch(new SendinblueSettingsFakeDatabase(sqlState: 'HY000')));
 
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
@@ -81,7 +81,7 @@ final class BrevoEventReconciliationClientTest extends TestCase
     {
         global $mockLogEntries;
 
-        $this->assertSame([], $this->fetch(new SendinblueSettingsFakeDatabase(key: null)));
+        $this->assertNull($this->fetch(new SendinblueSettingsFakeDatabase(key: null)));
 
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, $mockLogEntries[0]['category']);

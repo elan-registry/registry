@@ -154,7 +154,24 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      */
     protected function execute(): void
     {
-        $this->backfillEvents();
+        $summary = $this->backfillEvents();
+
+        // Logged under EMAIL_WEBHOOK rather than either CRON_JOB_* category:
+        // both of those are exception channels (a fault, or a deliberate
+        // pause), and a successful run is neither — filing routine success
+        // there would dilute the one category an operator filters on to find
+        // broken jobs. Matches BrevoSuppressionSyncJob::execute()'s identical
+        // choice for its own incremental-run summary line.
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+            'Brevo event reconciliation: incremental run complete —'
+            . ' %d matched, %d unmatched, %d skipped, %d ignored (non-verification tag),'
+            . ' %d page(s) fetched.',
+            $summary->matchedCount,
+            $summary->unmatchedCount,
+            $summary->skippedCount,
+            $summary->ignoredByTagCount,
+            $summary->pagesFetched
+        ));
 
         // Independent of the backfill, and deliberately outside its error
         // handling: a Brevo outage must not stop retention pruning, and a
@@ -164,11 +181,61 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     }
 
     /**
+     * Run a backfill immediately, for the manual "run now" admin path.
+     *
+     * Bypasses both the enabled check and the CronJobGuard claim, exactly as
+     * {@see AbstractCronJob::runNow()} does and for the same reason: an
+     * operator who explicitly triggers a run has already made the scheduling
+     * decision the guard exists to make. This is a separate method rather
+     * than an override because `runNow()` is `final` and calls `execute()`,
+     * which logs and discards its summary rather than returning it.
+     *
+     * FAILURE HANDLING DIFFERS FROM `runNow()` ON PURPOSE, mirroring
+     * {@see BrevoSuppressionSyncJob::runNowWithSummary()}. `runNow()` returns
+     * void, so swallowing a \Throwable there costs the caller nothing it
+     * could have used. Here the caller is an admin page that renders the
+     * returned summary, and a caught-and-logged failure would have to be
+     * reported as *some* summary — necessarily a fabricated all-zero one,
+     * indistinguishable from a genuinely successful run with nothing to
+     * report. Showing an operator "0 matched, 0 unmatched" when the run in
+     * fact crashed is a worse outcome than showing them an error, so this
+     * logs and then **rethrows**: the admin script's own try/catch decides
+     * how to render the failure, and the log line survives regardless.
+     *
+     * A poll failure (`fetchEvents()` returning null) is NOT one of these
+     * unexpected failures — {@see self::backfillEvents()} already handles it
+     * and returns a real summary with `pollFailed` set, matching
+     * `BrevoSuppressionSyncJob::syncPage()`'s identical null-poll handling.
+     * Only something genuinely unexpected escapes here.
+     *
+     * @return ReconciliationSummary
+     * @throws \Throwable Rethrown after logging, so the caller can distinguish
+     *         a failed run from an empty successful one
+     */
+    public function runNowWithSummary(): ReconciliationSummary
+    {
+        try {
+            $summary = $this->backfillEvents();
+            $this->pruneExpiredEvents();
+
+            return $summary;
+        } catch (\Throwable $e) {
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                "Cron job '%s' failed (manual run): %s: %s",
+                self::JOB_NAME,
+                get_class($e),
+                $e->getMessage()
+            ));
+            throw $e;
+        }
+    }
+
+    /**
      * Fetch one page of events and apply each tag-matching one to its cars.
      */
-    private function backfillEvents(): void
+    private function backfillEvents(): ReconciliationSummary
     {
-        // fetchEvents() never throws — a poll failure returns [] and is
+        // fetchEvents() never throws — a poll failure returns null and is
         // already logged there under LOG_CATEGORY_CRON_JOB_FAILURE.
         $events = $this->client->fetchEvents(
             $this->now->modify('-' . self::LOOKBACK_HOURS . ' hours'),
@@ -177,17 +244,60 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             self::PAGE_OFFSET
         );
 
-        foreach ($events as $event) {
-            $this->applyEvent($event);
+        if ($events === null) {
+            return new ReconciliationSummary(
+                matchedCount: 0,
+                unmatchedCount: 0,
+                skippedCount: 0,
+                eventTypeCounts: [],
+                eventsExamined: 0,
+                ignoredByTagCount: 0,
+                pagesFetched: 0,
+                pollFailed: true,
+            );
         }
+
+        /** @var array<string, int> $counts */
+        $counts = [
+            'matched' => 0,
+            'unmatched' => 0,
+            'skipped' => 0,
+            'ignoredByTag' => 0,
+        ];
+        /** @var array<string, int> $eventTypeCounts */
+        $eventTypeCounts = [];
+
+        foreach ($events as $event) {
+            $this->applyEvent($event, $counts, $eventTypeCounts);
+        }
+
+        return new ReconciliationSummary(
+            matchedCount: $counts['matched'],
+            unmatchedCount: $counts['unmatched'],
+            skippedCount: $counts['skipped'],
+            eventTypeCounts: $eventTypeCounts,
+            eventsExamined: count($events),
+            ignoredByTagCount: $counts['ignoredByTag'],
+            pagesFetched: 1,
+            pollFailed: false,
+        );
     }
 
     /**
      * Apply one Brevo event to every car registered to its recipient address.
      *
+     * Threads run counts through `$counts` (keys: `matched`, `unmatched`,
+     * `skipped`, `ignoredByTag`) and `$eventTypeCounts` (keyed on the raw
+     * Brevo event name) rather than returning them, so the counting logic
+     * sits directly alongside the branch it is counting — see
+     * {@see ReconciliationSummary}'s docblock for why `matched`/`skipped` are
+     * incremented per car-write here, not once per event.
+     *
      * @param \Brevo\Client\Model\GetEmailEventReportEvents $event
+     * @param array<string, int> $counts
+     * @param array<string, int> $eventTypeCounts
      */
-    private function applyEvent(object $event): void
+    private function applyEvent(object $event, array &$counts, array &$eventTypeCounts): void
     {
         // Same gate BrevoWebhookEventProcessor::process() applies to the
         // webhook's `tags` array — but the statistics API returns a single
@@ -201,6 +311,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // non-matching traffic — skip silently, same as any other tag.
         $rawTag = $event->getTag();
         if (!is_string($rawTag) || $rawTag !== AppConstants::VERIFICATION_EMAIL_TAG) {
+            $counts['ignoredByTag']++;
             return;
         }
 
@@ -217,6 +328,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // it under EMAIL_WEBHOOK for the same reason the bound check below
         // does: it is a Brevo payload problem, not a broken job.
         if (!is_string($rawEmail) || !is_string($rawEventName) || !is_string($rawMessageId)) {
+            $counts['skipped']++;
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo event reconciliation: non-string field in event payload'
                 . ' (email=%s, event=%s, message-id=%s) — event skipped.',
@@ -232,6 +344,20 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         $messageId = $rawMessageId;
 
         if ($email === '' || $eventName === '' || $messageId === '') {
+            $counts['skipped']++;
+            // Logged for the same reason the non-string branch above is:
+            // #2061 made skippedCount visible on the admin script, whose own
+            // warning banner tells the operator every skip is logged under
+            // EmailWebhook or CronJobFailure. Before that count existed, this
+            // branch's silence was invisible; now an unlogged skip here would
+            // be a count with no matching log entry to find.
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo event reconciliation: empty required field in event payload'
+                . ' (email=%s, event=%s, message-id=%s) — event skipped.',
+                $email === '' ? '(empty)' : $email,
+                $eventName === '' ? '(empty)' : $eventName,
+                $messageId === '' ? '(empty)' : $messageId
+            ));
             return;
         }
 
@@ -248,6 +374,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // together, and CRON_JOB_FAILURE stays the category an operator can
         // filter on to find genuinely broken jobs.
         if (strlen($eventName) > self::MAX_EVENT_LENGTH || strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
+            $counts['skipped']++;
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo event reconciliation: event or message-id exceeds storage width'
                 . ' (event=%d bytes, message-id=%d bytes) — event skipped.',
@@ -265,12 +392,18 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         try {
             $matchedCars = $this->repo->findByEmail($email);
         } catch (CarDatabaseException $e) {
+            $counts['skipped']++;
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                 'Brevo event reconciliation: car lookup FAILED for %s (event "%s") — event skipped: %s',
                 $email,
                 $eventName,
                 $e->getMessage()
             ));
+            return;
+        }
+
+        if ($matchedCars === []) {
+            $counts['unmatched']++;
             return;
         }
 
@@ -284,6 +417,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                 // idempotent writes — already covers the skipped event on the
                 // next claim. Aborting instead would let one bad row starve
                 // every event behind it in this page.
+                $counts['skipped']++;
                 logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                     'Brevo event reconciliation: write FAILED for car %s, event "%s" (%s) —'
                     . ' skipped, will retry next cycle: %s',
@@ -292,7 +426,11 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                     $email,
                     $e->getMessage()
                 ));
+                continue;
             }
+
+            $counts['matched']++;
+            $eventTypeCounts[$eventName] = ($eventTypeCounts[$eventName] ?? 0) + 1;
         }
     }
 

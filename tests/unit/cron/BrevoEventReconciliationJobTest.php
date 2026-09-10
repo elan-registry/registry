@@ -105,12 +105,12 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * @param list<object> $events
+     * @param list<object>|null $events Null scripts a poll failure.
      * @param FakeBrevoEventReconciliationClient|null $client Receives the fake
      *        client this job was built with, so callers can assert on it.
      * @param-out FakeBrevoEventReconciliationClient $client
      */
-    private function makeJob(array $events, ?FakeBrevoEventReconciliationClient &$client = null): BrevoEventReconciliationJob
+    private function makeJob(?array $events, ?FakeBrevoEventReconciliationClient &$client = null): BrevoEventReconciliationJob
     {
         $client = new FakeBrevoEventReconciliationClient($events);
 
@@ -592,8 +592,10 @@ final class BrevoEventReconciliationJobTest extends TestCase
     // --- Empty / failed poll ---------------------------------------------
 
     /**
-     * fetchEvents() returns [] for both "no events" and "poll failed" (it logs
-     * the distinction itself). Either way the job must still prune.
+     * fetchEvents() returning [] means the poll succeeded with no events for
+     * the window — distinct from null, which means the poll failed (see
+     * testPollFailureIsReflectedInTheSummaryWithoutThrowing, which asserts
+     * the null case still prunes too). Either way the job must still prune.
      */
     public function testEmptyPollStillPrunes(): void
     {
@@ -602,6 +604,146 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->makeJob([])->runNow();
 
         $this->assertSame([], $this->applier->calls);
+    }
+
+    // --- runNowWithSummary() counts ---------------------------------------
+
+    public function testRunNowWithSummaryHappyPathCountsAreCorrect(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(email: 'a@example.com', event: 'delivered', messageId: 'm1'),
+            new FakeBrevoEvent(email: 'b@example.com', event: 'delivered', messageId: 'm2'),
+            new FakeBrevoEvent(email: 'c@example.com', event: 'hard_bounce', messageId: 'm3'),
+        ], $client)->runNowWithSummary();
+
+        $this->assertSame(3, $summary->matchedCount);
+        $this->assertSame(0, $summary->unmatchedCount);
+        $this->assertSame(0, $summary->skippedCount);
+        $this->assertSame(0, $summary->ignoredByTagCount);
+        $this->assertSame(['delivered' => 2, 'hard_bounce' => 1], $summary->eventTypeCounts);
+        $this->assertSame(3, $summary->eventsExamined);
+        $this->assertSame(1, $summary->pagesFetched);
+        $this->assertFalse($summary->pollFailed);
+    }
+
+    /**
+     * findByEmail() returning [] is a routine "Brevo knows an address the
+     * registry doesn't" outcome, not an error — must count as unmatched, and
+     * must not touch matchedCount.
+     */
+    public function testUnmatchedEventIncrementsUnmatchedCountNotMatchedCount(): void
+    {
+        $this->expectRepoCalls()->expects($this->once())->method('findByEmail')->willReturn([]);
+
+        $summary = $this->makeJob([new FakeBrevoEvent()])->runNowWithSummary();
+
+        $this->assertSame(0, $summary->matchedCount);
+        $this->assertSame(1, $summary->unmatchedCount);
+    }
+
+    /**
+     * A tag-mismatched event must still be silently skipped (no new log line)
+     * — only the count is new behavior.
+     */
+    public function testTagMismatchedEventIncrementsIgnoredByTagCountWithoutLogging(): void
+    {
+        $this->expectRepoCalls()->expects($this->never())->method('findByEmail');
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(tag: 'newsletter'),
+            new FakeBrevoEvent(tag: null),
+        ])->runNowWithSummary();
+
+        $this->assertSame(2, $summary->ignoredByTagCount);
+        $this->assertSame(0, $summary->skippedCount);
+        $this->assertSame([], $this->logsContaining('newsletter'), 'A tag mismatch must stay silent');
+    }
+
+    /**
+     * The multi-car partial-failure case this issue exists for (#2061):
+     * matchedCount/skippedCount are counted per car-write, not per event. One
+     * event matching 3 cars where 2 writes succeed and 1 throws must
+     * contribute +2 matched and +1 skipped — not "the whole event counted as
+     * skipped", and eventsExamined must stay 1.
+     */
+    public function testOneEventMatchingThreeCarsWithOneFailedWriteCountsPerCar(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([
+            (object) ['id' => 1],
+            (object) ['id' => 2],
+            (object) ['id' => 3],
+        ]);
+        // All three calls share this event's single message-id, so failOn()
+        // alone cannot isolate one — failOnCarId() targets car 2 specifically.
+        $this->applier->failOnCarId(2);
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(email: 'multi@example.com', event: 'hard_bounce', messageId: 'm1'),
+        ])->runNowWithSummary();
+
+        $this->assertCount(3, $this->applier->calls, 'All three car writes must be attempted');
+        $this->assertSame(2, $summary->matchedCount, 'Two of three car writes succeeded');
+        $this->assertSame(1, $summary->skippedCount, 'One of three car writes failed');
+        $this->assertSame(0, $summary->unmatchedCount);
+        $this->assertSame(1, $summary->eventsExamined, 'One event was examined, regardless of car count');
+        $this->assertSame(['hard_bounce' => 2], $summary->eventTypeCounts);
+    }
+
+    /**
+     * fetchEvents() returning null (poll failure, #2061) is not a thrown
+     * exception in this design — runNowWithSummary() must still return a
+     * summary, with pollFailed set and nothing counted, matching
+     * BrevoSuppressionSyncJob::syncPage()'s identical null-poll handling.
+     *
+     * Also asserts pruneExpiredEvents() still runs on a poll failure — the
+     * job's own docblock is explicit that "a Brevo outage must not stop
+     * retention pruning", and the null-poll branch is a new early return
+     * (#2061) sitting ahead of that call, so this is the one place a future
+     * refactor could silently short-circuit 24-month retention pruning
+     * during every Brevo outage without any test catching it.
+     */
+    public function testPollFailureIsReflectedInTheSummaryWithoutThrowing(): void
+    {
+        $repo = $this->expectRepoCalls();
+        $repo->expects($this->never())->method('findByEmail');
+        $repo->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
+
+        $summary = $this->makeJob(null, $client)->runNowWithSummary();
+
+        $this->assertTrue($summary->pollFailed);
+        $this->assertSame(0, $summary->eventsExamined);
+        $this->assertSame(0, $summary->matchedCount);
+        $this->assertSame(0, $summary->unmatchedCount);
+        $this->assertSame(0, $summary->skippedCount);
+        $this->assertSame(0, $summary->ignoredByTagCount);
+        $this->assertSame(0, $summary->pagesFetched);
+    }
+
+    /**
+     * runNowWithSummary() rethrows rather than fabricating an all-zero
+     * summary, which would be indistinguishable from a genuinely successful
+     * empty run — mirrors BrevoSuppressionSyncJob::runNowWithSummary().
+     */
+    public function testRunNowWithSummaryLogsAndRethrowsAnUnexpectedFailure(): void
+    {
+        $this->expectRepoCalls()->expects($this->once())
+            ->method('deleteEmailEventsOlderThan')
+            ->willThrowException(new RuntimeException('unexpected prune failure'));
+
+        $job = $this->makeJob([]);
+
+        try {
+            $job->runNowWithSummary();
+            $this->fail('An unexpected failure must not be reported as an empty successful run');
+        } catch (RuntimeException $e) {
+            $this->assertSame('unexpected prune failure', $e->getMessage());
+        }
+
+        $log = $this->logsContaining('failed (manual run)');
+        $this->assertNotEmpty($log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
     }
 
     // --- Helpers ---------------------------------------------------------

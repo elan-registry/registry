@@ -606,13 +606,14 @@ patterns.
 **For manual "run now" admin maintenance scripts** (bypassing the guard and
 enabled check, when an operator explicitly triggers a run), instantiate the
 job and call `->runNow()` instead of `->run()` — still crash-isolated, but no
-guard claim or enabled check. See `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php`
-as a reference. `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
-(#1923) is the reference for a job whose manual entry point *returns a value*
-instead: its job class adds a sibling `runNowWithSummary()` method (not an
-override of the `final` `runNow()`) that logs and rethrows on failure rather
-than swallowing it, so the admin script can render a real summary — or a real
-error — instead of `runNow()`'s void, never-throws contract.
+guard claim or enabled check. `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
+(#1923) and `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php`
+(#2061) are both references for a job whose manual entry point *returns a
+value* instead: each job class adds a sibling `runNowWithSummary()` method
+(not an override of the `final` `runNow()`) that logs and rethrows on failure
+rather than swallowing it, so the admin script can render a real summary — or
+a real error — instead of `runNow()`'s void, never-throws contract. A job with
+no such need can still call the plain `runNow()`.
 
 **What `users/cron/cron.php` does on every hit.** Unlike the rest of `/users/`
 (upstream UserSpice, not modified per CLAUDE.md's Template Customization

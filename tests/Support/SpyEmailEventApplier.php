@@ -21,7 +21,9 @@ use ElanRegistry\Exceptions\CarDatabaseException;
  *
  * Records every apply() call so tests can assert both the arguments and the
  * ordering, and can be scripted to throw CarDatabaseException for one chosen
- * message-id, which is how per-event failure isolation is exercised.
+ * message-id (per-event failure isolation) or car id (#2061: per-car-write
+ * counting within a single multi-car event, where every call shares one
+ * message-id and so cannot be distinguished by it alone).
  *
  * Deliberately a *named* class rather than an anonymous one, per the
  * `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
@@ -38,6 +40,9 @@ class SpyEmailEventApplier extends EmailEventApplier
     /** apply() throws CarDatabaseException when the message-id equals this. */
     private ?string $failOnMessageId = null;
 
+    /** apply() throws CarDatabaseException when the car id equals this. */
+    private ?int $failOnCarId = null;
+
     public function __construct()
     {
         // Deliberately does not call parent::__construct(): every inherited
@@ -51,6 +56,18 @@ class SpyEmailEventApplier extends EmailEventApplier
         $this->failOnMessageId = $messageId;
     }
 
+    /**
+     * Make apply() throw for this car id, regardless of message-id.
+     *
+     * Needed when several calls for the same event share one message-id (a
+     * single event applied to multiple matched cars), so failOn() alone
+     * cannot isolate one call.
+     */
+    public function failOnCarId(int $carId): void
+    {
+        $this->failOnCarId = $carId;
+    }
+
     public function apply(
         int $carId,
         string $email,
@@ -61,7 +78,7 @@ class SpyEmailEventApplier extends EmailEventApplier
     ): void {
         $this->calls[] = compact('carId', 'email', 'event', 'reason', 'messageId', 'occurredAt');
 
-        if ($messageId === $this->failOnMessageId) {
+        if ($messageId === $this->failOnMessageId || $carId === $this->failOnCarId) {
             throw new CarDatabaseException('simulated write failure');
         }
     }
