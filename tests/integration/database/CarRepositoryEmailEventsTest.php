@@ -289,4 +289,103 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
 
         $this->assertSame(0, $deletedCount);
     }
+
+    // --- findLatestEmailEventsByCarIds() ------------------------------------
+    //
+    // This method's correctness lives entirely in a hand-written self-join
+    // (INNER JOIN against a MAX(occurred_at) GROUP BY subquery, with the
+    // doubled IN({$placeholders}) parameter binding via array_merge($ids,
+    // $ids)). Every unit test for it mocks DatabaseInterface::results() to
+    // hand back the answer the join was supposed to compute, so the actual
+    // SQL has never executed anywhere but here.
+
+    #[Group('fast')]
+    public function testReturnsOnlyTheMaxDatedRowForACarWithMultipleEvents(): void
+    {
+        $this->insertRawEvent('soft_bounce', 'multi-1', '2026-01-01 09:00:00');
+        $this->insertRawEvent('hard_bounce', 'multi-2', '2026-01-02 10:00:00');
+        $this->db->query(
+            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, ?, ?, ?, ?, ?)',
+            [$this->carId, $this->carEmail(), 'blocked', 'Mailbox full', 'multi-3', '2026-01-03 11:00:00']
+        );
+        $this->assertFalse($this->db->error(), 'Failed to seed er_email_events row: ' . $this->db->errorString());
+
+        $latest = $this->repo->findLatestEmailEventsByCarIds([$this->carId]);
+
+        $this->assertArrayHasKey($this->carId, $latest, 'The requested car id must be present as a key');
+        $row = $latest[$this->carId];
+        $this->assertSame('blocked', $row->event, 'Must return the row with the max occurred_at, not the first/last inserted');
+        $this->assertSame('2026-01-03 11:00:00', $row->occurred_at);
+        $this->assertSame('Mailbox full', $row->reason);
+    }
+
+    #[Group('fast')]
+    public function testEachCarReturnsItsOwnLatestEventNotTheOtherCarsEvent(): void
+    {
+        $otherCarId = $this->createTestCar($this->userId, [
+            'email' => 'other-latest-' . uniqid() . '@example.com',
+        ]);
+        $otherEmail = (string) $this->db->query('SELECT email FROM cars WHERE id = ?', [$otherCarId])->first()->email;
+
+        // The two cars' latest events deliberately share an identical
+        // occurred_at (2026-01-05). This is the hardest case for per-car
+        // attribution: each car must still get its own event despite the tie.
+        //
+        // Note on what this does NOT prove. Dropping the JOIN's
+        // `latest.car_id = e.car_id` predicate does not fail this test, and no
+        // fixture can make it: the result is keyed by `e.car_id` and the query
+        // also carries `WHERE e.car_id IN (...)`, so an unconstrained join only
+        // yields duplicate rows (4 instead of 2) that collapse onto the same
+        // correct key. That predicate is a redundancy/performance guard here,
+        // not the thing standing between this test and a wrong answer.
+        $this->insertRawEvent('delivered', 'car-a-old', '2026-01-01 08:00:00');
+        $this->insertRawEvent('hard_bounce', 'car-a-new', '2026-01-05 08:00:00');
+
+        $this->db->query(
+            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, ?, ?, NULL, ?, ?)',
+            [$otherCarId, $otherEmail, 'delivered', 'car-b-old', '2026-01-02 08:00:00']
+        );
+        $this->db->query(
+            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, ?, ?, NULL, ?, ?)',
+            [$otherCarId, $otherEmail, 'soft_bounce', 'car-b-new', '2026-01-05 08:00:00']
+        );
+        $this->assertFalse($this->db->error(), 'Failed to seed er_email_events row: ' . $this->db->errorString());
+
+        $latest = $this->repo->findLatestEmailEventsByCarIds([$this->carId, $otherCarId]);
+
+        $this->assertArrayHasKey($this->carId, $latest);
+        $this->assertArrayHasKey($otherCarId, $latest);
+        $this->assertSame('hard_bounce', $latest[$this->carId]->event, "Car A must get its own latest event, not car B's");
+        $this->assertSame('2026-01-05 08:00:00', $latest[$this->carId]->occurred_at);
+        $this->assertSame('soft_bounce', $latest[$otherCarId]->event, "Car B must get its own latest event, not car A's");
+        $this->assertSame('2026-01-05 08:00:00', $latest[$otherCarId]->occurred_at);
+
+        $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$otherCarId]);
+        $this->deleteTestCar($otherCarId);
+    }
+
+    #[Group('fast')]
+    public function testCarIdWithNoEventsIsAbsentFromTheResultNotNull(): void
+    {
+        // $this->carId has zero rows in er_email_events for this test — no
+        // insertRawEvent() call precedes this assertion.
+        $latest = $this->repo->findLatestEmailEventsByCarIds([$this->carId]);
+
+        $this->assertArrayNotHasKey(
+            $this->carId,
+            $latest,
+            'A car with no email events must be absent from the map, not present with a null value'
+        );
+    }
+
+    #[Group('fast')]
+    public function testEmptyCarIdsArrayReturnsEmptyArray(): void
+    {
+        $latest = $this->repo->findLatestEmailEventsByCarIds([]);
+
+        $this->assertSame([], $latest);
+    }
 }

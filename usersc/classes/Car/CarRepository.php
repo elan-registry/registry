@@ -487,16 +487,10 @@ class CarRepository
     /**
      * PHP-side equivalent of freshnessSql() for a single car's timestamps.
      *
-     * NOT YET CALLED FROM PRODUCTION CODE, deliberately. Only the SQL form is
-     * wired in today, via findVerificationEligible(). This is the designated
-     * PHP-side counterpart for callers that hold a single car's timestamps
-     * already and would otherwise re-derive the rule by hand — the send
-     * pipeline in v2.30.3 is the intended first caller. It is kept rather than
-     * deferred so the rule has exactly one definition per language: a caller
-     * that reimplements "fresh" inline is how the #1953 defect returns.
-     *
-     * Delete this paragraph in the same PR that adds the first caller — see
-     * issue #1970. A stale "not yet called" note misleads worse than none.
+     * This is the PHP-side counterpart for callers that hold a single car's
+     * timestamps already and would otherwise re-derive the rule by hand, so the
+     * rule has exactly one definition per language: a caller that reimplements
+     * "fresh" inline is how the #1953 defect returns.
      *
      * Throws on a malformed or empty date string for either parameter rather than
      * returning a boolean. `owner_last_updated` is NOT NULL by schema and
@@ -796,6 +790,51 @@ class CarRepository
     }
 
     /**
+     * Find the per-car email/verification state for every car this user owns
+     *
+     * Backs the admin user-view's email block (#1924), which shows one row per
+     * owned car alongside the existing car-button list. Ordered `model, year`
+     * to match that list's order (see the `carQ` loop in
+     * usersc/plugins/hooker/hooks/user_form_hook.php) so the two line up
+     * visually.
+     *
+     * TYPES ARE AS PDO RETURNS THEM, not as the schema declares them. Numeric
+     * columns come back as `int|string` depending on driver typing (emulated
+     * prepares and `PDO::ATTR_STRINGIFY_FETCHES` both yield strings), so the
+     * tinyint flags below are NOT native PHP bool and must not be compared with
+     * `===` against `true`/`1`. Cast at the call site — the admin user form
+     * does, with `(int) $car->email_bounced`.
+     *
+     * @param int $ownerId Owner user ID
+     * @return array<object{
+     *   id: int|string, model: string, series: ?string, variant: ?string, year: int|string|null,
+     *   email: ?string, email_bounced: int|string, email_bounced_address: ?string,
+     *   email_suppressed: int|string, owner_last_updated: string, last_verified: ?string
+     * }> One row per car owned by this user, ordered like the existing button list
+     *    (model, year) for visual consistency with the row above it.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findVerificationStateByOwner(int $ownerId): array
+    {
+        $result = $this->db->query(
+            'SELECT id, model, series, variant, year, email, email_bounced, email_bounced_address,
+                    email_suppressed, owner_last_updated, last_verified
+               FROM cars
+              WHERE user_id = ?
+              ORDER BY model, year',
+            [$ownerId]
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findVerificationStateByOwner failed for user={$ownerId}: " . $this->db->errorString()
+            );
+        }
+
+        return $result->results();
+    }
+
+    /**
      * Find cars whose email column matches a given address
      *
      * Used by the Brevo webhook receiver to map an inbound delivery-status
@@ -947,6 +986,63 @@ class CarRepository
         }
 
         return $this->db->count();
+    }
+
+    /**
+     * Find the most recent er_email_events row for each of a set of car ids
+     *
+     * Self-joins the table against its own `(car_id, MAX(occurred_at))`
+     * aggregate rather than using a window function — no window functions are
+     * used anywhere else in this codebase's SQL. If a car somehow has two rows
+     * sharing the same maximum `occurred_at`, the join yields both and the
+     * later one wins the array key; either is equally "latest" by the only
+     * ordering the table records. No-ops cleanly on an empty array rather than
+     * issuing a query with an empty IN() list.
+     *
+     * @param array<int> $carIds
+     * @return array<int, object{event: string, occurred_at: string, reason: ?string}>
+     *         Keyed by car_id. Cars with no event history are simply absent from
+     *         the returned array — callers must treat a missing key as "no events
+     *         recorded," not query it as an error.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findLatestEmailEventsByCarIds(array $carIds): array
+    {
+        if ($carIds === []) {
+            return [];
+        }
+
+        $ids          = array_values($carIds);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+        $result = $this->db->query(
+            "SELECT e.car_id, e.event, e.occurred_at, e.reason
+               FROM er_email_events e
+               JOIN (
+                     SELECT car_id, MAX(occurred_at) AS max_occurred_at
+                       FROM er_email_events
+                      WHERE car_id IN ({$placeholders})
+                      GROUP BY car_id
+                    ) latest
+                 ON latest.car_id = e.car_id
+                AND latest.max_occurred_at = e.occurred_at
+              WHERE e.car_id IN ({$placeholders})",
+            array_merge($ids, $ids)
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::findLatestEmailEventsByCarIds failed for car_ids=' . implode(',', $ids)
+                . ': ' . $this->db->errorString()
+            );
+        }
+
+        $latest = [];
+        foreach ($result->results() as $row) {
+            $latest[(int) $row->car_id] = $row;
+        }
+
+        return $latest;
     }
 
     /**
