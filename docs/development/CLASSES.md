@@ -619,21 +619,36 @@ to provide a focused, testable data access layer wrapping the `cars`,
   to prevent SQL injection. Compares against MySQL's `NOW()`.
 - `stalenessSql(string $alias = 'cars'): string` - Static; returns
   `'NOT ' . freshnessSql($alias)` — the exact boolean negation of freshness.
-- `isFresh(?string $lastVerified, string $ownerLastUpdated): bool` - **Not yet
-  called from production code** (only the SQL form is wired in, via
-  `findVerificationEligible()`); the send pipeline in v2.30.3 is the intended
-  first caller, at which point this note is removed (issue #1970). PHP
+- `isFresh(?string $lastVerified, string $ownerLastUpdated): bool` - PHP
   equivalent of `freshnessSql()` for in-code freshness checks, using PHP's clock
-  where the SQL form uses MySQL's `NOW()`. Both clocks must resolve to the same
-  timezone or the two forms can disagree at the one-year boundary from skew alone.
-  Sharing a host does **not** guarantee this: `users/init.php` pins PHP to
-  `America/Los_Angeles` on every web request, while MySQL follows its own
-  `time_zone`, so agreement must be verified per environment. Validates **both**
-  operands before comparing — deliberately not short-circuiting on a fresh
-  `$ownerLastUpdated` — and throws `CarValidationException` if either is empty,
-  malformed, or not a real calendar date (`2026-02-30` is rejected rather than
-  rolled over to March 2), because a malformed value there is a programming
-  error, not a data state.
+  where the SQL form uses MySQL's `NOW()`. First production caller is the admin
+  user-view's "Verification & Email" card (`usersc/plugins/hooker/hooks/user_form_hook.php`,
+  #1924), which renders per-car Verified/Unverified badges from it. Both clocks
+  must resolve to the same timezone or the two forms can disagree at the
+  one-year boundary from skew alone. Sharing a host does **not** guarantee
+  this: `users/init.php` pins PHP to `America/Los_Angeles` on every web
+  request, while MySQL follows its own `time_zone`, so agreement must be
+  verified per environment. Validates **both** operands before comparing —
+  deliberately not short-circuiting on a fresh `$ownerLastUpdated` — and throws
+  `CarValidationException` if either is empty, malformed, or not a real
+  calendar date (`2026-02-30` is rejected rather than rolled over to March 2),
+  because a malformed value there is a programming error, not a data state.
+  The hook catches this per-car and renders an isolated "Unknown" badge for
+  that row rather than failing the whole panel.
+- `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
+  bounce/suppression state for every car a user owns (`id`, `model`, `series`,
+  `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
+  `email_suppressed`, `owner_last_updated`, `last_verified`), ordered
+  `model, year`. Backs the admin user-view's "Verification & Email" card
+  (#1924). Tinyint flag columns come back as `int|string` per PDO's driver
+  typing, not native bool — cast at the call site.
+- `findLatestEmailEventsByCarIds(array $carIds): array` - Latest (max
+  `occurred_at`) `er_email_events` row per car id, keyed by `(int) car_id`; a
+  car with no event history is simply absent from the map. Single aggregate
+  query regardless of car count (self-join against a `(car_id, MAX(occurred_at))`
+  subquery). Used alongside `findVerificationStateByOwner()` to back the
+  Bounced/Suppressed columns' event detail (#1924). No-ops to `[]` with no
+  query issued on an empty `$carIds` array.
 - `findVerificationEligible(int $limit, int $offset): array` - Paginated
   query for cars eligible for a verification email: not sold, deliverable
   email, and stale — neither verified nor updated by its owner within the last
@@ -984,6 +999,10 @@ both paths must escalate identically.
   - `spam` flags as suppressed (distinct signal from a bounce)
   - Any other event is still recorded (Brevo may add/rename event types) but
     logged as unrecognized
+- `HARD_BOUNCE_EVENTS` / `SUPPRESSION_EVENTS` are `public const` (widened from
+  `private` in #1924) so read-only consumers — the admin user-view's
+  "Verification & Email" card — can share this class's event-type vocabulary
+  rather than re-declaring it
 
 **Constructor Dependencies**:
 
