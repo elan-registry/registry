@@ -36,6 +36,5 @@ Changes to the local/CI test harness so a green test run actually reflects reali
 - [#1950](https://github.com/elan-registry/registry/issues/1950) — test: guarded Playwright assertions silently stop testing when a DOM/JS contract moves
 - [#2014](https://github.com/elan-registry/registry/issues/2014) — test-env Playwright auth setup script no longer hangs on Turnstile (car-edit-owner-refresh Test/Production enrollment itself moved to #2045, backlog — not part of this release)
 - [#2035](https://github.com/elan-registry/registry/issues/2035) — test: add admin Playwright auth tier to Test/Prod configs, consolidate auth setup scripts off 1Password
-- WIP: [#2044](https://github.com/elan-registry/registry/issues/2044) — spike: is a CI-runnable integration suite achievable without a UserSpice install in CI?
 - [#2059](https://github.com/elan-registry/registry/issues/2059) — test: rename TEST_USERNAME/TEST_USERNAME2 to E2E_DEV_* naming for consistency
 - [#2055](https://github.com/elan-registry/registry/issues/2055) — bug: leading-slash page.goto()/request.get() calls in not-logged-in.spec.js break when baseURL has a non-root path
