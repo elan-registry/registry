@@ -5,7 +5,14 @@
 
 ## Required Actions After Deployment
 
-None.
+- **Release operator:** the Test/Prod Playwright auth-file naming changed
+  (`user.json`/`user-test.json` → `user-<tier>-<role>.json`, #2035) — the
+  first `npm run test:e2e` / `test:e2e:test` after this merges will fail
+  until all four auth files are regenerated:
+  `node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>`.
+  Each Test/Prod regeneration requires a manual Turnstile disable/re-enable
+  (see `docs/testing/PLAYWRIGHT_E2E.md`). This is expected, by-design
+  fail-loud behavior (#1935) — not a regression.
 
 ## User-Facing Changes
 
