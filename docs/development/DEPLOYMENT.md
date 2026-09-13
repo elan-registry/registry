@@ -534,7 +534,7 @@ new job author must mitigate: (1) an unhandled exception in one job can kill
 every job scheduled after it in the same cron hit, and (2) a hung or slow job
 can delay or prevent subsequent jobs from running at all. New cron jobs must
 extend `AbstractCronJob` (in `usersc/classes/Cron/AbstractCronJob.php`), which
-provides a template-method architecture that enforces three controls:
+provides a template-method architecture that enforces four controls:
 
 **Crash isolation**: The template method wraps `execute()` in a
 `try/catch(\Throwable)` that logs the failure under
@@ -587,6 +587,22 @@ visibility that the job is disabled (not just silently not running). The
 `BrevoEventReconciliationJob` as the reference implementation — see that job
 and its shim `users/cron/brevo_event_reconciliation.php` for the required
 patterns.
+
+**The site-wide verification switch** (`VerificationSettings::isEnabled()`,
+`er_verification_settings.enabled`): checked before the job-owned `enabled`
+flag above, in both `run()` and `runNow()`. Any cron job whose work is
+Brevo-driven (writes bounce/suppression state to car records) must honor this
+switch, the same way the webhook receiver already does — this is what makes
+the switch's "no real email sends until this closes" framing actually true
+across every write path, not just the webhook. A job's separate
+`runNowWithSummary()` method (the pattern both current jobs use for a
+manual-run path that returns a typed summary rather than `void` — see
+`BrevoEventReconciliationJob`/`BrevoSuppressionSyncJob`) bypasses `run()`/
+`runNow()` entirely and so cannot inherit this check; it must repeat the
+`isEnabled()` check directly and throw rather than fabricate an empty
+summary, so an operator manually triggering a run while the switch is off
+sees why nothing happened. See `docs/development/CLASSES.md`'s
+`VerificationSettings` entry for the full "Used By" list.
 
 **Implementing a new cron job:**
 

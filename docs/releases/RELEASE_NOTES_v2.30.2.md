@@ -5,10 +5,23 @@
 
 ## Required Actions After Deployment
 
-1. Run pending migrations (`composer migrate`) — adds `cars.email_bounced_address`,
-   `cars.email_suppressed`, the new `er_email_events` table, and
-   `er_verification_settings.unmatched_webhook_recipient_count`. See #1887.
-2. Generate and set `BREVO_WEBHOOK_TOKEN` on **each environment that will
+1. This release ships 10 migrations, applied automatically by the deploy
+   push (`composer migrate` runs via the post-receive hook — no manual step
+   needed): `cars.email_bounced_address`, `cars.email_suppressed`, the new
+   `er_email_events` table, `er_verification_settings` (plus its
+   `unmatched_webhook_recipient_count` and `last_cron_request_at` columns,
+   added in follow-on migrations), the generic `er_cron_job_runs` table (plus
+   its `last_skip_logged_at` column) that replaces the superseded, never-used
+   `settings.reconciliation_last_run` column, and the two `crons` seed rows
+   for the reconciliation and suppression-sync jobs. See #1887, #2034, #1889,
+   #1923.
+2. Run `21-Fix-Page-Permissions.php` on test then prod to register the two
+   new admin maintenance scripts
+   (`app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` and
+   `28-Reconcile-Brevo-Suppressions.php`, both `securePage()`-gated) in
+   UserSpice's permission table — per CLAUDE.md's rule for any new page or
+   admin script. See #1889, #2061, #1923.
+3. Generate and set `BREVO_WEBHOOK_TOKEN` on **each environment that will
    receive real Brevo webhook calls** (test.elanregistry.org and
    elanregistry.org — not needed on dev, see note below). This is the bearer
    token `app/api/webhooks/brevo.php` requires on every inbound request; an
@@ -25,7 +38,7 @@
      ```
      `chmod 600 .env` if not already set.
    - Configure the same value as the bearer token/custom header Brevo sends
-     with each webhook call for this domain — see step 3 below, which uses
+     with each webhook call for this domain — see step 4 below, which uses
      this same value to both verify the configuration and register the real
      webhook.
    - Treat this token as a credential: do not commit it, do not log it (the
@@ -33,10 +46,10 @@
      generating a new value and updating both sides (`.env` and the Brevo
      webhook config) together — a rotation with only one side updated causes
      every webhook call to be rejected until both match again.
-3. **Configure and verify the Brevo webhook on test.elanregistry.org** (#1888).
+4. **Configure and verify the Brevo webhook on test.elanregistry.org** (#1888).
    Production registration is explicitly deferred — it's blocked on the
    v2.30.0 privacy-policy disclosure and on the verification-system feature
-   switch (#1926) actually being turned on. Requires step 2 above already
+   switch (#1926) actually being turned on. Requires step 3 above already
    done (`BREVO_WEBHOOK_TOKEN` set in test's `.env`) — not needed in local
    dev at all (see the note below).
    1. On the server, create the capture directory outside the web root and
@@ -95,7 +108,7 @@
 
 ## User-Facing Changes
 
-(No user-facing changes yet — content will be added as issues complete.)
+- The join form's "Use My Current Location" button works again. A `Permissions-Policy` header set in #1329 (2026-07-13) had silently blocked the Geolocation API site-wide, including same-origin use — it now allows same-origin geolocation while camera, microphone, and payment remain fully blocked. (#2050)
 
 ## Admin-Facing Changes
 
@@ -111,8 +124,9 @@
 - [#1923](https://github.com/elan-registry/registry/issues/1923) — feat: import Brevo's suppression list (blockedContacts) into owner email status. Adds `BrevoSuppressionSyncJob`, the second cron job registered under `users/cron/` (nightly incremental, 48-hour lookback window, matching #1889's shape) plus a manual full-backfill entry point (`runFullBackfill()`, capped and never reachable from the scheduled path) exposed via `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php` — the first admin script whose manual run renders a real inline summary (matched/unmatched/already-flagged/skipped counts, per-reason-code breakdown) rather than only logging. Maps Brevo's suppression reason codes (`hardBounce`, `contactFlaggedAsSpam`, four `unsubscribed*`/`adminBlocked` variants) onto the same `EmailEventApplier` escalation path the webhook (#1887) and reconciliation job (#1889) already use. `PAGE_SIZE` was corrected from an initially-assumed 1000 to Brevo's real confirmed cap of 100 for this endpoint (caught via a live manual test run). A review-round bug — the backfill's end-of-list detection undercounted pages containing any skipped contact (malformed payload, unrecognized reason code, or a failed write), which could silently truncate a full backfill — was found independently by three reviewers and fixed before merge, with a mutation-verified regression test.
 - [#1924](https://github.com/elan-registry/registry/issues/1924) — feat: show email bounce / suppression / verification state on the admin user view hook. Adds a "Verification & Email" card on `users/admin.php?view=user` (rendered via the project-owned hook `usersc/plugins/hooker/hooks/user_form_hook.php`) letting an admin diagnose per-car bounce/suppression/verification state without leaving the user view. Introduces two new `CarRepository` methods: `findVerificationStateByOwner()` (per-car bounce/suppression/verification columns) and `findLatestEmailEventsByCarIds()` (latest `er_email_events` row per car, a single-query aggregate regardless of car count — two queries total for the whole card). Verification badge uses `CarRepository::isFresh()` — this is that reserved method's first production caller, previously unused; its "not yet called" docblock was removed. `EmailEventApplier::SUPPRESSION_EVENTS` and `HARD_BOUNCE_EVENTS` were widened from `private` to `public` so this read-only hook can share the same event-type vocabulary rather than re-declaring it. The card degrades gracefully on DB failure (distinct "could not be loaded" state, logged) rather than crashing the entire admin user-view page — a review round caught that an uncaught exception would abort the page, not just the card, and without a distinct failure state, "query failed" would render identically to "no delivery problems" (a false all-clear for a diagnosis this panel exists to catch). A corrupted single car's timestamps render an isolated "Unknown" badge for that row only, without affecting others. Known limitation: the Bounced/Suppressed columns show the single latest matching event per car (filtered via the widened constants), not a full history — a car with mixed event types shows only its most recent match. New test infrastructure: this is the repo's first Playwright spec seeding rows directly into local MAMP from within the spec (`tests/playwright/local/fixtures/seed-bounced-car.php`, idempotent, guarded to `US_ENVIRONMENT=development` only). A review-round mutation-test on the new integration test (`tests/integration/database/CarRepositoryEmailEventsTest.php`, covering `findLatestEmailEventsByCarIds()`'s self-join) found the join's `car_id` predicate is actually redundant with the outer `WHERE car_id IN (...)` — removing it produces harmless duplicate rows, not misattributed data — so the test's docblock was corrected to state this accurately rather than claim coverage it didn't have.
 - [#1926](https://github.com/elan-registry/registry/issues/1926) — feat: verification-system feature switch with Brevo prerequisite check and admin warning
-- [#1968](https://github.com/elan-registry/registry/issues/1968) — chore: raise dev, then test and prod, to PHP 8.4 before 8.2 security EOL
+- [#1968](https://github.com/elan-registry/registry/issues/1968) — chore: raise dev and CI to PHP 8.4 before 8.2 security EOL. **Test and production remain on PHP 8.2** for now — see `docs/development/ENVIRONMENT.md`'s PHP Version section; raising them is a separate, later step not included in this issue's scope. `composer.json` still requires `>=8.2.29`, and the packages newly requiring `>=8.3` are all `packages-dev`, so `composer install --no-dev` on prod/test is unaffected.
 - [#2001](https://github.com/elan-registry/registry/issues/2001) — chore: extract cron transport interval into a shared, discoverable constant (`CRON_TRANSPORT_INTERVAL_MINUTES` in `usersc/includes/config.php`); no behavior change
+- [#2004](https://github.com/elan-registry/registry/issues/2004) — test-infra: `BackupCriticalTablesTest::test_defaultBackupDumpsEveryBaseTableInSchema` fataled with "Allowed memory size exhausted," killing the entire local integration run mid-suite. Root cause: `us_rate_limits` grows unbounded in the local test DB (no automated cleanup for rate-limit rows written by #1913/#1951's endpoints), reaching millions of rows over repeated runs. Fix: truncate `us_rate_limits` once per integration suite run in `tests/bootstrap-integration.php`. No production impact — test-infra only. #2015 (the equivalent production-side gap) remains open and unchosen, same as #2018's entry above.
 - [#2027](https://github.com/elan-registry/registry/issues/2027) — feat: extract `CronJobGuard` atomic-claim class from #1885, scoped to v2.30.2 — adds `usersc/classes/Cron/CronJobGuard.php` and (originally) `settings.reconciliation_last_run`; no production caller yet, consumed by #1889. The `settings.reconciliation_last_run` column was superseded by #2034 in this same milestone — see that entry.
 - [#2034](https://github.com/elan-registry/registry/issues/2034) — design: generic `cron_job_runs` table vs. per-job settings columns, resolved in favor of a generic table. Adds `er_cron_job_runs` (`job_name` PK, `enabled`, `last_run_at`, `created_at`) and migrates `CronJobGuard::claim()` onto it, dropping `settings.reconciliation_last_run` (#2027) — that column had never been written to in production. Adds an `enabled` flag, checked in `claim()`'s own query, letting an operator pause a single job without touching UserSpice's own `crons` table (add/delete only, no pause). No production caller yet.
 - [#2018](https://github.com/elan-registry/registry/issues/2018) — chore: remove rate limiting from `cars_list`, `factory_list`, `car_history`, and `statistics_request` (production log-volume/performance complaint tied to `us_rate_limits` row growth). **Security posture change:** these four public read-only endpoints now carry no app-layer abuse control at all (no CSRF, per ADR-019; no rate limit, as of this issue) — deliberate, user-confirmed tradeoff. See ADR-019's 2026-09-08 update for full rationale; #2015 (cron cleanup of `us_rate_limits`, the alternative that would have preserved the control) remains open and unchosen.

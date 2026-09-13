@@ -240,6 +240,11 @@ throughput bypass, never an auth bypass.
 `!isEnabled()` → 2xx, silent. `isEnabled() && !brevoReady()` → 2xx, logged
 once under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`.
 
+The same `isEnabled()` switch also gates the nightly reconciliation and
+suppression-sync cron jobs (and their manual "run now" admin-script paths)
+— not just this webhook. See `docs/development/DEPLOYMENT.md`'s cron-author
+contract for how `AbstractCronJob` enforces this uniformly across both jobs.
+
 **Tag filter:** the payload's `tags` array must contain
 `AppConstants::VERIFICATION_EMAIL_TAG` (`'car_verification'`) — Brevo also
 delivers webhook events for other kinds of mail this app may someday send,

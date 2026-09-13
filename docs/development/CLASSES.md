@@ -909,6 +909,14 @@ shared state or dependency exists between the two.
 - Admin "Verification System" tab (`app/admin/index.php`, `app/admin/includes/tab-verification.php`)
 - Toggle endpoint (`app/api/admin/verification-toggle.php`)
 - Brevo webhook receiver (`app/api/webhooks/brevo.php`) — `isEnabled()`/`brevoReady()` gates, and `incrementUnmatchedRecipientCounter()` (#1887)
+- `AbstractCronJob::run()`/`runNow()` — `isEnabled()` gate, checked before the
+  job-level `enabled` flag; covers both concrete cron jobs
+  (`BrevoEventReconciliationJob`, `BrevoSuppressionSyncJob`) and,
+  transitively, their `runNow()`-invoking admin scripts. Each job's separate
+  `runNowWithSummary()` bypass repeats the same check directly, since it does
+  not go through `run()`/`runNow()`. See
+  `docs/development/DEPLOYMENT.md`'s cron-author contract for the full
+  rationale.
 
 **See Also**:
 
