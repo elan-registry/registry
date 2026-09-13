@@ -151,16 +151,14 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
     const marker = `owner-refresh-e2e ${new Date().toISOString()}`;
     await commentField.fill(marker);
 
-    // NOTE: tests/playwright/e2e/admin.spec.js's "Update Car" test uses
-    // this same accordion-expand step ('#heading-section2 button' /
-    // '#section2') before clicking #submit — as of this edit, that pattern
-    // no longer matches app/owner/cars/edit.php's actual markup (verified:
-    // the Photos section, line ~368, is a plain <h5> heading, not a
-    // collapsible accordion; #submit and #myPond are directly visible with
-    // no expand step required). Dropped here since it only caused this test
-    // to time out waiting for a nonexistent element. admin.spec.js's
-    // identical stale selector is a separate, pre-existing issue, not fixed
-    // by this change.
+    // NOTE: this same accordion-expand step ('#heading-section2 button' /
+    // '#section2') no longer matches app/owner/cars/edit.php's actual
+    // markup (verified: the Photos section, line ~368, is a plain <h5>
+    // heading, not a collapsible accordion; #submit and #myPond are
+    // directly visible with no expand step required). Dropped here since
+    // it only caused this test to time out waiting for a nonexistent
+    // element. admin.spec.js's identical stale selector was the same
+    // finding, applied later in this same milestone (#1949/#1950).
     // The form submits via a real fetch() to app/api/cars/save.php (see
     // car-edit.js's submitCarForm()), not a plain form POST — on success it
     // does window.location = details.php?car_id=... itself; on failure it

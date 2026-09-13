@@ -56,7 +56,12 @@ function assertValidTier(tier, opts = {}, callerName = 'this file') {
  * @returns {{authFile: string, setupScriptPath: string}}
  */
 function resolveTierConfig(tier, role, authDir) {
-  assertValidTier(tier, { allowUnset: false }, 'auth-staleness.setup.js');
+  // Report the actual calling *.setup.js file, not a hardcoded guess — the
+  // two callers are auth-staleness.setup.js (nonadmin) and
+  // auth-staleness-admin.setup.js (admin); getting this wrong misdirects
+  // debugging toward the wrong file on a misconfigured E2E_AUTH_TIER.
+  const callerFile = role === 'admin' ? 'auth-staleness-admin.setup.js' : 'auth-staleness.setup.js';
+  assertValidTier(tier, { allowUnset: false }, callerFile);
   if (role !== 'admin' && role !== 'nonadmin') {
     throw new Error(
       `resolveTierConfig requires role to be 'admin' or 'nonadmin' (got: ${role || 'unset'}). ` +
