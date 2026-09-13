@@ -121,12 +121,13 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     await commentField.fill(testNote);
     console.log(`✓ Added comment: ${testNote}`);
 
-    // Expand Section 2 (Photos)
-    await page.locator('#heading-section2 button').click();
-    await page.waitForSelector('#section2', { state: 'visible', timeout: 5000 });
-    console.log('✓ Section 2 (Photos) expanded');
+    // edit.php's Photos section is a plain heading, not a collapsible
+    // accordion — #heading-section2/#section2 don't exist in current markup
+    // (verified against app/owner/cars/edit.php: #myPond and #submit are
+    // directly visible with no expand step required). Same finding already
+    // applied to car-edit-owner-refresh.spec.js and functionality.spec.js;
+    // this was the last surviving call site (#1949).
 
-    // Submit via button below accordion
     await page.locator('#submit').click();
     await page.waitForLoadState('domcontentloaded');
     console.log('✓ Clicked Update Car button');

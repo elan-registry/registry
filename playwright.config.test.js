@@ -1,3 +1,8 @@
+// Load .env.local first — E2E_TEST_*/E2E_PROD_* credentials live there,
+// and any spec collected under this config that reads process.env.E2E_*
+// (e.g. car-edit-workflow.spec.js, car-edit-owner-refresh.spec.js) needs
+// them present the same way playwright.config.js/.dev.js already do.
+require("dotenv").config({ path: ".env.local" });
 const { defineConfig, devices } = require("@playwright/test");
 const path = require("path");
 const fs = require("fs");
@@ -36,14 +41,18 @@ module.exports = defineConfig({
       testMatch: /.*not-logged-in\.spec\.js/,
       use: { ...devices["Desktop Chrome"] }
     },
-    // Only include check-auth-admin/admin projects if the admin auth file exists
+    // check-auth-admin always runs — it's what fails loudly when the admin auth
+    // file is missing (assertAuthStillValid's own check). Only its dependent
+    // "admin" project (which needs a real storageState to load) is conditional
+    // on the file existing; gating check-auth-admin itself on the same
+    // condition would silently skip the exact failure it exists to report.
+    {
+      name: "check-auth-admin",
+      testMatch: /(?:^|\/)auth-staleness-admin\.setup\.js$/,
+      use: { ...devices["Desktop Chrome"] }
+    },
     ...(hasAuthFileAdmin
       ? [
-          {
-            name: "check-auth-admin",
-            testMatch: /(?:^|\/)auth-staleness-admin\.setup\.js$/,
-            use: { ...devices["Desktop Chrome"] }
-          },
           {
             name: "admin",
             testMatch: /(?:^|\/)(admin|factory-registry-link)\.spec\.js$/,
@@ -56,14 +65,16 @@ module.exports = defineConfig({
           }
         ]
       : []),
-    // Only include check-auth/logged-in projects if the non-admin auth file exists
+    // Same reasoning as check-auth-admin above — always registered so a
+    // missing non-admin auth file fails loudly instead of being silently
+    // unregistered along with its dependent project.
+    {
+      name: "check-auth",
+      testMatch: /(?:^|\/)auth-staleness\.setup\.js$/,
+      use: { ...devices["Desktop Chrome"] }
+    },
     ...(hasAuthFileNonAdmin
       ? [
-          {
-            name: "check-auth",
-            testMatch: /(?:^|\/)auth-staleness\.setup\.js$/,
-            use: { ...devices["Desktop Chrome"] }
-          },
           {
             name: "logged-in",
             // No spec targets this non-admin tier yet — infrastructure only,

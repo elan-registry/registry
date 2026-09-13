@@ -11,7 +11,22 @@ const { assertPageTitle } = require('../auth-helper.js');
 // tests asserting that behavior only run against the real deployed
 // environment (#2055). A second, narrower environment gap (case-insensitive
 // local filesystem) is documented separately at its one call site below.
-const IS_LOCAL_DEV_TIER = !process.env.E2E_AUTH_TIER;
+//
+// Validated, not just checked for presence: E2E_AUTH_TIER is a plain env
+// var, so anything unrelated exporting it in a developer's shell (however
+// unlikely given the distinctive name) must not silently flip this the
+// wrong way. Any value other than exactly 'test'/'prod'/unset is a
+// misconfiguration and fails loudly rather than guessing a tier — same
+// fail-fast contract as resolveTierConfig() in auth-staleness-tier.js.
+const RAW_AUTH_TIER = process.env.E2E_AUTH_TIER;
+if (RAW_AUTH_TIER !== undefined && RAW_AUTH_TIER !== 'test' && RAW_AUTH_TIER !== 'prod') {
+  throw new Error(
+    `not-logged-in.spec.js: E2E_AUTH_TIER must be 'test', 'prod', or unset (got: '${RAW_AUTH_TIER}'). ` +
+    `It is set by playwright.config.test.js/.prod.js — an unrelated value here means something ` +
+    `else in the environment is setting it and this suite cannot tell which tier it's running against.`
+  );
+}
+const IS_LOCAL_DEV_TIER = RAW_AUTH_TIER === undefined;
 const HTACCESS_SKIP_REASON = '.htaccess rules are not reliably applied on Local/Dev MAMP (#2055)';
 
 // Helper: skip test if running on Local/Dev (for .htaccess-dependent tests)

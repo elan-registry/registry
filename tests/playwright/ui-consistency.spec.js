@@ -72,21 +72,22 @@ test.describe('UI Consistency After Style Refactoring', () => {
     // This test runs in the plain `chromium` project, which has no
     // storageState — index.php's securePage() redirects an unauthenticated
     // visit to login.php, exactly like the other tests in this file (see
-    // the login.php branches above). Only assert DataTables responsiveness
-    // when actually authenticated; otherwise there's no table to check.
+    // the login.php branches above). Skip (not silently pass) the DataTables
+    // assertion when unauthenticated, rather than an if-with-no-else that
+    // would report a false "passed" having never checked the table (#1950).
     const currentUrl = page.url();
-    if (!currentUrl.includes('login.php')) {
-      // Check that DataTables is responsive. car-list.js initializes this
-      // table with serverSide: true — an AJAX round-trip precedes the wrapper
-      // appearing, so wait for it via the shared waitForDataTables() helper
-      // (auth-helper.js) rather than sampling .count() once immediately after
-      // domcontentloaded, which depends on incidental timing between page
-      // load and this line rather than on the table actually being ready.
-      // The returned search-box locator isn't needed here — only the wait.
-      await waitForDataTables(page, 15000);
-      const dataTable = page.locator('.dt-container, .dataTables_wrapper');
-      await expect(dataTable).toBeVisible();
-    }
+    test.skip(currentUrl.includes('login.php'), 'index.php requires auth; chromium project has no storageState');
+
+    // Check that DataTables is responsive. car-list.js initializes this
+    // table with serverSide: true — an AJAX round-trip precedes the wrapper
+    // appearing, so wait for it via the shared waitForDataTables() helper
+    // (auth-helper.js) rather than sampling .count() once immediately after
+    // domcontentloaded, which depends on incidental timing between page
+    // load and this line rather than on the table actually being ready.
+    // The returned search-box locator isn't needed here — only the wait.
+    await waitForDataTables(page, 15000);
+    const dataTable = page.locator('.dt-container, .dataTables_wrapper');
+    await expect(dataTable.first()).toBeVisible();
   });
 
   test('consistent button styling', async ({ page }) => {
