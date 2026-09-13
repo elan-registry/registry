@@ -286,6 +286,39 @@ final class AbstractCronJobTest extends TestCase
         $this->assertSame(1, $job->executeCalls, 'The manual bypass must skip both the enabled check and the guard');
     }
 
+    /**
+     * The site-wide verification switch (since v2.30.2) is checked before
+     * anything else in run() — including the job-level `enabled` flag this
+     * class otherwise gates on. This is the one behaviour the milestone's
+     * "no real email sends until this closes" framing rests on, so it gets
+     * its own direct test rather than relying on the fixture default
+     * (verificationEnabled: true) that every other test in this file uses.
+     */
+    public function testRunDoesNotExecuteWhenVerificationSwitchIsOff(): void
+    {
+        $job = new SpyCronJob(new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true, verificationEnabled: false));
+
+        $job->run();
+
+        $this->assertSame(0, $job->executeCalls, 'No Brevo-driven write may happen while verification is switched off');
+    }
+
+    /**
+     * runNow() bypasses the job-level enabled check and the guard claim (see
+     * testRunNowExecutesEvenWhenDisabledAndClaimWouldFail above) but must NOT
+     * bypass the site-wide verification switch — an operator manually
+     * triggering a run has made the scheduling decision, not the go-live
+     * decision.
+     */
+    public function testRunNowDoesNotExecuteWhenVerificationSwitchIsOff(): void
+    {
+        $job = new SpyCronJob(new AbstractCronJobFakeDatabase(enabled: false, claimSucceeds: false, verificationEnabled: false));
+
+        $job->runNow();
+
+        $this->assertSame(0, $job->executeCalls, 'The manual bypass must not also bypass the verification switch');
+    }
+
     public function testRunNowSwallowsThrowableFromExecute(): void
     {
         global $mockLogEntries;

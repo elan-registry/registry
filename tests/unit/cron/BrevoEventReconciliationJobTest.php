@@ -110,12 +110,15 @@ final class BrevoEventReconciliationJobTest extends TestCase
      *        client this job was built with, so callers can assert on it.
      * @param-out FakeBrevoEventReconciliationClient $client
      */
-    private function makeJob(?array $events, ?FakeBrevoEventReconciliationClient &$client = null): BrevoEventReconciliationJob
-    {
+    private function makeJob(
+        ?array $events,
+        ?FakeBrevoEventReconciliationClient &$client = null,
+        bool $verificationEnabled = true,
+    ): BrevoEventReconciliationJob {
         $client = new FakeBrevoEventReconciliationClient($events);
 
         return new BrevoEventReconciliationJob(
-            new AbstractCronJobFakeDatabase(),
+            new AbstractCronJobFakeDatabase(verificationEnabled: $verificationEnabled),
             $this->mockRepo,
             $this->applier,
             $client,
@@ -791,6 +794,23 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $log = $this->logsContaining('failed (manual run)');
         $this->assertNotEmpty($log);
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+    }
+
+    /**
+     * runNowWithSummary() bypasses run()/runNow() entirely (see class
+     * docblock) so it cannot inherit their site-wide verification-switch
+     * check and must repeat it. An operator triggering a manual run while the
+     * switch is off needs to know why, not see a fabricated all-zero summary
+     * — hence a thrown exception rather than a silent no-op summary.
+     */
+    public function testRunNowWithSummaryThrowsWhenVerificationSwitchIsOff(): void
+    {
+        $job = $this->makeJob([], verificationEnabled: false);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/switched off site-wide/');
+
+        $job->runNowWithSummary();
     }
 
     // --- Helpers ---------------------------------------------------------

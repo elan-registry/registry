@@ -151,12 +151,13 @@ final class BrevoSuppressionSyncJobTest extends TestCase
      */
     private function makeJob(
         array $pages,
-        ?FakeBrevoSuppressionSyncClient &$client = null
+        ?FakeBrevoSuppressionSyncClient &$client = null,
+        bool $verificationEnabled = true,
     ): BrevoSuppressionSyncJob {
         $client = new FakeBrevoSuppressionSyncClient($pages);
 
         return new BrevoSuppressionSyncJob(
-            new AbstractCronJobFakeDatabase(),
+            new AbstractCronJobFakeDatabase(verificationEnabled: $verificationEnabled),
             $this->mockRepo,
             $this->applier,
             $client,
@@ -173,9 +174,10 @@ final class BrevoSuppressionSyncJobTest extends TestCase
      */
     private function makeJobWithContacts(
         array $contacts,
-        ?FakeBrevoSuppressionSyncClient &$client = null
+        ?FakeBrevoSuppressionSyncClient &$client = null,
+        bool $verificationEnabled = true,
     ): BrevoSuppressionSyncJob {
-        return $this->makeJob([FakeBrevoSuppressionSyncClient::page($contacts)], $client);
+        return $this->makeJob([FakeBrevoSuppressionSyncClient::page($contacts)], $client, $verificationEnabled);
     }
 
     // --- Reason-code mapping ---------------------------------------------
@@ -975,6 +977,26 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $log = $this->logsContaining('failed (manual backfill)');
         $this->assertNotEmpty($log);
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+    }
+
+    /**
+     * runNowWithSummary() bypasses run()/runNow() entirely (see class
+     * docblock) so it cannot inherit their site-wide verification-switch
+     * check and must repeat it. An operator triggering a manual backfill
+     * while the switch is off needs to know why, not see a fabricated
+     * all-zero summary — hence a thrown exception rather than a silent no-op.
+     */
+    public function testRunNowWithSummaryThrowsWhenVerificationSwitchIsOff(): void
+    {
+        $job = $this->makeJobWithContacts(
+            [FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce')],
+            verificationEnabled: false,
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/switched off site-wide/');
+
+        $job->runNowWithSummary();
     }
 
     // --- Per-contact / per-car failure isolation --------------------------
