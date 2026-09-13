@@ -1,9 +1,12 @@
 # Release Instructions Template
 
-`/release-milestone` renders this file for each release and prints the result;
-the rendered copy is **not committed** (it names hosts and paths that stay out
-of the public repo). The template is the single owner of the release sequence;
-the mechanics it relies on live in [DEPLOYMENT.md](DEPLOYMENT.md).
+`/finish-milestone` renders this file into `docs/plans/releases/<version>-deploy.md`
+early — while the milestone PR is still open — so the user can review the
+deploy procedure before `/release-milestone` ever runs. `/release-milestone`
+reuses that same rendered file rather than generating its own; the rendered
+copy is **not committed** (it names hosts and paths that stay out of the
+public repo). The template is the single owner of the release sequence; the
+mechanics it relies on live in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Rendering rules
 
@@ -19,8 +22,11 @@ Placeholders, filled from `.claude.local.md` § "Deployment hosts" and the relea
 Conditional blocks are marked `<!-- IF: condition -->` … `<!-- END IF -->`.
 Include a block only when its condition holds for **this** release, and drop
 the markers; never print a block with an unmet condition. Conditions are
-derived from `git diff --name-only <last-tag>...<version>` and the release
-notes' "Required Actions After Deployment":
+derived from `git diff --name-only <last-tag>...<version>` and, for
+`release-actions`, from reading the individual merged issue PRs' own bodies
+(deployment procedures do not live in `docs/releases/RELEASE_NOTES_<version>.md`
+— that file is a one-sentence-per-issue index; a PR's own description is
+where a manual verification runbook, if one exists, is documented):
 
 | Condition | Test |
 | --- | --- |
@@ -30,7 +36,7 @@ notes' "Required Actions After Deployment":
 | `new-pages` | any new file that calls `securePage(` |
 | `admin-scripts` | any new file under `app/admin/scripts/fix/` or `maintenance/` |
 | `env-vars` | `.env.example` in the diff |
-| `release-actions` | release notes list Required Actions other than the above |
+| `release-actions` | any merged issue PR documents a manual deployment/verification procedure beyond the conditions above |
 
 Steps are numbered continuously across sections. Items marked **(you — admin
 UI)** are done in the browser, not the shell. Everything else is a command to
@@ -100,9 +106,9 @@ Add to each host's .env (see .env.example diff): <list the keys>
 <!-- END IF -->
 
 <!-- IF: release-actions -->
-5. Other pre-deploy actions from the release notes
+5. Other pre-deploy actions from merged issue PRs
 
-<one line per item, verbatim from Required Actions>
+<one line per manual procedure, drawn from the relevant PR's own description>
 <!-- END IF -->
 
 --------------------------------------------------------------------
@@ -202,7 +208,7 @@ curl -sI https://test.elanregistry.org/usersc/js/maplibre-gl-worker.js | grep -i
 <!-- IF: release-actions -->
 15. Release-specific checks
 
-<one line per item, from Required Actions / Deployment Verification Checklist>
+<one line per item, from the relevant merged issue PR's description / Deployment Verification Checklist>
 <!-- END IF -->
 
 --------------------------------------------------------------------

@@ -30,6 +30,7 @@ TaskCreate. Suggested task subjects:
 5. Get the full diff against main
 5.5. Verify milestone scope vs. release notes
 6. Finalize release notes
+6.6. Render the deploy sheet for review
 7. Update wiki documentation (or skip)
 8. Update CLAUDE.md if needed
 9. Security review (Step 9.5) + local multi-agent review (Step 9.7)
@@ -265,11 +266,16 @@ since they touch different files.
   "planned" from "actually shipped" in this document.
 - Use the `technical-documentation-writer` agent to finalize:
   - Fill in any remaining template placeholders
-  - Ensure deployment instructions, verification steps are complete
-  - Ensure "Required Actions After Deployment" is accurate
+  - Keep entries in "Issues Resolved", "User-Facing Changes", and
+    "Admin-Facing Changes" to **one sentence each** — full detail lives in
+    the issue/PR itself; the release notes are a pointer, not a changelog
+    essay
   - Scope accuracy (issue membership vs. milestone) was already verified in
     Step 5.5 — this pass is about content completeness/wording, not re-doing
     that cross-check
+  - Deployment steps (migrations, new env vars, admin-script/permission
+    registration, manual verification procedures) do **not** belong in this
+    file — they go in the deploy sheet, rendered in Step 6.6 below
 - Commit the finalized release notes if changes were made (or amend the
   Step 5.5 commit if it hasn't been pushed yet, to keep history clean)
 
@@ -295,6 +301,61 @@ Ask the user, one at a time:
 Record the answers in the release notes and carry question 1's answer into the
 next `/start-milestone` Step 4.4, so the theme is chosen knowing what the last
 one over-built.
+
+### Step 6.6: Render the deploy sheet for review
+
+Deployment steps used to live in the release notes' "Required Actions After
+Deployment" section; they now live in a standalone deploy sheet, generated
+here — early, while the milestone branch is still under review — rather than
+first at `/release-milestone` time. This lets the user review the actual
+deploy procedure alongside the PR, before it's the point of no return.
+
+1. Gather the inputs from the diff:
+
+   ```bash
+   git diff --name-only main...milestone/$ARGUMENTS
+   ```
+
+   Specifically determine:
+   - New files under `database/migrations/`, and whether any contains
+     `CREATE TRIGGER` (grep the diff for it, not just new files — an existing
+     migration file is never edited, but check anyway defensively)
+   - Whether `scripts/server-hooks/post-receive` changed
+   - New files calling `securePage(` — these are new pages needing
+     `21-Fix-Page-Permissions.php` registration
+   - New files under `app/admin/scripts/fix/` or `app/admin/scripts/maintenance/`
+   - Whether `.env.example` changed — list the new keys and their purpose
+     (read the surrounding comment in the diff)
+   - Any manual verification procedure a merged PR's own description
+     documents (e.g. a webhook registration/capture-script dance, a spike
+     script that needs deploying and then deleting) — these come from reading
+     the individual issue PRs' bodies (Step 4's list), not from the release
+     notes
+
+2. Read `.claude.local.md` § "Deployment hosts" for the ssh alias and
+   docroots; if the section is missing, stop and ask the user to add it
+   (copy the block from `.claude.local.md.example`).
+
+3. Render `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md` for this
+   release, following its "Rendering rules" exactly (fill placeholders,
+   include only `<!-- IF -->` blocks whose condition holds, drop the markers,
+   keep step numbering continuous). Write the rendered result to
+   `docs/plans/releases/$ARGUMENTS-deploy.md` — that directory is gitignored,
+   so this file is never committed, the same as an issue's plan file.
+
+4. If the file already exists (e.g. this step is being re-run after fixing a
+   Step 9.8 finding that changes the deploy inputs), overwrite it — it always
+   reflects the milestone branch's current state, not a stale earlier draft.
+
+5. Tell the user the deploy sheet is ready for review at that path. Do not
+   print its full contents into the conversation (it names ssh hosts and
+   docroots) — the user reads the file directly, or imports it into Apple
+   Notes per the template's own formatting rules.
+
+`/release-milestone` reuses this same file at actual release time rather than
+generating its own — if anything changed on the milestone branch between now
+and then (e.g. a fix from Step 9.8 or 11.5), re-run this step to refresh it,
+don't hand-edit the deploy sheet directly.
 
 ### Step 7: Update wiki documentation
 
@@ -722,6 +783,11 @@ finding and fixing problems there is strictly worse than finding them here.
 as it exists on `main`'s target commit right this moment, should need zero
 further code changes before `/release-milestone` runs. `/release-milestone`
 merges, tags, and publishes — it is not a place to discover or fix problems.
+This includes the release notes (Step 6, condensed to one sentence per entry,
+no `WIP:` markers) and the deploy sheet (Step 6.6) — both must be complete
+and current before this command hands off. If Step 11.5's fixes changed the
+deploy inputs (a new migration, a new admin script, a new env var), re-run
+Step 6.6 to refresh the sheet before finishing.
 
 ### Step 12: Output summary
 
@@ -730,6 +796,7 @@ merges, tags, and publishes — it is not a place to discover or fix problems.
 - Known-broken test exclusions status (none found, or resolved, or explicitly accepted with issue references)
 - Milestone-scope corrections from Step 5.5 (none found, or list issues added/removed/reassigned and why)
 - Release notes status (finalized or needs attention)
+- Deploy sheet status (rendered at `docs/plans/releases/$ARGUMENTS-deploy.md`, ready for review)
 - Wiki updates status (updated, committed, or skipped)
 - CLAUDE.md update status (updated or skipped)
 - CI milestone review status (from Step 11): "posted normally" / "no run was
@@ -740,8 +807,10 @@ merges, tags, and publishes — it is not a place to discover or fix problems.
   `/publish-wiki` in the wiki clone — this repo's PR does not carry them
 - Note as plain text (informational, not a runnable choice): "To re-run the
   deep review later, label the PR `deep-review` or comment `@claude
-  deep-review`" and "Release notes are at
-  `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`"
+  deep-review`", "Release notes are at
+  `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`", and "Deploy sheet is at
+  `docs/plans/releases/$ARGUMENTS-deploy.md` — review it now; `/release-milestone`
+  reuses this file rather than generating its own"
 - Use AskUserQuestion for the actual next step, since `/release-milestone`
   is runnable right now — it merges the PR itself (that's its Step 8), it
   does not wait for a human to merge on GitHub first:
@@ -765,3 +834,10 @@ merges, tags, and publishes — it is not a place to discover or fix problems.
 - Do not push to any remote — this command only creates the PR on GitHub
 - If release notes still have WIP markers, flag this prominently before
   creating the PR
+- The deploy sheet lives at `docs/plans/releases/<version>-deploy.md` —
+  gitignored, same as an issue's plan file, and never committed or printed in
+  full to the conversation (it names ssh hosts and docroots)
+- Deployment procedure content (migrations, new env vars, admin-script/
+  permission registration, manual verification runbooks) belongs in the
+  deploy sheet, not in `docs/releases/RELEASE_NOTES_<version>.md` — that file
+  is user-/admin-facing changelog plus a one-sentence-per-issue index
