@@ -218,8 +218,9 @@ if (!$vsCanToggle) {
         <?php } else { ?>
             <small class="form-text text-muted d-block mt-1">
                 <i class="fas fa-info-circle"></i>
-                Turning this off hides all verification UI and stops reminder emails. It can always be turned off,
-                even while Brevo or cron are unavailable.
+                Turning this off hides all verification UI and stops reminder emails, the inbound webhook,
+                and both cron jobs (reconciliation and suppression sync) from writing bounce or suppression
+                state to car records. It can always be turned off, even while Brevo or cron are unavailable.
             </small>
         <?php } ?>
 

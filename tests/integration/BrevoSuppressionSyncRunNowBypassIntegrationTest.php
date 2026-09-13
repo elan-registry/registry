@@ -58,6 +58,9 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
     /** Original last_run_at value for the fixture row, restored in tearDown(). */
     private ?string $originalLastRunAt = null;
 
+    /** Original er_verification_settings.enabled value, restored in tearDown(). */
+    private bool $originalVerificationEnabled = false;
+
     private CarRepository $repo;
     private EmailEventApplier $applier;
     private int $userId;
@@ -84,6 +87,15 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
         $this->originalEnabled = (bool) $row->enabled;
         $this->originalLastRunAt = !empty($row->last_run_at) ? (string) $row->last_run_at : null;
 
+        // Both run() and runNowWithSummary() check the site-wide verification
+        // switch first (since v2.30.2) and it ships off by default — force it
+        // on so this file's bypass assertions aren't short-circuited by an
+        // unrelated switch. Restored in tearDown().
+        $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1');
+        $verificationRow = $this->db->first();
+        $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
+        $this->db->query('UPDATE er_verification_settings SET enabled = 1 WHERE id = 1');
+
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
 
@@ -100,6 +112,11 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
             $this->db->query(
                 'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
                 [$this->originalEnabled ? 1 : 0, $this->originalLastRunAt, self::JOB_NAME]
+            );
+
+            $this->db->query(
+                'UPDATE er_verification_settings SET enabled = ? WHERE id = 1',
+                [$this->originalVerificationEnabled ? 1 : 0]
             );
         }
 

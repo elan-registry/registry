@@ -7,6 +7,7 @@ namespace ElanRegistry\Cron;
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
@@ -517,12 +518,26 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * failure — all are handled and logged below the throw line, and produce a
      * real (partial) summary. Only something genuinely unexpected escapes here.
      *
+     * Also honors the site-wide verification switch, same as {@see AbstractCronJob::run()}
+     * and {@see AbstractCronJob::runNow()} — this method bypasses both of those
+     * (see class docblock above) so it cannot inherit their check and must
+     * repeat it. Unlike the silent skip in run()/runNow(), this throws: an
+     * operator who explicitly triggers a manual run needs to know why nothing
+     * happened, not see a fabricated all-zero summary.
+     *
      * @return SuppressionSyncSummary Aggregated over every page walked
+     * @throws \RuntimeException If verification is switched off site-wide
      * @throws \Throwable Rethrown after logging, so the caller can distinguish
      *         a failed run from an empty successful one
      */
     public function runNowWithSummary(): SuppressionSyncSummary
     {
+        if (!(new VerificationSettings($this->db))->isEnabled()) {
+            throw new \RuntimeException(
+                'Verification is switched off site-wide (see the Verification System tab) — manual suppression sync runs are disabled while it is off.'
+            );
+        }
+
         try {
             return $this->runFullBackfill();
         } catch (\Throwable $e) {

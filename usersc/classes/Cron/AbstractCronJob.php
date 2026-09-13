@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Cron;
 
+use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\LogCategories;
 
@@ -24,6 +25,13 @@ use ElanRegistry\LogCategories;
  *      hung job doesn't run forever.
  *   3. A job-owned `enabled` flag (`er_cron_job_runs.enabled`, independent of
  *      UserSpice's own `crons.active`) checked before any work runs.
+ *   4. The site-wide verification feature switch ({@see VerificationSettings::isEnabled()})
+ *      is also checked before any work runs — both `run()` and `runNow()`. Every
+ *      Brevo-driven write to car records (webhook, both cron jobs, both manual
+ *      admin scripts) must honor this switch so it actually gates "no real
+ *      email sends" as documented, not just the webhook receiver. Fails closed
+ *      like the `enabled` flag above: a database hiccup reading the switch
+ *      hides the feature rather than running anyway.
  *
  * The enabled check is a dedicated read rather than an inference from
  * `CronJobGuard::claim()`'s boolean: `claim()` deliberately conflates
@@ -72,6 +80,14 @@ abstract class AbstractCronJob
     final public function run(): void
     {
         $jobName = $this->jobName();
+
+        if (!(new VerificationSettings($this->db))->isEnabled()) {
+            // Verification is switched off site-wide — no Brevo-driven write
+            // should happen anywhere, cron included. Not worth a log line per
+            // hit: same reasoning as the webhook's own silent drop for this
+            // same state.
+            return;
+        }
 
         $state = $this->enabledState();
 
@@ -131,6 +147,13 @@ abstract class AbstractCronJob
      */
     final public function runNow(): void
     {
+        if (!(new VerificationSettings($this->db))->isEnabled()) {
+            // Same site-wide gate as run() — an operator manually triggering
+            // a run has made the scheduling decision, not the go-live
+            // decision. Silent, matching run()'s own silent drop.
+            return;
+        }
+
         try {
             $this->execute();
         } catch (\Throwable $e) {

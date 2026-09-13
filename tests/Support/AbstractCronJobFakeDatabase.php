@@ -7,15 +7,22 @@ namespace Tests\Support;
 /**
  * AbstractCronJobFakeDatabase - FakeDatabase double for AbstractCronJobTest
  *
- * AbstractCronJob::run() issues up to three distinct queries against the same
- * connection: its own `SELECT enabled, ... AS skip_log_is_due FROM
- * er_cron_job_runs ...` read, then either CronJobGuard's `UPDATE
- * er_cron_job_runs SET last_run_at ...` claim (when enabled) or its own
- * `UPDATE er_cron_job_runs SET last_skip_logged_at ...` throttle stamp (when
- * disabled and the skip line fired). This fake dispatches on the SQL so all
- * three can be answered from one double with independently controlled
+ * AbstractCronJob::run() issues up to four distinct queries against the same
+ * connection: {@see \ElanRegistry\Car\VerificationSettings::isEnabled()}'s
+ * `SELECT enabled FROM er_verification_settings ...` site-wide-switch check
+ * (run first, since v2.30.2), its own `SELECT enabled, ... AS
+ * skip_log_is_due FROM er_cron_job_runs ...` read, then either CronJobGuard's
+ * `UPDATE er_cron_job_runs SET last_run_at ...` claim (when enabled) or its
+ * own `UPDATE er_cron_job_runs SET last_skip_logged_at ...` throttle stamp
+ * (when disabled and the skip line fired). This fake dispatches on the SQL so
+ * all four can be answered from one double with independently controlled
  * outcomes — CronJobGuardFakeDatabase can only answer the claim, having no
- * concept of the `enabled` column.
+ * concept of the `enabled` column. The verification-switch read and the job's
+ * own `er_cron_job_runs.enabled` read are deliberately controlled by separate
+ * constructor flags (`verificationEnabled` vs `enabled`) even though both
+ * queries share the literal column name `enabled` — conflating them would
+ * make it impossible to test "verification on, this job paused" or the
+ * reverse independently.
  *
  * Unlike a canned-value stub, this fake models `last_skip_logged_at` as real
  * mutable state against a simulated clock ({@see self::advanceMinutes()}), so
@@ -42,6 +49,8 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
     private array $sqlLog = [];
 
     private bool $lastQueryWasClaim = false;
+
+    private bool $lastQueryWasVerificationSettings = false;
 
     /** Simulated wall clock, in minutes since an arbitrary epoch. */
     private int $nowMinutes = 0;
@@ -72,6 +81,12 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
      * @param int $guardIntervalHours The interval `skip_log_is_due` is
      *                        computed against. Must match the job under test's
      *                        own guardIntervalHours().
+     * @param bool $verificationEnabled Value reported for the site-wide
+     *                        verification switch (`er_verification_settings.enabled`),
+     *                        read before the job's own `enabled` check. Defaults
+     *                        true so existing constructions of this fake, written
+     *                        before that check existed, keep exercising the
+     *                        job-level `enabled` behaviour they were built for.
      */
     public function __construct(
         private readonly bool $enabled = true,
@@ -80,6 +95,7 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
         private readonly bool $queryErrors = false,
         ?int $lastSkipLoggedAtMinutesAgo = null,
         private readonly int $guardIntervalHours = 24,
+        private readonly bool $verificationEnabled = true,
     ) {
         $this->lastSkipLoggedAtMinutes = $lastSkipLoggedAtMinutesAgo === null
             ? null
@@ -96,6 +112,7 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
     {
         $this->sqlLog[] = $sql;
         $this->lastQueryWasClaim = stripos($sql, 'last_run_at = NOW()') !== false;
+        $this->lastQueryWasVerificationSettings = stripos($sql, 'er_verification_settings') !== false;
 
         if (stripos($sql, 'last_skip_logged_at = NOW()') !== false) {
             $this->lastSkipLoggedAtMinutes = $this->nowMinutes;
@@ -107,11 +124,24 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
 
     public function error(): bool
     {
+        // queryErrors models a fault reading er_cron_job_runs specifically
+        // (what this fake's tests are exercising) — the verification-settings
+        // read has its own independent, always-succeeding path here so a test
+        // driving a job-level DB fault isn't also forced through
+        // VerificationSettings::isEnabled()'s own fail-closed branch.
+        if ($this->lastQueryWasVerificationSettings) {
+            return false;
+        }
+
         return $this->sqlLog !== [] && $this->queryErrors;
     }
 
     public function count(): int
     {
+        if ($this->lastQueryWasVerificationSettings) {
+            return 1;
+        }
+
         if (!$this->lastQueryWasClaim) {
             return $this->rowExists ? 1 : 0;
         }
@@ -121,6 +151,12 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
 
     public function first(bool $assoc = false): array|object
     {
+        if ($this->lastQueryWasVerificationSettings) {
+            $row = ['enabled' => $this->verificationEnabled ? 1 : 0];
+
+            return $assoc ? $row : (object)$row;
+        }
+
         if ($this->lastQueryWasClaim || !$this->rowExists) {
             return [];
         }

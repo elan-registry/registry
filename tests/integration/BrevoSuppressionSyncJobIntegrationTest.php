@@ -64,10 +64,22 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     /** @var list<int> Car ids created by this test, for er_email_events cleanup. */
     private array $suppressionCarIds = [];
 
+    /** Original er_verification_settings.enabled value, restored in tearDown(). */
+    private bool $originalVerificationEnabled = false;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
+
+        // execute()/runFullBackfill() check the site-wide verification switch
+        // first (since v2.30.2) and it ships off by default — force it on so
+        // this file's job-behavior assertions aren't short-circuited by an
+        // unrelated switch. Restored in tearDown().
+        $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1');
+        $verificationRow = $this->db->first();
+        $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
+        $this->db->query('UPDATE er_verification_settings SET enabled = 1 WHERE id = 1');
 
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
@@ -85,6 +97,11 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             foreach ($this->suppressionCarIds as $carId) {
                 $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
             }
+
+            $this->db->query(
+                'UPDATE er_verification_settings SET enabled = ? WHERE id = 1',
+                [$this->originalVerificationEnabled ? 1 : 0]
+            );
         }
 
         parent::tearDown();
