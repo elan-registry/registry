@@ -165,19 +165,16 @@ if (!$vsCanToggle) {
                 <?php } ?>
             </dd>
 
-            <dt class="col-sm-4">Last webhook received</dt>
+            <dt class="col-sm-4">Webhook receiver</dt>
             <dd class="col-sm-8">
-                <?php if ($vsEnabled) { ?>
-                    <span class="badge text-bg-warning">
-                        <i class="fas fa-exclamation-triangle"></i> Events discarded
-                    </span>
-                    <small class="text-muted ms-1">
-                        The receiver is a placeholder until #1887 — bounces and unsubscribes
-                        are not recorded.
-                    </small>
-                <?php } else { ?>
-                    <span class="text-muted">Not yet implemented (#1887)</span>
-                <?php } ?>
+                <span class="badge text-bg-success">
+                    <i class="fas fa-check-circle"></i> Live
+                </span>
+                <small class="text-muted ms-1">
+                    Bounce and suppression events from Brevo are recorded in real time
+                    (<code>app/api/webhooks/brevo.php</code>); the nightly reconciliation
+                    job below catches anything the webhook missed.
+                </small>
             </dd>
 
             <dt class="col-sm-4">Last reconciliation run</dt>
