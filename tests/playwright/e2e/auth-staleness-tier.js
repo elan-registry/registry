@@ -1,6 +1,41 @@
 const path = require('path');
 
 /**
+ * Validate a raw E2E_AUTH_TIER value against the one vocabulary this suite
+ * recognizes: exactly 'test', 'prod', or undefined (unset — meaning
+ * Local/Dev, which doesn't set this var at all). Throws on anything else,
+ * including a truthy-but-wrong value — an unrelated shell export landing on
+ * this name must fail loudly rather than be silently treated as a tier or
+ * silently treated as unset.
+ *
+ * Shared by resolveTierConfig() below (requires exactly 'test'/'prod') and
+ * by not-logged-in.spec.js (also accepts 'unset', since that file needs to
+ * distinguish Local/Dev from Test/Prod, not just validate a specific tier).
+ *
+ * @param {string|undefined} tier
+ * @param {{allowUnset?: boolean}} [opts] Pass {allowUnset: true} to accept
+ *   undefined as valid (Local/Dev). Default: undefined is invalid — callers
+ *   that always run under a tier-setting config (the *.setup.js files) want
+ *   an unset tier to fail just as loudly as a garbage one.
+ * @param {string} [callerName] Included in the thrown message for context.
+ */
+function assertValidTier(tier, opts = {}, callerName = 'this file') {
+  const { allowUnset = false } = opts;
+  // Only a genuinely unset var (undefined) is treated as "no tier" — an
+  // empty string is a distinct, invalid value (someone set the var to
+  // nothing) and must still fail loudly, not be silently accepted here.
+  if (tier === undefined && allowUnset) {
+    return;
+  }
+  if (tier !== 'test' && tier !== 'prod') {
+    throw new Error(
+      `${callerName} requires E2E_AUTH_TIER to be 'test'${allowUnset ? ", 'prod', or unset" : " or 'prod'"} ` +
+      `(got: ${tier || 'unset'}). It is set by playwright.config.test.js / playwright.config.prod.js.`
+    );
+  }
+}
+
+/**
  * Resolve the per-(tier, role) auth file and setup command for a given
  * E2E_AUTH_TIER value and hardcoded role.
  *
@@ -21,12 +56,7 @@ const path = require('path');
  * @returns {{authFile: string, setupScriptPath: string}}
  */
 function resolveTierConfig(tier, role, authDir) {
-  if (tier !== 'test' && tier !== 'prod') {
-    throw new Error(
-      `auth-staleness.setup.js requires E2E_AUTH_TIER to be 'test' or 'prod' (got: ${tier || 'unset'}). ` +
-      `It is set by playwright.config.test.js / playwright.config.prod.js.`
-    );
-  }
+  assertValidTier(tier, { allowUnset: false }, 'auth-staleness.setup.js');
   if (role !== 'admin' && role !== 'nonadmin') {
     throw new Error(
       `resolveTierConfig requires role to be 'admin' or 'nonadmin' (got: ${role || 'unset'}). ` +
@@ -40,4 +70,4 @@ function resolveTierConfig(tier, role, authDir) {
   };
 }
 
-module.exports = { resolveTierConfig };
+module.exports = { resolveTierConfig, assertValidTier };

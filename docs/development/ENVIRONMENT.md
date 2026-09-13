@@ -240,6 +240,14 @@ targets it yet).
   falls back to the original hardcoded values, so this is a no-op there. Set
   only in the `.env` (not `.env.local`) of whichever clone should get
   distinct session state; the other clone(s) can keep the defaults.
+- `SESSION_NAME` also feeds `users/helpers/us_helpers.php`'s vericode-secret
+  *fallback* (used only if `usersc/vericode_secret.php` cannot be written —
+  see that file's `hash('sha256', mysql/password . session/session_name)`).
+  Two clones sharing one database but set to different `SESSION_NAME` values
+  will derive different fallback secrets and invalidate each other's
+  verification codes on that path. Keep `usersc/vericode_secret.php`
+  writable in any multi-clone setup sharing a database to avoid depending on
+  this fallback at all.
 - See `.env.example` for the placeholder entries.
 
 ## Setup & Configuration

@@ -130,10 +130,16 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     });
     await page.reload();
 
-    // LocationPicker renders the -gps-btn element unconditionally (only the
-    // click handler branches on navigator.geolocation) — its absence means
-    // the page/JS failed to initialize, not an expected environment
-    // variance, so this must fail loudly rather than skip (#1950).
+    // LocationPicker's constructor gates -gps-btn's render on
+    // this.options.showGPS && isGeolocationAvailable() ('geolocation' in
+    // navigator) — not on the click handler alone. These tests run only
+    // under Chromium (local config), where navigator.geolocation always
+    // exists as a property (even when a test later stubs
+    // getCurrentPosition, clears permissions, or defines the property with
+    // value: undefined — 'in' still sees it), so the button reliably
+    // renders here. Its absence therefore means a real JS init failure on
+    // this fixed browser target, not an expected environment variance —
+    // fail loudly rather than skip (#1950).
     const gpsButton = page.locator('[id$="-gps-btn"]');
     await expect(gpsButton, 'join.php must render a -gps-btn element via LocationPicker').toHaveCount(1);
     await gpsButton.click();
@@ -170,10 +176,16 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     });
     await page.reload();
 
-    // LocationPicker renders the -gps-btn element unconditionally (only the
-    // click handler branches on navigator.geolocation) — its absence means
-    // the page/JS failed to initialize, not an expected environment
-    // variance, so this must fail loudly rather than skip (#1950).
+    // LocationPicker's constructor gates -gps-btn's render on
+    // this.options.showGPS && isGeolocationAvailable() ('geolocation' in
+    // navigator) — not on the click handler alone. These tests run only
+    // under Chromium (local config), where navigator.geolocation always
+    // exists as a property (even when a test later stubs
+    // getCurrentPosition, clears permissions, or defines the property with
+    // value: undefined — 'in' still sees it), so the button reliably
+    // renders here. Its absence therefore means a real JS init failure on
+    // this fixed browser target, not an expected environment variance —
+    // fail loudly rather than skip (#1950).
     const gpsButton = page.locator('[id$="-gps-btn"]');
     await expect(gpsButton, 'join.php must render a -gps-btn element via LocationPicker').toHaveCount(1);
     await gpsButton.click();
@@ -208,10 +220,16 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     });
     await page.reload();
 
-    // LocationPicker renders the -gps-btn element unconditionally (only the
-    // click handler branches on navigator.geolocation) — its absence means
-    // the page/JS failed to initialize, not an expected environment
-    // variance, so this must fail loudly rather than skip (#1950).
+    // LocationPicker's constructor gates -gps-btn's render on
+    // this.options.showGPS && isGeolocationAvailable() ('geolocation' in
+    // navigator) — not on the click handler alone. These tests run only
+    // under Chromium (local config), where navigator.geolocation always
+    // exists as a property (even when a test later stubs
+    // getCurrentPosition, clears permissions, or defines the property with
+    // value: undefined — 'in' still sees it), so the button reliably
+    // renders here. Its absence therefore means a real JS init failure on
+    // this fixed browser target, not an expected environment variance —
+    // fail loudly rather than skip (#1950).
     const gpsButton = page.locator('[id$="-gps-btn"]');
     await expect(gpsButton, 'join.php must render a -gps-btn element via LocationPicker').toHaveCount(1);
 
@@ -261,10 +279,16 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     });
     await page.reload();
 
-    // LocationPicker renders the -gps-btn element unconditionally (only the
-    // click handler branches on navigator.geolocation) — its absence means
-    // the page/JS failed to initialize, not an expected environment
-    // variance, so this must fail loudly rather than skip (#1950).
+    // LocationPicker's constructor gates -gps-btn's render on
+    // this.options.showGPS && isGeolocationAvailable() ('geolocation' in
+    // navigator) — not on the click handler alone. These tests run only
+    // under Chromium (local config), where navigator.geolocation always
+    // exists as a property (even when a test later stubs
+    // getCurrentPosition, clears permissions, or defines the property with
+    // value: undefined — 'in' still sees it), so the button reliably
+    // renders here. Its absence therefore means a real JS init failure on
+    // this fixed browser target, not an expected environment variance —
+    // fail loudly rather than skip (#1950).
     const gpsButton = page.locator('[id$="-gps-btn"]');
     await expect(gpsButton, 'join.php must render a -gps-btn element via LocationPicker').toHaveCount(1);
     await gpsButton.click();
