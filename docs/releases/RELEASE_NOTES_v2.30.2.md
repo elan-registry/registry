@@ -3,134 +3,31 @@
 **Release Date:** September 7, 2026
 **Type:** Minor Release - The go-live gate — no real email sends until this closes. Automatic bounce/delivery detection, webhook reconciliation, and auto-clearing on confirmed email change.
 
-## Required Actions After Deployment
-
-1. This release ships 10 migrations, applied automatically by the deploy
-   push (`composer migrate` runs via the post-receive hook — no manual step
-   needed): `cars.email_bounced_address`, `cars.email_suppressed`, the new
-   `er_email_events` table, `er_verification_settings` (plus its
-   `unmatched_webhook_recipient_count` and `last_cron_request_at` columns,
-   added in follow-on migrations), the generic `er_cron_job_runs` table (plus
-   its `last_skip_logged_at` column) that replaces the superseded, never-used
-   `settings.reconciliation_last_run` column, and the two `crons` seed rows
-   for the reconciliation and suppression-sync jobs. See #1887, #2034, #1889,
-   #1923.
-2. Run `21-Fix-Page-Permissions.php` on test then prod to register the two
-   new admin maintenance scripts
-   (`app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` and
-   `28-Reconcile-Brevo-Suppressions.php`, both `securePage()`-gated) in
-   UserSpice's permission table — per CLAUDE.md's rule for any new page or
-   admin script. See #1889, #2061, #1923.
-3. Generate and set `BREVO_WEBHOOK_TOKEN` on **each environment that will
-   receive real Brevo webhook calls** (test.elanregistry.org and
-   elanregistry.org — not needed on dev, see note below). This is the bearer
-   token `app/api/webhooks/brevo.php` requires on every inbound request; an
-   empty/missing value rejects all requests (fail-closed), so the receiver is
-   inert until this is set.
-   - Generate a token with at least 32 bytes of cryptographic randomness, e.g.:
-     ```bash
-     openssl rand -hex 32
-     ```
-   - Add it to that environment's `.env` (not `.env.example`, which stays a
-     placeholder):
-     ```
-     BREVO_WEBHOOK_TOKEN=<the generated value>
-     ```
-     `chmod 600 .env` if not already set.
-   - Configure the same value as the bearer token/custom header Brevo sends
-     with each webhook call for this domain — see step 4 below, which uses
-     this same value to both verify the configuration and register the real
-     webhook.
-   - Treat this token as a credential: do not commit it, do not log it (the
-     endpoint only ever logs a hashed prefix on rejection), and rotate it by
-     generating a new value and updating both sides (`.env` and the Brevo
-     webhook config) together — a rotation with only one side updated causes
-     every webhook call to be rejected until both match again.
-4. **Configure and verify the Brevo webhook on test.elanregistry.org** (#1888).
-   Production registration is explicitly deferred — it's blocked on the
-   v2.30.0 privacy-policy disclosure and on the verification-system feature
-   switch (#1926) actually being turned on. Requires step 3 above already
-   done (`BREVO_WEBHOOK_TOKEN` set in test's `.env`) — not needed in local
-   dev at all (see the note below).
-   1. On the server, create the capture directory outside the web root and
-      lock it down (`mkdir -p ~/spike-1888 && chmod 700 ~/spike-1888`) — it
-      will hold recipient email addresses from captured payloads. Edit
-      `scripts/spike-1888/brevo-webhook-capture.php`'s `CAPTURE_FILE`
-      placeholder to point into that directory before copying it to the
-      server (see `scripts/README.md`). Deploy the file itself to
-      `~/test.elanregistry.org/scripts/spike-1888/capture.php` — exactly two
-      directories below the site root that holds `vendor/` and `.env`
-      (`REPO_ROOT` in the script is hardcoded to `../..`); one level too
-      shallow makes the autoloader unreachable and every request silently
-      404s the same way an auth failure does. Confirm it's reachable.
-   2. Register a *throwaway* webhook pointed at the capture script, passing
-      the same `BREVO_WEBHOOK_TOKEN` value as its auth token so the capture
-      script's inbound auth check has something real to validate against:
-      ```bash
-      php scripts/spike-1888/brevo-register-webhook.php --create \
-        --url='https://test.elanregistry.org/scripts/spike-1888/capture.php' \
-        --token=<test's BREVO_WEBHOOK_TOKEN value>
-      ```
-      Confirm it registered: `php scripts/spike-1888/brevo-register-webhook.php --list-webhooks`.
-   3. Send a real test email (Admin → Plugins → Brevo Sendinblue → Test
-      Email); confirm `delivered`/`opened` land in the capture log with a
-      passing auth check. Send the Mailtrap hard-bounce fixture using the
-      existing #1871 send script
-      (`scripts/spike-1871/brevo-send-test.php --to='bounce+550+...@inbox.mailtrap.io'`)
-      and confirm a `hard_bounce` line lands too.
-   4. Delete the throwaway webhook
-      (`php scripts/spike-1888/brevo-register-webhook.php --delete --id=<id>`),
-      and delete the capture script **and its capture file** (`capture.jsonl`
-      — it holds real recipient email addresses) from the server.
-      `BREVO_WEBHOOK_TOKEN` in `.env` is left as-is — it's the same value the
-      real endpoint needs, not something to rotate here.
-   5. Register the **real** webhook against the deployed
-      `https://test.elanregistry.org/app/api/webhooks/brevo.php`, using the
-      same `BREVO_WEBHOOK_TOKEN`:
-      ```bash
-      php scripts/spike-1888/brevo-register-webhook.php --create \
-        --url='https://test.elanregistry.org/app/api/webhooks/brevo.php' \
-        --token=<test's BREVO_WEBHOOK_TOKEN value>
-      ```
-      No further capture/verification pass is required — the auth mechanism
-      and configuration were already proven correct in steps 1–3 above.
-   6. Confirm link click-tracking is **off**: Brevo → Transactional →
-      Settings → Tracking. (Otherwise Verify/Sold/Review links get rewritten
-      through a Brevo redirect domain.)
-   7. `spam` end-to-end verification is not self-triggerable (per the #1871
-      spike's findings — it requires a real recipient reporting real mail)
-      and is already covered instead by
-      `testSpamCallsSetSuppressedNotSetBounced` in
-      `tests/unit/cars/services/BrevoWebhookEventProcessorTest.php`. No
-      manual step needed for it.
-
-**Note:** Development environments do not have access to Brevo and cannot receive real inbound Brevo webhooks (no public URL reaches a dev machine) — `BREVO_WEBHOOK_TOKEN` is not needed there. Webhook-dependent testing (#1887, #1888, #1889, #1890, #1923) will rely on synthetic/captured payloads for local dev and unit tests, with real end-to-end webhook verification happening only on test.elanregistry.org.
-
 ## User-Facing Changes
 
-- The join form's "Use My Current Location" button works again. A `Permissions-Policy` header set in #1329 (2026-07-13) had silently blocked the Geolocation API site-wide, including same-origin use — it now allows same-origin geolocation while camera, microphone, and payment remain fully blocked. (#2050)
+- The join form's "Use My Current Location" button works again. (#2050)
 
 ## Admin-Facing Changes
 
-- New "Verification System" tab on the admin management page (`app/admin/index.php?tab=verification`), visible to admins and editors. Shows whether Brevo email delivery and the cron transport are configured/healthy, and lets an admin turn the site-wide verification feature switch on or off. The switch defaults **off** and ships with no way to enable real verification sends until a future release — this issue only builds the gate. Enabling the switch is blocked while Brevo isn't configured; disabling it is never blocked, even mid-incident, so an admin can always turn it off. A dashboard banner appears if the switch is left on with a broken prerequisite. (#1926)
-- The tab's "Last reconciliation run" row now reads the nightly reconciliation job's actual state (Ran/with timestamp, Never run, Paused, or Status unavailable) instead of a placeholder that had been left behind reading "Not yet implemented" after the job shipped. (#2054)
+- New "Verification System" tab on the admin management page shows Brevo/cron health and a site-wide verification feature switch, defaulted **off**. (#1926)
+- The tab's "Last reconciliation run" row now reads the job's real status instead of a stale placeholder. (#2054)
 
 ## Issues Resolved
 
-- [#1887](https://github.com/elan-registry/registry/issues/1887) — feat: automatic bounce & delivery-status detection via Brevo webhooks
-- [#1888](https://github.com/elan-registry/registry/issues/1888) — chore: configure & verify the Brevo webhook
-- [#1889](https://github.com/elan-registry/registry/issues/1889) — feat: nightly Brevo delivery-event reconciliation job
-- [#1890](https://github.com/elan-registry/registry/issues/1890) — feat: auto-clear email_bounced when the owner confirms an email change
-- [#1923](https://github.com/elan-registry/registry/issues/1923) — feat: import Brevo's suppression list (blockedContacts) into owner email status. Adds `BrevoSuppressionSyncJob`, the second cron job registered under `users/cron/` (nightly incremental, 48-hour lookback window, matching #1889's shape) plus a manual full-backfill entry point (`runFullBackfill()`, capped and never reachable from the scheduled path) exposed via `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php` — the first admin script whose manual run renders a real inline summary (matched/unmatched/already-flagged/skipped counts, per-reason-code breakdown) rather than only logging. Maps Brevo's suppression reason codes (`hardBounce`, `contactFlaggedAsSpam`, four `unsubscribed*`/`adminBlocked` variants) onto the same `EmailEventApplier` escalation path the webhook (#1887) and reconciliation job (#1889) already use. `PAGE_SIZE` was corrected from an initially-assumed 1000 to Brevo's real confirmed cap of 100 for this endpoint (caught via a live manual test run). A review-round bug — the backfill's end-of-list detection undercounted pages containing any skipped contact (malformed payload, unrecognized reason code, or a failed write), which could silently truncate a full backfill — was found independently by three reviewers and fixed before merge, with a mutation-verified regression test.
-- [#1924](https://github.com/elan-registry/registry/issues/1924) — feat: show email bounce / suppression / verification state on the admin user view hook. Adds a "Verification & Email" card on `users/admin.php?view=user` (rendered via the project-owned hook `usersc/plugins/hooker/hooks/user_form_hook.php`) letting an admin diagnose per-car bounce/suppression/verification state without leaving the user view. Introduces two new `CarRepository` methods: `findVerificationStateByOwner()` (per-car bounce/suppression/verification columns) and `findLatestEmailEventsByCarIds()` (latest `er_email_events` row per car, a single-query aggregate regardless of car count — two queries total for the whole card). Verification badge uses `CarRepository::isFresh()` — this is that reserved method's first production caller, previously unused; its "not yet called" docblock was removed. `EmailEventApplier::SUPPRESSION_EVENTS` and `HARD_BOUNCE_EVENTS` were widened from `private` to `public` so this read-only hook can share the same event-type vocabulary rather than re-declaring it. The card degrades gracefully on DB failure (distinct "could not be loaded" state, logged) rather than crashing the entire admin user-view page — a review round caught that an uncaught exception would abort the page, not just the card, and without a distinct failure state, "query failed" would render identically to "no delivery problems" (a false all-clear for a diagnosis this panel exists to catch). A corrupted single car's timestamps render an isolated "Unknown" badge for that row only, without affecting others. Known limitation: the Bounced/Suppressed columns show the single latest matching event per car (filtered via the widened constants), not a full history — a car with mixed event types shows only its most recent match. New test infrastructure: this is the repo's first Playwright spec seeding rows directly into local MAMP from within the spec (`tests/playwright/local/fixtures/seed-bounced-car.php`, idempotent, guarded to `US_ENVIRONMENT=development` only). A review-round mutation-test on the new integration test (`tests/integration/database/CarRepositoryEmailEventsTest.php`, covering `findLatestEmailEventsByCarIds()`'s self-join) found the join's `car_id` predicate is actually redundant with the outer `WHERE car_id IN (...)` — removing it produces harmless duplicate rows, not misattributed data — so the test's docblock was corrected to state this accurately rather than claim coverage it didn't have.
-- [#1926](https://github.com/elan-registry/registry/issues/1926) — feat: verification-system feature switch with Brevo prerequisite check and admin warning
-- [#1968](https://github.com/elan-registry/registry/issues/1968) — chore: raise dev and CI to PHP 8.4 before 8.2 security EOL. **Test and production remain on PHP 8.2** for now — see `docs/development/ENVIRONMENT.md`'s PHP Version section; raising them is a separate, later step not included in this issue's scope. `composer.json` still requires `>=8.2.29`, and the packages newly requiring `>=8.3` are all `packages-dev`, so `composer install --no-dev` on prod/test is unaffected.
-- [#2001](https://github.com/elan-registry/registry/issues/2001) — chore: extract cron transport interval into a shared, discoverable constant (`CRON_TRANSPORT_INTERVAL_MINUTES` in `usersc/includes/config.php`); no behavior change
-- [#2004](https://github.com/elan-registry/registry/issues/2004) — test-infra: `BackupCriticalTablesTest::test_defaultBackupDumpsEveryBaseTableInSchema` fataled with "Allowed memory size exhausted," killing the entire local integration run mid-suite. Root cause: `us_rate_limits` grows unbounded in the local test DB (no automated cleanup for rate-limit rows written by #1913/#1951's endpoints), reaching millions of rows over repeated runs. Fix: truncate `us_rate_limits` once per integration suite run in `tests/bootstrap-integration.php`. No production impact — test-infra only. #2015 (the equivalent production-side gap) remains open and unchosen, same as #2018's entry above.
-- [#2027](https://github.com/elan-registry/registry/issues/2027) — feat: extract `CronJobGuard` atomic-claim class from #1885, scoped to v2.30.2 — adds `usersc/classes/Cron/CronJobGuard.php` and (originally) `settings.reconciliation_last_run`; no production caller yet, consumed by #1889. The `settings.reconciliation_last_run` column was superseded by #2034 in this same milestone — see that entry.
-- [#2034](https://github.com/elan-registry/registry/issues/2034) — design: generic `cron_job_runs` table vs. per-job settings columns, resolved in favor of a generic table. Adds `er_cron_job_runs` (`job_name` PK, `enabled`, `last_run_at`, `created_at`) and migrates `CronJobGuard::claim()` onto it, dropping `settings.reconciliation_last_run` (#2027) — that column had never been written to in production. Adds an `enabled` flag, checked in `claim()`'s own query, letting an operator pause a single job without touching UserSpice's own `crons` table (add/delete only, no pause). No production caller yet.
-- [#2018](https://github.com/elan-registry/registry/issues/2018) — chore: remove rate limiting from `cars_list`, `factory_list`, `car_history`, and `statistics_request` (production log-volume/performance complaint tied to `us_rate_limits` row growth). **Security posture change:** these four public read-only endpoints now carry no app-layer abuse control at all (no CSRF, per ADR-019; no rate limit, as of this issue) — deliberate, user-confirmed tradeoff. See ADR-019's 2026-09-08 update for full rationale; #2015 (cron cleanup of `us_rate_limits`, the alternative that would have preserved the control) remains open and unchosen.
-- [#1974](https://github.com/elan-registry/registry/issues/1974) — tech-debt: stop the cron transport logging every request (144 rows/day/environment). `users/cron/cron.php` no longer logs on a successful hit; `VerificationSettings::recordCronRequest()` writes `er_verification_settings.last_cron_request_at` instead, which `lastCronRequestAt()`/`cronReady()` now read for the admin dashboard's cron-health indicator (replacing a `logs`-table scan). A denied hit still logs, unchanged. Manual verification against local MAMP caught and fixed 2 real bugs before merge: a `TypeError` from constructing `VerificationSettings` with the raw `\DB` global instead of `dbi()`, and `recordCronRequest()` being called before (rather than after) the `cron_ip` denial check.
-- [#2050](https://github.com/elan-registry/registry/issues/2050) — fix: `.htaccess`'s `Permissions-Policy` header set `geolocation=()`, blocking the Geolocation API everywhere including same-origin — silently breaking the join form's "Use My Current Location" button since #1329 shipped the header (2026-07-13). Changed to `geolocation=(self)`; camera, microphone, and payment remain fully blocked. Also synced `usersc/includes/security_headers.php`'s PHP-level header (previously missing a `geolocation` directive entirely) and corrected ADR-007's Permissions-Policy section, which still described the header as "not adopted."
-- [#2054](https://github.com/elan-registry/registry/issues/2054) — fix: Verification tab's "Last reconciliation run" row still read "Not yet implemented (#1889)" after #1889 shipped the reconciliation job — the tab told an operator the opposite of the truth. Adds `usersc/classes/Cron/CronJobRunsReader` (reads `er_cron_job_runs`, never throws) and renders all four possible states distinctly: ran (with timestamp), never run, deliberately paused, or status unavailable (missing row / read failure) — a paused job never renders as a failure, and a read failure never renders as "never run."
-- [#2061](https://github.com/elan-registry/registry/issues/2061) — chore: surface inline run summary on Brevo event reconciliation admin script. Applies the `SuppressionSyncSummary`/`runNowWithSummary()` pattern #1923 introduced to `BrevoEventReconciliationJob`: adds a `ReconciliationSummary` readonly DTO (matched/unmatched/skipped counts, ignored-by-tag count, per-event-type breakdown) and a `runNowWithSummary()` sibling method to the existing `final runNow()`. `27-Reconcile-Brevo-Events.php` now renders this inline instead of pointing the operator at Admin → Logs. Counting is at car-write granularity, not event granularity — a single event matching several cars can contribute to both the matched and skipped totals simultaneously if one write fails; the DTO's docblock and the admin script's copy both call this out explicitly. Also changed `BrevoEventReconciliationClient::fetchEvents()`'s return type from `array` to `?array` so a poll failure (`null`) is now distinguishable from a genuinely empty page (`[]`) — a deliberate contract change from #1889's original design, needed to surface a `pollFailed` warning on the admin script mirroring #1923's. Review round caught and fixed: a stale test docblock contradicting the new null/`[]` contract, an inaccurate UI claim that skipped items are "counted in none of the totals" (false for the car-write-granularity case this issue exists to count correctly), an unrendered `eventsExamined` field, a missing test proving retention pruning still runs after a poll failure, and a newly-silent skip path (empty required field) that had no matching log line for its new count.
+- [#1887](https://github.com/elan-registry/registry/issues/1887) — Automatic bounce & delivery-status detection via Brevo webhooks.
+- [#1888](https://github.com/elan-registry/registry/issues/1888) — Configure & verify the Brevo webhook.
+- [#1889](https://github.com/elan-registry/registry/issues/1889) — Nightly Brevo delivery-event reconciliation job.
+- [#1890](https://github.com/elan-registry/registry/issues/1890) — Auto-clear `email_bounced` when the owner confirms an email change.
+- [#1923](https://github.com/elan-registry/registry/issues/1923) — Import Brevo's suppression list (blockedContacts) into owner email status.
+- [#1924](https://github.com/elan-registry/registry/issues/1924) — Show email bounce/suppression/verification state on the admin user view hook.
+- [#1926](https://github.com/elan-registry/registry/issues/1926) — Verification-system feature switch with Brevo prerequisite check and admin warning.
+- [#1968](https://github.com/elan-registry/registry/issues/1968) — Raise dev and CI to PHP 8.4 before 8.2 security EOL (test and production remain on 8.2 for now).
+- [#2001](https://github.com/elan-registry/registry/issues/2001) — Extract cron transport interval into a shared, discoverable constant.
+- [#2004](https://github.com/elan-registry/registry/issues/2004) — Truncate `us_rate_limits` once per integration suite run, fixing a memory-exhaustion crash in local test runs.
+- [#2027](https://github.com/elan-registry/registry/issues/2027) — Extract `CronJobGuard` atomic-claim class, scoped to v2.30.2.
+- [#2034](https://github.com/elan-registry/registry/issues/2034) — Generic `er_cron_job_runs` table for cron job tracking, replacing per-job settings columns.
+- [#2018](https://github.com/elan-registry/registry/issues/2018) — Remove rate limiting from `cars_list`, `factory_list`, `car_history`, and `statistics_request` (deliberate security-posture tradeoff — see ADR-019).
+- [#1974](https://github.com/elan-registry/registry/issues/1974) — Stop the cron transport logging every request.
+- [#2050](https://github.com/elan-registry/registry/issues/2050) — Fix `Permissions-Policy` header blocking geolocation everywhere, including same-origin, breaking "Use My Current Location."
+- [#2054](https://github.com/elan-registry/registry/issues/2054) — Verification tab reads real reconciliation job status instead of a stale placeholder.
+- [#2061](https://github.com/elan-registry/registry/issues/2061) — Surface inline run summary on the Brevo event reconciliation admin script.
