@@ -8,8 +8,11 @@ use Phinx\Migration\AbstractMigration;
  * Creates er_cron_job_runs — a generic "when did this job last run" table,
  * replacing per-job bespoke settings columns (#2034). Migrates
  * CronJobGuard's one existing job (reconciliation, #2027) onto it and drops
- * the old settings.reconciliation_last_run column, which has never been
- * written to in production (no CronJobGuard caller exists yet).
+ * the old settings.reconciliation_last_run column, which had never been
+ * written to in production (no CronJobGuard caller existed at the time this
+ * migration was written — #1889 and #1923, both later in this same
+ * milestone, wire the real callers; see CronJobGuard.php's docblock for the
+ * current state).
  *
  * `er_` prefix per docs/development/DATABASE.md's Table Naming convention —
  * ElanRegistry-owned tables created from v2.30.2 onwards use it, alongside
@@ -17,8 +20,8 @@ use Phinx\Migration\AbstractMigration;
  *
  * `enabled` lets an operator pause a single job without touching UserSpice's
  * own crons table (which only supports add/delete, not pause) — see #2034
- * and #1889's shared cron scaffolding, which will check this flag before
- * running a job's work.
+ * and CronJobGuard.php's docblock for how #1889's shared cron scaffolding
+ * checks this flag before running a job's work.
  *
  * Not atomic as a whole: up() interleaves DDL (create(), removeColumn())
  * around one DML insert(). MySQL implicit-commits each DDL statement, so a
