@@ -119,9 +119,7 @@ test.describe('FilePond load error recovery (#755)', () => {
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 
         const ready = await gotoEditFormWithFakeImages(page);
-        if (!ready) {
-            test.skip(true, 'Authenticated session required');
-        }
+        test.skip(!ready, 'Authenticated session required');
 
         await expect(page.locator('#message .alert-warning')).toBeVisible({ timeout: 8000 });
         await expect(page.locator('#message .alert-warning')).toContainText('could not be loaded');
@@ -131,9 +129,7 @@ test.describe('FilePond load error recovery (#755)', () => {
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 
         const ready = await gotoEditFormWithFakeImages(page);
-        if (!ready) {
-            test.skip(true, 'Authenticated session required');
-        }
+        test.skip(!ready, 'Authenticated session required');
 
         await expect(page.locator('#message .alert-warning')).toBeVisible({ timeout: 8000 });
         await expect(page.locator('#message .alert-warning')).toContainText('could not be loaded');
@@ -144,9 +140,7 @@ test.describe('FilePond load error recovery (#755)', () => {
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 
         const ready = await gotoEditFormWithFakeImages(page);
-        if (!ready) {
-            test.skip(true, 'Authenticated session required');
-        }
+        test.skip(!ready, 'Authenticated session required');
 
         await expect(page.locator('#message .alert-warning')).toBeVisible({ timeout: 8000 });
 
@@ -189,9 +183,7 @@ test.describe('fetchImages API failure handling (#1031)', () => {
 
         const url = page.url();
         const bodyText = await page.textContent('body').catch(() => '');
-        if (url.includes('login') || bodyText.includes('Please Log In')) {
-            test.skip(true, 'Authenticated session required');
-        }
+        test.skip(url.includes('login') || bodyText.includes('Please Log In'), 'Authenticated session required');
 
         await expect(page.locator('#message .alert-warning')).toBeVisible({ timeout: 8000 });
         await expect(page.locator('#message .alert-warning')).toContainText('could not be loaded');
@@ -219,9 +211,7 @@ test.describe('fetchImages API failure handling (#1031)', () => {
 
         const url = page.url();
         const bodyText = await page.textContent('body').catch(() => '');
-        if (url.includes('login') || bodyText.includes('Please Log In')) {
-            test.skip(true, 'Authenticated session required');
-        }
+        test.skip(url.includes('login') || bodyText.includes('Please Log In'), 'Authenticated session required');
 
         await expect(page.locator('#message .alert-warning')).toBeVisible({ timeout: 8000 });
         await expect(page.locator('#submit')).toBeDisabled();

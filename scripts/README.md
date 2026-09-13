@@ -179,43 +179,23 @@ as an authenticated user without entering credentials on every run. Run once
 
 ### playwright-auth-setup.js
 
-Saves an authenticated session for **production** (`elanregistry.org`) to
-`tests/playwright/.auth/user.json`. Launches a headed browser so you can solve
-any CAPTCHA manually.
+Consolidated setup script (#2035) covering all four Test/Prod tier×role
+combinations. Saves an authenticated session to
+`tests/playwright/.auth/user-<tier>-<role>.json`. Launches a headed browser;
+fails fast if Cloudflare Turnstile is enabled on the target environment
+rather than hanging or attempting to bypass it — disable Turnstile manually
+first, then re-enable it once the auth file is saved.
+
+Credentials are read from `.env.local` (`E2E_<TIER>_<ROLE>_USERNAME`/
+`_PASSWORD` — see `docs/development/ENVIRONMENT.md`), not from environment
+variables or 1Password.
 
 ```bash
-export ELAN_USERNAME="your-username"
-export ELAN_PASSWORD="your-password"
-node scripts/playwright-auth-setup.js
-```
+node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>
 
-### playwright-auth-setup-test.js
-
-Same as above but targets the **test environment** (`test.elanregistry.org`).
-Saves state to `tests/playwright/.auth/user-test.json`.
-
-```bash
-export ELAN_USERNAME="your-test-username"
-export ELAN_PASSWORD="your-test-password"
-node scripts/playwright-auth-setup-test.js
-```
-
-### playwright-auth-1password.sh
-
-Convenience wrapper: loads production credentials from 1Password and runs
-`playwright-auth-setup.js`.
-
-```bash
-./scripts/playwright-auth-1password.sh
-```
-
-### playwright-auth-1password-test.sh
-
-Convenience wrapper: loads test-environment credentials from 1Password and runs
-`playwright-auth-setup-test.js`.
-
-```bash
-./scripts/playwright-auth-1password-test.sh
+# Examples:
+node scripts/playwright-auth-setup.js test admin
+node scripts/playwright-auth-setup.js prod nonadmin
 ```
 
 ## Server Hooks

@@ -64,6 +64,37 @@ first.
 
 ### Step 3: Create the milestone branch from main
 
+This repo may be checked out in more than one local clone sharing the same
+`origin` (e.g. `Registry/` and `Registry2/`, used to work two milestones in
+parallel without UserSpice's gitignored `users/` framework breaking git
+worktrees). A local `git branch --list 'milestone/*'` only sees branches in
+*this* clone, so it can silently miss a milestone branch already active in a
+sibling clone. Check the shared remote instead:
+
+```bash
+git ls-remote --heads origin 'milestone/*'
+```
+
+If this returns a `milestone/$ARGUMENTS` branch for the SAME milestone
+already on `origin`, don't create a duplicate — check it out locally instead
+(do not check out a `milestone/*` branch as a `git worktree` of another local
+clone; get it from `origin` directly):
+
+```bash
+git fetch origin milestone/$ARGUMENTS
+git checkout -b milestone/$ARGUMENTS origin/milestone/$ARGUMENTS
+```
+
+If it returns a `milestone/*` branch for a DIFFERENT milestone, that's
+another milestone already active elsewhere (possibly in a sibling clone).
+Working two milestones in parallel across separate clones is supported —
+confirm with the user that a second parallel milestone is intended before
+proceeding; don't create it silently and don't treat the existing branch as
+an automatic block.
+
+Otherwise (no `milestone/*` branch at all on `origin`), create it fresh from
+`main`:
+
 ```bash
 git checkout main
 git pull origin main
@@ -410,8 +441,12 @@ Display:
 
 - The milestone branch is the integration point for all issue work. Individual
   issue PRs target this branch, not `main`.
-- Only one milestone should be in active development at a time. If another
-  `milestone/*` branch exists, warn the user.
+- Working two milestones in parallel across separate local clones of this
+  repo (e.g. `Registry/` and `Registry2/`, sharing one `origin`) is a
+  supported workflow — see Step 3's `git ls-remote --heads origin` check.
+  If another `milestone/*` branch already exists on `origin`, confirm with
+  the user that a second parallel milestone is intended before creating one;
+  don't create it silently, and don't treat the existing branch as a block.
 - Do not push to `test` or `prod` remotes — this command only sets up the
   branch on GitHub (`origin`).
 - Release notes are cumulative — each `/execute-plan` run adds to them as

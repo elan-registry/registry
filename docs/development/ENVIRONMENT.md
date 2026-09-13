@@ -161,28 +161,94 @@ their real deployed environments)
   Excluded from the prod/test configs intentionally, to avoid accidentally
   pointing a destructive test run at the wrong live site.
 
-### Local Playwright Test Credentials
+### Playwright Test Credentials (Local/Dev)
 
-**Usage**: `playwright.config.js`'s `logged-in` project (via `auth.setup.js`),
-`playwright.config.dev.js`'s `logged-in`/`logged-in-non-admin` projects (via
+**Usage**: `playwright.config.js`'s `admin` project (via `auth.setup.js`),
+`playwright.config.dev.js`'s `admin`/`logged-in-non-admin` projects (via
 `auth-dev.setup.js` / `auth-non-admin.setup.js`)
 
-- `TEST_USERNAME` / `TEST_PASSWORD` — credentials for an admin test account, used to
-  populate a storageState file via a live login through `usersc/login.php` each time
-  the corresponding `setup` project runs — `tests/playwright/.auth/user.json` for
-  `playwright.config.js`, `tests/playwright/.auth/user-dev.json` for
-  `playwright.config.dev.js` (kept separate so a dev run can't overwrite the
-  production storageState the 1Password/CAPTCHA flow produces). Required for the
-  `logged-in` project; if unset, the setup test skips and the storageState file is
-  removed, so `logged-in` tests run unauthenticated instead of failing on a missing
+- `E2E_DEV_ADMIN_USERNAME` / `E2E_DEV_ADMIN_PASSWORD` — credentials for an admin test
+  account, used to populate a storageState file via a live login through
+  `usersc/login.php` each time the corresponding `setup` project runs —
+  `tests/playwright/.auth/user.json` for `playwright.config.js`,
+  `tests/playwright/.auth/user-dev.json` for `playwright.config.dev.js` (kept separate so
+  a dev run can't overwrite the Local storageState). Required for the
+  `admin` project; if unset, the setup test skips and the storageState file is
+  removed, so `admin` tests run unauthenticated instead of failing on a missing
   file.
-- `TEST_USERNAME2` / `TEST_PASSWORD2` — credentials for a non-admin test account, used
-  the same way by `auth-non-admin.setup.js` to populate
+- `E2E_DEV_NONADMIN_USERNAME` / `E2E_DEV_NONADMIN_PASSWORD` — credentials for a
+  non-admin test account, used the same way by `auth-non-admin.setup.js` to populate
   `tests/playwright/.auth/user-dev-non-admin.json`, feeding
   `playwright.config.dev.js`'s `logged-in-non-admin` project (infrastructure only —
   no spec targets it yet).
 - All four are gitignored via `.env.local` and must never be committed. See
   `.env.example` for the placeholder entries.
+- These are Local/Dev-only accounts (plain-HTTP MAMP, no Turnstile) — same
+  `E2E_<TIER>_<ROLE>_*` naming scheme as the Test/Prod credentials below (#2059
+  renamed these from `TEST_USERNAME`/`TEST_PASSWORD`/`TEST_USERNAME2`/`TEST_PASSWORD2`
+  for consistency).
+
+### Playwright Test Credentials (Test/Prod)
+
+**Usage**: `scripts/playwright-auth-setup.js` (consolidated setup script,
+issue #2035), invoked manually to populate the pre-authenticated storageState
+files that `tests/playwright/e2e/auth-staleness.setup.js` /
+`auth-staleness-admin.setup.js` check for staleness before each Test/Prod run
+(`playwright.config.test.js` / `playwright.config.prod.js`'s `admin` project;
+`logged-in` also wires up but is infrastructure only — no non-admin spec
+targets it yet).
+
+- `E2E_TEST_ADMIN_USERNAME` / `E2E_TEST_ADMIN_PASSWORD` — admin account on
+  `test.elanregistry.org`.
+- `E2E_TEST_NONADMIN_USERNAME` / `E2E_TEST_NONADMIN_PASSWORD` — non-admin
+  account on `test.elanregistry.org`.
+- `E2E_PROD_ADMIN_USERNAME` / `E2E_PROD_ADMIN_PASSWORD` — admin account on
+  `elanregistry.org`.
+- `E2E_PROD_NONADMIN_USERNAME` / `E2E_PROD_NONADMIN_PASSWORD` — non-admin
+  account on `elanregistry.org`.
+- Both environments run HTTPS with an active Cloudflare Turnstile challenge,
+  which blocks automated login entirely — these credentials are never used
+  for a live per-run login. Instead a human manually disables Turnstile, runs
+  `node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>` once
+  per tier/role to produce `tests/playwright/.auth/user-<tier>-<role>.json`,
+  then re-enables Turnstile. See `docs/testing/PLAYWRIGHT_E2E.md` for the
+  full setup process.
+- All eight are gitignored via `.env.local` and must never be committed. See
+  `.env.example` for the placeholder entries.
+
+### Multi-Clone Session Isolation
+
+**Usage**: `users/init.php` (`$GLOBALS['config']['session']` /
+`['remember']`)
+
+- `SESSION_NAME` / `TOKEN_NAME` / `REMEMBER_COOKIE_NAME` — override
+  UserSpice's `$_SESSION` key names (`user`, `token`) and its existing
+  hardcoded remember-me cookie name (see `users/init.php`). Only needed
+  when running more than one local
+  clone of this repo from the same MAMP host/port (e.g. `Registry/` and
+  `Registry2/`, a supported workflow for working two milestones in parallel
+  — see the top-level `Web/ElanRegistry/CLAUDE.md`). Every clone shares the
+  same PHP session cookie (`PHPSESSID`, scoped `path=/` on the same origin)
+  regardless of these vars — `SESSION_NAME`/`TOKEN_NAME` only change which
+  key each clone uses *inside* that shared session, so without distinct
+  names, one clone's login state and CSRF token silently collide with
+  another's — surfacing as inexplicable login failures with no error in any
+  log (see #1935). `REMEMBER_COOKIE_NAME` is the one exception: it names an
+  actual separate browser cookie, so setting it does give each clone its own
+  remember-me cookie rather than just a distinct key within a shared one.
+- Unset in production, test, and a single-clone local install — the app
+  falls back to the original hardcoded values, so this is a no-op there. Set
+  only in the `.env` (not `.env.local`) of whichever clone should get
+  distinct session state; the other clone(s) can keep the defaults.
+- `SESSION_NAME` also feeds `users/helpers/us_helpers.php`'s vericode-secret
+  *fallback* (used only if `usersc/vericode_secret.php` cannot be written —
+  see that file's `hash('sha256', mysql/password . session/session_name)`).
+  Two clones sharing one database but set to different `SESSION_NAME` values
+  will derive different fallback secrets and invalidate each other's
+  verification codes on that path. Keep `usersc/vericode_secret.php`
+  writable in any multi-clone setup sharing a database to avoid depending on
+  this fallback at all.
+- See `.env.example` for the placeholder entries.
 
 ## Setup & Configuration
 

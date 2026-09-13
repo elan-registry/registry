@@ -1,9 +1,9 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Elan Registry - Menu Verification (Logged In)', () => {
-  // Skip these tests if NOT running in logged-in project
+  // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });
@@ -80,9 +80,9 @@ test.describe('Elan Registry - Menu Verification (Logged In)', () => {
 });
 
 test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
-  // Skip these tests if NOT running in logged-in project
+  // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });
@@ -101,12 +101,12 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     console.log('✓ Navigated to account page');
 
     // The "Update Car" button only renders inside account.php's per-car loop
-    // (app/views/cars/_car_hero_actions.php) — if TEST_USERNAME has no
+    // (app/views/cars/_car_hero_actions.php) — if E2E_DEV_ADMIN_USERNAME has no
     // registered cars locally, there's nothing to click. Skip rather than
     // assume, same convention used for fixture-dependent factory-page tests.
     const updateCarButton = page.locator('button:has-text("Update Car"), a:has-text("Update Car")');
     const hasCarToUpdate = await updateCarButton.count() > 0;
-    test.skip(!hasCarToUpdate, 'TEST_USERNAME account has no registered cars locally — nothing to update');
+    test.skip(!hasCarToUpdate, 'E2E_DEV_ADMIN_USERNAME account has no registered cars locally — nothing to update');
 
     // Click "Update Car" button to enter the update workflow
     await updateCarButton.first().click();
@@ -121,12 +121,13 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     await commentField.fill(testNote);
     console.log(`✓ Added comment: ${testNote}`);
 
-    // Expand Section 2 (Photos)
-    await page.locator('#heading-section2 button').click();
-    await page.waitForSelector('#section2', { state: 'visible', timeout: 5000 });
-    console.log('✓ Section 2 (Photos) expanded');
+    // edit.php's Photos section is a plain heading, not a collapsible
+    // accordion — #heading-section2/#section2 don't exist in current markup
+    // (verified against app/owner/cars/edit.php: #myPond and #submit are
+    // directly visible with no expand step required). Same finding already
+    // applied to car-edit-owner-refresh.spec.js and functionality.spec.js;
+    // this was the last surviving call site (#1949).
 
-    // Submit via button below accordion
     await page.locator('#submit').click();
     await page.waitForLoadState('domcontentloaded');
     console.log('✓ Clicked Update Car button');
@@ -148,9 +149,9 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
 });
 
 test.describe('Elan Registry - All Pages (Logged In)', () => {
-  // Skip these tests if NOT running in logged-in project
+  // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });
@@ -187,9 +188,9 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
 });
 
 test.describe('Internal Links Discovery and Testing (Logged In)', () => {
-  // Skip these tests if NOT running in logged-in project
+  // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });

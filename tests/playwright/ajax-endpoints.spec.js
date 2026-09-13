@@ -25,8 +25,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   test.beforeEach(async ({ page }) => {
     // Most AJAX endpoints require authentication.
     // Skip when test credentials are not configured in .env.local.
-    if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
-      test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+    if (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD) {
+      test.skip(true, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests');
     }
     await ensureLoggedIn(page);
   });
@@ -317,7 +317,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   });
 
   test('admin car details endpoint returns car data for an admin user', async ({ page }) => {
-    // The configured TEST_USERNAME/TEST_PASSWORD account is itself an admin, so
+    // The configured E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD account is itself an admin, so
     // requireAdminAjax()'s admin check passes — this is a real success-path test,
     // not a permission-rejection test (CSRF/admin-gate rejection for this endpoint
     // is exercised by other tests using invalid tokens/unauthenticated requests
@@ -363,7 +363,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       // front by comparing the car's registered email to the logged-in
       // account rather than assuming either way.
       test.skip(
-        carDetails.email === process.env.TEST_USERNAME,
+        carDetails.email === process.env.E2E_DEV_ADMIN_USERNAME,
         'CAR_ID_STANDARD is owned by the admin test account — cannot self-transfer to create a fixture'
       );
     });
@@ -427,7 +427,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     //   - a second Playwright-authenticated test account, or
     //   - a fixture-seeding endpoint/helper that can create a car owned by a
     //     non-admin user,
-    // neither of which exists yet — the single TEST_USERNAME/TEST_PASSWORD
+    // neither of which exists yet — the single E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD
     // account is the only identity available to this suite, and no
     // direct-DB-insert helper (as PHPUnit's IntegrationTestCase::createTestCar())
     // is available from Playwright's HTTP-only test harness. Building that
@@ -669,7 +669,7 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
   // Deliberately OUTSIDE the authenticated describe above. Nested inside it,
   // these ran only after ensureLoggedIn() — the one session state in which
   // the reported bug never occurred — and skipped entirely without
-  // TEST_USERNAME/TEST_PASSWORD. Clearing cookies models the real failure:
+  // E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD. Clearing cookies models the real failure:
   // a visitor whose session is gone.
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
@@ -796,5 +796,31 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
     expect(response.status()).toBe(200);
     const jsonResponse = await response.json();
     expect(jsonResponse).toHaveProperty('success', true);
+  });
+});
+
+test.describe('Admin AJAX Endpoints — Unauthenticated Access', () => {
+  // Deliberately outside the describe block above, which logs in via
+  // beforeEach for every test in it. The bare `request` fixture (not
+  // page.request) carries no cookies of its own — same idiom as
+  // e2e/not-logged-in.spec.js — so this genuinely exercises
+  // requireAdminAjax()'s login check (usersc/includes/custom_functions.php:224),
+  // which runs before the CSRF check (:231) and short-circuits the response
+  // before CSRF is ever evaluated. Asserting the exact 'Unauthorized access'
+  // message (not just the status code) pins this to the auth branch
+  // specifically, so the test can't silently start passing on the CSRF
+  // branch instead if a future edit reorders the guard.
+  test('admin user details endpoint rejects an unauthenticated request', async ({ request }) => {
+    const response = await request.post('app/admin/includes/process-user-details.php', {
+      form: {
+        user_id: '1',
+        csrf: 'test_token'
+      }
+    });
+
+    expect(response.status()).toBe(403);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).toHaveProperty('message', 'Unauthorized access');
   });
 });

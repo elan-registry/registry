@@ -67,11 +67,11 @@ test.describe('Anti-clickjacking Security Headers', () => {
   test('car listing page should have X-Frame-Options header', async ({ page }) => {
     const response = await page.goto('app/owner/cars/index.php');
 
-    if (response?.status() === 200) {
-      const headers = response?.headers();
-      expect(headers).toBeDefined();
-      expect(headers?.['x-frame-options']).toBe('SAMEORIGIN');
-    }
+    test.skip(response?.status() !== 200, `Unexpected response status ${response?.status()} — likely unauthenticated locally, cannot verify header on this page`);
+
+    const headers = response?.headers();
+    expect(headers).toBeDefined();
+    expect(headers?.['x-frame-options']).toBe('SAMEORIGIN');
   });
 
   test('registration page should have X-Frame-Options header', async ({ page }) => {
@@ -86,18 +86,12 @@ test.describe('Anti-clickjacking Security Headers', () => {
   });
 
   test('custom join page should use SAMEORIGIN policy', async ({ page }) => {
-    try {
-      const response = await page.goto('usersc/join.php');
+    const response = await page.goto('usersc/join.php');
 
-      if (response?.ok()) {
-        const headers = response?.headers();
-        expect(headers).toBeDefined();
+    const headers = response?.headers();
+    expect(headers).toBeDefined();
 
-        const xFrameOptions = headers?.['x-frame-options'];
-        expect(xFrameOptions).toBe('SAMEORIGIN');
-      }
-    } catch {
-      test.skip();
-    }
+    const xFrameOptions = headers?.['x-frame-options'];
+    expect(xFrameOptions).toBe('SAMEORIGIN');
   });
 });

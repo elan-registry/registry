@@ -11,8 +11,8 @@ const { login, logout, isLoggedIn, navigateAndWait } = require('./auth-helper.js
 
 // Test credentials from environment variables
 const VALID_CREDENTIALS = {
-  username: process.env.TEST_USERNAME || 'test@example.com',
-  password: process.env.TEST_PASSWORD || 'defaultTestPass'
+  username: process.env.E2E_DEV_ADMIN_USERNAME || 'test@example.com',
+  password: process.env.E2E_DEV_ADMIN_PASSWORD || 'defaultTestPass'
 };
 
 const INVALID_CREDENTIALS = {

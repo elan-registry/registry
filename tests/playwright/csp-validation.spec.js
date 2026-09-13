@@ -81,15 +81,12 @@ test.describe('CSP Validation Tests', () => {
     
     // Click on first car link if available
     const firstCarLink = page.locator('a[href*="details.php?car_id="]').first();
-    if (await firstCarLink.count() > 0) {
-      await firstCarLink.click();
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(2000);
-    } else {
-      // Skip if no cars available
-      test.skip('No cars available for testing');
-    }
-    
+    test.skip(await firstCarLink.count() === 0, 'No cars available for testing');
+
+    await firstCarLink.click();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+
     expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
   });
 

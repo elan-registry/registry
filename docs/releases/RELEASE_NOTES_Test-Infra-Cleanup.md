@@ -1,0 +1,62 @@
+# Elan Registry Test Infra Cleanup Release Notes
+
+**Release Date:** TBD
+**Type:** Patch Release - Test Infrastructure Reliability
+
+## Required Actions After Deployment
+
+- **Release operator:** the Test/Prod Playwright auth-file naming changed
+  (`user.json`/`user-test.json` → `user-<tier>-<role>.json`, #2035) — the
+  first `npm run test:e2e` / `test:e2e:test` after this merges will fail
+  until all four auth files are regenerated:
+  `node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>`.
+  Each Test/Prod regeneration requires a manual Turnstile disable/re-enable
+  (see `docs/testing/PLAYWRIGHT_E2E.md`). This is expected, by-design
+  fail-loud behavior (#1935) — not a regression.
+
+## User-Facing Changes
+
+- **One-time remember-me sign-out on the first deploy carrying this
+  milestone.** The default remember-me cookie name changed
+  (`pmqesoxiw318374csb` → `elan_uc_remember_v2`) as part of #1935's
+  investigation — the old value had been flagged by GitGuardian as a
+  high-entropy string in a documentation comment (it was never a real
+  credential, just an obfuscated cookie name, but the rename avoids repeat
+  false positives). Any signed-in owner relying on "remember me" is signed
+  out once and needs to log in again; no other effect.
+
+## Admin-Facing Changes
+
+None.
+
+## Developer-Facing Changes
+
+Changes to the local/CI test harness so a green test run actually reflects reality.
+
+- **Playwright auth harness failure detection** ([#1935](https://github.com/elan-registry/registry/issues/1935)): the local `login()` helper now fails fast with a diagnostic message (embedding the real UserSpice error toast text) instead of hanging on a generic 15-second timeout with no signal as to why. Test/Production e2e runs now get a `check-auth`/`check-auth-admin` pre-flight project that detects a stale or missing saved session and fails loudly — pointing at the relevant `node scripts/playwright-auth-setup.js` invocation (#2035 replaced the original 1Password-driven `.sh` scripts this entry originally pointed at) — instead of silently running the authenticated project's tests anonymously. Investigation surfaced a shared-cookie collision between multiple local clones running on the same MAMP host/port: `users/init.php`'s `$GLOBALS['config']` now reads optional `SESSION_NAME`/`TOKEN_NAME`/`REMEMBER_COOKIE_NAME` overrides from `.env` (documented in `docs/development/ENVIRONMENT.md`'s "Multi-Clone Session Isolation" section; unset in production/test/a single-clone install, so this is a no-op there), and the remember-me cookie's default name changed (see User-Facing Changes above).
+- **Test-env Playwright auth setup no longer hangs on Turnstile** ([#2014](https://github.com/elan-registry/registry/issues/2014)): the Test-env auth setup script (originally `scripts/playwright-auth-setup-test.js`, folded into the consolidated `scripts/playwright-auth-setup.js` by #2035) previously hung indefinitely (`page.waitForLoadState('networkidle')`) whenever a real Cloudflare Turnstile challenge blocked automated login. It now waits directly on the login form and fails fast with an actionable message if Turnstile is present — an automated browser cannot solve it, so this environment now needs Turnstile disabled before running the script (see `docs/testing/PLAYWRIGHT_E2E.md`).
+- **Three Playwright tests that passed without executing their assertions now run for real** ([#1949](https://github.com/elan-registry/registry/issues/1949)): `ui-consistency.spec.js`'s DataTables responsiveness check was gated on a DataTables 1.x class name the project no longer ships (now waits for the actual current markup unconditionally). `functionality.spec.js`'s car-edit-form and chassis-validation tests both ran unauthenticated and never reached genuine edit mode — replaced with two real tests in a new file, `tests/playwright/e2e/car-edit-workflow.spec.js`, that authenticate, discover an owned car, and exercise the real year→model and chassis-validation flows (Local/Dev only for now; Test/Production enrollment deferred to #2045).
+- **Admin Playwright auth tier added to Test/Prod, credentials moved off 1Password** ([#2035](https://github.com/elan-registry/registry/issues/2035)): the ambiguously-named `logged-in` Playwright project — actually an admin account, inconsistently, across Local/Dev/Test/Prod — is renamed to `admin` everywhere. Test/Prod now also get a genuinely-scoped, non-admin `logged-in` tier (infrastructure only so far; no spec targets it yet). `tests/playwright/e2e/auth-staleness-tier.js`'s `resolveTierConfig` is now a 2-axis `(tier, role)` resolver. The two near-duplicate 1Password-driven auth setup scripts are replaced by one consolidated, parameterized script — `node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>` — sourcing credentials from `.env.local` (new `E2E_*` vars, documented in `docs/development/ENVIRONMENT.md`) instead of 1Password, with the same Turnstile fail-fast check now applied uniformly to both Test and Prod (Prod previously had no such check). `docs/testing/PLAYWRIGHT_E2E.md` is rewritten to match. Turnstile still requires a manual toggle by a human before regenerating an auth file — an accepted trade-off, since these tests never run in CI (no full UserSpice install there) and Test/Prod Playwright runs happen only at milestone-release time.
+- **Local/Dev Playwright credentials renamed for naming consistency** ([#2059](https://github.com/elan-registry/registry/issues/2059)): `TEST_USERNAME`/`TEST_PASSWORD`/`TEST_USERNAME2`/`TEST_PASSWORD2` (Local/Dev) are renamed to `E2E_DEV_ADMIN_USERNAME`/`E2E_DEV_ADMIN_PASSWORD`/`E2E_DEV_NONADMIN_USERNAME`/`E2E_DEV_NONADMIN_PASSWORD`, matching the `E2E_<TIER>_<ROLE>_*` scheme #2035 introduced for Test/Prod. Pure identifier rename, no behavior change. **Each developer must manually rename these vars in their own gitignored `.env.local`** after pulling this change — see `docs/development/ENVIRONMENT.md`.
+- **`process-user-details.php` admin permission gate now has real-HTTP Playwright coverage** ([#1773](https://github.com/elan-registry/registry/issues/1773)): closes a symmetry gap flagged during #1759's review — `process-car-details.php`'s admin AJAX endpoints already had static coverage proving both call `requireAdminAjax()`, but neither endpoint had a real round-trip HTTP test proving an unauthenticated request is actually rejected by the login check specifically (as opposed to the separate CSRF check). `process-user-details.php` now has that test, added as a genuinely unauthenticated request (via Playwright's bare `request` fixture, not the logged-in `page.request` used elsewhere in this file) that asserts both the 403 status and the exact `'Unauthorized access'` message `requireAdminAjax()`'s login check produces — pinning the assertion to the auth branch so it can't silently start passing on the CSRF branch instead. An initial version of this test was caught in review running under this spec file's authenticating `beforeEach`, meaning it exercised CSRF rejection, not the admin gate; fixed before merge. Surfaced a pre-existing, suite-wide gap while reviewing this addition — no admin-gate test anywhere exercises the `isRegistryAdmin()` branch of `requireAdminAjax()` on a real non-admin authenticated session (only the unauthenticated branch is now genuinely tested) — tracked separately as [#2068](https://github.com/elan-registry/registry/issues/2068), out of scope here.
+- **Leading-slash `not-logged-in.spec.js` navigation calls now respect a non-root `baseURL`** ([#2055](https://github.com/elan-registry/registry/issues/2055)): `page.goto('/x')`/`request.get('/x')`-style calls (and the array literals feeding them) discarded a non-root `PLAYWRIGHT_BASE_URL` path segment under WHATWG URL-joining rules, breaking the documented multi-clone (`Registry/` + `Registry2/`) local dev workflow. All navigation/request-target literals in this file are now relative (no leading slash); values genuinely compared against an absolute server `Location:` header keep theirs. Investigation also surfaced three pre-existing, unrelated local-environment gaps — this MAMP install does not apply `.htaccess` `Redirect`/`RedirectMatch`/`RewriteRule` directives, and the local macOS filesystem is case-insensitive — so the ~25 tests that depend on either are now gated to Test/Prod only via a new `IS_LOCAL_DEV_TIER` check, rather than left silently failing (or silently accepted as failing) on Local/Dev.
+- **Playwright guards that silently absorb assertion failures now fail loudly** ([#1950](https://github.com/elan-registry/registry/issues/1950)): across eleven spec files, defensive `if (cond) { test.skip(reason); return; }` guards — and a few bare `.catch(() => {})`/silent-`false`-fallback patterns — are replaced with either Playwright's two-arg `test.skip(condition, reason)` form or a direct `expect()` assertion, so a moved or renamed DOM element/JS global now produces a real failure instead of a green "passed" test that ran zero assertions. New CLAUDE.md guidance documents the convention (name the actual environmental cause in the skip reason, not the symptom) so future guards follow the same pattern.
+- **Restored a positive assertion for `pdf-viewer.php`'s success path** ([#1648](https://github.com/elan-registry/registry/issues/1648)): the two tests affected by #1536 only checked for the *absence* of error text, not that the iframe actually rendered with the correct document. A `title`-scoped locator (`iframe[title="<filename>"]`) avoids colliding with Cloudflare Turnstile's untitled injected iframe — the exact strict-mode violation that forced #1536 to drop the assertion — and the `src` regex is anchored to the full `/docs/reference/assets/<filename>` path so a wrong-subdir src can't silently pass.
+
+## Issues Resolved
+
+- [#1648](https://github.com/elan-registry/registry/issues/1648) — test: no positive assertion that pdf-viewer.php's success branch renders the iframe with the correct document src
+- [#1773](https://github.com/elan-registry/registry/issues/1773) — test: add Playwright HTTP coverage for process-user-details.php admin endpoint
+- [#1935](https://github.com/elan-registry/registry/issues/1935) — test: Playwright auth harness has no failure detection — stale storageState runs anonymous, bad local creds hang on a generic timeout
+- [#1949](https://github.com/elan-registry/registry/issues/1949) — test: Playwright tests that passed without running their assertions (stale DataTables selector, dead accordion markup, unauthenticated chassis-validation test) now run for real
+- [#1950](https://github.com/elan-registry/registry/issues/1950) — test: guarded Playwright assertions silently stop testing when a DOM/JS contract moves
+- [#2014](https://github.com/elan-registry/registry/issues/2014) — test-env Playwright auth setup script no longer hangs on Turnstile (car-edit-owner-refresh Test/Production enrollment itself moved to #2045, backlog — not part of this release)
+- [#2035](https://github.com/elan-registry/registry/issues/2035) — test: add admin Playwright auth tier to Test/Prod configs, consolidate auth setup scripts off 1Password
+- [#2059](https://github.com/elan-registry/registry/issues/2059) — test: rename TEST_USERNAME/TEST_USERNAME2 to E2E_DEV_* naming for consistency
+- [#2055](https://github.com/elan-registry/registry/issues/2055) — bug: leading-slash page.goto()/request.get() calls in not-logged-in.spec.js break when baseURL has a non-root path
+
+## Retrospective
+
+1. **What did we ship that nobody needed?** Nothing — all scoped work traced back to a genuine CI/local-test reliability gap.
+2. **What did we learn about this theme's audience?** Silent-pass failures (a guard that skips or a fallback that swallows an error, leaving a test reporting green with zero real assertions run) are the dominant pain point for developers running and writing tests here — most of this milestone's issues trace back to exactly that pattern in one form or another.
+3. **What signal arrived during this milestone that we ignored?** None — every signal that surfaced (scope creep discoveries, follow-up gaps like #2068, mis-tagged milestone membership found during release prep) was explicitly triaged: fixed inline, or deferred/backlogged with a recorded reason.

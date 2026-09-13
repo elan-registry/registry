@@ -104,10 +104,7 @@ test.describe('Admin confirmation modal — maintenance', () => {
 
     test('Cancel dismisses the backup cleanup confirmation modal', async ({ page }) => {
         const cleanupBtn = page.locator('button[onclick*="performBackupCleanup"]').first();
-        if (await cleanupBtn.count() === 0) {
-            test.skip('Cleanup Old Backups button not found — no old backups to clean up');
-            return;
-        }
+        test.skip(await cleanupBtn.count() === 0, 'Cleanup Old Backups button not found — no old backups to clean up');
 
         await cleanupBtn.click();
         await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
@@ -118,10 +115,7 @@ test.describe('Admin confirmation modal — maintenance', () => {
 
     test('#confirmMessage contains no executable HTML (XSS prevention)', async ({ page }) => {
         const cleanupBtn = page.locator('button[onclick*="performBackupCleanup"]').first();
-        if (await cleanupBtn.count() === 0) {
-            test.skip('Cleanup Old Backups button not found — no old backups to clean up');
-            return;
-        }
+        test.skip(await cleanupBtn.count() === 0, 'Cleanup Old Backups button not found — no old backups to clean up');
 
         await cleanupBtn.click();
         await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
@@ -159,10 +153,7 @@ test.describe('Admin input modal — maintenance', () => {
 
     test('Create Manual Backup button opens input modal', async ({ page }) => {
         const backupBtn = page.locator('button[onclick*="createManualBackup"]');
-        if (await backupBtn.count() === 0) {
-            test.skip('Create Manual Backup button not found');
-            return;
-        }
+        test.skip(await backupBtn.count() === 0, 'Create Manual Backup button not found');
 
         await backupBtn.first().click();
         await expect(page.locator('#inputModal')).toBeVisible({ timeout: 3000 });
@@ -172,10 +163,7 @@ test.describe('Admin input modal — maintenance', () => {
 
     test('Cancel dismisses the input modal without triggering backup', async ({ page }) => {
         const backupBtn = page.locator('button[onclick*="createManualBackup"]');
-        if (await backupBtn.count() === 0) {
-            test.skip('Create Manual Backup button not found');
-            return;
-        }
+        test.skip(await backupBtn.count() === 0, 'Create Manual Backup button not found');
 
         await backupBtn.first().click();
         await expect(page.locator('#inputModal')).toBeVisible({ timeout: 3000 });
