@@ -85,10 +85,7 @@ test.describe('Chassis availability check error feedback (#754)', () => {
 
     test('error banner appears when availability check fails', async ({ page }) => {
         const ready = await gotoAddCarForm(page);
-        if (!ready) {
-            test.skip('Authenticated session required');
-            return;
-        }
+        test.skip(!ready, 'Authenticated session required');
 
         await page.route(VALIDATE_CHASSIS_URL, (route) =>
             route.fulfill({ status: 200, contentType: 'application/json', body: VALID_RESPONSE })
@@ -102,10 +99,7 @@ test.describe('Chassis availability check error feedback (#754)', () => {
 
     test('color and engine fields are enabled when availability check fails', async ({ page }) => {
         const ready = await gotoAddCarForm(page);
-        if (!ready) {
-            test.skip('Authenticated session required');
-            return;
-        }
+        test.skip(!ready, 'Authenticated session required');
 
         await page.route(VALIDATE_CHASSIS_URL, (route) =>
             route.fulfill({ status: 200, contentType: 'application/json', body: VALID_RESPONSE })
@@ -121,10 +115,7 @@ test.describe('Chassis availability check error feedback (#754)', () => {
 
     test('error banner clears after a subsequent successful check', async ({ page }) => {
         const ready = await gotoAddCarForm(page);
-        if (!ready) {
-            test.skip('Authenticated session required');
-            return;
-        }
+        test.skip(!ready, 'Authenticated session required');
 
         // First check: fail — banner appears
         await page.route(VALIDATE_CHASSIS_URL, (route) =>

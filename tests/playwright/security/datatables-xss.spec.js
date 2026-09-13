@@ -51,8 +51,8 @@ const { ensureLoggedIn, waitForDataTables } = require('../auth-helper.js');
  * the exact function production wires to each column and would fail if
  * `render: textRender` (or the equivalent custom function) were removed.
  *
- * Tests that navigate to authenticated pages require TEST_USERNAME /
- * TEST_PASSWORD in .env.local and skip gracefully if absent.
+ * Tests that navigate to authenticated pages require E2E_DEV_ADMIN_USERNAME /
+ * E2E_DEV_ADMIN_PASSWORD in .env.local and skip gracefully if absent.
  *
  * @group security
  * @group datatables
@@ -67,8 +67,8 @@ const FACTORY_PAGE  = 'app/owner/cars/factory.php';
 // ---------------------------------------------------------------------------
 
 function skipIfNoCreds() {
-    if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
-        test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+    if (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD) {
+        test.skip(true, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests');
     }
 }
 
@@ -306,7 +306,7 @@ test.describe('DataTables XSS render guard — factory table', () => {
 // ambient DB state; an afterAll cleans it up via the admin delete form,
 // the only delete path the app exposes (there is no owner-facing delete
 // endpoint). This only works because the shared test account
-// (TEST_USERNAME/TEST_PASSWORD) is an admin — a fixture needing a
+// (E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD) is an admin — a fixture needing a
 // non-admin-owned car (e.g. #1789) would need a second test identity.
 // ---------------------------------------------------------------------------
 
@@ -347,7 +347,7 @@ test.describe('DataTables XSS render guard — car history table', () => {
     let carId = null;
 
     test.beforeAll(async ({ browser }) => {
-        if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) return;
+        if (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD) return;
         const context = await browser.newContext();
         const page    = await context.newPage();
         await ensureLoggedIn(page);

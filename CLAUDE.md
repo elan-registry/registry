@@ -130,7 +130,7 @@ except those explicitly listed as project-owned:
 
 | Directory | Status | Project-owned exceptions (tracked by git) |
 | --- | --- | --- |
-| `/users/` | Upstream framework | `users/cron/` — `cron.php` carries project logging/hook calls (see [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)) and is where all job files must live (see the cron bullet below); everywhere else in `/users/`, extend via `usersc/classes/` instead |
+| `/users/` | Upstream framework | `users/cron/` — `cron.php` carries project logging/hook calls (see [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)) and is where all job files must live (see the cron bullet below); `users/init.php`'s `$GLOBALS['config']` array — reads DB and session/cookie-naming values from `.env` (`DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, `SESSION_NAME`/`TOKEN_NAME`/`REMEMBER_COOKIE_NAME`); this is config wiring, not framework logic; everywhere else in `/users/`, extend via `usersc/classes/` instead |
 | `usersc/templates/` | Upstream templates | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` and `customizer/assets/child_themes/dashboard.php` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead |
 | `usersc/plugins/` | Upstream plugins | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts) |
 | `usersc/user_settings.php` | Project-owned (customizes `users/user_settings.php`) | the entire file is project-owned — make changes here rather than in `users/user_settings.php` |
@@ -183,12 +183,13 @@ npm run lint:fix                # ESLint with auto-fix
 
 # Local Playwright tests (requires MAMP at localhost:9999)
 npm run playwright:install      # Install browsers
-npm run playwright:test         # All local tests, incl. a logged-in e2e project
-                                 # (tests/playwright/e2e/logged-in.spec.js,
+npm run playwright:test         # All local tests, incl. an admin e2e project
+                                 # (tests/playwright/e2e/admin.spec.js,
                                  # factory-registry-link.spec.js) that auto-authenticates
-                                 # via TEST_USERNAME/TEST_PASSWORD in .env.local. If those
-                                 # are unset, the auth setup step itself skips cleanly, but
-                                 # the logged-in tests still run — unauthenticated, not
+                                 # via E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD
+                                 # in .env.local. If those are unset, the auth setup
+                                 # step itself skips cleanly, but
+                                 # the admin tests still run — unauthenticated, not
                                  # skipped — so some (menu/account tests expecting a logged-
                                  # in session) will fail while others (factory.php, which is
                                  # intentionally public) still pass
@@ -262,6 +263,15 @@ When adding, moving, removing, or renaming any page, update tests **in the same 
 - **Public pages** → add or update an e2e smoke test in `tests/playwright/e2e/not-logged-in.spec.js`
 - **Owner/authenticated pages** → add or update a local Playwright test in `tests/playwright/`
 - **Removed or moved pages** → update any test referencing the old path — stale paths silently test 404s without failing
+- **Moved or renamed DOM elements/classes and JS globals** → update every guard
+  that depends on them **in the same PR**. A defensive guard (a bare `return`
+  after `test.skip('reason')`, or `if (await x.count() > 0) { assert }` with no
+  `else`) silently absorbs a moved class or renamed global — the test passes
+  having run zero real assertions, and CI never goes red (#1949, #1950). Prefer
+  asserting directly; when a guard is genuinely needed for environmental
+  variation (missing local credentials, absent fixture data), use the two-arg
+  `test.skip(condition, reason)` form with `reason` naming the actual cause,
+  not the symptom — this reports as `skipped` in CI, not a false `passed`.
 
 Run `npm run test:e2e` to verify public pages against production. See `playwright.config.prod.js` for config.
 

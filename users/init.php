@@ -84,13 +84,26 @@ $GLOBALS['config'] = array(
             PDO::ATTR_STRINGIFY_FETCHES => true,
         ),
     ),
+    // cookie_name/session_name/token_name are overridable via .env
+    // (REMEMBER_COOKIE_NAME/SESSION_NAME/TOKEN_NAME) so multiple local
+    // clones of this repo (e.g. Registry/ and Registry2/, served from the
+    // same host/port) can run distinct sessions instead of silently
+    // sharing one PHP session via the shared cookie path=/ (see #1935's
+    // investigation). Unset in production/test/Registry — falls back to
+    // the default below, so this is a no-op there. The default value
+    // itself was rotated in #1935 (previously a different string) after
+    // GitGuardian flagged the old one as a high-entropy secret in a
+    // documentation comment quoting it — it was never a real credential,
+    // just an obfuscated cookie name, but rotating avoids repeat false
+    // positives. Rotating it forces one remember-me re-login for any user
+    // with an existing cookie under the old name; no other effect.
     'remember'        => array(
-        'cookie_name'   => 'pmqesoxiw318374csb',
+        'cookie_name'   => $_ENV['REMEMBER_COOKIE_NAME'] ?? 'elan_uc_remember_v2',
         'cookie_expiry' => 604800  //One week, feel free to make it longer
     ),
     'session' => array(
-        'session_name' => 'user',
-        'token_name' => 'token',
+        'session_name' => $_ENV['SESSION_NAME'] ?? 'user',
+        'token_name' => $_ENV['TOKEN_NAME'] ?? 'token',
     )
 );
 
