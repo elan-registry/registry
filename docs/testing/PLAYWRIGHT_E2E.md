@@ -20,9 +20,9 @@ mostly-unauthenticated browser checks plus one `admin` project.
 the same `not-logged-in`/`admin` specs that run against Test/Production
 in CI — so a developer can validate that exact suite against local MAMP
 first. Dev also provisions a `logged-in-non-admin` project — a second local
-test account distinct from `admin`'s admin account — as infrastructure
-for future non-admin e2e coverage; no spec targets it yet, so it has no npm
-script until one does.
+test account distinct from `admin`'s admin account — covering
+`ajax-endpoints-non-admin.spec.js` (#2068), non-admin coverage of
+`requireAdminAjax()`'s `isRegistryAdmin()` branch.
 
 Every tier below has two authenticated project shapes: `admin` (admin
 account) and `logged-in` (non-admin account, #2035) — renamed from a single,
@@ -58,8 +58,7 @@ npm run test:e2e:test              # All tests
 npm run test:e2e:test:headed       # With browser
 npm run test:e2e:test:not-logged-in
 npm run test:e2e:test:admin        # Authenticated admin tests
-# No non-admin npm script yet — logged-in project is infra-only until a
-# non-admin spec exists (#2035)
+npm run test:e2e:test:non-admin    # Authenticated non-admin tests
 npm run test:e2e:test:report
 ```
 
@@ -70,8 +69,7 @@ npm run test:e2e                   # All tests
 npm run test:e2e:headed            # With browser
 npm run test:e2e:not-logged-in
 npm run test:e2e:admin             # Authenticated admin tests
-# No non-admin npm script yet — logged-in project is infra-only until a
-# non-admin spec exists (#2035)
+npm run test:e2e:non-admin         # Authenticated non-admin tests
 npm run test:e2e:report
 ```
 
@@ -83,6 +81,7 @@ npm run test:e2e:dev:headed        # With browser
 npm run test:e2e:dev:ui            # UI mode
 npm run test:e2e:dev:not-logged-in # Public pages only
 npm run test:e2e:dev:admin         # Authenticated flows (admin account)
+npm run test:e2e:dev:non-admin     # Authenticated flows (non-admin account)
 npm run test:e2e:dev:report        # View test report
 ```
 

@@ -33,15 +33,16 @@ npm run test:e2e:not-logged-in
 # Run only admin-authenticated tests (auth required)
 npm run test:e2e:admin
 
-# No non-admin npm script yet — the logged-in Playwright project exists
-# (auth staleness check + storageState wiring) but no spec targets it yet;
-# infrastructure only, same convention as Dev's logged-in-non-admin (#2035)
+# Run only non-admin-authenticated tests (auth required)
+npm run test:e2e:non-admin
 ```
 
 ## Test Files
 
 - **`not-logged-in.spec.js`** - Public page accessibility and link validation
 - **`admin.spec.js`** - Authenticated admin user workflows
+- **`ajax-endpoints-non-admin.spec.js`** - Authenticated non-admin coverage of
+  `requireAdminAjax()`'s `isRegistryAdmin()` branch
 
 ## Configuration
 

@@ -77,10 +77,10 @@ module.exports = defineConfig({
       ? [
           {
             name: "logged-in",
-            // No spec targets this non-admin tier yet — infrastructure only,
-            // same as Dev's logged-in-non-admin project (#2035). Add specs
-            // here as they're written.
-            testMatch: /(?:^|\/)__none__\.spec\.js$/,
+            // ajax-endpoints-non-admin.spec.js covers requireAdminAjax()'s
+            // isRegistryAdmin() branch — same as Dev's logged-in-non-admin
+            // project (#2035, #2068). Add further specs here as they're written.
+            testMatch: /(?:^|\/)ajax-endpoints-non-admin\.spec\.js$/,
             dependencies: ["check-auth"],
             use: {
               ...devices["Desktop Chrome"],
