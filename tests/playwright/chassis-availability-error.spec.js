@@ -45,32 +45,43 @@ async function gotoAddCarForm(page) {
 
 /**
  * Prepare the chassis field for a blur-triggered availability check:
- *   1. Trigger the year change handler so validYear is set.
- *   2. Insert a synthetic model option and trigger the model change handler
- *      so validModel is set and chassis is enabled.
- *   3. Set the chassis value and trigger blur (which calls validateChassis.php
- *      then check-chassis.php when the mocked validator returns valid).
+ *   1. Trigger the year change handler so validYear is set. This kicks off
+ *      an async ModelLoader.populateModelDropdown() call (real models.php
+ *      request) that clears and repopulates #model — any option injected
+ *      before this settles gets wiped, so we must wait for the real options
+ *      to land before selecting one.
+ *   2. Wait for #model to be populated with a real option, then select it
+ *      via Playwright's selectOption() (fires a real 'change' event) so
+ *      validModel is set and chassis is enabled.
+ *   3. Fill the chassis field via Playwright (real focus + input, unlike
+ *      jQuery .val()) then blur by focusing elsewhere — jQuery's .blur()
+ *      handler only fires on a genuine focus/blur transition, and
+ *      Playwright's locator.blur() is a no-op on an element that was never
+ *      actually focused, which the previous version of this helper hit
+ *      silently (see #2071).
  */
 async function triggerChassisBlur(page) {
     await page.evaluate(() => {
         // Set validYear via the year change handler (year select is server-rendered)
         const $year = window.$('#year');
         $year.val($year.find('option[value!=""]').first().val() || '1967').trigger('change');
-
-        // Insert a synthetic model option and trigger model change → enables chassis
-        const $model = window.$('#model');
-        $model.prop('disabled', false);
-        if (!$model.find('option[value="S1"]').length) {
-            $model.append('<option value="S1">S1</option>');
-        }
-        $model.val('S1').trigger('change');
-
-        // Set chassis value directly (field is now enabled)
-        window.$('#chassis').prop('disabled', false).val('1234');
     });
 
-    // Trigger blur via Playwright so the event fires through the normal listener
-    await page.locator('#chassis').blur();
+    // Wait for the async model-load triggered above to finish repopulating #model.
+    await page.waitForFunction(() => {
+        return window.$('#model').find('option[value!=""]').length > 0;
+    }, { timeout: 5000 });
+
+    // Select the first real model option through Playwright so the native
+    // 'change' event fires the app's own listener, setting validModel to a
+    // value the app itself produced and enabling #chassis.
+    const firstRealValue = await page.locator('#model option:not([value=""])').first().getAttribute('value');
+    await page.locator('#model').selectOption(firstRealValue);
+
+    // Fill (real focus + input) then blur by moving focus elsewhere, so the
+    // app's jQuery blur handler actually fires.
+    await page.locator('#chassis').fill('1234');
+    await page.locator('#model').focus();
 }
 
 // ---------------------------------------------------------------------------
