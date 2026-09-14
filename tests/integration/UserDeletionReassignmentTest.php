@@ -180,9 +180,16 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             // cars.lat/lon are MySQL FLOAT (32-bit); 52.4567/1.0234 aren't exactly
             // representable in float32, so an exact assertSame here looks like a
             // precision hazard. Verified directly against this project's MySQL/PDO
-            // stack (round-trip insert + SELECT) that both values compare identical —
-            // MySQL emits the shortest decimal that round-trips the stored float32,
-            // and PHP's (float) cast lands on the same bit pattern as the literal.
+            // stack that both values compare identical after a round-trip — MySQL
+            // emits the shortest decimal that round-trips the stored float32, and
+            // PHP's (float) cast lands on the same bit pattern as the literal.
+            // Reproduce with:
+            //   php -r '$p = new PDO("mysql:host=127.0.0.1;port=8889;dbname=elanregi_dev_test_2", "elanregi_dev_test", getenv("DB_PASS"));
+            //     $p->exec("CREATE TEMPORARY TABLE t (lat FLOAT, lon FLOAT)");
+            //     $p->prepare("INSERT INTO t (lat, lon) VALUES (?, ?)")->execute([52.4567, 1.0234]);
+            //     $r = $p->query("SELECT lat, lon FROM t")->fetch(PDO::FETCH_OBJ);
+            //     var_dump((float) $r->lat === 52.4567, (float) $r->lon === 1.0234);'
+            // (host/port/dbname/user from .env.test.local) — both assertions print true.
             $this->assertSame(52.4567, (float) $seededFields->lat, "Pre-condition: car $carId's seeded lat present before hook runs");
             $this->assertSame(1.0234, (float) $seededFields->lon, "Pre-condition: car $carId's seeded lon present before hook runs");
             $this->assertSame('https://example.com/colin', $seededFields->website, "Pre-condition: car $carId's seeded website present before hook runs");
