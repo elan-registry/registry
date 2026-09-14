@@ -153,7 +153,7 @@ parameters:
 
         # UserSpice framework functions loaded at runtime via init.php
         -
-            message: '#Function (securePage|hasPerm|logger|currentUserId|checkMenu|lang|redirect|passwordStrength|isAdmin|email|usError|usSuccess|deleteUsers|logError|getSettings|checkRateLimit|recordRateLimit|fetchAllUsers|fetchUserDetails|checkPermission|sessionValMessages|currentPage|email_body|getMyHooks|getRateLimitErrorMessage|handleAuthFailure|handleAuthSuccess|hashVericode|includeHook|pluginActive|userSpicePasswordStrength|passwordsAllowed|safeJsonEncodeForJs|safeReturn|tokenHere|fetchUserPermissions|echousername|err|endCloak|isCloaked|passwordResetKillSessions) not found#'
+            message: '#Function (securePage|safelyCaptureDest|hasPerm|logger|currentUserId|checkMenu|lang|redirect|passwordStrength|isAdmin|email|usError|usSuccess|deleteUsers|logError|getSettings|checkRateLimit|recordRateLimit|fetchAllUsers|fetchUserDetails|checkPermission|sessionValMessages|currentPage|email_body|getMyHooks|getRateLimitErrorMessage|handleAuthFailure|handleAuthSuccess|hashVericode|includeHook|pluginActive|userSpicePasswordStrength|passwordsAllowed|safeJsonEncodeForJs|safeReturn|tokenHere|fetchUserPermissions|echousername|err|endCloak|isCloaked|passwordResetKillSessions) not found#'
             reportUnmatched: false
 
         # UserSpice legacy code patterns

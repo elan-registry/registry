@@ -147,6 +147,14 @@ class CarVerificationManager
     /**
      * Mark a car as verified
      *
+     * Writes `last_verified` and `owner_last_updated` in a single atomic update,
+     * both set to the same timestamp.
+     *
+     * OWNER-INITIATED TRIGGER: this method belongs to the owner-facing verify flow.
+     * `owner_last_updated` must only ever reflect owner action (per the FRD), so this
+     * method must NOT be reused for admin-initiated changes without first adding an
+     * actor-flag parameter that suppresses the `owner_last_updated` write.
+     *
      * @param object $carData Car data object (must have ->id property)
      * @return bool True if car was marked as verified successfully
      * @throws CarDatabaseException If database update fails
@@ -156,7 +164,10 @@ class CarVerificationManager
         $currentDateTime = date(AppConstants::DATETIME_FORMAT);
 
         $result = $this->persist(
-            fn () => $this->repo->updateLastVerified((int) $carData->id, $currentDateTime),
+            fn () => $this->repo->updateCar((int) $carData->id, [
+                'last_verified'      => $currentDateTime,
+                'owner_last_updated' => $currentDateTime,
+            ]),
             LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
             'Unable to mark car as verified. Please try again or contact support.',
             'Failed to mark car as verified',
@@ -164,11 +175,20 @@ class CarVerificationManager
         );
 
         $carData->last_verified = $currentDateTime;
+        $carData->owner_last_updated = $currentDateTime;
         return $result;
     }
 
     /**
      * Mark a car as sold
+     *
+     * Writes `solddate` and `owner_last_updated` in a single atomic update.
+     * `owner_last_updated` is the current datetime, independent of $soldDate.
+     *
+     * OWNER-INITIATED TRIGGER: this method belongs to the owner-facing sold flow.
+     * `owner_last_updated` must only ever reflect owner action (per the FRD), so this
+     * method must NOT be reused for admin-initiated changes without first adding an
+     * actor-flag parameter that suppresses the `owner_last_updated` write.
      *
      * @param object $carData Car data object (must have ->id property)
      * @param string|null $soldDate Sold date in Y-m-d format (defaults to today)
@@ -185,8 +205,13 @@ class CarVerificationManager
             throw new CarValidationException('The sold date format is not valid. Please use YYYY-MM-DD format.');
         }
 
+        $currentDateTime = date(AppConstants::DATETIME_FORMAT);
+
         $result = $this->persist(
-            fn () => $this->repo->updateSoldDate((int) $carData->id, $soldDate),
+            fn () => $this->repo->updateCar((int) $carData->id, [
+                'solddate'           => $soldDate,
+                'owner_last_updated' => $currentDateTime,
+            ]),
             LogCategories::LOG_CATEGORY_CAR_SOLD,
             'Unable to mark car as sold. Please try again or contact support.',
             'Failed to mark car as sold',
@@ -194,6 +219,7 @@ class CarVerificationManager
         );
 
         $carData->solddate = $soldDate;
+        $carData->owner_last_updated = $currentDateTime;
         return $result;
     }
 

@@ -91,6 +91,13 @@ $rateLimits['password_reset_submit']['token_window'] = 1800;
 $rateLimits['password_reset_submit']['total_max'] = 100;
 $rateLimits['password_reset_submit']['total_window'] = 300;
 
+$rateLimits['verification_code_attempt']['ip_max'] = 50;
+$rateLimits['verification_code_attempt']['ip_window'] = 300;
+$rateLimits['verification_code_attempt']['token_max'] = 10;
+$rateLimits['verification_code_attempt']['token_window'] = 1800;
+$rateLimits['verification_code_attempt']['total_max'] = 200;
+$rateLimits['verification_code_attempt']['total_window'] = 300;
+
 $rateLimits['registration_attempt']['ip_max'] = 10;
 $rateLimits['registration_attempt']['ip_window'] = 3600;
 $rateLimits['registration_attempt']['total_max'] = 15;

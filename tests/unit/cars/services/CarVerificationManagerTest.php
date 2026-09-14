@@ -78,7 +78,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testMarkVerifiedSucceeds(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateLastVerified')->willReturn(true);
+        $this->mockRepo->expects($this->once())->method('updateCar')->willReturn(true);
 
         $carData = (object) ['id' => 1, 'last_verified' => null];
         $result = $this->manager->markVerified($carData);
@@ -88,7 +88,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testMarkVerifiedThrowsCarDatabaseExceptionWhenRepositoryReturnsFalse(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateLastVerified')->willReturn(false);
+        $this->mockRepo->expects($this->once())->method('updateCar')->willReturn(false);
         $this->expectException(CarDatabaseException::class);
 
         $carData = (object) ['id' => 1, 'last_verified' => null];
@@ -97,7 +97,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testMarkSoldSucceeds(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateSoldDate')->willReturn(true);
+        $this->mockRepo->expects($this->once())->method('updateCar')->willReturn(true);
 
         $carData = (object) ['id' => 1, 'solddate' => null];
         $result = $this->manager->markSold($carData, '2024-06-15');
@@ -107,7 +107,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testMarkSoldDefaultsToToday(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateSoldDate')->willReturn(true);
+        $this->mockRepo->expects($this->once())->method('updateCar')->willReturn(true);
 
         $carData = (object) ['id' => 1, 'solddate' => null];
         $result = $this->manager->markSold($carData, null);
@@ -134,7 +134,7 @@ final class CarVerificationManagerTest extends TestCase
     #[DataProvider('invalidSoldDateProvider')]
     public function testMarkSoldRejectsInvalidDate(string $date): void
     {
-        $this->mockRepo->expects($this->never())->method('updateSoldDate');
+        $this->mockRepo->expects($this->never())->method('updateCar');
         $this->expectException(CarValidationException::class);
 
         $carData = (object) ['id' => 1, 'solddate' => null];
@@ -143,7 +143,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testMarkSoldAcceptsLeapDay(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateSoldDate')->willReturn(true);
+        $this->mockRepo->expects($this->once())->method('updateCar')->willReturn(true);
 
         $carData = (object) ['id' => 1, 'solddate' => null];
         $result = $this->manager->markSold($carData, '2024-02-29');
@@ -153,7 +153,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testMarkSoldThrowsCarDatabaseExceptionWhenRepositoryReturnsFalse(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateSoldDate')->willReturn(false);
+        $this->mockRepo->expects($this->once())->method('updateCar')->willReturn(false);
         $this->expectException(CarDatabaseException::class);
 
         $carData = (object) ['id' => 1, 'solddate' => null];
@@ -175,7 +175,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testMarkVerifiedThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateLastVerified')
+        $this->mockRepo->expects($this->once())->method('updateCar')
             ->willThrowException(new \RuntimeException('DB connection lost'));
         $this->expectException(CarDatabaseException::class);
 
@@ -185,7 +185,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testMarkSoldThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateSoldDate')
+        $this->mockRepo->expects($this->once())->method('updateCar')
             ->willThrowException(new \RuntimeException('DB connection lost'));
         $this->expectException(CarDatabaseException::class);
 

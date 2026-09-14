@@ -229,6 +229,28 @@ if (!securePage($php_self)) {
         </div>
     </div>
 
+    <!-- 5b. Form validation state -->
+    <div class="er-section-heading">Form field &mdash; invalid state</div>
+    <div class="row">
+        <div class="col-md-6">
+            <label for="er-demo-invalid-input" class="form-label">Date of sale</label>
+            <div class="input-group has-error">
+                <span class="input-group-text"><i class="fas fa-calendar-alt" aria-hidden="true"></i></span>
+                <input type="date" class="form-control is-invalid" id="er-demo-invalid-input" aria-invalid="true" aria-describedby="er-demo-invalid-help">
+            </div>
+            <div id="er-demo-invalid-help" class="invalid-feedback d-block">The sale date can&rsquo;t be in the future.</div>
+        </div>
+    </div>
+    <p class="text-muted small mb-0 mt-2">
+        <code>.is-invalid</code> alone only paints the <code>.form-control</code> &mdash;
+        inside an <code>.input-group</code> the addon keeps its neutral border. Add
+        <code>.has-error</code> to the <code>.input-group</code> wrapper (see
+        <code>usersc/templates/customizer.css</code>) to carry the danger border across
+        the whole group. Also promoted here: <code>.text-white-75</code>, a muted-white
+        text color for dark (<code>bg-primary</code>/hero) backgrounds &mdash; see the
+        Lotus Elan hero above and <code>app/views/cars/_verify_hero.php</code>.
+    </p>
+
     <!-- 6. Links -->
     <div class="er-section-heading">Links in prose</div>
     <div class="er-link-demo">

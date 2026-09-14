@@ -34,6 +34,7 @@ class PageRobotsTest extends TestCase
     private const PAGES_REQUIRING_NOINDEX = [
         'app/owner/cars/factory.php',
         'app/owner/privacy.php',
+        'app/verify/verify_car.php',
     ];
 
     private const HEAD_TAGS_FILE = 'usersc/includes/head_tags.php';
