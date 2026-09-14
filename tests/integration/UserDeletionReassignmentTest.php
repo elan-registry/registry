@@ -91,12 +91,36 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
      */
     public function test_afterUserDeletionHook_cleansUpUserDataAndLogs(): void
     {
-        $noOwnerRow = $this->db->query("SELECT id FROM users WHERE username = ?", ['noowner'])->first();
+        $noOwnerRow = $this->db->query("SELECT id, fname, lname FROM users WHERE username = ?", ['noowner'])->first();
         $this->assertNotEmpty($noOwnerRow, 'noowner system account missing — run composer migrate (RegisterNoownerAccount)');
         $noOwnerId = (int) $noOwnerRow->id;
+        $noOwnerFname = (string) $noOwnerRow->fname;
+        $noOwnerLname = (string) $noOwnerRow->lname;
 
         $userId = $this->createTestUser();
         $carIds = [$this->createTestCar($userId), $this->createTestCar($userId)];
+
+        // Seed synthetic PII directly onto both cars. createTestCar() leaves these
+        // columns NULL, and NULL already satisfies the post-hook assertNull(lat)/
+        // assertNull(lon) checks below with nothing having changed — without this
+        // seed, a regression that left the scrub logic out entirely would still pass.
+        // fname/lname use values clearly distinct from noowner's ('No'/'Owner') so the
+        // post-hook assertion that they become noowner's name actually proves a change
+        // occurred, not just that both happened to already match.
+        foreach ($carIds as $carId) {
+            $seeded = $this->db->update('cars', $carId, [
+                'email'   => 'colin.chapman@example.com',
+                'fname'   => 'Colin',
+                'lname'   => 'Chapman',
+                'city'    => 'Hethel',
+                'state'   => 'Norfolk',
+                'country' => 'United Kingdom',
+                'lat'     => 52.4567,
+                'lon'     => 1.0234,
+                'website' => 'https://example.com/colin',
+            ]);
+            $this->assertTrue((bool) $seeded, "Test fixture: PII seed update on car $carId must succeed");
+        }
 
         $profileInserted = $this->db->insert('profiles', [
             'user_id' => $userId,
@@ -139,6 +163,23 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         foreach ($carIds as $carId) {
             $before = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
             $this->assertSame($userId, (int) $before->user_id, "Pre-condition: car $carId's user_id intact after user deleted (no FK)");
+        }
+
+        // Pre-condition: the seeded PII actually landed on the cars before the hook
+        // runs — a silently-failed seed would otherwise make the post-hook assertions
+        // vacuous again (NULL/blank columns "passing" the scrub check without the hook
+        // having changed anything).
+        foreach ($carIds as $carId) {
+            $seededFields = $this->carOwnerIdentityFields($carId);
+            $this->assertSame('colin.chapman@example.com', $seededFields->email, "Pre-condition: car $carId's seeded email present before hook runs");
+            $this->assertSame('Colin', $seededFields->fname, "Pre-condition: car $carId's seeded fname present before hook runs");
+            $this->assertSame('Chapman', $seededFields->lname, "Pre-condition: car $carId's seeded lname present before hook runs");
+            $this->assertSame('Hethel', $seededFields->city, "Pre-condition: car $carId's seeded city present before hook runs");
+            $this->assertSame('Norfolk', $seededFields->state, "Pre-condition: car $carId's seeded state present before hook runs");
+            $this->assertSame('United Kingdom', $seededFields->country, "Pre-condition: car $carId's seeded country present before hook runs");
+            $this->assertSame(52.4567, (float) $seededFields->lat, "Pre-condition: car $carId's seeded lat present before hook runs");
+            $this->assertSame(1.0234, (float) $seededFields->lon, "Pre-condition: car $carId's seeded lon present before hook runs");
+            $this->assertSame('https://example.com/colin', $seededFields->website, "Pre-condition: car $carId's seeded website present before hook runs");
         }
 
         // Pre-condition: profile and both pending transfer requests still exist.
@@ -196,6 +237,47 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
             $this->assertNotNull($after->user_id, "cars.user_id must not be NULL after hook runs (car $carId)");
             $this->assertSame($noOwnerId, (int) $after->user_id, "cars.user_id must equal noowner ID after hook (car $carId)");
+        }
+
+        // Assert: the deleted owner's PII no longer appears on cars/cars_hist — proves
+        // the real transfer() → updateCar()/insertHistory() path actually persists the
+        // scrub (GDPR erasure), not just that it was asked to. email/city/state/country
+        // blank to '' (noowner has no profile row and an unroutable email); fname/lname
+        // take on noowner's own account name (a legible placeholder identity, not the
+        // deleted user's — asserted against a live lookup, not a hardcoded string, so
+        // this stays correct if the noowner fixture's name ever changes); website is
+        // nulled (not blanked to '') by CarValidator's dedicated website-clearing case;
+        // lat/lon are null (no profile row to source coordinates from).
+        foreach ($carIds as $carId) {
+            $carFields = $this->carOwnerIdentityFields($carId);
+            foreach (['email', 'city', 'state', 'country'] as $field) {
+                $this->assertSame('', $carFields->$field, "cars.$field should be blanked for car $carId");
+            }
+            $this->assertSame($noOwnerFname, $carFields->fname, "cars.fname should equal the noowner account's own name for car $carId");
+            $this->assertSame($noOwnerLname, $carFields->lname, "cars.lname should equal the noowner account's own name for car $carId");
+            $this->assertNull($carFields->website, "cars.website should be null for car $carId");
+            $this->assertNull($carFields->lat, "cars.lat should be null for car $carId");
+            $this->assertNull($carFields->lon, "cars.lon should be null for car $carId");
+
+            // cars_hist is an append-only audit trail (DATABASE.md: "Car audit trail";
+            // insertHistory() only ever inserts, never updates existing rows — see
+            // CarAdministrationService.php). This block proves the audit row THIS
+            // transfer just created correctly reflects the target owner's (noowner's)
+            // identity, not the deleted user's — it does NOT and cannot prove anything
+            // about historic cars_hist rows written before this deletion, since prior
+            // rows are intentionally never retroactively modified.
+            //
+            // cars_hist.website stays '' (not null): insertHistory()'s history-field build
+            // doesn't go through CarValidator's CLEARABLE_FIELDS pass that nulls
+            // $updateFields['website'] on the cars table — see CarAdministrationService.php.
+            $histFields = $this->carsHistOwnerIdentityFields($carId);
+            foreach (['email', 'city', 'state', 'country', 'website'] as $field) {
+                $this->assertSame('', $histFields->$field, "cars_hist.$field should be blanked for car $carId");
+            }
+            $this->assertSame($noOwnerFname, $histFields->fname, "cars_hist.fname should equal the noowner account's own name for car $carId");
+            $this->assertSame($noOwnerLname, $histFields->lname, "cars_hist.lname should equal the noowner account's own name for car $carId");
+            $this->assertNull($histFields->lat, "cars_hist.lat should be null for car $carId");
+            $this->assertNull($histFields->lon, "cars_hist.lon should be null for car $carId");
         }
 
         // Assert: the profile row was deleted (GDPR erasure).
@@ -265,6 +347,32 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         )->first();
 
         return (string) $row->status;
+    }
+
+    /**
+     * Fetch a car's current owner-identity PII fields by car ID.
+     */
+    private function carOwnerIdentityFields(int $carId): object
+    {
+        return $this->db->query(
+            'SELECT email, fname, lname, city, state, country, lat, lon, website FROM cars WHERE id = ?',
+            [$carId]
+        )->first();
+    }
+
+    /**
+     * Fetch the most recent NEWOWNER cars_hist row's owner-identity PII fields by car ID.
+     *
+     * This is always the row THIS test's transfer() call just inserted (cars_hist is
+     * append-only — see the comment at its call site), so it proves the fresh audit
+     * row reflects the target owner's identity, never anything about historic rows.
+     */
+    private function carsHistOwnerIdentityFields(int $carId): object
+    {
+        return $this->db->query(
+            "SELECT email, fname, lname, city, state, country, lat, lon, website FROM cars_hist WHERE car_id = ? AND operation = 'NEWOWNER' ORDER BY id DESC LIMIT 1",
+            [$carId]
+        )->first();
     }
 
     /**
