@@ -9,6 +9,19 @@ test.describe('Admin AJAX Endpoints — Non-Admin Access', () => {
     if (testInfo.project.name !== 'logged-in-non-admin' && testInfo.project.name !== 'logged-in') {
       testInfo.skip();
     }
+    // On Dev, 'logged-in-non-admin' is registered unconditionally
+    // (playwright.config.dev.js) — only its storageState is conditional on
+    // E2E_DEV_NONADMIN_USERNAME/PASSWORD, and a missing setup dependency does
+    // not cascade-skip this project. Without this guard, the spec would run
+    // fully unauthenticated and still get 403 'Unauthorized access' from
+    // requireAdminAjax()'s !isLoggedIn() clause — a false pass that proves
+    // nothing about isRegistryAdmin(). Test/Prod's 'logged-in' project only
+    // ever exists when a real non-admin auth file is present, so this check
+    // is a no-op there. Same idiom as ajax-endpoints.spec.js's beforeEach.
+    if (testInfo.project.name === 'logged-in-non-admin' &&
+        (!process.env.E2E_DEV_NONADMIN_USERNAME || !process.env.E2E_DEV_NONADMIN_PASSWORD)) {
+      test.skip(true, 'Set E2E_DEV_NONADMIN_USERNAME and E2E_DEV_NONADMIN_PASSWORD in .env.local to run this test authenticated');
+    }
   });
 
   // Same idiom as ajax-endpoints.spec.js's unauthenticated-403 test: a dummy
