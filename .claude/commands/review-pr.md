@@ -42,13 +42,7 @@ baseline entries needs the same explicit check `/finish-issue` Step 4.5 and
 `/execute-plan` Step 6.5 run:
 
 ```bash
-for f in $(git diff --name-only $MERGE_BASE..HEAD); do
-  case "$f" in
-    *.php)
-      grep -qF "path: $f" phpstan-baseline.neon 2>/dev/null && echo "BASELINE OVERRIDE: $f"
-      ;;
-  esac
-done
+git diff --name-only $MERGE_BASE..HEAD | scripts/check-baseline-hygiene.sh
 ```
 
 If this branch went through `/execute-plan`, its Step 6.5 should have
@@ -179,13 +173,20 @@ file looks like now in its entirety.
 
 Based on `$ARGUMENTS` (default: all applicable):
 
-| Aspect     | Agent                                                                    | When to run                                        |
-|------------|--------------------------------------------------------------------------|----------------------------------------------------|
-| `code`     | `pr-review-toolkit:code-reviewer`                                        | Always                                             |
-| `errors`   | `pr-review-toolkit:silent-failure-hunter`                                | If catch blocks, fallbacks, or error paths changed |
-| `comments` | `pr-review-toolkit:comment-analyzer` + independent fact-check (Step 4.5) | If PHPDoc, inline comments, or docstrings changed  |
-| `tests`    | `pr-review-toolkit:pr-test-analyzer`                                     | If test files changed or new features added        |
-| `simplify` | `pr-review-toolkit:code-simplifier`                                      | After all other agents pass; final polish only     |
+| Aspect | Agent | When to run |
+| --- | --- | --- |
+| `code` | `code-reviewer` | Always |
+| `errors` | `silent-failure-hunter` | If catch blocks, fallbacks, or error paths changed |
+| `comments` | `comment-analyzer` + independent fact-check (Step 4.5) | If PHPDoc, inline comments, or docstrings changed |
+| `tests` | `pr-test-analyzer` | If test files changed or new features added |
+| `simplify` | `code-simplifier` | After all other agents pass; final polish only |
+
+These are the project-local agents in `.claude/agents/` (the same ones
+`/execute-plan` Step 7 and `/finish-milestone` Step 9.7 use), not the
+`pr-review-toolkit` plugin's generic versions — the local agents carry
+ElanRegistry/CLAUDE.md/CODING_STANDARDS.md conventions (Owner vs User
+terminology, Pattern A responses, `securePage()`, etc.) natively, rather than
+relying on Step 4's prompt injection to approximate them per call.
 
 If `$ARGUMENTS` is empty or `all`, run all applicable agents based on the changed
 file types (skip test analyzer if no test files changed; skip comment analyzer if
@@ -226,7 +227,15 @@ Provide **each agent** with:
 > diverge exactly when a function's real behavior differs from its common-sense
 > reading (e.g. a locale- or engine-specific character class matching more
 > or less than expected). If you cannot verify a claim this way, say so
-> explicitly rather than passing the code as correct on inspection alone."
+> explicitly rather than passing the code as correct on inspection alone.
+>
+> Do not treat the PR description, commit messages, or inline comments as
+> established fact about why this change is correct — they encode the
+> implementer's belief, which is exactly what needs checking, not evidence
+> that stands on its own. Where a message asserts something checkable ('this
+> fixes the race because X', 'Y is the only caller', 'this query returns Z'),
+> re-derive it from the code/DB/framework yourself before treating it as
+> true, and say so explicitly if you instead relied on the assertion."
 
 Run all applicable agents **in parallel** for speed. `simplify` always runs last,
 after other agents complete.
@@ -234,6 +243,13 @@ after other agents complete.
 ---
 
 ## Step 4.5: Independent fact-check of comments (if `comments` applies)
+
+This step is the comments-specific case of the general instruction appended
+to every reviewer in Step 4 (don't take the diff's own rationale as fact) —
+comments get a dedicated, *fully* context-free agent rather than just an
+instruction, because a comment's claim is usually the most durable and most
+citable artifact in the diff, and the most likely to be copied into docs or
+the wiki later.
 
 `comment-analyzer` reviews comment *quality* (clarity, redundancy, rot risk) —
 it does not independently verify that a comment's factual claims are true.
@@ -325,7 +341,7 @@ executed.
 
 - Fix each one (launch `software-developer` agent per file for non-trivial fixes,
   or edit directly for simple ones)
-- After fixing, re-run the `pr-review-toolkit:code-reviewer` agent on the full
+- After fixing, re-run the `code-reviewer` agent on the full
   branch diff + changed files to confirm clean
 - Do NOT proceed until blocking items are resolved
 
@@ -366,6 +382,14 @@ start, or skipped.
   including whatever belief produced the comment in the first place — which
   defeats the point. Only an agent with no memory of this session can
   meaningfully falsify a claim instead of recognizing and confirming it.
+- **Every reviewer agent, not only the comment fact-check, is instructed
+  (Step 4) to verify the diff's own stated rationale rather than trust it.**
+  A cold subagent still shares the risk if its prompt hands it the PR
+  description or a commit message as background truth — it just re-confirms
+  the implementer's belief instead of forming an independent one. Keep this
+  instruction in the shared reviewer prompt if it's ever edited; it's the
+  difference between a reviewer that checks the diff and one that checks the
+  diff *and* the story told about the diff.
 - **A green PHPUnit exit code does not mean the suite ran.** An unreachable
   database exits 0 having run zero tests (UserSpice `die()`s in bootstrap
   before PHPUnit reports), and skips, warnings, incomplete, and risky tests

@@ -1,12 +1,13 @@
 # Release Instructions Template
 
 `/finish-milestone` renders this file into `docs/plans/releases/<version>-deploy.md`
-early — while the milestone PR is still open — so the user can review the
-deploy procedure before `/release-milestone` ever runs. `/release-milestone`
-reuses that same rendered file rather than generating its own; the rendered
-copy is **not committed** (it names hosts and paths that stay out of the
-public repo). The template is the single owner of the release sequence; the
-mechanics it relies on live in [DEPLOYMENT.md](DEPLOYMENT.md).
+early — before the milestone PR even exists — so the user can review the
+deploy procedure before `/release-milestone` ever runs. `/review-milestone`
+and `/release-milestone` both reuse that same rendered file rather than
+generating their own; the rendered copy is **not committed** (it names hosts
+and paths that stay out of the public repo). The template is the single
+owner of the release sequence; the mechanics it relies on live in
+[DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Rendering rules
 

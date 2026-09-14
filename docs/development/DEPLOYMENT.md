@@ -251,10 +251,11 @@ git push --no-verify             # Bypass pre-push, including the integration ga
 
 ### Step-by-Step Deployment
 
-> For a release, `/release-milestone` prints a filled-in copy of
+> For a release, `/finish-milestone` renders a filled-in copy of
 > [RELEASE_INSTRUCTIONS_TEMPLATE.md](RELEASE_INSTRUCTIONS_TEMPLATE.md) — the per-release
-> sequence (test first, validation gate, prod, verification). The steps below are the
-> underlying mechanics it is built from.
+> sequence (test first, validation gate, prod, verification) — which `/review-milestone`
+> and `/release-milestone` both reuse. The steps below are the underlying mechanics it is
+> built from.
 
 1. **Create git tag**: `git tag vX.Y.Z`
 2. **Commit changes** (if any) before creating tag

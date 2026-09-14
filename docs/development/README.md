@@ -36,7 +36,7 @@
 - [CSS_AND_ASSETS.md](CSS_AND_ASSETS.md) — CSS file structure and build process
 - [QUICK_REFERENCE.md](QUICK_REFERENCE.md) — Commands, patterns, model management
 - [RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md) — Template for release notes
-- [RELEASE_INSTRUCTIONS_TEMPLATE.md](RELEASE_INSTRUCTIONS_TEMPLATE.md) — Deploy sheet rendered by `/release-milestone`
+- [RELEASE_INSTRUCTIONS_TEMPLATE.md](RELEASE_INSTRUCTIONS_TEMPLATE.md) — Deploy sheet rendered by `/finish-milestone`
 
 ## External
 

@@ -49,12 +49,11 @@ Check for a review comment matching the current HEAD SHA:
 
 ```bash
 HEAD_SHA=$(gh pr view <pr-number> --repo elan-registry/registry --json headRefOid --jq .headRefOid)
-gh api "repos/elan-registry/registry/issues/<pr-number>/comments" \
-  --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length'
+scripts/poll-review-posted.sh <pr-number> 15 120
 ```
 
-Poll every ~15s for up to ~2 minutes (`pr-to-milestone-review` is the
-lightweight Sonnet job).
+15s interval, 2min timeout (`pr-to-milestone-review` is the lightweight
+Sonnet job — faster than the Fable milestone-level review).
 
 **If a matching comment is found:** proceed to Step 2 — its findings feed
 into Step 4's triage same as any other comment.
@@ -195,7 +194,10 @@ branch diff — the same view CI uses — since this catches cross-commit issues
 git diff $(git merge-base HEAD origin/$BASE)..HEAD
 ```
 
-Launch `pr-review-toolkit:code-reviewer` with:
+Launch the project-local `code-reviewer` agent (`.claude/agents/`, not the
+`pr-review-toolkit` plugin's generic version — same agent `/review-pr`,
+`/execute-plan`, and `/finish-milestone` use, so ElanRegistry conventions are
+applied natively rather than via prompt injection) with:
 
 - The full branch diff (output of the command above)
 - The **full file content** of every changed file (read each file in full, not

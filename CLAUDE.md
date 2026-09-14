@@ -298,8 +298,9 @@ Most work follows a structured milestone lifecycle with these commands:
   /address-pr-comments        — Review CI/reviewer comments, fix blocking items
   /finish-issue 423           — Monitor CI, squash-merge, close issue
   (repeat for each issue)
-/finish-milestone v2.17.0    — PR to main, finalize release notes, update wiki
+/finish-milestone v2.17.0    — Gate the branch: review it, finalize release notes, update wiki
 /review-pr                   — Multi-agent PR review before merge
+/review-milestone v2.17.0    — Open the PR to main, verify CI review posted, confirm green
 /release-milestone v2.17.0   — Merge, tag, GitHub release, close milestone
 ```
 
@@ -317,8 +318,12 @@ Most work follows a structured milestone lifecycle with these commands:
   items with a software-developer agent, and re-verifies CI before handoff
 - Each issue gets its own PR targeting the milestone branch (squash-merged by
   `/finish-issue` for clean history)
-- `/finish-milestone` creates the final PR to `main` with all closing keywords
-  and updates wiki/architecture docs
+- `/finish-milestone` reviews the milestone branch (security, multi-agent,
+  aggregate deep review) and updates release notes/wiki/architecture docs —
+  it ends before any PR exists
+- `/review-milestone` creates the final PR to `main` with all closing
+  keywords, verifies the CI milestone review posted, and confirms CI is
+  fully green
 - `/release-milestone` merges, tags, and publishes — deployment to test/prod
   is a separate manual step
 
