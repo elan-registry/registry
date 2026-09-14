@@ -848,6 +848,8 @@ final class CarRepositoryTest extends TestCase
      * findVerificationEligible() must build a WHERE clause covering every
      * eligibility condition: not sold, deliverable email, never-verified or
      * stale verification, and a stale owner-driven update, ordered oldest first.
+     * It must also exclude ownerless cars — no user_id, or an owner that is the
+     * `noowner` system account, resolved by username through a LEFT JOIN.
      */
     public function testFindVerificationEligibleQueryContainsExpectedConditions(): void
     {
@@ -868,14 +870,34 @@ final class CarRepositoryTest extends TestCase
         $repo->findVerificationEligible(10, 0);
 
         $this->assertNotNull($capturedSql, 'findVerificationEligible() must call DB::query()');
-        $this->assertStringContainsString('solddate IS NULL', $capturedSql);
+        $this->assertStringContainsString('cars.solddate IS NULL', $capturedSql);
         $this->assertStringNotContainsString(
             "solddate = ''",
             $capturedSql,
             "solddate is a DATE column; comparing it to '' is a hard SQL error under STRICT_TRANS_TABLES"
         );
-        $this->assertStringContainsString('email_bounced = 0', $capturedSql);
-        $this->assertStringContainsString("email IS NOT NULL AND email != ''", $capturedSql);
+        $this->assertStringContainsString('cars.email_bounced = 0', $capturedSql);
+        $this->assertStringContainsString("cars.email IS NOT NULL AND cars.email != ''", $capturedSql);
+        $this->assertStringContainsString(
+            'SELECT cars.*',
+            $capturedSql,
+            'The JOIN against users makes a bare SELECT * ambiguous — only cars columns may be selected'
+        );
+        $this->assertStringContainsString(
+            'LEFT JOIN users',
+            $capturedSql,
+            'Ownership must be resolved through a JOIN so the noowner account is matched by username'
+        );
+        $this->assertStringContainsString(
+            'cars.user_id IS NOT NULL',
+            $capturedSql,
+            'A car with no owner at all must be excluded explicitly, not via three-valued logic'
+        );
+        $this->assertStringContainsString(
+            "username != 'noowner'",
+            $capturedSql,
+            'Cars owned by the noowner system account must be excluded, resolved by username not by ID'
+        );
         $this->assertStringContainsString(
             'NOT ((cars.last_verified IS NOT NULL AND cars.last_verified >= NOW() - INTERVAL 1 YEAR)'
                 . ' OR cars.owner_last_updated >= NOW() - INTERVAL 1 YEAR)',
@@ -893,7 +915,7 @@ final class CarRepositoryTest extends TestCase
             $capturedSql,
             'Freshness moved from a 2-year to a 1-year window'
         );
-        $this->assertStringContainsString('ORDER BY last_verified ASC', $capturedSql);
+        $this->assertStringContainsString('ORDER BY cars.last_verified ASC', $capturedSql);
     }
 
     /**

@@ -617,6 +617,14 @@ class CarRepository
      * it was neither verified nor updated by its owner within the last year (see
      * stalenessSql()).
      *
+     * A car is also ineligible when it has no owner at all (cars.user_id IS NULL)
+     * or when its owner is the `noowner` system account — the placeholder a car is
+     * reassigned to when its real owner is erased. The system account is resolved
+     * dynamically by username through a LEFT JOIN against users rather than by a
+     * hardcoded ID, so a reseeded or re-IDed account is still excluded. Emailing
+     * such a car would mail an erased owner's last-known address, which the
+     * registry's privacy commitment forbids.
+     *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
      * @return array<object> Eligible car rows (empty if none)
@@ -644,12 +652,15 @@ class CarRepository
         $stale = self::stalenessSql('cars');
 
         $result = $this->db->query(
-            "SELECT * FROM cars
-              WHERE solddate IS NULL
-                AND email_bounced = 0
-                AND email IS NOT NULL AND email != ''
+            "SELECT cars.* FROM cars
+              LEFT JOIN users ON users.id = cars.user_id
+              WHERE cars.solddate IS NULL
+                AND cars.email_bounced = 0
+                AND cars.email IS NOT NULL AND cars.email != ''
+                AND cars.user_id IS NOT NULL
+                AND (users.username IS NULL OR users.username != 'noowner')
                 AND {$stale}
-              ORDER BY last_verified ASC
+              ORDER BY cars.last_verified ASC
               LIMIT {$limit} OFFSET {$offset}"
         );
         if ($this->db->error()) {
