@@ -378,18 +378,22 @@ migrations live in `database/migrations/` — see
   (`users.id` → `cars.user_id`)
 - **Cars → History**: One-to-many audit trail (`cars.id` → `cars_hist.car_id`)
 
-### Enforced Foreign Key Constraints
+### No Enforced Foreign Key Constraints
 
-The following foreign keys are enforced at the database level. They were added
-by the Phinx migration
-`database/migrations/20260709202522_add_foreign_key_constraints.php`.
-
-- `cars.user_id → users.id` **ON DELETE SET NULL** (constraint
-  `fk_cars_user_id`) — deleting a user leaves the car record intact with a
-  null owner rather than deleting the car.
-- `car_transfer_requests.existing_car_id → cars.id` **ON DELETE CASCADE**
-  (constraint `fk_transfer_existing_car`) — deleting a car removes its
-  associated transfer requests.
+`cars.user_id → users.id` is **not** enforced at the database level. A FK
+(`fk_cars_user_id`, `ON DELETE SET NULL`) was added by
+`database/migrations/20260709202522_add_foreign_key_constraints.php`, then
+deliberately dropped by
+`database/migrations/20260719120000_drop_cars_user_id_fk.php`: its `ON DELETE
+SET NULL` cascade fired during `DELETE FROM users` and nulled `cars.user_id`
+before `usersc/scripts/after_user_deletion.php`'s reassignment hook ran, so
+the hook always saw 0 cars to reassign to the `noowner` account. No FK is
+planned as a replacement — the index on `user_id` (also named
+`fk_cars_user_id`) was retained for query performance, but nothing enforces
+referential integrity on this column. Application code that reads
+`cars.user_id` must account for it pointing at a user row that no longer
+exists (see `car_id` in the `er_email_events` table above for the equivalent
+statement about car-adjacent tables generally).
 
 ### Data Access Patterns
 

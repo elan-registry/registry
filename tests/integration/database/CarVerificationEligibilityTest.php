@@ -22,6 +22,10 @@ use PHPUnit\Framework\Attributes\Group;
  *   solddate IS NULL
  *   AND email_bounced = 0
  *   AND email IS NOT NULL AND email != ''
+ *   AND user_id IS NOT NULL
+ *   AND user_id references a users row that still exists (#1991 — no FK
+ *       enforces this; see DATABASE.md's "No Enforced Foreign Key Constraints")
+ *   AND owner is not the 'noowner' system account (#1991)
  *   AND NOT (
  *     (last_verified IS NOT NULL AND last_verified >= NOW() - INTERVAL 1 YEAR)
  *     OR owner_last_updated >= NOW() - INTERVAL 1 YEAR
@@ -350,6 +354,212 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             0,
             $orphan->count(),
             'A rejected NULL owner_last_updated insert must leave no row behind'
+        );
+    }
+
+    /**
+     * #1991: a car reassigned to the seeded `noowner` system account (see
+     * RegisterNoownerAccountMigrationTest, ADR-010) must never be eligible for
+     * a verification email, even when it otherwise passes every other check
+     * (non-bounced, non-empty email, stale). `noowner` is a real, migration-
+     * provisioned account (bootstrap-integration.php asserts it exists before
+     * any integration test runs) — this test looks it up by username rather
+     * than creating one, mirroring UserDeletionReassignmentTest's pattern,
+     * since a second row with that username would violate the column's
+     * uniqueness and wouldn't reflect how the condition is reached in
+     * production (reassignment, not fresh creation).
+     *
+     * Includes a control car, identical in every field except ownership,
+     * owned by a normal test user — proving the noowner car is excluded
+     * *because of* ownership and not because it fails some other condition
+     * or because of fixture drift (mirrors this file's existing
+     * control/asserted-cause pattern from
+     * testColumnIsNotNullSoNullOwnerLastUpdatedFixtureIsRejected()).
+     *
+     * The noowner-owned car is left attached to the shared `noowner` account
+     * (a protected, non-test user never removed by tearDown) — if the
+     * teardown delete of the car row itself ever failed, a stray car could
+     * remain owned by `noowner` in the shared integration schema. tearDown()
+     * only logs such a failure rather than failing the suite; see
+     * IntegrationTestCase::tearDown() and UserDeletionReassignmentTest's
+     * similar leak-risk note.
+     */
+    #[Group('fast')]
+    public function testNoOwnerAccountCarIsExcluded(): void
+    {
+        $noOwnerRow = $this->db->query("SELECT id FROM users WHERE username = ?", ['noowner'])->first();
+        $this->assertNotEmpty(
+            $noOwnerRow,
+            'noowner system account missing — run composer migrate (RegisterNoownerAccount)'
+        );
+        $noOwnerId = (int) $noOwnerRow->id;
+
+        $sharedFields = [
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $noOwnerCarId = $this->createTestCar($noOwnerId, array_merge($sharedFields, [
+            'email' => 'noowner-owned@example.com',
+        ]));
+
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'noowner-control-normal-owner@example.com',
+        ]));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $noOwnerCarId,
+            $eligible,
+            'A car owned by the noowner system account must be excluded from verification eligibility'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical car owned by a normal user must remain eligible — '
+            . 'otherwise the noowner exclusion above proves nothing about ownership specifically'
+        );
+    }
+
+    /**
+     * #1991: a car with no owner at all (`user_id IS NULL`) must be excluded,
+     * independent of the `noowner`-account check above. createTestCar() checks
+     * the user row exists in PHP before inserting (there's no FK enforcing
+     * this at the database level — cars.user_id's FK was deliberately dropped,
+     * see database/migrations/20260719120000_drop_cars_user_id_fk.php and
+     * DATABASE.md's "No Enforced Foreign Key Constraints"), so the row is
+     * created normally and then updated to NULL directly — the only way to
+     * reach the NULL state through this fixture helper, and a mirror of how
+     * the condition can arise in production (e.g. a manual admin data-repair
+     * action) independent of the noowner reassignment path.
+     *
+     * Includes a control car with a normal (non-NULL) user_id, proving the
+     * NULL-owner car is excluded *because of* the NULL and not because of
+     * fixture drift or an unrelated condition — same rationale as the
+     * control in testNoOwnerAccountCarIsExcluded() above.
+     */
+    #[Group('fast')]
+    public function testNullUserIdCarIsExcluded(): void
+    {
+        $sharedFields = [
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $carId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'null-user-id@example.com',
+        ]));
+
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'null-user-id-control-normal-owner@example.com',
+        ]));
+
+        $this->db->query('UPDATE cars SET user_id = NULL WHERE id = ?', [$carId]);
+        $updatedRow = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertNotEmpty($updatedRow, 'Test setup: car ' . $carId . ' disappeared after UPDATE');
+        $this->assertNull(
+            $updatedRow->user_id,
+            'Test setup: cars.user_id was not actually nulled for car ' . $carId
+        );
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $carId,
+            $eligible,
+            'A car with a NULL user_id must be excluded from verification eligibility'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical car with a normal (non-NULL) user_id must remain eligible — '
+            . 'otherwise the NULL-owner exclusion above proves nothing about ownership specifically'
+        );
+    }
+
+    /**
+     * #1991: a car whose user_id points at a users row that no longer exists
+     * (an orphaned reference) must be excluded, independent of the NULL and
+     * noowner checks above. This is reachable in production, not just
+     * theoretical: cars.user_id carries no FK to users.id (deliberately
+     * dropped — see database/migrations/20260719120000_drop_cars_user_id_fk.php
+     * and DATABASE.md's "No Enforced Foreign Key Constraints"), and
+     * usersc/scripts/after_user_deletion.php's reassignment-to-noowner runs in
+     * its own transaction *after* users/helpers/users.php has already
+     * committed `DELETE FROM users` outside any transaction. Any of that
+     * hook's early-return paths (noowner lookup failure, no authenticated
+     * admin session, a rolled-back reassignment transaction) leaves cars
+     * pointing at the now-deleted user's ID — see the hook's own inline
+     * ASSUMPTION comment, which names this exact outcome.
+     *
+     * This test reproduces that state directly: deleteTestUser() is a raw
+     * DELETE FROM users that bypasses deleteUsers() and its cleanup hook, the
+     * same way an aborted hook would leave the car, so user_id is left
+     * dangling instead of reassigned or nulled. A LEFT JOIN with
+     * `users.username IS NULL OR ...` (the pre-#1991-fix shape) can't tell
+     * this "orphaned owner" state apart from "no join match because
+     * deliberately ownerless" — only an INNER JOIN rejects both, which is
+     * what this test pins down.
+     *
+     * Includes a control car with a live owner, proving the orphaned-owner
+     * car is excluded *because of* the dangling reference and not fixture
+     * drift or an unrelated condition — same rationale as the controls above.
+     */
+    #[Group('fast')]
+    public function testCarOwnedByDeletedUserIsExcluded(): void
+    {
+        $doomedUserId = $this->createTestUser();
+
+        $sharedFields = [
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $orphanCarId = $this->createTestCar($doomedUserId, array_merge($sharedFields, [
+            'email' => 'orphaned-owner@example.com',
+        ]));
+
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'orphaned-owner-control-normal-owner@example.com',
+        ]));
+
+        // Bypasses deleteUsers()/after_user_deletion.php — a raw DELETE
+        // mirroring the hook's own DELETE FROM users, but with no
+        // reassignment step. This is what an aborted hook (or any path that
+        // deletes a users row without reassigning its cars) leaves behind.
+        $this->deleteTestUser($doomedUserId);
+        $orphanedRow = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$orphanCarId])->first();
+        $this->assertNotEmpty($orphanedRow, 'Test setup: car ' . $orphanCarId . ' disappeared after user deletion');
+        $this->assertSame(
+            $doomedUserId,
+            (int) $orphanedRow->user_id,
+            'Test setup: cars.user_id must still reference the deleted user (no FK cascades it) '
+                . 'for car ' . $orphanCarId
+        );
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $orphanCarId,
+            $eligible,
+            'A car whose user_id points at a deleted (nonexistent) users row must be excluded from '
+            . 'verification eligibility — otherwise a mail would go to an erased owner\'s last-known address'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical car with a live owner must remain eligible — otherwise the '
+            . 'orphaned-owner exclusion above proves nothing about ownership specifically'
         );
     }
 }

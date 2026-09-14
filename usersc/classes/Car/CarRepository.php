@@ -617,6 +617,18 @@ class CarRepository
      * it was neither verified nor updated by its owner within the last year (see
      * stalenessSql()).
      *
+     * A car is also ineligible when it has no live owner: cars.user_id IS NULL,
+     * user_id points at a users row that no longer exists (cars.user_id has no
+     * FK — see DATABASE.md's "No Enforced Foreign Key Constraints" — so this is
+     * reachable, e.g. if usersc/scripts/after_user_deletion.php's reassignment
+     * transaction fails after the users row is already deleted), or the owner
+     * is the `noowner` system account — the placeholder a car is reassigned to
+     * when its real owner is erased. Ownership is required via an INNER JOIN
+     * against users; the system account is resolved dynamically by username
+     * rather than a hardcoded ID, so a reseeded or re-IDed account is still
+     * excluded. Emailing such a car would mail an erased owner's last-known
+     * address, which the registry's privacy commitment forbids.
+     *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
      * @return array<object> Eligible car rows (empty if none)
@@ -643,13 +655,25 @@ class CarRepository
         // one, but the mechanism is not the obvious one.
         $stale = self::stalenessSql('cars');
 
+        // INNER JOIN, not LEFT JOIN: cars.user_id has no FK to users.id (dropped
+        // deliberately — see DATABASE.md's "No Enforced Foreign Key Constraints"),
+        // so it can point at a row that no longer exists (e.g. a deleted user
+        // whose after_user_deletion.php reassignment failed partway). A LEFT
+        // JOIN would admit such a row via `users.username IS NULL` — indistinguishable
+        // from "no join match because deliberately ownerless" — reopening the
+        // erased-owner leak this method exists to close. INNER JOIN requires a
+        // live users row, so cars.user_id IS NOT NULL is redundant (the join
+        // already excludes NULL) but kept for clarity/defense in depth.
         $result = $this->db->query(
-            "SELECT * FROM cars
-              WHERE solddate IS NULL
-                AND email_bounced = 0
-                AND email IS NOT NULL AND email != ''
+            "SELECT cars.* FROM cars
+              INNER JOIN users ON users.id = cars.user_id
+              WHERE cars.solddate IS NULL
+                AND cars.email_bounced = 0
+                AND cars.email IS NOT NULL AND cars.email != ''
+                AND cars.user_id IS NOT NULL
+                AND users.username != 'noowner'
                 AND {$stale}
-              ORDER BY last_verified ASC
+              ORDER BY cars.last_verified ASC
               LIMIT {$limit} OFFSET {$offset}"
         );
         if ($this->db->error()) {
