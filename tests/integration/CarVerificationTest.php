@@ -57,9 +57,26 @@ final class CarVerificationTest extends IntegrationTestCase
 
         $this->assertTrue($result);
 
-        // Verify code was set in database (column is 'vericode', not 'verification_code')
-        $carData = new Car($this->testCarId);
-        $this->assertEquals($verificationCode, $carData->data()->vericode);
+        // The in-memory property holds the plaintext for the caller (e.g. the
+        // future email composer) even though the DB row stores a hash.
+        $this->assertEquals($verificationCode, $car->data()->vericode);
+
+        // Verify the raw DB row stores the HMAC-SHA256 hash, never the
+        // plaintext code — mirrors UserSettingsVericodeTest's pattern.
+        $row = $this->db->query('SELECT vericode FROM cars WHERE id = ?', [$this->testCarId])->first();
+        $this->assertNotNull($row, 'Expected to find the test car row after update');
+        $storedVericode = (string) $row->vericode;
+
+        $this->assertSame(
+            hashVericode($verificationCode),
+            $storedVericode,
+            'Stored cars.vericode must equal hashVericode($plaintext)'
+        );
+        $this->assertNotSame(
+            $verificationCode,
+            $storedVericode,
+            'Stored cars.vericode must NOT be the plaintext verification code'
+        );
     }
 
     /**
@@ -194,6 +211,19 @@ final class CarVerificationTest extends IntegrationTestCase
 
         $this->assertInstanceOf(Car::class, $foundCar);
         $this->assertEquals($this->testCarId, $foundCar->data()->id);
+
+        // Mutation guard: this round-trip alone would pass even if hashing
+        // were removed from both setVerificationCode() and
+        // findByVerificationCode(), since both sides would then use the same
+        // (identity) transform. Assert the raw DB row is NOT the plaintext
+        // code, proving the lookup actually went through the hash.
+        $row = $this->db->query('SELECT vericode FROM cars WHERE id = ?', [$this->testCarId])->first();
+        $this->assertNotNull($row, 'Expected to find the test car row after update');
+        $this->assertNotSame(
+            $verificationCode,
+            (string) $row->vericode,
+            'Stored cars.vericode must NOT be the plaintext verification code'
+        );
     }
 
     /**
@@ -205,6 +235,51 @@ final class CarVerificationTest extends IntegrationTestCase
         $result = Car::findByVerificationCode('NONEXISTENT-CODE-12345');
 
         $this->assertNull($result);
+    }
+
+    /**
+     * Regression guard mirroring UserSettingsVericodeTest's
+     * testWrongOrStaleVericodeFailsHashEqualsLookup(): a wrong/stale code
+     * must fail against a populated row, and the raw stored hash itself must
+     * never work as a direct lookup key. This proves there is no
+     * plaintext-fallback or hash-as-plaintext-match regression path — a
+     * leaked DB dump's hash must not be directly usable as a bearer token.
+     */
+    #[Group('fast')]
+    public function testFindByVerificationCodeFailsForWrongOrRawHashCode(): void
+    {
+        $car = new Car($this->testCarId);
+        $correctCode = 'CORRECT-CODE-' . uniqid();
+        $wrongCode = 'WRONG-CODE-' . uniqid();
+
+        // Sanity: the two generated codes must actually differ, or this test
+        // would pass vacuously.
+        $this->assertNotSame($correctCode, $wrongCode);
+
+        $car->setVerificationCode($correctCode);
+
+        // A wrong/stale plaintext code must not resolve.
+        $wrongResult = Car::findByVerificationCode($wrongCode);
+        $this->assertNull($wrongResult, 'A wrong or stale verification code must not resolve a car');
+
+        // The raw stored hash itself must not work as a direct lookup key —
+        // otherwise a leaked DB dump's hash would be directly usable as a
+        // bearer token, defeating the purpose of hashing at rest.
+        $row = $this->db->query('SELECT vericode FROM cars WHERE id = ?', [$this->testCarId])->first();
+        $this->assertNotNull($row, 'Expected to find the test car row after update');
+        $storedHash = (string) $row->vericode;
+
+        $hashAsLookupResult = Car::findByVerificationCode($storedHash);
+        $this->assertNull(
+            $hashAsLookupResult,
+            'The raw stored hash must not be usable directly as a verification code lookup key'
+        );
+
+        // Sanity: the correct plaintext code still resolves, confirming the
+        // failures above are due to the wrong inputs, not a broken lookup.
+        $correctResult = Car::findByVerificationCode($correctCode);
+        $this->assertInstanceOf(Car::class, $correctResult);
+        $this->assertEquals($this->testCarId, $correctResult->data()->id);
     }
 
     /**
@@ -253,6 +328,19 @@ final class CarVerificationTest extends IntegrationTestCase
         // Verification code should be cleared or remain (depending on implementation)
         // This test documents the expected behavior
         $this->assertNotNull($verifiedCar->data()->last_verified);
+    }
+
+    /**
+     * Pins hashVericode()'s output length against the widened
+     * cars.vericode varchar(64) column. Must run against the real
+     * hashVericode() (HMAC-SHA256 hex digest, always 64 chars) — the unit
+     * bootstrap stub (tests/bootstrap-unit.php) returns 'hashed_' . $code,
+     * which is not 64 chars, so this assertion cannot live in the unit tier.
+     */
+    #[Group('fast')]
+    public function testHashVericodeProducesSixtyFourCharacterHash(): void
+    {
+        $this->assertSame(64, strlen(hashVericode('SOME-VERIFICATION-CODE')));
     }
 
     /**

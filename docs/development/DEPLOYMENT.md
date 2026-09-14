@@ -703,6 +703,17 @@ After each deployment, verify:
 - [ ] Email delivery system functioning
 - [ ] Cron transport still firing: `er_verification_settings.last_cron_request_at`
       within the last 10 minutes (see "Cron Transport" above)
+- [ ] `usersc/vericode_secret.php` exists and is non-empty on this server. It
+      is gitignored/untracked, so a fresh checkout has none — `getVericodeSecret()`
+      (`users/helpers/us_helpers.php`) generates one on first use, but if the
+      file is later lost or replaced (redeploy to a fresh directory, restored
+      from a backup taken before the file existed, etc.) every previously
+      hashed `users.vericode`/`cars.vericode` value silently stops matching,
+      with no error — verification links just fail. Confirm the same file
+      persists across deploys (it must not be wiped by the deploy process) and
+      is byte-identical between test and prod only if verification codes are
+      meant to be portable between them (they normally are not — each
+      environment should have its own secret).
 - [ ] Image upload and display working
 - [ ] Search and filtering functionality
 - [ ] Mobile responsiveness maintained

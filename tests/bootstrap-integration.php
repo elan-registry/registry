@@ -412,7 +412,35 @@ try {
             );
         }
 
-        fwrite(STDERR, "NOTE: Reference data verified (car_models: {$carModelsCount} records, settings, noowner)\n");
+        // cars.vericode must be the widened varchar(64) column from
+        // 20260913205636_widen_cars_vericode_for_hash.php, with an index —
+        // required to hold a 64-char HMAC-SHA256 hash and to support the
+        // per-email-click lookup once #1881 ships. Catches a test
+        // environment silently running against a stale/un-migrated schema
+        // that would truncate hashed vericode values.
+        $vericodeColumn = $db->query("SHOW COLUMNS FROM cars LIKE 'vericode'")->first();
+        if (!$vericodeColumn) {
+            abortMissingSeed(
+                "ERROR: cars.vericode column is missing.",
+                "Aborting."
+            );
+        }
+        if (strtolower((string) $vericodeColumn->Type) !== 'varchar(64)') {
+            abortMissingSeed(
+                "ERROR: cars.vericode is '{$vericodeColumn->Type}', expected varchar(64).",
+                "Run the widen_cars_vericode_for_hash migration. Aborting."
+            );
+        }
+
+        $vericodeIndex = $db->query("SHOW INDEX FROM cars WHERE Column_name = 'vericode'")->first();
+        if (!$vericodeIndex) {
+            abortMissingSeed(
+                "ERROR: cars.vericode has no index.",
+                "Run the widen_cars_vericode_for_hash migration. Aborting."
+            );
+        }
+
+        fwrite(STDERR, "NOTE: Reference data verified (car_models: {$carModelsCount} records, settings, noowner, cars.vericode schema)\n");
     }
 } catch (Throwable $e) {
     abortMissingSeed("ERROR: Failed to verify reference data: {$e->getMessage()}");

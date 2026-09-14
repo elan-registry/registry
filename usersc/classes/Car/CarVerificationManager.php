@@ -112,8 +112,14 @@ class CarVerificationManager
     /**
      * Set a verification code on a car
      *
-     * @param object $carData Car data object (must have ->id property)
-     * @param string $verificationCode The verification code to set
+     * The plaintext code is hashed (HMAC-SHA256 via hashVericode()) before storage;
+     * cars.vericode never holds plaintext. Note the deliberate asymmetry: on success,
+     * $carData->vericode is set to the *plaintext* code so the caller can compose the
+     * verification email from it — this differs from what a fresh DB read would return.
+     *
+     * @param object $carData Car data object (must have ->id property); on success
+     *                        its ->vericode is set to the plaintext $verificationCode
+     * @param string $verificationCode The plaintext verification code to set
      * @return bool True if verification code was set successfully
      * @throws CarValidationException If verification code is invalid
      * @throws CarDatabaseException If database update fails
@@ -125,13 +131,15 @@ class CarVerificationManager
         }
 
         $result = $this->persist(
-            fn () => $this->repo->updateVerificationCode((int) $carData->id, $verificationCode),
+            fn () => $this->repo->updateVerificationCode((int) $carData->id, hashVericode($verificationCode)),
             LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
             'Verification code could not be updated. Please try again or contact support.',
             'Failed to set verification code',
             (int) $carData->id,
         );
 
+        // The DB now stores hashVericode($verificationCode); this property holds
+        // the plaintext for the caller (e.g. the future email composer).
         $carData->vericode = $verificationCode;
         return $result;
     }

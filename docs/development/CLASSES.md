@@ -659,7 +659,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   Find a car by its composite chassis key (year, type, chassis); used by
   `chassis-availability.php` and `transfer-request.php` to check chassis
   uniqueness
-- `findByVerificationCode(string $code): ?object` - Look up a car by verification code
+- `findByVerificationCode(string $code): ?object` -
+  Look up a car by verification code. The plaintext code is hashed
+  (HMAC-SHA256 via `hashVericode()`) before the database lookup; the hash
+  stored in `cars.vericode` is never exposed to callers.
 - `getAllForSitemap(): array` - Get all car IDs and modification times for sitemap generation
 - `findByOwner(int $ownerId): array` - Find car IDs owned by a given user
 - `getHistory(int $carId): array` - Get a car's history records, most recent first
@@ -819,7 +822,11 @@ on success.
 
 **Methods**:
 
-- `setVerificationCode(object $carData, string $verificationCode): bool` - Persist a car's verification code (min. 8 characters)
+- `setVerificationCode(object $carData, string $verificationCode): bool` -
+  Persist a car's verification code (min. 8 characters). The plaintext code
+  is hashed (HMAC-SHA256 via `hashVericode()`) before storage in
+  `cars.vericode`; the plaintext is never persisted, existing only in the
+  immediate caller's scope to be composed into verification emails.
 - `generateVerificationCode(): string` - Generate a new verification code; pure function, no repository call
 - `markVerified(object $carData): bool` - Record that a car has been verified (sets `last_verified` to now)
 - `setVerificationSentAt(object $carData, string $dateTime): bool` - Record when a verification email was sent

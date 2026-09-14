@@ -35,12 +35,15 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testSetVerificationCodeSucceeds(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateVerificationCode')->willReturn(true);
+        $code = 'VERIFY12345678';
+
+        $this->mockRepo->expects($this->once())->method('updateVerificationCode')
+            ->with(1, hashVericode($code))->willReturn(true);
 
         $carData = (object) ['id' => 1, 'vericode' => null];
-        $result = $this->manager->setVerificationCode($carData, 'VERIFY12345678');
+        $result = $this->manager->setVerificationCode($carData, $code);
         $this->assertTrue($result);
-        $this->assertEquals('VERIFY12345678', $carData->vericode);
+        $this->assertEquals($code, $carData->vericode);
     }
 
     public function testSetVerificationCodeRejectsShortCode(): void
@@ -63,11 +66,14 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testSetVerificationCodeThrowsCarDatabaseExceptionWhenRepositoryReturnsFalse(): void
     {
-        $this->mockRepo->expects($this->once())->method('updateVerificationCode')->willReturn(false);
+        $code = 'VERIFY12345678';
+
+        $this->mockRepo->expects($this->once())->method('updateVerificationCode')
+            ->with(1, hashVericode($code))->willReturn(false);
         $this->expectException(CarDatabaseException::class);
 
         $carData = (object) ['id' => 1, 'vericode' => null];
-        $this->manager->setVerificationCode($carData, 'VERIFY12345678');
+        $this->manager->setVerificationCode($carData, $code);
     }
 
     public function testMarkVerifiedSucceeds(): void
@@ -156,12 +162,15 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testSetVerificationCodeThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
     {
+        $code = 'VERIFY12345678';
+
         $this->mockRepo->expects($this->once())->method('updateVerificationCode')
+            ->with(1, hashVericode($code))
             ->willThrowException(new \RuntimeException('DB connection lost'));
         $this->expectException(CarDatabaseException::class);
 
         $carData = (object) ['id' => 1, 'vericode' => null];
-        $this->manager->setVerificationCode($carData, 'VERIFY12345678');
+        $this->manager->setVerificationCode($carData, $code);
     }
 
     public function testMarkVerifiedThrowsCarDatabaseExceptionWhenRepositoryThrows(): void

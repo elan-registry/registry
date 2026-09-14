@@ -122,7 +122,7 @@ For the full workflow, see
 |--------|------|-------------|
 | `id` | `int UNSIGNED` | PRIMARY KEY, AUTO_INCREMENT |
 | `ctime`, `mtime` | `datetime` | Creation and modification times; `mtime` is `NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` (the `ON UPDATE` clause is deliberate — see verification system) |
-| `vericode` | `varchar(32)` | Verification code |
+| `vericode` | `varchar(64)` | Verification code (HMAC-SHA256 hashed; see CarVerificationManager) |
 | `last_verified` | `datetime NULL` | Last verification date |
 | `model` | `varchar(30)` | Car model (Elan) |
 | `series` | `varchar(12)` | Car series (S1, S2, S3, S4, +2, Sprint) |
