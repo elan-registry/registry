@@ -234,19 +234,14 @@ async function assertNoGoogleMapsRequests(page, path, label = path) {
  * Assert a page loads (HTTP 200) with no critical console errors.
  * Filters out errors that are expected on unauthenticated local visits:
  * missing API keys, and 404/403 on optional or auth-gated sub-resources.
- * Does NOT filter Google Maps errors — the codebase migrated to MapLibre GL
- * (self-hosted tiles) and has zero remaining Google Maps references
- * (confirmed via grep across app/ and usersc/), so that exemption from the
- * original statistics.php test was dead and intentionally dropped here; a
- * console error mentioning Google Maps today would indicate a real
- * regression, not noise. assertNoGoogleMapsRequests() above is the
- * network-level guard against that regression.
- * Also verifies the response itself was a 200 — a mid-render PHP fatal
- * (display_errors off) produces no console output at all, so the status
- * check is what actually distinguishes "rendered fully" from "died partway
- * through" (see issue #1778's escape analysis: chassis-validation.php has
- * two prior fatals, d8cb618d and 8b81ab57, that were only ever caught
- * because they 500'd — nothing logged to the console).
+ * Google Maps errors are intentionally NOT filtered — the codebase migrated
+ * to MapLibre GL (self-hosted tiles), so a console error mentioning Google
+ * Maps today indicates a real regression, not noise;
+ * assertNoGoogleMapsRequests() above is the network-level equivalent check.
+ * Also verifies the response was a 200 — a mid-render PHP fatal
+ * (display_errors off) produces no console output at all, so status is the
+ * only signal that distinguishes a full render from one that died partway
+ * through (see issue #1778 for the escape-analysis history behind this).
  * @param {import('@playwright/test').Page} page - Playwright page object
  * @param {string} path - Path to navigate to (without baseURL)
  * @param {string} [label] - Optional label for the assertion message

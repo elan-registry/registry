@@ -139,41 +139,9 @@ test.describe('Navigation and File Reorganization', () => {
     await expect(page.locator('h1, h2').first()).toBeVisible();
   });
 
-  // Issue #1778 — dedicated load coverage beyond the page-title loop.
-  // Each also checks HTTP status and a late-render marker, since a
-  // mid-render PHP fatal (display_errors off) still flushes an early
-  // <h1>/<title> — see the equivalent console-error tests in
-  // ui-consistency.spec.js for the escape-analysis detail.
-  test('docs/car-stories.php loads without error', async ({ page }) => {
-    const response = await page.goto('docs/car-stories.php');
-    expect(response?.status()).toBe(200);
-    await expect(page).not.toHaveTitle(/404|500|Not Found|Server Error/i);
-    await expect(page.locator('h1, h2').first()).toBeVisible();
-    // Last card in $storyCards — proves the render reached the end of the grid.
-    await expect(page.getByText('Shapecraft Elan Story')).toBeVisible();
-  });
-
-  test('docs/reference/chassis-validation.php loads without error', async ({ page }) => {
-    const response = await page.goto('docs/reference/chassis-validation.php');
-    expect(response?.status()).toBe(200);
-    await expect(page).not.toHaveTitle(/404|500|Not Found|Server Error/i);
-    await expect(page.locator('h1, h2').first()).toBeVisible();
-    // 26-R-08 renders only in the loop's final ('other_years') branch, and
-    // "Validation Override" is the following section's heading — together
-    // they prove every iteration ran and the loop exited.
-    await expect(page.getByText('26-R-08')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Validation Override' })).toBeVisible();
-  });
-
-  test('docs/reference/paint-colors.php loads without error', async ({ page }) => {
-    const response = await page.goto('docs/reference/paint-colors.php');
-    expect(response?.status()).toBe(200);
-    await expect(page).not.toHaveTitle(/404|500|Not Found|Server Error/i);
-    await expect(page.locator('h1, h2').first()).toBeVisible();
-    // "Laurel Green" is the true last entry of $officialColors — proves the
-    // loop rendered every row.
-    await expect(page.getByText('Laurel Green')).toBeVisible();
-  });
+  // Issue #1778 — full load + full-render coverage for these three pages
+  // lives in ui-consistency.spec.js (console-error tests), which supersedes
+  // a status/title-only check here since it also asserts HTTP 200.
 
   test('nav contains Reference dropdown', async ({ page }) => {
     await navigateAndWait(page, 'index.php');

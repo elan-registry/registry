@@ -123,35 +123,35 @@ test.describe('UI Consistency After Style Refactoring', () => {
     await assertNoConsoleErrors(page, 'app/owner/reports/statistics.php', 'statistics.php');
   });
 
-  // Issue #1778 — dedicated load/console-error coverage beyond the page-title loop.
-  // Each test also asserts content that only renders if the page reached the
-  // end of its output — a mid-render PHP fatal still flushes an early <h1>/
-  // <title> and produces no console error, so those two signals alone would
-  // not have caught chassis-validation.php's prior fatals (#1705 escape
-  // analysis references d8cb618d, 8b81ab57).
+  // Issue #1778 — dedicated console-error coverage for three static reference
+  // pages that previously only had incidental page-title-loop coverage. See
+  // assertNoConsoleErrors() in auth-helper.js for why status + full-render
+  // assertions are needed together (chassis-validation.php has a history of
+  // mid-render fatals: d8cb618d, 8b81ab57). Each test below also asserts a
+  // row/card count so a silently truncated loop fails, not just a hard fatal.
   test('docs/car-stories.php has no console errors and renders all story cards', async ({ page }) => {
     await assertNoConsoleErrors(page, 'docs/car-stories.php', 'car-stories.php');
-    // Last card in $storyCards — proves the render reached the end of the grid.
-    await expect(page.getByText('Shapecraft Elan Story')).toBeVisible();
+    // $storyCards has 3 entries — count proves every card rendered, not just the last.
+    await expect(page.locator('.row.mt-4 .registry-card')).toHaveCount(3);
+    await expect(page.getByRole('heading', { name: 'Shapecraft Elan Story' })).toBeVisible();
   });
 
   test('docs/reference/chassis-validation.php has no console errors and renders race-car formats', async ({ page }) => {
     await assertNoConsoleErrors(page, 'docs/reference/chassis-validation.php', 'chassis-validation.php');
-    // 26-R-08 renders only in the loop's final ('other_years') branch, and
-    // "Validation Override" is the heading of the section immediately after
-    // the loop — together they prove every iteration ran and the loop
-    // exited, not just that it started (d8cb618d fataled on the first
-    // iteration's str_replace() call, so an assertion on an early-iteration
-    // value alone would not have caught it).
-    await expect(page.getByText('26-R-08')).toBeVisible();
+    // $validationRules['race_cars'] has 4 entries — count proves every
+    // iteration ran (the 'other_years' branch is keyed by year match, not
+    // loop position, so this is the actual proof of full iteration, not the
+    // presence of 26-R-08 alone). The "Validation Override" heading renders
+    // only after the loop's endforeach, proving the loop exited too.
+    await expect(page.locator('.card.border-left-dark')).toHaveCount(4);
     await expect(page.getByRole('heading', { name: 'Validation Override' })).toBeVisible();
   });
 
   test('docs/reference/paint-colors.php has no console errors and renders the full color chart', async ({ page }) => {
     await assertNoConsoleErrors(page, 'docs/reference/paint-colors.php', 'paint-colors.php');
-    // "Laurel Green" is the true last entry of $officialColors (L26 is
-    // second-to-last) — proves the loop rendered every row, not just up to
-    // the more recognizable L26 code.
+    // $officialColors has 27 entries — count proves every row rendered, not
+    // just that the loop reached "Laurel Green" (the true last entry).
+    await expect(page.locator('.card:has(#official-colors) table tbody tr')).toHaveCount(27);
     await expect(page.getByText('Laurel Green')).toBeVisible();
   });
 
