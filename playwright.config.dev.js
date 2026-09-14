@@ -85,10 +85,10 @@ module.exports = defineConfig({
     {
       name: 'logged-in-non-admin',
       // Add a spec's filename to this testMatch to opt it into the non-admin
-      // session (mirrors the allowlist convention on 'admin' above). No
-      // npm script runs this project by default until a spec does — see
-      // package.json's test:e2e:dev family.
-      testMatch: /(?:^|\/)__none__\.spec\.js$/,
+      // session (mirrors the allowlist convention on 'admin' above).
+      // ajax-endpoints-non-admin.spec.js covers requireAdminAjax()'s
+      // isRegistryAdmin() branch — see package.json's test:e2e:dev:non-admin.
+      testMatch: /(?:^|\/)ajax-endpoints-non-admin\.spec\.js$/,
       dependencies: ['setup-non-admin'],
       use: {
         ...devices['Desktop Chrome'],
