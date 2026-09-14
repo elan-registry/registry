@@ -848,8 +848,10 @@ final class CarRepositoryTest extends TestCase
      * findVerificationEligible() must build a WHERE clause covering every
      * eligibility condition: not sold, deliverable email, never-verified or
      * stale verification, and a stale owner-driven update, ordered oldest first.
-     * It must also exclude ownerless cars — no user_id, or an owner that is the
-     * `noowner` system account, resolved by username through a LEFT JOIN.
+     * It must also exclude ownerless cars — no user_id, an owner row that no
+     * longer exists, or an owner that is the `noowner` system account —
+     * resolved by requiring a live users row via an INNER JOIN and checking
+     * its username.
      */
     public function testFindVerificationEligibleQueryContainsExpectedConditions(): void
     {
@@ -884,19 +886,30 @@ final class CarRepositoryTest extends TestCase
             'The JOIN against users makes a bare SELECT * ambiguous — only cars columns may be selected'
         );
         $this->assertStringContainsString(
-            'LEFT JOIN users',
+            'INNER JOIN users',
             $capturedSql,
-            'Ownership must be resolved through a JOIN so the noowner account is matched by username'
+            'Ownership must require a live users row via INNER JOIN — a LEFT JOIN would let a car '
+                . 'whose user_id points at a deleted user (no FK enforces this — see '
+                . "DATABASE.md's \"No Enforced Foreign Key Constraints\") slip through as eligible, "
+                . "since 'no join match' and 'no join match because ownerless' are indistinguishable "
+                . 'to a LEFT JOIN'
         );
         $this->assertStringContainsString(
             'cars.user_id IS NOT NULL',
             $capturedSql,
             'A car with no owner at all must be excluded explicitly, not via three-valued logic'
         );
+        // Asserted as the whole clause, not as independent fragments: an OR
+        // between "no join match" and "username != noowner" would pass both a
+        // narrower 'username !=' fragment check and a narrower 'user_id IS NOT
+        // NULL' fragment check while still admitting an orphaned user_id (a
+        // deleted user's dangling ID) as eligible. Only pinning the full AND
+        // clause distinguishes the correct INNER JOIN semantics from that bug.
         $this->assertStringContainsString(
-            "username != 'noowner'",
+            "AND users.username != 'noowner'",
             $capturedSql,
-            'Cars owned by the noowner system account must be excluded, resolved by username not by ID'
+            'Cars owned by the noowner system account must be excluded, resolved by username not by ID, '
+                . 'via an unconditional AND — not an OR that could admit an orphaned owner reference'
         );
         $this->assertStringContainsString(
             'NOT ((cars.last_verified IS NOT NULL AND cars.last_verified >= NOW() - INTERVAL 1 YEAR)'
