@@ -39,11 +39,24 @@ touched files.** `phpstan.neon` includes `phpstan-baseline.neon`, so this
 run silently suppresses every pre-existing baseline entry — it only ever
 reports *new* errors. Any file this branch modified that still carries old
 baseline entries needs the same explicit check `/finish-issue` Step 4.5 and
-`/execute-plan` Step 6.5 run:
+`/execute-plan` Step 6.5 run. This step runs before Step 2 computes
+`$MERGE_BASE` for the rest of the review, so derive it here too rather than
+assume it already exists:
 
 ```bash
+BASE=$(gh pr list --head "$(git branch --show-current)" --state open \
+  --json baseRefName --jq '.[0].baseRefName // empty' \
+  --repo elan-registry/registry 2>/dev/null)
+[ -z "$BASE" ] && BASE=$(git branch --list 'milestone/*' | head -1 | tr -d ' *')
+BASE=${BASE:-main}
+MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
+
 git diff --name-only $MERGE_BASE..HEAD | scripts/check-baseline-hygiene.sh
 ```
+
+Exit 2 means the check couldn't run at all (baseline file not found —
+usually a wrong working directory), not that the branch is clean; fix the
+cwd and re-run rather than proceeding.
 
 If this branch went through `/execute-plan`, its Step 6.5 should have
 already caught and resolved this — treat any hit here as that step being

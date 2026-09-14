@@ -203,10 +203,16 @@ its header for why this, not job status, is the ground truth, and note it
 also mirrors (but can't literally share code with) the "Strengths"-heading
 check inlined in `claude-code-review.yml`'s own gate steps.
 
-If a matching comment appears, **the review ran successfully** — note this
-in the Step 6 summary and move on.
+**Exit 0** — a matching comment appeared, the review ran successfully. Note
+this in the Step 6 summary and move on.
 
-**If no matching comment appears after the poll window**, first check
+**Exit 2** — the script itself couldn't verify (a `gh` call failed: auth,
+network, or rate-limit). This is not the same as "no review posted" —
+report the actual error to the user and resolve that before re-polling.
+Do not proceed to the recovery steps below on an exit 2; they're for a
+genuine "nothing showed up" outcome, not a query failure.
+
+**Exit 1 (genuinely no matching comment after the poll window)**, first check
 whether the PR opted out of review — `milestone-review` deliberately skips on
 titles containing `[skip-review]` (see `claude-code-review.yml`'s `if:`
 condition, which applies even to the label-triggered event):

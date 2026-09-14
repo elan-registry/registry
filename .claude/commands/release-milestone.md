@@ -40,6 +40,7 @@ per TaskCreate call):
 13. Create GitHub release (draft) on pushed tag
 14. Close GitHub milestone
 15. Output summary
+16. (manual, later — not run by this command) Publish the draft release at prod deploy time
 
 Set each task to `in_progress` as you begin it and `completed` immediately
 on success. If a step fails, leave the task `in_progress` and surface the

@@ -183,6 +183,10 @@ gh pr view <pr-number> --repo elan-registry/registry --json files --jq '.files[]
   | scripts/check-baseline-hygiene.sh
 ```
 
+**Exit 2 means the check couldn't run at all** (baseline file not found) —
+treat as "can't verify," not "clean." Fix the working directory and re-run
+rather than proceeding as if this step passed.
+
 **If any modified PHP file appears in `phpstan-baseline.neon`:** stop before
 merging. Report the affected file(s) to the user and explain that either:
 

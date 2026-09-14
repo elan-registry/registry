@@ -218,6 +218,12 @@ git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD \
   | scripts/check-baseline-hygiene.sh
 ```
 
+Exit 0 means the check ran (any `BASELINE OVERRIDE:` lines in the output are
+real findings, no output means clean). **Exit 2 means the check could not
+run at all** (baseline file not found — usually a wrong working directory)
+— treat this as "can't verify," not "clean," and fix the cwd/re-run rather
+than proceeding.
+
 (If the branch has no commits yet — e.g. this step runs before `/commit` —
 pipe `git diff --name-only` with no ref, or `git status --short` reduced to
 paths, into the script instead.)

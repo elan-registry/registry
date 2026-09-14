@@ -32,6 +32,7 @@ TaskCreate. Suggested task subjects:
 5. Get the full diff against main
 5.5. Verify milestone scope vs. release notes
 6. Finalize release notes
+6.5. Release retrospective — three questions
 6.6. Render the deploy sheet for review
 7. Update wiki documentation (or skip)
 8. Update CLAUDE.md if needed
@@ -346,7 +347,7 @@ first at `/release-milestone` time.
    detect staleness instead of eyeballing `git log` output:
 
    ```bash
-   git rev-parse milestone/$ARGUMENTS > docs/plans/releases/$ARGUMENTS-deploy.md.sha
+   git rev-parse "milestone/$ARGUMENTS" > "docs/plans/releases/$ARGUMENTS-deploy.md.sha"
    ```
 
 4. If the file already exists (e.g. this step is being re-run after fixing a

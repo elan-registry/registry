@@ -21,12 +21,17 @@
 set -euo pipefail
 
 CANDIDATE="${1:?Usage: check-version-newer.sh <candidate-version> [<last-tag>]}"
-LAST_TAG="${2:-$(git describe --tags --abbrev=0 2>/dev/null || true)}"
 
-if [ -z "$LAST_TAG" ]; then
-  echo "No prior tag found (git describe --tags --abbrev=0 returned nothing) — nothing to compare against." >&2
-  echo "If this is genuinely the first release, that's expected; otherwise investigate before proceeding." >&2
-  exit 2
+if [ -n "${2:-}" ]; then
+  LAST_TAG="$2"
+else
+  if ! LAST_TAG=$(git describe --tags --abbrev=0 2>&1); then
+    echo "git describe --tags --abbrev=0 failed: ${LAST_TAG}" >&2
+    echo "This may mean tags aren't fetched locally (shallow clone / CI checkout) rather than" >&2
+    echo "genuinely no tags existing — run 'git fetch --tags' and retry, or pass the last tag" >&2
+    echo "explicitly as the second argument, before assuming this is the first release." >&2
+    exit 2
+  fi
 fi
 
 strip_v() { echo "${1#v}"; }
