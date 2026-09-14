@@ -259,13 +259,17 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             $this->assertNull($carFields->lat, "cars.lat should be null for car $carId");
             $this->assertNull($carFields->lon, "cars.lon should be null for car $carId");
 
-            // cars_hist is an append-only audit trail (DATABASE.md: "Car audit trail";
-            // insertHistory() only ever inserts, never updates existing rows — see
-            // CarAdministrationService.php). This block proves the audit row THIS
-            // transfer just created correctly reflects the target owner's (noowner's)
-            // identity, not the deleted user's — it does NOT and cannot prove anything
-            // about historic cars_hist rows written before this deletion, since prior
-            // rows are intentionally never retroactively modified.
+            // cars_hist is an append-only audit trail (DATABASE.md: "Car audit trail").
+            // insertHistory() — the path used by transfer(), and thus by this deletion
+            // hook — only ever inserts, never updates existing rows' content columns.
+            // (CarRepository::transferHistory() does UPDATE cars_hist, but only to
+            // rewrite the car_id FK during a car merge; it never touches PII/content
+            // columns and is not part of the deletion-reassignment path exercised here.)
+            // This block proves the audit row THIS transfer just created correctly
+            // reflects the target owner's (noowner's) identity, not the deleted user's
+            // — it does NOT and cannot prove anything about historic cars_hist rows
+            // written before this deletion, since prior rows' content is intentionally
+            // never retroactively modified.
             //
             // cars_hist.website stays '' (not null): insertHistory()'s history-field build
             // doesn't go through CarValidator's CLEARABLE_FIELDS pass that nulls
