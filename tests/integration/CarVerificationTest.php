@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -283,6 +284,59 @@ final class CarVerificationTest extends IntegrationTestCase
     }
 
     /**
+     * CarRepository::updateVerificationCode()'s contract is "callers are
+     * responsible for hashing — this method writes the value verbatim" (see
+     * its docblock). That is a footgun for any future caller that reaches
+     * for the repository directly instead of going through
+     * CarVerificationManager::setVerificationCode() (the only production
+     * caller today, and the only one that hashes).
+     *
+     * This pins the failure mode: writing plaintext straight through the
+     * repository must NOT be findable via findByVerificationCode(), since
+     * that method hashes its input before the lookup. A row written this way
+     * is effectively orphaned — proving the repository is hash-in/hash-out
+     * and the manager is the only safe plaintext entry point.
+     */
+    #[Group('fast')]
+    public function testUpdateVerificationCodeWritesPlaintextVerbatimAndBreaksTheHashedLookupContract(): void
+    {
+        // $this->db in this class is the raw DB singleton (see setUp()), not the
+        // DbAdapter CarRepository requires — wrap it explicitly, same as
+        // IntegrationTestCase's own default $db construction.
+        $repo = new CarRepository(new \ElanRegistry\Database\DbAdapter($this->db));
+        $plaintextCodeWrittenDirectly = 'DIRECT-PLAINTEXT-CODE-' . uniqid();
+
+        // Bypasses CarVerificationManager::setVerificationCode() — the only
+        // production call path, which hashes before calling this method.
+        $result = $repo->updateVerificationCode($this->testCarId, $plaintextCodeWrittenDirectly);
+        $this->assertTrue($result, 'updateVerificationCode() must succeed at the DB level');
+
+        // The row now holds plaintext, verbatim — the repository performed no
+        // transformation, exactly as its docblock claims.
+        $row = $this->db->query('SELECT vericode FROM cars WHERE id = ?', [$this->testCarId])->first();
+        $this->assertNotNull($row, 'Expected to find the test car row after update');
+        $this->assertSame(
+            $plaintextCodeWrittenDirectly,
+            (string) $row->vericode,
+            'updateVerificationCode() must write its argument verbatim — no hashing of its own'
+        );
+
+        // findByVerificationCode() hashes its input, so the plaintext written
+        // directly above cannot be found by searching for that same plaintext:
+        // the lookup hashes it and compares against a value that was never
+        // hashed. This is the concrete, observable breakage a future direct
+        // caller of updateVerificationCode() would hit.
+        $lookupResult = Car::findByVerificationCode($plaintextCodeWrittenDirectly);
+        $this->assertNull(
+            $lookupResult,
+            'A plaintext code written directly via CarRepository::updateVerificationCode() '
+            . '(bypassing CarVerificationManager) must NOT be findable via '
+            . 'findByVerificationCode() — proving the repository does not hash on write, '
+            . 'so callers who skip CarVerificationManager silently break the lookup contract'
+        );
+    }
+
+    /**
      * Test find by verification code fails with empty code
      */
     #[Group('fast')]
@@ -311,26 +365,6 @@ final class CarVerificationTest extends IntegrationTestCase
     }
 
     /**
-     * Test verification code is cleared on verification
-     */
-    #[Group('fast')]
-    public function testVerificationCodeIsClearedAfterVerification(): void
-    {
-        $car = new Car($this->testCarId);
-        $verificationCode = 'TEST-CLEAR-CODE-' . uniqid();
-
-        $car->setVerificationCode($verificationCode);
-        $car->markVerified();
-
-        // Reload car data
-        $verifiedCar = new Car($this->testCarId);
-
-        // Verification code should be cleared or remain (depending on implementation)
-        // This test documents the expected behavior
-        $this->assertNotNull($verifiedCar->data()->last_verified);
-    }
-
-    /**
      * Pins hashVericode()'s output length against the widened
      * cars.vericode varchar(64) column. Must run against the real
      * hashVericode() (HMAC-SHA256 hex digest, always 64 chars) — the unit
@@ -344,19 +378,37 @@ final class CarVerificationTest extends IntegrationTestCase
     }
 
     /**
-     * Test mark sold clears verification code
+     * markSold() must NOT clear vericode. Per the verification-system FRD
+     * (docs/plans/car-owner-verification/car-owner-verification-frd.md,
+     * "Enforce the 60-day expiry"): the vericode stays live between actions
+     * within the 60-day window measured from vericode_sent_at, so an owner
+     * who marks a car sold today can still use the same link for a
+     * correction next week. Clearing it on markSold() would break that.
      */
     #[Group('fast')]
-    public function testMarkSoldClearsVerificationCode(): void
+    public function testMarkSoldPreservesVerificationCode(): void
     {
         $car = new Car($this->testCarId);
         $verificationCode = 'TEST-SOLD-CODE-' . uniqid();
 
         $car->setVerificationCode($verificationCode);
+        $storedHashBeforeSold = (string) $this->db->query(
+            'SELECT vericode FROM cars WHERE id = ?',
+            [$this->testCarId]
+        )->first()->vericode;
+
         $car->markSold();
 
-        // After marking as sold, verification code should be cleared
-        $soldCar = new Car($this->testCarId);
-        $this->assertNull($soldCar->data()->verification_code ?? null);
+        $storedHashAfterSold = (string) $this->db->query(
+            'SELECT vericode FROM cars WHERE id = ?',
+            [$this->testCarId]
+        )->first()->vericode;
+
+        $this->assertSame(
+            $storedHashBeforeSold,
+            $storedHashAfterSold,
+            'markSold() must not clear or change cars.vericode — the FRD requires the '
+            . 'verification link to stay live for corrections within the 60-day expiry window'
+        );
     }
 }
