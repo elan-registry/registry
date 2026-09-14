@@ -7,13 +7,13 @@
 
 Changes visible to public registry visitors (car listings, owner pages, search, etc.). One sentence each.
 
-- **[Feature/Change Name]** ([#NNN](https://github.com/elan-registry/registry/issues/NNN)): One-sentence description of what changed and its benefit to users.
+- One-sentence description of what changed and its benefit to users. ([#NNN](https://github.com/elan-registry/registry/issues/NNN))
 
 ## Admin-Facing Changes
 
 Changes visible only to administrators (admin dashboard, maintenance tools, settings, etc.). One sentence each.
 
-- **[Change Name]** ([#NNN](https://github.com/elan-registry/registry/issues/NNN)): One-sentence description.
+- One-sentence description of what changed. ([#NNN](https://github.com/elan-registry/registry/issues/NNN))
 
 ## Issues Resolved
 
@@ -62,15 +62,20 @@ When generating release notes:
    `docs/plans/releases/<version>-deploy.md` from
    `RELEASE_INSTRUCTIONS_TEMPLATE.md` — not in this file. This file is a
    changelog index; the deploy sheet is the operational procedure.
-5. **Be concise.** No multi-line descriptions. One sentence per entry in
-   every section. Link to the issue/PR for anyone who needs more.
+5. **Be concise.** One sentence per entry, every section, no exceptions —
+   User-Facing, Admin-Facing, and Issues Resolved alike. No bolded
+   feature-name headers, no parenthetical asides, no "here's why this
+   matters" follow-up clauses, no multi-sentence entries. If an entry needs
+   more than one sentence to explain, that explanation belongs in the
+   issue/PR, not here — link to it and stop. See v2.30.2 on GitHub Releases
+   for the target format.
 6. **No emoji** in section headers.
 
 ### Section Guidelines
 
 | Section | Purpose | Style |
 | ------- | ------- | ----- |
-| User-Facing Changes | What public visitors will notice | Benefit-focused, one sentence each |
+| User-Facing Changes | What public visitors will notice | Benefit-focused, one plain sentence each — no bolded titles, no asides |
 | Admin-Facing Changes | What administrators will notice | Same format; keep separate from user-facing |
 | Issues Resolved | Complete closure list | Sorted by issue number, one-sentence summary (not verbatim GH title) |
 
