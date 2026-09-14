@@ -434,7 +434,10 @@ $soldDateError = null;
 
 // Already-sold guard. Applies to GET and POST alike so that a repeat POST is
 // a strict no-op: first write wins, no second cars_hist row. Only relevant to
-// the sold action — a sold car can still be verified.
+// the sold action — a sold car can still be verified. Renders directly with
+// a 200 rather than following this file's usual PRG pattern: no write
+// happens on this path, so there is nothing for a refresh to re-submit and
+// no reason to pay a redirect round-trip just to reach the same notice.
 if ($action === 'sold' && $isSold) {
     $verifyNoticeState   = 'sold';
     $verifyNoticeIcon    = 'fa-circle-info';
