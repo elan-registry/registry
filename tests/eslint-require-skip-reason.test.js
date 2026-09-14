@@ -12,37 +12,7 @@
 
 const { test } = require("node:test");
 const { RuleTester } = require("eslint");
-
-// Mirror the rule definition from eslint.config.mjs's `localRules` object —
-// duplicated here rather than imported because eslint.config.mjs is an ESM
-// default-export config file, not a module designed to expose its rule
-// object for reuse.
-const rule = {
-    create(context) {
-        return {
-            CallExpression(node) {
-                const callee = node.callee;
-                if (
-                    callee.type === "MemberExpression" &&
-                    callee.object.type === "Identifier" &&
-                    callee.object.name === "test" &&
-                    callee.property.type === "Identifier" &&
-                    callee.property.name === "skip" &&
-                    node.arguments.length < 2
-                ) {
-                    context.report({
-                        node,
-                        message:
-                            "test.skip() must include a second argument " +
-                            "(a reason string): use test.skip(condition, " +
-                            "'reason') — see CLAUDE.md 'Playwright Test " +
-                            "Maintenance' and issue #1950.",
-                    });
-                }
-            },
-        };
-    },
-};
+const rule = require("../eslint-rules/require-skip-reason.cjs");
 
 test("require-skip-reason rule", () => {
     const ruleTester = new RuleTester({
