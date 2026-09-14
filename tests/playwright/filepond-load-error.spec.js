@@ -116,7 +116,7 @@ test.describe('FilePond load error recovery (#755)', () => {
     });
 
     test('error banner appears when an existing photo fails to load', async ({ page }) => {
-        test.skip(true, 'Blocked on #2096 - FilePond addFile() never rejects on a real load-error with the pinned 4.32.12 version, so this app-level banner path is currently dead code (see #2071)');
+        test.fixme(true, 'Blocked on #2096 - FilePond addFile() never rejects on a real load-error with the pinned 4.32.12 version, so this app-level banner path is currently dead code (see #2071)');
 
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 
@@ -128,7 +128,7 @@ test.describe('FilePond load error recovery (#755)', () => {
     });
 
     test('submit button remains enabled after a photo load failure', async ({ page }) => {
-        test.skip(true, 'Blocked on #2096 - FilePond addFile() never rejects on a real load-error with the pinned 4.32.12 version, so this app-level banner path is currently dead code (see #2071)');
+        test.fixme(true, 'Blocked on #2096 - FilePond addFile() never rejects on a real load-error with the pinned 4.32.12 version, so this app-level banner path is currently dead code (see #2071)');
 
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 
@@ -141,7 +141,7 @@ test.describe('FilePond load error recovery (#755)', () => {
     });
 
     test('removing the failed photo item leaves the form submittable', async ({ page }) => {
-        test.skip(true, 'Blocked on #2096 - FilePond addFile() never rejects on a real load-error with the pinned 4.32.12 version, so this app-level banner path is currently dead code (see #2071)');
+        test.fixme(true, 'Blocked on #2096 - FilePond addFile() never rejects on a real load-error with the pinned 4.32.12 version, so this app-level banner path is currently dead code (see #2071)');
 
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 

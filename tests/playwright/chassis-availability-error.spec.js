@@ -143,7 +143,18 @@ test.describe('Chassis availability check error feedback (#754)', () => {
             route.fulfill({ status: 200, contentType: 'application/json', body: AVAILABLE_RESPONSE })
         );
 
+        // #chassis_check_error starts life as d-none (edit.php) and every failure
+        // path in the chain also leaves it d-none, so a bare toBeHidden() here
+        // would pass even if the chain stalled before reaching the success
+        // handler that's actually supposed to clear it. Wait for the mocked
+        // availability response to actually be consumed first, so a stalled
+        // chain fails loudly instead of resting on the pre-existing hidden state.
+        const availabilityResponse = page.waitForResponse(
+            (r) => r.url().includes('chassis-availability.php') && r.status() === 200
+        );
         await triggerChassisBlur(page);
+        await availabilityResponse;
+
         await expect(page.locator('#chassis_check_error')).toBeHidden({ timeout: 5000 });
     });
 
