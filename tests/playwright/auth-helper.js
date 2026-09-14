@@ -231,6 +231,44 @@ async function assertNoGoogleMapsRequests(page, path, label = path) {
 }
 
 /**
+ * Assert a page loads (HTTP 200) with no critical console errors.
+ * Filters out errors that are expected on unauthenticated local visits:
+ * missing API keys, and 404/403 on optional or auth-gated sub-resources.
+ * Google Maps errors are intentionally NOT filtered — the codebase migrated
+ * to MapLibre GL (self-hosted tiles), so a console error mentioning Google
+ * Maps today indicates a real regression, not noise;
+ * assertNoGoogleMapsRequests() above is the network-level equivalent check.
+ * Also verifies the response was a 200 — a mid-render PHP fatal
+ * (display_errors off) produces no console output at all, so status is the
+ * only signal that distinguishes a full render from one that died partway
+ * through (see issue #1778 for the escape-analysis history behind this).
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ * @param {string} path - Path to navigate to (without baseURL)
+ * @param {string} [label] - Optional label for the assertion message
+ */
+async function assertNoConsoleErrors(page, path, label = path) {
+  const consoleErrors = [];
+  page.on('console', msg => {
+    if (msg.type() === 'error') {
+      consoleErrors.push(msg.text());
+    }
+  });
+
+  const response = await page.goto(path);
+  await page.waitForLoadState('networkidle');
+
+  expect(response?.status(), `HTTP status for ${label}`).toBe(200);
+
+  const criticalErrors = consoleErrors.filter(error =>
+    !error.includes('API key') &&
+    !error.includes('404') && // Optional resources that may not exist locally
+    !error.includes('403')    // Auth-gated sub-resources on public pages
+  );
+
+  expect(criticalErrors, `Console errors on ${label}: ${criticalErrors.join(' | ')}`).toHaveLength(0);
+}
+
+/**
  * Assert a page's <title> and meta description match expected values.
  * The <title> tag appends " {site_name}" after $pageTitle (see
  * users/template/header1_must_include.php), so the title check is a partial
@@ -310,5 +348,6 @@ module.exports = {
   getFirstCard,
   validateCardStructure,
   assertNoGoogleMapsRequests,
+  assertNoConsoleErrors,
   assertPageTitle
 };
