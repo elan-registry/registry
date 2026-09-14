@@ -166,10 +166,15 @@ if (!preg_match('/^[0-9a-f]{32}$/', $verifyCode)) {
 }
 
 // --- 2. Rate limiting (token-scoped) -------------------------------------
-// Scoped to the vericode itself rather than IP alone: the threat is someone
-// grinding candidate codes, and an attacker rotates IPs far more cheaply than
-// they can guess a 128-bit secret. The IP and total ceilings in the config
-// back this up.
+// Scoped to the vericode itself as well as IP: an attacker grinding
+// candidate codes presents a fresh token every request, so token_max alone
+// does not bound that threat — ip_max and total_max are what actually cap a
+// single grinder, since IP is far more expensive to rotate than a guess is
+// to make. Token-scoping instead bounds repeated guessing FROM one IP
+// against one specific car's code (e.g. a credential-stuffing-style replay),
+// and — now that recording below reflects real lookup outcomes rather than
+// the throttle decision — protects a legitimate owner's own link from being
+// grief-guessed by someone else sharing their network.
 //
 // Config-missing is a distinct, louder failure than a limiter exception:
 // RateLimit::check() returns true with NO exception when the key is absent
@@ -209,12 +214,15 @@ try {
     $rateLimitAllowed = true;
 }
 
-// recordRateLimit() is required, not optional: RateLimit::check()'s
-// total_max/ip_max paths count only rows written by record(), so without it
-// those limits can never trip.
-recordRateLimit('verification_code_attempt', $rateLimitAllowed, null, null, ['token' => $verifyCode]);
-
 if (!$rateLimitAllowed) {
+    // recordRateLimit() is required, not optional: without it, total_max
+    // (which counts every row regardless of outcome) can never trip. The
+    // success flag here is `false` — this request never got to resolve, so
+    // by the same failed-attempt semantics the successful-lookup recording
+    // below uses, it counts as one — which also keeps token_max/ip_max
+    // (success=0-only counters) climbing for the duration of a throttle,
+    // making it self-sustaining across its window rather than resetting.
+    recordRateLimit('verification_code_attempt', false, null, null, ['token' => $verifyCode]);
     // Same page as every other rejection — a throttled prober must not learn
     // that they were throttled rather than simply wrong.
     renderInvalidLink(429);
@@ -228,8 +236,27 @@ try {
 } catch (ElanRegistryException $e) {
     logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
         'verify_car.php: verification code lookup failed: ' . $e->getMessage());
+    // Deliberately NOT recorded as an attempt: this is a storage fault on
+    // our side, not a failed guess by the visitor. Counting it toward
+    // token_max/ip_max would let a database blip throttle the legitimate
+    // owner whose vericode happened to trigger it — the same
+    // fail-open-without-punishing-the-caller reasoning as the
+    // checkRateLimit() PDOException handler above.
     renderInvalidLink(500);
 }
+
+// recordRateLimit() must record whether the vericode ACTUALLY resolved, not
+// merely whether the request avoided being throttled: RateLimit::check()'s
+// token_max/ip_max paths count only `success = 0` rows (see
+// getAttemptCount()'s $successOnly=false argument), so recording a blanket
+// "allowed" success here — as an earlier version of this file did — writes
+// every failed guess as success=1 and makes those two per-identifier
+// brute-force ceilings permanently inert; only the outcome-independent
+// total_max/total_window ceiling would ever fire. Recording the real
+// resolution outcome here (`false` for an unknown/malformed code) is what
+// makes token_max/ip_max — the limits that actually bound guessing against
+// one car's code and one visitor's IP — count real failures.
+recordRateLimit('verification_code_attempt', $verifyCar !== null, null, null, ['token' => $verifyCode]);
 
 if ($verifyCar === null) {
     renderInvalidLink();

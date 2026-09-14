@@ -156,9 +156,12 @@ final class RateLimitConfigTest extends TestCase
         );
         // Mirrors the project's actual active verification_code_attempt limits
         // (usersc/includes/rate_limits.php). Token-scoped like
-        // password_reset_submit: the per-token sub-limit is what actually
-        // bounds guessing against a single car's code, with ip_max and
-        // total_max as broader volume backstops.
+        // password_reset_submit: token_max bounds repeated attempts against
+        // one specific car's code from one visitor (e.g. someone re-guessing
+        // or grief-testing a single known token); it does NOT bound an
+        // attacker grinding many different candidate codes, since each guess
+        // is a fresh token and therefore a fresh bucket — ip_max and
+        // total_max are the backstops for that broader volume threat.
         $this->assertSame(50, $rateLimits['verification_code_attempt']['ip_max']);
         $this->assertSame(300, $rateLimits['verification_code_attempt']['ip_window']);
         $this->assertSame(10, $rateLimits['verification_code_attempt']['token_max']);

@@ -800,6 +800,43 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
+     * RateLimit::check()'s token_max/ip_max paths count ONLY rows with
+     * success=0 (getAttemptCount()'s $successOnly=false path) — a rejected
+     * request that gets recorded as success=1 is invisible to those limits
+     * forever, regardless of how many rows accumulate. A prior version of
+     * verify_car.php recorded $rateLimitAllowed (whether the request was
+     * throttled) instead of whether the vericode actually resolved, so every
+     * wrong guess landed as success=1 and token_max/ip_max were silently
+     * inert in production even though testGetRequestRecordsRateLimitAttempt-
+     * ForTokenIdentifier above — and every other test in this file — kept
+     * passing. This test drives a real unresolvable-vericode request and
+     * asserts the row it produces is a recorded failure, closing exactly
+     * that gap.
+     */
+    public function testUnknownVericodeRecordsFailedRateLimitAttempt(): void
+    {
+        $code = bin2hex(random_bytes(16));
+        $identifierKey = hash('sha256', 'token::' . $code);
+
+        $result = $this->get('vericode=' . $code);
+        $this->assertSame(404, $result['status']);
+
+        $row = $this->db->query(
+            "SELECT success FROM us_rate_limits WHERE action = 'verification_code_attempt' "
+                . 'AND identifier_key = ? ORDER BY id DESC LIMIT 1',
+            [$identifierKey]
+        )->first();
+
+        $this->assertNotNull($row, 'An unresolvable vericode must still record a rate-limit attempt row');
+        $this->assertSame(
+            0,
+            (int) $row->success,
+            'An unresolvable vericode must record success=0 — RateLimit::check() counts only success=0 rows '
+                . 'toward token_max/ip_max, so recording anything else makes those limits permanently inert'
+        );
+    }
+
+    /**
      * verify_car.php's own docblock states that a throttled (429) request
      * must render the identical body to every other rejection — "a throttled
      * prober must not learn that they were throttled rather than simply
