@@ -1,1 +1,9 @@
 Options -Indexes
+
+# vericode_secret.php holds the HMAC key for users.vericode/cars.vericode
+# hashing (see #1928). It only ever assigns a PHP variable and is harmless
+# while PHP executes it, but deny direct access as defense-in-depth against
+# any future misconfiguration that would otherwise serve it as plaintext.
+<Files "vericode_secret.php">
+    Require all denied
+</Files>

@@ -325,15 +325,18 @@ class CarRepository
     }
 
     /**
-     * Update the verification code for a car
+     * Update the stored verification-code hash for a car
      *
      * @param int $carId Car ID
-     * @param string $verificationCode Verification code to set
+     * @param string $hashedVerificationCode The HMAC-SHA256 digest from hashVericode();
+     *                                       never the plaintext code. Callers are
+     *                                       responsible for hashing — this method
+     *                                       writes the value verbatim to cars.vericode.
      * @return bool True on success
      */
-    public function updateVerificationCode(int $carId, string $verificationCode): bool
+    public function updateVerificationCode(int $carId, string $hashedVerificationCode): bool
     {
-        return $this->updateCar($carId, ['vericode' => $verificationCode]);
+        return $this->updateCar($carId, ['vericode' => $hashedVerificationCode]);
     }
 
     /**
@@ -762,13 +765,18 @@ class CarRepository
     /**
      * Find a car by verification code
      *
-     * @param string $code Verification code
-     * @return object|null Car data or null
+     * @param string $code The plaintext verification code; it is hashed via
+     *                     hashVericode() before the lookup, since cars.vericode
+     *                     stores only the HMAC-SHA256 digest.
+     * @return object|null Car data, or null if not found. The returned object's
+     *                     ->vericode property (if accessed) is always the stored
+     *                     hash, never plaintext.
      * @throws CarDatabaseException If the query fails
      */
     public function findByVerificationCode(string $code): ?object
     {
-        $result = $this->db->query('SELECT * FROM cars WHERE vericode = ?', [$code]);
+        $hashedCode = hashVericode($code);
+        $result = $this->db->query('SELECT * FROM cars WHERE vericode = ?', [$hashedCode]);
         if ($this->db->error()) {
             throw new CarDatabaseException(
                 "CarRepository::findByVerificationCode failed: " . $this->db->errorString()

@@ -17,7 +17,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - WIP: [#1884](https://github.com/elan-registry/registry/issues/1884) — The manual send tool previews before sending and no longer deletes car history on send.
 - WIP: [#1885](https://github.com/elan-registry/registry/issues/1885) — Verification emails send automatically on a guarded daily cron with a dashboard Pause/Resume control.
 - WIP: [#1886](https://github.com/elan-registry/registry/issues/1886) — Superseded admin-only verification pages are removed.
-- WIP: [#1928](https://github.com/elan-registry/registry/issues/1928) — Verification codes are hashed at rest before the first live send batch.
+- [#1928](https://github.com/elan-registry/registry/issues/1928) — Verification codes are hashed at rest before the first live send batch.
 - WIP: [#1930](https://github.com/elan-registry/registry/issues/1930) — Dead owner-timestamp code path is wired up or removed.
 - [#1991](https://github.com/elan-registry/registry/issues/1991) — Cars with no live owner are excluded from verification-email eligibility.
 - WIP: [#2085](https://github.com/elan-registry/registry/issues/2085) — The unmatched-recipient counter reflects cron reconciliation and suppression-sync, not just the webhook.
@@ -36,7 +36,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - WIP: [#1885](https://github.com/elan-registry/registry/issues/1885) — Register send_verification_batch as a guarded cron job with dashboard Pause/Resume.
 - WIP: [#1886](https://github.com/elan-registry/registry/issues/1886) — Remove the superseded admin-scoped verification files.
 - WIP: [#1922](https://github.com/elan-registry/registry/issues/1922) — Investigate and resolve sender-reputation issues ahead of the first live send.
-- WIP: [#1928](https://github.com/elan-registry/registry/issues/1928) — Hash cars.vericode before the first live verification batch.
+- [#1928](https://github.com/elan-registry/registry/issues/1928) — Hash cars.vericode before the first live verification batch.
 - WIP: [#1930](https://github.com/elan-registry/registry/issues/1930) — Wire up or remove CarRepository::updateOwnerLastUpdated().
 - [#1991](https://github.com/elan-registry/registry/issues/1991) — Exclude cars with no owner, or owned by the `noowner` system account, from verification-email eligibility.
 - WIP: [#2085](https://github.com/elan-registry/registry/issues/2085) — Fix the unmatched-recipient counter to cover all three ingestion paths.
