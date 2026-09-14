@@ -888,23 +888,21 @@ final class CarRepositoryTest extends TestCase
         $this->assertStringContainsString(
             'INNER JOIN users',
             $capturedSql,
-            'Ownership must require a live users row via INNER JOIN — a LEFT JOIN would let a car '
-                . 'whose user_id points at a deleted user (no FK enforces this — see '
-                . "DATABASE.md's \"No Enforced Foreign Key Constraints\") slip through as eligible, "
-                . "since 'no join match' and 'no join match because ownerless' are indistinguishable "
-                . 'to a LEFT JOIN'
+            'Ownership must require a live users row via INNER JOIN — a LEFT JOIN can\'t tell a car '
+                . 'whose user_id points at a deleted user (no FK enforces this — see DATABASE.md\'s '
+                . '"No Enforced Foreign Key Constraints") apart from a deliberately ownerless one, so it '
+                . 'would slip through as eligible'
         );
         $this->assertStringContainsString(
             'cars.user_id IS NOT NULL',
             $capturedSql,
             'A car with no owner at all must be excluded explicitly, not via three-valued logic'
         );
-        // Asserted as the whole clause, not as independent fragments: an OR
-        // between "no join match" and "username != noowner" would pass both a
-        // narrower 'username !=' fragment check and a narrower 'user_id IS NOT
-        // NULL' fragment check while still admitting an orphaned user_id (a
-        // deleted user's dangling ID) as eligible. Only pinning the full AND
-        // clause distinguishes the correct INNER JOIN semantics from that bug.
+        // Asserted as the whole clause, not fragments: an OR between "no join
+        // match" and "username != noowner" would still pass narrower
+        // 'username !=' and 'user_id IS NOT NULL' checks while admitting an
+        // orphaned user_id as eligible. Pinning the full AND clause is what
+        // distinguishes correct INNER JOIN semantics from that bug.
         $this->assertStringContainsString(
             "AND users.username != 'noowner'",
             $capturedSql,

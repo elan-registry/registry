@@ -427,16 +427,15 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
 
     /**
      * #1991: a car with no owner at all (`user_id IS NULL`) must be excluded,
-     * independent of the `noowner`-account check above. createTestCar()
-     * requires an existing user_id at insert time (it checks the user row
-     * exists in PHP before inserting — there is no FK enforcing this at the
-     * database level; cars.user_id's FK was deliberately dropped, see
-     * database/migrations/20260719120000_drop_cars_user_id_fk.php and
+     * independent of the `noowner`-account check above. createTestCar() checks
+     * the user row exists in PHP before inserting (there's no FK enforcing
+     * this at the database level — cars.user_id's FK was deliberately dropped,
+     * see database/migrations/20260719120000_drop_cars_user_id_fk.php and
      * DATABASE.md's "No Enforced Foreign Key Constraints"), so the row is
-     * created normally and then updated to NULL directly — this is the only
-     * way to reach the NULL state through this fixture helper, and it mirrors
-     * how the condition can arise in production (e.g. a manual admin
-     * data-repair action) independent of the noowner reassignment path.
+     * created normally and then updated to NULL directly — the only way to
+     * reach the NULL state through this fixture helper, and a mirror of how
+     * the condition can arise in production (e.g. a manual admin data-repair
+     * action) independent of the noowner reassignment path.
      *
      * Includes a control car with a normal (non-NULL) user_id, proving the
      * NULL-owner car is excluded *because of* the NULL and not because of
@@ -488,31 +487,30 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     /**
      * #1991: a car whose user_id points at a users row that no longer exists
      * (an orphaned reference) must be excluded, independent of the NULL and
-     * noowner checks above. This state is reachable in production and is not
-     * merely theoretical: cars.user_id carries no FK to users.id (deliberately
+     * noowner checks above. This is reachable in production, not just
+     * theoretical: cars.user_id carries no FK to users.id (deliberately
      * dropped — see database/migrations/20260719120000_drop_cars_user_id_fk.php
      * and DATABASE.md's "No Enforced Foreign Key Constraints"), and
      * usersc/scripts/after_user_deletion.php's reassignment-to-noowner runs in
      * its own transaction *after* users/helpers/users.php has already
-     * committed `DELETE FROM users` outside any transaction. Every one of that
-     * hook's several early-return paths (noowner lookup failure, no
-     * authenticated admin session, a rolled-back reassignment transaction)
-     * leaves cars pointing at the now-deleted user's ID — see the hook's own
-     * inline ASSUMPTION comment, which names this exact outcome.
+     * committed `DELETE FROM users` outside any transaction. Any of that
+     * hook's early-return paths (noowner lookup failure, no authenticated
+     * admin session, a rolled-back reassignment transaction) leaves cars
+     * pointing at the now-deleted user's ID — see the hook's own inline
+     * ASSUMPTION comment, which names this exact outcome.
      *
-     * This test reproduces that state directly — deleteTestUser() is a raw
-     * DELETE FROM users that bypasses deleteUsers() and its cleanup hook
-     * entirely, the same way an aborted hook would leave the car, so the
-     * car's user_id is left dangling instead of reassigned or nulled. A LEFT
-     * JOIN with `users.username IS NULL OR ...` (the pre-#1991-fix shape)
-     * cannot distinguish this "orphaned owner" state from "no join match
-     * because deliberately ownerless" — an INNER JOIN is required to reject
-     * both correctly, which is what this test exists to pin down.
+     * This test reproduces that state directly: deleteTestUser() is a raw
+     * DELETE FROM users that bypasses deleteUsers() and its cleanup hook, the
+     * same way an aborted hook would leave the car, so user_id is left
+     * dangling instead of reassigned or nulled. A LEFT JOIN with
+     * `users.username IS NULL OR ...` (the pre-#1991-fix shape) can't tell
+     * this "orphaned owner" state apart from "no join match because
+     * deliberately ownerless" — only an INNER JOIN rejects both, which is
+     * what this test pins down.
      *
      * Includes a control car with a live owner, proving the orphaned-owner
-     * car is excluded *because of* the dangling reference and not because of
-     * fixture drift or an unrelated condition — same rationale as the
-     * controls in the two tests above.
+     * car is excluded *because of* the dangling reference and not fixture
+     * drift or an unrelated condition — same rationale as the controls above.
      */
     #[Group('fast')]
     public function testCarOwnedByDeletedUserIsExcluded(): void
@@ -535,11 +533,10 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             'email' => 'orphaned-owner-control-normal-owner@example.com',
         ]));
 
-        // Bypasses deleteUsers()/after_user_deletion.php entirely — a raw
-        // DELETE, mirroring the hook's own DELETE FROM users, but with no
-        // reassignment step following it. This is what an aborted hook (or
-        // any other path that deletes a users row without reassigning that
-        // user's cars) leaves behind.
+        // Bypasses deleteUsers()/after_user_deletion.php — a raw DELETE
+        // mirroring the hook's own DELETE FROM users, but with no
+        // reassignment step. This is what an aborted hook (or any path that
+        // deletes a users row without reassigning its cars) leaves behind.
         $this->deleteTestUser($doomedUserId);
         $orphanedRow = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$orphanCarId])->first();
         $this->assertNotEmpty($orphanedRow, 'Test setup: car ' . $orphanCarId . ' disappeared after user deletion');

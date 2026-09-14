@@ -623,12 +623,11 @@ class CarRepository
      * reachable, e.g. if usersc/scripts/after_user_deletion.php's reassignment
      * transaction fails after the users row is already deleted), or the owner
      * is the `noowner` system account — the placeholder a car is reassigned to
-     * when its real owner is erased. Ownership is therefore required via an
-     * INNER JOIN against users, and the system account is resolved dynamically
-     * by username rather than by a hardcoded ID, so a reseeded or re-IDed
-     * account is still excluded. Emailing such a car would mail an erased
-     * owner's last-known address, which the registry's privacy commitment
-     * forbids.
+     * when its real owner is erased. Ownership is required via an INNER JOIN
+     * against users; the system account is resolved dynamically by username
+     * rather than a hardcoded ID, so a reseeded or re-IDed account is still
+     * excluded. Emailing such a car would mail an erased owner's last-known
+     * address, which the registry's privacy commitment forbids.
      *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
@@ -656,16 +655,15 @@ class CarRepository
         // one, but the mechanism is not the obvious one.
         $stale = self::stalenessSql('cars');
 
-        // INNER JOIN, not LEFT JOIN: cars.user_id carries no FK to users.id (the
-        // constraint was deliberately dropped — see DATABASE.md's "No Enforced
-        // Foreign Key Constraints"), so a car's user_id can point at a row that
-        // no longer exists (e.g. a deleted user whose after_user_deletion.php
-        // reassignment transaction failed partway). A LEFT JOIN would let such an
-        // orphaned row through via `users.username IS NULL`, indistinguishable at
-        // that point from "no join match because there's deliberately no owner" —
-        // exactly the erased-owner leak this method exists to close. INNER JOIN
-        // requires a live users row, so cars.user_id IS NOT NULL is redundant
-        // (the join already excludes NULL) but kept for clarity/defense in depth.
+        // INNER JOIN, not LEFT JOIN: cars.user_id has no FK to users.id (dropped
+        // deliberately — see DATABASE.md's "No Enforced Foreign Key Constraints"),
+        // so it can point at a row that no longer exists (e.g. a deleted user
+        // whose after_user_deletion.php reassignment failed partway). A LEFT
+        // JOIN would admit such a row via `users.username IS NULL` — indistinguishable
+        // from "no join match because deliberately ownerless" — reopening the
+        // erased-owner leak this method exists to close. INNER JOIN requires a
+        // live users row, so cars.user_id IS NOT NULL is redundant (the join
+        // already excludes NULL) but kept for clarity/defense in depth.
         $result = $this->db->query(
             "SELECT cars.* FROM cars
               INNER JOIN users ON users.id = cars.user_id

@@ -382,18 +382,18 @@ migrations live in `database/migrations/` — see
 
 `cars.user_id → users.id` is **not** enforced at the database level. A FK
 (`fk_cars_user_id`, `ON DELETE SET NULL`) was added by
-`database/migrations/20260709202522_add_foreign_key_constraints.php` and then
+`database/migrations/20260709202522_add_foreign_key_constraints.php`, then
 deliberately dropped by
-`database/migrations/20260719120000_drop_cars_user_id_fk.php`: the `ON DELETE
+`database/migrations/20260719120000_drop_cars_user_id_fk.php`: its `ON DELETE
 SET NULL` cascade fired during `DELETE FROM users` and nulled `cars.user_id`
-before `usersc/scripts/after_user_deletion.php`'s own reassignment hook ran,
-so the hook always saw 0 cars to reassign to the `noowner` account. No FK is
-currently planned as a replacement — the index on `user_id` (also named
+before `usersc/scripts/after_user_deletion.php`'s reassignment hook ran, so
+the hook always saw 0 cars to reassign to the `noowner` account. No FK is
+planned as a replacement — the index on `user_id` (also named
 `fk_cars_user_id`) was retained for query performance, but nothing enforces
-referential integrity on this column at the database layer. Application code
-that reads `cars.user_id` must account for it pointing at a user row that no
-longer exists (see `car_id` in the table below for the equivalent statement
-about car-adjacent tables generally).
+referential integrity on this column. Application code that reads
+`cars.user_id` must account for it pointing at a user row that no longer
+exists (see `car_id` in the table below for the equivalent statement about
+car-adjacent tables generally).
 
 ### Data Access Patterns
 
