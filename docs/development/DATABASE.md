@@ -392,8 +392,8 @@ planned as a replacement — the index on `user_id` (also named
 `fk_cars_user_id`) was retained for query performance, but nothing enforces
 referential integrity on this column. Application code that reads
 `cars.user_id` must account for it pointing at a user row that no longer
-exists (see `car_id` in the table below for the equivalent statement about
-car-adjacent tables generally).
+exists (see `car_id` in the `er_email_events` table above for the equivalent
+statement about car-adjacent tables generally).
 
 ### Data Access Patterns
 
