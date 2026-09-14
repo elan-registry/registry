@@ -1,6 +1,6 @@
 // tests/playwright/ui-consistency.test.js
 const { test, expect } = require('@playwright/test');
-const { navigateAndWait, validateCardStructure, NO_CARDS_ERROR, waitForDataTables } = require('./auth-helper.js');
+const { navigateAndWait, validateCardStructure, NO_CARDS_ERROR, waitForDataTables, assertNoConsoleErrors } = require('./auth-helper.js');
 const { CAR_ID_STANDARD } = require('./fixtures.js');
 
 test.describe('UI Consistency After Style Refactoring', () => {
@@ -120,25 +120,39 @@ test.describe('UI Consistency After Style Refactoring', () => {
   });
 
   test('JavaScript files load without errors', async ({ page }) => {
-    const consoleErrors = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
-      }
-    });
-    
-    await page.goto('app/owner/reports/statistics.php');
-    await page.waitForTimeout(3000); // Wait for all scripts to load
-    
-    // Filter out known acceptable errors for unauthenticated local visits
-    const criticalErrors = consoleErrors.filter(error =>
-      !error.includes('Google Maps') &&
-      !error.includes('API key') &&
-      !error.includes('404') && // Optional resources that may not exist locally
-      !error.includes('403')    // Auth-gated sub-resources on public pages
-    );
+    await assertNoConsoleErrors(page, 'app/owner/reports/statistics.php', 'statistics.php');
+  });
 
-    expect(criticalErrors, `Console errors on statistics.php: ${criticalErrors.join(' | ')}`).toHaveLength(0);
+  // Issue #1778 — dedicated load/console-error coverage beyond the page-title loop.
+  // Each test also asserts content that only renders if the page reached the
+  // end of its output — a mid-render PHP fatal still flushes an early <h1>/
+  // <title> and produces no console error, so those two signals alone would
+  // not have caught chassis-validation.php's prior fatals (#1705 escape
+  // analysis references d8cb618d, 8b81ab57).
+  test('docs/car-stories.php has no console errors and renders all story cards', async ({ page }) => {
+    await assertNoConsoleErrors(page, 'docs/car-stories.php', 'car-stories.php');
+    // Last card in $storyCards — proves the render reached the end of the grid.
+    await expect(page.getByText('Shapecraft Elan Story')).toBeVisible();
+  });
+
+  test('docs/reference/chassis-validation.php has no console errors and renders race-car formats', async ({ page }) => {
+    await assertNoConsoleErrors(page, 'docs/reference/chassis-validation.php', 'chassis-validation.php');
+    // 26-R-08 renders only in the loop's final ('other_years') branch, and
+    // "Validation Override" is the heading of the section immediately after
+    // the loop — together they prove every iteration ran and the loop
+    // exited, not just that it started (d8cb618d fataled on the first
+    // iteration's str_replace() call, so an assertion on an early-iteration
+    // value alone would not have caught it).
+    await expect(page.getByText('26-R-08')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Validation Override' })).toBeVisible();
+  });
+
+  test('docs/reference/paint-colors.php has no console errors and renders the full color chart', async ({ page }) => {
+    await assertNoConsoleErrors(page, 'docs/reference/paint-colors.php', 'paint-colors.php');
+    // "Laurel Green" is the true last entry of $officialColors (L26 is
+    // second-to-last) — proves the loop rendered every row, not just up to
+    // the more recognizable L26 code.
+    await expect(page.getByText('Laurel Green')).toBeVisible();
   });
 
   test('images and assets load correctly', async ({ page }) => {
