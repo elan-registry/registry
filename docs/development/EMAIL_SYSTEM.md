@@ -527,6 +527,91 @@ requests and the docs; treat them as unverified.
    safe for all of them.
 6. `message-id` arrives with angle brackets — store the send API's `messageId` verbatim.
 
+## Sender Reputation (#1922)
+
+Investigated 2026-09-03 through 2026-09-14 after a transactional test message
+from `registrar@elanregistry.org`, sent via Brevo's shared relay, was
+auto-classified as Junk on arrival in a fresh Outlook.com mailbox — before any
+recipient action. v2.30.x sends verification email to every owner in a
+cohort, so a whole slice of Microsoft-domain recipients silently never seeing
+the request (and their "no response" being read as evidence of anything)
+motivated closing this out before the first live send.
+
+### Authentication (SPF/DKIM/DMARC) — confirmed passing
+
+**Root cause found and fixed:** the SPF record for `elanregistry.org` was
+missing `include:spf.brevo.com`, so Brevo's shared sending IPs were not
+authorized — the likely cause of the Outlook.com junk classification.
+
+Fix applied directly in Cloudflare's dashboard:
+
+```text
+v=spf1 +ip4:106.0.62.78 +include:spf.a2hosting.com include:spf.brevo.com ~all
+```
+
+Confirmed live via `dig` against both 1.1.1.1 and 8.8.8.8 (2026-09-13).
+
+**DKIM** was already correctly configured; confirmed working via the
+selectors:
+
+- `brevo1._domainkey.elanregistry.org` → `b1.elanregistry-org.dkim.brevo.com`
+- `brevo2._domainkey.elanregistry.org` → `b2.elanregistry-org.dkim.brevo.com`
+
+**DMARC** is `p=quarantine`, reporting to Cloudflare and Brevo. Cloudflare's
+DMARC Management report (30-day window, 2026-09-13): 100% DMARC pass (12/12),
+100% DKIM aligned, 0% SPF aligned. The 0% SPF alignment is expected on
+Brevo's shared-IP plan — Brevo's envelope-from/Return-Path stays on their own
+domain unless a dedicated IP ($251/yr) or their branded-subdomain option is
+purchased — and does not block DMARC, since DKIM alignment alone satisfies
+it. Not pursued further; the cost isn't justified by the marginal gain.
+
+**BIMI** was investigated as a side item: the DNS prerequisites (DMARC
+quarantine/reject) are already met, but displaying the logo in Gmail/Yahoo
+requires a Verified Mark Certificate, which in turn requires a registered
+trademark plus roughly $1,300–1,500/yr. Not pursued — there's no branding
+goal that changes that cost/benefit call today.
+
+**DNS caveat:** Terraform-managed DNS for this domain
+(`~/Developer/Web/Cloudflare`) is abandoned and does not reflect current
+records — the SPF fix above was applied directly in Cloudflare's dashboard.
+Treat Cloudflare's dashboard as the sole source of truth for this domain's
+DNS going forward; do not consult or trust the Terraform state/tfvars here.
+
+### Microsoft SNDS / JMRP enrollment — not independently checkable
+
+Brevo's shared-IP plan does not expose per-customer SNDS (Smart Network Data
+Services) or JMRP (Junk Mail Reporting Program) enrollment status to
+individual senders — Brevo manages IP reputation and the Microsoft
+relationship at the platform level for everyone on the shared pool. There is
+no dashboard or API on our side that would show this. The operative signal
+for our own sending is Brevo's own domain/IP reputation status (Senders,
+Domains & Dedicated IPs) plus the inbox-placement re-test below, not direct
+SNDS/JMRP visibility.
+
+### `admin@elanregistry.org` hard-bounce — historical, not a live reference
+
+Brevo's suppression list (`GET /v3/smtp/blockedContacts`) includes a
+`hardBounce` entry for `admin@elanregistry.org` dating back to 2025-12 (see
+the Fixtures section above). A repo-wide search found no place where
+`admin@elanregistry.org` is used as a live From/Reply-To sender identity —
+the only occurrences are in unit test fixture data
+(`tests/bootstrap-unit.php`, `tests/unit/system/LogCategoriesUsageTest.php`),
+and the latter's own test explicitly guards against
+`_email_template_verify_new.php` hardcoding this address as a sender, citing
+a prior fix in #368. The actual sender identity in use today is
+`registrar@elanregistry.org` (see `getAdminEmails()` /
+`getFeedbackEmail()` in `usersc/includes/custom_functions.php`, and
+`ADMIN_EMAILS`/`FEEDBACK_EMAIL` in `.env.example`). Conclusion: the 2025-12
+bounce predates the #368 fix or was a one-off manual send outside the
+codebase; there is no current code path to change.
+
+### Verified outcome
+
+A fresh Outlook.com/Hotmail/Live mailbox received a re-sent transactional
+test message in the Inbox, not Junk, on 2026-09-14 — confirmed after the SPF
+fix above. This was the hard gate for the v2.30.3 send pipeline and has
+passed.
+
 ## Updating the Plugin
 
 `scripts/check-plugin-updates/` runs weekly and opens a GitHub issue labeled
