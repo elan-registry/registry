@@ -177,6 +177,12 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             $this->assertSame('Hethel', $seededFields->city, "Pre-condition: car $carId's seeded city present before hook runs");
             $this->assertSame('Norfolk', $seededFields->state, "Pre-condition: car $carId's seeded state present before hook runs");
             $this->assertSame('United Kingdom', $seededFields->country, "Pre-condition: car $carId's seeded country present before hook runs");
+            // cars.lat/lon are MySQL FLOAT (32-bit); 52.4567/1.0234 aren't exactly
+            // representable in float32, so an exact assertSame here looks like a
+            // precision hazard. Verified directly against this project's MySQL/PDO
+            // stack (round-trip insert + SELECT) that both values compare identical —
+            // MySQL emits the shortest decimal that round-trips the stored float32,
+            // and PHP's (float) cast lands on the same bit pattern as the literal.
             $this->assertSame(52.4567, (float) $seededFields->lat, "Pre-condition: car $carId's seeded lat present before hook runs");
             $this->assertSame(1.0234, (float) $seededFields->lon, "Pre-condition: car $carId's seeded lon present before hook runs");
             $this->assertSame('https://example.com/colin', $seededFields->website, "Pre-condition: car $carId's seeded website present before hook runs");
