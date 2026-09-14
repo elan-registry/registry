@@ -297,6 +297,16 @@ targets it yet).
   library function whose return shape changed between 8.2 and 8.4) still
   rely on developer awareness until 8.2 CI/local coverage is restored —
   tracked as a follow-up for whenever the test/prod switch issue lands.
+- **`composer.json`'s `platform.php` pin is `8.4.0`** (matches dev/CI, not
+  test/prod). PHPStan's `phpVersion` guard above covers first-party syntax
+  only — it does **not** guard *vendor* dependency version requirements. A
+  `composer update` run under this 8.4 platform pin can legally resolve a
+  package version whose own `composer.json` requires `php: >=8.3`, and that
+  selection will fatal on test/prod's 8.2 the moment it's actually deployed
+  there, with no CI signal catching it first. Run
+  `composer why-not php 8.2` after any `composer update` (not just when
+  adding a new package) until test/prod move off 8.2 — it reports which
+  installed packages, if any, would block staying on 8.2.
 - **MAMP Apache PHP version**: MAMP's Apache does not use the
   `/Applications/MAMP/bin/php/php` symlink — it serves PHP via
   `/Applications/MAMP/fcgi-bin/php.fcgi`, a wrapper script MAMP.app
