@@ -280,4 +280,155 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
     {
         $this->assertSame($countBefore + 1, $this->countMatchingLogs($logtype, $lognote), $failureMessage);
     }
+
+    /**
+     * Count er_email_events rows for a car — used before/after the hook runs
+     * to confirm the departing owner's webhook event history is cleared
+     * (#1887) as part of the same transaction as reassignment.
+     */
+    private function emailEventRowCount(int $carId): int
+    {
+        $row = $this->db->query('SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ?', [$carId])->first();
+        return (int) $row->cnt;
+    }
+
+    private function insertEmailEventFixture(int $carId, string $event, string $brevoMessageId): void
+    {
+        $inserted = $this->db->insert('er_email_events', [
+            'car_id'           => $carId,
+            'email'            => 'fixture-' . uniqid() . '@example.com',
+            'event'            => $event,
+            'reason'           => null,
+            'brevo_message_id' => $brevoMessageId,
+            'occurred_at'      => date('Y-m-d H:i:s'),
+        ]);
+        $this->assertTrue((bool) $inserted, 'Test fixture: er_email_events insert must succeed: ' . $this->db->errorString());
+    }
+
+    /**
+     * #1887: a departing owner's er_email_events rows must be cleared in the
+     * same transaction as reassignment, before the car->owner link is
+     * severed — via the noowner-exists branch (the primary/common path).
+     */
+    public function test_afterUserDeletionHook_clearsEmailEventsViaNoOwnerBranch(): void
+    {
+        $noOwnerRow = $this->db->query("SELECT id FROM users WHERE username = ?", ['noowner'])->first();
+        $this->assertNotEmpty($noOwnerRow, 'noowner system account missing — run composer migrate (RegisterNoownerAccount)');
+        $noOwnerId = (int) $noOwnerRow->id;
+
+        $userId = $this->createTestUser();
+        $carId = $this->createTestCar($userId);
+
+        $this->insertEmailEventFixture($carId, 'hard_bounce', 'msg-' . uniqid());
+        $this->insertEmailEventFixture($carId, 'delivered', 'msg-' . uniqid());
+
+        $this->assertSame(2, $this->emailEventRowCount($carId), 'Pre-condition: two er_email_events rows exist for the car');
+
+        $this->db->delete('users', ['id', '=', $userId]);
+
+        $id = $userId;
+        $db = $this->db;
+        require TESTING_ROOT . '/usersc/scripts/after_user_deletion.php';
+
+        $this->assertSame(
+            0,
+            $this->emailEventRowCount($carId),
+            'er_email_events rows for the departing owner\'s car must be deleted by the noowner-exists branch'
+        );
+
+        $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
+        $this->assertSame($noOwnerId, (int) $after->user_id, 'Car must still be reassigned (not deleted) after cleanup');
+    }
+
+    /**
+     * Same scenario, forced down the fallback branch (no `noowner` user
+     * present) — this is the bug the plan fixes: previously the fallback
+     * branch never fetched a car list at all before calling
+     * reassignCarsByUser(), so er_email_events cleanup silently never
+     * happened on this path. Forces the branch by temporarily renaming the
+     * noowner account's username so the hook's own lookup finds nothing,
+     * restoring it in a finally block so no other test ever observes a
+     * missing noowner account.
+     */
+    public function test_afterUserDeletionHook_clearsEmailEventsViaFallbackBranch(): void
+    {
+        $noOwnerRow = $this->db->query("SELECT id, username FROM users WHERE username = ?", ['noowner'])->first();
+        $this->assertNotEmpty($noOwnerRow, 'noowner system account missing — run composer migrate (RegisterNoownerAccount)');
+        $noOwnerId = (int) $noOwnerRow->id;
+
+        $userId = $this->createTestUser();
+        $carId = $this->createTestCar($userId);
+
+        $this->insertEmailEventFixture($carId, 'spam', 'msg-' . uniqid());
+
+        $this->assertSame(1, $this->emailEventRowCount($carId), 'Pre-condition: one er_email_events row exists for the car');
+
+        $renamed = $this->db->query('UPDATE users SET username = ? WHERE id = ?', ['noowner_hidden_for_test', $noOwnerId]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to hide noowner account: ' . $this->db->errorString());
+
+        try {
+            $this->db->delete('users', ['id', '=', $userId]);
+
+            $id = $userId;
+            $db = $this->db;
+            require TESTING_ROOT . '/usersc/scripts/after_user_deletion.php';
+
+            $this->assertSame(
+                0,
+                $this->emailEventRowCount($carId),
+                'er_email_events rows must be deleted by the fallback branch too — this is the bug the plan fixes'
+            );
+
+            $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
+            $this->assertNull($after->user_id, 'Fallback branch must set cars.user_id to NULL (no noowner to reassign to)');
+        } finally {
+            $this->db->query('UPDATE users SET username = ? WHERE id = ?', ['noowner', $noOwnerId]);
+        }
+    }
+
+    /**
+     * Deletion failing mid-transaction: forces a genuine DB error inside the
+     * hook's transaction (temporarily renaming
+     * car_transfer_requests.admin_notes, which the hook's very first write
+     * inside the transaction UPDATEs) and asserts the whole transaction rolls
+     * back — er_email_events rows survive, and the car is NOT reassigned —
+     * matching the file's existing all-or-nothing guarantee. Column restored
+     * in a finally block.
+     */
+    public function test_afterUserDeletionHook_rollsBackEmailEventsOnMidTransactionFailure(): void
+    {
+        $userId = $this->createTestUser();
+        $carId = $this->createTestCar($userId);
+        $originalUserId = $userId;
+
+        $this->insertEmailEventFixture($carId, 'hard_bounce', 'msg-' . uniqid());
+        $this->assertSame(1, $this->emailEventRowCount($carId), 'Pre-condition: one er_email_events row exists for the car');
+
+        $this->db->query('ALTER TABLE car_transfer_requests RENAME COLUMN admin_notes TO admin_notes_renamed_for_test');
+        $this->assertFalse($this->db->error(), 'Test setup: failed to force a DB error: ' . $this->db->errorString());
+
+        try {
+            $this->db->delete('users', ['id', '=', $userId]);
+
+            $id = $userId;
+            $db = $this->db;
+            require TESTING_ROOT . '/usersc/scripts/after_user_deletion.php';
+
+            $this->assertSame(
+                1,
+                $this->emailEventRowCount($carId),
+                'er_email_events rows must survive a rolled-back transaction (all-or-nothing guarantee)'
+            );
+
+            $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
+            $this->assertSame(
+                $originalUserId,
+                (int) $after->user_id,
+                'Car must NOT be reassigned when the transaction rolls back'
+            );
+        } finally {
+            $this->db->query('ALTER TABLE car_transfer_requests RENAME COLUMN admin_notes_renamed_for_test TO admin_notes');
+            $this->assertFalse($this->db->error(), 'Test cleanup: failed to restore car_transfer_requests.admin_notes column');
+        }
+    }
 }

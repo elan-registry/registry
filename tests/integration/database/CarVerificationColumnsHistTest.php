@@ -208,7 +208,7 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
 
         // --- email_bounced -------------------------------------------------
         $this->assertTrue(
-            $repo->updateEmailBounced($carId, true),
+            $repo->updateEmailBounced($carId, true, 'owner@example.com'),
             'updateEmailBounced() must succeed'
         );
 

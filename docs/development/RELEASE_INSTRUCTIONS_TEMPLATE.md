@@ -1,9 +1,12 @@
 # Release Instructions Template
 
-`/release-milestone` renders this file for each release and prints the result;
-the rendered copy is **not committed** (it names hosts and paths that stay out
-of the public repo). The template is the single owner of the release sequence;
-the mechanics it relies on live in [DEPLOYMENT.md](DEPLOYMENT.md).
+`/finish-milestone` renders this file into `docs/plans/releases/<version>-deploy.md`
+early — while the milestone PR is still open — so the user can review the
+deploy procedure before `/release-milestone` ever runs. `/release-milestone`
+reuses that same rendered file rather than generating its own; the rendered
+copy is **not committed** (it names hosts and paths that stay out of the
+public repo). The template is the single owner of the release sequence; the
+mechanics it relies on live in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Rendering rules
 
@@ -19,8 +22,11 @@ Placeholders, filled from `.claude.local.md` § "Deployment hosts" and the relea
 Conditional blocks are marked `<!-- IF: condition -->` … `<!-- END IF -->`.
 Include a block only when its condition holds for **this** release, and drop
 the markers; never print a block with an unmet condition. Conditions are
-derived from `git diff --name-only <last-tag>...<version>` and the release
-notes' "Required Actions After Deployment":
+derived from `git diff --name-only <last-tag>...<version>` and, for
+`release-actions`, from reading the individual merged issue PRs' own bodies
+(deployment procedures do not live in `docs/releases/RELEASE_NOTES_<version>.md`
+— that file is a one-sentence-per-issue index; a PR's own description is
+where a manual verification runbook, if one exists, is documented):
 
 | Condition | Test |
 | --- | --- |
@@ -30,7 +36,7 @@ notes' "Required Actions After Deployment":
 | `new-pages` | any new file that calls `securePage(` |
 | `admin-scripts` | any new file under `app/admin/scripts/fix/` or `maintenance/` |
 | `env-vars` | `.env.example` in the diff |
-| `release-actions` | release notes list Required Actions other than the above |
+| `release-actions` | any merged issue PR documents a manual deployment/verification procedure beyond the conditions above |
 
 Steps are numbered continuously across sections. Items marked **(you — admin
 UI)** are done in the browser, not the shell. Everything else is a command to
@@ -100,9 +106,9 @@ Add to each host's .env (see .env.example diff): <list the keys>
 <!-- END IF -->
 
 <!-- IF: release-actions -->
-5. Other pre-deploy actions from the release notes
+5. Other pre-deploy actions from merged issue PRs
 
-<one line per item, verbatim from Required Actions>
+<one line per manual procedure, drawn from the relevant PR's own description>
 <!-- END IF -->
 
 --------------------------------------------------------------------
@@ -171,32 +177,52 @@ Run 21-Fix-Page-Permissions.php from the Maintenance page on test.
 <one line per script, from the Maintenance page on test>
 <!-- END IF -->
 
-13. Smoke test
+13. Purge Cloudflare cache for usersc/js and usersc/css (test)
+
+usersc/js/* and usersc/css/* are rebuilt in place under the same filenames on
+every deploy that ran npm run build (ADR-018) and are served with
+cache-control: max-age=31536000. A content change at an unchanged path gives
+Cloudflare nothing to invalidate on its own, so different edge PoPs can keep
+serving the pre-deploy build indefinitely — symptoms then look user- or
+session-specific (whichever PoP a given session hits) rather than
+deploy-wide, and can pass smoke testing if your own session happens to land
+on an already-fresh PoP. Purge before smoke testing below, on every deploy
+that ran npm run build — not only when a file was added, renamed, or removed.
+
+- [ ] Cloudflare dashboard → Caching → Purge by URL/prefix — purge
+      usersc/js/* and usersc/css/* for test.elanregistry.org
+- [ ] Re-check one asset for cf-cache-status: MISS (or a fresh age) after the
+      purge:
+
+curl -sI https://test.elanregistry.org/usersc/js/maplibre-gl-worker.js | grep -i 'cf-cache-status\|age:'
+
+14. Smoke test
 
 - Home page, a car details page, cars list (DataTable loads, no console errors)
 - Log in; account page renders
-- Admin → Logs: no new errors since the deploy timestamp; a CronRequest entry
-  within the last 10 minutes
+- Admin → Logs: no new errors since the deploy timestamp
+- `er_verification_settings.last_cron_request_at` within the last 10 minutes
+  (Admin → Verification tab, or DB Explainer)
 - npm run test:e2e:test   (from <repo-path>)
 
 <!-- IF: release-actions -->
-14. Release-specific checks
+15. Release-specific checks
 
-<one line per item, from Required Actions / Deployment Verification Checklist>
+<one line per item, from the relevant merged issue PR's description / Deployment Verification Checklist>
 <!-- END IF -->
 
 --------------------------------------------------------------------
 DEPLOY PROD
 --------------------------------------------------------------------
 
-15. Push the tag, then deploy exactly the tagged commit
+16. Push the tag, then deploy exactly the tagged commit
 
 cd <repo-path>
 git push prod <version>
 git push prod '<version>^{commit}:main'
 
 <!-- IF: hook-changed -->
-16. Two-push hook rule (again, independently for prod)
+17. Two-push hook rule (again, independently for prod)
 
 git checkout -q -b tmp/hook-rerun <version>
 git commit --allow-empty -m "chore: trigger post-receive hook rerun"
@@ -209,7 +235,7 @@ git checkout -q main && git branch -D tmp/hook-rerun
 POST-DEPLOY VERIFICATION (prod)
 --------------------------------------------------------------------
 
-17. Deploy output and assets
+18. Deploy output and assets
 
 ssh <ssh-host> '
 echo "--- VERSION ---";    cat <prod-docroot>/VERSION
@@ -218,49 +244,63 @@ echo "--- usersc/css ---"; ls <prod-docroot>/usersc/css/
 '
 
 <!-- IF: migration -->
-18. Migration applied
+19. Migration applied
 
 SELECT version FROM phinxlog WHERE version = <migration-version>;   -- 1 row
 <!-- END IF -->
 
 <!-- IF: trigger-migration -->
-19. Audit triggers intact
+20. Audit triggers intact
 
 SHOW TRIGGERS LIKE 'cars';   -- 3 rows
 <!-- END IF -->
 
 <!-- IF: new-pages -->
-20. Register new pages (you — admin UI)
+21. Register new pages (you — admin UI)
 
 Run 21-Fix-Page-Permissions.php from the Maintenance page on prod.
 <!-- END IF -->
 
 <!-- IF: admin-scripts -->
-21. Run new admin scripts (you — admin UI)
+22. Run new admin scripts (you — admin UI)
 
 <one line per script, from the Maintenance page on prod>
 <!-- END IF -->
 
-22. Smoke test
+23. Purge Cloudflare cache for usersc/js and usersc/css (prod)
 
-Same as step 13 against elanregistry.org; npm run test:e2e.
+Same reasoning as step 13 — required on every deploy that ran npm run build.
+
+- [ ] Cloudflare dashboard → Caching → Purge by URL/prefix — purge
+      usersc/js/* and usersc/css/* for elanregistry.org
+- [ ] Re-check one asset for cf-cache-status: MISS (or a fresh age) after the
+      purge:
+
+curl -sI https://elanregistry.org/usersc/js/maplibre-gl-worker.js | grep -i 'cf-cache-status\|age:'
+
+24. Smoke test
+
+Same as step 14 against elanregistry.org; npm run test:e2e.
 Footer version reads <version>.
 
 --------------------------------------------------------------------
 PUBLISH
 --------------------------------------------------------------------
 
-23. Publish the GitHub release (it is a draft until prod is live)
+25. Publish the GitHub release (it is a draft until prod is live)
 
 gh release edit <version> --draft=false --repo elan-registry/registry
 
-24. Housekeeping
+26. Housekeeping
 
 - Delete the sprint plan for <version> in the Plans repo, if still present
 - Confirm the milestone is closed: gh api repos/elan-registry/registry/milestones --jq '.[] | select(.title|startswith("<version>"))'
 
 Recovery if a migration aborts on either host: fix the privileges in step 3,
 then ssh in and run `composer migrate` in the docroot — every step is
-idempotent. Full checklist: docs/development/DEPLOYMENT.md § Deployment
-Verification Checklist.
+idempotent. `composer.json`/`composer.lock` are still present at this point:
+the hook's cleanup step only runs after every prior step succeeds, and a
+migration failure halts the hook (`exit 1`) before cleanup is ever reached.
+Full checklist: docs/development/DEPLOYMENT.md §
+Deployment Verification Checklist.
 ```

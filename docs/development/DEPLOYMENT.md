@@ -172,7 +172,7 @@ before merge, not by GitHub blocking the merge button itself (see issue #1437).
   platform level. Enforcement instead relies on `/finish-issue`'s CI-status gate, which polls
   actual check status and requires explicit confirmation before merging. See
   [#1437](https://github.com/elan-registry/registry/issues/1437) for the rationale.
-- **Configuration**: `.github/workflows/tests.yml`; PHP 8.3 via `shivammathur/setup-php`
+- **Configuration**: `.github/workflows/tests.yml`; PHP 8.4 via `shivammathur/setup-php`
 
 ### Milestone Release PRs
 
@@ -470,6 +470,14 @@ per environment outside the codebase. Installed on test and prod on 2026-09-03
 
 > **Contract for cron job authors — read before writing a job.**
 >
+> - **Job files must live in `users/cron/`.** `cron.php` resolves each active
+>   row's `file` column via `sanitizePath($file, $cronBaseDir)`, where
+>   `$cronBaseDir` is hard-coded to `users/cron/` — this is a path-traversal
+>   guard, not a style preference, and a file placed anywhere else cannot be
+>   resolved and will not run. `users/cron/sample.php` is the stock UserSpice
+>   template to copy from; register the new file's name in the `crons` table
+>   (via a migration/seed, not by hand in the admin UI) so it ships with the
+>   code that depends on it.
 > - The transport fires **every 10 minutes** on dev, test, and prod
 >   (`*/10 * * * *`). Every *active* row in `crons` runs on every hit, in
 >   `sort` order — a job executes about 144 times a day whether or not it has
@@ -481,19 +489,137 @@ per environment outside the codebase. Installed on test and prod on 2026-09-03
 > - `crons_logs` gets one row per job per hit regardless of whether the job did
 >   anything, so it cannot tell you how often real work happened. Log real work
 >   under the job's own `LogCategories` constant.
-> - The interval is a cPanel setting, not code, and can change. Treat 10 minutes
->   as the *maximum latency* before a due job is picked up, not as a schedule a
->   job may rely on. This section is the single place the number is recorded.
+> - The interval is a cPanel/launchd setting, not code, and can change. Treat
+>   10 minutes as the *maximum latency* before a due job is picked up, not as a
+>   schedule a job may rely on. This section is the operational record of what
+>   the transport is actually configured to; `CRON_TRANSPORT_INTERVAL_MINUTES`
+>   in `usersc/includes/config.php` is the in-code mirror cron jobs read (see
+>   #2001) — if the schedule changes, update this section, that constant, its
+>   `tests/bootstrap-unit.php` mirror, and
+>   `VerificationSettings::CRON_TRANSPORT_INTERVAL_MINUTES_FALLBACK` together.
 > - Runtime budget: a job must finish comfortably inside the interval or it will
 >   overlap its own next run.
 
-**What `users/cron/cron.php` does on every hit** (upstream UserSpice, read-only):
+#### Timeout & Crash Isolation
 
-1. Logs `Cron request from <ip>.` under the `CronRequest` log category — before
-   any access check, so every hit is visible in Admin → Logs.
-2. Applies the `cron_ip` allowlist (table below). A denied request logs
-   `Cron request DENIED from <ip>.` and stops.
-3. Runs every active job and inserts one `crons_logs` row per job
+The transport's in-process dispatcher (#1889, #2034) poses two hazards every
+new job author must mitigate: (1) an unhandled exception in one job can kill
+every job scheduled after it in the same cron hit, and (2) a hung or slow job
+can delay or prevent subsequent jobs from running at all. New cron jobs must
+extend `AbstractCronJob` (in `usersc/classes/Cron/AbstractCronJob.php`), which
+provides a template-method architecture that enforces four controls:
+
+**Crash isolation**: The template method wraps `execute()` in a
+`try/catch(\Throwable)` that logs the failure under
+`LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE` and never rethrows — ensuring
+one job's bug cannot cascade to the next job in `cron.php`'s dispatcher loop.
+Any subclass's own `try/catch` blocks inside `execute()` are purely for
+recovery logic; a top-level catch is redundant and should be removed.
+
+**A `set_time_limit()` backstop**: After the `CronJobGuard` claim succeeds and
+immediately before calling `execute()`, the template method calls
+`set_time_limit(CRON_TRANSPORT_INTERVAL_MINUTES * 60)` — bounding how long a
+hung job can block the dispatcher loop. The constant is synchronized from
+`usersc/includes/config.php` (see the "Runtime budget" bullet above). The
+ordering matters: `cron.php` dispatches every job in a single PHP process, so
+calling this before the claim would reset the shared execution clock once per
+enabled job on every hit — including the ~143 of 144 daily hits where the claim
+fails immediately — making the effective budget N-jobs × the interval rather
+than bounding it. Only a claimed run arms the backstop. `runNow()` (the manual
+admin path) deliberately does not call it at all: that runs inside a page
+request which already has the web SAPI's own `max_execution_time`.
+**Note:** This backstop is real only under the HTTP SAPI (how the transport
+actually runs in this codebase); under CLI (`php -r` or CLI testing), PHP's
+default `max_execution_time` is already `0` (no limit), so the call has no
+effect there, no harm — tests and CLI invocations are not time-constrained
+anyway.
+
+**A job-owned `enabled` flag** (`er_cron_job_runs.enabled`, distinct from
+UserSpice's own `crons.active`): The template method reads this before
+proceeding and resolves it to one of three non-running states, logged
+distinctly because they need opposite operator responses. A row with
+`enabled = 0` is a deliberate pause and logs under
+`LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED`; a **missing** row (never
+seeded, or deleted) and an **unreadable** row (DB error) are genuine faults
+and log under `LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE`. All three
+return without running. The skip line is rate-limited to roughly once per
+guard interval rather than once per cron hit — a job left paused would
+otherwise emit ~144 identical rows a day, the same noise issue #1974 removed
+from the transport. That throttle is keyed on its own column,
+`er_cron_job_runs.last_skip_logged_at`, which the template method stamps each
+time the skip line actually fires. It deliberately does **not** key on
+`last_run_at`: that column is written only by `CronJobGuard::claim()`, and a
+disabled job returns before claiming, so its value is frozen for as long as
+the job stays paused — any "older than one interval" test against it latches
+permanently true and degrades back to logging on every hit. A new job needs no
+extra work for this; it is entirely inside `AbstractCronJob`. This lets an
+operator pause a single job (via direct DB update or a future admin UI control
+— #2038) without deleting the entire `crons` row from UserSpice, and with
+visibility that the job is disabled (not just silently not running). The
+`er_cron_job_runs` table (introduced in #2034) also seeds
+`BrevoEventReconciliationJob` as the reference implementation — see that job
+and its shim `users/cron/brevo_event_reconciliation.php` for the required
+patterns.
+
+**The site-wide verification switch** (`VerificationSettings::isEnabled()`,
+`er_verification_settings.enabled`): checked before the job-owned `enabled`
+flag above, in both `run()` and `runNow()`. Any cron job whose work is
+Brevo-driven (writes bounce/suppression state to car records) must honor this
+switch, the same way the webhook receiver already does — this is what makes
+the switch's "no real email sends until this closes" framing actually true
+across every write path, not just the webhook. A job's separate
+`runNowWithSummary()` method (the pattern both current jobs use for a
+manual-run path that returns a typed summary rather than `void` — see
+`BrevoEventReconciliationJob`/`BrevoSuppressionSyncJob`) bypasses `run()`/
+`runNow()` entirely and so cannot inherit this check; it must repeat the
+`isEnabled()` check directly and throw rather than fabricate an empty
+summary, so an operator manually triggering a run while the switch is off
+sees why nothing happened. See `docs/development/CLASSES.md`'s
+`VerificationSettings` entry for the full "Used By" list.
+
+**Implementing a new cron job:**
+
+1. Extend `AbstractCronJob` and implement `jobName(): string` (must match an
+   entry in `CronJobGuard::ALLOWED_JOB_NAMES` in `usersc/classes/Cron/CronJobGuard.php`),
+   `guardIntervalHours(): int` (>= 1), and `execute(): void` (the actual work).
+   Do not override `run()` or `runNow()` — both are `final`.
+2. Add the job name to `CronJobGuard::ALLOWED_JOB_NAMES` (manually maintained
+   allowlist).
+3. Create a migration seeding a row in `er_cron_job_runs` for your job, with
+   both `job_name` and `enabled` set appropriately.
+4. Create a migration or seed seeding a corresponding row in the `crons` table,
+   pointing to your shim file in `users/cron/`.
+5. Write a shim file (e.g., `users/cron/your_job_name.php`) that instantiates
+   your job class with its dependencies and calls `->run()`.
+
+**For manual "run now" admin maintenance scripts** (bypassing the guard and
+enabled check, when an operator explicitly triggers a run), instantiate the
+job and call `->runNow()` instead of `->run()` — still crash-isolated, but no
+guard claim or enabled check. `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
+(#1923) and `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php`
+(#2061) are both references for a job whose manual entry point *returns a
+value* instead: each job class adds a sibling `runNowWithSummary()` method
+(not an override of the `final` `runNow()`) that logs and rethrows on failure
+rather than swallowing it, so the admin script can render a real summary — or
+a real error — instead of `runNow()`'s void, never-throws contract. A job with
+no such need can still call the plain `runNow()`.
+
+**What `users/cron/cron.php` does on every hit.** Unlike the rest of `/users/`
+(upstream UserSpice, not modified per CLAUDE.md's Template Customization
+Rules), `users/cron/` carries project-specific changes documented in this
+section — `cron.php` itself includes project logging/hook calls, and job
+files live alongside it:
+
+1. Applies the `cron_ip` allowlist (table below). A denied request logs
+   `Cron request DENIED from <ip>.` under the `CronRequest` log category and
+   stops. A non-denied hit is not logged here at all (#1974 removed the
+   unconditional per-hit log line — 144 rows/day/environment with no
+   diagnostic value); instead it records
+   `er_verification_settings.last_cron_request_at` via
+   `VerificationSettings::recordCronRequest()`, which powers the admin
+   dashboard's cron-health indicator. The recorded timestamp proves cron was
+   *accepted*, where the old log only proved something reached the URL.
+2. Runs every active job and inserts one `crons_logs` row per job
    (`user_id` is `1` for unauthenticated hits).
 
 **`cron_ip` semantics** (Admin → Settings → General). The IP is taken from
@@ -510,8 +636,8 @@ the real client address and cannot be spoofed with a header.
 
 | Environment | Trigger | Interval | `cron_ip` | Evidence |
 | --- | --- | --- | --- | --- |
-| dev (MAMP, macOS) | launchd job, see [ENVIRONMENT.md](ENVIRONMENT.md#development-setup) | 10 min | `::1` on this machine (`/etc/hosts` lists both loopbacks and curl prefers IPv6; only `127.0.0.1` is hard-coded, so use whichever address your `CronRequest` log shows) | `~/Library/Logs/ElanRegistry/local-cron.log`, Admin → Logs |
-| test.elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | the server's public outbound IP, as shown in the first `CronRequest` entry | Admin → Logs (`CronRequest`), Cron Manager job log |
+| dev (MAMP, macOS) | launchd job, see [ENVIRONMENT.md](ENVIRONMENT.md#development-setup) | 10 min | `::1` on this machine (`/etc/hosts` lists both loopbacks and curl prefers IPv6; only `127.0.0.1` is hard-coded, so use whichever address a `Cron request DENIED from <ip>.` log line shows if a hit is unexpectedly rejected) | `~/Library/Logs/ElanRegistry/local-cron.log`, `er_verification_settings.last_cron_request_at` (DB Explainer or Admin → Verification tab) |
+| test.elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | the server's public outbound IP, as shown in a `Cron request DENIED from <ip>.` entry if misconfigured | `er_verification_settings.last_cron_request_at`, Cron Manager job log |
 | elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | same policy, checked independently | same |
 
 The literal server IP is deliberately not published here. Because the cPanel
@@ -546,13 +672,27 @@ After each deployment, verify:
 
 - [ ] Maps display correctly: world map on Statistics page, single-marker map on car Details pages (no API key required — uses self-hosted MapLibre GL JS + VersaTiles)
 - [ ] All redirected pages work and maintain proper permissions
-- [ ] **Purge Cloudflare cache for any static file the release moved, renamed, or
-      deleted** (CSS/JS/PDF/image paths). Static assets are served with
-      `cache-control: max-age=31536000`, so the edge keeps returning the old
-      200 for up to a year after the origin starts returning 301/404 — the
-      v2.29.6 deploy left `/docs/assets/document-content.css` cached this way.
-      Cloudflare dashboard → Caching → Purge by URL, one entry per old path.
-      Run `npm run test:e2e` afterwards; the redirect specs hit those URLs.
+- [ ] **Purge Cloudflare cache for any static file the release moved, renamed,
+      deleted, or whose *content* changed at the same path** (CSS/JS/PDF/image
+      paths). Static assets are served with `cache-control: max-age=31536000`,
+      so the edge keeps returning a stale 200 for up to a year — for a
+      moved/renamed/deleted file that means the old 301/404 never surfaces
+      (the v2.29.6 deploy left `/docs/assets/document-content.css` cached this
+      way); for `usersc/js/*`/`usersc/css/*` — rebuilt in place under the same
+      filenames on every deploy via ADR-018 — it means different edge PoPs can
+      keep serving pre-deploy JS/CSS indefinitely after a release that touched
+      any vendored frontend asset, with **no path change to detect**: some
+      users get the new build, others silently keep the old one depending on
+      which PoP they hit, producing symptoms that look user- or role-specific
+      (the v2.30.1 test deploy: MapLibre failed to load for owner/anon
+      sessions but worked for admin, purely because of which cached PoP each
+      session landed on — `curl -I` showing `cf-cache-status: HIT` with a
+      pre-deploy `age` on `usersc/js/*` was the tell). Purge
+      `usersc/js/*`/`usersc/css/*` on every deploy that ran `npm run build`,
+      not only when a path is added/removed. Cloudflare dashboard → Caching →
+      Purge by URL, one entry per old path (or a prefix purge for
+      `usersc/js/*`/`usersc/css/*`). Run `npm run test:e2e` afterwards; the
+      redirect specs hit those URLs.
 - [ ] New pages have appropriate UserSpice permission levels
 - [ ] Contact forms send to correct email addresses
 - [ ] VERSION file exists on server (created by deployment hook)
@@ -560,8 +700,8 @@ After each deployment, verify:
 - [ ] Test critical user workflows (car registration, editing, contact forms)
 - [ ] Database connectivity and functionality
 - [ ] Email delivery system functioning
-- [ ] Cron transport still firing: a `CronRequest` entry in Admin → Logs within the
-      last 10 minutes (see "Cron Transport" above)
+- [ ] Cron transport still firing: `er_verification_settings.last_cron_request_at`
+      within the last 10 minutes (see "Cron Transport" above)
 - [ ] Image upload and display working
 - [ ] Search and filtering functionality
 - [ ] Mobile responsiveness maintained

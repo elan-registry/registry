@@ -156,6 +156,15 @@ split *is* the permission boundary:
   location to the cars it owns.
 - **Account cleanup** — the page is reachable by editors, but the delete and
   restore actions are administrator-only.
+- **Verification System** — feature switch gating all verification-related
+  email sends, visible to both roles (read-only for editor); defaults off,
+  gated on live Brevo/cron readiness checks. Admin can toggle it; enabling
+  while a prerequisite has failed is refused, disabling always succeeds. See
+  [EMAIL_SYSTEM.md § Verification System Feature Switch](EMAIL_SYSTEM.md#verification-system-feature-switch).
+- **User verification & email status** — the admin user-detail page surfaces
+  per-car verification state (freshness badge), bounce status, and Brevo
+  suppression reasons via the user form hook, letting admins diagnose email
+  delivery problems directly from the user profile.
 
 **`app/admin/maintenance.php` — administrators only**
 
@@ -281,14 +290,17 @@ posture is more deliberate than most hobby projects.
   anonymous visitors. Only the action buttons vary by viewer. Privacy comes
   from what is never stored or shown — last name and email address are not on
   the page for anyone — rather than from per-viewer redaction.
-- **Public read endpoints are rate-limited, not CSRF-gated.** The car list,
-  factory records, car history, and statistics endpoints are all public and
-  read-only: they change no state, require no login, and return no data beyond
-  what the corresponding public page already renders. Per
-  [ADR-019](adr/ADR-019-no-csrf-on-public-read-only-endpoints.md), these
-  endpoints carry no CSRF token check; abuse is bounded by app-layer rate
-  limiting instead. This eliminates the stale-token failure when a session
-  ends, and aligns the security model with the endpoints' actual risk profile.
+- **Public read endpoints carry no CSRF gate, and (as of #2018) no rate limit
+  either.** The car list, factory records, car history, and statistics
+  endpoints are all public and read-only: they change no state, require no
+  login, and return no data beyond what the corresponding public page already
+  renders. Per [ADR-019](adr/ADR-019-no-csrf-on-public-read-only-endpoints.md),
+  these endpoints carry no CSRF token check — that eliminates the stale-token
+  failure when a session ends. Rate limiting was ADR-019's substitute control,
+  but was itself removed from these four endpoints by #2018 (production
+  log/performance complaint about `us_rate_limits` row growth), leaving them
+  with no app-layer abuse control at all. See ADR-019's 2026-09-08 update for
+  the full rationale and the alternative (#2015) that was not chosen.
 
 ## 6. What is deliberately not built
 

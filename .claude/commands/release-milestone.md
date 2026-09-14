@@ -27,7 +27,7 @@ per TaskCreate call):
 1. Find the milestone PR
 2. Verify preconditions
 3. Check version consistency
-4. Parse release notes for deployment steps
+4. Locate the deploy sheet rendered by /finish-milestone
 5. Show summary and get confirmation
 6. Stage release notes content, then delete the file and push to the
    milestone branch (updates the open PR)
@@ -104,22 +104,44 @@ path, still gets caught rather than silently assumed clean.
 - Verify the milestone version is newer than the last tag
 - If there's a version conflict or ambiguity, stop and ask the user
 
-### Step 4: Parse release notes for pre/post deployment steps
+### Step 4: Locate the deploy sheet rendered by `/finish-milestone`
 
-- Read `docs/releases/RELEASE_NOTES_<version>.md`
-- Check the "Required Actions After Deployment" section:
-  - If it contains actual steps (not "None"), these are **post-deployment
-    steps** to remind the user about
-  - Check for any database migrations, configuration changes, or manual steps
-- Parse these for the summary in step 5
-- Also collect the inputs the deploy sheet (Step 15) needs, from the diff
-  `git diff --name-only <last-tag>...milestone/<version>`:
-  new files under `database/migrations/` (and whether any contains
-  `CREATE TRIGGER`), `scripts/server-hooks/post-receive` changed, new files
-  calling `securePage(`, new files under `app/admin/scripts/fix/` or
-  `maintenance/`, `.env.example` changed. Read `.claude.local.md` § "Deployment
-  hosts" for the ssh alias and docroots; if the section is missing, stop and
-  ask the user to add it (copy the block from `.claude.local.md.example`).
+Deployment steps no longer live in the release notes — `/finish-milestone`
+Step 6.6 renders a standalone deploy sheet at
+`docs/plans/releases/<version>-deploy.md` before this command ever runs, so
+the user can review the deploy procedure alongside the PR.
+
+```bash
+ls docs/plans/releases/<version>-deploy.md
+```
+
+- **If the file exists:** this is the deploy sheet to use in Step 15 — do not
+  re-render it from the template. Read it now so Step 5's summary can
+  reference what it covers (migrations, new env vars, admin-script
+  registration, any manual verification runbook).
+- **If the file is missing:** `/finish-milestone` was run before Step 6.6
+  existed, or the sheet was deleted/never generated. Stop and tell the user:
+  "No deploy sheet found at `docs/plans/releases/<version>-deploy.md` — run
+  `/finish-milestone`'s Step 6.6 (or re-run `/finish-milestone $ARGUMENTS`) to
+  generate one before releasing." Do not fall back to rendering the template
+  yourself here — that responsibility belongs to `/finish-milestone`, and
+  regenerating it at release time defeats the point of reviewing it earlier.
+- **If the milestone branch has moved since the sheet was rendered** (commits
+  landed after Step 6.6 last ran — check via `git log <sheet's noted branch
+  state>..milestone/<version> --oneline` if timing is in doubt): warn the user
+  the sheet may be stale and ask whether to proceed anyway or go back to
+  `/finish-milestone` Step 6.6 to refresh it first.
+
+Also confirm `.claude.local.md` § "Deployment hosts" is present — the sheet
+already has it baked in, but Step 16's publish step and any ad hoc host
+reference later in this run still need it:
+
+```bash
+grep -A3 "Deployment hosts" .claude.local.md
+```
+
+If missing, stop and ask the user to add it (copy the block from
+`.claude.local.md.example`).
 
 ### Step 5: Show summary and ask for confirmation
 
@@ -129,8 +151,9 @@ Display:
 - Number of commits that will be merged
 - Version that will be tagged
 - Release notes file path
-- **If post-deployment steps exist**: Display them prominently with a reminder
-  to complete them after deploying
+- Deploy sheet path (`docs/plans/releases/<version>-deploy.md`) and a
+  one-line summary of what it covers (migrations, new admin scripts, new env
+  vars, any manual verification runbook) — from Step 4's read
 - Remind: "This will merge the PR, create a tag, push to origin, and publish
   a GitHub release. Deployment to test/prod is a separate manual step."
 
@@ -284,7 +307,7 @@ gh api repos/elan-registry/registry/milestones/<milestone_number> \
 Find the milestone number from the PR's milestone field or by listing
 milestones.
 
-### Step 15: Output summary and the deploy sheet
+### Step 15: Output summary and point to the deploy sheet
 
 First the release facts:
 
@@ -295,23 +318,20 @@ Release v<version> created
 - Milestone: closed
 ```
 
-Then render `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md` for this
-release and print the rendered block in full — this is the document the user
-deploys from. Follow the template's "Rendering rules" exactly:
+The deploy sheet was already rendered by `/finish-milestone` (Step 4 located
+and read it) — **do not re-render it from the template here.** Tell the user
+it's ready at `docs/plans/releases/<version>-deploy.md` and remind them the
+sheet deploys the tag (`'<version>^{commit}:main'`), never the current
+`main` — if `main` has moved past the tag since the sheet was written, that's
+informational only, the commands in the sheet don't change.
 
-- Fill `<version>`, `<repo-path>`, and the host placeholders from
-  `.claude.local.md` § "Deployment hosts".
-- Include each `<!-- IF -->` block only when its condition holds (inputs
-  gathered in Step 4); drop the markers. Fill `<migration-version>`,
-  `<tables>`, script names, and the per-release lines from the release notes'
-  Required Actions.
-- Keep the step numbering continuous after dropping unused blocks.
-- The sheet deploys the tag (`'<version>^{commit}:main'`), never the current
-  `main`. If `main` has moved past the tag, note it above step 1 as
-  information only — the commands do not change.
+**Do not print the sheet's full contents into the conversation** — it names
+the ssh alias and docroots. The user reads the file directly.
 
-**Do not commit or save the rendered sheet anywhere in the repo** — it names
-the ssh alias and docroots. Print it to the terminal only.
+If Step 4 found the sheet stale (milestone branch moved since it was
+rendered) and the user chose to proceed anyway, flag that explicitly again
+here as a reminder to double check the sheet's migration/env-var/script list
+still matches what actually merged.
 
 ### Step 16: Publish the release at prod deploy time (manual, later)
 
@@ -324,8 +344,9 @@ gh release edit v<version> --draft=false --repo elan-registry/registry
 ```
 
 This command does not run this step itself — deployment is a separate manual
-action the user performs later, per Step 15's reminder. Surface this as part
-of the deploy instructions, not as something executed now.
+action the user performs later, per Step 15's reminder. This publish step is
+already the deploy sheet's own last section (Publish) — nothing to surface
+separately here beyond pointing back at the sheet.
 
 ## Important
 
@@ -334,7 +355,9 @@ of the deploy instructions, not as something executed now.
 - If any step fails, stop immediately and report the error. Do not continue
   with partial state.
 - This command assumes `/finish-milestone` has already been run (PR exists,
-  release notes finalized, issues closed).
+  release notes finalized, issues closed, deploy sheet rendered at
+  `docs/plans/releases/<version>-deploy.md`). It reuses that deploy sheet
+  rather than generating its own — see Step 4.
 - The `--delete-branch` flag on `gh pr merge` handles remote-branch cleanup.
   Step 10 handles local cleanup.
 - **Do NOT push to `test` or `prod` remotes** — deployment is a separate

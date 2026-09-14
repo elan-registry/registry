@@ -17,6 +17,16 @@ includes:
 parameters:
     level: 5
 
+    # Test/prod run PHP 8.2 this cycle (#1968) while dev/CI run 8.4. PHPStan
+    # has no independent version detection — without this, it silently
+    # inherits composer.json's config.platform.php, which #1968 raised to
+    # 8.4.0 for local dependency resolution. Left unpinned, that same change
+    # would retarget analysis to 8.4 as a side effect, so 8.3/8.4-only syntax
+    # (property hooks, asymmetric visibility, etc.) would pass CI clean and
+    # then fatal on the 8.2 test/prod hosts. Pin explicitly to the deployment
+    # floor so this stays a real guard regardless of what platform.php says.
+    phpVersion: 80229
+
     # Explicit, stable path so CI can cache PHPStan's result cache across runs
     # (actions/cache in .github/workflows/static-analysis.yml) instead of
     # paying for a cold full-repo analysis on every PR. PHPStan invalidates
@@ -57,17 +67,38 @@ parameters:
         - usersc/widgets/settings
         - usersc/widgets/tools
 
+    # Symbol sources that are NOT analysed themselves but must be resolvable.
+    # The Brevo SDK and its Guzzle dependency ship vendored inside the
+    # sendinblue plugin, which is a manually installed licensed plugin and is
+    # gitignored in full (`usersc/plugins/*`) — so it is present on machines
+    # with email configured and absent in CI and on any fresh clone. Pointing
+    # scanDirectories at that vendor tree made analysis environment-dependent:
+    # PHPStan exits 1 when a scanned directory is missing, which broke CI on
+    # every run. Committed stubs supply the same symbols from inside the repo,
+    # so callers (usersc/classes/Cron/BrevoEventReconciliationClient.php) are
+    # analysed identically whether or not the plugin is installed. Stub files
+    # are read for types only and never analysed, so no third-party code
+    # enters the analysed set or the baseline.
+    scanFiles:
+        - stubs/brevo-sdk.php
+
     excludePaths:
-        - */vendor/*
-        - */node_modules/*
-        - users/
-        # Excluded because its placeholder code generates errors that can never be fixed;
-        # keeping it out of scope prevents those errors from entering the baseline.
-        - app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
-        # Test double for \User (#1566). Excluded so PHPStan never adopts its narrow
-        # 2-method surface as the definition of \User project-wide — see the file's
-        # own docblock for the full leak mechanism this prevents.
-        - tests/unit/auth/_User_test_double.php
+        # Third-party code is never analysed and never enters the baseline.
+        # Kept under analyse: (rather than analyseAndScan:) so vendor trees
+        # remain available for symbol discovery — excluding them from scanning
+        # as well buys nothing and only risks unresolvable symbols later.
+        analyse:
+            - */vendor/*
+        analyseAndScan:
+            - */node_modules/*
+            - users/
+            # Excluded because its placeholder code generates errors that can never be fixed;
+            # keeping it out of scope prevents those errors from entering the baseline.
+            - app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
+            # Test double for \User (#1566). Excluded so PHPStan never adopts its narrow
+            # 2-method surface as the definition of \User project-wide — see the file's
+            # own docblock for the full leak mechanism this prevents.
+            - tests/unit/auth/_User_test_double.php
 
     treatPhpDocTypesAsCertain: false
     checkMissingTypehints: true

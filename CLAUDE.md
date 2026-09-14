@@ -101,6 +101,11 @@ all other Cloudflare features work normally.
   `app/admin/scripts/maintenance/` (repeatable maintenance). **After adding any
   new page or admin script, run `21-Fix-Page-Permissions.php` on test then prod
   to register the new path in UserSpice's permission table.**
+  All cron jobs must live in `users/cron/` — `cron.php`'s dispatcher hard-codes
+  that directory as the only path it will resolve a job's `file` column
+  against, so a job placed elsewhere cannot run. See
+  [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)
+  for the full contract before writing one.
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).
 - **Classes**: See [CLASSES.md](docs/development/CLASSES.md) for Car,
@@ -125,7 +130,7 @@ except those explicitly listed as project-owned:
 
 | Directory | Status | Project-owned exceptions (tracked by git) |
 | --- | --- | --- |
-| `/users/` | Upstream framework | `users/init.php`'s `$GLOBALS['config']` array — reads DB and session/cookie-naming values from `.env` (`DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, `SESSION_NAME`/`TOKEN_NAME`/`REMEMBER_COOKIE_NAME`); this is config wiring, not framework logic — extend actual behavior via `usersc/classes/` instead |
+| `/users/` | Upstream framework | `users/cron/` — `cron.php` carries project logging/hook calls (see [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)) and is where all job files must live (see the cron bullet below); `users/init.php`'s `$GLOBALS['config']` array — reads DB and session/cookie-naming values from `.env` (`DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, `SESSION_NAME`/`TOKEN_NAME`/`REMEMBER_COOKIE_NAME`); this is config wiring, not framework logic; everywhere else in `/users/`, extend via `usersc/classes/` instead |
 | `usersc/templates/` | Upstream templates | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` and `customizer/assets/child_themes/dashboard.php` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead |
 | `usersc/plugins/` | Upstream plugins | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts) |
 | `usersc/user_settings.php` | Project-owned (customizes `users/user_settings.php`) | the entire file is project-owned — make changes here rather than in `users/user_settings.php` |
@@ -140,7 +145,7 @@ except those explicitly listed as project-owned:
 
 ### System Requirements
 
-- PHP 8.2+ required
+- PHP 8.2+ required (local dev and CI target 8.4.x this cycle; see `ENVIRONMENT.md` — PHP Version for details)
 - MySQL 8.0+
 - Uses `vlucas/phpdotenv` for environment variable loading (plaintext `.env`, `chmod 600`)
 

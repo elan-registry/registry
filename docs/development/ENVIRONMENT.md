@@ -83,6 +83,33 @@ row and appends these two keys to `.env` (preserving all other keys), then
 re-applies `chmod 600`. Deletable from the repo once test/prod are both
 confirmed populated — it is not ongoing deploy infrastructure.
 
+### Brevo Webhook Authentication
+
+**Usage**: `app/api/webhooks/brevo.php`
+
+- `BREVO_WEBHOOK_TOKEN` — bearer token Brevo must present
+  (`Authorization: Bearer <token>`) on every call to the webhook receiver
+  (#1887). Compared with `hash_equals()`; an empty or missing value rejects
+  **every** request rather than accepting everything (fail-closed).
+
+**Generating a good token:** use at least 32 bytes (256 bits) of
+cryptographically secure randomness, hex- or base64-encoded — do not hand-type
+a password or reuse a value from elsewhere. On any machine with OpenSSL:
+
+```bash
+openssl rand -hex 32
+```
+
+Set the same value on both sides: this app's `.env` (`BREVO_WEBHOOK_TOKEN=...`,
+`chmod 600 .env`) and the Brevo-side webhook configuration for that
+environment's URL (webhook registration is #1888). Rotate by generating a new
+value and updating both sides together — updating only one side rejects every
+webhook call until they match again. Not needed in local dev — no public URL
+reaches a dev machine, so Brevo can never call it (see the note under
+[Test Database Isolation](#test-database-isolation) and
+`docs/development/EMAIL_SYSTEM.md`'s "Brevo Webhooks — Verified Behaviour"
+section for why webhook testing happens on test.elanregistry.org instead).
+
 ### Cloudflare Turnstile CAPTCHA
 
 **Usage**: `usersc/includes/turnstile.php`
@@ -252,6 +279,49 @@ targets it yet).
 
 ## Setup & Configuration
 
+### PHP Version
+
+- **Local dev and CI**: Target PHP 8.4.x this cycle.
+- **Test and production**: Remain on PHP 8.2 until a later milestone switches them (tracked in issue #1968) — code written locally must still run on 8.2 this cycle.
+- **CI coverage gap**: No CI job's *runner* actually executes on PHP 8.2 —
+  all `php-version` pins in `.github/workflows/tests.yml` and
+  `static-analysis.yml` were moved to 8.4 alongside dev, including the job
+  that previously stayed on 8.2. Local testing (unit/integration suites) is
+  therefore also 8.4-only this cycle, not a substitute 8.2 signal.
+  **`phpstan.neon`'s `phpVersion: 80229` is the one remaining automated
+  guard against 8.3/8.4-only syntax** — it pins static analysis to the
+  actual test/prod floor independent of what runs the analyser, so
+  8.3-or-later-only syntax (property hooks, asymmetric visibility, etc.)
+  still fails PHPStan even though nothing else in CI or local dev executes
+  on 8.2. Runtime behavior differences that PHPStan can't catch (e.g. a
+  library function whose return shape changed between 8.2 and 8.4) still
+  rely on developer awareness until 8.2 CI/local coverage is restored —
+  tracked as a follow-up for whenever the test/prod switch issue lands.
+- **`composer.json`'s `platform.php` pin is `8.4.0`** (matches dev/CI, not
+  test/prod). PHPStan's `phpVersion` guard above covers first-party syntax
+  only — it does **not** guard *vendor* dependency version requirements. A
+  `composer update` run under this 8.4 platform pin can legally resolve a
+  package version whose own `composer.json` requires `php: >=8.3`, and that
+  selection will fatal on test/prod's 8.2 the moment it's actually deployed
+  there, with no CI signal catching it first. Run
+  `composer why-not php 8.2` after any `composer update` (not just when
+  adding a new package) until test/prod move off 8.2 — it reports which
+  installed packages, if any, would block staying on 8.2.
+- **MAMP Apache PHP version**: MAMP's Apache does not use the
+  `/Applications/MAMP/bin/php/php` symlink — it serves PHP via
+  `/Applications/MAMP/fcgi-bin/php.fcgi`, a wrapper script MAMP.app
+  regenerates on every Apache restart based on the PHP version selected in
+  MAMP's Preferences → PHP panel. To switch versions, use MAMP.app's
+  Preferences GUI (the wrapper file itself says "Do not modify, it will be
+  overwritten"). Verify the actual serving version with a `phpinfo()` page
+  load after restarting MAMP's servers, not by checking any symlink.
+- **CLI PHP (Homebrew)**: The `php`/`composer` commands on the shell PATH
+  resolve to Homebrew's linked PHP, separate from MAMP's Apache-served PHP.
+  Keep it on the same target version as MAMP (`brew install php@8.4 && brew
+  link php@8.4 --force --overwrite`, then `hash -r`) — `composer
+  test:integration` and other CLI-invoked test/tooling commands run under
+  whichever version is linked, not MAMP's.
+
 ### Development Setup
 
 1. **Get Database Credentials**:
@@ -333,11 +403,25 @@ targets it yet).
    tail -3 ~/Library/Logs/ElanRegistry/local-cron.log   # expect status=200 lines
    ```
 
-   Set `cron_ip` in Admin → Settings → General to the address the first
-   `CronRequest` entry in Admin → Logs shows. On a standard macOS `/etc/hosts`
-   curl reaches `localhost` over IPv6, so this is `::1`; `cron.php` only
-   hard-codes `127.0.0.1` as the always-allowed address, so `::1` must be set
-   explicitly. If your log shows `127.0.0.1`, leave `cron_ip` at `off`.
+   `cron.php` only logs when `cron_ip` is already set to something and a
+   request's IP doesn't match it (and isn't `127.0.0.1`, which is always
+   allowed) — with `cron_ip` empty (the default), the allowlist check never
+   runs at all, so nothing to read is logged either way (#1974 also removed
+   the unconditional per-hit log, so a *matching* request was never
+   discoverable via Admin → Logs regardless). The launchd log
+   (`~/Library/Logs/ElanRegistry/local-cron.log`) only records a
+   `status=200`/`4xx` HTTP code, not the request's source IP, so it can't
+   answer this. To find the address this machine's curl actually connects
+   from, deliberately set `cron_ip` to a wrong value first, run the curl
+   command above once by hand, and read the resulting
+   `Cron request DENIED from <ip>.` line from Admin → Logs (or
+   `SELECT ip FROM logs ORDER BY id DESC LIMIT 1`) — that line shows the
+   real address regardless of what `cron_ip` was set to. On a standard
+   macOS `/etc/hosts` curl reaches `localhost` over IPv6, so this is
+   normally `::1`; `cron.php` only hard-codes `127.0.0.1` as the
+   always-allowed address, so `::1` must be set explicitly. Once `cron_ip`
+   is set correctly, `er_verification_settings.last_cron_request_at`
+   (Admin → Verification tab) confirms accepted hits are landing.
    Interval semantics, the allowlist table, and the contract every cron job
    must honour are in
    [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager).

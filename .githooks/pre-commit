@@ -118,7 +118,16 @@ if [ -n "$CRITICAL_FILES" ]; then
         echo "⚠️  Step 3: Skipping — composer dependencies not installed"
     else
         RUN_TESTS=true
-        vendor/bin/phpunit --testsuite=Unit --exclude-group known-broken > "$TEST_OUT" 2>&1 &
+        # -d memory_limit=512M: PHP's global memory_limit (128M) is shared by
+        # whatever runs under it, and PHPStan's own 512M --memory-limit flag
+        # a few lines below does not reserve anything from it — the two
+        # processes are launched concurrently (both backgrounded with &) and
+        # each independently starts from the same 128M ceiling. As the unit
+        # suite has grown, PHPUnit has started hitting that ceiling under
+        # concurrent load even though it passes standalone at ~124M peak —
+        # deterministically reproduced 3/3 times. Matching PHPStan's own
+        # explicit override removes the two-process interaction entirely.
+        vendor/bin/phpunit -d memory_limit=512M --testsuite=Unit --exclude-group known-broken > "$TEST_OUT" 2>&1 &
         TEST_PID=$!
     fi
 else

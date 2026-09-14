@@ -42,7 +42,7 @@ $adminId = currentUserId();            // throws RuntimeException if not logged 
 
 Defined in `usersc/includes/custom_functions.php`. Use `dbInt()` for PDO result objects; use `(int)` for simple scalars.
 
-**Why**: PDO returns INT columns as strings on PHP 8.2/test but as int on PHP 8.3/dev. With strict types, `string ≠ int` — always cast explicitly.
+**Why**: PDO returns INT columns as strings on PHP 8.2/test but as int on PHP 8.4/dev. With strict types, `string ≠ int` — always cast explicitly.
 
 **See also:** `/docs/development/STRICT_TYPE_HANDLING.md` for comprehensive strategy.
 
