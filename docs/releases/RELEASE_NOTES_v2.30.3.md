@@ -7,7 +7,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 
 ## User-Facing Changes
 
-- WIP: [#1881](https://github.com/elan-registry/registry/issues/1881) — Owners can verify or report a car sold from a public link with no login required.
+- [#1881](https://github.com/elan-registry/registry/issues/1881) — Owners can verify or report a car sold from a public link with no login required.
 - WIP: [#1882](https://github.com/elan-registry/registry/issues/1882) — Verification emails now carry the same branded look as every other system email.
 - WIP: [#1883](https://github.com/elan-registry/registry/issues/1883) — Owners can opt out of verification emails with one click.
 
@@ -29,7 +29,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 ## Issues Resolved
 
 - WIP: [#1875](https://github.com/elan-registry/registry/issues/1875) — Monitor the verification cron jobs with healthchecks.io.
-- WIP: [#1881](https://github.com/elan-registry/registry/issues/1881) — Build the public verification landing page.
+- [#1881](https://github.com/elan-registry/registry/issues/1881) — Build the public verification landing page.
 - WIP: [#1882](https://github.com/elan-registry/registry/issues/1882) — Compose the verification email via EmailTemplate.
 - WIP: [#1883](https://github.com/elan-registry/registry/issues/1883) — Add a one-click opt-out link to the verification email.
 - WIP: [#1884](https://github.com/elan-registry/registry/issues/1884) — Rework send_email.php into a preview/send flow with corrected Mark Bounced semantics.

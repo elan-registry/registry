@@ -342,6 +342,9 @@ class CarRepository
     /**
      * Update the last-verified timestamp for a car
      *
+     * @deprecated No production callers since v2.30.3 — CarVerificationManager::markVerified()
+     *             writes `last_verified` via updateCar() directly so it can set
+     *             `owner_last_updated` in the same atomic write. Tracked for removal in #2107.
      * @param int $carId Car ID
      * @param string $dateTime Datetime string in AppConstants::DATETIME_FORMAT
      * @return bool True on success
@@ -691,6 +694,9 @@ class CarRepository
     /**
      * Update the sold date for a car
      *
+     * @deprecated No production callers since v2.30.3 — CarVerificationManager::markSold()
+     *             writes `solddate` via updateCar() directly so it can set
+     *             `owner_last_updated` in the same atomic write. Tracked for removal in #2107.
      * @param int $carId Car ID
      * @param string $soldDate Date string in Y-m-d format
      * @return bool True on success

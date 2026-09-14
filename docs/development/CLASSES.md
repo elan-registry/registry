@@ -564,7 +564,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   cars owned by one user to another (or clear ownership); used by the
   user-deletion hook
 - `updateVerificationCode(int $carId, string $verificationCode): bool` - Update a car's verification code
-- `updateLastVerified(int $carId, string $dateTime): bool` - Update a car's last-verified timestamp
+- `updateLastVerified(int $carId, string $dateTime): bool` - **Deprecated** (#2107), no
+  production callers — `CarVerificationManager::markVerified()` writes `last_verified` via
+  `updateCar()` directly to set `owner_last_updated` atomically alongside it
 - `updateVerificationSentAt(int $carId, string $dateTime): bool` - Update the timestamp at which a verification email was sent
 - `updateEmailBounced(int $carId, bool $bounced, ?string $bouncedAddress = null): bool` -
   Set or clear a car's email-bounced flag, and the address it bounced against (#1887)
@@ -653,7 +655,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   query for cars eligible for a verification email: not sold, deliverable
   email, and stale — neither verified nor updated by its owner within the last
   year (see `stalenessSql()`). No longer falls back to `cars.mtime`.
-- `updateSoldDate(int $carId, string $soldDate): bool` - Update a car's sold date
+- `updateSoldDate(int $carId, string $soldDate): bool` - **Deprecated** (#2107), no
+  production callers — `CarVerificationManager::markSold()` writes `solddate` via
+  `updateCar()` directly to set `owner_last_updated` atomically alongside it
 - `updateImage(int $carId, string $newJson, string $expectedJson): bool` - Compare-and-swap update of the image JSON column; returns `false` on concurrent modification
 - `findByChassisKey(string $year, string $type, string $chassis): ?object` -
   Find a car by its composite chassis key (year, type, chassis); used by

@@ -130,4 +130,44 @@ final class RateLimitConfigTest extends TestCase
         $this->assertArrayNotHasKey('user_window', $rateLimits['brevo_webhook']);
     }
 
+    /**
+     * The 'verification_code_attempt' rate-limit entry (issue #1881) must be
+     * configured in usersc/includes/rate_limits.php — the car verification
+     * landing page calls checkRateLimit('verification_code_attempt', ...) on
+     * every code submission and will silently no-op (fail open) if this key is
+     * missing, leaving the verification code open to brute-force guessing.
+     */
+    public function testVerificationCodeAttemptActionIsConfigured(): void
+    {
+        $projectRoot = dirname(__DIR__, 3);
+
+        /** @var array<string, array<string, int>> $rateLimits */
+        $rateLimits = [];
+        require $projectRoot . '/usersc/includes/rate_limits.php';
+
+        $this->assertIsArray($rateLimits);
+        $this->assertArrayHasKey(
+            'verification_code_attempt',
+            $rateLimits,
+            'verification_code_attempt must be configured in usersc/includes/rate_limits.php '
+                . '(the project override, which wholesale-replaces the framework defaults) — '
+                . 'the verification landing page calls checkRateLimit() with this action name and '
+                . 'will silently no-op if it is missing.'
+        );
+        // Mirrors the project's actual active verification_code_attempt limits
+        // (usersc/includes/rate_limits.php). Token-scoped like
+        // password_reset_submit: token_max bounds repeated attempts against
+        // one specific car's code from one visitor (e.g. someone re-guessing
+        // or grief-testing a single known token); it does NOT bound an
+        // attacker grinding many different candidate codes, since each guess
+        // is a fresh token and therefore a fresh bucket — ip_max and
+        // total_max are the backstops for that broader volume threat.
+        $this->assertSame(50, $rateLimits['verification_code_attempt']['ip_max']);
+        $this->assertSame(300, $rateLimits['verification_code_attempt']['ip_window']);
+        $this->assertSame(10, $rateLimits['verification_code_attempt']['token_max']);
+        $this->assertSame(1800, $rateLimits['verification_code_attempt']['token_window']);
+        $this->assertSame(200, $rateLimits['verification_code_attempt']['total_max']);
+        $this->assertSame(300, $rateLimits['verification_code_attempt']['total_window']);
+    }
+
 }
