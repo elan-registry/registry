@@ -232,15 +232,20 @@ CSRF token validated first (`Token::check()`); missing/invalid token includes th
 standard UserSpice token-error page and no writes occur. For each submitted car ID:
 
 1. Look up the car row (`findById()`)
-2. Re-evaluate eligibility via `eligibilitySkipReason()` — a car can change state
-   between GET and POST (sold, bounced, suppressed, verified by owner), and is
-   reported as skipped with the reason rather than sent or dropped
-3. Cars passing the re-check are sent via `CarVerificationSendService::sendOne()`
-4. Result (sent/failed/skipped with reasons) is rendered in the response as a
-   plain HTML report card: three sections (Sent N / Skipped N with reasons / Failed N
-   with reasons). No PRG pattern — refresh risks double-posting, accepted as
-   within the admin tool's manual, low-frequency, single-operator trust model.
-   No silent totals (AC13): every car gets a per-row outcome line.
+2. Re-evaluate eligibility via `VerificationEligibility::skipReason()` — a car
+   can change state between GET and POST (sold, bounced, suppressed, verified
+   by owner), and is reported as skipped with the reason rather than sent or
+   dropped
+3. Cars passing the re-check are sent via `CarVerificationSendService::sendOne()`,
+   orchestrated per-batch by `VerificationBatchSender::processBatch()`
+4. Result is rendered in the response as a plain HTML report card: four
+   sections (Sent N / Unrecorded N with reasons / Skipped N with reasons /
+   Failed N with reasons). Unrecorded covers a send that genuinely went out
+   but whose follow-up bookkeeping failed (`SendResult::sentUnrecorded()`) —
+   distinct from a clean send so the admin isn't shown a false all-clear. No
+   PRG pattern — refresh risks double-posting, accepted as within the admin
+   tool's manual, low-frequency, single-operator trust model. No silent
+   totals (AC13): every car gets a per-row outcome line.
 
 ### Mark Bounced / Clear Bounced / Clear Suppression (Owner-level Actions)
 

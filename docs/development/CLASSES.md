@@ -1094,8 +1094,16 @@ verification-email send attempt (#1884). Returned by
 
 **Key Features**:
 
-- Named constructors (`sent()`, `failed()`) prevent inconsistent states (e.g.
-  status "sent" with a non-null reason)
+- Named constructors (`sent()`, `failed()`, `sentUnrecorded()`) prevent
+  inconsistent states (e.g. status "sent" with a non-null reason on a clean send)
+- `sentUnrecorded()` is the deliberate exception: status stays `STATUS_SENT`
+  (the email really was delivered and must never be retried), but `reason` is
+  non-null so callers can render a distinct warning instead of silently
+  folding a bookkeeping failure into an ordinary successful send
+- `isUnrecorded(): bool` — true only for a `sentUnrecorded()` result; callers
+  branch on this (not `reason !== null` directly) to route to a separate
+  report bucket, keeping that rule defined once rather than re-derived at
+  each call site
 - No `skipped` status — skips are decided one layer up in the admin page,
   before `sendOne()` is called
 - `reason` field is safe to render (already escaped at the point of render)
@@ -1104,12 +1112,20 @@ verification-email send attempt (#1884). Returned by
 
 - `int $carId` - Car ID the send was attempted for
 - `string $status` - `STATUS_SENT` or `STATUS_FAILED`
-- `?string $reason` - Failure reason (null if sent successfully)
+- `?string $reason` - Failure/warning reason (null only for a clean sent result)
 
 **Factory Methods**:
 
-- `static sent(int $carId): self` - Construct a success result
+- `static sent(int $carId): self` - Construct a clean success result
 - `static failed(int $carId, string $reason): self` - Construct a failure result
+- `static sentUnrecorded(int $carId, string $reason): self` - Construct a
+  result for a genuinely delivered email whose bookkeeping (the
+  `er_email_events` insert and/or `verification_attempts` increment) failed
+  afterward
+
+**Instance Methods**:
+
+- `isUnrecorded(): bool` - True only for a `sentUnrecorded()` result
 
 **Used By**:
 
