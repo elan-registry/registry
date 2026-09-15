@@ -180,6 +180,7 @@ npm run build                   # Minify app/assets/js/, app/assets/css/, app/ad
 # Linting
 npm run lint                    # ESLint for JavaScript
 npm run lint:fix                # ESLint with auto-fix
+npm run test:eslint-rules       # RuleTester coverage for local ESLint rules (eslint-rules/)
 
 # Local Playwright tests (requires MAMP at localhost:9999)
 npm run playwright:install      # Install browsers
