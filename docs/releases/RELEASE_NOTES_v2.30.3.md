@@ -8,8 +8,8 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 ## User-Facing Changes
 
 - [#1881](https://github.com/elan-registry/registry/issues/1881) — Owners can verify or report a car sold from a public link with no login required.
-- WIP: [#1882](https://github.com/elan-registry/registry/issues/1882) — Verification emails now carry the same branded look as every other system email.
-- WIP: [#1883](https://github.com/elan-registry/registry/issues/1883) — Owners can opt out of verification emails with one click.
+- [#1882](https://github.com/elan-registry/registry/issues/1882) — Verification emails now carry the same branded look as every other system email.
+- [#1883](https://github.com/elan-registry/registry/issues/1883) — Owners can opt out of verification emails with one click.
 
 ## Admin-Facing Changes
 
@@ -30,8 +30,8 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 
 - WIP: [#1875](https://github.com/elan-registry/registry/issues/1875) — Monitor the verification cron jobs with healthchecks.io.
 - [#1881](https://github.com/elan-registry/registry/issues/1881) — Build the public verification landing page.
-- WIP: [#1882](https://github.com/elan-registry/registry/issues/1882) — Compose the verification email via EmailTemplate.
-- WIP: [#1883](https://github.com/elan-registry/registry/issues/1883) — Add a one-click opt-out link to the verification email.
+- [#1882](https://github.com/elan-registry/registry/issues/1882) — Compose the verification email via EmailTemplate.
+- [#1883](https://github.com/elan-registry/registry/issues/1883) — Add a one-click opt-out link to the verification email.
 - WIP: [#1884](https://github.com/elan-registry/registry/issues/1884) — Rework send_email.php into a preview/send flow with corrected Mark Bounced semantics.
 - WIP: [#1885](https://github.com/elan-registry/registry/issues/1885) — Register send_verification_batch as a guarded cron job with dashboard Pause/Resume.
 - WIP: [#1886](https://github.com/elan-registry/registry/issues/1886) — Remove the superseded admin-scoped verification files.
