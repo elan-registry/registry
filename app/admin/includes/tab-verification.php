@@ -28,10 +28,11 @@ $currentUserId = $currentUserId ?? currentUserId();
 $csrfToken     = $csrfToken ?? Token::generate();
 
 // Batch-send report, populated by index.php's `verification_send_batch` case.
-$sendBatchJustRan  = $sendBatchJustRan ?? false;
-$sendReportSent    = $sendReportSent ?? [];
-$sendReportSkipped = $sendReportSkipped ?? [];
-$sendReportFailed  = $sendReportFailed ?? [];
+$sendBatchJustRan      = $sendBatchJustRan ?? false;
+$sendReportSent        = $sendReportSent ?? [];
+$sendReportUnrecorded  = $sendReportUnrecorded ?? [];
+$sendReportSkipped     = $sendReportSkipped ?? [];
+$sendReportFailed      = $sendReportFailed ?? [];
 
 // Send services constructed by index.php, shared via the include scope.
 $verificationSendSvc = $verificationSendSvc ?? null;
@@ -320,6 +321,34 @@ if (!function_exists('vsEsc')) {
             </div>
         <?php } ?>
 
+        <?php if ($sendReportUnrecorded !== []) { ?>
+        <h6 class="mb-2 text-warning">
+            <i class="fas fa-triangle-exclamation"></i> Sent, but not recorded (<?= count($sendReportUnrecorded) ?>)
+        </h6>
+        <p class="text-muted">
+            These emails were delivered, but the follow-up bookkeeping failed — the affected
+            car(s) may be re-selected and emailed again in a future batch. See the server log
+            for details.
+        </p>
+        <div class="table-responsive mb-4">
+            <table class="table table-sm">
+                <thead>
+                    <tr><th scope="col">Car</th><th scope="col">Chassis</th><th scope="col">Email</th><th scope="col">Warning</th></tr>
+                </thead>
+                <tbody>
+                <?php foreach ($sendReportUnrecorded as $reportRow) { ?>
+                    <tr>
+                        <td><?= vsEsc($reportRow['car']->id ?? '') ?></td>
+                        <td><?= vsEsc($reportRow['car']->chassis ?? '') ?></td>
+                        <td><?= vsEsc($reportRow['car']->email ?? '') ?></td>
+                        <td><?= vsEsc($reportRow['reason']) ?></td>
+                    </tr>
+                <?php } ?>
+                </tbody>
+            </table>
+        </div>
+        <?php } ?>
+
         <h6 class="mb-2">Skipped (<?= count($sendReportSkipped) ?>)</h6>
         <?php if ($sendReportSkipped === []) { ?>
             <p class="text-muted">No cars were skipped.</p>
@@ -405,9 +434,13 @@ if (!function_exists('vsEsc')) {
                     </thead>
                     <tbody>
                     <?php foreach ($vsEligible as $eligibleCar) {
-                        // findVerificationEligible() selects cars.* only — fname/lname
-                        // live on users/profiles, not cars, so the owner name for this
-                        // preview column is resolved per row via Owner::data().
+                        // cars.fname/cars.lname ARE present in this row (findVerificationEligible()
+                        // selects cars.*, and fname/lname are denormalized onto cars — see
+                        // DATABASE.md), but they are a synced copy that can drift from the
+                        // authoritative users/profiles values. The owner name shown here is
+                        // resolved per row via Owner::data() rather than trusting the
+                        // denormalized cars columns, so this preview matches what the send
+                        // actually uses (CarVerificationSendService also loads Owner fresh).
                         $vsOwnerRow  = (new Owner((int) $eligibleCar->user_id))->data();
                         $vsOwnerName = trim(($vsOwnerRow->fname ?? '') . ' ' . ($vsOwnerRow->lname ?? ''));
                     ?>

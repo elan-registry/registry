@@ -926,6 +926,83 @@ final class CarRepositoryTest extends TestCase
     }
 
     // =========================================================================
+    // restoreVerificationCodeState() tests (#1884)
+    // =========================================================================
+
+    /**
+     * Pins the exact bind-parameter order against the exact placeholder
+     * order in the SQL. A swap here (vericode/vericodeSentAt reversed, or
+     * either swapped with $carId) would silently write a vericode string
+     * into vericode_sent_at (or vice versa) for the matched row, and no
+     * other test in this suite exercises the real method closely enough to
+     * catch it — CarVerificationSendServiceTest only mocks this method.
+     */
+    public function testRestoreVerificationCodeStateBindsParametersInDeclaredOrder(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET vericode = ?, vericode_sent_at = ? WHERE id = ?',
+                ['abc123hash', '2026-09-01 12:00:00', 7]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->restoreVerificationCodeState(7, 'abc123hash', '2026-09-01 12:00:00');
+
+        $this->assertTrue($result);
+    }
+
+    public function testRestoreVerificationCodeStateAcceptsNullVericodeAndSentAt(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET vericode = ?, vericode_sent_at = ? WHERE id = ?',
+                [null, null, 7]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->restoreVerificationCodeState(7, null, null);
+
+        $this->assertTrue($result);
+    }
+
+    public function testRestoreVerificationCodeStateReturnsFalseWhenNoRowMatched(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->restoreVerificationCodeState(999, 'code', '2026-09-01 12:00:00');
+
+        $this->assertFalse($result);
+    }
+
+    public function testRestoreVerificationCodeStateThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/restoreVerificationCodeState failed for car=7/');
+        $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
+    }
+
+    // =========================================================================
     // updateProfileEmailBounced() tests (#1884)
     // =========================================================================
 

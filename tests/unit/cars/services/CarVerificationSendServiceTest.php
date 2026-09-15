@@ -9,6 +9,7 @@ use ElanRegistry\Car\CarVerificationSendService;
 use ElanRegistry\Car\SendResult;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\EmailTemplate;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -208,6 +209,12 @@ final class CarVerificationSendServiceTest extends TestCase
     // sendOne() — send failure path
     // ------------------------------------------------------------------
 
+    /**
+     * mockVerifier is used here purely as a behavior stub (willReturn/
+     * willReturnCallback) — this test verifies the restore/reporting path via
+     * mockRepo's expects() below, not via call counts on the verifier.
+     */
+    #[AllowMockObjectsWithoutExpectations]
     public function testSendOneRestoresPreviousVericodeAndSentAtWhenEmailFails(): void
     {
         $carData = $this->eligibleCar();
@@ -254,7 +261,12 @@ final class CarVerificationSendServiceTest extends TestCase
      * originally, incorrectly used) cannot distinguish "restored" from
      * "matched nothing," so this test only became meaningful once the
      * restore switched to the count()-aware repository method.
+     *
+     * mockVerifier is used here purely as a behavior stub (willReturn/
+     * willReturnCallback) — this test verifies the restore/reporting path via
+     * mockRepo's expects() below, not via call counts on the verifier.
      */
+    #[AllowMockObjectsWithoutExpectations]
     public function testSendOneLogsCriticallyWhenRestoreMatchesNoRow(): void
     {
         $carData = $this->eligibleCar();
@@ -328,7 +340,10 @@ final class CarVerificationSendServiceTest extends TestCase
      * available short of static analysis tooling. A stronger, dedicated
      * cross-file audit (e.g. via PHPStan or a custom AST rule) is out of scope
      * for this test — see the class docblock's own statement of the contract.
+     * This test touches neither mockRepo nor mockVerifier — it only greps the
+     * class's own source — so setUp()'s unconfigured mocks are unused here.
      */
+    #[AllowMockObjectsWithoutExpectations]
     public function testServiceSourceContainsNoSuperglobalOrSessionReads(): void
     {
         $raw = (string) file_get_contents(

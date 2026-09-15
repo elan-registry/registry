@@ -67,8 +67,8 @@ $db = DB::getInstance();
 // adding a new migration.
 $pendingMigrationCount = 0;
 try {
-    $latestMigration = 20260711000000;
-    $totalMigrations = 4;
+    $latestMigration = 20260915000002;
+    $totalMigrations = 32;
     $row = $db->query(
         "SELECT COUNT(*) AS cnt FROM phinxlog WHERE version <= ?",
         [$latestMigration]
@@ -279,11 +279,26 @@ if (!function_exists('eligibilitySkipReason')) {
         // per rolling 12-month window, then the car waits out the rest of
         // the year. Kept in sync with that SQL and with
         // incrementVerificationAttempts()'s own reset logic.
+        //
+        // strtotime() failure is NOT treated as "outside the window": PHP's
+        // strtotime() returns false on a malformed/unparseable value, and
+        // `false > strtotime('-1 year')` evaluates to false — silently
+        // treating a corrupt timestamp as "not within the window" would
+        // bypass the attempt cap entirely for that car on every batch.
+        // Throwing here routes into the caller's EligibilityCheckFailed
+        // catch, which skips the car rather than risk over-sending.
         $attemptsSince = $carData->verification_attempts_since ?? null;
-        $withinWindow = $attemptsSince !== null
-            && strtotime((string) $attemptsSince) > strtotime('-1 year');
-        if ($withinWindow && (int) ($carData->verification_attempts ?? 0) >= 2) {
-            return 'Attempt cap reached for this year';
+        if ($attemptsSince !== null) {
+            $sinceTs = strtotime((string) $attemptsSince);
+            if ($sinceTs === false) {
+                throw new CarValidationException(
+                    'eligibilitySkipReason: malformed verification_attempts_since '
+                    . var_export($attemptsSince, true) . ' on car ' . (int) ($carData->id ?? 0)
+                );
+            }
+            if ($sinceTs > strtotime('-1 year') && (int) ($carData->verification_attempts ?? 0) >= 2) {
+                return 'Attempt cap reached for this year';
+            }
         }
 
         return null;
@@ -394,12 +409,18 @@ $successes = [];
 
 // Verification batch-send report. Always defined so tab-verification.php can
 // reference them whether or not a send_batch POST just ran. The report's
-// three-way sent/skipped/failed shape cannot be expressed as a flat
+// four-way sent/unrecorded/skipped/failed shape cannot be expressed as a flat
 // error/success list, so it travels in its own variables; $successes carries
-// only the one-line summary.
+// only the one-line summary. "Unrecorded" (SendResult::sentUnrecorded()) is
+// its own bucket rather than folded into "sent": the email really was
+// delivered, but the bookkeeping that prevents a duplicate send afterward
+// failed, and that must stay visible to the admin rather than reading
+// identically to a clean send.
 $sendBatchJustRan = false;
 /** @var array<int, object> */
 $sendReportSent = [];
+/** @var array<int, array{car: object, reason: string}> */
+$sendReportUnrecorded = [];
 /** @var array<int, array{car: object, reason: string}> */
 $sendReportSkipped = [];
 /** @var array<int, array{car: object, reason: string}> */
@@ -635,10 +656,43 @@ if (ElanInput::existsPost()) {
                     $submittedIds = (array) ElanInput::get('car_ids', []);
 
                     foreach ($submittedIds as $submittedId) {
-                        $sendCarId   = (int) $submittedId;
-                        $sendCarData = $sendCarId > 0 ? $verificationRepo->findById($sendCarId) : null;
+                        $sendCarId = (int) $submittedId;
+
+                        if ($sendCarId <= 0) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                                'Verification send: non-positive car id in car_ids[]: ' . var_export($submittedId, true));
+                            $sendReportSkipped[] = [
+                                'car'    => (object) ['id' => 0, 'chassis' => '', 'email' => ''],
+                                'reason' => 'Invalid car reference',
+                            ];
+                            continue;
+                        }
+
+                        // findById() throws CarDatabaseException on a query
+                        // failure — this must be inside the per-car guard, not
+                        // called ahead of it, or a transient DB error mid-batch
+                        // aborts the whole send and silently drops the report
+                        // for every car already processed (and possibly
+                        // already emailed) before it.
+                        try {
+                            $sendCarData = $verificationRepo->findById($sendCarId);
+                        } catch (\Throwable $e) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                                'Verification send: findById threw for car %d [%s]: %s',
+                                $sendCarId,
+                                get_class($e),
+                                $e->getMessage()
+                            ));
+                            $sendReportFailed[] = [
+                                'car'    => (object) ['id' => $sendCarId, 'chassis' => '', 'email' => ''],
+                                'reason' => 'The car record could not be read.',
+                            ];
+                            continue;
+                        }
 
                         if ($sendCarData === null) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                                "Verification send: car {$sendCarId} was in the preview but no longer exists; skipped");
                             $sendReportSkipped[] = [
                                 'car'    => (object) ['id' => $sendCarId, 'chassis' => '', 'email' => ''],
                                 'reason' => 'Car no longer exists',
@@ -683,7 +737,15 @@ if (ElanInput::existsPost()) {
                             $sendResult = SendResult::failed($sendCarId, 'An unexpected error occurred during send.');
                         }
 
-                        if ($sendResult->status === SendResult::STATUS_SENT) {
+                        if ($sendResult->isUnrecorded()) {
+                            // sentUnrecorded(): delivered, but the bookkeeping
+                            // that prevents a duplicate send failed — keep
+                            // this visibly distinct from a clean send.
+                            $sendReportUnrecorded[] = [
+                                'car'    => $sendCarData,
+                                'reason' => $sendResult->reason,
+                            ];
+                        } elseif ($sendResult->status === SendResult::STATUS_SENT) {
                             $sendReportSent[] = $sendCarData;
                         } else {
                             $sendReportFailed[] = [
@@ -694,14 +756,16 @@ if (ElanInput::existsPost()) {
                     }
 
                     $successes[] = sprintf(
-                        'Batch complete: %d sent, %d skipped, %d failed.',
+                        'Batch complete: %d sent, %d unrecorded, %d skipped, %d failed.',
                         count($sendReportSent),
+                        count($sendReportUnrecorded),
                         count($sendReportSkipped),
                         count($sendReportFailed)
                     );
                     logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                        'Verification send: batch complete — %d sent, %d skipped, %d failed',
+                        'Verification send: batch complete — %d sent, %d unrecorded, %d skipped, %d failed',
                         count($sendReportSent),
+                        count($sendReportUnrecorded),
                         count($sendReportSkipped),
                         count($sendReportFailed)
                     ));
@@ -727,8 +791,21 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    $verifyCarId   = (int) ElanInput::get('car_id');
-                    $verifyCarData = $verifyCarId > 0 ? $verificationRepo->findById($verifyCarId) : null;
+                    $verifyCarId = (int) ElanInput::get('car_id');
+
+                    try {
+                        $verifyCarData = $verifyCarId > 0 ? $verificationRepo->findById($verifyCarId) : null;
+                    } catch (\Throwable $e) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification %s: findById threw for car %d [%s]: %s',
+                            $command,
+                            $verifyCarId,
+                            get_class($e),
+                            $e->getMessage()
+                        ));
+                        $errors[] = 'That car could not be read. Please try again.';
+                        break;
+                    }
 
                     if ($verifyCarData === null) {
                         $errors[] = 'That car could not be found. It may have been removed.';

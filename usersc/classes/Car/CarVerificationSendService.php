@@ -110,7 +110,7 @@ final class CarVerificationSendService
      *                        Note this method mutates the passed object — the verifier
      *                        writes the new plaintext ->vericode and ->vericode_sent_at
      *                        onto it so the composer can quote them.
-     * @return SendResult Sent, or failed carrying an admin-safe reason string
+     * @return SendResult Sent, sent-but-unrecorded, or failed — each carrying an admin-safe reason string except a clean sent
      */
     public function sendOne(object $carData): SendResult
     {
@@ -162,7 +162,15 @@ final class CarVerificationSendService
         $composed = $this->composer->compose($carData, $owner, $newVericode);
         $sendOk   = email((string) $carData->email, $composed['subject'], $composed['html']);
 
-        if ($sendOk === false) {
+        // Strict `!== true` rather than `=== false`: email() is only
+        // guaranteed bool by the Brevo override in use today
+        // (sendinblue()/functions.php). A future or site-local mailer
+        // override could return something else on failure (a message-id
+        // string, null, 0 — a very common convention) that would pass
+        // `=== false` and be misreported as a successful send, incrementing
+        // the attempt count and consuming the yearly cap with no email
+        // actually delivered.
+        if ($sendOk !== true) {
             // Restore the pre-send state in one atomic update so the car is left
             // exactly as found. This is the one genuinely unrecoverable spot in
             // the whole sequence: if the restore itself fails, the car is stuck
@@ -205,8 +213,9 @@ final class CarVerificationSendService
             }
 
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                'CarVerificationSendService::sendOne: email() returned false for car %d; '
-                . 'verification_attempts deliberately not incremented',
+                'CarVerificationSendService::sendOne: email() returned %s (expected true) for car %d; '
+                . 'treating as failure, verification_attempts deliberately not incremented',
+                var_export($sendOk, true),
                 $carId
             ));
 
@@ -240,9 +249,20 @@ final class CarVerificationSendService
                 get_class($e),
                 $e->getMessage()
             ));
+
+            // Status stays "sent" (see the note above — the email really did
+            // go out and must never be retried), but sentUnrecorded() carries
+            // a non-null reason so the admin report can render a distinct
+            // warning rather than showing this identically to an ordinary
+            // successful send. Without it, a failed incrementVerificationAttempts()
+            // leaves the car eligible again with zero visible signal, and the
+            // very next batch quietly re-emails the same owner.
+            return SendResult::sentUnrecorded(
+                $carId,
+                'Email sent, but the send could not be recorded — this car may be emailed again.'
+            );
         }
 
-        // Unconditional: see the "never report failure after a real send" note above.
         return SendResult::sent($carId);
     }
 

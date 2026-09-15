@@ -66,6 +66,15 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
             $source,
             'A capped car must be reported with a specific reason, not a generic skip'
         );
+
+        $this->assertStringContainsString(
+            '$sinceTs === false',
+            $source,
+            'eligibilitySkipReason() must fail closed (throw) on a malformed/unparseable '
+                . 'verification_attempts_since rather than let strtotime() return false and '
+                . 'silently bypass the attempt cap — false > strtotime(\'-1 year\') evaluates to '
+                . 'false in PHP, which would report the car as outside the window'
+        );
     }
 
     public function testFindVerificationEligibleSourceAlsoEnforcesTheSameCap(): void
