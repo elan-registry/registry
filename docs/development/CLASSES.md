@@ -571,6 +571,21 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `updateEmailBounced(int $carId, bool $bounced, ?string $bouncedAddress = null): bool` -
   Set or clear a car's email-bounced flag, and the address it bounced against (#1887)
 - `updateEmailSuppressed(int $carId, bool $suppressed): bool` - Set or clear a car's email-suppressed flag (#1887)
+- `findProfileEmailBounced(int $userId): ?int` -
+  Read the owner-level bounce flag from `profiles.email_bounced` (#1884).
+  Returns the flag value (0 or 1) or null if no row.
+- `findProfileEmailBouncedAddress(int $userId): ?string` -
+  Read the owner-level bounced address from `profiles.email_bounced_address` (#1884).
+  Returns the address string or null.
+- `updateProfileEmailBounced(int $userId, bool $bounced, ?string $bouncedAddress = null): bool` -
+  Update owner-level bounce state on `profiles` (#1884).
+  Throws `CarDatabaseException` if `$bounced === true` and `$bouncedAddress` is null/empty.
+- `restoreVerificationCodeState(int $carId, ?string $vericode, ?string $vericodeSentAt): bool` -
+  Restore a car's pre-send vericode/vericode_sent_at after a failed send (#1884), distinct from
+  `updateCar()` because it can observe a write that matched no row. Throws `CarDatabaseException` on query error.
+- `incrementVerificationAttempts(int $carId): bool` -
+  Increment `cars.verification_attempts` with rolling-year window reset via `verification_attempts_since` (#1884).
+  Returns false if no row matched; throws `CarDatabaseException` on query error.
 - `findByEmail(string $email): array` - Find cars whose `cars.email` matches a
   given address; used by the Brevo webhook receiver to map an inbound
   event's recipient back to the car(s) it belongs to (#1887)
@@ -838,6 +853,16 @@ on success.
 - `clearBounced(object $carData): bool` - Clear a car's bounced-email flag and the recorded bounced address (admin reversal)
 - `setSuppressed(object $carData): bool` - Flag a car's owner email as suppressed (e.g. a Brevo `spam` complaint) — a distinct signal from a bounce (#1887)
 - `clearSuppressed(object $carData): bool` - Clear a car's email-suppressed flag (admin reversal)
+- `setBouncedForOwner(int $ownerId, string $bouncedAddress): array` -
+  Owner-level Mark Bounced action: records the owner's current `users.email` on
+  `profiles.email_bounced_address` and fans out to set `email_bounced = 1` on every
+  car owned by that user (#1884). Returns array of pre-change car snapshots for history writing.
+- `clearBouncedForOwner(int $ownerId): array` -
+  Owner-level Clear Bounced action: clears `profiles.email_bounced` and fans out to clear
+  `email_bounced` on every car owned by that user (#1884). Returns array of pre-change car snapshots.
+- `clearSuppressedForOwner(int $ownerId): array` -
+  Owner-level Clear Suppression action: clears `profiles.email_suppressed` and fans out to clear
+  `email_suppressed` on every car owned by that user (#1884). Returns array of pre-change car snapshots.
 - `markSold(object $carData, ?string $soldDate): bool` - Record a car as sold (`null` defaults to today)
 
 **Exceptions**:
@@ -860,6 +885,126 @@ on success.
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
 - [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`,
   `cars.vericode_sent_at`, `cars.email_bounced`, `cars.email_bounced_address`, `cars.email_suppressed`, `cars.solddate`
+
+---
+
+### VerificationEligibility
+
+**Location**: `/usersc/classes/Car/VerificationEligibility.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Explains why an already-loaded car row is no longer due a
+verification email (#1884). Extracted from app/admin/index.php's former
+`eligibilitySkipReason()` function into its own class so the rule set is
+directly unit-testable — constructing car-data objects and asserting on real
+return values — instead of only via source-text inspection of an
+unrequireable file.
+
+**Key Features**:
+
+- Encodes the SAME rules as `CarRepository::findVerificationEligible()`'s
+  WHERE clause — not a second, independent definition of eligibility. If
+  that SQL changes, this changes with it.
+- Exists because the preview (GET) and the send (POST) are two separate
+  requests, and a car can leave the eligible set in between (owner verifies
+  or edits it, a bounce webhook fires, they opt out, or the car is marked
+  sold). Re-running the query would show the row is gone from the result set
+  but not WHY — this checks the row already loaded by `findById()`, with no
+  second query, so the admin report can give a per-car reason.
+- The owner-liveness clauses of the SQL (`INNER JOIN users`, the `noowner`
+  exclusion) are deliberately NOT duplicated here — they need a join this
+  class has no row for. They stay enforced downstream in
+  `CarVerificationSendService::sendOne()`.
+- Fails closed on a malformed or MySQL zero-date `verification_attempts_since`
+  by throwing rather than silently treating a corrupt timestamp as "outside
+  the rolling window" (which would bypass the attempt cap).
+
+**Methods**:
+
+- `static skipReason(object $carData): ?string` - Checks, in priority order:
+  sold, bounced, suppressed, no email on file, no owner on file, freshness
+  (recently verified or updated), then the 2-send-per-rolling-year attempt
+  cap. Returns a short human-readable reason, or `null` if the car is still
+  eligible.
+
+**Exceptions**:
+
+- `CarValidationException` - Thrown via `CarRepository::isFresh()` for a
+  malformed `last_verified`/`owner_last_updated`, or directly for a
+  malformed/zero-date `verification_attempts_since`
+
+**Used By**:
+
+- `VerificationBatchSender::processBatch()`, which re-checks eligibility for
+  each car before calling `CarVerificationSendService::sendOne()`
+
+**See Also**:
+
+- [DATABASE.md](DATABASE.md) - `cars.solddate`, `cars.email_bounced`,
+  `cars.email_suppressed`, `cars.email`, `cars.user_id`,
+  `cars.verification_attempts`, `cars.verification_attempts_since`
+
+---
+
+### VerificationBatchSender
+
+**Location**: `/usersc/classes/Car/VerificationBatchSender.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Per-car loop body for the admin `verification_send_batch` POST
+handler in `app/admin/index.php` (#1884, PR review gap-closing pass).
+Extracted so the batch-loop failure containment and the
+`SendResult::isUnrecorded()` -> report-bucket routing are directly
+unit-testable — `app/admin/index.php` itself cannot be `require()`'d in a
+unit test (needs the full UserSpice bootstrap).
+
+**Key Features**:
+
+- **Four independent try/catch guards, mirrored exactly from the original
+  inline loop**: `findById()` throwing, `findById()` returning `null`,
+  `VerificationEligibility::skipReason()` throwing, and `sendOne()`
+  throwing. Each is scoped to one car so an uncaught fault never aborts the
+  rest of the batch or silently drops subsequent cars from the report.
+- **`isUnrecorded()` routed before the `STATUS_SENT` check**: an unrecorded
+  send must land in the `unrecorded` bucket, never `sent` — reordering these
+  checks was the exact defect commit 4224b511 already fixed once at a
+  different layer.
+- Not a general-purpose service — assumes the ids it receives already
+  passed the admin authorization check and CSRF validation one layer up
+  (`app/admin/index.php` filters non-positive ids before calling this
+  class). Performs no authorization of its own.
+
+**Methods**:
+
+- `processBatch(array $carIds): array` - Given positive car ids, re-reads
+  each via `CarRepository::findById()`, re-checks eligibility via
+  `VerificationEligibility::skipReason()`, sends via
+  `CarVerificationSendService::sendOne()`, and buckets the outcome. Returns
+  `['sent' => array<object>, 'unrecorded' => array<array{car, reason}>,
+  'skipped' => array<array{car, reason}>, 'failed' => array<array{car,
+  reason}>]`.
+
+**Constructor Dependencies**:
+
+- `CarRepository $repo` - For `findById()` re-reads
+- `CarVerificationSendService $sendSvc` - For `sendOne()`
+- `int $currentUserId` - Passed through to every `logger()` call
+
+**Used By**:
+
+- Admin send tool's `verification_send_batch` case (Verification System tab
+  in `app/admin/index.php`, #1884)
+
+**See Also**:
+
+- [VerificationEligibility](#verificationeligibility) - The eligibility
+  re-check this class calls per car
+- [CarVerificationSendService](#carverificationsendservice) - The send
+  orchestration this class calls per car
+- [SendResult](#sendresult) - The value object whose `isUnrecorded()` drives
+  the bucket routing this class exists to cover
 
 ---
 
@@ -934,6 +1079,122 @@ shared state or dependency exists between the two.
 - [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full feature-switch design, the asymmetric gate, readiness-check semantics
 - [DATABASE.md](DATABASE.md) - `er_verification_settings`, the `er_` table-prefix convention
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`, `LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED`
+
+---
+
+### SendResult
+
+**Location**: `/usersc/classes/Car/SendResult.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Immutable value object describing the outcome of one car's
+verification-email send attempt (#1884). Returned by
+`CarVerificationSendService::sendOne()`.
+
+**Key Features**:
+
+- Named constructors (`sent()`, `failed()`, `sentUnrecorded()`) prevent
+  inconsistent states (e.g. status "sent" with a non-null reason on a clean send)
+- `sentUnrecorded()` is the deliberate exception: status stays `STATUS_SENT`
+  (the email really was delivered and must never be retried), but `reason` is
+  non-null so callers can render a distinct warning instead of silently
+  folding a bookkeeping failure into an ordinary successful send
+- `isUnrecorded(): bool` — true only for a `sentUnrecorded()` result; callers
+  branch on this (not `reason !== null` directly) to route to a separate
+  report bucket, keeping that rule defined once rather than re-derived at
+  each call site
+- No `skipped` status — skips are decided one layer up in the admin page,
+  before `sendOne()` is called
+- `reason` field is safe to render (already escaped at the point of render)
+
+**Properties** (all `readonly`):
+
+- `int $carId` - Car ID the send was attempted for
+- `string $status` - `STATUS_SENT` or `STATUS_FAILED`
+- `?string $reason` - Failure/warning reason (null only for a clean sent result)
+
+**Factory Methods**:
+
+- `static sent(int $carId): self` - Construct a clean success result
+- `static failed(int $carId, string $reason): self` - Construct a failure result
+- `static sentUnrecorded(int $carId, string $reason): self` - Construct a
+  result for a genuinely delivered email whose bookkeeping (the
+  `er_email_events` insert and/or `verification_attempts` increment) failed
+  afterward
+
+**Instance Methods**:
+
+- `isUnrecorded(): bool` - True only for a `sentUnrecorded()` result
+
+**Used By**:
+
+- `CarVerificationSendService::sendOne()` and `sendBatch()` (#1884)
+- `VerificationBatchSender::processBatch()` (Verification System tab in
+  `app/admin/index.php`) to build the result report
+
+---
+
+### CarVerificationSendService
+
+**Location**: `/usersc/classes/Car/CarVerificationSendService.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: The single, shared verification-email send orchestration (#1884).
+Owns the "pick eligible cars, rotate their codes, mail their owners, record
+the outcome" operation. Both the manual admin tool and the future automated
+cron job (#1885) call this service to prevent their eligibility rules and send
+sequences from drifting.
+
+**Key Features**:
+
+- **Pure functions only**: every public method is a pure function of its
+  arguments + current DB state. No `$_POST`/`$_SERVER`/session reads, no exit
+  paths, no logging — anything specific to one caller's environment belongs
+  in that caller
+- **Single shared eligibility query**: `findEligible()` delegates verbatim to
+  `CarRepository::findVerificationEligible()`, not re-implemented
+- **Three separate scopes, never one transaction** in `sendOne()`: (A) rotate
+  vericode+sent_at commit before network; (B) compose+send with no transaction;
+  (C) record event+increment attempts in their own transaction on success.
+  Prevents holding DB locks during slow Brevo calls and ensures failed sends
+  don't consume the yearly attempt allowance.
+- **Failed sends restore**: if `email()` returns false, the previous
+  vericode/sent_at are atomically restored via one `updateCar()` call
+- **Never report failure after real send**: if `email()` returned true, the
+  owner has the message. Scope C is best-effort; on failure it logs the gap
+  but still returns `SendResult::sent()` to prevent retry-triggered duplicates
+
+**Methods**:
+
+- `findEligible(int $limit, int $offset = 0): array` - List cars due for
+  verification email; delegates to `CarRepository::findVerificationEligible()`
+- `sendOne(object $carData): SendResult` - Send one car's verification email,
+  return sent/failed
+- `sendBatch(array $cars): array` - Map `sendOne()` over multiple cars,
+  return array of `SendResult`
+
+**Constructor Dependencies**:
+
+- `CarRepository $repo` - For `findVerificationEligible()`, car writes, event insertion
+- `CarVerificationManager $verifier` - For code generation and writes
+- `CarVerificationEmailComposer $composer` - For email composition
+
+**Exceptions**:
+
+- `CarDatabaseException` - From repository calls
+
+**Used By**:
+
+- `VerificationBatchSender::processBatch()` (Verification System tab in
+  `app/admin/index.php`, #1884)
+- Intended reuse by cron job (#1885)
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) — Admin send tool flow and shared-service design
+- `app/admin/index.php` (Verification tab POST command handling) — How the admin tool uses this service
 
 ---
 

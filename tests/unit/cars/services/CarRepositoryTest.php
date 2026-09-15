@@ -837,6 +837,475 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
+    // =========================================================================
+    // incrementVerificationAttempts() tests (#1884)
+    // =========================================================================
+
+    public function testIncrementVerificationAttemptsReturnsTrueWhenRowMatched(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->stringContains('UPDATE cars'),
+                [7]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->incrementVerificationAttempts(7);
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * The SQL passed to query() must carry the CASE-based reset/increment
+     * structure the plan specifies — asserted via stringContains() fragments
+     * rather than a full-string match, matching this file's existing style
+     * (see testFindVerificationEligibleQueryContainsExpectedConditions()).
+     */
+    public function testIncrementVerificationAttemptsSendsExpectedCaseStructure(): void
+    {
+        $capturedSql = null;
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->willReturnCallback(
+                function (string $sql, array $params = []) use (&$capturedSql, $db): DatabaseInterface {
+                    $capturedSql = $sql;
+                    return $db;
+                }
+            );
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $repo->incrementVerificationAttempts(7);
+
+        $this->assertNotNull($capturedSql);
+        $this->assertStringContainsString('verification_attempts_since IS NULL', $capturedSql);
+        $this->assertStringContainsString('INTERVAL 1 YEAR', $capturedSql);
+        $this->assertStringContainsString('verification_attempts + 1', $capturedSql);
+        $this->assertStringContainsString('WHERE id = ?', $capturedSql);
+    }
+
+    /**
+     * Zero rows affected means no car matched $carId — unambiguous for this
+     * method (unlike updateProfileEmailBounced()'s/updateProfileEmailSuppressed()'s
+     * ambiguous-zero contract), because the CASE always changes at least one
+     * column for any row it matches. Logged and returned false, not thrown,
+     * because the only caller runs this after the email has already been sent.
+     */
+    public function testIncrementVerificationAttemptsReturnsFalseAndLogsWhenNoRowMatched(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->incrementVerificationAttempts(999);
+
+        $this->assertFalse($result);
+    }
+
+    public function testIncrementVerificationAttemptsThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/incrementVerificationAttempts failed for car=7/');
+        $repo->incrementVerificationAttempts(7);
+    }
+
+    // =========================================================================
+    // restoreVerificationCodeState() tests (#1884)
+    // =========================================================================
+
+    /**
+     * Pins the exact bind-parameter order against the exact placeholder
+     * order in the SQL. A swap here (vericode/vericodeSentAt reversed, or
+     * either swapped with $carId) would silently write a vericode string
+     * into vericode_sent_at (or vice versa) for the matched row, and no
+     * other test in this suite exercises the real method closely enough to
+     * catch it — CarVerificationSendServiceTest only mocks this method.
+     */
+    public function testRestoreVerificationCodeStateBindsParametersInDeclaredOrder(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET vericode = ?, vericode_sent_at = ? WHERE id = ?',
+                ['abc123hash', '2026-09-01 12:00:00', 7]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->restoreVerificationCodeState(7, 'abc123hash', '2026-09-01 12:00:00');
+
+        $this->assertTrue($result);
+    }
+
+    public function testRestoreVerificationCodeStateAcceptsNullVericodeAndSentAt(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET vericode = ?, vericode_sent_at = ? WHERE id = ?',
+                [null, null, 7]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->restoreVerificationCodeState(7, null, null);
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * rowCount() after an UPDATE reports rows CHANGED, not rows MATCHED, so
+     * restoring the values a row already holds yields count() === 0 on a row
+     * that is perfectly present. That is the common case, not an anomaly: a
+     * car never sent to before has vericode/vericode_sent_at NULL, and the
+     * restore writes NULL/NULL back. Before the confirm-read was added this
+     * returned false, and CarVerificationSendService::sendOne() logged a
+     * CRITICAL "manual repair required" on a routine healthy path.
+     */
+    public function testRestoreVerificationCodeStateReturnsTrueWhenWriteChangedNothingButRowExists(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->exactly(2))->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+        $db->method('first')->willReturn((object) ['id' => 7]);
+
+        $repo = new CarRepository($db);
+
+        $this->assertTrue($repo->restoreVerificationCodeState(7, null, null));
+    }
+
+    public function testRestoreVerificationCodeStateConfirmReadQueriesTheTargetCarId(): void
+    {
+        $db = $this->makeDbMock();
+        $queries = [];
+        $db->expects($this->exactly(2))
+            ->method('query')
+            ->willReturnCallback(function (string $sql, array $params = []) use (&$queries, $db) {
+                $queries[] = [$sql, $params];
+                return $db;
+            });
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+        $db->method('first')->willReturn((object) ['id' => 7]);
+
+        $repo = new CarRepository($db);
+        $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
+
+        $this->assertSame(
+            ['SELECT id FROM cars WHERE id = ?', [7]],
+            $queries[1]
+        );
+    }
+
+    public function testRestoreVerificationCodeStateReturnsFalseWhenCarDoesNotExist(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->exactly(2))->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+        $db->method('first')->willReturn([]);
+
+        $repo = new CarRepository($db);
+        $result = $repo->restoreVerificationCodeState(999, 'code', '2026-09-01 12:00:00');
+
+        $this->assertFalse($result);
+    }
+
+    public function testRestoreVerificationCodeStateSkipsConfirmReadWhenRowWasChanged(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->expects($this->never())->method('first');
+
+        $repo = new CarRepository($db);
+
+        $this->assertTrue($repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00'));
+    }
+
+    public function testRestoreVerificationCodeStateThrowsWhenConfirmReadFails(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->exactly(2))->method('query')->willReturnSelf();
+        $db->method('error')->willReturnOnConsecutiveCalls(false, true);
+        $db->method('errorString')->willReturn('Connection lost');
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/confirm-read failed for car=7/');
+        $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
+    }
+
+    public function testRestoreVerificationCodeStateThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/restoreVerificationCodeState failed for car=7/');
+        $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
+    }
+
+    // =========================================================================
+    // updateProfileEmailBounced() tests (#1884)
+    // =========================================================================
+
+    public function testUpdateProfileEmailBouncedThrowsWhenBouncedTrueWithNoAddress(): void
+    {
+        $repo = new CarRepository($this->makeEmptyResultDb());
+        $this->expectException(CarDatabaseException::class);
+        $repo->updateProfileEmailBounced(1, true, null);
+    }
+
+    public function testUpdateProfileEmailBouncedThrowsWhenBouncedTrueWithEmptyAddress(): void
+    {
+        $repo = new CarRepository($this->makeEmptyResultDb());
+        $this->expectException(CarDatabaseException::class);
+        $repo->updateProfileEmailBounced(1, true, '');
+    }
+
+    public function testUpdateProfileEmailBouncedGuardThrowsBeforeAnyQuery(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->never())->method('query');
+
+        $repo = new CarRepository($db);
+        try {
+            $repo->updateProfileEmailBounced(1, true, '');
+            $this->fail('Expected CarDatabaseException was not thrown');
+        } catch (CarDatabaseException $e) {
+            // Expected — assert no query was ever issued (see expects(never) above).
+        }
+    }
+
+    public function testUpdateProfileEmailBouncedSendsExpectedBoundParamsWhenSetting(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE profiles SET email_bounced = ?, email_bounced_address = ? WHERE user_id = ?',
+                [1, 'owner@example.com', 42]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
+
+        $this->assertTrue($result);
+    }
+
+    public function testUpdateProfileEmailBouncedSendsExpectedBoundParamsWhenClearing(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE profiles SET email_bounced = ?, email_bounced_address = ? WHERE user_id = ?',
+                [0, null, 42]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->updateProfileEmailBounced(42, false);
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * $db->count() > 0 means a profiles row was actually updated.
+     */
+    public function testUpdateProfileEmailBouncedReturnsTrueWhenRowsAffected(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * $db->count() === 0 is the ambiguous-zero contract shared with
+     * updateProfileEmailSuppressed(): "no profiles row" and "value unchanged"
+     * both report 0 affected rows, so this method returns false rather than
+     * throwing, leaving disambiguation to the caller (bounceOwnerProfile()'s
+     * read-then-skip idempotency check).
+     */
+    public function testUpdateProfileEmailBouncedReturnsFalseWhenNoRowsAffected(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
+
+        $this->assertFalse($result);
+    }
+
+    public function testUpdateProfileEmailBouncedThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/updateProfileEmailBounced failed for user=42/');
+        $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
+    }
+
+    // =========================================================================
+    // findProfileEmailBounced() tests (#1884)
+    // =========================================================================
+
+    public function testFindProfileEmailBouncedReturnsNullWhenNoRow(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with('SELECT email_bounced FROM profiles WHERE user_id = ?', [42])
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findProfileEmailBounced(42);
+
+        $this->assertNull($result);
+    }
+
+    public function testFindProfileEmailBouncedReturnsIntCastOfColumnWhenRowFound(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->method('first')->willReturn((object) ['email_bounced' => 1]);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findProfileEmailBounced(42);
+
+        $this->assertSame(1, $result);
+    }
+
+    public function testFindProfileEmailBouncedThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/findProfileEmailBounced failed for user=42/');
+        $repo->findProfileEmailBounced(42);
+    }
+
+    // =========================================================================
+    // findProfileEmailBouncedAddress() tests (#1884)
+    // =========================================================================
+
+    public function testFindProfileEmailBouncedAddressReturnsNullWhenNoRow(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with('SELECT email_bounced_address FROM profiles WHERE user_id = ?', [42])
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findProfileEmailBouncedAddress(42);
+
+        $this->assertNull($result);
+    }
+
+    public function testFindProfileEmailBouncedAddressReturnsNullWhenColumnIsNull(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->method('first')->willReturn((object) ['email_bounced_address' => null]);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findProfileEmailBouncedAddress(42);
+
+        $this->assertNull($result);
+    }
+
+    public function testFindProfileEmailBouncedAddressReturnsStringWhenFound(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->method('first')->willReturn((object) ['email_bounced_address' => 'owner@example.com']);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findProfileEmailBouncedAddress(42);
+
+        $this->assertSame('owner@example.com', $result);
+    }
+
+    public function testFindProfileEmailBouncedAddressThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/findProfileEmailBouncedAddress failed for user=42/');
+        $repo->findProfileEmailBouncedAddress(42);
+    }
+
     public function testUpdateOwnerLastUpdatedReturnsTrue(): void
     {
         $repo   = new CarRepository($this->makeEmptyResultDb());
@@ -927,6 +1396,22 @@ final class CarRepositoryTest extends TestCase
             'Freshness moved from a 2-year to a 1-year window'
         );
         $this->assertStringContainsString('ORDER BY cars.last_verified ASC', $capturedSql);
+        $this->assertStringContainsString(
+            'cars.verification_attempts_since IS NULL',
+            $capturedSql,
+            'The attempt cap (#1884): a car with no attempt window yet is always eligible on this clause alone'
+        );
+        $this->assertStringContainsString(
+            'cars.verification_attempts_since < NOW() - INTERVAL 1 YEAR',
+            $capturedSql,
+            'The attempt cap resets once the rolling 12-month window has fully elapsed'
+        );
+        $this->assertStringContainsString(
+            'cars.verification_attempts < 2',
+            $capturedSql,
+            'The attempt cap: at most 2 sends per rolling 12-month window, matching the FRD and '
+                . 'incrementVerificationAttempts()\'s own reset logic'
+        );
     }
 
     /**

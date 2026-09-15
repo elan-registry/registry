@@ -210,6 +210,119 @@ A conditional banner appears below pending-migrations alerts when `isEnabled() &
 
 The banner states which prerequisite failed and links to the Verification System tab for details.
 
+## Admin Verification Email Send Tool (#1884)
+
+**Location:** `app/admin/index.php?tab=verification` (Verification System tab)  
+**Implementation:** `app/admin/index.php` (POST command handling) + `app/admin/includes/tab-verification.php` (UI rendering)  
+**Access:** Admin only (`securePage()` + `hasPerm([2])`)  
+**Independent of Feature Switch:** This manual admin tool runs regardless of
+`VerificationSettings::isEnabled()`. A deliberate decision: the admin may want
+to send a one-off batch of reminders even while the automatic system is paused
+for operational reasons, or to test sending before enabling automation.
+
+### Preview & Send Flow
+
+**GET request (no side effects):** Renders a table of eligible cars, up to the
+configured batch size (`VerificationSettings::batchSize()`, default 5), in the
+Verification tab's "Send Verification Emails" card section. Car data shown: ID,
+chassis, owner name, email address. Every dynamic value is HTML-escaped at render time.
+
+**POST `verification_send_batch` action:** Sends verification emails to one batch of cars.
+CSRF token validated first (`Token::check()`); missing/invalid token includes the
+standard UserSpice token-error page and no writes occur. For each submitted car ID:
+
+1. Look up the car row (`findById()`)
+2. Re-evaluate eligibility via `VerificationEligibility::skipReason()` — a car
+   can change state between GET and POST (sold, bounced, suppressed, verified
+   by owner), and is reported as skipped with the reason rather than sent or
+   dropped
+3. Cars passing the re-check are sent via `CarVerificationSendService::sendOne()`,
+   orchestrated per-batch by `VerificationBatchSender::processBatch()`
+4. Result is rendered in the response as a plain HTML report card: four
+   sections (Sent N / Unrecorded N with reasons / Skipped N with reasons /
+   Failed N with reasons). Unrecorded covers a send that genuinely went out
+   but whose follow-up bookkeeping failed (`SendResult::sentUnrecorded()`) —
+   distinct from a clean send so the admin isn't shown a false all-clear. No
+   PRG pattern — refresh risks double-posting, accepted as within the admin
+   tool's manual, low-frequency, single-operator trust model. No silent
+   totals (AC13): every car gets a per-row outcome line.
+
+### Mark Bounced / Clear Bounced / Clear Suppression (Owner-level Actions)
+
+**Critical semantics:** These actions fan out to **every car the owner has**.
+They are owner-level, not car-level.
+
+**Mark Bounced** (`mark_bounced` POST):
+
+- Records the owner's **current `users.email`** (not the car's denormalized
+  `cars.email`) in `profiles.email_bounced_address` via
+  `CarVerificationManager::setBouncedForOwner()`
+- Fans out to every car owned by that user, setting `cars.email_bounced = 1`
+  and `cars.email_bounced_address` to the owner's `users.email`
+- **Never reassigns car ownership** — a defect in the original, deleted tool that
+  this rebuild fixes. All cars remain owned by their original owner.
+- Writes one `cars_hist` row per affected car (audit trail), operation string
+  `'EMAIL BOUNCED'`
+
+**Clear Bounced** (`clear_bounced` POST):
+
+- Clears `profiles.email_bounced` and `profiles.email_bounced_address`
+- Fans out to every car owned by that user, clearing `cars.email_bounced` and
+  `cars.email_bounced_address` via `CarVerificationManager::clearBouncedForOwner()`
+- Idempotent: calling it twice on the same owner has no effect the second time
+- Writes one `cars_hist` row per affected car, operation string
+  `'EMAIL BOUNCE CLEARED'`
+
+**Clear Suppression** (`clear_suppression` POST):
+
+- Distinct from Clear Bounced; reverses a suppression flag instead
+- Fans out to every car owned by that user, clearing `cars.email_suppressed`
+  via `CarVerificationManager::clearSuppressedForOwner()`
+- Writes one `cars_hist` row per affected car, operation string
+  `'EMAIL SUPPRESSION CLEARED'`
+
+All three actions: CSRF validated first. On both success and error, the result is
+converted to a UserSpice session flash message (`usError()`/`usSuccess()`) and the
+page renders normally (standard POST-then-render pattern, no redirect). On success,
+the flash message names the owner and affected car count.
+
+### The Shared Send Service
+
+**Class:** `CarVerificationSendService` (`usersc/classes/Car/CarVerificationSendService.php`)
+
+The eligibility query, vericode rotation, email composition, and send sequence
+are NOT duplicated between the admin tool and the cron job. Instead, both
+callers use `CarVerificationSendService`, a stateless service whose public
+methods are pure functions of their arguments + current DB state. No
+`$_POST`/`$_SERVER`/session lookups live here — anything specific to the admin
+environment belongs in `app/admin/index.php` (the Verification tab's POST command handling).
+
+**Key Methods:**
+
+- `findEligible(int $limit, int $offset): array` — delegates to
+  `CarRepository::findVerificationEligible()` verbatim; the single query both
+  callers use
+- `sendOne(object $carData): SendResult` — send one car's email, return sent/failed
+- `sendBatch(array $cars): array` — map `sendOne()` over multiple cars
+
+**Intended Reuse by #1885:** The cron job that follows this issue will call
+`sendOne()` in the same sequence, with the same eligibility rules. This prevents
+the admin preview and cron from disagreeing about which cars are due.
+
+### Local Synthetic Email Event ID
+
+For manually-sent verification emails (via the admin tool), there is no real
+Brevo `message_id`. Instead, a synthetic id is written to `er_email_events.brevo_message_id`:
+
+```php
+'local:' . hash('sha256', $verificationCode)
+```
+
+This ensures every row in the `UNIQUE(car_id, brevo_message_id, event)` index
+has a distinct key (no NULL collision), so dedup still works if the same email
+is sent twice. Brevo webhook events (which have real message ids from Brevo)
+are distinguished from admin sends by this `'local:'` prefix.
+
 ### Brevo Webhook Receiver (#1887)
 
 **Location:** `app/api/webhooks/brevo.php`

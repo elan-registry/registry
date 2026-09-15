@@ -6,6 +6,7 @@ use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 
 /**
  * tab-verification.php
@@ -24,6 +25,17 @@ use ElanRegistry\LogCategories;
 // static analysis (and any direct include) always sees them initialized.
 // ---------------------------------------------------------------------------
 $currentUserId = $currentUserId ?? currentUserId();
+$csrfToken     = $csrfToken ?? Token::generate();
+
+// Batch-send report, populated by index.php's `verification_send_batch` case.
+$sendBatchJustRan      = $sendBatchJustRan ?? false;
+$sendReportSent        = $sendReportSent ?? [];
+$sendReportUnrecorded  = $sendReportUnrecorded ?? [];
+$sendReportSkipped     = $sendReportSkipped ?? [];
+$sendReportFailed      = $sendReportFailed ?? [];
+
+// Send services constructed by index.php, shared via the include scope.
+$verificationSendSvc = $verificationSendSvc ?? null;
 
 // ---------------------------------------------------------------------------
 // Readiness probes. VerificationSettings never throws from its probes, but a
@@ -45,6 +57,39 @@ try {
     $vsProbeFailed = true;
     logger($currentUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
         'Verification tab status probe failed: ' . $e->getMessage());
+}
+
+// ---------------------------------------------------------------------------
+// Eligible-car preview (read-only). Its own fault domain: a failure here must
+// not blank out the status section above, so it neither sets nor reads
+// $vsProbeFailed.
+//
+// DELIBERATELY DOES NOT CONSULT VerificationSettings::isEnabled(). That switch
+// governs the AUTOMATIC, owner-facing verification mailing (the cron job and
+// the webhook paths). This section is a manual admin tool gated by
+// securePage()/permissions alone, and its whole purpose is to let an
+// administrator send a batch by hand — including while automatic sending is
+// paused site-wide, which is exactly when a manual send is most likely to be
+// needed. An isEnabled() gate here would silently disable the recovery tool at
+// the moment it matters.
+// ---------------------------------------------------------------------------
+/** @var array<int, object> $vsEligible */
+$vsEligible       = [];
+$vsBatchSize      = 0;
+$vsEligibleError  = null;
+
+if ($verificationSendSvc !== null && isset($vsSettings)) {
+    try {
+        $vsBatchSize = $vsSettings->batchSize();
+        $vsEligible  = $verificationSendSvc->findEligible($vsBatchSize, 0);
+    } catch (\Throwable $e) {
+        $vsEligibleError = 'The list of eligible cars could not be loaded. Check the system log for details.';
+        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+            'Verification tab: could not load the eligible car preview [%s]: %s',
+            get_class($e),
+            $e->getMessage()
+        ));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +128,18 @@ if (!$vsCanToggle) {
 } elseif ($vsToggleDisabled) {
     $vsDisabledReason = 'Verification cannot be enabled until Brevo is configured. '
         . 'Save an API key in the Brevo plugin and put its override file in place, then reload this page.';
+}
+
+if (!function_exists('vsEsc')) {
+    /**
+     * Escape a value for HTML output in this tab.
+     *
+     * @param mixed $value
+     */
+    function vsEsc($value): string
+    {
+        return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
+    }
 }
 ?>
 
@@ -223,6 +280,244 @@ if (!$vsCanToggle) {
                 state to car records. It can always be turned off, even while Brevo or cron are unavailable.
             </small>
         <?php } ?>
+
+    </div>
+</div>
+
+<!-- Send Verification Emails -->
+<div class="card registry-card mb-4">
+    <div class="card-header card-header-er-primary">
+        <h5 class="mb-0 card-header-er-primary-text">
+            <i class="fas fa-envelope-circle-check"></i> Send Verification Emails
+        </h5>
+    </div>
+    <div class="card-body">
+
+        <p class="text-muted">
+            Review the cars currently due a verification email, then send the batch.
+            Nothing is sent until you press <strong>Send batch</strong>.
+        </p>
+
+<?php if ($sendBatchJustRan) { ?>
+
+        <h6 class="text-primary mb-3"><i class="fas fa-list-check"></i> Batch results</h6>
+
+        <h6 class="mb-2">Sent (<?= count($sendReportSent) ?>)</h6>
+        <?php if ($sendReportSent === []) { ?>
+            <p class="text-muted">No emails were sent.</p>
+        <?php } else { ?>
+            <div class="table-responsive mb-4">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th scope="col">Car</th><th scope="col">Chassis</th><th scope="col">Email</th></tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($sendReportSent as $reportCar) { ?>
+                        <tr>
+                            <td><?= vsEsc($reportCar->id ?? '') ?></td>
+                            <td><?= vsEsc($reportCar->chassis ?? '') ?></td>
+                            <td><?= vsEsc($reportCar->email ?? '') ?></td>
+                        </tr>
+                    <?php } ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php } ?>
+
+        <?php if ($sendReportUnrecorded !== []) { ?>
+        <h6 class="mb-2 text-warning">
+            <i class="fas fa-triangle-exclamation"></i> Sent, but not recorded (<?= count($sendReportUnrecorded) ?>)
+        </h6>
+        <p class="text-muted">
+            These emails were delivered, but the follow-up bookkeeping failed — the affected
+            car(s) may be re-selected and emailed again in a future batch. See the server log
+            for details.
+        </p>
+        <div class="table-responsive mb-4">
+            <table class="table table-sm">
+                <thead>
+                    <tr><th scope="col">Car</th><th scope="col">Chassis</th><th scope="col">Email</th><th scope="col">Warning</th></tr>
+                </thead>
+                <tbody>
+                <?php foreach ($sendReportUnrecorded as $reportRow) { ?>
+                    <tr>
+                        <td><?= vsEsc($reportRow['car']->id ?? '') ?></td>
+                        <td><?= vsEsc($reportRow['car']->chassis ?? '') ?></td>
+                        <td><?= vsEsc($reportRow['car']->email ?? '') ?></td>
+                        <td><?= vsEsc($reportRow['reason']) ?></td>
+                    </tr>
+                <?php } ?>
+                </tbody>
+            </table>
+        </div>
+        <?php } ?>
+
+        <h6 class="mb-2">Skipped (<?= count($sendReportSkipped) ?>)</h6>
+        <?php if ($sendReportSkipped === []) { ?>
+            <p class="text-muted">No cars were skipped.</p>
+        <?php } else { ?>
+            <div class="table-responsive mb-4">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th scope="col">Car</th><th scope="col">Chassis</th><th scope="col">Reason</th></tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($sendReportSkipped as $reportRow) { ?>
+                        <tr>
+                            <td><?= vsEsc($reportRow['car']->id ?? '') ?></td>
+                            <td><?= vsEsc($reportRow['car']->chassis ?? '') ?></td>
+                            <td><?= vsEsc($reportRow['reason']) ?></td>
+                        </tr>
+                    <?php } ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php } ?>
+
+        <h6 class="mb-2">Failed (<?= count($sendReportFailed) ?>)</h6>
+        <?php if ($sendReportFailed === []) { ?>
+            <p class="text-muted">No sends failed.</p>
+        <?php } else { ?>
+            <div class="table-responsive mb-4">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th scope="col">Car</th><th scope="col">Chassis</th><th scope="col">Reason</th></tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($sendReportFailed as $reportRow) { ?>
+                        <tr>
+                            <td><?= vsEsc($reportRow['car']->id ?? '') ?></td>
+                            <td><?= vsEsc($reportRow['car']->chassis ?? '') ?></td>
+                            <td><?= vsEsc($reportRow['reason']) ?></td>
+                        </tr>
+                    <?php } ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php } ?>
+
+        <hr>
+        <h6 class="text-primary mb-3"><i class="fas fa-envelope"></i> Cars still due a verification email</h6>
+
+<?php } ?>
+
+<?php if ($vsEligibleError !== null) { ?>
+
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-circle"></i> <?= vsEsc($vsEligibleError) ?>
+        </div>
+
+<?php } elseif ($vsEligible === []) { ?>
+
+        <div class="alert alert-info" role="alert">
+            <i class="fas fa-info-circle"></i> No cars are currently due a verification email.
+        </div>
+
+<?php } else { ?>
+
+        <p class="text-muted">
+            Showing up to the configured batch size (<?= vsEsc((string) $vsBatchSize) ?>)
+            of the oldest-verified eligible cars.
+        </p>
+
+        <form action="index.php?tab=verification" method="POST">
+            <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
+            <input type="hidden" name="command" value="verification_send_batch">
+
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col">Car</th>
+                            <th scope="col">Chassis</th>
+                            <th scope="col">Owner</th>
+                            <th scope="col">Email</th>
+                            <th scope="col">Owner actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($vsEligible as $eligibleCar) {
+                        // cars.fname/cars.lname ARE present in this row (findVerificationEligible()
+                        // selects cars.*, and fname/lname are denormalized onto cars — see
+                        // DATABASE.md), but they are a synced copy that can drift from the
+                        // authoritative users/profiles values. The owner name shown here is
+                        // resolved per row via Owner::data() rather than trusting the
+                        // denormalized cars columns, so this preview matches what the send
+                        // actually uses (CarVerificationSendService also loads Owner fresh).
+                        // Guarded per row: this loop runs inside an already-open <tbody>, well
+                        // past the try/catch that built $vsEligible above — that catch's fault
+                        // domain covers only the query that produced the list, not this per-row
+                        // lookup. An uncaught throw here would fatal mid-render (unclosed table,
+                        // no error shown), so a failure instead logs and falls back to the row's
+                        // own denormalized cars.fname/cars.lname rather than aborting the page.
+                        try {
+                            $vsOwnerRow  = (new Owner((int) $eligibleCar->user_id))->data();
+                            $vsOwnerName = trim(($vsOwnerRow->fname ?? '') . ' ' . ($vsOwnerRow->lname ?? ''));
+                        } catch (\Throwable $e) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                                'Verification tab: owner %d could not be loaded for the eligible-car preview row of car %d [%s]: %s',
+                                (int) $eligibleCar->user_id,
+                                (int) $eligibleCar->id,
+                                get_class($e),
+                                $e->getMessage()
+                            ));
+                            $vsOwnerName = trim(($eligibleCar->fname ?? '') . ' ' . ($eligibleCar->lname ?? ''));
+                        }
+                    ?>
+                        <tr>
+                            <td>
+                                <input type="hidden" name="car_ids[]" value="<?= vsEsc($eligibleCar->id) ?>">
+                                <?= vsEsc($eligibleCar->id) ?>
+                            </td>
+                            <td><?= vsEsc($eligibleCar->chassis ?? '') ?></td>
+                            <td><?= vsEsc($vsOwnerName !== '' ? $vsOwnerName : "owner #{$eligibleCar->user_id}") ?></td>
+                            <td><?= vsEsc($eligibleCar->email ?? '') ?></td>
+                            <td>
+                                <?php if ($vsCanToggle) { ?>
+                                <!-- Rendered outside the batch form via the form= attribute: nested
+                                     forms are invalid HTML and would break the batch submission.
+                                     Gated on $vsCanToggle (admin-only) to match this tab's own
+                                     "read-only for editors" contract — the server independently
+                                     enforces the same hasPerm([2]) check on the POST side, this is
+                                     purely so an editor isn't shown controls their click would reject. -->
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        name="command" value="mark_bounced"
+                                        form="owner-action-<?= vsEsc($eligibleCar->id) ?>">Mark Bounced</button>
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        name="command" value="clear_bounced"
+                                        form="owner-action-<?= vsEsc($eligibleCar->id) ?>">Clear Bounced</button>
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        name="command" value="clear_suppression"
+                                        form="owner-action-<?= vsEsc($eligibleCar->id) ?>">Clear Suppression</button>
+                                <?php } else { ?>
+                                <span class="text-muted">&mdash;</span>
+                                <?php } ?>
+                            </td>
+                        </tr>
+                    <?php } ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php if ($vsCanToggle) { ?>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-paper-plane"></i> Send batch
+            </button>
+            <?php } else { ?>
+            <p class="text-muted mb-0"><i class="fas fa-lock"></i> Administrator access is required to send.</p>
+            <?php } ?>
+        </form>
+
+        <?php if ($vsCanToggle) { ?>
+        <?php foreach ($vsEligible as $eligibleCar) { ?>
+        <form action="index.php?tab=verification" method="POST" id="owner-action-<?= vsEsc($eligibleCar->id) ?>">
+            <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
+            <input type="hidden" name="car_id" value="<?= vsEsc($eligibleCar->id) ?>">
+        </form>
+        <?php } ?>
+        <?php } ?>
+
+<?php } ?>
 
     </div>
 </div>

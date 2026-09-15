@@ -114,6 +114,8 @@ For the full workflow, see
 | `bio` | `text` | User biography |
 | `website` | `varchar(100)` | Personal website |
 | `email_suppressed` | `TINYINT(1) NOT NULL DEFAULT 0` | Owner-level verification-email suppression flag (#1883). Set via the verification email's one-click opt-out; fans out to `email_suppressed = 1` on every car the owner has via `CarVerificationManager::setSuppressedForOwner()`. No audit-history table exists for `profiles`, so this column carries no `cars_hist`-style mirror. |
+| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | Owner-level bounce flag set by the admin tool (#1884). Set via the Verification tab's Mark Bounced action; fans out to `email_bounced = 1` on every car the owner has via `CarVerificationManager::setBouncedForOwner()`. No audit-history table exists for `profiles`. |
+| `email_bounced_address` | `varchar(155) NULL` | The exact `users.email` address recorded when the admin marked this owner bounced (#1884). Updated when Mark Bounced is called with a new address; nulled when Clear Bounced is called. Mirrored onto `profiles` rather than `cars` because it records an admin's action, not a delivery-status fact. |
 
 ### Car Registry
 
@@ -145,6 +147,8 @@ For the full workflow, see
 | `website` | `varchar(100)` | Owner website (synced as of v2.30.1) |
 | `owner_last_updated` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Timestamp of owner's last action on this car (used for verification system); **has no `ON UPDATE` clause** — this absence is deliberate to prevent any write from resetting the verification clock |
 | `vericode_sent_at` | `datetime NULL` | Timestamp when verification code was sent to owner |
+| `verification_attempts` | `SMALLINT UNSIGNED NOT NULL DEFAULT 0` | Count of verification emails sent to this car's owner in the rolling 1-year window (#1884). Resets when `verification_attempts_since` rolls past 1 year; used to cap sending frequency. |
+| `verification_attempts_since` | `datetime NULL` | Start of the rolling 1-year window for `verification_attempts` (#1884). `NULL` until the first send; reset to now when `verification_attempts_since` exceeds 1 year old. |
 | `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether verification emails bounced. Set to `1` if email failed; `0` if deliverable or not yet tested. |
 | `email_bounced_address` | `varchar(155) NULL` | The exact address a bounce was reported against (#1887). Preserved separately from `cars.email` because the car's email can change after a bounce is recorded. Nulled when `email_bounced` is cleared. |
 | `email_suppressed` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag set when Brevo reports the address as suppressed (e.g. a spam complaint) — a distinct signal from a bounce (#1887). |
@@ -166,7 +170,7 @@ creation.
 | `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE) |
 | `car_id` | `int UNSIGNED` | Original car ID |
 | `timestamp` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Change timestamp (INDEXED as `idx_cars_hist_timestamp`) |
-| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, `email_bounced`, `email_bounced_address`, and `email_suppressed`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
+| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, `verification_attempts`, `verification_attempts_since`, `email_bounced`, `email_bounced_address`, and `email_suppressed`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
 
 > #### Removed: `car_user` and `car_user_hist`
 >
@@ -336,6 +340,18 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 
 Single-row config table, mostly legacy UserSpice/site-settings fields — see
 the migration history in `database/migrations/` for the rest.
+
+#### `er_verification_settings` - Verification system configuration and telemetry (singleton row, `id = 1`)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `int` | PRIMARY KEY (always `1`, single row) |
+| `enabled` | `boolean NOT NULL DEFAULT 0` | Feature switch; gates all verification-related sends (#1881–#1883). Admin-gated toggle on the Verification System tab; `setEnabled(true)` throws `VerificationConfigException` if Brevo is not ready. |
+| `last_cron_request_at` | `datetime NULL` | Timestamp of the most recent accepted cron transport hit (#1974). Used by `VerificationSettings::cronReady()` to check if the 10-minute cron transport is responsive. `NULL` until first successful hit. |
+| `unmatched_webhook_recipient_count` | `bigint unsigned NOT NULL DEFAULT 0` | Counter of inbound Brevo webhook events whose recipient matched no car (#1887). Used for operational monitoring; incremented by `BrevoWebhookEventProcessor`, never reset. |
+| `batch_size` | `tinyint unsigned NOT NULL DEFAULT 5` | Maximum number of verification emails to send in one admin batch (#1884). Controls the preview table size in the Verification tab send-tool section and the default batch count; read via `VerificationSettings::batchSize()`. |
+
+**Written By**: `VerificationSettings` class, `BrevoWebhookEventProcessor`, admin toggle endpoint, cron transport
 
 #### `er_cron_job_runs` - Generic cron job "last run" tracking (#2034)
 

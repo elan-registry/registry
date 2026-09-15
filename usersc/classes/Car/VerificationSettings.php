@@ -137,6 +137,53 @@ final class VerificationSettings
     }
 
     /**
+     * Number of verification emails the admin manual-send tool sends per batch
+     *
+     * Fails closed: a missing settings row or a failed query reports the default
+     * of 5 rather than throwing. This is the read path consulted by the admin
+     * verification-email send tool's batch-size preview, and a database hiccup
+     * should fall back to a conservative batch size, not break the page.
+     *
+     * No writer exists for this field yet — a settings-dashboard writer for
+     * `batch_size` is out of scope for this issue (#1884) and belongs to a
+     * future issue; this class only reads it here.
+     *
+     * @return int Configured batch size, or 5 if it could not be read
+     */
+    public function batchSize(): int
+    {
+        $this->db->query(
+            'SELECT batch_size FROM er_verification_settings WHERE id = ?',
+            [self::SETTINGS_ROW_ID]
+        );
+
+        if ($this->db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'Failed to read er_verification_settings.batch_size: %s',
+                $this->db->errorString() ?: 'unknown'
+            ));
+            return 5;
+        }
+
+        $row = $this->db->first();
+        if (!is_object($row) || !isset($row->batch_size)) {
+            // Same fail-closed rationale as isEnabled(): the migration seeds
+            // id=1 and nothing in the app ever deletes it, so an absent row
+            // means the migration part-applied or the table was
+            // truncated/restored incompletely — a schema problem, not "no
+            // batch size configured". Fail closed, but never silently.
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'er_verification_settings row id=%d is missing — reporting default batch '
+                . 'size of 5. Re-run `composer migrate` to reseed the row.',
+                self::SETTINGS_ROW_ID
+            ));
+            return 5;
+        }
+
+        return (int) $row->batch_size;
+    }
+
+    /**
      * Turn the car verification system on or off
      *
      * Enabling is gated on Brevo being configured; disabling is not gated on
