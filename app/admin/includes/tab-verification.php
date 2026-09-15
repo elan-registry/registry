@@ -60,11 +60,6 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Reconciliation status probe. This is a distinct fault domain from the
-// VerificationSettings probe above — kept in its own try/catch so a failure
-// here is logged and rendered independently, not folded into $vsProbeFailed.
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // Eligible-car preview (read-only). Its own fault domain: a failure here must
 // not blank out the status section above, so it neither sets nor reads
 // $vsProbeFailed.
@@ -89,11 +84,19 @@ if ($verificationSendSvc !== null && isset($vsSettings)) {
         $vsEligible  = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
         $vsEligibleError = 'The list of eligible cars could not be loaded. Check the system log for details.';
-        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-            'Verification tab: could not load the eligible car preview: ' . $e->getMessage());
+        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+            'Verification tab: could not load the eligible car preview [%s]: %s',
+            get_class($e),
+            $e->getMessage()
+        ));
     }
 }
 
+// ---------------------------------------------------------------------------
+// Reconciliation status probe. This is a distinct fault domain from the
+// VerificationSettings probe above — kept in its own try/catch so a failure
+// here is logged and rendered independently, not folded into $vsProbeFailed.
+// ---------------------------------------------------------------------------
 $reconciliationState = CronJobEnabledState::UNREADABLE;
 $reconciliationLastRunAt = null;
 
@@ -441,8 +444,25 @@ if (!function_exists('vsEsc')) {
                         // resolved per row via Owner::data() rather than trusting the
                         // denormalized cars columns, so this preview matches what the send
                         // actually uses (CarVerificationSendService also loads Owner fresh).
-                        $vsOwnerRow  = (new Owner((int) $eligibleCar->user_id))->data();
-                        $vsOwnerName = trim(($vsOwnerRow->fname ?? '') . ' ' . ($vsOwnerRow->lname ?? ''));
+                        // Guarded per row: this loop runs inside an already-open <tbody>, well
+                        // past the try/catch that built $vsEligible above — that catch's fault
+                        // domain covers only the query that produced the list, not this per-row
+                        // lookup. An uncaught throw here would fatal mid-render (unclosed table,
+                        // no error shown), so a failure instead logs and falls back to the row's
+                        // own denormalized cars.fname/cars.lname rather than aborting the page.
+                        try {
+                            $vsOwnerRow  = (new Owner((int) $eligibleCar->user_id))->data();
+                            $vsOwnerName = trim(($vsOwnerRow->fname ?? '') . ' ' . ($vsOwnerRow->lname ?? ''));
+                        } catch (\Throwable $e) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                                'Verification tab: owner %d could not be loaded for the eligible-car preview row of car %d [%s]: %s',
+                                (int) $eligibleCar->user_id,
+                                (int) $eligibleCar->id,
+                                get_class($e),
+                                $e->getMessage()
+                            ));
+                            $vsOwnerName = trim(($eligibleCar->fname ?? '') . ' ' . ($eligibleCar->lname ?? ''));
+                        }
                     ?>
                         <tr>
                             <td>

@@ -162,9 +162,14 @@ final class CarVerificationSendService
         $composed = $this->composer->compose($carData, $owner, $newVericode);
         $sendOk   = email((string) $carData->email, $composed['subject'], $composed['html']);
 
-        // Strict `!== true` rather than `=== false`: email() is only
-        // guaranteed bool by the Brevo override in use today
-        // (sendinblue()/functions.php). A future or site-local mailer
+        // Strict `!== true` rather than `=== false`: email() has no single
+        // typed contract across the mailers this app can run with. Today
+        // it's bool either way — the currently-active core fallback
+        // (users/helpers/helpers.php) returns PHPMailer::send()'s typed
+        // bool return directly, and the Brevo override (activated by
+        // renaming usersc/plugins/sendinblue/override.RENAME.php into
+        // place, not currently active in this checkout) only ever returns
+        // true/false from sendinblue(). But a future or site-local mailer
         // override could return something else on failure (a message-id
         // string, null, 0 — a very common convention) that would pass
         // `=== false` and be misreported as a successful send, incrementing
@@ -233,9 +238,28 @@ final class CarVerificationSendService
 
         $this->repo->beginTransaction();
 
+        $eventRowsWritten = 0;
+        $attemptsRecorded = false;
+
         try {
-            $this->repo->insertEmailEvent($carId, (string) $carData->email, 'sent', null, $brevoMessageId, $sentAt);
-            $this->repo->incrementVerificationAttempts($carId);
+            // Both calls' return values are captured and checked below —
+            // insertEmailEvent() returns 0 rather than throwing on an
+            // ON DUPLICATE KEY no-op (documented on the method itself), and
+            // incrementVerificationAttempts() returns false rather than
+            // throwing when no row matched (documented on the method itself,
+            // specifically so a successful send is never reported as a
+            // failure). Ignoring either return would let the exact
+            // "sent but not really recorded" gap sentUnrecorded() exists to
+            // catch slip past unnoticed, since neither signals via exception.
+            $eventRowsWritten = $this->repo->insertEmailEvent(
+                $carId,
+                (string) $carData->email,
+                'sent',
+                null,
+                $brevoMessageId,
+                $sentAt
+            );
+            $attemptsRecorded = $this->repo->incrementVerificationAttempts($carId);
 
             $this->repo->commit();
         } catch (\Throwable $e) {
@@ -263,6 +287,27 @@ final class CarVerificationSendService
             );
         }
 
+        if ($eventRowsWritten === 0 || $attemptsRecorded === false) {
+            // No exception was thrown — the transaction committed — but one
+            // or both bookkeeping writes matched/changed nothing. Same
+            // consequence as the catch above (the car may be re-selected and
+            // emailed again), so it gets the same sentUnrecorded() treatment
+            // rather than being silently reported as a clean send.
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: email for car %d WAS SENT but bookkeeping was incomplete '
+                . '(er_email_events rows written=%d, verification_attempts recorded=%s). '
+                . 'This car may be re-selected and emailed again in a future batch.',
+                $carId,
+                $eventRowsWritten,
+                var_export($attemptsRecorded, true)
+            ));
+
+            return SendResult::sentUnrecorded(
+                $carId,
+                'Email sent, but the send could not be fully recorded — this car may be emailed again.'
+            );
+        }
+
         return SendResult::sent($carId);
     }
 
@@ -272,6 +317,14 @@ final class CarVerificationSendService
      * Each car is sent independently — one car's failure neither aborts the batch
      * nor affects any other car's result, which is what lets the admin page render
      * a per-car report and lets the cron job work through a run to completion.
+     *
+     * NO CALLER TODAY. The admin batch-send handler (app/admin/index.php's
+     * verification_send_batch case) calls sendOne() directly in its own
+     * per-car loop instead, because it needs to bucket each result into its
+     * own report table (sent/unrecorded/skipped/failed) alongside the car
+     * row itself — this method's flat array<SendResult> return drops that.
+     * This method exists for #1885's cron job, whose simpler run-to-completion
+     * use case fits the flat-array shape directly.
      *
      * @param array<object> $cars Eligible car rows, typically from {@see self::findEligible()}
      * @return array<SendResult> One result per input car, in the same order

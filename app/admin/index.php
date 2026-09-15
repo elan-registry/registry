@@ -708,7 +708,12 @@ if (ElanInput::existsPost()) {
                         } catch (ElanRegistryException $e) {
                             logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
                                 "Verification send: eligibility re-check failed for car {$sendCarId}: " . $e->getMessage());
-                            $skipReason = 'Eligibility could not be determined';
+                            // Distinct from every other skip reason below: this one is a
+                            // data-integrity fault (e.g. a corrupt verification_attempts_since
+                            // value), not a routine ineligibility state like "Marked sold." The
+                            // prefix keeps it visually distinguishable in the Skipped table so
+                            // it doesn't read as ordinary and get lost among expected skips.
+                            $skipReason = 'Data error — Eligibility could not be determined';
                         }
 
                         if ($skipReason !== null) {

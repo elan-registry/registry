@@ -206,6 +206,130 @@ final class CarVerificationSendServiceTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // sendOne() — Scope C bookkeeping-failure path (#1884 review fix)
+    //
+    // The email is genuinely delivered in each of these cases (email() is
+    // never made to fail), so sendOne() must report STATUS_SENT — never
+    // STATUS_FAILED, which would tell the caller to treat this car as still
+    // needing an email — but the result must be distinguishable from a clean
+    // send via isUnrecorded(), since the bookkeeping that prevents a
+    // duplicate mailing did not complete.
+    // ------------------------------------------------------------------
+
+    /**
+     * mockVerifier is used here purely as a behavior stub — this test
+     * verifies the Scope C bookkeeping-failure path via mockRepo's expects()
+     * below, not via call counts on the verifier.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSendOneReturnsSentUnrecordedWhenInsertEmailEventThrows(): void
+    {
+        $carData = $this->eligibleCar();
+        $fixedCode = 'newcode1234567890';
+
+        $this->mockVerifier->method('generateVerificationCode')->willReturn($fixedCode);
+        $this->mockVerifier->method('setVerificationCode')
+            ->willReturnCallback(function (object $car, string $code): bool {
+                $car->vericode = $code;
+                return true;
+            });
+        $this->mockVerifier->method('setVerificationSentAt')
+            ->willReturnCallback(function (object $car, string $sentAt): bool {
+                $car->vericode_sent_at = $sentAt;
+                return true;
+            });
+
+        $this->mockRepo->expects($this->once())->method('insertEmailEvent')
+            ->willThrowException(new \RuntimeException('DB connection lost'));
+        $this->mockRepo->expects($this->never())->method('incrementVerificationAttempts');
+        $this->mockRepo->expects($this->once())->method('rollback');
+        $this->mockRepo->expects($this->never())->method('restoreVerificationCodeState');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_SENT, $result->status);
+        $this->assertTrue($result->isUnrecorded());
+        $this->assertNotNull($result->reason);
+        $this->assertCount(1, $GLOBALS['mockSentEmails'], 'The email must still have been sent');
+    }
+
+    /**
+     * mockVerifier is used here purely as a behavior stub — see the docblock
+     * on the previous test.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSendOneReturnsSentUnrecordedWhenIncrementVerificationAttemptsReturnsFalse(): void
+    {
+        $carData = $this->eligibleCar();
+        $fixedCode = 'newcode1234567890';
+
+        $this->mockVerifier->method('generateVerificationCode')->willReturn($fixedCode);
+        $this->mockVerifier->method('setVerificationCode')
+            ->willReturnCallback(function (object $car, string $code): bool {
+                $car->vericode = $code;
+                return true;
+            });
+        $this->mockVerifier->method('setVerificationSentAt')
+            ->willReturnCallback(function (object $car, string $sentAt): bool {
+                $car->vericode_sent_at = $sentAt;
+                return true;
+            });
+
+        // No exception anywhere in Scope C — insertEmailEvent() succeeds and
+        // the transaction commits — but incrementVerificationAttempts()
+        // returns false (its documented no-row-matched signal, not an
+        // exception). This must be caught by sendOne()'s post-commit check,
+        // not just its catch block.
+        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('incrementVerificationAttempts')->willReturn(false);
+        $this->mockRepo->expects($this->exactly(2))->method('commit');
+        $this->mockRepo->expects($this->never())->method('rollback');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_SENT, $result->status);
+        $this->assertTrue($result->isUnrecorded());
+        $this->assertNotNull($result->reason);
+    }
+
+    /**
+     * mockVerifier is used here purely as a behavior stub — see the docblock
+     * on the first Scope C test above.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSendOneReturnsSentUnrecordedWhenInsertEmailEventReturnsZeroRowsWritten(): void
+    {
+        $carData = $this->eligibleCar();
+        $fixedCode = 'newcode1234567890';
+
+        $this->mockVerifier->method('generateVerificationCode')->willReturn($fixedCode);
+        $this->mockVerifier->method('setVerificationCode')
+            ->willReturnCallback(function (object $car, string $code): bool {
+                $car->vericode = $code;
+                return true;
+            });
+        $this->mockVerifier->method('setVerificationSentAt')
+            ->willReturnCallback(function (object $car, string $sentAt): bool {
+                $car->vericode_sent_at = $sentAt;
+                return true;
+            });
+
+        // insertEmailEvent() returns 0 — its documented ON DUPLICATE KEY
+        // no-op signal, not an exception — while incrementVerificationAttempts()
+        // succeeds. This must still be treated as an incomplete record.
+        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(0);
+        $this->mockRepo->expects($this->once())->method('incrementVerificationAttempts')->willReturn(true);
+        $this->mockRepo->expects($this->exactly(2))->method('commit');
+        $this->mockRepo->expects($this->never())->method('rollback');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_SENT, $result->status);
+        $this->assertTrue($result->isUnrecorded());
+        $this->assertNotNull($result->reason);
+    }
+
+    // ------------------------------------------------------------------
     // sendOne() — send failure path
     // ------------------------------------------------------------------
 

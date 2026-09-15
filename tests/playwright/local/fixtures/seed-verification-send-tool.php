@@ -96,12 +96,21 @@ $db = dbi();
 // (low ids, ORDER BY last_verified ASC puts NULL-last_verified rows first —
 // ties broken by insertion order) that fill up the default batch_size = 5
 // preview before this fixture's freshly-seeded, higher-id car is ever
-// reached. Bump batch_size generously so the seeded eligible car is
-// guaranteed to appear in the rendered preview regardless of how many other
-// eligible rows already exist locally. This is local dev data only (this
-// script's US_ENVIRONMENT=development guard above ensures it never runs
-// against test/prod), and #1885's future batch-size UI is unaffected since
-// nothing here claims to test that value's default.
+// reached. Raise batch_size to widen that preview window as far as possible.
+//
+// This does NOT guarantee the seeded car appears: batch_size is a TINYINT
+// UNSIGNED column (hard max 255) — 1000 is written deliberately over that
+// max so MySQL's silent truncation lands the stored value at the column's
+// actual ceiling (255) rather than requiring this fixture to hardcode that
+// number and drift if the column type ever changes. Even at 255, the local
+// dev DB's ~1500 pre-existing eligible rows (see
+// admin-verification-send-tool.spec.js's own header note) can still
+// out-rank this fixture's seeded car every time — that spec file documents
+// the resulting environment limitation and the workaround each affected
+// test uses. This is local dev data only (this script's
+// US_ENVIRONMENT=development guard above ensures it never runs against
+// test/prod), and #1885's future batch-size UI is unaffected since nothing
+// here claims to test that value's default.
 $db->query('UPDATE er_verification_settings SET batch_size = 1000');
 
 // Idempotent cleanup, mirroring seed-bounced-car.php's pattern exactly.
