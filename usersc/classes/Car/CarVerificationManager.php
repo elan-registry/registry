@@ -57,17 +57,21 @@ class CarVerificationManager
     }
 
     /**
-     * Set or clear a car's bounced-email flag
+     * Set or clear a car's bounced-email flag, and the address it bounced against
      *
      * @param object $carData Car data object (must have ->id property)
      * @param bool $bounced True to flag as bounced, false to clear
+     * @param string|null $bouncedAddress The address the bounce was reported against
+     *                                    (ignored/nulled when $bounced is false)
      * @return bool True if the bounce flag was updated successfully
      * @throws CarDatabaseException If database update fails
      */
-    private function updateBounced(object $carData, bool $bounced): bool
+    private function updateBounced(object $carData, bool $bounced, ?string $bouncedAddress = null): bool
     {
+        $bouncedAddress = $bounced ? $bouncedAddress : null;
+
         $result = $this->persist(
-            fn () => $this->repo->updateEmailBounced((int) $carData->id, $bounced),
+            fn () => $this->repo->updateEmailBounced((int) $carData->id, $bounced, $bouncedAddress),
             LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
             $bounced
                 ? 'Bounce status could not be updated. Please try again or contact support.'
@@ -77,6 +81,31 @@ class CarVerificationManager
         );
 
         $carData->email_bounced = $bounced ? 1 : 0;
+        $carData->email_bounced_address = $bouncedAddress;
+        return $result;
+    }
+
+    /**
+     * Set or clear a car's email-suppressed flag
+     *
+     * @param object $carData Car data object (must have ->id property)
+     * @param bool $suppressed True to flag as suppressed, false to clear
+     * @return bool True if the suppressed flag was updated successfully
+     * @throws CarDatabaseException If database update fails
+     */
+    private function updateSuppressed(object $carData, bool $suppressed): bool
+    {
+        $result = $this->persist(
+            fn () => $this->repo->updateEmailSuppressed((int) $carData->id, $suppressed),
+            LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+            $suppressed
+                ? 'Suppressed status could not be updated. Please try again or contact support.'
+                : 'Suppressed status could not be cleared. Please try again or contact support.',
+            $suppressed ? 'Failed to flag email as suppressed' : 'Failed to clear suppressed email flag',
+            (int) $carData->id,
+        );
+
+        $carData->email_suppressed = $suppressed ? 1 : 0;
         return $result;
     }
 
@@ -198,12 +227,13 @@ class CarVerificationManager
      * Flag a car's owner email as bounced
      *
      * @param object $carData Car data object (must have ->id property)
+     * @param string $bouncedAddress The address the bounce was reported against
      * @return bool True if the bounce flag was set successfully
      * @throws CarDatabaseException If database update fails
      */
-    public function setBounced(object $carData): bool
+    public function setBounced(object $carData, string $bouncedAddress): bool
     {
-        return $this->updateBounced($carData, true);
+        return $this->updateBounced($carData, true, $bouncedAddress);
     }
 
     /**
@@ -216,5 +246,29 @@ class CarVerificationManager
     public function clearBounced(object $carData): bool
     {
         return $this->updateBounced($carData, false);
+    }
+
+    /**
+     * Flag a car's owner email as suppressed (e.g. a spam complaint)
+     *
+     * @param object $carData Car data object (must have ->id property)
+     * @return bool True if the suppressed flag was set successfully
+     * @throws CarDatabaseException If database update fails
+     */
+    public function setSuppressed(object $carData): bool
+    {
+        return $this->updateSuppressed($carData, true);
+    }
+
+    /**
+     * Clear a car's email-suppressed flag (admin reversal)
+     *
+     * @param object $carData Car data object (must have ->id property)
+     * @return bool True if the suppressed flag was cleared successfully
+     * @throws CarDatabaseException If database update fails
+     */
+    public function clearSuppressed(object $carData): bool
+    {
+        return $this->updateSuppressed($carData, false);
     }
 }

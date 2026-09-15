@@ -12,6 +12,13 @@ Keep output brief — terse status lines, no preamble, no restating of steps.
 
 Perform a comprehensive security audit of recent code changes in this project.
 
+For plan-driven work, `/execute-plan` Step 7 already launches `security-reviewer`
+against the full diff whenever the plan's Database & Security Considerations
+section is non-empty or a changed file touches forms/SQL/auth — this command
+is largely superseded for that path. Use it directly for ad-hoc work with no
+plan file, or to re-run a security pass in isolation without repeating the
+rest of `/execute-plan`'s review round.
+
 ## Steps
 
 1. **Identify changed files**: Run `git diff --name-only` to find modified

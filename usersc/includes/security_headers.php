@@ -55,7 +55,7 @@ header("X-Content-Type-Options: nosniff");
 
 header("Referrer-Policy: no-referrer-when-downgrade");
 
-header("Permissions-Policy: camera=(), microphone=(), payment=(), usb=(), interest-cohort=()");
+header("Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()");
 
 header_remove("X-Powered-By");
 

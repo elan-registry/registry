@@ -21,6 +21,27 @@
 - **System Tables**: `audit`, `country`, `fix_script_runs` for system operations
   and reference data
 
+## Database Naming Conventions
+
+### Table Naming
+
+**ElanRegistry-owned tables created from v2.30.2 onwards use the `er_` prefix.** This convention establishes a clear separation between project-owned tables and upstream UserSpice tables.
+
+**Why:** The existing registry tables (`cars`, `car_transfer_requests`, `deleted_accounts_archive`, `fix_script_runs`) have no consistent naming prefix. `elan_factory_info` is an accidental exception. Since the project continues to add tables — particularly system configuration and workflow tables that will be added alongside UserSpice's own `settings` and utility tables — a namespace prefix prevents future collisions and makes it obvious at a glance which tables belong to the application logic vs. which are upstream.
+
+**Existing tables are not being renamed.** This convention applies only to **new tables created from v2.30.2 onward.**
+
+**Examples:**
+
+- `er_verification_settings` (v2.30.2) — single-row gate for the verification system feature switch
+- `er_email_events` (v2.30.2) — durable log of inbound Brevo delivery-status webhook events (#1887)
+- `er_cron_job_runs` (v2.30.2) — generic "when did this job last run" table for `CronJobGuard`, replacing per-job bespoke settings columns (#2034)
+- Any future feature-config, workflow state, or application-owned table created after this issue
+
+**Upstream tables (not renamed):** `settings`, `users`, `users_session`, `us_*`, etc. (UserSpice), and `cars`, `car_transfer_requests`, `deleted_accounts_archive`, `elan_factory_info`, `car_models`, `fix_script_runs`, `country` (pre-existing project tables).
+
+---
+
 ## Changing the schema — use Phinx
 
 **Every structural change goes through a Phinx migration.** Do not hand-edit
@@ -124,6 +145,8 @@ For the full workflow, see
 | `owner_last_updated` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Timestamp of owner's last action on this car (used for verification system); **has no `ON UPDATE` clause** — this absence is deliberate to prevent any write from resetting the verification clock |
 | `vericode_sent_at` | `datetime NULL` | Timestamp when verification code was sent to owner |
 | `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether verification emails bounced. Set to `1` if email failed; `0` if deliverable or not yet tested. |
+| `email_bounced_address` | `varchar(155) NULL` | The exact address a bounce was reported against (#1887). Preserved separately from `cars.email` because the car's email can change after a bounce is recorded. Nulled when `email_bounced` is cleared. |
+| `email_suppressed` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag set when Brevo reports the address as suppressed (e.g. a spam complaint) — a distinct signal from a bounce (#1887). |
 
 **Note**: Nine owner-related fields — `email`, `fname`, `lname`, `city`,
 `state`, `country`, `lat`, `lon`, `website` — are denormalized onto `cars`
@@ -142,7 +165,7 @@ creation.
 | `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE) |
 | `car_id` | `int UNSIGNED` | Original car ID |
 | `timestamp` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Change timestamp (INDEXED as `idx_cars_hist_timestamp`) |
-| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, and `email_bounced`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
+| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, `email_bounced`, `email_bounced_address`, and `email_suppressed`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
 
 > #### Removed: `car_user` and `car_user_hist`
 >
@@ -184,6 +207,39 @@ creation.
 **Note**: This table implements the self-service ownership transfer workflow,
 storing both the transfer request metadata and a snapshot of all submitted car
 data for verification and potential updates.
+
+#### `er_email_events` - Brevo delivery-status webhook event log (#1887)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `int UNSIGNED` | PRIMARY KEY, AUTO_INCREMENT |
+| `car_id` | `int NOT NULL` | Car the event applies to. **No FK** — this codebase has no FK constraints on car-adjacent tables; `cars.user_id`'s own FK was deliberately dropped (`20260719120000_drop_cars_user_id_fk.php`). |
+| `email` | `varchar(155) NOT NULL` | Recipient address from the Brevo payload (INDEXED) |
+| `event` | `varchar(32) NOT NULL` | Brevo event name (`hard_bounce`, `soft_bounce`, `blocked`, `invalid`, `spam`, `delivered`, `unique_opened`, …) |
+| `reason` | `text NULL` | Optional reason/detail text from the payload (e.g. why a bounce occurred); absent for events like `spam` |
+| `brevo_message_id` | `varchar(255) NOT NULL DEFAULT ''` | Brevo's message id for the send this event applies to (or a locally-generated id for a synthetic `sent` row). **`NOT NULL DEFAULT ''`, not nullable, is correctness-critical**: MySQL treats every `NULL` as distinct in a unique index, so a nullable column would silently defeat the unique index below for exactly the rows that need dedup most. |
+| `occurred_at` | `datetime NOT NULL` | When the event occurred, per the payload's `ts_event`/`ts` field (falls back to receipt time if absent) |
+
+**Indexes:** `UNIQUE (car_id, brevo_message_id, event)` — the dedup key; a
+retried/duplicate Brevo delivery of the same event lands as a single row
+(`INSERT ... ON DUPLICATE KEY UPDATE reason, occurred_at`, never touching the
+identity columns the index is keyed on). Plus `(car_id, occurred_at)` for
+per-car history queries and `(email)` for the webhook receiver's lookup path.
+
+**Retention:** no automatic purge yet — the 24-month retention policy is
+issue #1889's job (nightly reconciliation), out of scope for #1887.
+
+**Written by:** `app/api/webhooks/brevo.php` via
+`BrevoWebhookEventProcessor`/`CarRepository::insertEmailEvent()`. **Cleaned
+up by:** `usersc/scripts/after_user_deletion.php`
+(`CarRepository::deleteEmailEventsForCarIds()`) when an owner's account is
+deleted, in the same transaction as car reassignment, before the car→owner
+link is severed; and by `CarAdministrationService::delete()`
+(`deleteEmailEventsForCarIds()`) on a direct car deletion, same transaction as
+the car row. **Reassigned by:** `CarAdministrationService::merge()`
+(`CarRepository::transferEmailEvents()`) — a merge moves the source car's
+history onto the surviving car rather than deleting it, since the target
+owner should keep the merged bounce/suppression signal.
 
 ### Factory Reference Data
 
@@ -274,6 +330,27 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 | `id` | `int` | PRIMARY KEY, AUTO_INCREMENT |
 | `script_name` | `varchar(255)` | Name of FIX script executed |
 | `run_date` | `timestamp` | Execution timestamp |
+
+#### `settings` - Site-wide configuration (singleton row, `id = 1`)
+
+Single-row config table, mostly legacy UserSpice/site-settings fields — see
+the migration history in `database/migrations/` for the rest.
+
+#### `er_cron_job_runs` - Generic cron job "last run" tracking (#2034)
+
+Backs `CronJobGuard::claim()`'s atomic-claim guard. Replaces the earlier
+`settings.reconciliation_last_run` bespoke column (#2027, dropped by the
+same migration that creates this table) — more cron jobs were coming
+(issues 1889 and 1885, plus others), and a bespoke-column-per-job approach
+would have meant a new migration for each one.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `job_name` | `varchar(64)` | PRIMARY KEY. Must be in `CronJobGuard::ALLOWED_JOB_NAMES` for `claim()` to act on it — the allowlist and this table's seeded rows must stay in sync. |
+| `enabled` | `boolean NOT NULL DEFAULT true` | Lets an operator pause a single job without touching UserSpice's own `crons` table (which only supports add/delete, not pause). `claim()`'s own query requires `enabled = 1`; a disabled job's claim silently no-ops the same way a too-recent claim does. |
+| `last_run_at` | `datetime NULL` | Last successful claim. `NULL` means never run. Written only via `CronJobGuard`'s atomic UPDATE, never directly. |
+| `created_at` | `datetime NOT NULL` | Set at seed/registration time. Distinguishes "registered, never run" (row present, `last_run_at NULL`) from "not a registered job at all" (no row) — a bare `job_name`/`last_run_at` pair can't tell those apart once a row exists. |
+| `last_skip_logged_at` | `datetime NULL` | (#1889) Rate-limits `AbstractCronJob`'s disabled-job skip log to roughly once per guard interval. Deliberately a separate column from `last_run_at`: a disabled job never reaches `CronJobGuard::claim()`, so `last_run_at` stays frozen for as long as the job stays paused, and any throttle keyed on it would degrade to logging on every hit — the #1974 pathology this exists to avoid. Written only by `AbstractCronJob`, immediately after the skip line actually fires. |
 
 #### `phinxlog` - Phinx migration tracking
 

@@ -147,6 +147,17 @@ class LogCategories
     public const LOG_CATEGORY_EMAIL_SETTINGS = 'EmailSettings';
 
     /**
+     * Brevo webhook event processing
+     * Used for inbound Brevo delivery-status events and the bounce/suppression
+     * escalation they drive. Authentication and rate-limit rejections in the
+     * webhook endpoint use LOG_CATEGORY_SECURITY instead.
+     *
+     * @since v2.30.2
+     * @see https://github.com/elan-registry/registry/issues/1887
+     */
+    public const LOG_CATEGORY_EMAIL_WEBHOOK = 'EmailWebhook';
+
+    /**
      * Feedback form submissions
      * Used to track form submissions and user feedback
      */
@@ -525,6 +536,22 @@ class LogCategories
     public const LOG_CATEGORY_CRON_REQUEST = 'CronRequest';
 
     /**
+     * Cron job failure
+     * Used when an AbstractCronJob subclass's execute() throws — the crash is
+     * caught, logged under this category, and never rethrown (crash isolation).
+     */
+    public const LOG_CATEGORY_CRON_JOB_FAILURE = 'CronJobFailure';
+
+    /**
+     * Cron job skipped
+     * Used when AbstractCronJob's run() finds the job disabled
+     * (er_cron_job_runs.enabled = 0) and returns early without invoking
+     * execute() — logged, not silent, but distinct from CronJobFailure since
+     * this is not an error.
+     */
+    public const LOG_CATEGORY_CRON_JOB_SKIPPED = 'CronJobSkipped';
+
+    /**
      * Migration operations
      * Used for system migrations and upgrades
      */
@@ -693,6 +720,25 @@ class LogCategories
      * Used for features specific to the car registry
      */
     public const LOG_CATEGORY_ELAN_REGISTRY = 'ElanRegistry';
+
+    // ========== VERIFICATION SYSTEM CATEGORIES ==========
+
+    /**
+     * Verification-system configuration warnings
+     * Used when the verification feature switch's Brevo/cron prerequisites fail,
+     * or when an admin attempt to enable verification is rejected due to a
+     * failed prerequisite.
+     */
+    public const LOG_CATEGORY_VERIFICATION_CONFIG_WARNING = 'VerificationConfigWarning';
+
+    /**
+     * Verification-system configuration changes
+     * Used for successful admin actions on the verification feature switch
+     * (enable/disable). Kept distinct from LOG_CATEGORY_VERIFICATION_CONFIG_WARNING
+     * so operators filtering for genuine prerequisite failures don't have to wade
+     * through routine, successful toggles.
+     */
+    public const LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED = 'VerificationConfigChanged';
 
     // ========== BACKUP OPERATIONS CATEGORIES ==========
 

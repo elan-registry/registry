@@ -191,6 +191,19 @@ gh api repos/elan-registry/registry/milestones/<NUMBER> -X PATCH \
 
 ### Step 4.5: Issue quality review
 
+This is the lighter-weight fallback of `/plan-milestone` Step 3's gate, for
+when this milestone reached `/start-milestone` without `/plan-milestone`
+having sealed it first (see `/plan-milestone`'s own "Important" section,
+which names this step as its equivalent). The two lists below are not
+independent of `/plan-milestone`'s three questions and edge-case test — they
+are this step's own phrasing of the same underlying decision, expanded with
+milestone-specific categories (make-work, trivial tests, superseded,
+duplicate scope) that `/plan-milestone`'s backlog-wide gate doesn't need
+because it runs before an issue has any implementation detail to judge those
+against. **If either gate's criteria change, check whether the other needs
+the same change** — a milestone that skipped `/plan-milestone` should not
+get a meaningfully different bar than one that didn't.
+
 Before ordering, analyze the full issue list inline and produce two outputs:
 
 **A. Issues that have not earned a place** — flag any issue that meets one or

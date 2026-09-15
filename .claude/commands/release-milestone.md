@@ -8,8 +8,8 @@ model: claude-fable-5-1
 Keep output brief — terse status lines, no preamble, no restating of steps.
 
 Merge a milestone PR into main, create an annotated tag, push to remotes, and
-publish a GitHub release. This command picks up where `/finish-milestone` left
-off — after the milestone PR has been created and reviewed.
+publish a GitHub release. This command picks up where `/review-milestone` left
+off — after the milestone PR has been created, CI-reviewed, and confirmed green.
 
 ## Arguments
 
@@ -27,7 +27,7 @@ per TaskCreate call):
 1. Find the milestone PR
 2. Verify preconditions
 3. Check version consistency
-4. Parse release notes for deployment steps
+4. Locate the deploy sheet rendered by /finish-milestone
 5. Show summary and get confirmation
 6. Stage release notes content, then delete the file and push to the
    milestone branch (updates the open PR)
@@ -40,6 +40,7 @@ per TaskCreate call):
 13. Create GitHub release (draft) on pushed tag
 14. Close GitHub milestone
 15. Output summary
+16. (manual, later — not run by this command) Publish the draft release at prod deploy time
 
 Set each task to `in_progress` as you begin it and `completed` immediately
 on success. If a step fails, leave the task `in_progress` and surface the
@@ -66,7 +67,7 @@ gh pr list --base main --state open \
 - Must be on `main` or the milestone branch
 - **No unresolved Blocking/Important review findings** (see below) — this
   command does not fix problems, only merges/tags/publishes what's already
-  been fully vetted by `/finish-milestone`.
+  been fully vetted by `/finish-milestone` and `/review-milestone`.
 
 ```bash
 gh pr view <number> --json mergeable,mergeStateStatus,statusCheckRollup
@@ -74,52 +75,95 @@ gh pr view <number> --json mergeable,mergeStateStatus,statusCheckRollup
 
 If checks are failing or the PR is not mergeable, stop and report the issue.
 
-**This command assumes `/finish-milestone` already resolved every review
+**This command assumes `/review-milestone` already resolved every review
 finding before handing off — it does not fix things itself.** Confirm that
-assumption instead of trusting it blindly: fetch every posted review comment
-on the PR and check for a `Blocking` or `Important` heading with actual
-content.
+assumption instead of trusting it blindly, using the same hardened
+Blocking/Important detection CI's own merge gate uses (not a raw eyeball
+over comment text — see the script's header for why: a recap of an
+already-resolved finding must not be mistaken for a live one, #1843):
 
 ```bash
-gh api "repos/elan-registry/registry/issues/<number>/comments" --jq '.[].body'
+scripts/check-blocking-findings.sh <number> --include-important
 ```
 
-**If any comment shows an unresolved Blocking/Important finding** (no later
-comment or commit demonstrably addresses it): **stop immediately.** Do not
-proceed with the confirmation in Step 5, and do not fix the finding as part
-of this run. Report the finding to the user and tell them to go back to
-`/finish-milestone` (or a manual fix-and-push cycle followed by a fresh
-review) to resolve it there, on the still-open, still-reviewable PR — not
-here, where the next steps are irreversible merge/tag/publish actions.
+- **Exit 0** — clean, proceed.
+- **Exit 1** — an unresolved Blocking or Important finding exists. **Stop
+  immediately.** Do not proceed with the confirmation in Step 5, and do not
+  fix the finding as part of this run. Report it to the user and tell them
+  to go back to `/finish-milestone` (or a manual fix-and-push cycle followed
+  by a fresh review) to resolve it there, on the still-open, still-reviewable
+  PR — not here, where the next steps are irreversible merge/tag/publish
+  actions.
+- **Exit 2** — no posted review comment found at all. Treat this the same as
+  Step 2's earlier CI-checks verification — this is a "can't verify"
+  outcome, not "clean." Stop and investigate before proceeding.
 
 This is the second, independent check on the same requirement
-`/finish-milestone` Step 11.5 exists to satisfy — it exists so that a PR
+`/review-milestone` Step 5 exists to satisfy — it exists so that a PR
 which sat open for a while, or one that reached this command by some other
 path, still gets caught rather than silently assumed clean.
 
 ### Step 3: Check version consistency
 
-- Extract the version from the milestone branch name (e.g., `v2.17.0`)
-- Get the last release tag: `git describe --tags --abbrev=0`
-- Verify the milestone version is newer than the last tag
-- If there's a version conflict or ambiguity, stop and ask the user
+Extract the version from the milestone branch name (e.g., `v2.17.0`), then:
 
-### Step 4: Parse release notes for pre/post deployment steps
+```bash
+scripts/check-version-newer.sh <version>
+```
 
-- Read `docs/releases/RELEASE_NOTES_<version>.md`
-- Check the "Required Actions After Deployment" section:
-  - If it contains actual steps (not "None"), these are **post-deployment
-    steps** to remind the user about
-  - Check for any database migrations, configuration changes, or manual steps
-- Parse these for the summary in step 5
-- Also collect the inputs the deploy sheet (Step 15) needs, from the diff
-  `git diff --name-only <last-tag>...milestone/<version>`:
-  new files under `database/migrations/` (and whether any contains
-  `CREATE TRIGGER`), `scripts/server-hooks/post-receive` changed, new files
-  calling `securePage(`, new files under `app/admin/scripts/fix/` or
-  `maintenance/`, `.env.example` changed. Read `.claude.local.md` § "Deployment
-  hosts" for the ssh alias and docroots; if the section is missing, stop and
-  ask the user to add it (copy the block from `.claude.local.md.example`).
+- **Exit 0** — the milestone version is newer than the last tag. Proceed.
+- **Exit 1** — not newer (equal or older). Stop and ask the user.
+- **Exit 2** — couldn't parse a version as semver, or no prior tag exists.
+  Stop and ask the user rather than guess.
+
+### Step 4: Locate the deploy sheet rendered by `/finish-milestone`
+
+Deployment steps no longer live in the release notes — `/finish-milestone`
+Step 6.6 renders a standalone deploy sheet at
+`docs/plans/releases/<version>-deploy.md` before this command ever runs, so
+the user can review the deploy procedure alongside the PR.
+
+```bash
+ls docs/plans/releases/<version>-deploy.md
+```
+
+- **If the file exists:** this is the deploy sheet to use in Step 15 — do not
+  re-render it from the template. Read it now so Step 5's summary can
+  reference what it covers (migrations, new env vars, admin-script
+  registration, any manual verification runbook).
+- **If the file is missing:** `/finish-milestone` was run before Step 6.6
+  existed, or the sheet was deleted/never generated. Stop and tell the user:
+  "No deploy sheet found at `docs/plans/releases/<version>-deploy.md` — run
+  `/finish-milestone`'s Step 6.6 (or re-run `/finish-milestone $ARGUMENTS`) to
+  generate one before releasing." Do not fall back to rendering the template
+  yourself here — that responsibility belongs to `/finish-milestone`, and
+  regenerating it at release time defeats the point of reviewing it earlier.
+- **Check staleness mechanically** rather than by eyeballing `git log` —
+  Step 6.6 writes a `.sha` stamp alongside the sheet recording the commit it
+  was rendered against:
+
+  ```bash
+  scripts/check-deploy-sheet-fresh.sh <version>
+  ```
+
+  - **Exit 0** — fresh, proceed.
+  - **Exit 1** — stale (the milestone branch moved since rendering, output
+    shows the commits since). Warn the user and ask whether to proceed
+    anyway or go back to `/finish-milestone` Step 6.6 to refresh it first.
+  - **Exit 2** — no stamp file (the sheet predates this check, or the
+    milestone branch isn't resolvable locally). Treat as "can't verify" —
+    warn the user rather than assuming fresh.
+
+Also confirm `.claude.local.md` § "Deployment hosts" is present — the sheet
+already has it baked in, but Step 16's publish step and any ad hoc host
+reference later in this run still need it:
+
+```bash
+grep -A3 "Deployment hosts" .claude.local.md
+```
+
+If missing, stop and ask the user to add it (copy the block from
+`.claude.local.md.example`).
 
 ### Step 5: Show summary and ask for confirmation
 
@@ -129,8 +173,9 @@ Display:
 - Number of commits that will be merged
 - Version that will be tagged
 - Release notes file path
-- **If post-deployment steps exist**: Display them prominently with a reminder
-  to complete them after deploying
+- Deploy sheet path (`docs/plans/releases/<version>-deploy.md`) and a
+  one-line summary of what it covers (migrations, new admin scripts, new env
+  vars, any manual verification runbook) — from Step 4's read
 - Remind: "This will merge the PR, create a tag, push to origin, and publish
   a GitHub release. Deployment to test/prod is a separate manual step."
 
@@ -284,7 +329,7 @@ gh api repos/elan-registry/registry/milestones/<milestone_number> \
 Find the milestone number from the PR's milestone field or by listing
 milestones.
 
-### Step 15: Output summary and the deploy sheet
+### Step 15: Output summary and point to the deploy sheet
 
 First the release facts:
 
@@ -295,23 +340,20 @@ Release v<version> created
 - Milestone: closed
 ```
 
-Then render `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md` for this
-release and print the rendered block in full — this is the document the user
-deploys from. Follow the template's "Rendering rules" exactly:
+The deploy sheet was already rendered by `/finish-milestone` (Step 4 located
+and read it) — **do not re-render it from the template here.** Tell the user
+it's ready at `docs/plans/releases/<version>-deploy.md` and remind them the
+sheet deploys the tag (`'<version>^{commit}:main'`), never the current
+`main` — if `main` has moved past the tag since the sheet was written, that's
+informational only, the commands in the sheet don't change.
 
-- Fill `<version>`, `<repo-path>`, and the host placeholders from
-  `.claude.local.md` § "Deployment hosts".
-- Include each `<!-- IF -->` block only when its condition holds (inputs
-  gathered in Step 4); drop the markers. Fill `<migration-version>`,
-  `<tables>`, script names, and the per-release lines from the release notes'
-  Required Actions.
-- Keep the step numbering continuous after dropping unused blocks.
-- The sheet deploys the tag (`'<version>^{commit}:main'`), never the current
-  `main`. If `main` has moved past the tag, note it above step 1 as
-  information only — the commands do not change.
+**Do not print the sheet's full contents into the conversation** — it names
+the ssh alias and docroots. The user reads the file directly.
 
-**Do not commit or save the rendered sheet anywhere in the repo** — it names
-the ssh alias and docroots. Print it to the terminal only.
+If Step 4 found the sheet stale (milestone branch moved since it was
+rendered) and the user chose to proceed anyway, flag that explicitly again
+here as a reminder to double check the sheet's migration/env-var/script list
+still matches what actually merged.
 
 ### Step 16: Publish the release at prod deploy time (manual, later)
 
@@ -324,8 +366,9 @@ gh release edit v<version> --draft=false --repo elan-registry/registry
 ```
 
 This command does not run this step itself — deployment is a separate manual
-action the user performs later, per Step 15's reminder. Surface this as part
-of the deploy instructions, not as something executed now.
+action the user performs later, per Step 15's reminder. This publish step is
+already the deploy sheet's own last section (Publish) — nothing to surface
+separately here beyond pointing back at the sheet.
 
 ## Important
 
@@ -333,8 +376,11 @@ of the deploy instructions, not as something executed now.
   without explicit user approval.
 - If any step fails, stop immediately and report the error. Do not continue
   with partial state.
-- This command assumes `/finish-milestone` has already been run (PR exists,
-  release notes finalized, issues closed).
+- This command assumes `/finish-milestone` (release notes finalized, issues
+  closed, deploy sheet rendered at `docs/plans/releases/<version>-deploy.md`)
+  and `/review-milestone` (PR exists, CI-reviewed, confirmed green) have
+  already been run. It reuses the rendered deploy sheet rather than
+  generating its own — see Step 4.
 - The `--delete-branch` flag on `gh pr merge` handles remote-branch cleanup.
   Step 10 handles local cleanup.
 - **Do NOT push to `test` or `prod` remotes** — deployment is a separate

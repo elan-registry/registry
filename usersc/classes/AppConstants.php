@@ -23,4 +23,15 @@ class AppConstants
      * for ctime/mtime fields and other datetime columns.
      */
     public const DATETIME_FORMAT = 'Y-m-d H:i:s';
+
+    /**
+     * Brevo tag attached to every transactional verification email
+     *
+     * Used by the Brevo webhook receiver to filter inbound delivery-status
+     * events down to those relevant to the car verification system.
+     *
+     * @since v2.30.2
+     * @see https://github.com/elan-registry/registry/issues/1887
+     */
+    public const VERIFICATION_EMAIL_TAG = 'car_verification';
 }

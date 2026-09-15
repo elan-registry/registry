@@ -209,29 +209,29 @@ Step 4.5 runs, moved earlier so it's caught right after implementation
 instead of at merge time, while the context of what changed is still fresh.
 
 **Why a plain `vendor/bin/phpstan analyse <file>` run does not catch this:**
-`phpstan.neon` includes `phpstan-baseline.neon`, so a normal run — scoped to
-one file or the whole project — silently suppresses every pre-existing
-baseline entry for that file. It only ever reports *new* errors. Checking
-the baseline file directly is the only way to see whether an already-touched
-file still carries old debt:
+see the header comment in `scripts/check-baseline-hygiene.sh` — in short,
+`phpstan.neon` includes `phpstan-baseline.neon`, so a normal run silently
+suppresses pre-existing entries and only reports *new* errors.
 
 ```bash
-CHANGED_FILES=$(git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD)
-
-for f in $CHANGED_FILES; do
-  case "$f" in
-    *.php)
-      if grep -qF "path: $f" phpstan-baseline.neon 2>/dev/null; then
-        echo "BASELINE OVERRIDE: $f"
-      fi
-      ;;
-  esac
-done
+git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD \
+  | scripts/check-baseline-hygiene.sh
 ```
 
+Exit 0 means the check ran (any `BASELINE OVERRIDE:` lines in the output are
+real findings, no output means clean). **Exit 2 means the check could not
+run at all** (baseline file not found — usually a wrong working directory)
+— treat this as "can't verify," not "clean," and fix the cwd/re-run rather
+than proceeding.
+
 (If the branch has no commits yet — e.g. this step runs before `/commit` —
-use `git diff --name-only` with no ref, or `git status --short`, to get the
-working-tree changed-file list instead.)
+pipe `git diff --name-only` with no ref, or `git status --short` reduced to
+paths, into the script instead.)
+
+See `scripts/check-baseline-hygiene.sh` for what the check does and why a
+plain `phpstan analyse` run can't substitute for it — this is the shared
+implementation `/finish-issue` Step 4.5 and `/review-pr` Step 1 also call, so
+fixes to the lookup logic belong there, not copied into this file.
 
 **If any file appears:** read the matching baseline entries
 (`grep -B3 -A8 "path: <file>" phpstan-baseline.neon`) to see the exact
@@ -281,9 +281,33 @@ sequence, and not spread across the push:
   strictly-typed private helper as an uncaught `\TypeError` instead of the
   method's documented exception. Skip when neither condition applies — it is
   not a blanket addition to every plan.
+- **type-design-analyzer** — if the diff introduces a new class, value
+  object, or DTO (new file under `usersc/classes/`, or a new class defined
+  anywhere else in the diff) — not for changes confined to existing classes'
+  method bodies.
+- **senior-ux-designer** — if the diff adds a new screen or page section,
+  extracts or restructures a shared UI partial (`/app/views/`), or changes
+  button hierarchy/placement/visibility rules — not for copy-only or
+  styling-only tweaks to an existing, unchanged layout.
 
 These are the same agents `/review-pr` runs. They run **here**, before the
 push — not after it.
+
+**Do not hand reviewers the plan file's own rationale as if it were
+established fact.** The plan file, commit messages, and any in-code comments
+written during this session all encode *this session's* belief about why the
+implementation is correct — the same belief that produced the code in the
+first place. A reviewer agent is launched fresh (no memory of this
+conversation), but if its prompt includes "the plan says X should work
+because Y," it is reasoning from an assertion, not verifying one, and a wrong
+Y will look consistent with the code that was written to satisfy it. Give
+each reviewer the diff, the full file contents, and the acceptance
+criteria/checklist items as *claims to check*, not as background truth —
+phrase the prompt so a query's correctness, a security control's presence, or
+a documented failure mode is something the reviewer confirms against the
+running code/DB/framework, not something it takes on the plan's word. This is
+the same principle `/review-pr` Step 4.5 applies to comment fact-checking;
+apply it here to every reviewer, not only the ones checking comments.
 
 **Why parallel and why before the push.** Serial reviewers each see a
 different artifact, which guarantees that round N+1 finds something round N
@@ -305,6 +329,21 @@ Fix all Blocking findings in **one** commit, then re-check **only that
 commit's diff**, with only the reviewers whose findings it addressed. That is
 round two, it is cheap, and it is exactly where the two self-inflicted
 regressions above would have been caught.
+
+**Round two's findings are triaged by a fresh agent, not by this session.**
+The reviewer agents that produce round two's findings are already launched
+independently, but the *triage* — deciding whether a given finding is
+Blocking, Advisory, or a non-issue — is a judgment call, and this session
+already has a stake in round one's fix being correct (it just wrote it). Left
+to this session, an ambiguous round-two finding is exactly the kind of thing
+that gets resolved in favor of "good enough, move on" without anyone
+independent weighing in. Launch a fresh `general-purpose` agent (not a fork —
+same reasoning as `/review-pr` Step 4.5: a fork inherits this session's belief
+that the fix worked, which is precisely what triage needs to not assume) with
+round two's raw findings, the corrected diff, and the triage table above; ask
+it to return the Blocking/Advisory/Note classification for each finding. Use
+its classification, not this session's own read of the findings, to decide
+whether round two is clean.
 
 **The two-round ceiling.** If a third round is needed, stop. Three rounds of
 fixes on one issue means the plan was wrong, not that the reviewers are

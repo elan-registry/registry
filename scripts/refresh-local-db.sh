@@ -259,7 +259,14 @@ trap 'rm -f "$cnf"' EXIT
 #   without this flag mysqldump errors out trying to dump tablespaces.
 # --single-transaction: consistent read that keeps the live site unblocked.
 # --routines is deliberately omitted -- it is schema-wide (not per-table) and
-#   we only ever import data rows plus each table's own triggers.
+#   we only ever import data rows.
+# --skip-triggers: the local schema already owns its triggers via Phinx
+#   migrations (`cars_insert`/`cars_update`/`cars_delete`, created with the
+#   local user as definer). Fetching prod's copies would DROP TRIGGER + CREATE
+#   TRIGGER with prod's definer, which MySQL rejects locally under binary
+#   logging without the SUPER privilege (error 1419,
+#   log_bin_trust_function_creators). The local triggers are already correct
+#   and current -- prod's are never needed here.
 # --complete-insert names every column in each INSERT instead of relying on
 # positional values. Production still carries legacy `users` columns
 # (`company`, `last_confirm`) that no migration creates, so a freshly
@@ -267,7 +274,7 @@ trap 'rm -f "$cnf"' EXIT
 # insert fails with "Column count doesn't match value count" (MySQL 1136).
 # Naming the columns makes the import tolerate that drift in either direction.
 mysqldump --defaults-file="$cnf" \
-    --single-transaction --quick --triggers --no-tablespaces \
+    --single-transaction --quick --skip-triggers --no-tablespaces \
     --complete-insert --default-character-set=utf8mb4 \
     "$db_name" $DUMP_TABLES | gzip -c
 REMOTE

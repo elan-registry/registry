@@ -566,7 +566,46 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `updateVerificationCode(int $carId, string $verificationCode): bool` - Update a car's verification code
 - `updateLastVerified(int $carId, string $dateTime): bool` - Update a car's last-verified timestamp
 - `updateVerificationSentAt(int $carId, string $dateTime): bool` - Update the timestamp at which a verification email was sent
-- `updateEmailBounced(int $carId, bool $bounced): bool` - Set or clear a car's email-bounced flag
+- `updateEmailBounced(int $carId, bool $bounced, ?string $bouncedAddress = null): bool` -
+  Set or clear a car's email-bounced flag, and the address it bounced against (#1887)
+- `updateEmailSuppressed(int $carId, bool $suppressed): bool` - Set or clear a car's email-suppressed flag (#1887)
+- `findByEmail(string $email): array` - Find cars whose `cars.email` matches a
+  given address; used by the Brevo webhook receiver to map an inbound
+  event's recipient back to the car(s) it belongs to (#1887)
+- `insertEmailEvent(int $carId, string $email, string $event, ?string $reason, string $brevoMessageId, string $occurredAt): int` -
+  Record one Brevo delivery-status event against a car (`er_email_events`),
+  deduping on `(car_id, brevo_message_id, event)` via a hand-written
+  `ON DUPLICATE KEY UPDATE` (deliberately not `DB::insert()`'s `$update`
+  mode, which would also reassign identity columns on conflict); returns
+  MySQL's `rowCount()` (1 insert, 2 changed duplicate, 0 unchanged
+  duplicate) (#1887)
+- `countSoftBouncesSinceLastDelivered(string $email): int` - Count distinct
+  soft-bounce send cycles (`brevo_message_id` values) for an email since its
+  most recent `delivered` event; the query the webhook receiver's
+  soft-bounce escalation threshold is checked against (#1887)
+- `deleteEmailEventsForCarIds(array $carIds): int` - Delete all
+  `er_email_events` rows for a set of car ids; used by account-deletion and
+  direct car-deletion cleanup, returns the number of rows deleted (0 for an
+  empty array) (#1887)
+- `deleteEmailEventsOlderThan(\DateTimeImmutable $cutoff): int` - Delete all
+  `er_email_events` rows with `occurred_at` before the cutoff (retention
+  pruning); used by nightly reconciliation job, returns the number of rows
+  deleted (#1889)
+- `clearBouncedForUser(int $userId, string $currentEmail): int` - Clear
+  `email_bounced` and `email_bounced_address` on every car owned by a user
+  whose recorded bounced address is no longer their current confirmed address
+  (as determined by a successful email-verification code confirmation). Returns
+  the number of rows affected by the UPDATE. Used by the `verifySuccess` hook
+  to auto-clear stale bounces on confirmed email changes (#1890)
+- `carIdsWithBouncedFlagButNoAddress(int $userId): array` - Query for car IDs
+  owned by a user with `email_bounced=1` but no recorded bounced address —
+  a pre-existing data-integrity anomaly. Returns an array of car IDs (empty if
+  none). Used by the `verifySuccess` hook to detect and log the anomaly before
+  clearing stale bounces (#1890)
+- `transferEmailEvents(int $fromCarId, int $toCarId): bool` - Reassign
+  `er_email_events` rows from one car to another; used by car merge, so the
+  surviving car keeps the merged-away car's bounce/suppression history
+  instead of losing it (#1887)
 - `updateOwnerLastUpdated(int $carId, string $dateTime): bool` - Update the
   timestamp of the owner's last self-initiated edit; standalone primitive not
   currently called by `Car::update()` (which folds the same write into its
@@ -580,21 +619,36 @@ to provide a focused, testable data access layer wrapping the `cars`,
   to prevent SQL injection. Compares against MySQL's `NOW()`.
 - `stalenessSql(string $alias = 'cars'): string` - Static; returns
   `'NOT ' . freshnessSql($alias)` — the exact boolean negation of freshness.
-- `isFresh(?string $lastVerified, string $ownerLastUpdated): bool` - **Not yet
-  called from production code** (only the SQL form is wired in, via
-  `findVerificationEligible()`); the send pipeline in v2.30.3 is the intended
-  first caller, at which point this note is removed (issue #1970). PHP
+- `isFresh(?string $lastVerified, string $ownerLastUpdated): bool` - PHP
   equivalent of `freshnessSql()` for in-code freshness checks, using PHP's clock
-  where the SQL form uses MySQL's `NOW()`. Both clocks must resolve to the same
-  timezone or the two forms can disagree at the one-year boundary from skew alone.
-  Sharing a host does **not** guarantee this: `users/init.php` pins PHP to
-  `America/Los_Angeles` on every web request, while MySQL follows its own
-  `time_zone`, so agreement must be verified per environment. Validates **both**
-  operands before comparing — deliberately not short-circuiting on a fresh
-  `$ownerLastUpdated` — and throws `CarValidationException` if either is empty,
-  malformed, or not a real calendar date (`2026-02-30` is rejected rather than
-  rolled over to March 2), because a malformed value there is a programming
-  error, not a data state.
+  where the SQL form uses MySQL's `NOW()`. First production caller is the admin
+  user-view's "Verification & Email" card (`usersc/plugins/hooker/hooks/user_form_hook.php`,
+  #1924), which renders per-car Verified/Unverified badges from it. Both clocks
+  must resolve to the same timezone or the two forms can disagree at the
+  one-year boundary from skew alone. Sharing a host does **not** guarantee
+  this: `users/init.php` pins PHP to `America/Los_Angeles` on every web
+  request, while MySQL follows its own `time_zone`, so agreement must be
+  verified per environment. Validates **both** operands before comparing —
+  deliberately not short-circuiting on a fresh `$ownerLastUpdated` — and throws
+  `CarValidationException` if either is empty, malformed, or not a real
+  calendar date (`2026-02-30` is rejected rather than rolled over to March 2),
+  because a malformed value there is a programming error, not a data state.
+  The hook catches this per-car and renders an isolated "Unknown" badge for
+  that row rather than failing the whole panel.
+- `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
+  bounce/suppression state for every car a user owns (`id`, `model`, `series`,
+  `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
+  `email_suppressed`, `owner_last_updated`, `last_verified`), ordered
+  `model, year`. Backs the admin user-view's "Verification & Email" card
+  (#1924). Tinyint flag columns come back as `int|string` per PDO's driver
+  typing, not native bool — cast at the call site.
+- `findLatestEmailEventsByCarIds(array $carIds): array` - Latest (max
+  `occurred_at`) `er_email_events` row per car id, keyed by `(int) car_id`; a
+  car with no event history is simply absent from the map. Single aggregate
+  query regardless of car count (self-join against a `(car_id, MAX(occurred_at))`
+  subquery). Used alongside `findVerificationStateByOwner()` to back the
+  Bounced/Suppressed columns' event detail (#1924). No-ops to `[]` with no
+  query issued on an empty `$carIds` array.
 - `findVerificationEligible(int $limit, int $offset): array` - Paginated
   query for cars eligible for a verification email: not sold, deliverable
   email, and stale — neither verified nor updated by its owner within the last
@@ -627,8 +681,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
 
 - Car class (composed data-access layer)
 - `app/api/cars/chassis-availability.php`, `app/api/cars/transfer-request.php` (`findByChassisKey()`)
-- User-deletion hook (`reassignCarsByUser()`)
+- User-deletion hook (`reassignCarsByUser()`, `deleteEmailEventsForCarIds()`)
+- `CarAdministrationService` (`deleteEmailEventsForCarIds()` on car deletion, `transferEmailEvents()` on car merge)
+- Email-verification hook (`clearBouncedForUser()`, `carIdsWithBouncedFlagButNoAddress()`) (#1890)
 - Sitemap generation (`getAllForSitemap()`)
+- `BrevoWebhookEventProcessor` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#1887)
+- `BrevoEventReconciliationJob` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`, `deleteEmailEventsOlderThan()`) (#1889)
 
 **See Also**:
 
@@ -765,8 +823,10 @@ on success.
 - `generateVerificationCode(): string` - Generate a new verification code; pure function, no repository call
 - `markVerified(object $carData): bool` - Record that a car has been verified (sets `last_verified` to now)
 - `setVerificationSentAt(object $carData, string $dateTime): bool` - Record when a verification email was sent
-- `setBounced(object $carData): bool` - Flag a car's owner email as bounced
-- `clearBounced(object $carData): bool` - Clear a car's bounced-email flag (admin reversal)
+- `setBounced(object $carData, string $bouncedAddress): bool` - Flag a car's owner email as bounced, recording the address the bounce was reported against
+- `clearBounced(object $carData): bool` - Clear a car's bounced-email flag and the recorded bounced address (admin reversal)
+- `setSuppressed(object $carData): bool` - Flag a car's owner email as suppressed (e.g. a Brevo `spam` complaint) — a distinct signal from a bounce (#1887)
+- `clearSuppressed(object $carData): bool` - Clear a car's email-suppressed flag (admin reversal)
 - `markSold(object $carData, ?string $soldDate): bool` - Record a car as sold (`null` defaults to today)
 
 **Exceptions**:
@@ -776,14 +836,583 @@ on success.
 
 **Used By**:
 
-- Backend foundation for the car-owner verification system (issue #1155);
-  no production caller yet as of v2.30.0 — the email-sending consumer that
-  will call these methods lands in a later verification-system milestone
+- Backend foundation for the car-owner verification system (issue #1155).
+  `setBounced()`/`setSuppressed()` gained their first production caller in
+  #1887: `BrevoWebhookEventProcessor` calls them when an inbound Brevo
+  delivery-status webhook event reports a bounce or spam complaint. The
+  verification-email-sending consumer for `setVerificationCode()`/
+  `markVerified()`/`setVerificationSentAt()` still lands in a later
+  verification-system milestone.
 
 **See Also**:
 
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
-- [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`, `cars.vericode_sent_at`, `cars.email_bounced`, `cars.solddate`
+- [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`,
+  `cars.vericode_sent_at`, `cars.email_bounced`, `cars.email_bounced_address`, `cars.email_suppressed`, `cars.solddate`
+
+---
+
+### VerificationSettings
+
+**Location**: `/usersc/classes/Car/VerificationSettings.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Site-wide feature switch and readiness probes for the car
+verification system — kept separate from `CarVerificationManager` above:
+this class owns one global config row plus two infrastructure probes
+(Brevo, cron), while `CarVerificationManager` mutates per-car records. No
+shared state or dependency exists between the two.
+
+**Key Features**:
+
+- Owns the single-row `er_verification_settings` table (`id = 1`)
+- `brevoReady()` and `cronReady()` are computed live on every call, never
+  cached
+- **Asymmetric gate**: `setEnabled(true)` throws `VerificationConfigException`
+  when `brevoReady()` is false; `setEnabled(false)` never throws, for any
+  reason — an admin must always be able to disable verification mid-incident
+- Every probe fails closed and logs rather than throwing, so a database or
+  filesystem hiccup hides the feature instead of breaking the page
+- Performs no permission checks itself — callers must run `hasPerm()` before
+  calling `setEnabled()`
+
+**Methods**:
+
+- `isEnabled(): bool` - Whether verification is currently switched on
+- `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
+- `brevoReady(): bool` - True only if the Brevo API key is configured AND the plugin override file is active
+- `cronReady(): bool` - True if `lastCronRequestAt()` reports a timestamp
+  within twice `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`;
+  20 minutes today)
+- `lastCronRequestAt(): ?DateTimeImmutable` - Timestamp of the most recent
+  cron transport hit, read from `er_verification_settings.last_cron_request_at`
+  (#1974; previously scanned the `logs` table)
+- `recordCronRequest(): bool` - Record that the cron transport hit this
+  environment; called by `users/cron/cron.php` on every non-denied hit,
+  writing `er_verification_settings.last_cron_request_at`; never throws (logs
+  and returns `false` on a DB error, or if the `id = 1` settings row is
+  missing) (#1974)
+- `incrementUnmatchedRecipientCounter(): bool` - Increment
+  `er_verification_settings.unmatched_webhook_recipient_count` when an
+  inbound Brevo webhook event's recipient matches no car; never throws
+  (logs and returns `false` on a DB error, or if the `id = 1` settings row
+  itself is missing) since the webhook's own response to Brevo must not
+  hinge on this counter succeeding (#1887)
+
+**Exceptions**:
+
+- `VerificationConfigException` - Thrown by `setEnabled(true)` when `brevoReady()` is false
+
+**Used By**:
+
+- Admin "Verification System" tab (`app/admin/index.php`, `app/admin/includes/tab-verification.php`)
+- Toggle endpoint (`app/api/admin/verification-toggle.php`)
+- Brevo webhook receiver (`app/api/webhooks/brevo.php`) — `isEnabled()`/`brevoReady()` gates, and `incrementUnmatchedRecipientCounter()` (#1887)
+- `AbstractCronJob::run()`/`runNow()` — `isEnabled()` gate, checked before the
+  job-level `enabled` flag; covers both concrete cron jobs
+  (`BrevoEventReconciliationJob`, `BrevoSuppressionSyncJob`) and,
+  transitively, their `runNow()`-invoking admin scripts. Each job's separate
+  `runNowWithSummary()` bypass repeats the same check directly, since it does
+  not go through `run()`/`runNow()`. See
+  `docs/development/DEPLOYMENT.md`'s cron-author contract for the full
+  rationale.
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full feature-switch design, the asymmetric gate, readiness-check semantics
+- [DATABASE.md](DATABASE.md) - `er_verification_settings`, the `er_` table-prefix convention
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`, `LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED`
+
+---
+
+### BrevoWebhookEventProcessor
+
+**Location**: `/usersc/classes/Car/BrevoWebhookEventProcessor.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Parsing and matching logic for inbound Brevo delivery-status
+webhook events (#1887); no HTTP concerns (`http_response_code()`, `exit`) live
+here — that separation is what makes this class unit-testable without the
+subprocess dance the endpoint itself needs.
+
+**Key Features**:
+
+- Rejects malformed payloads (non-object JSON, a top-level list, missing
+  `email`/`event`/`message-id`, or a non-list `tags`) before any DB call
+- Filters to only events tagged `AppConstants::VERIFICATION_EMAIL_TAG`
+- Matches the payload's `email` against every car sharing that address
+  (`CarRepository::findByEmail()`), applying each car's transition
+  independently
+- A malformed/overflowing `ts_event`/`ts` falls back to receipt time
+  (logged) rather than producing a `DATETIME` value MySQL would reject
+- Delegates escalation rules to injected `EmailEventApplier`, shared with the
+  reconciliation job (#1889), so both webhook and nightly backfill escalate
+  identically
+- The whole per-car write loop fails the entire request on the first write
+  failure, even if earlier cars already succeeded — safe because every
+  write is idempotent (`ON DUPLICATE KEY UPDATE` or a plain column update)
+
+**Methods**:
+
+- `process(mixed $decodedPayload): ProcessingResult` - Process one decoded
+  webhook payload; the sole public entry point
+
+**Constructor Dependencies**:
+
+- `CarRepository $repo` - Recipient lookup via `findByEmail()`
+- `EmailEventApplier $applier` - Event escalation logic
+
+**Used By**:
+
+- Brevo webhook receiver (`app/api/webhooks/brevo.php`)
+
+**See Also**:
+
+- `EmailEventApplier` — Escalation rules (extracted for both webhook and reconciliation job)
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full webhook receiver contract, escalation rules, HTTP status table
+- [DATABASE.md](DATABASE.md) - `er_email_events`, `cars.email_bounced_address`, `cars.email_suppressed`
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_EMAIL_WEBHOOK`
+
+---
+
+### EmailEventApplier
+
+**Location**: `/usersc/classes/Car/EmailEventApplier.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Records one Brevo delivery-status event against one car and
+applies whatever verification-flag escalation that event implies. Extracted
+from `BrevoWebhookEventProcessor` (where it was private) because the nightly
+reconciliation job (#1889) replays events the webhook never delivered, and
+both paths must escalate identically.
+
+**Key Features**:
+
+- Payload-agnostic: takes already-parsed, already-validated scalars, so each
+  caller (webhook or reconciliation job) keeps ownership of payload discovery
+- Escalation rules owned here, shared with `BrevoWebhookEventProcessor`:
+  - `hard_bounce` / `blocked` / `invalid` / `invalid_email` immediately flag
+    as bounced (accepts both `invalid` and `invalid_email` to hedge against
+    payload-contract uncertainty; Brevo may send either)
+  - `soft_bounce` does not immediately change anything; after the event row is
+    recorded, {@see CarRepository::countSoftBouncesSinceLastDelivered()} is
+    consulted; at 3+ distinct send cycles (`brevo_message_id` values) since
+    the email's last `delivered` event, escalates to bounced
+  - `delivered` and `unique_opened` only record the event row; `delivered`
+    implicitly resets the soft-bounce escalation window, so no separate
+    "clear escalation" write exists; `unique_opened` never touches flags
+  - `spam` flags as suppressed (distinct signal from a bounce)
+  - Any other event is still recorded (Brevo may add/rename event types) but
+    logged as unrecognized
+- `HARD_BOUNCE_EVENTS` / `SUPPRESSION_EVENTS` are `public const` (widened from
+  `private` in #1924) so read-only consumers — the admin user-view's
+  "Verification & Email" card — can share this class's event-type vocabulary
+  rather than re-declaring it
+
+**Constructor Dependencies**:
+
+- `CarRepository $repo` - Event insertion and soft-bounce cycle counting
+- `CarVerificationManager $verificationManager` - Flag writes (`setBounced()`, `setSuppressed()`)
+
+**Methods**:
+
+- `apply(int $carId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt): void`
+  — Record the event and apply escalation; throws `CarDatabaseException` on write failure
+
+**Used By**:
+
+- `BrevoWebhookEventProcessor::process()` — Per-car write loop
+- `BrevoEventReconciliationJob::applyEvent()` — Backfill of missed events (#1889)
+
+**See Also**:
+
+- `BrevoWebhookEventProcessor` — Webhook parsing/matching (uses this for escalation)
+- `BrevoEventReconciliationJob` — Nightly reconciliation job (uses this for identical escalation)
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full webhook receiver contract, escalation rules
+- [DATABASE.md](DATABASE.md) - `er_email_events`, escalation state columns
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_EMAIL_WEBHOOK`
+
+---
+
+### ProcessingResult (enum)
+
+**Location**: `/usersc/classes/Car/ProcessingResult.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Outcome of `BrevoWebhookEventProcessor::process()`. The webhook
+endpoint maps each case 1:1 to an HTTP status (#1887).
+
+**Cases**: `MATCHED_AND_RECORDED` (2xx), `NO_TAG_MATCH` (2xx, logged),
+`NO_CAR_MATCH` (2xx, logged, unmatched counter incremented), `MALFORMED`
+(4xx, logged), `WRITE_FAILURE` (5xx — the only retryable case)
+
+**Used By**:
+
+- Brevo webhook receiver (`app/api/webhooks/brevo.php`)
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - HTTP status contract table
+
+---
+
+## Cron Jobs
+
+### AbstractCronJob
+
+**Location**: `/usersc/classes/Cron/AbstractCronJob.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Template-method base class for all UserSpice cron jobs. Provides
+three-layer mitigation against the subprocess-less, in-process dispatch model
+of `users/cron/cron.php`: crash isolation, a `set_time_limit()` backstop, and
+a job-owned enabled flag independent of UserSpice's own `crons.active`.
+
+**Key Features**:
+
+- **Crash isolation**: `execute()` runs inside `try/catch(\Throwable)` that
+  logs and never rethrows, so one job's bug cannot cascade to the next job in
+  cron.php's loop
+- **Timeout backstop**: `set_time_limit()` sized from `CRON_TRANSPORT_INTERVAL_MINUTES`,
+  applied only after a run has been claimed, so a hung job does not run
+  indefinitely
+- **Job-owned enabled flag**: `er_cron_job_runs.enabled` checked independently
+  of UserSpice's `crons.active`; deliberate pause logged as skip
+  (`LOG_CATEGORY_CRON_JOB_SKIPPED`), missing/unreadable row logged as failure
+  (`LOG_CATEGORY_CRON_JOB_FAILURE`)
+- **Manual run path**: `runNow()` bypasses enabled check and guard claim for
+  admin-triggered immediate execution, retaining crash isolation only
+
+**Abstract Methods (implemented by subclasses)**:
+
+- `jobName(): string` — The `er_cron_job_runs.job_name` value for this job
+- `guardIntervalHours(): int` — Minimum hours between claimed runs (≥1);
+  passed to `CronJobGuard::claim()`
+- `execute(): void` — The job's actual work; any `\Throwable` is caught and
+  logged by `run()`
+
+**Public Methods**:
+
+- `run(): void` — Check enabled state, claim the guard, set time-limit
+  backstop, execute with crash isolation; never throws
+- `runNow(): void` — Execute immediately, bypassing enabled check and guard;
+  for admin-triggered manual runs only; never throws
+
+**Constructor**:
+
+```php
+public function __construct(protected readonly DatabaseInterface $db)
+```
+
+**Used By**:
+
+- `BrevoEventReconciliationJob` (extends `AbstractCronJob`)
+
+**See Also**:
+
+- `CronJobGuard` — Atomic claim semantics (`last_run_at` guard, `enabled` gate)
+- `CronJobEnabledState` — Three-state resolution of enabled status
+- [DEPLOYMENT.md](DEPLOYMENT.md) — "Timeout & Crash Isolation" section (full contract rationale)
+- [DATABASE.md](DATABASE.md) — `er_cron_job_runs` schema
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_CRON_JOB_SKIPPED`
+
+---
+
+### CronJobEnabledState (enum)
+
+**Location**: `/usersc/classes/Cron/CronJobEnabledState.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Outcome of `AbstractCronJob`'s `er_cron_job_runs` enabled-state
+read. Distinguishes three reasons a job is "not enabled" that call for
+opposite operator responses, rather than collapsing them into a single `false`
+boolean.
+
+**Cases**:
+
+- `ENABLED` — Row exists and `enabled = 1`; the job may claim a run
+- `DISABLED` — Row exists and `enabled = 0`; an operator deliberately paused
+  it; logged as skip (not a failure)
+- `MISSING` — No `er_cron_job_runs` row for this job name; never seeded or
+  deleted; logged as failure (infrastructure issue)
+- `UNREADABLE` — The read itself failed (connectivity, grants, missing table);
+  logged as failure (infrastructure fault)
+
+**Used By**:
+
+- `AbstractCronJob::run()` — Enables distinct logging for pause vs. infrastructure fault
+- `CronJobRunsReader::status()`/`badgeFor()` — Admin UI display (#2054)
+
+**See Also**:
+
+- `AbstractCronJob` — Logs the three non-enabled cases distinctly
+- `CronJobRunsReader` — Display-side counterpart reading the same table for admin UI
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED` (DISABLED), `LOG_CATEGORY_CRON_JOB_FAILURE` (MISSING/UNREADABLE)
+
+---
+
+### CronJobRunsReader
+
+**Location**: `/usersc/classes/Cron/CronJobRunsReader.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Read-only, never-throws access to `er_cron_job_runs` for admin
+UI display. `AbstractCronJob::enabledState()` reads the same table but is
+scoped to the per-job cron *dispatch* context (private, no job-name
+parameter, advances skip-logging bookkeeping). This is the display-side
+counterpart: any job name, no side effects, returns both `enabled` state and
+`last_run_at`. Same shape as `VerificationSettings` — the established
+pattern for read-only, admin-facing status classes.
+
+**Constructor**:
+
+```php
+public function __construct(private DatabaseInterface $db)
+```
+
+**Public Methods**:
+
+- `status(string $jobName): array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable}`
+  — Single-query read of a job's state and last-run timestamp. Prefer this
+  over calling `state()`/`lastRunAt()` separately, which issues two queries
+  and can report the two values as of different moments on an intermittent
+  fault.
+- `state(string $jobName): CronJobEnabledState` — Thin wrapper over `status()`
+- `lastRunAt(string $jobName): ?DateTimeImmutable` — Thin wrapper over `status()`;
+  null for a missing/unreadable row, a job that has never run, or an
+  unparseable stored value (including MySQL zero-dates)
+- `badgeFor(CronJobEnabledState $state, ?DateTimeImmutable $lastRunAt): array{badgeClass: string, icon: string, text: string}`
+  (static) — Maps a state/timestamp pair to display attributes; `MISSING`
+  and `UNREADABLE` render identically ("Status unavailable"), `DISABLED`
+  ("Paused") is visually distinct from both
+
+**Used By**:
+
+- `app/admin/includes/tab-verification.php` — Verification tab's "Last
+  reconciliation run" row (#2054)
+
+**See Also**:
+
+- `AbstractCronJob` — dispatch-context counterpart reading the same table
+- `CronJobEnabledState` — the enum this class's `state()`/`status()` return
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`
+  (MISSING/UNREADABLE and unparseable `last_run_at` values)
+
+---
+
+### BrevoEventReconciliationClient
+
+**Location**: `/usersc/classes/Cron/BrevoEventReconciliationClient.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Thin, read-only wrapper around the vendored Brevo SDK's
+`TransactionalEmailsApi::getEmailEventReport()` endpoint (`GET /smtp/statistics/events`).
+Used by the reconciliation job to poll Brevo for delivery events missed by the
+webhook, with explicit HTTP timeouts preventing stalled connections from
+holding cron runs open indefinitely.
+
+**Key Features**:
+
+- Explicit `timeout` and `connect_timeout` options (30s and 10s respectively)
+  applied to Guzzle client, unlike the plugin's own `sendinblue()` function
+  which leaves both at unlimited
+- All failure modes (Brevo unconfigured, missing SDK, DB error, HTTP error)
+  return `null` rather than throwing, so reconciliation poll failures do not
+  abort the whole cron run; an empty array means the poll succeeded and Brevo
+  genuinely returned zero events for the window — the two are distinguishable
+  (#2061), unlike this method's original `array`-only return type (#1889)
+- Defensive reads for Brevo configuration (API key, plugin status), with
+  distinct logging: `SKIPPED` for "not configured" (expected), `FAILURE` for
+  "configured but unreachable" (infrastructure fault)
+- Idempotent SDK autoloader with `require_once` and `class_exists()` short-circuit
+
+**Constructor**:
+
+```php
+public function __construct(private readonly DatabaseInterface $db)
+```
+
+**Public Methods**:
+
+- `fetchEvents(\DateTimeImmutable $startDate, \DateTimeImmutable $endDate, int $limit, int $offset): ?array`
+  — Fetch one page of delivery events for the date window; returns
+  `\Brevo\Client\Model\GetEmailEventReportEvents[]` on success (empty array if
+  Brevo returned no events), or `null` if the poll itself failed (never
+  throws)
+
+**Private Methods**:
+
+- `apiKey(): ?string` — Read Brevo API key from plugin settings; null if
+  unconfigured or unreadable
+- `loadSdk(): bool` — Load vendored SDK autoloader; idempotent, safe to call
+  when already loaded
+
+**Used By**:
+
+- `BrevoEventReconciliationJob::backfillEvents()` — Polls Brevo for events to
+  backfill
+
+**See Also**:
+
+- `BrevoEventReconciliationJob` — Nightly reconciliation job (#1889)
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED` (not configured), `LOG_CATEGORY_CRON_JOB_FAILURE` (connectivity/SDK issues)
+
+---
+
+### BrevoEventReconciliationJob
+
+**Location**: `/usersc/classes/Cron/BrevoEventReconciliationJob.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Nightly backfill of Brevo delivery events the webhook (#1887)
+never delivered, plus retention pruning of `er_email_events` (#1889). Closes
+the lossy gap of the webhook by re-reading events from Brevo's statistics API
+and applying them through the same `EmailEventApplier` the webhook uses, so
+backfilled events escalate identically to live ones.
+
+**Key Features**:
+
+- **Bounded work per invocation**: Fetches exactly one page of events per run
+  (never pagination loop), safe for in-process dispatch model
+- **Self-healing backlog**: 48-hour fetch window (twice the ~24-hour claim
+  interval) ensures every event is offered to at least two runs before aging
+  out; idempotent writes on duplicate make re-applying safe
+- **Newest-first ordering**: Events fetched newest-first, so freshest signal
+  is never the part dropped if a page walks incomplete
+- **Per-event skip on write failure**: Individual event write failures are
+  logged and skipped (not aborting the page) because retry model already
+  covers them and aborting would starve every event behind it
+- **Separate retention prune**: 24-month retention cleanup wrapped in its own
+  try/catch, so prune failures do not report as backfill failures
+
+**Constructor**:
+
+```php
+public function __construct(
+    DatabaseInterface $db,
+    private readonly CarRepository $repo,
+    private readonly EmailEventApplier $applier,
+    private readonly BrevoEventReconciliationClient $client,
+    ?\DateTimeImmutable $now = null,
+)
+```
+
+The `$now` parameter is injectable for testing; defaults to wall-clock time.
+
+**Configuration Constants**:
+
+- `JOB_NAME = 'reconciliation'` — `er_cron_job_runs.job_name` value
+- `GUARD_INTERVAL_HOURS = 20` — Claim interval (20h leaves slack to re-anchor within 48h window)
+- `LOOKBACK_HOURS = 48` — Fetch window (doubled guard interval for overlap)
+- `PAGE_SIZE = 1000` — Events per run (Brevo caps at 2500; 1000 is deliberate step below)
+- `PAGE_OFFSET = 0` — Always zero (fetch newest first; nonzero would skip them)
+- `RETENTION_MONTHS = 24` — Delete events older than this
+
+**Methods**:
+
+- `jobName(): string` — Returns `'reconciliation'`
+- `guardIntervalHours(): int` — Returns `20`
+- `execute(): void` — Backfill one page, log a one-line summary (with a
+  distinct suffix if the poll failed), then prune expired rows
+- `runNowWithSummary(): ReconciliationSummary` — Sibling to the inherited
+  `final runNow()` for the manual "run now" admin path (#2061). Not an
+  override — `runNow()` stays `final`/void. Wraps the backfill and prune in
+  try/catch, logs and **rethrows** on a genuinely unexpected failure (so a
+  crash cannot render as a plausible all-zero summary), and returns a real
+  `ReconciliationSummary` — with `pollFailed` set, not thrown — when only the
+  Brevo poll itself failed
+
+**Private Methods**:
+
+- `backfillEvents(): ReconciliationSummary` — Fetch one page and apply each
+  tag-matching event, returning the run's counts
+- `applyEvent(object $event, array &$counts, array &$eventTypeCounts): void`
+  — Apply one Brevo statistics-API event to its cars (tag/email/event/
+  message-id validation, `EmailEventApplier::apply()`), incrementing the
+  passed-by-reference counters. Counts at *car-write* granularity, not event
+  granularity — see `ReconciliationSummary`
+- `pruneExpiredEvents(): void` — Delete `er_email_events` rows older than
+  retention cutoff
+- `resolveOccurredAt(mixed $rawDate, string $email, string $event): string` —
+  Parse Brevo's UTC date string into a PHP-default-timezone DATETIME string,
+  with logged fallback to "now" on parse failure or out-of-range value
+
+**Used By**:
+
+- Cron dispatch (`users/cron/cron.php`) via `AbstractCronJob::run()`
+- `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` — Manual "run
+  now" admin script, via `runNowWithSummary()` (#2061)
+
+**See Also**:
+
+- `AbstractCronJob` — Template-method base (crash isolation, enabled check, guard claim)
+- `BrevoEventReconciliationClient` — Brevo statistics API polling
+- `ReconciliationSummary` — Return type of `runNowWithSummary()`
+- `EmailEventApplier` — Escalation logic (shared with webhook)
+- `CronJobGuard` — Atomic claim semantics
+- [DATABASE.md](DATABASE.md) — `er_email_events`, `er_cron_job_runs` schema
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_EMAIL_WEBHOOK`
+- [DEPLOYMENT.md](DEPLOYMENT.md) — Cron job contract and timeout rationale
+
+---
+
+### ReconciliationSummary
+
+**Location**: `/usersc/classes/Cron/ReconciliationSummary.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: `final readonly class` — outcome of one `BrevoEventReconciliationJob::runNowWithSummary()`
+run (#2061). Lets the manual "run now" admin script render what a run did
+inline, instead of requiring a trip to Admin → Logs. Mirrors
+`SuppressionSyncSummary`'s role for the sibling suppression-sync job (#1923).
+
+**Key Features**:
+
+- Pure value object — no behavior, just readonly properties
+- **Car-write granularity, not event granularity**: `matchedCount` and
+  `skippedCount` are incremented per car-write, not per event, because one
+  Brevo event can match several cars (a shared verified email) and each
+  car's write succeeds or fails independently. A single event matching 3
+  cars where 2 writes succeed and 1 fails contributes +2 to `matchedCount`
+  AND +1 to `skippedCount` simultaneously. As a direct consequence,
+  `eventsExamined` is **not** the sum of the other counts — it is the only
+  field answering "how many events did Brevo return," in a different unit
+  than the car-write counts
+
+**Constructor** (all params required except `pollFailed`):
+
+```php
+public function __construct(
+    public int $matchedCount,
+    public int $unmatchedCount,
+    public int $skippedCount,
+    public array $eventTypeCounts,   // array<string, int>, keyed on Brevo's raw event name
+    public int $eventsExamined,
+    public int $ignoredByTagCount,
+    public int $pagesFetched,
+    public bool $pollFailed = false,
+)
+```
+
+**Used By**:
+
+- `BrevoEventReconciliationJob::runNowWithSummary()` — Constructs and returns it
+- `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` — Renders it inline
+
+**See Also**:
+
+- `BrevoEventReconciliationJob` — Producer
+- `SuppressionSyncSummary` — Sibling DTO for the suppression-sync job, contrasting per-contact vs. this class's per-car-write counting
 
 ---
 

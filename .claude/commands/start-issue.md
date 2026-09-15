@@ -132,9 +132,10 @@ This command requires a milestone workflow. The user must already be on a
      ```
 
    - **If zero exist locally**, this clone may not be the one where
-     `/start-milestone` was run (this repo is sometimes checked out in more
-     than one local clone sharing the same `origin`, e.g. `Registry/` and
-     `Registry2/`). Check the shared remote before giving up:
+     `/start-milestone` was run — see `/start-milestone` Step 3 for why a
+     local-only check can miss a branch that exists on `origin` (multi-clone
+     setups sharing one `origin`, e.g. `Registry/` and `Registry2/`). Check
+     the shared remote before giving up:
 
      ```bash
      git ls-remote --heads origin 'milestone/*'
@@ -161,11 +162,10 @@ This command requires a milestone workflow. The user must already be on a
    - `enhancement` or `feature` label -> `feature/ISSUE_NUMBER-short-description`
    - All other labels (including `tech-debt`) -> `issue/ISSUE_NUMBER-short-description`
 
-   Present the proposed branch name and ask: "I'll create a branch named
-   `PREFIX/ISSUE_NUMBER-short-description` from `milestone/vX.Y.Z`. Does this
-   work, or would you prefer a different name?"
-
-Wait for the answer before proceeding.
+   Use the derived name without asking for confirmation — state it, don't
+   propose it: "Creating branch `PREFIX/ISSUE_NUMBER-short-description` from
+   `milestone/vX.Y.Z`." The user always takes the default; only stop and ask
+   if the derived name collides with an existing local or remote branch.
 
 ### Step 4: Create Issue Branch
 
@@ -223,22 +223,17 @@ Explore agents regularly surface pre-existing issues — missing validation,
 security gaps, dead code, inconsistencies — that are unrelated to the current
 issue. **Do not silently note them as "pre-existing" and move on.**
 
-For each one found, apply the containment + severity matrix immediately:
+Apply `/found`'s containment + classification matrix (Step 4 there) to each
+one immediately, in this session rather than deferring to a separate `/found`
+invocation — the containment call (in scope / out of scope) and the
+fix-in-PR-vs-defer decision are the same ones `/found` makes, so use its
+current matrix, not a copy: fold in only when the fix is needed for this
+issue's acceptance criteria, defer otherwise regardless of how small it
+looks, and route a genuine out-of-scope emergency to the hotfix track rather
+than into this milestone.
 
-| Containment | Severity | Action |
-| --- | --- | --- |
-| In files already in scope for this PR | High | Fold into current PR — note in plan and PR description |
-| In files already in scope for this PR | Low | Fix in current PR if < ~30 min; otherwise defer |
-| Outside current PR scope | High | New issue in current milestone (`bug` + `triage` labels) |
-| Outside current PR scope | Low | New issue with `triage` label only; no milestone |
-
-For each found issue, state it explicitly to the user:
-
-> "While exploring, I found [description]. This is [in scope / out of scope]
-> and [high / low] severity, so I recommend [action]. Does that seem right?"
-
-Wait for confirmation, then act — create the issue or note it in the plan —
-before continuing. Use `/found` for the same classification outside this workflow.
+Wait for the user's confirmation on the classification, then act — create the
+issue or note it in the plan — before continuing.
 
 ### Step 6: Interview Mode - Issue Refinement and Questions
 
@@ -540,9 +535,3 @@ describe.
   per action a repo-state check could confirm, not one item per broad phase
 - **Mark parallel-safety conservatively** — only mark `(parallel-safe)` when
   file sets truly don't overlap and there's no ordering dependency
-
-## Examples
-
-See `.claude/commands/start-issue-examples.md` for worked example flows
-(reference only — not loaded at runtime; some describe the pre-plan-file
-flow and may not reflect the current Step 9/10 split).

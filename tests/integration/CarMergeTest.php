@@ -203,6 +203,41 @@ final class CarMergeTest extends IntegrationTestCase
     }
 
     /**
+     * er_email_events (#1887) has no FK/cascade on car_id, so a merge must
+     * reassign the source car's Brevo event history onto the surviving car
+     * rather than deleting it (unlike a plain car delete) — the target
+     * owner should keep the merged bounce/suppression signal, not lose it.
+     */
+    #[Group('fast')]
+    public function testMergeTransfersEmailEventHistoryToSurvivingCar(): void
+    {
+        $oldCarId = $this->testMergeCarId;
+        $survivingCarId = $this->testCarId;
+
+        $this->db->query(
+            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, ?, ?, NULL, ?, NOW())',
+            [$oldCarId, 'merge-test@example.com', 'hard_bounce', 'merge-test-msg-1']
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed er_email_events row on source car');
+
+        $car = new Car($survivingCarId);
+        $result = $car->merge($oldCarId, 'Test merge email event transfer', $this->testUserId);
+        $this->assertTrue($result);
+
+        $onOldCar = $this->db->query('SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ?', [$oldCarId])->first();
+        $this->assertSame(0, (int) $onOldCar->cnt, 'No er_email_events rows must remain on the merged-away source car id');
+
+        $onSurvivingCar = $this->db->query(
+            'SELECT * FROM er_email_events WHERE car_id = ? AND brevo_message_id = ?',
+            [$survivingCarId, 'merge-test-msg-1']
+        )->first();
+        $this->assertIsObject($onSurvivingCar, 'The source car\'s event row must be reassigned to the surviving car, not lost');
+        $this->assertSame('hard_bounce', $onSurvivingCar->event);
+        $this->assertSame('merge-test@example.com', $onSurvivingCar->email);
+    }
+
+    /**
      * Test car merge deletes old car
      */
     #[Group('fast')]

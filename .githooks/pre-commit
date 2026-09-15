@@ -28,6 +28,18 @@ set -e
 echo "🔍 Running pre-commit quality checks..."
 
 # Get list of staged files by type
+#
+# Markdown-lint exclusions:
+#   .claude/agents/ — these are YAML-frontmatter + LLM-instruction prose
+#     files, not documentation. They fail standard rules for structural
+#     reasons that have nothing to do with quality — e.g. MD041 (first line
+#     must be an H1: these start with frontmatter), MD036 (emphasis used as
+#     a heading: agent prose uses **Bold Label** sections instead of proper
+#     headings), MD032 (blank lines around lists). Verified directly against
+#     .claude/agents/code-reviewer.md.
+#   docs/releases/ — release notes' issue-link markdown structurally exceed
+#     the 160-char line-length rule (long GitHub issue URLs in links); see
+#     58b244c7, which added the matching entry in .markdownlintignore.
 STAGED_PHP_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.php$' || true)
 STAGED_MD_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.md$' | grep -v '^\.claude/agents/' | grep -v '^docs/releases/' || true)
 STAGED_JS_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.js$' | grep -v '\.min\.js$' || true)
@@ -118,7 +130,16 @@ if [ -n "$CRITICAL_FILES" ]; then
         echo "⚠️  Step 3: Skipping — composer dependencies not installed"
     else
         RUN_TESTS=true
-        vendor/bin/phpunit --testsuite=Unit --exclude-group known-broken > "$TEST_OUT" 2>&1 &
+        # -d memory_limit=512M: PHP's global memory_limit (128M) is shared by
+        # whatever runs under it, and PHPStan's own 512M --memory-limit flag
+        # a few lines below does not reserve anything from it — the two
+        # processes are launched concurrently (both backgrounded with &) and
+        # each independently starts from the same 128M ceiling. As the unit
+        # suite has grown, PHPUnit has started hitting that ceiling under
+        # concurrent load even though it passes standalone at ~124M peak —
+        # deterministically reproduced 3/3 times. Matching PHPStan's own
+        # explicit override removes the two-process interaction entirely.
+        vendor/bin/phpunit -d memory_limit=512M --testsuite=Unit --exclude-group known-broken > "$TEST_OUT" 2>&1 &
         TEST_PID=$!
     fi
 else
@@ -234,7 +255,7 @@ STAGED_FIRST_PARTY=$(git diff --cached --name-only --diff-filter=ACMR | \
 
 if [ -n "$STAGED_FIRST_PARTY" ]; then
     echo ""
-    echo "📦 Step 6: Minify first-party JS/CSS"
+    echo "📦 Step 7: Minify first-party JS/CSS"
     if ! command -v node >/dev/null 2>&1; then
         echo "⚠️  WARNING: Node not found — skipping minification. Commit may include stale .min.* files."
         echo "   Install Node and run 'npm run build' before pushing."

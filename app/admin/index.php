@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
@@ -33,6 +34,7 @@ $validTabs = [
     'manage-cars' => 'Manage Cars',
     'owner-mgmt' => 'Manage Owners',
     'account-cleanup' => 'Account Cleanup',
+    'verification' => 'Verification System',
 ];
 
 $activeTab = isset($_GET['tab']) && is_string($_GET['tab']) && array_key_exists($_GET['tab'], $validTabs)
@@ -69,6 +71,25 @@ try {
 } catch (\Throwable $e) {
     // Non-critical banner — degrade silently but log so infrastructure problems are discoverable.
     logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Migration banner check failed: ' . $e->getMessage());
+}
+
+// Verification readiness banner. Only surfaces when the feature switch is ON:
+// an unconfigured Brevo means verification email has nowhere to go (danger),
+// a stalled cron only delays reminders (warning).
+$verificationBannerSeverity = null; // null | 'warning' | 'danger'
+try {
+    $verificationSettings = new VerificationSettings(dbi());
+    if ($verificationSettings->isEnabled()) {
+        if (!$verificationSettings->brevoReady()) {
+            $verificationBannerSeverity = 'danger';
+        } elseif (!$verificationSettings->cronReady()) {
+            $verificationBannerSeverity = 'warning';
+        }
+    }
+} catch (\Throwable $e) {
+    // Non-critical banner — degrade silently but log so infrastructure problems are discoverable.
+    logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+        'Verification banner check failed: ' . $e->getMessage());
 }
 
 // Abort immediately if no authenticated session exists.
@@ -417,9 +438,11 @@ if (ElanInput::existsPost()) {
                                 <?php } ?>
                             </div>
                             <div class="text-end">
-                                <span class="badge text-bg-primary badge-lg me-2">
-                                    <i class="fas fa-check-circle"></i> System Operational
-                                </span>
+                                <?php if ($verificationBannerSeverity === null): ?>
+                                    <span class="badge text-bg-primary badge-lg me-2">
+                                        <i class="fas fa-check-circle"></i> System Operational
+                                    </span>
+                                <?php endif; ?>
                                 <small class="text-muted">
                                     <i class="fas fa-clock"></i> <?= date('M j, Y g:i A', strtotime($systemStatus['last_updated'])) ?>
                                     &nbsp;<i class="fas fa-code-branch"></i> <?= htmlspecialchars(ApplicationVersion::get()) ?>
@@ -436,6 +459,22 @@ if (ElanInput::existsPost()) {
                 <span>
                     <strong><?= $pendingMigrationCount ?> pending migration<?= $pendingMigrationCount !== 1 ? 's' : '' ?>.</strong>
                     Run <code>composer migrate</code> to apply.
+                </span>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($verificationBannerSeverity !== null): ?>
+            <div class="alert alert-<?= $verificationBannerSeverity ?> d-flex align-items-center mb-3" role="alert">
+                <i class="fas fa-<?= $verificationBannerSeverity === 'danger' ? 'exclamation-circle' : 'exclamation-triangle' ?> me-2"></i>
+                <span>
+                    <?php if ($verificationBannerSeverity === 'danger'): ?>
+                        <strong>Verification is enabled but Brevo is not configured.</strong>
+                        Verification emails cannot be sent.
+                    <?php else: ?>
+                        <strong>Verification is enabled but the cron transport hasn't run recently.</strong>
+                        Reminders may be delayed.
+                    <?php endif; ?>
+                    <a href="?tab=verification">View details</a>
                 </span>
             </div>
             <?php endif; ?>
@@ -487,6 +526,20 @@ if (ElanInput::existsPost()) {
                                     <a class="nav-link <?= $activeTab === 'account-cleanup' ? 'active' : '' ?>"
                                        href="?tab=account-cleanup" role="tab">
                                         <i class="fas fa-user-slash"></i> Account Cleanup
+                                    </a>
+                                </li>
+
+                                <!-- Verification System Tab -->
+                                <li class="nav-item">
+                                    <a class="nav-link <?= $activeTab === 'verification' ? 'active' : '' ?>"
+                                       href="?tab=verification" role="tab">
+                                        <i class="fas fa-clipboard-check"></i> Verification System
+                                        <?php if ($verificationBannerSeverity !== null) { ?>
+                                            <span class="badge text-bg-<?= $verificationBannerSeverity ?> badge-sm ms-1">
+                                                <i class="fas fa-<?= $verificationBannerSeverity === 'danger' ? 'exclamation-circle' : 'exclamation-triangle' ?>"></i>
+                                                <span class="visually-hidden">Verification needs attention</span>
+                                            </span>
+                                        <?php } ?>
                                     </a>
                                 </li>
 

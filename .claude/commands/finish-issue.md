@@ -91,12 +91,12 @@ gh pr view <pr-number> --json isDraft --repo elan-registry/registry -q .isDraft
    the actual comment exists before trusting the result:
 
    ```bash
-   gh api "repos/elan-registry/registry/issues/<pr-number>/comments" \
-     --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length'
+   scripts/check-review-posted.sh <pr-number>
    ```
 
-   (Same "Strengths"-heading pattern the workflow's own gate step uses to
-   confirm a real review landed — see #1724.) If the run completed but no
+   (Same check `/address-pr-comments` and `/review-milestone` use — see the
+   script's header for why the job's own success status isn't proof enough,
+   and #1724 for the original incident.) If the run completed but no
    matching comment exists, treat this the same as a failed trigger: report
    it to the user and do not proceed to marking the PR ready.
 
@@ -174,22 +174,18 @@ Per CLAUDE.md's fix-when-you-touch-it policy (see CODING_STANDARDS.md —
 PHPStan Baseline Hygiene), any project-owned PHP file this PR modified must
 not carry `phpstan-baseline.neon` entries — reported errors on touched files
 must be fixed, not grandfathered into the baseline. Check the PR's changed
-files against the baseline:
+files against the baseline using the shared script (also called by
+`/execute-plan` Step 6.5 and `/review-pr` Step 1 — fix the lookup logic there,
+not here, if it ever needs to change):
 
 ```bash
-CHANGED_FILES=$(gh pr view <pr-number> --repo elan-registry/registry \
-  --json files --jq '.files[].path')
-
-for f in $CHANGED_FILES; do
-  case "$f" in
-    *.php)
-      if grep -qF "path: $f" phpstan-baseline.neon 2>/dev/null; then
-        echo "BASELINE OVERRIDE: $f"
-      fi
-      ;;
-  esac
-done
+gh pr view <pr-number> --repo elan-registry/registry --json files --jq '.files[].path' \
+  | scripts/check-baseline-hygiene.sh
 ```
+
+**Exit 2 means the check couldn't run at all** (baseline file not found) —
+treat as "can't verify," not "clean." Fix the working directory and re-run
+rather than proceeding as if this step passed.
 
 **If any modified PHP file appears in `phpstan-baseline.neon`:** stop before
 merging. Report the affected file(s) to the user and explain that either:
@@ -435,7 +431,7 @@ Use AskUserQuestion rather than a plain-text menu:
 - If the local branch can't be deleted (e.g., you're still on it), switch to
   the milestone branch first.
 - This command closes the issue directly. The `Closes #NNN` keyword in the
-  milestone PR body (created by `/finish-milestone`) serves as a backup for
+  milestone PR body (created by `/review-milestone`) serves as a backup for
   any issues that weren't closed here.
 - `docs/plans/` is gitignored local scratch space, never committed (see
   `CLAUDE.md`, Planning Work). Sprint plan files are deleted once a

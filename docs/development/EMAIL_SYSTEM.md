@@ -94,6 +94,311 @@ Use Mailtrap to capture all email for debugging and development:
 
 To switch back to Brevo for production testing: re-enter the Brevo API key in the plugin configuration and reactivate the override.
 
+## Verification System Feature Switch
+
+The Lotus Elan Registry uses a feature switch to gate all verification-related
+email sends (webhooks, reconciliation, suppression import, and future
+verification sends), enabled only once Brevo is confirmed operational. Cron
+readiness is not a gate — it is surfaced as an advisory indicator, since a
+stalled cron transport delays reminders rather than losing the ability to
+send them at all.
+
+### VerificationSettings Class
+
+**Location:** `usersc/classes/Car/VerificationSettings.php`  
+**Namespace:** `ElanRegistry\Car`
+
+The `VerificationSettings` class gates the entire verification system via a single-row `er_verification_settings` table (`enabled` column, default off).
+
+**Key Methods:**
+
+- `isEnabled(): bool` — reads the current switch state
+- `setEnabled(bool $enabled, int $actingUserId = 0): bool` — writes the
+  switch; throws `VerificationConfigException` if attempting to enable while
+  `brevoReady()` is false. `$actingUserId` attributes the change in the audit
+  log — the class performs no session lookups itself
+- `brevoReady(): bool` — computed live; true only if **both** conditions hold:
+  1. `plg_sendinblue.key` is non-empty (API key configured)
+  2. `usersc/plugins/sendinblue/override.php` exists (plugin override active)
+- `cronReady(): bool` — computed live; true if `lastCronRequestAt()` reports a
+  timestamp within the last 20 minutes (2× the documented 10-minute cron
+  transport interval — see
+  [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager)).
+- `lastCronRequestAt(): ?DateTimeImmutable` — returns the timestamp of the
+  most recent cron transport hit, read from
+  `er_verification_settings.last_cron_request_at`, or null if cron has never
+  hit this environment. `users/cron/cron.php` writes that column via
+  `recordCronRequest()` only on its non-denied path — a hit its own
+  `cron_ip` allowlist denies never reaches this column at all, so there is
+  no "exclude denied rows" filtering to do (unlike the `logs`-table scan
+  this replaced — see #1974).
+- `recordCronRequest(): bool` — writes `er_verification_settings.last_cron_request_at = NOW()`;
+  called by `users/cron/cron.php` on every non-denied hit. Replaces the
+  unconditional `CronRequest` log line removed by #1974 (144 rows/day/environment
+  with no diagnostic value); never throws.
+
+### Readiness Checks
+
+Both `brevoReady()` and `cronReady()` are **computed live on every call, never
+cached**. No "last checked" timestamp is stored; no periodic background
+health check runs. This is an explicit design decision: status displays
+always reflect current state.
+
+**Brevo Readiness:**
+
+- `brevoReady()` checks only that the plugin's configuration exists and the override file is active
+- It does **not** validate the API key by calling Brevo, since that would add latency to every status check and introduce a hard dependency on external availability
+- The first actual API call (a verification send) will fail and log if the key is stale or invalid; those failures are the true signal
+
+**Cron Readiness:**
+
+- The 20-minute window is 2× the standard documented cron transport interval (10 minutes)
+- If cron has never hit this environment (`last_cron_request_at` is `NULL`), `cronReady()` returns false
+- If the most recent hit is older than 20 minutes, `cronReady()` returns false
+- A hit denied by the `cron_ip` allowlist never writes `last_cron_request_at`
+  at all — it proves only that the transport reached the server, not that it
+  was recognized and ran jobs
+
+### Asymmetric Enable/Disable Gate
+
+**Critical invariant:** `setEnabled(true)` throws
+`VerificationConfigException` (HTTP 422) when `brevoReady()` is false.
+**`setEnabled(false)` never throws, for any reason.**
+
+An administrator must always be able to turn verification off, even mid-incident. Disabling the switch when Brevo is broken is the recovery path.
+
+```php
+try {
+    $settings = new VerificationSettings($db);
+    $settings->setEnabled(true, $userId);  // throws if brevoReady() is false
+} catch (VerificationConfigException $e) {
+    // The exception already logged the refusal internally; surface its
+    // user-facing message (e.g. "Brevo is not configured") in the response.
+    return ApiResponse::validationError(['enabled' => $e->getUserMessage()], $e->getUserMessage());
+}
+
+// Disabling always succeeds, regardless of readiness
+$settings->setEnabled(false, $userId);  // never throws
+```
+
+### Admin UI
+
+The verification system status appears on the Admin dashboard
+(`app/admin/index.php?tab=verification`), visible to both admin and editor
+roles (read-only for editor, toggle control for admin only).
+
+**Status Indicators:**
+
+- `brevoReady()` — badge `text-bg-danger` if false while the switch is on; muted text if switch is off
+- `cronReady()` — badge `text-bg-warning` if false; muted if true
+- Last webhook received — muted "Not yet implemented (#1887)" (placeholder for the real webhook implementation)
+- Last reconciliation run — muted "Not yet implemented (#1889)"
+
+**Toggle Control:**
+
+- Located on the Verification System tab
+- Disabled (with explanatory text) when current user is not admin, or when admin but attempting to enable while `brevoReady()` is false
+- Label always explains which prerequisite failed if the enable direction is blocked
+- Disabling is never blocked — the switch can always be turned off
+
+**Dashboard Banner:**
+
+A conditional banner appears below pending-migrations alerts when `isEnabled() && (!brevoReady() || !cronReady())`. Severity:
+
+- `alert-danger` if `!brevoReady()`
+- `alert-warning` if `brevoReady()` is true but `!cronReady()`
+
+The banner states which prerequisite failed and links to the Verification System tab for details.
+
+### Brevo Webhook Receiver (#1887)
+
+**Location:** `app/api/webhooks/brevo.php`
+**Not in `$path`, no `securePage()`:** Brevo is an external caller with no
+UserSpice session. Authentication is a static bearer token instead (below).
+**Method:** POST only; anything else gets a 405, matching every other
+`app/api/` endpoint's convention.
+
+**Auth:** `Authorization: Bearer <token>`, compared with `hash_equals()`
+against `$_ENV['BREVO_WEBHOOK_TOKEN']` — reads `$_ENV`, not `getenv()`, since
+`Dotenv::createImmutable()` (`users/init.php`) never calls `putenv()`, so
+`getenv()` would always return `false` here even with a correctly configured
+`.env`. Fails **closed**: an empty/missing configured token rejects every
+request rather than accepting everything.
+Rejections are logged under `LOG_CATEGORY_SECURITY` with only a short hashed
+prefix of the provided token, never the raw value. See
+[ENVIRONMENT.md](ENVIRONMENT.md) for how to generate and set this token, and
+[RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md)-driven release notes
+for the per-environment setup step.
+
+**Rate limiting:** `checkRateLimit('brevo_webhook')` (IP-scoped; see
+`usersc/includes/rate_limits.php`), checked only **after** auth passes, so a
+rate-limiter failure (which fails open, matching
+`app/api/shared/join-failure-report.php`'s pattern) can only ever become a
+throughput bypass, never an auth bypass.
+
+**Verification-system gates** (unchanged from the pre-#1887 stub):
+`!isEnabled()` → 2xx, silent. `isEnabled() && !brevoReady()` → 2xx, logged
+once under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`.
+
+The same `isEnabled()` switch also gates the nightly reconciliation and
+suppression-sync cron jobs (and their manual "run now" admin-script paths)
+— not just this webhook. See `docs/development/DEPLOYMENT.md`'s cron-author
+contract for how `AbstractCronJob` enforces this uniformly across both jobs.
+
+**Tag filter:** the payload's `tags` array must contain
+`AppConstants::VERIFICATION_EMAIL_TAG` (`'car_verification'`) — Brevo also
+delivers webhook events for other kinds of mail this app may someday send,
+and this receiver only ever acts on verification-email events.
+
+**Matching:** the payload's `email` is looked up against `cars.email`
+(`CarRepository::findByEmail()`) — every matching car (an email can be shared
+by more than one car) gets its own `er_email_events` row and its own
+independent escalation.
+
+**Escalation rules** (`BrevoWebhookEventProcessor`):
+
+| Brevo event | Effect |
+| --- | --- |
+| `hard_bounce`, `blocked`, `invalid` | Immediately flags the car bounced (`cars.email_bounced = 1`, `email_bounced_address` set to the reported address) |
+| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event — then escalates via the same bounced flag |
+| `delivered` | Event row only. Implicitly resets the soft-bounce escalation window (the count query only looks at soft bounces after the most recent `delivered` row) |
+| `unique_opened` | Event row only, never touches flags or the escalation count |
+| `spam` | Flags the car suppressed (`cars.email_suppressed = 1`) — a distinct signal from a bounce |
+
+**HTTP status contract:**
+
+| Situation | Response |
+| --- | --- |
+| Parsed and durably written | 2xx |
+| No recognized tag | 2xx, logged |
+| Recipient matches no car | 2xx, logged, `er_verification_settings.unmatched_webhook_recipient_count` incremented |
+| Malformed/unparseable payload (incl. a top-level JSON list — Brevo's `batched: false` guarantee means a list body is never legitimate) | 4xx, logged |
+| Auth token missing/empty/wrong | 4xx, logged (hashed prefix only) |
+| Database write failure | 5xx — the only retryable case |
+
+No response body on any status — Brevo parses no body, only the HTTP status.
+Never acknowledges (2xx) before the `er_email_events` write commits: Brevo
+does not retry a 2xx, so acking early on a write that then fails would
+silently lose the event forever.
+
+**Storage:** `er_email_events` (see [DATABASE.md](DATABASE.md)) is the
+durable per-car event log; `cars.email_bounced`/`email_bounced_address`/
+`email_suppressed` (mirrored on `cars_hist`) are the current-state flags it
+drives.
+
+**Out of scope for #1887** (see that issue's non-goals): no outbound Brevo
+API calls of any kind (webhook *registration* is #1888, blocked-contacts
+*import* is #1923, nightly *reconciliation* is #1889), and no admin UI
+rendering of the per-car event history or the unmatched-recipient counter —
+that is a follow-up issue.
+
+### Auto-Clear Bounce Flag on Confirmed Email Change (#1890)
+
+When an owner completes a UserSpice email-verification flow (confirming they
+own a new email address by clicking a vericode link), the registry automatically
+clears the `cars.email_bounced` flag on any of their cars whose recorded bounced
+address is no longer current. This closes the loop: a bounce recorded against
+an old address should not permanently suppress verification emails once the
+owner has proven a new address is reachable.
+
+**Timing:** Runs on the `verifySuccess` hook, after a successful vericode
+confirmation but before the owner-field sync that propagates the new email
+address to the cars (see `usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php`).
+
+**Method:** `CarRepository::clearBouncedForUser(int $userId, string $currentEmail): int`
+— a single parameterized `UPDATE` scoped by user_id, not a per-car loop.
+Clears both `email_bounced` and `email_bounced_address` on every car owned by
+the user whose `email_bounced_address` is NULL, empty, or differs from the
+just-confirmed email (case-insensitive comparison). Returns the count of rows
+affected.
+
+**Data-integrity handling:** Rows with `email_bounced=1` and a NULL/empty
+`email_bounced_address` represent a pre-existing data anomaly (the
+`updateEmailBounced()` method forbids writing that combination, but legacy
+data can still exist). The hook detects this anomaly via
+`CarRepository::carIdsWithBouncedFlagButNoAddress(int $userId): array` before
+calling `clearBouncedForUser()`, logs it under `LOG_CATEGORY_EMAIL_BOUNCED`,
+and clears it anyway — refusing would permanently exclude an owner who just
+proved their address is reachable; clearing wrongly self-corrects on the next
+real bounce.
+
+**Logging:** The hook logs only when something actually changed:
+
+- If the integrity-check query finds anomalous cars, logs the car IDs and explains the condition
+- If `clearBouncedForUser()` clears at least one row, logs the count of cars affected
+
+A no-op confirmation (address never bounced, or a stale re-click) writes no log line.
+
+**Exception safety:** `clearBouncedForUser()` runs in its own `try`/`catch` block,
+separate from the owner-field sync. A database failure in the bounce-clear does not
+prevent the sync from running, and vice versa; all failures are logged and the
+hook continues silently (this is a background repair, not a user-facing operation).
+
+**Related**:
+
+- `UserSpice user email-verification flow` — `users/verify.php`, triggered via
+  a clickable vericode link the owner receives via email
+- `sync_owner_email_on_verify` hook — runs the bounce-clear operation plus the
+  owner-field sync to `cars.email` on every confirmed email change
+- `CarRepository::updateEmailBounced()` — the write method that sets the bounce
+  flag (forbids writing a null/empty address at the same time)
+
+### Brevo Suppression List Import (#1923)
+
+Brevo maintains an account-level suppression list (`GET /v3/smtp/blockedContacts`)
+of addresses it will no longer deliver to — hard bounces, spam complaints, and
+unsubscribes — separate from and predating any per-event webhook coverage. A
+suppressed address produces no bounce and no delivery event, just silence, so
+without importing this list the registry keeps re-sending verification mail to
+addresses that can never receive it.
+
+**Job:** `BrevoSuppressionSyncJob` (`usersc/classes/Cron/`), the second job
+registered under `users/cron/`, alongside #1889's reconciliation job. Applies
+every suppression through the same `EmailEventApplier` the webhook and
+reconciliation job use, so an imported suppression flags a car identically to a
+live event.
+
+**Two fetch modes:**
+
+- **Nightly incremental** (`execute()`, via the guarded `run()`) — one bounded
+  page over a 48-hour lookback window, matching #1889's shape.
+- **Manual full backfill** (`runFullBackfill()`, reachable only from the admin
+  script's `runNowWithSummary()`, never from the scheduled path) — walks the
+  entire suppression list with no date window, bounded by a page-count safety
+  cap.
+
+**Reason-code mapping** (Brevo's raw `reason.code` → the event name applied):
+
+| Brevo reason code | Applied event | Effect |
+| --- | --- | --- |
+| `hardBounce` | `blocked` | flags the car bounced |
+| `contactFlaggedAsSpam` | `spam` | flags the car suppressed |
+| `unsubscribedViaEmail`, `unsubscribedViaMA`, `unsubscribedViaApi`, `adminBlocked` | `unsubscribed` | flags the car suppressed |
+| anything else | (none) | logged, tallied under `'unrecognized'`, skipped |
+
+`adminBlocked` maps to `unsubscribed` rather than `blocked` deliberately: it
+means a human suppressed the address at Brevo, a suppression decision rather
+than evidence the mailbox is dead. See the job class's own docblock for the
+full rationale and the count-accuracy notes behind its `SuppressionSyncSummary`
+return value.
+
+**Admin UI:** `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
+— the manual "run now" wrapper, sharing `27-Reconcile-Brevo-Events.php`'s
+gate/two-phase-UI pattern. Both scripts render their run's summary inline
+(matched/unmatched/skipped counts and a per-event-type or per-reason-code
+breakdown, plus warnings when the run was incomplete or something was
+skipped) rather than requiring a trip to Admin → Logs — #1923 introduced the
+pattern via `SuppressionSyncSummary`/`runNowWithSummary()`, and #2061 applied
+the same shape to the reconciliation job via `ReconciliationSummary`.
+
+### Feature Switch Related Documentation
+
+- [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager) — the 10-minute interval constant referenced by `cronReady()`
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` for logging failures, `LOG_CATEGORY_EMAIL_WEBHOOK` for webhook event processing
+- [CLASSES.md](CLASSES.md) — `VerificationSettings` and `VerificationConfigException` class reference
+
+---
+
 ## Verifying Email Delivery
 
 ### Brevo Dashboard

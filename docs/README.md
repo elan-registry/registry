@@ -78,7 +78,7 @@ its ordering.
 - **[ENVIRONMENT.md](development/ENVIRONMENT.md)** - Environment setup and configuration
 - **[LOG_CATEGORIES.md](development/LOG_CATEGORIES.md)** - Audit logging constants for `logger()` calls
 - **[RELEASE_NOTES_TEMPLATE.md](development/RELEASE_NOTES_TEMPLATE.md)** - Template for creating release notes
-- **[RELEASE_INSTRUCTIONS_TEMPLATE.md](development/RELEASE_INSTRUCTIONS_TEMPLATE.md)** - Deploy sheet rendered by `/release-milestone`
+- **[RELEASE_INSTRUCTIONS_TEMPLATE.md](development/RELEASE_INSTRUCTIONS_TEMPLATE.md)** - Deploy sheet rendered by `/finish-milestone`
 - **[adr/](development/adr/)** - Architecture Decision Records — why significant technical choices were made
 
 ### `/testing/` - Testing Documentation
