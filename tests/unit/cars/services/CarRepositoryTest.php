@@ -975,17 +975,91 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
-    public function testRestoreVerificationCodeStateReturnsFalseWhenNoRowMatched(): void
+    /**
+     * rowCount() after an UPDATE reports rows CHANGED, not rows MATCHED, so
+     * restoring the values a row already holds yields count() === 0 on a row
+     * that is perfectly present. That is the common case, not an anomaly: a
+     * car never sent to before has vericode/vericode_sent_at NULL, and the
+     * restore writes NULL/NULL back. Before the confirm-read was added this
+     * returned false, and CarVerificationSendService::sendOne() logged a
+     * CRITICAL "manual repair required" on a routine healthy path.
+     */
+    public function testRestoreVerificationCodeStateReturnsTrueWhenWriteChangedNothingButRowExists(): void
     {
         $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->expects($this->exactly(2))->method('query')->willReturnSelf();
         $db->method('error')->willReturn(false);
         $db->method('count')->willReturn(0);
+        $db->method('first')->willReturn((object) ['id' => 7]);
+
+        $repo = new CarRepository($db);
+
+        $this->assertTrue($repo->restoreVerificationCodeState(7, null, null));
+    }
+
+    public function testRestoreVerificationCodeStateConfirmReadQueriesTheTargetCarId(): void
+    {
+        $db = $this->makeDbMock();
+        $queries = [];
+        $db->expects($this->exactly(2))
+            ->method('query')
+            ->willReturnCallback(function (string $sql, array $params = []) use (&$queries, $db) {
+                $queries[] = [$sql, $params];
+                return $db;
+            });
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+        $db->method('first')->willReturn((object) ['id' => 7]);
+
+        $repo = new CarRepository($db);
+        $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
+
+        $this->assertSame(
+            ['SELECT id FROM cars WHERE id = ?', [7]],
+            $queries[1]
+        );
+    }
+
+    public function testRestoreVerificationCodeStateReturnsFalseWhenCarDoesNotExist(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->exactly(2))->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+        $db->method('first')->willReturn([]);
 
         $repo = new CarRepository($db);
         $result = $repo->restoreVerificationCodeState(999, 'code', '2026-09-01 12:00:00');
 
         $this->assertFalse($result);
+    }
+
+    public function testRestoreVerificationCodeStateSkipsConfirmReadWhenRowWasChanged(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->expects($this->never())->method('first');
+
+        $repo = new CarRepository($db);
+
+        $this->assertTrue($repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00'));
+    }
+
+    public function testRestoreVerificationCodeStateThrowsWhenConfirmReadFails(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->exactly(2))->method('query')->willReturnSelf();
+        $db->method('error')->willReturnOnConsecutiveCalls(false, true);
+        $db->method('errorString')->willReturn('Connection lost');
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/confirm-read failed for car=7/');
+        $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
     }
 
     public function testRestoreVerificationCodeStateThrowsOnDatabaseError(): void

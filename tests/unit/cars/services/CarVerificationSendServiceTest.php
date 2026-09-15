@@ -297,7 +297,7 @@ final class CarVerificationSendServiceTest extends TestCase
      * on the first Scope C test above.
      */
     #[AllowMockObjectsWithoutExpectations]
-    public function testSendOneReturnsSentUnrecordedWhenInsertEmailEventReturnsZeroRowsWritten(): void
+    public function testSendOneReturnsCleanSentWhenInsertEmailEventReturnsZeroRowsWritten(): void
     {
         $carData = $this->eligibleCar();
         $fixedCode = 'newcode1234567890';
@@ -314,11 +314,57 @@ final class CarVerificationSendServiceTest extends TestCase
                 return true;
             });
 
-        // insertEmailEvent() returns 0 — its documented ON DUPLICATE KEY
-        // no-op signal, not an exception — while incrementVerificationAttempts()
-        // succeeds. This must still be treated as an incomplete record.
+        // insertEmailEvent() returns 0 while incrementVerificationAttempts()
+        // succeeds. 0 MUST NOT escalate to sentUnrecorded(): the underlying
+        // statement is INSERT ... ON DUPLICATE KEY UPDATE, which MySQL reports
+        // as 0 affected rows both when nothing was written AND when the
+        // duplicate-key row already held identical values — the latter being a
+        // fully-recorded send. Treating 0 as a failure renders a false "this
+        // car may be emailed again" warning to the admin for a send that was
+        // completely recorded. The attempts increment is the reliable signal,
+        // and it succeeded here, so this is a clean send.
         $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(0);
         $this->mockRepo->expects($this->once())->method('incrementVerificationAttempts')->willReturn(true);
+        $this->mockRepo->expects($this->exactly(2))->method('commit');
+        $this->mockRepo->expects($this->never())->method('rollback');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_SENT, $result->status);
+        $this->assertFalse($result->isUnrecorded());
+        $this->assertNull($result->reason);
+    }
+
+    /**
+     * Zero rows written AND no attempt recorded is still unrecorded.
+     *
+     * Guards the narrowed check from over-correcting: dropping
+     * $eventRowsWritten from the condition must not also drop the
+     * $attemptsRecorded === false case when both signals are negative.
+     *
+     * mockVerifier is used here purely as a behavior stub — see the docblock
+     * on the first Scope C test above.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSendOneReturnsSentUnrecordedWhenBothBookkeepingSignalsAreNegative(): void
+    {
+        $carData = $this->eligibleCar();
+        $fixedCode = 'newcode1234567890';
+
+        $this->mockVerifier->method('generateVerificationCode')->willReturn($fixedCode);
+        $this->mockVerifier->method('setVerificationCode')
+            ->willReturnCallback(function (object $car, string $code): bool {
+                $car->vericode = $code;
+                return true;
+            });
+        $this->mockVerifier->method('setVerificationSentAt')
+            ->willReturnCallback(function (object $car, string $sentAt): bool {
+                $car->vericode_sent_at = $sentAt;
+                return true;
+            });
+
+        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(0);
+        $this->mockRepo->expects($this->once())->method('incrementVerificationAttempts')->willReturn(false);
         $this->mockRepo->expects($this->exactly(2))->method('commit');
         $this->mockRepo->expects($this->never())->method('rollback');
 

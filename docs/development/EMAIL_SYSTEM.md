@@ -227,9 +227,9 @@ configured batch size (`VerificationSettings::batchSize()`, default 5), in the
 Verification tab's "Send Verification Emails" card section. Car data shown: ID,
 chassis, owner name, email address. Every dynamic value is HTML-escaped at render time.
 
-**POST `send_batch` action:** Sends verification emails to one batch of cars.
-CSRF token validated first (`Token::check()`); missing/invalid token returns 403,
-no writes occur. For each submitted car ID:
+**POST `verification_send_batch` action:** Sends verification emails to one batch of cars.
+CSRF token validated first (`Token::check()`); missing/invalid token includes the
+standard UserSpice token-error page and no writes occur. For each submitted car ID:
 
 1. Look up the car row (`findById()`)
 2. Re-evaluate eligibility via `eligibilitySkipReason()` — a car can change state
@@ -276,10 +276,10 @@ They are owner-level, not car-level.
 - Writes one `cars_hist` row per affected car, operation string
   `'EMAIL SUPPRESSION CLEARED'`
 
-All three actions: CSRF validated first (flash error + 303 redirect on failure).
-On success, commit and flash a success notice naming the owner and affected car
-count. Always 303-redirect back to the page (one car, one flash, no report
-needed).
+All three actions: CSRF validated first. On both success and error, the result is
+converted to a UserSpice session flash message (`usError()`/`usSuccess()`) and the
+page renders normally (standard POST-then-render pattern, no redirect). On success,
+the flash message names the owner and affected car count.
 
 ### The Shared Send Service
 

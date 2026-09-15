@@ -888,6 +888,126 @@ on success.
 
 ---
 
+### VerificationEligibility
+
+**Location**: `/usersc/classes/Car/VerificationEligibility.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Explains why an already-loaded car row is no longer due a
+verification email (#1884). Extracted from app/admin/index.php's former
+`eligibilitySkipReason()` function into its own class so the rule set is
+directly unit-testable — constructing car-data objects and asserting on real
+return values — instead of only via source-text inspection of an
+unrequireable file.
+
+**Key Features**:
+
+- Encodes the SAME rules as `CarRepository::findVerificationEligible()`'s
+  WHERE clause — not a second, independent definition of eligibility. If
+  that SQL changes, this changes with it.
+- Exists because the preview (GET) and the send (POST) are two separate
+  requests, and a car can leave the eligible set in between (owner verifies
+  or edits it, a bounce webhook fires, they opt out, or the car is marked
+  sold). Re-running the query would show the row is gone from the result set
+  but not WHY — this checks the row already loaded by `findById()`, with no
+  second query, so the admin report can give a per-car reason.
+- The owner-liveness clauses of the SQL (`INNER JOIN users`, the `noowner`
+  exclusion) are deliberately NOT duplicated here — they need a join this
+  class has no row for. They stay enforced downstream in
+  `CarVerificationSendService::sendOne()`.
+- Fails closed on a malformed or MySQL zero-date `verification_attempts_since`
+  by throwing rather than silently treating a corrupt timestamp as "outside
+  the rolling window" (which would bypass the attempt cap).
+
+**Methods**:
+
+- `static skipReason(object $carData): ?string` - Checks, in priority order:
+  sold, bounced, suppressed, no email on file, no owner on file, freshness
+  (recently verified or updated), then the 2-send-per-rolling-year attempt
+  cap. Returns a short human-readable reason, or `null` if the car is still
+  eligible.
+
+**Exceptions**:
+
+- `CarValidationException` - Thrown via `CarRepository::isFresh()` for a
+  malformed `last_verified`/`owner_last_updated`, or directly for a
+  malformed/zero-date `verification_attempts_since`
+
+**Used By**:
+
+- `VerificationBatchSender::processBatch()`, which re-checks eligibility for
+  each car before calling `CarVerificationSendService::sendOne()`
+
+**See Also**:
+
+- [DATABASE.md](DATABASE.md) - `cars.solddate`, `cars.email_bounced`,
+  `cars.email_suppressed`, `cars.email`, `cars.user_id`,
+  `cars.verification_attempts`, `cars.verification_attempts_since`
+
+---
+
+### VerificationBatchSender
+
+**Location**: `/usersc/classes/Car/VerificationBatchSender.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Per-car loop body for the admin `verification_send_batch` POST
+handler in `app/admin/index.php` (#1884, PR review gap-closing pass).
+Extracted so the batch-loop failure containment and the
+`SendResult::isUnrecorded()` -> report-bucket routing are directly
+unit-testable — `app/admin/index.php` itself cannot be `require()`'d in a
+unit test (needs the full UserSpice bootstrap).
+
+**Key Features**:
+
+- **Four independent try/catch guards, mirrored exactly from the original
+  inline loop**: `findById()` throwing, `findById()` returning `null`,
+  `VerificationEligibility::skipReason()` throwing, and `sendOne()`
+  throwing. Each is scoped to one car so an uncaught fault never aborts the
+  rest of the batch or silently drops subsequent cars from the report.
+- **`isUnrecorded()` routed before the `STATUS_SENT` check**: an unrecorded
+  send must land in the `unrecorded` bucket, never `sent` — reordering these
+  checks was the exact defect commit 4224b511 already fixed once at a
+  different layer.
+- Not a general-purpose service — assumes the ids it receives already
+  passed the admin authorization check and CSRF validation one layer up
+  (`app/admin/index.php` filters non-positive ids before calling this
+  class). Performs no authorization of its own.
+
+**Methods**:
+
+- `processBatch(array $carIds): array` - Given positive car ids, re-reads
+  each via `CarRepository::findById()`, re-checks eligibility via
+  `VerificationEligibility::skipReason()`, sends via
+  `CarVerificationSendService::sendOne()`, and buckets the outcome. Returns
+  `['sent' => array<object>, 'unrecorded' => array<array{car, reason}>,
+  'skipped' => array<array{car, reason}>, 'failed' => array<array{car,
+  reason}>]`.
+
+**Constructor Dependencies**:
+
+- `CarRepository $repo` - For `findById()` re-reads
+- `CarVerificationSendService $sendSvc` - For `sendOne()`
+- `int $currentUserId` - Passed through to every `logger()` call
+
+**Used By**:
+
+- Admin send tool's `verification_send_batch` case (Verification System tab
+  in `app/admin/index.php`, #1884)
+
+**See Also**:
+
+- [VerificationEligibility](#verificationeligibility) - The eligibility
+  re-check this class calls per car
+- [CarVerificationSendService](#carverificationsendservice) - The send
+  orchestration this class calls per car
+- [SendResult](#sendresult) - The value object whose `isUnrecorded()` drives
+  the bucket routing this class exists to cover
+
+---
+
 ### VerificationSettings
 
 **Location**: `/usersc/classes/Car/VerificationSettings.php`
@@ -994,7 +1114,8 @@ verification-email send attempt (#1884). Returned by
 **Used By**:
 
 - `CarVerificationSendService::sendOne()` and `sendBatch()` (#1884)
-- Admin send tool (Verification System tab in `app/admin/index.php`) to build the result report
+- `VerificationBatchSender::processBatch()` (Verification System tab in
+  `app/admin/index.php`) to build the result report
 
 ---
 
@@ -1050,7 +1171,8 @@ sequences from drifting.
 
 **Used By**:
 
-- Admin send tool (Verification System tab in `app/admin/index.php`, #1884)
+- `VerificationBatchSender::processBatch()` (Verification System tab in
+  `app/admin/index.php`, #1884)
 - Intended reuse by cron job (#1885)
 
 **See Also**:

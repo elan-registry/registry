@@ -189,8 +189,10 @@ final class CarVerificationSendService
                 // above and this restore attempt) — that would make the
                 // $restored === false check below unreachable for the exact
                 // scenario it exists to catch. restoreVerificationCodeState()
-                // uses $this->db->count() instead, so a no-op write is
-                // observably distinct from a real restore.
+                // confirms the row still exists with a follow-up read, so false
+                // means only "the car is gone" — never merely "the write
+                // changed no columns," which is routine (restoring NULL over
+                // NULL for a car never sent to before).
                 $restored = $this->repo->restoreVerificationCodeState(
                     $carId,
                     $previousVericode,
@@ -242,15 +244,14 @@ final class CarVerificationSendService
         $attemptsRecorded = false;
 
         try {
-            // Both calls' return values are captured and checked below —
-            // insertEmailEvent() returns 0 rather than throwing on an
-            // ON DUPLICATE KEY no-op (documented on the method itself), and
-            // incrementVerificationAttempts() returns false rather than
-            // throwing when no row matched (documented on the method itself,
-            // specifically so a successful send is never reported as a
-            // failure). Ignoring either return would let the exact
-            // "sent but not really recorded" gap sentUnrecorded() exists to
-            // catch slip past unnoticed, since neither signals via exception.
+            // Both calls' return values are captured below, but only ONE of
+            // them is a reliable failure signal — see the check after the
+            // commit for why. Neither signals via exception:
+            // insertEmailEvent() returns a row count rather than throwing on
+            // an ON DUPLICATE KEY no-op, and incrementVerificationAttempts()
+            // returns false rather than throwing when no row matched
+            // (documented on the method itself, specifically so a successful
+            // send is never reported as a failure).
             $eventRowsWritten = $this->repo->insertEmailEvent(
                 $carId,
                 (string) $carData->email,
@@ -287,19 +288,45 @@ final class CarVerificationSendService
             );
         }
 
-        if ($eventRowsWritten === 0 || $attemptsRecorded === false) {
-            // No exception was thrown — the transaction committed — but one
-            // or both bookkeeping writes matched/changed nothing. Same
-            // consequence as the catch above (the car may be re-selected and
-            // emailed again), so it gets the same sentUnrecorded() treatment
-            // rather than being silently reported as a clean send.
+        // $eventRowsWritten === 0 IS NOT A FAILURE SIGNAL ON ITS OWN.
+        // insertEmailEvent() uses INSERT ... ON DUPLICATE KEY UPDATE, and
+        // MySQL reports 0 affected rows for that statement in TWO different
+        // situations: nothing was written at all, and the duplicate-key row
+        // already held byte-identical values so the UPDATE changed nothing.
+        // The second case is a fully-recorded send. Escalating it to
+        // sentUnrecorded() would show the admin a "this car may be emailed
+        // again" warning for a send that is, in fact, completely recorded —
+        // so it is logged as an informational note below and nothing more.
+        if ($eventRowsWritten === 0) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                'CarVerificationSendService::sendOne: email for car %d WAS SENT but bookkeeping was incomplete '
-                . '(er_email_events rows written=%d, verification_attempts recorded=%s). '
+                'CarVerificationSendService::sendOne: insertEmailEvent reported 0 rows for car %d. '
+                . 'Informational only: ON DUPLICATE KEY UPDATE reports 0 both when nothing was written '
+                . 'and when the existing row already held identical values, so this alone does not mean '
+                . 'the send went unrecorded.',
+                $carId
+            ));
+        }
+
+        // $attemptsRecorded === false, by contrast, is unambiguous.
+        // incrementVerificationAttempts() writes through a CASE expression
+        // that always changes a column on any row it matches (both the
+        // reset-to-1 and the plain increment branch report one affected row),
+        // so false can only mean no car row matched — the attempt was not
+        // counted, the car stays eligible, and the next batch would re-email
+        // the same owner. That is exactly what sentUnrecorded() exists to
+        // surface.
+        if ($attemptsRecorded === false) {
+            // No exception was thrown — the transaction committed — but the
+            // attempt increment matched no row. Same consequence as the catch
+            // above (the car may be re-selected and emailed again), so it gets
+            // the same sentUnrecorded() treatment rather than being silently
+            // reported as a clean send.
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: email for car %d WAS SENT but the '
+                . 'verification_attempts increment matched no row (er_email_events rows written=%d). '
                 . 'This car may be re-selected and emailed again in a future batch.',
                 $carId,
-                $eventRowsWritten,
-                var_export($attemptsRecorded, true)
+                $eventRowsWritten
             ));
 
             return SendResult::sentUnrecorded(

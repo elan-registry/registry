@@ -114,16 +114,24 @@ class CarRepository
      * true for any UPDATE that executes without a driver error, including
      * one that matches zero rows (e.g. the car was deleted between the
      * vericode rotation and this restore attempt) — so a caller relying on
-     * updateCar()'s bool return cannot distinguish "restored" from "matched
-     * nothing, restored nothing." This method uses a raw query() plus
-     * $this->db->count() so that distinction is observable, matching
-     * incrementVerificationAttempts()'s same rows-affected pattern.
+     * updateCar()'s bool return cannot distinguish "the car is still there"
+     * from "the car is gone." This method answers that question directly.
+     *
+     * rowCount() after an UPDATE reports rows CHANGED, not rows MATCHED (no
+     * MYSQL_ATTR_FOUND_ROWS is set on this connection), so count() === 0 is
+     * ambiguous: it covers both "no such car" and the entirely routine case
+     * where the restore writes back the values the row already holds (a car
+     * never sent to before has vericode/vericode_sent_at NULL, and the
+     * restore writes NULL/NULL). A follow-up read resolves the ambiguity —
+     * the same confirm-read pattern VerificationSettings::setEnabled() uses.
      *
      * @param int $carId Car ID
      * @param string|null $vericode The pre-send stored (hashed) vericode value
      * @param string|null $vericodeSentAt The pre-send vericode_sent_at value
-     * @return bool True if exactly the target row was written; false if no
-     *              row matched $carId (the car no longer exists)
+     * @return bool True if the car row exists and now holds the restored
+     *              values — including when the write was a no-op because the
+     *              row already held them; false only if no car with $carId
+     *              exists (the car was deleted mid-send)
      * @throws CarDatabaseException If the query itself fails
      */
     public function restoreVerificationCodeState(int $carId, ?string $vericode, ?string $vericodeSentAt): bool
@@ -138,7 +146,21 @@ class CarRepository
             );
         }
 
-        return $this->db->count() > 0;
+        if ($this->db->count() > 0) {
+            return true;
+        }
+
+        // count() === 0 — either the row is gone or the write changed nothing.
+        // Confirm which with a read.
+        $this->db->query('SELECT id FROM cars WHERE id = ?', [$carId]);
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::restoreVerificationCodeState confirm-read failed for car={$carId}: "
+                . $this->db->errorString()
+            );
+        }
+
+        return is_object($this->db->first());
     }
 
     /**

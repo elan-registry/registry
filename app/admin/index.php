@@ -7,7 +7,7 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
-use ElanRegistry\Car\SendResult;
+use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
@@ -209,101 +209,6 @@ $verificationSendSvc = new CarVerificationSendService(
     $verificationManager,
     new CarVerificationEmailComposer()
 );
-
-if (!function_exists('eligibilitySkipReason')) {
-    /**
-     * Explain why an already-loaded car row is no longer due a verification email.
-     *
-     * This encodes the SAME rules as
-     * {@see CarRepository::findVerificationEligible()}'s WHERE clause — it is
-     * not a second, independent definition of eligibility and must never be
-     * allowed to become one. If that SQL changes, this changes with it.
-     *
-     * It exists only because the preview (GET) and the send (POST) are two
-     * separate requests, and a car can leave the eligible set in between: the
-     * owner verifies or edits it, a bounce webhook fires, they opt out, or the
-     * car is marked sold. Re-running the query would tell us the row is gone
-     * from the result set but not WHY — a set-based answer cannot explain one
-     * specific row — and the admin report needs a per-car reason. So the check
-     * is applied in PHP against the row already loaded by findById(), with no
-     * second query.
-     *
-     * The owner-liveness clauses of the SQL (INNER JOIN users, the `noowner`
-     * exclusion) are deliberately NOT duplicated here: they need a join this
-     * function has no row for. They stay enforced downstream —
-     * {@see CarVerificationSendService::sendOne()} loads the owner and returns
-     * a failure result when the users row is gone, which lands in the report's
-     * Failed section rather than Skipped.
-     *
-     * @param object $carData Car row as loaded by CarRepository::findById()
-     * @return string|null Short reason the car is no longer eligible, or null if it still is
-     * @throws CarValidationException If the row carries a malformed timestamp (via isFresh())
-     */
-    function eligibilitySkipReason(object $carData): ?string
-    {
-        // cars.solddate IS NULL
-        if (!empty($carData->solddate)) {
-            return 'Marked sold';
-        }
-
-        // cars.email_bounced = 0
-        if (!empty($carData->email_bounced)) {
-            return 'Email bounced';
-        }
-
-        // cars.email_suppressed = 0
-        if (!empty($carData->email_suppressed)) {
-            return 'Email suppressed';
-        }
-
-        // cars.email IS NOT NULL AND cars.email != ''
-        if (trim((string) ($carData->email ?? '')) === '') {
-            return 'No email on file';
-        }
-
-        // cars.user_id IS NOT NULL
-        if ((int) ($carData->user_id ?? 0) <= 0) {
-            return 'No owner on file';
-        }
-
-        // NOT freshnessSql('cars') — the PHP counterpart of the same rule, so
-        // the staleness definition is not re-derived by hand here.
-        if (CarRepository::isFresh(
-            $carData->last_verified ?? null,
-            (string) ($carData->owner_last_updated ?? '')
-        )) {
-            return 'Recently verified or updated';
-        }
-
-        // Mirrors findVerificationEligible()'s attempt-cap clause: 2 sends
-        // per rolling 12-month window, then the car waits out the rest of
-        // the year. Kept in sync with that SQL and with
-        // incrementVerificationAttempts()'s own reset logic.
-        //
-        // strtotime() failure is NOT treated as "outside the window": PHP's
-        // strtotime() returns false on a malformed/unparseable value, and
-        // `false > strtotime('-1 year')` evaluates to false — silently
-        // treating a corrupt timestamp as "not within the window" would
-        // bypass the attempt cap entirely for that car on every batch.
-        // Throwing here routes into the caller's EligibilityCheckFailed
-        // catch, which skips the car rather than risk over-sending.
-        $attemptsSince = $carData->verification_attempts_since ?? null;
-        if ($attemptsSince !== null) {
-            $sinceTs = strtotime((string) $attemptsSince);
-            if ($sinceTs === false) {
-                throw new CarValidationException(
-                    'eligibilitySkipReason: malformed verification_attempts_since '
-                    . var_export($attemptsSince, true) . ' on car ' . (int) ($carData->id ?? 0)
-                );
-            }
-            if ($sinceTs > strtotime('-1 year') && (int) ($carData->verification_attempts ?? 0) >= 2) {
-                return 'Attempt cap reached for this year';
-            }
-        }
-
-        return null;
-    }
-}
 
 if (!function_exists('verifyHistoryFieldsForAdminAction')) {
     /**
@@ -655,6 +560,37 @@ if (ElanInput::existsPost()) {
                     /** @var array<int, mixed> $submittedIds */
                     $submittedIds = (array) ElanInput::get('car_ids', []);
 
+                    // SERVER-SIDE CAP. The GET-time preview only ever renders
+                    // batchSize() cars, but nothing stops a hand-crafted POST
+                    // carrying hundreds of ids — and every one of them would
+                    // become a blocking synchronous Brevo call inside this one
+                    // request. batchSize() is the configured ceiling on a
+                    // batch, so it is enforced here too rather than trusted
+                    // from the form. VerificationSettings is constructed
+                    // locally (matching tab-verification.php) and fails closed
+                    // to 5 on any read problem.
+                    $vsSendBatchSize = (new VerificationSettings(dbi()))->batchSize();
+
+                    if (count($submittedIds) > $vsSendBatchSize) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification send: car_ids[] carried %d ids, exceeding the configured batch size '
+                            . 'of %d; truncated to the first %d.',
+                            count($submittedIds),
+                            $vsSendBatchSize,
+                            $vsSendBatchSize
+                        ));
+                        $errors[] = sprintf(
+                            'Only the first %d cars were sent — the request exceeded the configured batch size.',
+                            $vsSendBatchSize
+                        );
+                        $submittedIds = array_slice($submittedIds, 0, $vsSendBatchSize);
+                    }
+
+                    // Non-positive ids are filtered here, before the batch
+                    // reaches VerificationBatchSender — that class assumes
+                    // every id it is given is a positive int, matching
+                    // findById()'s contract.
+                    $sendCarIds = [];
                     foreach ($submittedIds as $submittedId) {
                         $sendCarId = (int) $submittedId;
 
@@ -668,97 +604,29 @@ if (ElanInput::existsPost()) {
                             continue;
                         }
 
-                        // findById() throws CarDatabaseException on a query
-                        // failure — this must be inside the per-car guard, not
-                        // called ahead of it, or a transient DB error mid-batch
-                        // aborts the whole send and silently drops the report
-                        // for every car already processed (and possibly
-                        // already emailed) before it.
-                        try {
-                            $sendCarData = $verificationRepo->findById($sendCarId);
-                        } catch (\Throwable $e) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                                'Verification send: findById threw for car %d [%s]: %s',
-                                $sendCarId,
-                                get_class($e),
-                                $e->getMessage()
-                            ));
-                            $sendReportFailed[] = [
-                                'car'    => (object) ['id' => $sendCarId, 'chassis' => '', 'email' => ''],
-                                'reason' => 'The car record could not be read.',
-                            ];
-                            continue;
-                        }
-
-                        if ($sendCarData === null) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-                                "Verification send: car {$sendCarId} was in the preview but no longer exists; skipped");
-                            $sendReportSkipped[] = [
-                                'car'    => (object) ['id' => $sendCarId, 'chassis' => '', 'email' => ''],
-                                'reason' => 'Car no longer exists',
-                            ];
-                            continue;
-                        }
-
-                        // Re-check eligibility against the row as it stands NOW.
-                        // The preview was rendered by an earlier request and the
-                        // car may have left the eligible set since.
-                        try {
-                            $skipReason = eligibilitySkipReason($sendCarData);
-                        } catch (ElanRegistryException $e) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-                                "Verification send: eligibility re-check failed for car {$sendCarId}: " . $e->getMessage());
-                            // Distinct from every other skip reason below: this one is a
-                            // data-integrity fault (e.g. a corrupt verification_attempts_since
-                            // value), not a routine ineligibility state like "Marked sold." The
-                            // prefix keeps it visually distinguishable in the Skipped table so
-                            // it doesn't read as ordinary and get lost among expected skips.
-                            $skipReason = 'Data error — Eligibility could not be determined';
-                        }
-
-                        if ($skipReason !== null) {
-                            $sendReportSkipped[] = ['car' => $sendCarData, 'reason' => $skipReason];
-                            continue;
-                        }
-
-                        // Guarded per-car: sendOne() covers its own three
-                        // internal scopes (vericode rotation, send, bookkeeping),
-                        // but Owner::data() and the compose()/email() call sit
-                        // between those scopes with no catch of their own. An
-                        // uncaught throw here must not abort the whole batch —
-                        // it would silently drop every car after it from the
-                        // report, and if the throw lands after this car's
-                        // vericode was already rotated, that car is left
-                        // stranded with no restore attempted.
-                        try {
-                            $sendResult = $verificationSendSvc->sendOne($sendCarData);
-                        } catch (\Throwable $e) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                                'Verification send: sendOne threw for car %d [%s]: %s',
-                                $sendCarId,
-                                get_class($e),
-                                $e->getMessage()
-                            ));
-                            $sendResult = SendResult::failed($sendCarId, 'An unexpected error occurred during send.');
-                        }
-
-                        if ($sendResult->isUnrecorded()) {
-                            // sentUnrecorded(): delivered, but the bookkeeping
-                            // that prevents a duplicate send failed — keep
-                            // this visibly distinct from a clean send.
-                            $sendReportUnrecorded[] = [
-                                'car'    => $sendCarData,
-                                'reason' => $sendResult->reason,
-                            ];
-                        } elseif ($sendResult->status === SendResult::STATUS_SENT) {
-                            $sendReportSent[] = $sendCarData;
-                        } else {
-                            $sendReportFailed[] = [
-                                'car'    => $sendCarData,
-                                'reason' => $sendResult->reason ?? 'Unknown failure',
-                            ];
-                        }
+                        $sendCarIds[] = $sendCarId;
                     }
+
+                    // The per-car loop (findById() re-read, eligibility
+                    // re-check, sendOne(), and the SendResult ->
+                    // report-bucket routing) is extracted to
+                    // VerificationBatchSender so its failure-containment
+                    // behavior can be covered by a unit test — this file
+                    // cannot be require()'d directly in one. See that
+                    // class's docblock for the full rationale: an uncaught
+                    // throw for one car must never abort the rest of the
+                    // batch or drop it from the report.
+                    $batchSender = new VerificationBatchSender(
+                        $verificationRepo,
+                        $verificationSendSvc,
+                        $currentUserId,
+                    );
+                    $batchResult = $batchSender->processBatch($sendCarIds);
+
+                    $sendReportSent       = array_merge($sendReportSent, $batchResult['sent']);
+                    $sendReportUnrecorded = array_merge($sendReportUnrecorded, $batchResult['unrecorded']);
+                    $sendReportSkipped    = array_merge($sendReportSkipped, $batchResult['skipped']);
+                    $sendReportFailed     = array_merge($sendReportFailed, $batchResult['failed']);
 
                     $successes[] = sprintf(
                         'Batch complete: %d sent, %d unrecorded, %d skipped, %d failed.',
