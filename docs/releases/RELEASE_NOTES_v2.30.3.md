@@ -32,7 +32,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#1881](https://github.com/elan-registry/registry/issues/1881) — Build the public verification landing page.
 - [#1882](https://github.com/elan-registry/registry/issues/1882) — Compose the verification email via EmailTemplate.
 - [#1883](https://github.com/elan-registry/registry/issues/1883) — Add a one-click opt-out link to the verification email.
-- WIP: [#1884](https://github.com/elan-registry/registry/issues/1884) — Rework send_email.php into a preview/send flow with corrected Mark Bounced semantics.
+- [#1884](https://github.com/elan-registry/registry/issues/1884) — Rework send_email.php into a preview/send flow with corrected Mark Bounced semantics.
 - WIP: [#1885](https://github.com/elan-registry/registry/issues/1885) — Register send_verification_batch as a guarded cron job with dashboard Pause/Resume.
 - WIP: [#1886](https://github.com/elan-registry/registry/issues/1886) — Remove the superseded admin-scoped verification files.
 - [#1922](https://github.com/elan-registry/registry/issues/1922) — Investigate and resolve sender-reputation issues ahead of the first live send.
