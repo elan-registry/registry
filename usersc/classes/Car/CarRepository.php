@@ -413,6 +413,82 @@ class CarRepository
     }
 
     /**
+     * Read an owner's profile-level email-suppressed flag (#1883)
+     *
+     * Distinguishes "no profiles row" from "profiles row with the flag clear"
+     * by returning null for the former. `users` and `profiles` are not strictly
+     * 1:1 in this schema — a user can exist with no profiles row — and the
+     * opt-out flow must treat that as a hard error rather than write nothing,
+     * so the caller needs the two cases separated.
+     *
+     * @param int $userId Owner user ID
+     * @return int|null 0 or 1 as stored, or null when the owner has no profiles row
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findProfileEmailSuppressed(int $userId): ?int
+    {
+        $result = $this->db->query(
+            'SELECT email_suppressed FROM profiles WHERE user_id = ?',
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findProfileEmailSuppressed failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+        if ($this->db->count() === 0) {
+            return null;
+        }
+
+        return (int) $result->first()->email_suppressed;
+    }
+
+    /**
+     * Set an owner's profile-level email-suppressed flag (#1883)
+     *
+     * The owner-level counterpart to {@see updateEmailSuppressed()}: that flag
+     * is per-car and is also written by the Brevo webhook/sync paths, whereas
+     * this one records the owner's own opt-out decision and survives their car
+     * list changing.
+     *
+     * Uses a raw UPDATE rather than $this->db->update() because the caller must
+     * be able to tell "no profiles row existed" from "the write succeeded" —
+     * DatabaseInterface::update() collapses both into a bool. Mirrors
+     * {@see deleteCar()}'s query()-plus-count() treatment of the same problem.
+     *
+     * NOTE ON MySQL rowCount(): an UPDATE that sets a column to the value it
+     * already holds reports 0 affected rows, indistinguishable from a missing
+     * row. Callers must therefore read the current value first (see
+     * findProfileEmailSuppressed()) and skip the write when it already matches,
+     * rather than relying on this method to be idempotent on its own.
+     *
+     * Deliberately does NOT insert a profiles row when one is absent: profiles
+     * rows carry NOT NULL columns with no defaults (bio, city, state, country),
+     * so synthesising one here would invent owner data as a side effect of an
+     * opt-out. A missing row is surfaced to the caller instead.
+     *
+     * @param int $userId Owner user ID
+     * @param bool $suppressed True to set the flag, false to clear it
+     * @return bool True if a profiles row was actually updated; false if no row
+     *              was affected (no profiles row, or the value was unchanged)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function updateProfileEmailSuppressed(int $userId, bool $suppressed): bool
+    {
+        $this->db->query(
+            'UPDATE profiles SET email_suppressed = ? WHERE user_id = ?',
+            [$suppressed ? 1 : 0, $userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::updateProfileEmailSuppressed failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count() > 0;
+    }
+
+    /**
      * Update the timestamp at which the owner last updated their car record
      *
      * @param int $carId Car ID
@@ -619,9 +695,9 @@ class CarRepository
      * Find cars eligible for a verification email, ordered oldest-verified first.
      *
      * A car is eligible when it is not marked sold, has a non-null, non-empty
-     * (deliverable) email address that has not bounced, and is stale — that is,
-     * it was neither verified nor updated by its owner within the last year (see
-     * stalenessSql()).
+     * (deliverable) email address that has not bounced and has not been
+     * suppressed, and is stale — that is, it was neither verified nor updated
+     * by its owner within the last year (see stalenessSql()).
      *
      * A car is also ineligible when it has no live owner: cars.user_id IS NULL,
      * user_id points at a users row that no longer exists (cars.user_id has no
@@ -661,6 +737,15 @@ class CarRepository
         // one, but the mechanism is not the obvious one.
         $stale = self::stalenessSql('cars');
 
+        // email_suppressed is a standing owner request not to be emailed —
+        // set via a Brevo spam-complaint webhook or the one-click verification
+        // opt-out link — and stays set until the owner takes explicit action
+        // to reverse it; nothing in this method clears it. That makes it a
+        // distinct concept from email_bounced just above: bounced is about
+        // deliverability (the address doesn't work), suppressed is about
+        // consent (the owner asked not to be contacted). A car can be one,
+        // both, or neither, and either alone is enough to exclude the row.
+
         // INNER JOIN, not LEFT JOIN: cars.user_id has no FK to users.id (dropped
         // deliberately — see DATABASE.md's "No Enforced Foreign Key Constraints"),
         // so it can point at a row that no longer exists (e.g. a deleted user
@@ -675,6 +760,7 @@ class CarRepository
               INNER JOIN users ON users.id = cars.user_id
               WHERE cars.solddate IS NULL
                 AND cars.email_bounced = 0
+                AND cars.email_suppressed = 0
                 AND cars.email IS NOT NULL AND cars.email != ''
                 AND cars.user_id IS NOT NULL
                 AND users.username != 'noowner'

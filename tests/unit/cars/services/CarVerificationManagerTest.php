@@ -33,6 +33,27 @@ final class CarVerificationManagerTest extends TestCase
         $this->manager = new CarVerificationManager($this->mockRepo);
     }
 
+    /**
+     * Stub the #1883 owner-level profile flag as "row exists, not yet
+     * suppressed" — the normal precondition for an opt-out.
+     *
+     * Every setSuppressedForOwner() test needs this: an unstubbed mock returns
+     * null from findProfileEmailSuppressed(), which the method correctly reads
+     * as "owner has no profiles row" and aborts on, failing car-fan-out tests
+     * for a reason unrelated to what they assert.
+     *
+     * Deliberately a helper the fan-out tests call rather than a setUp()
+     * default. A stub configured in setUp() cannot be overridden by a later
+     * ->expects() on the same method — the first configuration wins — so tests
+     * that assert on the profile flag itself must be free to configure these
+     * two methods themselves, and simply do not call this.
+     */
+    private function stubProfileNotYetSuppressed(): void
+    {
+        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(0);
+        $this->mockRepo->method('updateProfileEmailSuppressed')->willReturn(true);
+    }
+
     public function testSetVerificationCodeSucceeds(): void
     {
         $code = 'VERIFY12345678';
@@ -362,5 +383,297 @@ final class CarVerificationManagerTest extends TestCase
 
         $carData = (object) ['id' => 1, 'email_suppressed' => 1];
         $this->manager->clearSuppressed($carData);
+    }
+
+    // ------------------------------------------------------------------
+    // setSuppressedForOwner() — #1883 owner-level fan-out
+    // ------------------------------------------------------------------
+
+    public function testSetSuppressedForOwnerSkipsAlreadySuppressedAndReturnsOnlyChangedCars(): void
+    {
+        $ownerId = 5;
+        $this->stubProfileNotYetSuppressed();
+
+        $this->mockRepo->expects($this->once())->method('findByOwner')
+            ->with($ownerId)
+            ->willReturn([
+                (object) ['id' => 1],
+                (object) ['id' => 2],
+                (object) ['id' => 3],
+            ]);
+
+        $this->mockRepo->method('findById')->willReturnMap([
+            [1, (object) ['id' => 1, 'email_suppressed' => 0]],
+            [2, (object) ['id' => 2, 'email_suppressed' => 1]], // already suppressed — skipped
+            [3, (object) ['id' => 3, 'email_suppressed' => 0]],
+        ]);
+
+        // Only cars 1 and 3 should be updated — car 2 is already suppressed.
+        $this->mockRepo->expects($this->exactly(2))->method('updateEmailSuppressed')
+            ->willReturnCallback(function (int $carId, bool $suppressed): bool {
+                $this->assertTrue($suppressed);
+                $this->assertContains($carId, [1, 3], 'Only non-already-suppressed cars must be updated');
+                return true;
+            });
+
+        $changed = $this->manager->setSuppressedForOwner($ownerId);
+
+        $this->assertCount(2, $changed);
+        $changedIds = array_map(static fn (object $car): int => (int) $car->id, $changed);
+        sort($changedIds);
+        $this->assertSame([1, 3], $changedIds);
+
+        foreach ($changed as $car) {
+            $this->assertSame(
+                0,
+                (int) $car->email_suppressed,
+                'Returned rows are pre-change snapshots for the cars_hist audit row'
+            );
+        }
+    }
+
+    public function testSetSuppressedForOwnerReturnsEmptyArrayWhenAllCarsAlreadySuppressed(): void
+    {
+        $ownerId = 9;
+        $this->stubProfileNotYetSuppressed();
+
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 1]);
+
+        $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
+
+        $changed = $this->manager->setSuppressedForOwner($ownerId);
+
+        $this->assertSame([], $changed);
+    }
+
+    public function testSetSuppressedForOwnerSkipsCarsFindByIdCannotResolve(): void
+    {
+        $ownerId = 11;
+        $this->stubProfileNotYetSuppressed();
+
+        $this->mockRepo->method('findByOwner')->willReturn([
+            (object) ['id' => 1],
+            (object) ['id' => 2],
+        ]);
+        $this->mockRepo->method('findById')->willReturnMap([
+            [1, null], // vanished between findByOwner() and findById()
+            [2, (object) ['id' => 2, 'email_suppressed' => 0]],
+        ]);
+
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->with(2, true)->willReturn(true);
+
+        $changed = $this->manager->setSuppressedForOwner($ownerId);
+
+        $this->assertCount(1, $changed);
+        $this->assertSame(2, $changed[0]->id);
+    }
+
+    /**
+     * The returned rows are PRE-change snapshots, not the live mutated objects.
+     *
+     * setSuppressed() writes email_suppressed=1 onto the car object in place, and
+     * verify_car.php feeds these returned rows to verifyHistoryFields() to build a
+     * cars_hist audit row. A cars_hist row must record the OLD value (matching the
+     * cars_update trigger's OLD.* convention), so a returned row carrying 1 would
+     * write the post-change state into history — the audit trail would claim the
+     * car was already suppressed before the opt-out that suppressed it.
+     */
+    public function testSetSuppressedForOwnerReturnsPreChangeSnapshotsNotMutatedObjects(): void
+    {
+        $this->stubProfileNotYetSuppressed();
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 7]]);
+
+        $live = (object) ['id' => 7, 'email_suppressed' => 0];
+        $this->mockRepo->method('findById')->willReturn($live);
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->with(7, true)->willReturn(true);
+
+        $changed = $this->manager->setSuppressedForOwner(3);
+
+        $this->assertCount(1, $changed);
+        $this->assertSame(
+            0,
+            (int) $changed[0]->email_suppressed,
+            'Returned row must carry the PRE-change value (0) for the cars_hist audit row'
+        );
+        $this->assertNotSame($live, $changed[0], 'Returned row must be a snapshot, not the mutated live object');
+        $this->assertSame(1, (int) $live->email_suppressed, 'The live object is still mutated in place');
+    }
+
+    public function testSetSuppressedForOwnerOpensNoTransaction(): void
+    {
+        $this->stubProfileNotYetSuppressed();
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 0]);
+        $this->mockRepo->method('updateEmailSuppressed')->willReturn(true);
+
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('commit');
+        $this->mockRepo->expects($this->never())->method('rollback');
+
+        $this->manager->setSuppressedForOwner(1);
+    }
+
+    public function testSetSuppressedForOwnerPropagatesCarDatabaseExceptionFromSetSuppressed(): void
+    {
+        $this->stubProfileNotYetSuppressed();
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 0]);
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')->willReturn(false);
+
+        $this->expectException(CarDatabaseException::class);
+
+        $this->manager->setSuppressedForOwner(1);
+    }
+
+    public function testSetSuppressedForOwnerPropagatesCarDatabaseExceptionFromFindByOwner(): void
+    {
+        $this->stubProfileNotYetSuppressed();
+        $this->mockRepo->expects($this->once())->method('findByOwner')
+            ->willThrowException(new CarDatabaseException('lookup failed'));
+
+        $this->expectException(CarDatabaseException::class);
+
+        $this->manager->setSuppressedForOwner(1);
+    }
+
+    // ------------------------------------------------------------------
+    // setSuppressedForOwner() — #1883 owner-level profiles.email_suppressed
+    // ------------------------------------------------------------------
+
+    /**
+     * The profile flag is owner-level, so it is written exactly once per call
+     * no matter how many cars the fan-out touches.
+     */
+    public function testSetSuppressedForOwnerWritesProfileFlagOnceRegardlessOfCarCount(): void
+    {
+        $ownerId = 42;
+        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(0);
+
+        $this->mockRepo->method('findByOwner')->willReturn([
+            (object) ['id' => 1],
+            (object) ['id' => 2],
+            (object) ['id' => 3],
+        ]);
+        $this->mockRepo->method('findById')->willReturnMap([
+            [1, (object) ['id' => 1, 'email_suppressed' => 0]],
+            [2, (object) ['id' => 2, 'email_suppressed' => 0]],
+            [3, (object) ['id' => 3, 'email_suppressed' => 0]],
+        ]);
+        $this->mockRepo->method('updateEmailSuppressed')->willReturn(true);
+
+        $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
+            ->with($ownerId, true)->willReturn(true);
+
+        $changed = $this->manager->setSuppressedForOwner($ownerId);
+
+        $this->assertCount(3, $changed, 'All three cars must still be suppressed');
+    }
+
+    /**
+     * The profile flag is independent of the per-car fan-out: an owner whose
+     * cars are all already suppressed may still have a profile flag that was
+     * never set (e.g. cars suppressed by the Brevo path before this column
+     * existed), and the opt-out must bring it up to date.
+     */
+    public function testSetSuppressedForOwnerWritesProfileFlagEvenWhenNoCarNeededChanging(): void
+    {
+        $ownerId = 43;
+        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(0);
+
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 1]);
+        $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
+
+        $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
+            ->with($ownerId, true)->willReturn(true);
+
+        $this->assertSame(
+            [],
+            $this->manager->setSuppressedForOwner($ownerId),
+            'No car changed, so the returned array is still empty'
+        );
+    }
+
+    /**
+     * Idempotency, matching the per-car loop's read-then-skip: a profile flag
+     * already reading 1 is left alone rather than rewritten. This is not just
+     * an optimisation — MySQL reports 0 affected rows for an UPDATE that
+     * changes nothing, which the write path cannot distinguish from a missing
+     * profiles row, so a blind rewrite would throw on a repeat opt-out.
+     */
+    public function testSetSuppressedForOwnerSkipsProfileWriteWhenAlreadySuppressed(): void
+    {
+        $ownerId = 44;
+
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 0]);
+        $this->mockRepo->method('updateEmailSuppressed')->willReturn(true);
+
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
+            ->with($ownerId)->willReturn(1);
+        $this->mockRepo->expects($this->never())->method('updateProfileEmailSuppressed');
+
+        $changed = $this->manager->setSuppressedForOwner($ownerId);
+
+        $this->assertCount(1, $changed, 'The car fan-out still runs even when the profile flag is already set');
+    }
+
+    /**
+     * An owner with no profiles row has nowhere to record the opt-out, so the
+     * whole operation fails rather than suppressing cars and losing the
+     * decision. The abort happens BEFORE the fan-out, so no car is touched.
+     */
+    public function testSetSuppressedForOwnerThrowsAndTouchesNoCarWhenOwnerHasNoProfilesRow(): void
+    {
+        $ownerId = 45;
+
+        $this->mockRepo->method('findProfileEmailSuppressed')->with($ownerId)->willReturn(null);
+
+        $this->mockRepo->expects($this->never())->method('findByOwner');
+        $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
+        $this->mockRepo->expects($this->never())->method('updateProfileEmailSuppressed');
+
+        $this->expectException(CarDatabaseException::class);
+
+        $this->manager->setSuppressedForOwner($ownerId);
+    }
+
+    /**
+     * A profiles UPDATE reporting 0 affected rows, despite the row having read
+     * as unsuppressed moments earlier, means the row vanished mid-operation.
+     * That must throw rather than silently leaving the opt-out unrecorded.
+     */
+    public function testSetSuppressedForOwnerThrowsWhenProfileUpdateAffectsNoRows(): void
+    {
+        $ownerId = 46;
+
+        $this->mockRepo->method('findProfileEmailSuppressed')->with($ownerId)->willReturn(0);
+        $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
+            ->with($ownerId, true)->willReturn(false);
+
+        $this->mockRepo->expects($this->never())->method('findByOwner');
+        $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
+
+        $this->expectException(CarDatabaseException::class);
+
+        $this->manager->setSuppressedForOwner($ownerId);
+    }
+
+    /**
+     * A failure reading the profile flag propagates rather than being treated
+     * as "no profiles row" — a DB error and a missing row are different things.
+     */
+    public function testSetSuppressedForOwnerPropagatesCarDatabaseExceptionFromProfileRead(): void
+    {
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
+            ->willThrowException(new CarDatabaseException('profile read failed'));
+        $this->mockRepo->expects($this->never())->method('findByOwner');
+
+        $this->expectException(CarDatabaseException::class);
+
+        $this->manager->setSuppressedForOwner(47);
     }
 }

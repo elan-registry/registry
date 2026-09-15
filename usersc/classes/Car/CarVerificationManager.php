@@ -305,4 +305,149 @@ class CarVerificationManager
     {
         return $this->updateSuppressed($carData, false);
     }
+
+    /**
+     * Suppress verification email for every car this owner has (owner-initiated
+     * opt-out). Runs no transaction of its own — caller wraps this and the
+     * per-car cars_hist inserts in one transaction (matches verify/sold
+     * branches in verify_car.php).
+     *
+     * Scoped to EVERY car the owner has (findByOwner()), sold included, per
+     * #1883's acceptance criteria ("syncs email_suppressed = 1 to every car
+     * they have" / "An owner with four cars clicking this once means all four
+     * stop" — no unsold qualifier). A sold car is never a verification-email
+     * candidate (findVerificationEligible() excludes solddate IS NOT NULL), so
+     * suppressing it has no effect on future sends, but the fan-out and its
+     * audit trail must still cover it: the confirmation page's car count
+     * (verify_car.php) is built from findByOwner() too, and a narrower
+     * fan-out would silently under-deliver on what that count promises the
+     * owner and leave sold cars with no EMAIL SUPPRESSED cars_hist row.
+     *
+     * TWO WRITES, TWO MEANINGS. Besides the per-car fan-out this sets
+     * `profiles.email_suppressed = 1` once for the owner. The per-car flag is
+     * the fan-out target and is also written by the Brevo webhook/sync paths;
+     * the profile flag is the authoritative record that *this owner opted out*,
+     * and stays correct when their car list later changes or the per-car flags
+     * drift. The profile write happens FIRST, before any car is touched, so an
+     * owner with no profiles row fails the whole opt-out cleanly rather than
+     * part-way through the fan-out. It is independent of $changed: it is
+     * attempted even when every car is already suppressed, so a profile flag
+     * that was never set (e.g. a car suppressed by the Brevo path before this
+     * column existed) is still brought up to date. It is skipped only when the
+     * profile flag already reads 1 — the same read-then-skip idempotency the
+     * per-car loop uses, and required here because MySQL reports 0 affected
+     * rows for an UPDATE that changes nothing, which is indistinguishable from
+     * a missing row.
+     *
+     * @param int $ownerId Owner user ID
+     * @return array<object> PRE-CHANGE snapshots of the car rows actually
+     *                        changed — each is a clone taken before
+     *                        setSuppressed() wrote email_suppressed=1 onto it,
+     *                        so the caller's cars_hist row records the OLD
+     *                        value (matching the cars_update trigger's OLD.*
+     *                        convention). Already-suppressed cars are skipped —
+     *                        idempotent at the per-car level. An empty array
+     *                        does NOT mean nothing happened: the owner-level
+     *                        profile flag may still have been written.
+     * @throws CarDatabaseException If a database update fails, or if the owner
+     *                              has no `profiles` row to record the
+     *                              opt-out on (nothing is written in that case
+     *                              — the check runs before the fan-out)
+     */
+    public function setSuppressedForOwner(int $ownerId): array
+    {
+        $this->suppressOwnerProfile($ownerId);
+
+        $changed = [];
+
+        foreach ($this->repo->findByOwner($ownerId) as $carRef) {
+            $carData = $this->repo->findById((int) $carRef->id);
+
+            if ($carData === null) {
+                // findByOwner() listed this id moments ago, so null here
+                // means the row disappeared mid-fan-out (concurrent merge or
+                // GDPR erasure) — or a genuine findByOwner()/findById()
+                // inconsistency. Skipping is correct (nothing to suppress), but
+                // it must never be silent: without this log line it is
+                // indistinguishable from a real bug.
+                logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
+                    'CarVerificationManager::setSuppressedForOwner: car %d listed for owner %d '
+                    . 'but no longer readable; skipped from opt-out fan-out',
+                    (int) $carRef->id,
+                    $ownerId
+                ));
+                continue;
+            }
+
+            if ((int) $carData->email_suppressed === 1) {
+                continue; // Already suppressed — idempotent, expected, not an anomaly.
+            }
+
+            // Snapshot BEFORE mutation: setSuppressed() writes email_suppressed=1
+            // onto $carData in place, and the caller uses this returned object to
+            // build a cars_hist audit row — which must record the pre-change
+            // state (matches the cars_update trigger's OLD.* convention), not the
+            // post-change state setSuppressed() leaves behind.
+            $before = clone $carData;
+
+            $this->setSuppressed($carData);
+            $changed[] = $before;
+        }
+
+        return $changed;
+    }
+
+    /**
+     * Record the owner-level opt-out on `profiles.email_suppressed` (#1883)
+     *
+     * Reads the current value first and returns without writing when it is
+     * already 1 — both to keep a repeat opt-out a true no-op and because a
+     * MySQL UPDATE that changes nothing reports 0 affected rows, which this
+     * method would otherwise mistake for a missing profiles row.
+     *
+     * A missing profiles row is an error, not a skip. `users` and `profiles`
+     * are not strictly 1:1 in this schema, so an owner can genuinely have no
+     * profiles row; when that happens there is nowhere to record that they
+     * opted out, and silently suppressing only their cars would lose the
+     * decision the moment their car list changed. Inserting a row instead is
+     * not an option either — profiles carries NOT NULL columns with no
+     * defaults, so it would mean inventing owner data.
+     *
+     * @param int $ownerId Owner user ID
+     * @return void
+     * @throws CarDatabaseException If the owner has no profiles row, or the
+     *                              read or write fails
+     */
+    private function suppressOwnerProfile(int $ownerId): void
+    {
+        $current = $this->repo->findProfileEmailSuppressed($ownerId);
+
+        if ($current === null) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
+                'CarVerificationManager::setSuppressedForOwner: owner %d has no profiles row; '
+                . 'opt-out aborted before any car was suppressed',
+                $ownerId
+            ));
+            throw new CarDatabaseException(
+                'Your opt-out could not be recorded. Please try again or contact support.'
+            );
+        }
+
+        if ($current === 1) {
+            return; // Already opted out — idempotent, expected, not an anomaly.
+        }
+
+        if (!$this->repo->updateProfileEmailSuppressed($ownerId, true)) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
+                'CarVerificationManager::setSuppressedForOwner: profiles.email_suppressed update '
+                . 'affected 0 rows for owner %d (row read as %d moments earlier): %s',
+                $ownerId,
+                $current,
+                $this->repo->errorString() ?: 'unknown'
+            ));
+            throw new CarDatabaseException(
+                'Your opt-out could not be recorded. Please try again or contact support.'
+            );
+        }
+    }
 }

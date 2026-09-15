@@ -22,6 +22,10 @@ use PHPUnit\Framework\Attributes\Group;
  *   solddate IS NULL
  *   AND email_bounced = 0
  *   AND email IS NOT NULL AND email != ''
+ *   AND email_suppressed = 0 (#1883 — owner self-suppression via the
+ *       verification-email opt-out link, or an admin/Brevo-applied suppression;
+ *       distinct from email_bounced, see CarRepository::findVerificationEligible()'s
+ *       inline comment on the distinction)
  *   AND user_id IS NOT NULL
  *   AND user_id references a users row that still exists (#1991 — no FK
  *       enforces this; see DATABASE.md's "No Enforced Foreign Key Constraints")
@@ -140,6 +144,54 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             $carId,
             $this->eligibleIds(),
             'A car with email_bounced = 1 must be excluded from verification eligibility'
+        );
+    }
+
+    /**
+     * #1883: a car whose owner opted out of verification emails (or was
+     * suppressed by an admin/Brevo webhook) via cars.email_suppressed = 1
+     * must be excluded, independent of email_bounced — the two are distinct
+     * concepts per CarRepository::findVerificationEligible()'s inline
+     * comment (deliverability vs. consent). Includes an otherwise-identical
+     * unsuppressed sibling car to prove the exclusion is caused specifically
+     * by email_suppressed, not by fixture drift or an unrelated condition —
+     * mirrors this file's existing control-car pattern.
+     */
+    #[Group('fast')]
+    public function testSuppressedEmailCarIsExcludedButUnsuppressedSiblingIsEligible(): void
+    {
+        $this->assertColumnExists('cars', 'email_suppressed');
+
+        $sharedFields = [
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $suppressedCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email'             => 'suppressed-owner@example.com',
+            'email_suppressed'  => 1,
+        ]));
+
+        $unsuppressedCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email'             => 'unsuppressed-owner@example.com',
+            'email_suppressed'  => 0,
+        ]));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $suppressedCarId,
+            $eligible,
+            'A car with email_suppressed = 1 must be excluded from verification eligibility'
+        );
+        $this->assertContains(
+            $unsuppressedCarId,
+            $eligible,
+            'Control: an otherwise-identical unsuppressed sibling car must remain eligible — '
+            . 'otherwise the suppression exclusion above proves nothing about email_suppressed specifically'
         );
     }
 
