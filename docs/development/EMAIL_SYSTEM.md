@@ -471,7 +471,9 @@ The vericode is the unguessable credential; session-less CSRF tokens would add n
 
 **Logging:** A successful opt-out writes no `logger()` entry — the `cars_hist` row (`operation = 'EMAIL SUPPRESSED'`) is the audit
 record. Failures (a DB error while counting cars, or during the suppression transaction) are logged under
-`LogCategories::LOG_CATEGORY_EMAIL_BOUNCED` before `verify_car.php` renders the generic 500 page.
+`LogCategories::LOG_CATEGORY_EMAIL_BOUNCED` before `verify_car.php` renders the post-authentication failure page
+(`renderActionFailed()`), which states plainly that the write did not complete — deliberately not the generic
+"expired or invalid link" copy, since the vericode has already authenticated by this point.
 
 ### Click-Tracking Exclusion Note
 

@@ -1175,6 +1175,55 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         );
     }
 
+    /**
+     * _verify_optout_confirm.php's pre-suppression card names how many cars
+     * the opt-out covers ($optOutCarCount, built from findByOwner() — see
+     * verify_car.php's action=optout GET branch). This is the consent-scope
+     * statement for an action that fans out across the owner's entire
+     * account, per that file's own comment: a fixed fallback "would tell a
+     * multi-car owner their action affects only one car, which is simply
+     * false." This test proves the plural branch actually names the real
+     * count for a two-car owner, not a hardcoded singular/generic fallback.
+     */
+    public function testGetActionOptoutWithMultipleCarsStatesPluralCarCount(): void
+    {
+        $code = $this->issueVericode();
+        $this->createTestCar($this->testUserId, ['chassis' => 'VF' . uniqid()]);
+
+        $result = $this->get('vericode=' . $code . '&action=optout');
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(
+            '2 registered cars',
+            $result['body'],
+            'A two-car owner\'s opt-out confirmation must state the real plural car count, not a singular or generic fallback'
+        );
+    }
+
+    /**
+     * Singular counterpart to the plural case above: a one-car owner (the
+     * fixture's default shape) must see singular copy ("1 registered car" /
+     * "its history"), not the plural form.
+     */
+    public function testGetActionOptoutWithOneCarStatesSingularCarCount(): void
+    {
+        $code = $this->issueVericode();
+
+        $result = $this->get('vericode=' . $code . '&action=optout');
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(
+            '1 registered car<',
+            $result['body'],
+            'A one-car owner\'s opt-out confirmation must state the singular car count, not the plural form'
+        );
+        $this->assertStringContainsString(
+            'its history',
+            $result['body'],
+            'A one-car owner\'s opt-out confirmation must use the singular "its history" pronoun'
+        );
+    }
+
     // A prior version of this test attempted to simulate a mid-loop
     // insertHistory() failure by pre-reserving cars_hist's next
     // auto-increment id with a placeholder row, then relying on the real
@@ -1218,7 +1267,10 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
      * throws a PDOException, which CarVerificationManager::persist() catches
      * and rethrows as CarDatabaseException — an ElanRegistryException — which
      * is exactly what verify_car.php's optout branch catches to
-     * rollback()/renderInvalidLink(500).
+     * rollback()/renderActionFailed() (the post-authentication failure page,
+     * distinct from renderInvalidLink() — see that function's own docblock
+     * for why this path must say plainly that the write failed rather than
+     * reusing the generic "nothing is wrong" copy).
      *
      * A second, unrelated PDO connection is required for the lock: PHP's
      * built-in server (self::ensureServerRunning()) serves one request per
@@ -1268,7 +1320,28 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
             $this->assertSame(
                 500,
                 $result['status'],
-                'A blocked cars_hist write mid-transaction must surface as renderInvalidLink(500)'
+                'A blocked cars_hist write mid-transaction must surface as renderActionFailed(500)'
+            );
+            // Pins the 'error' state renderActionFailed() actually renders —
+            // not merely the status code it shares with a config-missing or
+            // owner-lookup 500 from renderInvalidLink(). This is the specific
+            // behavior verify_car.php's docblock argues for: a post-auth
+            // failure must say plainly that the write did not complete,
+            // never reuse renderInvalidLink()'s "nothing is wrong" copy.
+            $this->assertStringContainsString(
+                'Something went wrong on our end',
+                $result['body'],
+                'A post-authentication write failure must render renderActionFailed()\'s honest-failure copy'
+            );
+            $this->assertStringNotContainsString(
+                'Nothing is wrong with your car',
+                $result['body'],
+                'A post-authentication write failure must never reuse renderInvalidLink()\'s "nothing is wrong" copy'
+            );
+            $this->assertStringContainsString(
+                'may still receive verification emails',
+                $result['body'],
+                'The opt-out-specific failure copy must warn the owner their opt-out did not take effect'
             );
         } finally {
             // UNLOCK TABLES (and closing the connection) first: a stray
