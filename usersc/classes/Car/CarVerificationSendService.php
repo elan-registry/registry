@@ -1,0 +1,263 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ElanRegistry\Car;
+
+use ElanRegistry\AppConstants;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
+
+/**
+ * CarVerificationSendService - The single shared verification-email send path
+ *
+ * Owns the whole "pick eligible cars, rotate their verification codes, mail
+ * their owners, record the outcome" operation, and is deliberately the ONLY
+ * implementation of it. Two callers need this behaviour and must not drift
+ * apart: the manual admin tool (app/admin/index.php?tab=verification, #1884)
+ * and the automated cron job that follows it (#1885). A second, hand-rolled copy
+ * of the eligibility rule or the send sequence in either caller would mean
+ * the cron and the admin preview could disagree about which cars are due —
+ * the exact failure this class exists to prevent.
+ *
+ * That shared-ownership requirement constrains the public API: every public
+ * method here must remain a pure function of its arguments plus current DB
+ * state. No `$_POST`/`$_GET`/`$_SERVER` reads, no session or logged-in-user
+ * lookups, no echoing, no redirects, no flash messages — anything specific to
+ * one caller's environment belongs in that caller, not here. A cron job runs
+ * with no session and no request at all; anything this class reached for
+ * beyond its arguments would work under the admin page and fail silently (or
+ * fatally) under cron.
+ *
+ * Eligibility in particular is NOT re-implemented here:
+ * {@see self::findEligible()} delegates verbatim to
+ * {@see CarRepository::findVerificationEligible()}, which carries the full
+ * rule (staleness, bounced/suppressed exclusion, sold cars, erased owners,
+ * the attempt cap). Both callers derive their car list from that one query.
+ *
+ * @package ElanRegistry\Car
+ * @since v2.30.3
+ * @see https://github.com/elan-registry/registry/issues/1884
+ */
+final class CarVerificationSendService
+{
+    public function __construct(
+        private CarRepository $repo,
+        private CarVerificationManager $verifier,
+        private CarVerificationEmailComposer $composer,
+    ) {
+    }
+
+    /**
+     * List cars currently due a verification email
+     *
+     * A straight delegation to {@see CarRepository::findVerificationEligible()},
+     * intentionally adding nothing. This method exists so that callers depend
+     * on this service rather than reaching into the repository themselves,
+     * keeping one definition of "eligible" shared between the admin preview
+     * page and #1885's cron job.
+     *
+     * @param int $limit Maximum rows to return (values below 1 return no rows)
+     * @param int $offset Rows to skip (negative values are treated as 0)
+     * @return array<object> Eligible car rows (empty if none)
+     * @throws \ElanRegistry\Exceptions\CarDatabaseException If the query fails
+     */
+    public function findEligible(int $limit, int $offset = 0): array
+    {
+        return $this->repo->findVerificationEligible($limit, $offset);
+    }
+
+    /**
+     * Send one car's verification email and report what happened
+     *
+     * THREE SEPARATE SCOPES, NEVER ONE TRANSACTION. `email()` is a synchronous
+     * network call to Brevo that can block for seconds or hang outright. Holding
+     * an open MySQL transaction across it would pin row locks on `cars` for the
+     * duration of every send in a batch, and a timeout mid-batch would roll back
+     * work whose emails had already physically left the building. So the write
+     * of the new code, the send, and the bookkeeping are three independent
+     * scopes:
+     *
+     *   A. Rotate `vericode`/`vericode_sent_at` and COMMIT — before any network
+     *      call. The code must be durable before the email quoting it is sent;
+     *      the reverse order can mail a link that the database never knew about.
+     *   B. Compose and send, with no transaction open at all.
+     *   C. On success only, record the `er_email_events` row and increment
+     *      `verification_attempts`, in their own short transaction.
+     *
+     * FAILED SENDS DO NOT COUNT. `verification_attempts` is the owner-facing cap
+     * on how often we may contact someone in a rolling year, so only a send the
+     * mailer confirmed may consume one. This method never calls
+     * {@see CarRepository::incrementVerificationAttempts()} on the failure path
+     * — a Brevo outage must not burn through every stale car's yearly allowance.
+     * The failure path instead restores the previous `vericode`/`vericode_sent_at`
+     * in a single atomic `updateCar()` call, so a car that was not emailed is
+     * left exactly as it was found and stays eligible for the next run.
+     *
+     * NEVER REPORT FAILURE AFTER A REAL SEND. Once `email()` has returned true
+     * the owner has the message; nothing that happens afterwards can un-send it.
+     * Scope C is therefore best-effort: if it throws, the failure is logged
+     * loudly as the bookkeeping gap it is (a missing event row, an uncounted
+     * attempt) and this method STILL returns {@see SendResult::sent()}. Returning
+     * a failure there would tell the admin page — or the cron job — that the car
+     * still needs emailing, and the retry would deliver a second copy of the same
+     * message to a real person. A stale counter is recoverable; a duplicate email
+     * to an owner is not.
+     *
+     * @param object $carData Eligible car row as returned by {@see self::findEligible()}:
+     *                        requires ->id, ->user_id and ->email, plus the display
+     *                        fields {@see CarVerificationEmailComposer::compose()} reads.
+     *                        Note this method mutates the passed object — the verifier
+     *                        writes the new plaintext ->vericode and ->vericode_sent_at
+     *                        onto it so the composer can quote them.
+     * @return SendResult Sent, or failed carrying an admin-safe reason string
+     */
+    public function sendOne(object $carData): SendResult
+    {
+        // Captured before any write: the failure path in scope B restores these
+        // exact values, so they must be read while they are still the stored ones.
+        $carId                 = (int) $carData->id;
+        $previousVericode      = $carData->vericode ?? null;
+        $previousVericodeSentAt = $carData->vericode_sent_at ?? null;
+
+        $owner = (new Owner((int) $carData->user_id))->data();
+
+        if ($owner === null) {
+            // Nothing has been written yet, so there is nothing to roll back.
+            // The car stays eligible and will be retried by the next run.
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: owner %d for car %d could not be loaded; send skipped',
+                (int) $carData->user_id,
+                $carId
+            ));
+
+            return SendResult::failed($carId, 'Owner record could not be loaded.');
+        }
+
+        // Scope A — durable new code BEFORE the network call.
+        $this->repo->beginTransaction();
+
+        try {
+            $newVericode = $this->verifier->generateVerificationCode();
+            $sentAt      = date(AppConstants::DATETIME_FORMAT);
+
+            $this->verifier->setVerificationCode($carData, $newVericode);
+            $this->verifier->setVerificationSentAt($carData, $sentAt);
+
+            $this->repo->commit();
+        } catch (\Throwable $e) {
+            $this->repo->rollback();
+
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: verification code rotation failed for car %d (%s): %s',
+                $carId,
+                get_class($e),
+                $e->getMessage()
+            ));
+
+            return SendResult::failed($carId, 'The verification code could not be generated.');
+        }
+
+        // Scope B — compose and send with no transaction open.
+        $composed = $this->composer->compose($carData, $owner, $newVericode);
+        $sendOk   = email((string) $carData->email, $composed['subject'], $composed['html']);
+
+        if ($sendOk === false) {
+            // Restore the pre-send state in one atomic update so the car is left
+            // exactly as found. This is the one genuinely unrecoverable spot in
+            // the whole sequence: if the restore itself fails, the car is stuck
+            // with a rotated code that no email ever quoted, which invalidates
+            // any verification link the owner may still be holding from a
+            // previous send. Log it loudly enough to be actioned by hand.
+            try {
+                // restoreVerificationCodeState(), not updateCar(): updateCar()
+                // returns true for any UPDATE that executes, even one matching
+                // zero rows (e.g. this car was deleted between the rotation
+                // above and this restore attempt) — that would make the
+                // $restored === false check below unreachable for the exact
+                // scenario it exists to catch. restoreVerificationCodeState()
+                // uses $this->db->count() instead, so a no-op write is
+                // observably distinct from a real restore.
+                $restored = $this->repo->restoreVerificationCodeState(
+                    $carId,
+                    $previousVericode,
+                    $previousVericodeSentAt
+                );
+
+                if ($restored === false) {
+                    logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                        'CarVerificationSendService::sendOne: CRITICAL - car %d has a rotated vericode but no email '
+                        . 'was sent, and the restore of the previous vericode/vericode_sent_at matched no row '
+                        . '(the car may have been deleted mid-send). Any verification link the owner already '
+                        . 'holds is now invalid. Manual repair required.',
+                        $carId
+                    ));
+                }
+            } catch (\Throwable $restoreError) {
+                logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                    'CarVerificationSendService::sendOne: CRITICAL - car %d has a rotated vericode but no email was '
+                    . 'sent, and the restore of the previous vericode/vericode_sent_at ALSO failed (%s): %s. '
+                    . 'Any verification link the owner already holds is now invalid. Manual repair required.',
+                    $carId,
+                    get_class($restoreError),
+                    $restoreError->getMessage()
+                ));
+            }
+
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: email() returned false for car %d; '
+                . 'verification_attempts deliberately not incremented',
+                $carId
+            ));
+
+            return SendResult::failed($carId, 'The email could not be sent.');
+        }
+
+        // Scope C — bookkeeping only. The email is already delivered to Brevo.
+        //
+        // No real Brevo message id is available from the mailer, so the event row
+        // gets a locally-derived one. It is the hash of the new code rather than
+        // the code itself: er_email_events keys on brevo_message_id, and storing
+        // the plaintext code there would defeat the hashing that keeps cars.vericode
+        // out of the database in the clear.
+        $brevoMessageId = 'local:' . hash('sha256', $newVericode);
+
+        $this->repo->beginTransaction();
+
+        try {
+            $this->repo->insertEmailEvent($carId, (string) $carData->email, 'sent', null, $brevoMessageId, $sentAt);
+            $this->repo->incrementVerificationAttempts($carId);
+
+            $this->repo->commit();
+        } catch (\Throwable $e) {
+            $this->repo->rollback();
+
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: email for car %d WAS SENT but the send could not be recorded '
+                . '(%s): %s. The er_email_events row and/or the verification_attempts increment are missing; the '
+                . 'send is still reported as successful so the owner is not emailed twice.',
+                $carId,
+                get_class($e),
+                $e->getMessage()
+            ));
+        }
+
+        // Unconditional: see the "never report failure after a real send" note above.
+        return SendResult::sent($carId);
+    }
+
+    /**
+     * Send verification emails for a list of cars
+     *
+     * Each car is sent independently — one car's failure neither aborts the batch
+     * nor affects any other car's result, which is what lets the admin page render
+     * a per-car report and lets the cron job work through a run to completion.
+     *
+     * @param array<object> $cars Eligible car rows, typically from {@see self::findEligible()}
+     * @return array<SendResult> One result per input car, in the same order
+     */
+    public function sendBatch(array $cars): array
+    {
+        return array_map(fn (object $c) => $this->sendOne($c), $cars);
+    }
+}
