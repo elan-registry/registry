@@ -126,6 +126,9 @@ abstract class IntegrationTestCase extends TestCase
             // Then delete users
             foreach ($this->createdUserIds as $userId) {
                 try {
+                    // profiles has no FK cascade to users, so its row must be
+                    // removed explicitly or it outlives the user it described.
+                    $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
                     $this->db->delete('users', ['id', '=', $userId]);
                 } catch (RuntimeException $e) {
                     fwrite(STDERR, "NOTE: tearDown() cleanup failed for user ID {$userId}: {$e->getMessage()}\n");
@@ -225,11 +228,28 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Create a test user in database
      *
+     * Creates only the `users` row by default. Pass $withProfile to also get
+     * the matching `profiles` row.
+     *
+     * Real owners are created through Owner::create(), which inserts users and
+     * profiles together in one transaction, so a user without a profile is a
+     * shape no real car owner is in (verified against production-shaped data:
+     * zero car owners lack a profiles row). Tests exercising anything that
+     * reads or writes profiles — such as the #1883 opt-out, which records
+     * `profiles.email_suppressed` — therefore need the profile row or they
+     * test a state that cannot occur.
+     *
+     * It is opt-in rather than the default only because many existing tests
+     * insert their own profiles row with the specific city/state/country
+     * values they assert on; creating one here unconditionally would give
+     * those tests two rows and break them.
+     *
      * @param array $data Override default user data
+     * @param bool $withProfile Also insert a bare `profiles` row for the user
      * @return int The created user ID
-     * @throws RuntimeException If user creation fails
+     * @throws RuntimeException If user or profile creation fails
      */
-    protected function createTestUser(array $data = []): int
+    protected function createTestUser(array $data = [], bool $withProfile = false): int
     {
         $this->requireDatabase();
 
@@ -260,6 +280,24 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         $this->createdUserIds[] = $userId;
+
+        if ($withProfile) {
+            // bio/city/state/country are NOT NULL with no default, so every
+            // one must be supplied even though this fixture has no meaningful
+            // values for them.
+            $profileInserted = $this->db->insert('profiles', [
+                'user_id' => $userId,
+                'bio'     => '',
+                'city'    => '',
+                'state'   => '',
+                'country' => '',
+            ]);
+            if (!$profileInserted) {
+                throw new RuntimeException(
+                    "Failed to create test profile for user {$userId}: {$this->db->errorString()}"
+                );
+            }
+        }
 
         return $userId;
     }
@@ -333,6 +371,7 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         try {
+            $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
             $this->db->delete('users', ['id', '=', $userId]);
             // Remove from tracking so tearDown doesn't double-delete
             $this->createdUserIds = array_values(array_diff($this->createdUserIds, [$userId]));

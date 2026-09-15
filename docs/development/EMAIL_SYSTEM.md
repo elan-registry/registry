@@ -397,6 +397,90 @@ the same shape to the reconciliation job via `ReconciliationSummary`.
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` for logging failures, `LOG_CATEGORY_EMAIL_WEBHOOK` for webhook event processing
 - [CLASSES.md](CLASSES.md) — `VerificationSettings` and `VerificationConfigException` class reference
 
+## Composing and Sending Verification Emails (#1882, #1883)
+
+The periodic verification email that requests owners confirm their car records are current is built by `CarVerificationEmailComposer`
+and includes a one-click opt-out link that lets owners suppress all future verification mail via a single vericode-authenticated
+action. The composer is built and unit-tested but not yet wired to any send path — that wiring is future issue #1884's responsibility.
+
+### Verification Email Composer
+
+**Location:** `usersc/classes/Car/CarVerificationEmailComposer.php`
+
+The `CarVerificationEmailComposer` class has one public method, `compose(object $carData, object $owner, string $vericode): array{subject,
+html}`, which builds the subject line and full branded HTML body. The class intentionally performs **no database access** — everything
+it renders comes from the `$carData` (car row) and `$owner` (owner row) objects supplied by the caller. This design keeps the composer
+testable with fixture objects alone, no framework bootstrap or database required.
+
+The composed email includes:
+
+- **Greeting and explanation** — why the owner is receiving this request
+- **Verify/Sold side-by-side buttons** — confirm ownership or report the car sold
+- **Owner Information box** — ID, name, email, location, join date
+- **Car Information box** — ID, year, type, chassis, series, variant, color, purchase/sale dates, photo count, and website
+- **Conditional "About the Chassis Number" alert** — appears only when `cars.chassis_override = 1`, explaining that the chassis was
+  manually entered and may differ from factory records
+- **Conditional blank-field callout** — appears when any of Color, Variant, Purchase Date, or Website is blank, naming every blank
+  field and highlighting its row, and encouraging the owner to fill them in
+- **Edit button** — links to the full `app/owner/cars/edit.php` form (requires login)
+- **Footer block** — opt-out link (see below) and 60-day expiry notice
+
+**Public Constants:**
+
+- `LINK_TTL_DAYS = 60` — Lifetime of the Verify/Sold/Opt-Out links. Must equal `VERIFY_LINK_TTL_DAYS` in `app/verify/verify_car.php`;
+  a unit test guards against drift since the composer's expiry notice text promises this window
+- `NO_TRACK_LINK_CLASS = 'er-no-track'` — CSS class marking the opt-out (and ideally Verify/Sold) links for click-tracking exclusion
+
+**URL Builders** (public):
+
+- `verifyUrl(string $vericode): string` — Absolute URL to confirm ownership
+- `soldUrl(string $vericode): string` — Absolute URL to report the car sold
+- `optOutUrl(string $vericode): string` — Absolute URL to opt out of all future verification emails (see below)
+- `editUrl(int $carId): string` — Absolute URL to the full car edit form
+
+### One-Click Owner Opt-Out
+
+Every verification email footer includes a "Stop sending me these" link that opens
+`app/verify/verify_car.php?vericode=...&action=optout`. The owner needs no login to use it — the vericode is the credential, matching
+the Verify/Sold pattern. The flow is entirely GET/POST-driven:
+
+**GET (confirmation page):**
+
+The owner clicks the opt-out link and sees a confirmation page displaying how many cars are registered to them and whether they
+are already opted out. The page is read-only — clicking the link again (or revisiting the URL) always shows the confirmation card
+with the same information.
+
+**POST (suppression):**
+
+The owner confirms and submits a POST to the same URL. The action is **owner-initiated and scoped to the account**, not individual
+cars: `CarVerificationManager::setSuppressedForOwner(int $ownerId)` sets `profiles.email_suppressed = 1` on the owner and fans
+`cars.email_suppressed = 1` out to every unsuppressed car they have. Already-suppressed cars are skipped, making the operation
+idempotent — a repeat POST or an owner already suppressed via a Brevo complaint webhook commits a no-op and redirects identically.
+
+Each affected car gets one `EMAIL SUPPRESSED` `cars_hist` row via the explicit `insertHistory()` call in `verify_car.php` (in
+addition to the generic `UPDATE` row the `cars_update` trigger always writes for any `cars` column change) — the `EMAIL SUPPRESSED`
+row is what makes owner-initiated suppression distinguishable from other causes, with comments text `'Owner self-suppression via
+verification email opt-out link'`. All cars and their audit rows are written in a single transaction; a database failure rolls back
+the entire operation.
+
+The POST redirects via 303 (See Other) to the confirmation page (GET), which then displays the updated suppression state. A repeat
+visit always succeeds silently.
+
+**Authentication:** No CSRF token is required or present (see `app/verify/verify_car.php`'s file header for the full rationale).
+The vericode is the unguessable credential; session-less CSRF tokens would add no value while breaking legitimate email links.
+
+**Logging:** A successful opt-out writes no `logger()` entry — the `cars_hist` row (`operation = 'EMAIL SUPPRESSED'`) is the audit
+record. Failures (a DB error while counting cars, or during the suppression transaction) are logged under
+`LogCategories::LOG_CATEGORY_EMAIL_BOUNCED` before `verify_car.php` renders the generic 500 page.
+
+### Click-Tracking Exclusion Note
+
+The Opt-Out link and ideally the Verify/Sold links carry the CSS class `NO_TRACK_LINK_CLASS = 'er-no-track'` to mark them for Brevo
+click-tracking exclusion. However, the actual Brevo API wiring to honor that exclusion is **NOT yet built** — that is deferred to
+issue #1884. Until then, click events on these links may still be tracked and counted by Brevo like any other email link. Do not
+let a reader think the tracking exclusion is already active; it is declared in the markup but enforced only once #1884 ships. The
+`app/verify/verify_car.php` file header has been updated to document the opt-out action alongside Verify/Sold for future readers.
+
 ---
 
 ## Verifying Email Delivery

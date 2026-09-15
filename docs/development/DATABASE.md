@@ -113,6 +113,7 @@ For the full workflow, see
 | `lat`, `lon` | `float` | Geographic coordinates |
 | `bio` | `text` | User biography |
 | `website` | `varchar(100)` | Personal website |
+| `email_suppressed` | `TINYINT(1) NOT NULL DEFAULT 0` | Owner-level verification-email suppression flag (#1883). Set via the verification email's one-click opt-out; fans out to `email_suppressed = 1` on every car the owner has via `CarVerificationManager::setSuppressedForOwner()`. No audit-history table exists for `profiles`, so this column carries no `cars_hist`-style mirror. |
 
 ### Car Registry
 

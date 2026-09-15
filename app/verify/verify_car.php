@@ -5,10 +5,20 @@ declare(strict_types=1);
 /**
  * verify_car.php — public car verification landing page
  *
- * The destination for the Verify and Sold links in the periodic owner
- * verification email. An owner arrives here from their mail client, almost
- * always logged out, and can confirm their car's record is still accurate,
- * report that the car has been sold, or jump to the full edit form.
+ * The destination for the Verify, Sold, and opt-out links in the periodic
+ * owner verification email. An owner arrives here from their mail client,
+ * almost always logged out, and can confirm their car's record is still
+ * accurate, report that the car has been sold, opt out of future
+ * verification emails, or jump to the full edit form.
+ *
+ * SCOPE ASYMMETRY (security-relevant): Verify and Sold only ever mutate the
+ * ONE car the vericode resolved to. Opt-out is different — it is an
+ * owner-level decision ("stop emailing me"), so its effect fans out across
+ * EVERY car the resolved owner has, not just the car named by the vericode.
+ * $ownerId is derived exclusively from the vericode lookup (never from any
+ * POST field), so this fan-out is scoped correctly, but the scope itself is
+ * wider than the other two actions and that distinction matters when
+ * reasoning about what a single compromised/guessed vericode can affect.
  *
  * NO `securePage()` AND NOT IN `$path`. The visitor has no UserSpice session
  * — they clicked a link in an email. Authentication is instead the vericode
@@ -32,8 +42,11 @@ declare(strict_types=1);
  * owner's link — the one arriving from the email has no token to send —
  * without closing any attack. The defenses that do apply are enforced
  * instead: GET never mutates, the vericode format is validated before any DB
- * access, attempts are rate-limited per-token, and the mutated car is always
- * the one the vericode resolves to, never a posted id.
+ * access, attempts are rate-limited per-token, and the owner/car(s) mutated
+ * are always those the vericode resolves to server-side — the vericode's car
+ * for Verify/Sold, the vericode's resolved owner (and every car they have,
+ * see the SCOPE ASYMMETRY note above) for opt-out — never an id read from the
+ * POST body.
  *
  * NO ENUMERATION SIGNAL. A malformed vericode, an unknown one, an expired
  * one, and one whose car has since become ownerless all render the identical
@@ -42,6 +55,8 @@ declare(strict_types=1);
  *
  * @see docs/plans/issue-1881-verify-car-landing-page.md
  * @see https://github.com/elan-registry/registry/issues/1881
+ * @see https://github.com/elan-registry/registry/issues/1882
+ * @see https://github.com/elan-registry/registry/issues/1883
  * @since v2.30.3
  */
 
@@ -129,7 +144,7 @@ function renderVerifyPage(string $partial): never
            $verifyCar, $verifyPhoto, $verifyCode,
            $verifySelfUrl, $verifyEditUrl, $soldDateValue, $soldDateMin, $soldDateMax,
            $soldDateError, $verifyNoticeIcon, $verifyNoticeHeading, $verifyNoticeBody,
-           $verifyNoticeState;
+           $verifyNoticeState, $optOutCarCount, $optOutAlreadySuppressed;
 
     // head_tags.php echoes $current_url verbatim into <link rel="canonical">,
     // og:url, and twitter:url — which would otherwise republish the vericode
@@ -537,6 +552,52 @@ if ($isPost && $action === 'sold') {
     exit;
 }
 
+if ($isPost && $action === 'optout') {
+    // Opting out is an OWNER-level decision, not a car-level one: the owner is
+    // saying "stop emailing me", so suppression fans out across every car they
+    // have. The owner is $ownerId — resolved from the vericode's car and
+    // re-checked against a live, non-`noowner` users row above. No id from the
+    // POST body is read here, exactly as in the verify/sold branches.
+    //
+    // One transaction covers the fan-out and every audit row it needs, for the
+    // same reason the branches above use one: a car must never end up
+    // suppressed with no cars_hist record of who asked for it.
+    $repo->beginTransaction();
+    try {
+        // Cars already suppressed are skipped by setSuppressedForOwner(), so
+        // an empty $affected (a repeat POST, or an owner suppressed by a Brevo
+        // complaint webhook) commits a no-op and redirects identically — no
+        // error, no duplicate history rows.
+        $affected = $verifier->setSuppressedForOwner($ownerId);
+        foreach ($affected as $suppressedCar) {
+            if (!$repo->insertHistory(verifyHistoryFields(
+                $suppressedCar,
+                'EMAIL SUPPRESSED',
+                'Owner self-suppression via verification email opt-out link',
+                $suppressedCar->solddate ?? null
+            ))) {
+                throw new \ElanRegistry\Exceptions\CarDatabaseException(
+                    'verify_car.php: audit trail insert failed for EMAIL SUPPRESSED on car '
+                    . (int) $suppressedCar->id . " for owner {$ownerId}"
+                );
+            }
+        }
+        $repo->commit();
+    } catch (ElanRegistryException $e) {
+        // Covers CarDatabaseException from findByOwner()/setSuppressedForOwner()
+        // or the audit insert above, and OwnerDatabaseException from the
+        // history snapshot's owner lookup — both descend from
+        // ElanRegistryException.
+        $repo->rollback();
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+            "verify_car.php: setSuppressedForOwner failed for owner {$ownerId}: " . $e->getMessage());
+        renderInvalidLink(500);
+    }
+
+    header('Location: ' . $verifySelfUrl . '?vericode=' . $verifyCode . '&action=optout', true, 303);
+    exit;
+}
+
 // Any POST that reaches here carries an action this page does not handle.
 // Treat it as a non-action rather than mutating anything.
 if ($isPost) {
@@ -565,6 +626,29 @@ if ($action === 'verify') {
 
 if ($action === 'sold') {
     renderVerifyPage(__DIR__ . '/../views/cars/sold-confirm.php');
+}
+
+if ($action === 'optout') {
+    // Read-only, like every branch in this section. The confirmation card, the
+    // 303 redirect's landing page, and a later revisit all render from here —
+    // the stored `email_suppressed` flag is what tells them apart, so no
+    // "did we just write?" flag has to be threaded through the redirect.
+    $optOutAlreadySuppressed = ((int) ($verifyCar->email_suppressed ?? 0) === 1);
+
+    try {
+        // The card speaks about the owner's whole account, because that is
+        // what the POST branch acts on.
+        $optOutCarCount = count($repo->findByOwner($ownerId));
+    } catch (ElanRegistryException $e) {
+        // A count is copy, not a gate. Falling back to this car alone keeps
+        // the opt-out reachable when the count query fails, rather than
+        // denying an owner the unsubscribe they came here for.
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+            "verify_car.php: owner car count failed for owner {$ownerId}: " . $e->getMessage());
+        $optOutCarCount = 1;
+    }
+
+    renderVerifyPage(__DIR__ . '/../views/cars/_verify_optout_confirm.php');
 }
 
 // No action param — the landing page with the full option set.

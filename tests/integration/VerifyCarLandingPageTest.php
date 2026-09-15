@@ -73,7 +73,9 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->exposeTestDatabaseToEnvironment();
         self::ensureServerRunning();
 
-        $this->testUserId = $this->createTestUser();
+        // $withProfile: the #1883 opt-out records profiles.email_suppressed on
+        // the owner, so the fixture needs the profiles row every real owner has.
+        $this->testUserId = $this->createTestUser([], true);
         $this->testCarId = $this->createTestCar($this->testUserId, [
             'chassis' => 'VF' . uniqid(),
             'year' => 1968,
@@ -298,6 +300,30 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
             [$this->testCarId, $operation]
         )->first();
         return (int) $row->cnt;
+    }
+
+    private function historyCountForCar(int $carId, string $operation): int
+    {
+        $row = $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM cars_hist WHERE car_id = ? AND operation = ?',
+            [$carId, $operation]
+        )->first();
+        return (int) $row->cnt;
+    }
+
+    private function emailSuppressed(int $carId): int
+    {
+        $row = $this->db->query('SELECT email_suppressed FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
+        return (int) $row->email_suppressed;
+    }
+
+    /** The owner-level opt-out flag (#1883), counterpart to emailSuppressed(). */
+    private function profileEmailSuppressed(int $ownerId): int
+    {
+        $row = $this->db->query('SELECT email_suppressed FROM profiles WHERE user_id = ?', [$ownerId])->first();
+        $this->assertNotNull($row, "Test setup: owner {$ownerId} has no profiles row");
+        return (int) $row->email_suppressed;
     }
 
     // ------------------------------------------------------------------
@@ -646,6 +672,89 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     // ------------------------------------------------------------------
+    // Mismatched user id in POST body on action=optout (adversarial)
+    // ------------------------------------------------------------------
+
+    /**
+     * Issue #1883 AC10: "The owner suppressed is derived server-side from the
+     * vericode lookup only — no car or user identifier in the request is
+     * trusted; covered by a test posting a valid vericode alongside a
+     * mismatched user id and asserting only the vericode's own owner is
+     * suppressed."
+     *
+     * verify_car.php's action=optout POST branch calls
+     * Input::raw('vericode') and Input::raw('action') only — it never calls
+     * Input::raw() for any user/owner/car identifier (grep the file: the only
+     * three Input::raw() call sites are 'vericode', 'action', and 'solddate').
+     * So posting a 'user_id' (or any other plausibly-attacker-controlled
+     * field name) alongside the vericode has no code path that could read it
+     * — $ownerId is resolved once, earlier in the file, purely from
+     * $verifyCar->user_id (itself resolved from the vericode lookup at
+     * CarRepository::findByVerificationCode()). This test proves that by
+     * actively trying to defeat it: it posts owner B's id under several
+     * plausible field names next to owner A's valid vericode, then asserts
+     * owner A (the vericode's real owner) is suppressed and owner B is not
+     * touched at all.
+     */
+    public function testPostWithMismatchedUserIdInBodySuppressesOnlyTheVericodesOwnOwner(): void
+    {
+        // Owner A: the fixture from setUp() ($this->testUserId / $this->testCarId).
+        $code = $this->issueVericode();
+
+        // Owner B: a second owner with their own car, wholly unrelated to the
+        // vericode being posted.
+        $otherUserId = $this->createTestUser();
+        $otherCarId = $this->createTestCar($otherUserId, ['chassis' => 'VF' . uniqid()]);
+
+        $this->assertSame(0, $this->emailSuppressed($this->testCarId), 'Test sanity: owner A car must start unsuppressed');
+        $this->assertSame(0, $this->emailSuppressed($otherCarId), 'Test sanity: owner B car must start unsuppressed');
+
+        $historyBeforeA = $this->historyCount('EMAIL SUPPRESSED');
+        $historyBeforeB = $this->historyCountForCar($otherCarId, 'EMAIL SUPPRESSED');
+
+        // The vericode belongs to owner A, but the POST body claims owner B's
+        // id under every plausible field name an attacker might guess the
+        // page reads for the fan-out target. None of these fields are part of
+        // the page's real form — this simulates a forged/tampered request.
+        $result = $this->post('vericode=' . $code . '&action=optout', [
+            'vericode' => $code,
+            'user_id' => (string) $otherUserId,
+            'owner_id' => (string) $otherUserId,
+            'car_id' => (string) $otherCarId,
+        ]);
+
+        $this->assertSame(303, $result['status'], 'POST must respond with a PRG redirect');
+        $this->assertNotNull($result['location']);
+        $this->assertStringContainsString('action=optout', (string) $result['location']);
+
+        $this->assertSame(
+            1,
+            $this->emailSuppressed($this->testCarId),
+            "The vericode's own owner (owner A) must be suppressed"
+        );
+        $this->assertSame(
+            0,
+            $this->emailSuppressed($otherCarId),
+            'The owner id named in the POST body (owner B) must NOT be suppressed — this is the critical assertion'
+        );
+
+        $this->assertSame(
+            $historyBeforeA + 1,
+            $this->historyCount('EMAIL SUPPRESSED'),
+            'Exactly one EMAIL SUPPRESSED cars_hist row must be inserted for owner A\'s car'
+        );
+        $this->assertSame(
+            $historyBeforeB,
+            $this->historyCountForCar($otherCarId, 'EMAIL SUPPRESSED'),
+            'Owner B\'s car must get zero EMAIL SUPPRESSED cars_hist rows'
+        );
+
+        $this->db->query('DELETE FROM cars_hist WHERE car_id = ?', [$otherCarId]);
+        $this->deleteTestCar($otherCarId);
+        $this->deleteTestUser($otherUserId);
+    }
+
+    // ------------------------------------------------------------------
     // Mismatched car id in hidden POST field (adversarial)
     // ------------------------------------------------------------------
 
@@ -959,5 +1068,270 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
             $result['body'],
             'A logged-out visitor must never be linked straight to the edit page — they cannot reach it without signing in first'
         );
+    }
+
+    // ------------------------------------------------------------------
+    // action=optout (#1883 — one-click verification-email opt-out)
+    // ------------------------------------------------------------------
+
+    public function testGetActionOptoutNeverMutatesEmailSuppressed(): void
+    {
+        $code = $this->issueVericode();
+        $before = $this->carRow();
+        $this->assertSame(0, (int) $before['email_suppressed'], 'Test sanity: fixture car must start unsuppressed');
+
+        $result = $this->get('vericode=' . $code . '&action=optout');
+
+        $this->assertSame(200, $result['status']);
+
+        $after = $this->carRow();
+        $this->assertSame(0, (int) $after['email_suppressed'], 'GET must not set email_suppressed');
+        $this->assertSame(
+            0,
+            $this->profileEmailSuppressed($this->testUserId),
+            'GET must not set the owner-level flag either (#1883)'
+        );
+        $this->assertSame($before['mtime'], $after['mtime'], 'GET must not touch mtime (proves no UPDATE was issued at all)');
+        $this->assertSame(0, $this->historyCount('EMAIL SUPPRESSED'), 'GET must not write an EMAIL SUPPRESSED cars_hist row');
+    }
+
+    public function testPostActionOptoutSuppressesEveryOwnerCarAndInsertsOneHistoryRowEach(): void
+    {
+        $code = $this->issueVericode();
+        $secondCarId = $this->createTestCar($this->testUserId, [
+            'chassis' => 'VF' . uniqid(),
+            'email_suppressed' => 0,
+        ]);
+
+        $historyBeforeCar1 = $this->historyCount('EMAIL SUPPRESSED');
+        $historyBeforeCar2 = $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED');
+
+        $result = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
+
+        $this->assertSame(303, $result['status'], 'POST must respond with a PRG redirect');
+        $this->assertNotNull($result['location']);
+        $this->assertStringContainsString('action=optout', (string) $result['location']);
+
+        $this->assertSame(1, $this->emailSuppressed($this->testCarId), 'The vericode\'s own car must be suppressed');
+        $this->assertSame(1, $this->emailSuppressed($secondCarId), 'The owner\'s other car must also be suppressed');
+        $this->assertSame(
+            1,
+            $this->profileEmailSuppressed($this->testUserId),
+            'The owner-level profiles.email_suppressed flag must also be set (#1883)'
+        );
+
+        $this->assertSame(
+            $historyBeforeCar1 + 1,
+            $this->historyCount('EMAIL SUPPRESSED'),
+            'Exactly one EMAIL SUPPRESSED cars_hist row must be inserted for the first car'
+        );
+        $this->assertSame(
+            $historyBeforeCar2 + 1,
+            $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED'),
+            'Exactly one EMAIL SUPPRESSED cars_hist row must be inserted for the second car'
+        );
+    }
+
+    public function testRepeatPostActionOptoutIsIdempotentWithNoDuplicateHistoryRows(): void
+    {
+        $code = $this->issueVericode();
+
+        $first = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
+        $this->assertSame(303, $first['status']);
+        $this->assertSame(1, $this->emailSuppressed($this->testCarId));
+
+        $historyAfterFirst = $this->historyCount('EMAIL SUPPRESSED');
+        $this->assertSame(1, $historyAfterFirst);
+
+        $second = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
+
+        $this->assertSame(303, $second['status'], 'A repeat opt-out POST must still succeed (idempotent), not error');
+        $this->assertSame(1, $this->emailSuppressed($this->testCarId), 'email_suppressed must remain 1, not toggle');
+        $this->assertSame(
+            1,
+            $this->profileEmailSuppressed($this->testUserId),
+            'The owner-level flag must also remain 1 across a repeat opt-out (#1883)'
+        );
+        $this->assertSame(
+            $historyAfterFirst,
+            $this->historyCount('EMAIL SUPPRESSED'),
+            'A repeat opt-out POST must not insert a second EMAIL SUPPRESSED cars_hist row'
+        );
+    }
+
+    public function testGetActionOptoutAfterSuppressionRendersAlreadyUnsubscribedState(): void
+    {
+        $code = $this->issueVericode();
+        $post = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
+        $this->assertSame(303, $post['status']);
+
+        $result = $this->get('vericode=' . $code . '&action=optout');
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(
+            'unsubscribed',
+            strtolower($result['body']),
+            'Revisiting after suppression must render the already-unsubscribed success state'
+        );
+    }
+
+    // A prior version of this test attempted to simulate a mid-loop
+    // insertHistory() failure by pre-reserving cars_hist's next
+    // auto-increment id with a placeholder row, then relying on the real
+    // insert to collide on a duplicate primary key. That collision is not
+    // reliable: cars_hist.id also advances from the `cars_insert`/
+    // `cars_update`/`cars_delete` triggers (verified live — every write to
+    // `cars` fires an unconditional AFTER trigger that inserts its own
+    // cars_hist row), so the id reserved by the probe can be consumed by
+    // unrelated trigger-driven activity before this test's own POST runs,
+    // making the test flaky rather than deterministic (observed: reserved
+    // id 1000001044, actual ids landed at 1000001044/1047/1048 — no
+    // collision occurred). A genuine per-car failure-injection point does
+    // not exist at this HTTP layer via a PRIMARY KEY collision: cars.* and
+    // cars_hist.* share identical column widths (deliberately mirrored, see
+    // DATABASE.md), so no value can be valid for the cars row a fixture
+    // needs but invalid for the cars_hist insert; and Owner::find() resolves
+    // per owner, not per car, so it cannot be made to fail for the second
+    // car without also failing the first (same owner for both).
+    //
+    // testOptoutMidTransactionFailureReturns500AndRollsBackAllCarsAndHistoryRows()
+    // below replaces that abandoned approach with a different, genuinely
+    // deterministic failure-injection technique: a held table lock rather
+    // than a row/id collision.
+
+    /**
+     * Deterministic HTTP-level failure injection for the optout transaction.
+     *
+     * Forces the real `UPDATE cars` issued by setSuppressedForOwner() ->
+     * updateEmailSuppressed() to fail: the `cars_update` AFTER trigger (see
+     * database/migrations/20260709000000_add_elanregistry_baseline.php)
+     * unconditionally inserts its own audit row into `cars_hist` as PART OF
+     * that same UPDATE statement, so holding `LOCK TABLES cars_hist WRITE`
+     * from a second connection blocks the trigger's insert and, transitively,
+     * the UPDATE itself — with no reliance on row ids, timing windows, or
+     * column-width tricks. `SET GLOBAL lock_wait_timeout` (not
+     * innodb_lock_wait_timeout — LOCK TABLES obeys the former, not the
+     * latter) is set to 1s beforehand so the fresh PDO connection
+     * verify_car.php's own `php -S` request opens picks up a 1s wait as its
+     * session default; the pre-existing default (31536000s / one year) would
+     * otherwise make this test hang effectively forever. The failing UPDATE
+     * throws a PDOException, which CarVerificationManager::persist() catches
+     * and rethrows as CarDatabaseException — an ElanRegistryException — which
+     * is exactly what verify_car.php's optout branch catches to
+     * rollback()/renderInvalidLink(500).
+     *
+     * A second, unrelated PDO connection is required for the lock: PHP's
+     * built-in server (self::ensureServerRunning()) serves one request per
+     * process with no persistent state between requests, so the DB
+     * connection the POST below uses is necessarily a fresh one opened after
+     * the SET GLOBAL below — it cannot be the same connection holding the
+     * lock.
+     */
+    public function testOptoutMidTransactionFailureReturns500AndRollsBackAllCarsAndHistoryRows(): void
+    {
+        $code = $this->issueVericode();
+        $secondCarId = $this->createTestCar($this->testUserId, [
+            'chassis' => 'VF' . uniqid(),
+            'email_suppressed' => 0,
+        ]);
+
+        $beforeCar1 = $this->carRow();
+        $beforeCar2Suppressed = $this->emailSuppressed($secondCarId);
+        $historyBeforeCar1 = $this->historyCount('EMAIL SUPPRESSED');
+        $historyBeforeCar2 = $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED');
+
+        $lockConn = new PDO(
+            $this->buildDsn(),
+            $_ENV['DB_USER'] ?? getenv('DB_USER'),
+            $_ENV['DB_PASS'] ?? getenv('DB_PASS')
+        );
+
+        // Capture the real pre-test value rather than assuming MySQL's
+        // documented 31536000s default — restoring whatever this environment
+        // actually had keeps this test from permanently changing server
+        // behavior if some other process had already customized it.
+        $originalTimeout = (string) $this->db->query(
+            "SHOW VARIABLES LIKE 'lock_wait_timeout'"
+        )->first()->Value;
+
+        // Affects only NEW connections' session default (LOCK TABLES obeys
+        // this session variable, not the connection-agnostic
+        // innodb_lock_wait_timeout) — restored in finally below regardless
+        // of outcome, so no other test in this run is affected.
+        $this->db->query('SET GLOBAL lock_wait_timeout = 1');
+
+        try {
+            $lockConn->exec('LOCK TABLES cars_hist WRITE');
+
+            $result = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
+
+            $this->assertSame(
+                500,
+                $result['status'],
+                'A blocked cars_hist write mid-transaction must surface as renderInvalidLink(500)'
+            );
+        } finally {
+            // UNLOCK TABLES (and closing the connection) first: a stray
+            // global left at 1s is merely annoying for the rest of the run,
+            // but a lock left held on cars_hist would deterministically fail
+            // every subsequent test in this file that mutates a car.
+            $lockConn->exec('UNLOCK TABLES');
+            $lockConn = null;
+            $this->db->query('SET GLOBAL lock_wait_timeout = ' . (int) $originalTimeout);
+        }
+
+        $afterCar1 = $this->carRow();
+        $this->assertSame(
+            $beforeCar1['email_suppressed'],
+            $afterCar1['email_suppressed'],
+            'The vericode\'s own car must remain unsuppressed after a rolled-back transaction'
+        );
+        $this->assertSame(
+            $beforeCar1['mtime'],
+            $afterCar1['mtime'],
+            'A rolled-back UPDATE must leave mtime untouched'
+        );
+        $this->assertSame(
+            $beforeCar2Suppressed,
+            $this->emailSuppressed($secondCarId),
+            'The owner\'s other car must also remain unsuppressed — the whole fan-out rolls back, not just the first car'
+        );
+
+        $this->assertSame(
+            $historyBeforeCar1,
+            $this->historyCount('EMAIL SUPPRESSED'),
+            'No EMAIL SUPPRESSED cars_hist row may survive for the first car'
+        );
+        $this->assertSame(
+            $historyBeforeCar2,
+            $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED'),
+            'No EMAIL SUPPRESSED cars_hist row may survive for the second car'
+        );
+    }
+
+    /**
+     * DSN for a direct PDO connection to the same test database
+     * IntegrationTestCase's own $this->db uses, built from the same
+     * DB_HOST/DB_PORT/DB_NAME env vars exposeTestDatabaseToEnvironment()
+     * already validated are present. Needed only for the second, lock-holding
+     * connection in testOptoutMidTransactionFailureReturns500AndRollsBackAllCarsAndHistoryRows()
+     * — $this->db itself must stay free to run assertions against the
+     * unlocked `cars`/`cars_hist` tables while the second connection holds
+     * the lock.
+     */
+    private function buildDsn(): string
+    {
+        $host = (string) ($_ENV['DB_HOST'] ?? getenv('DB_HOST'));
+        $port = $_ENV['DB_PORT'] ?? getenv('DB_PORT') ?: 3306;
+        $name = (string) ($_ENV['DB_NAME'] ?? getenv('DB_NAME'));
+
+        // DB_HOST may already carry ":port" (see .env.test.local) — DATABASE.md
+        // and this file's own DB_ENV_VARS both treat DB_HOST as authoritative
+        // in that case, so prefer it over the separate DB_PORT var.
+        if (str_contains($host, ':')) {
+            [$host, $port] = explode(':', $host, 2);
+        }
+
+        return "mysql:host={$host};port={$port};dbname={$name}";
     }
 }
