@@ -268,8 +268,8 @@ When adding, moving, removing, or renaming any page, update tests **in the same 
   `test.skip(condition, reason)` form with `reason` naming the actual cause,
   not the symptom — this reports as `skipped` in CI, not a false `passed`.
   The local `localRules/require-skip-reason` ESLint rule enforces the
-  two-argument form automatically (flags `test.skip(...)` calls with fewer
-  than 2 arguments) — it does not catch `testInfo.skip()`, only `test.skip`.
+  two-argument form automatically (flags `test.skip(...)` or
+  `testInfo.skip(...)` calls with fewer than 2 arguments).
 
 Run `npm run test:e2e` to verify public pages against production. See `playwright.config.prod.js` for config.
 

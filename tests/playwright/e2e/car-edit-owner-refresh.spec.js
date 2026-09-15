@@ -98,11 +98,11 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
   // unconditionally would still incorrectly skip it there once it is.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'admin') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the admin project');
     }
     const usesLiveLogin = !process.env.E2E_AUTH_TIER;
     if (usesLiveLogin && (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD)) {
-      testInfo.skip();
+      testInfo.skip(true, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated locally');
     }
   });
 

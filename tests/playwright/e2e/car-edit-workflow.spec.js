@@ -62,11 +62,11 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
   // header) so an unconditional gate doesn't incorrectly skip it there.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'admin') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the admin project');
     }
     const usesLiveLogin = !process.env.E2E_AUTH_TIER;
     if (usesLiveLogin && (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD)) {
-      testInfo.skip();
+      testInfo.skip(true, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated locally');
     }
   });
 

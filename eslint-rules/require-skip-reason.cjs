@@ -1,7 +1,7 @@
 /**
- * Local ESLint rule: enforces that test.skip() always includes a reason
- * string. A bare test.skip() or single-arg test.skip('reason') makes CI
- * report a false "passed" instead of "skipped" (#1949, #1950). See
+ * Local ESLint rule: enforces that test.skip()/testInfo.skip() always
+ * includes a reason string. A bare skip() or single-arg skip('reason')
+ * makes CI report a false "passed" instead of "skipped" (#1949, #1950). See
  * CLAUDE.md's "Playwright Test Maintenance" section.
  *
  * Extracted to its own CJS module (rather than defined inline in
@@ -17,7 +17,7 @@ module.exports = {
                 if (
                     callee.type === "MemberExpression" &&
                     callee.object.type === "Identifier" &&
-                    callee.object.name === "test" &&
+                    (callee.object.name === "test" || callee.object.name === "testInfo") &&
                     callee.property.type === "Identifier" &&
                     callee.property.name === "skip" &&
                     node.arguments.length < 2
@@ -25,10 +25,11 @@ module.exports = {
                     context.report({
                         node,
                         message:
-                            "test.skip() must include a second argument " +
+                            "skip() must include a second argument " +
                             "(a reason string): use test.skip(condition, " +
-                            "'reason') — see CLAUDE.md 'Playwright Test " +
-                            "Maintenance' and issue #1950.",
+                            "'reason') or testInfo.skip(true, 'reason') — " +
+                            "see CLAUDE.md 'Playwright Test Maintenance' " +
+                            "and issue #1950.",
                     });
                 }
             },

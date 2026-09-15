@@ -29,10 +29,14 @@ test("require-skip-reason rule", () => {
             "test.skip('permanently disabled', () => {});",
             // 3+ arguments: out of scope per the issue, must not be flagged.
             "test.skip(a, b, c);",
+            // testInfo.skip(condition, reason) — same guard form, the
+            // per-test-context idiom used in beforeEach hooks.
+            "testInfo.skip(!hasRole, 'wrong project for this test');",
             // Different object named `test.skip` unrelated to Playwright's
             // test global is out of scope for this rule (arity check only
-            // fires on literal `test.skip(...)` callee shape) — included to
-            // document current behavior, not to claim it's exhaustive.
+            // fires on literal `test.skip(...)`/`testInfo.skip(...)` callee
+            // shape) — included to document current behavior, not to claim
+            // it's exhaustive.
             "other.skip('x');",
         ],
         invalid: [
@@ -46,6 +50,17 @@ test("require-skip-reason rule", () => {
             },
             {
                 code: "test.skip('reason only, no condition');",
+                errors: 1,
+            },
+            // testInfo.skip() shares the exact same false-pass risk as
+            // test.skip() and must be caught the same way (#2068 shipped a
+            // bare testInfo.skip() the day this rule's original scope missed it).
+            {
+                code: "testInfo.skip();",
+                errors: 1,
+            },
+            {
+                code: "testInfo.skip(true);",
                 errors: 1,
             },
         ],

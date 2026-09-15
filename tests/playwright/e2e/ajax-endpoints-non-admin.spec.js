@@ -7,7 +7,7 @@ test.describe('Admin AJAX Endpoints — Non-Admin Access', () => {
   // branch, already covered elsewhere — see ajax-endpoints.spec.js).
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'logged-in-non-admin' && testInfo.project.name !== 'logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the logged-in-non-admin (Dev) or logged-in (Test/Prod) projects');
     }
     // On Dev, 'logged-in-non-admin' is registered unconditionally
     // (playwright.config.dev.js) — only its storageState is conditional on
@@ -34,7 +34,7 @@ test.describe('Admin AJAX Endpoints — Non-Admin Access', () => {
   test('admin user details endpoint rejects a logged-in non-admin user', async ({ request }) => {
     const response = await request.post('app/admin/includes/process-user-details.php', {
       form: {
-        user_id: '1',
+        user_id: '999999999',
         csrf: 'test_token'
       }
     });
