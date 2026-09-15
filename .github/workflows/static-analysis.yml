@@ -10,8 +10,10 @@ on:
       - "phpstan.neon"
       - "phpstan-baseline.neon"
       - "**.js"
+      - "**.cjs"
       - "**.css"
       - "eslint.config.mjs"
+      - "eslint-rules/**"
   workflow_dispatch:
 
 jobs:
@@ -53,7 +55,9 @@ jobs:
               - "composer.lock"
             js:
               - "**.js"
+              - "**.cjs"
               - "eslint.config.mjs"
+              - "eslint-rules/**"
             docs:
               - "**.md"
               - "scripts/check-docs.php"
@@ -191,3 +195,6 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint
+
+      - name: Run local ESLint rule tests
+        run: npm run test:eslint-rules

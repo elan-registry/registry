@@ -12,9 +12,12 @@
 //
 // The chassis blur handler calls validateChassis.php then (if valid) check-chassis.php.
 // Both endpoints are intercepted with page.route() so no MAMP DB row is needed.
-// Because checkChassisAvailability() lives inside a jQuery closure, we drive the
-// field via jQuery DOM manipulation in page.evaluate() rather than calling the
-// function directly.
+// Because checkChassisAvailability() lives inside a jQuery closure, we can't call
+// it directly. The year field is driven via jQuery in page.evaluate(); the model
+// select and chassis field are driven via real Playwright locator interactions
+// (selectOption()/fill()/focus()) so the app's own change/blur handlers fire
+// through genuine browser events rather than synthetic jQuery triggers — see
+// triggerChassisBlur() below for why that distinction matters (#2071).
 //
 // Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
@@ -45,32 +48,43 @@ async function gotoAddCarForm(page) {
 
 /**
  * Prepare the chassis field for a blur-triggered availability check:
- *   1. Trigger the year change handler so validYear is set.
- *   2. Insert a synthetic model option and trigger the model change handler
- *      so validModel is set and chassis is enabled.
- *   3. Set the chassis value and trigger blur (which calls validateChassis.php
- *      then check-chassis.php when the mocked validator returns valid).
+ *   1. Trigger the year change handler so validYear is set. This kicks off
+ *      an async ModelLoader.populateModelDropdown() call (real models.php
+ *      request) that clears and repopulates #model — any option injected
+ *      before this settles gets wiped, so we must wait for the real options
+ *      to land before selecting one.
+ *   2. Wait for #model to be populated with a real option, then select it
+ *      via Playwright's selectOption() (fires a real 'change' event) so
+ *      validModel is set and chassis is enabled.
+ *   3. Fill the chassis field via Playwright (real focus + input, unlike
+ *      jQuery .val()) then blur by focusing elsewhere — jQuery's .blur()
+ *      handler only fires on a genuine focus/blur transition, and
+ *      Playwright's locator.blur() is a no-op on an element that was never
+ *      actually focused, which the previous version of this helper hit
+ *      silently (see #2071).
  */
 async function triggerChassisBlur(page) {
     await page.evaluate(() => {
         // Set validYear via the year change handler (year select is server-rendered)
         const $year = window.$('#year');
         $year.val($year.find('option[value!=""]').first().val() || '1967').trigger('change');
-
-        // Insert a synthetic model option and trigger model change → enables chassis
-        const $model = window.$('#model');
-        $model.prop('disabled', false);
-        if (!$model.find('option[value="S1"]').length) {
-            $model.append('<option value="S1">S1</option>');
-        }
-        $model.val('S1').trigger('change');
-
-        // Set chassis value directly (field is now enabled)
-        window.$('#chassis').prop('disabled', false).val('1234');
     });
 
-    // Trigger blur via Playwright so the event fires through the normal listener
-    await page.locator('#chassis').blur();
+    // Wait for the async model-load triggered above to finish repopulating #model.
+    await page.waitForFunction(() => {
+        return window.$('#model').find('option[value!=""]').length > 0;
+    }, { timeout: 5000 });
+
+    // Select the first real model option through Playwright so the native
+    // 'change' event fires the app's own listener, setting validModel to a
+    // value the app itself produced and enabling #chassis.
+    const firstRealValue = await page.locator('#model option:not([value=""])').first().getAttribute('value');
+    await page.locator('#model').selectOption(firstRealValue);
+
+    // Fill (real focus + input) then blur by moving focus elsewhere, so the
+    // app's jQuery blur handler actually fires.
+    await page.locator('#chassis').fill('1234');
+    await page.locator('#model').focus();
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +146,18 @@ test.describe('Chassis availability check error feedback (#754)', () => {
             route.fulfill({ status: 200, contentType: 'application/json', body: AVAILABLE_RESPONSE })
         );
 
+        // #chassis_check_error starts life as d-none (edit.php) and every failure
+        // path in the chain also leaves it d-none, so a bare toBeHidden() here
+        // would pass even if the chain stalled before reaching the success
+        // handler that's actually supposed to clear it. Wait for the mocked
+        // availability response to actually be consumed first, so a stalled
+        // chain fails loudly instead of resting on the pre-existing hidden state.
+        const availabilityResponse = page.waitForResponse(
+            (r) => r.url().includes('chassis-availability.php') && r.status() === 200
+        );
         await triggerChassisBlur(page);
+        await availabilityResponse;
+
         await expect(page.locator('#chassis_check_error')).toBeHidden({ timeout: 5000 });
     });
 

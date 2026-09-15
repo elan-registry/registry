@@ -44,7 +44,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
   // Skip these tests if running in logged-in project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
   });
   const pages = [
@@ -264,7 +264,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
 // page-specific title of its own.
 test('docs/guides/car-transfer-faq.php still renders the generic site title/description (regression guard) (#1432)', async ({ page }, testInfo) => {
   if (testInfo.project.name !== 'not-logged-in') {
-    testInfo.skip();
+    testInfo.skip(true, 'Only runs under the not-logged-in project');
   }
 
   await page.goto('docs/guides/car-transfer-faq.php');
@@ -557,7 +557,7 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
 test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
     // Entire block asserts .htaccess Redirect/RedirectMatch behavior — Test/Prod only (#2055)
     skipOnLocalDev();
@@ -653,7 +653,7 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
 test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
   });
 
@@ -783,7 +783,7 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
 test.describe('GSC 404 cleanup redirects (#1409)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
   });
 
@@ -888,7 +888,7 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
 test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
   });
 
@@ -1104,7 +1104,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 test.describe('Sitemap endpoint (#1373)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
     // /sitemap.xml is served via an .htaccess RewriteRule — Test/Prod only (#2055)
     skipOnLocalDev();
@@ -1133,7 +1133,7 @@ test.describe('Sitemap endpoint (#1373)', () => {
 test.describe('llms.txt AI crawler guidance (#1413)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
   });
 
@@ -1159,7 +1159,7 @@ test.describe('llms.txt AI crawler guidance (#1413)', () => {
 test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
   });
 
@@ -1249,7 +1249,7 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
 test.describe('Location picker city disambiguation (#1400)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
   });
 

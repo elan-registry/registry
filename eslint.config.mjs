@@ -15,6 +15,18 @@
  *   npm run lint:fix      # Auto-fix where possible
  */
 
+// Local ESLint plugin registering the require-skip-reason rule (defined in
+// eslint-rules/require-skip-reason.cjs, shared with its RuleTester spec at
+// tests/eslint-require-skip-reason.test.js so both load the exact same rule
+// object rather than risking a hand-copied duplicate diverging from it).
+import requireSkipReason from "./eslint-rules/require-skip-reason.cjs";
+
+const localRules = {
+    rules: {
+        "require-skip-reason": requireSkipReason,
+    },
+};
+
 export default [
     {
         // Global ignores
@@ -354,6 +366,9 @@ export default [
                 LocationPicker: "readonly",
             },
         },
+        plugins: {
+            localRules,
+        },
         rules: {
             "no-undef": "error",
             "no-unused-vars": ["warn", {
@@ -365,6 +380,7 @@ export default [
             }],
             "no-console": "off",
             "no-unreachable": "error",
+            "localRules/require-skip-reason": "error",
         },
     },
 ];

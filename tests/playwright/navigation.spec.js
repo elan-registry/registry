@@ -139,6 +139,10 @@ test.describe('Navigation and File Reorganization', () => {
     await expect(page.locator('h1, h2').first()).toBeVisible();
   });
 
+  // Issue #1778 — full load + full-render coverage for these three pages
+  // lives in ui-consistency.spec.js (console-error tests), which supersedes
+  // a status/title-only check here since it also asserts HTTP 200.
+
   test('nav contains Reference dropdown', async ({ page }) => {
     await navigateAndWait(page, 'index.php');
 

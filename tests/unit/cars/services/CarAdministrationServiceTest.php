@@ -88,7 +88,13 @@ final class CarAdministrationServiceTest extends TestCase
      *                            or website data at all — the shape of the
      *                            `noowner` system account, and the case where
      *                            CarValidator drops the keys entirely rather
-     *                            than passing the blanks through.
+     *                            than passing the blanks through. fname/lname
+     *                            are NOT blanked by this flag — they are not
+     *                            location data, and the real `noowner` account
+     *                            carries a non-blank 'No'/'Owner' name (see
+     *                            UserDeletionReassignmentTest), so a blanked
+     *                            fixture here would assert behavior the real
+     *                            system doesn't have.
      * @param string $username Target owner's username. transfer() treats a
      *                         target with username 'noowner' as the system
      *                         account for `solddate` handling — see
@@ -114,8 +120,8 @@ final class CarAdministrationServiceTest extends TestCase
             'city'      => $blankLocation ? '' : 'Test City',
             'state'     => $blankLocation ? '' : 'TS',
             'country'   => $blankLocation ? '' : 'US',
-            'lat'       => null,
-            'lon'       => null,
+            'lat'       => $blankLocation ? null : 52.4567,
+            'lon'       => $blankLocation ? null : 1.0234,
             'website'   => '',
         ]);
         return $db;
@@ -559,6 +565,16 @@ final class CarAdministrationServiceTest extends TestCase
             );
         }
 
+        // fname/lname are NOT blanked — the real `noowner` account (and any real
+        // target owner) has a non-blank name, so the guarantee here is that the
+        // target's own name correctly overwrites the previous owner's, not that it
+        // goes blank. createOwnerDb() always returns 'Test'/'User' regardless of
+        // blankLocation (see its docblock).
+        $this->assertArrayHasKey('fname', $updateFields, 'cars.fname must be written on transfer, not dropped by CarValidator');
+        $this->assertSame('Test', $updateFields['fname'], "cars.fname must be the target owner's own name, overwriting the previous owner's");
+        $this->assertArrayHasKey('lname', $updateFields, 'cars.lname must be written on transfer, not dropped by CarValidator');
+        $this->assertSame('User', $updateFields['lname'], "cars.lname must be the target owner's own name, overwriting the previous owner's");
+
         // website is cleared to null, not '', since #1448 made CarValidator's
         // website case null-passthrough (CLEARABLE_FIELDS) rather than
         // dropping the key — see #1448 for why '' and null aren't yet a
@@ -572,9 +588,30 @@ final class CarAdministrationServiceTest extends TestCase
             $updateFields['website'],
             "cars.website must be cleared so the previous owner's value cannot survive the transfer"
         );
+        foreach (['lat', 'lon'] as $field) {
+            $this->assertArrayHasKey(
+                $field,
+                $updateFields,
+                "cars.{$field} must be written on transfer, not dropped by CarValidator"
+            );
+            $this->assertNull(
+                $updateFields[$field],
+                "cars.{$field} must be cleared so the previous owner's value cannot survive the transfer"
+            );
+        }
 
-        $this->assertSame('', $historyFields['email'] ?? null);
-        $this->assertSame('', $historyFields['city'] ?? null);
+        foreach (['email', 'city', 'state', 'country', 'website'] as $field) {
+            $this->assertArrayHasKey($field, $historyFields, "history {$field} must be written on transfer, not omitted");
+            $this->assertSame('', $historyFields[$field] ?? null, "history {$field} must be cleared so the previous owner's value cannot survive the transfer");
+        }
+        $this->assertArrayHasKey('fname', $historyFields, 'history fname must be written on transfer, not omitted');
+        $this->assertSame('Test', $historyFields['fname'] ?? null, "history fname must be the target owner's own name, overwriting the previous owner's");
+        $this->assertArrayHasKey('lname', $historyFields, 'history lname must be written on transfer, not omitted');
+        $this->assertSame('User', $historyFields['lname'] ?? null, "history lname must be the target owner's own name, overwriting the previous owner's");
+        $this->assertArrayHasKey('lat', $historyFields, 'history lat must be written on transfer, not omitted');
+        $this->assertNull($historyFields['lat'] ?? null, 'history lat must be cleared so the previous owner\'s value cannot survive the transfer');
+        $this->assertArrayHasKey('lon', $historyFields, 'history lon must be written on transfer, not omitted');
+        $this->assertNull($historyFields['lon'] ?? null, 'history lon must be cleared so the previous owner\'s value cannot survive the transfer');
     }
 
     public function testTransferThrowsCarDatabaseExceptionWhenUpdateFails(): void
