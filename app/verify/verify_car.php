@@ -110,6 +110,40 @@ function renderInvalidLink(int $httpStatus = 404): never
 }
 
 /**
+ * Render the "we couldn't complete that" page and stop.
+ *
+ * Distinct from renderInvalidLink(): this is reached only AFTER the vericode
+ * has already authenticated and a write was attempted — the visitor has
+ * proven they hold the credential, so there is no prober to defend against
+ * here and no enumeration-resistance reason to reuse the generic "expired or
+ * invalid link" copy. Telling an owner whose opt-out (or verify/sold) write
+ * failed that "nothing is wrong with your car's record" would be an
+ * affirmatively false statement — the write did not happen and, for
+ * opt-out specifically, they will keep receiving the emails they just asked
+ * to stop. This page instead says plainly that something failed on our end
+ * and that the link is still good to retry.
+ *
+ * @param string $whatFailed One sentence naming what didn't complete, e.g.
+ *                           'We could not record your opt-out.' Concatenated
+ *                           directly into the notice body — pass only static,
+ *                           developer-authored copy, never request-derived text.
+ */
+function renderActionFailed(string $whatFailed): never
+{
+    global $verifyNoticeIcon, $verifyNoticeHeading, $verifyNoticeBody, $verifyNoticeState;
+
+    http_response_code(500);
+
+    $verifyNoticeState   = 'error';
+    $verifyNoticeIcon    = 'fa-triangle-exclamation';
+    $verifyNoticeHeading = 'Something went wrong on our end';
+    $verifyNoticeBody    = $whatFailed . ' Your link is still valid — please try again in a few minutes. '
+        . 'If it keeps happening, email the registrar at registrar@elanregistry.org and we\'ll sort it out.';
+
+    renderVerifyPage(__DIR__ . '/../views/cars/_verify_notice.php');
+}
+
+/**
  * Render one content partial inside the full site template, then stop.
  *
  * The template include is deferred to here (rather than running at the top of
@@ -494,7 +528,10 @@ if ($isPost && $action === 'verify') {
         $repo->rollback();
         logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
             "verify_car.php: markVerified failed for car {$carId}: " . $e->getMessage());
-        renderInvalidLink(500);
+        // The vericode already authenticated by this point, so there is no
+        // enumeration risk in saying plainly that the write failed — see
+        // renderActionFailed()'s docblock.
+        renderActionFailed('We could not record your verification.');
     }
 
     // Post/Redirect/Get: a refresh must never re-submit.
@@ -545,7 +582,8 @@ if ($isPost && $action === 'sold') {
         $repo->rollback();
         logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD,
             "verify_car.php: markSold failed for car {$carId}: " . $e->getMessage());
-        renderInvalidLink(500);
+        // Post-authentication write failure — see renderActionFailed()'s docblock.
+        renderActionFailed('We could not record the sale.');
     }
 
     header('Location: ' . $verifySelfUrl . '?vericode=' . $verifyCode . '&action=sold', true, 303);
@@ -584,14 +622,17 @@ if ($isPost && $action === 'optout') {
         }
         $repo->commit();
     } catch (ElanRegistryException $e) {
-        // Covers CarDatabaseException from findByOwner()/setSuppressedForOwner()
-        // or the audit insert above, and OwnerDatabaseException from the
-        // history snapshot's owner lookup — both descend from
-        // ElanRegistryException.
+        // Covers CarDatabaseException from setSuppressedForOwner() (including
+        // its internal findByOwner()/suppressOwnerProfile() calls) or the
+        // audit insert above, and OwnerDatabaseException from the history
+        // snapshot's owner lookup — both descend from ElanRegistryException.
         $repo->rollback();
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
             "verify_car.php: setSuppressedForOwner failed for owner {$ownerId}: " . $e->getMessage());
-        renderInvalidLink(500);
+        // Post-authentication write failure — see renderActionFailed()'s
+        // docblock. Telling the owner "nothing is wrong" here would be false:
+        // their opt-out did not take effect and they will keep receiving mail.
+        renderActionFailed('We could not record your opt-out, so you may still receive verification emails.');
     }
 
     header('Location: ' . $verifySelfUrl . '?vericode=' . $verifyCode . '&action=optout', true, 303);
@@ -640,12 +681,15 @@ if ($action === 'optout') {
         // what the POST branch acts on.
         $optOutCarCount = count($repo->findByOwner($ownerId));
     } catch (ElanRegistryException $e) {
-        // A count is copy, not a gate. Falling back to this car alone keeps
-        // the opt-out reachable when the count query fails, rather than
-        // denying an owner the unsubscribe they came here for.
+        // A count is copy, not a gate: keep the opt-out reachable when the
+        // count query fails, rather than denying an owner the unsubscribe
+        // they came here for. null means "unknown" — the partial must then
+        // speak generically rather than assert a specific car count we do
+        // not actually have (a fixed fallback like 1 would tell a multi-car
+        // owner their action affects only one car, which is simply false).
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
             "verify_car.php: owner car count failed for owner {$ownerId}: " . $e->getMessage());
-        $optOutCarCount = 1;
+        $optOutCarCount = null;
     }
 
     renderVerifyPage(__DIR__ . '/../views/cars/_verify_optout_confirm.php');

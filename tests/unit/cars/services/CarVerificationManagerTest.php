@@ -394,7 +394,7 @@ final class CarVerificationManagerTest extends TestCase
         $ownerId = 5;
         $this->stubProfileNotYetSuppressed();
 
-        $this->mockRepo->expects($this->once())->method('findUnsoldByOwner')
+        $this->mockRepo->expects($this->once())->method('findByOwner')
             ->with($ownerId)
             ->willReturn([
                 (object) ['id' => 1],
@@ -437,7 +437,7 @@ final class CarVerificationManagerTest extends TestCase
         $ownerId = 9;
         $this->stubProfileNotYetSuppressed();
 
-        $this->mockRepo->method('findUnsoldByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
         $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 1]);
 
         $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
@@ -452,12 +452,12 @@ final class CarVerificationManagerTest extends TestCase
         $ownerId = 11;
         $this->stubProfileNotYetSuppressed();
 
-        $this->mockRepo->method('findUnsoldByOwner')->willReturn([
+        $this->mockRepo->method('findByOwner')->willReturn([
             (object) ['id' => 1],
             (object) ['id' => 2],
         ]);
         $this->mockRepo->method('findById')->willReturnMap([
-            [1, null], // vanished between findUnsoldByOwner() and findById()
+            [1, null], // vanished between findByOwner() and findById()
             [2, (object) ['id' => 2, 'email_suppressed' => 0]],
         ]);
 
@@ -483,7 +483,7 @@ final class CarVerificationManagerTest extends TestCase
     public function testSetSuppressedForOwnerReturnsPreChangeSnapshotsNotMutatedObjects(): void
     {
         $this->stubProfileNotYetSuppressed();
-        $this->mockRepo->method('findUnsoldByOwner')->willReturn([(object) ['id' => 7]]);
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 7]]);
 
         $live = (object) ['id' => 7, 'email_suppressed' => 0];
         $this->mockRepo->method('findById')->willReturn($live);
@@ -505,7 +505,7 @@ final class CarVerificationManagerTest extends TestCase
     public function testSetSuppressedForOwnerOpensNoTransaction(): void
     {
         $this->stubProfileNotYetSuppressed();
-        $this->mockRepo->method('findUnsoldByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
         $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 0]);
         $this->mockRepo->method('updateEmailSuppressed')->willReturn(true);
 
@@ -519,7 +519,7 @@ final class CarVerificationManagerTest extends TestCase
     public function testSetSuppressedForOwnerPropagatesCarDatabaseExceptionFromSetSuppressed(): void
     {
         $this->stubProfileNotYetSuppressed();
-        $this->mockRepo->method('findUnsoldByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
         $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 0]);
         $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')->willReturn(false);
 
@@ -528,10 +528,10 @@ final class CarVerificationManagerTest extends TestCase
         $this->manager->setSuppressedForOwner(1);
     }
 
-    public function testSetSuppressedForOwnerPropagatesCarDatabaseExceptionFromFindUnsoldByOwner(): void
+    public function testSetSuppressedForOwnerPropagatesCarDatabaseExceptionFromFindByOwner(): void
     {
         $this->stubProfileNotYetSuppressed();
-        $this->mockRepo->expects($this->once())->method('findUnsoldByOwner')
+        $this->mockRepo->expects($this->once())->method('findByOwner')
             ->willThrowException(new CarDatabaseException('lookup failed'));
 
         $this->expectException(CarDatabaseException::class);
@@ -552,7 +552,7 @@ final class CarVerificationManagerTest extends TestCase
         $ownerId = 42;
         $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(0);
 
-        $this->mockRepo->method('findUnsoldByOwner')->willReturn([
+        $this->mockRepo->method('findByOwner')->willReturn([
             (object) ['id' => 1],
             (object) ['id' => 2],
             (object) ['id' => 3],
@@ -583,7 +583,7 @@ final class CarVerificationManagerTest extends TestCase
         $ownerId = 43;
         $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(0);
 
-        $this->mockRepo->method('findUnsoldByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
         $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 1]);
         $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
 
@@ -608,7 +608,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 44;
 
-        $this->mockRepo->method('findUnsoldByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
         $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 0]);
         $this->mockRepo->method('updateEmailSuppressed')->willReturn(true);
 
@@ -632,7 +632,7 @@ final class CarVerificationManagerTest extends TestCase
 
         $this->mockRepo->method('findProfileEmailSuppressed')->with($ownerId)->willReturn(null);
 
-        $this->mockRepo->expects($this->never())->method('findUnsoldByOwner');
+        $this->mockRepo->expects($this->never())->method('findByOwner');
         $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
         $this->mockRepo->expects($this->never())->method('updateProfileEmailSuppressed');
 
@@ -654,7 +654,7 @@ final class CarVerificationManagerTest extends TestCase
         $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
             ->with($ownerId, true)->willReturn(false);
 
-        $this->mockRepo->expects($this->never())->method('findUnsoldByOwner');
+        $this->mockRepo->expects($this->never())->method('findByOwner');
         $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
 
         $this->expectException(CarDatabaseException::class);
@@ -670,7 +670,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
             ->willThrowException(new CarDatabaseException('profile read failed'));
-        $this->mockRepo->expects($this->never())->method('findUnsoldByOwner');
+        $this->mockRepo->expects($this->never())->method('findByOwner');
 
         $this->expectException(CarDatabaseException::class);
 

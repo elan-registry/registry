@@ -312,10 +312,16 @@ class CarVerificationManager
      * per-car cars_hist inserts in one transaction (matches verify/sold
      * branches in verify_car.php).
      *
-     * Scoped to unsold cars only (findUnsoldByOwner()): a sold car is never a
-     * verification-email candidate (findVerificationEligible() excludes
-     * solddate IS NOT NULL), so suppressing it has no real effect and counting
-     * it would overstate what the opt-out did.
+     * Scoped to EVERY car the owner has (findByOwner()), sold included, per
+     * #1883's acceptance criteria ("syncs email_suppressed = 1 to every car
+     * they have" / "An owner with four cars clicking this once means all four
+     * stop" — no unsold qualifier). A sold car is never a verification-email
+     * candidate (findVerificationEligible() excludes solddate IS NOT NULL), so
+     * suppressing it has no effect on future sends, but the fan-out and its
+     * audit trail must still cover it: the confirmation page's car count
+     * (verify_car.php) is built from findByOwner() too, and a narrower
+     * fan-out would silently under-deliver on what that count promises the
+     * owner and leave sold cars with no EMAIL SUPPRESSED cars_hist row.
      *
      * TWO WRITES, TWO MEANINGS. Besides the per-car fan-out this sets
      * `profiles.email_suppressed = 1` once for the owner. The per-car flag is
@@ -354,13 +360,13 @@ class CarVerificationManager
 
         $changed = [];
 
-        foreach ($this->repo->findUnsoldByOwner($ownerId) as $carRef) {
+        foreach ($this->repo->findByOwner($ownerId) as $carRef) {
             $carData = $this->repo->findById((int) $carRef->id);
 
             if ($carData === null) {
-                // findUnsoldByOwner() listed this id moments ago, so null here
+                // findByOwner() listed this id moments ago, so null here
                 // means the row disappeared mid-fan-out (concurrent merge or
-                // GDPR erasure) — or a genuine findUnsoldByOwner()/findById()
+                // GDPR erasure) — or a genuine findByOwner()/findById()
                 // inconsistency. Skipping is correct (nothing to suppress), but
                 // it must never be silent: without this log line it is
                 // indistinguishable from a real bug.

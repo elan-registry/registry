@@ -163,6 +163,67 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
     }
 
     /**
+     * setSuppressedForOwner() fans out to EVERY car the owner has, sold cars
+     * included, per #1883's acceptance criteria ("syncs email_suppressed = 1
+     * to every car they have"). A sold car is never a verification-email
+     * candidate (findVerificationEligible() excludes solddate IS NOT NULL),
+     * so this has no effect on future sends for that car — but the fan-out
+     * and its EMAIL SUPPRESSED cars_hist audit row must still cover it,
+     * matching what the confirmation page's car count (built from the same
+     * findByOwner()) promises the owner.
+     */
+    #[Group('fast')]
+    public function testSoldCarIsSuppressedAlongsideUnsoldCars(): void
+    {
+        $ownerId = $this->createTestUser([], true);
+        $unsoldCarId = $this->createTestCar($ownerId, ['email' => 'owner7-unsold@example.com', 'email_suppressed' => 0]);
+        $soldCarId = $this->createTestCar($ownerId, [
+            'email' => 'owner7-sold@example.com',
+            'email_suppressed' => 0,
+            'solddate' => date('Y-m-d', strtotime('-30 days')),
+        ]);
+
+        $changed = $this->manager->setSuppressedForOwner($ownerId);
+
+        $changedIds = array_map(static fn (object $car): int => (int) $car->id, $changed);
+        sort($changedIds);
+        $expectedIds = [$unsoldCarId, $soldCarId];
+        sort($expectedIds);
+        $this->assertSame($expectedIds, $changedIds, 'Both the unsold and the sold car must be reported as changed');
+
+        $this->assertSame(1, $this->emailSuppressed($unsoldCarId), 'The unsold car must be suppressed');
+        $this->assertSame(1, $this->emailSuppressed($soldCarId), 'The sold car must also be suppressed');
+        $this->assertSame(
+            1,
+            $this->profileEmailSuppressed($ownerId),
+            'The owner-level flag must be set regardless of car sale status'
+        );
+    }
+
+    /**
+     * An owner whose only car is sold gets that car suppressed too (see
+     * testSoldCarIsSuppressedAlongsideUnsoldCars() above for why) — an empty
+     * $changed here would mean the fan-out silently skipped the owner's one
+     * car, which is not the intended behavior.
+     */
+    #[Group('fast')]
+    public function testOwnerWithOnlySoldCarStillGetsItSuppressed(): void
+    {
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createTestCar($ownerId, [
+            'email' => 'owner8-sold-only@example.com',
+            'email_suppressed' => 0,
+            'solddate' => date('Y-m-d', strtotime('-30 days')),
+        ]);
+
+        $changed = $this->manager->setSuppressedForOwner($ownerId);
+
+        $this->assertCount(1, $changed, 'The owner\'s one (sold) car must still be reported as changed');
+        $this->assertSame(1, $this->emailSuppressed($carId), 'The sold car must be suppressed');
+        $this->assertSame(1, $this->profileEmailSuppressed($ownerId));
+    }
+
+    /**
      * An owner with no profiles row has nowhere to record the opt-out. The
      * operation must fail loudly BEFORE any car is touched, rather than
      * suppressing cars and silently losing the owner-level decision.

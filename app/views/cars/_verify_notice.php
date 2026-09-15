@@ -12,14 +12,19 @@ if (count(get_included_files()) == 1) { die(); }
  *   'sold'     — the car is already recorded as sold (idempotent: a repeat
  *                POST is a strict no-op and renders this)
  *   'invalid'  — the generic expired-or-invalid-link page
+ *   'error'    — a write failed AFTER the vericode already authenticated
+ *                (see verify_car.php's renderActionFailed()); unlike
+ *                'invalid' this is never shown to an unauthenticated prober,
+ *                so its copy can and does say plainly that something broke
  *
  * The first two keep the hero so the owner can see WHICH car this was about.
  * The 'invalid' state deliberately shows no car at all: it is rendered for
  * codes that resolved to nothing as well as for codes that expired, and the
- * two must be indistinguishable.
+ * two must be indistinguishable. 'error' also shows no car — the failure
+ * notice does not depend on which car was involved.
  *
  * Caller must set:
- *   $verifyNoticeState   string  'verified' | 'sold' | 'invalid'
+ *   $verifyNoticeState   string  'verified' | 'sold' | 'invalid' | 'error'
  *   $verifyNoticeIcon    string  Font Awesome icon class
  *   $verifyNoticeHeading string  Headline text
  *   $verifyNoticeBody    string  Body paragraph
@@ -38,10 +43,11 @@ $verifyPhoto ??= null;
 $verifyEditUrl ??= '';
 
 $isInvalid = $verifyNoticeState === 'invalid';
-$iconClass = $isInvalid ? 'text-muted' : 'text-primary';
+$isError   = $verifyNoticeState === 'error';
+$iconClass = $isInvalid ? 'text-muted' : ($isError ? 'text-danger' : 'text-primary');
 ?>
 <div class="card registry-card">
-    <?php if (!$isInvalid && $verifyCar !== null): ?>
+    <?php if (!$isInvalid && !$isError && $verifyCar !== null): ?>
         <?php include __DIR__ . '/_verify_hero.php'; ?>
     <?php endif; ?>
 
@@ -51,7 +57,7 @@ $iconClass = $isInvalid ? 'text-muted' : 'text-primary';
                aria-hidden="true"></i>
         </div>
 
-        <h2 class="h5 <?= $isInvalid ? '' : 'text-primary fw-bold' ?>">
+        <h2 class="h5 <?= ($isInvalid || $isError) ? '' : 'text-primary fw-bold' ?>">
             <?= htmlspecialchars($verifyNoticeHeading, ENT_QUOTES, 'UTF-8') ?>
         </h2>
 

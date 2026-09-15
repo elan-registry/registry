@@ -20,11 +20,16 @@ use Phinx\Migration\AbstractMigration;
  *   opt-out. It is also written by the Brevo webhook and suppression-sync
  *   paths, so a set flag there does not distinguish "the owner asked us to
  *   stop" from "Brevo reported this address as suppressed".
- * - `profiles.email_suppressed` is the owner-level record of the opt-out
- *   decision itself — the authoritative "did this owner ever opt out"
- *   flag. It survives the owner's car list changing (a car sold, merged,
- *   reassigned, or added after the opt-out) and stays correct if the per-car
- *   flags drift for any reason.
+ * - `profiles.email_suppressed` is the owner-level RECORD of the opt-out
+ *   decision itself. As of this migration it is written by
+ *   `CarVerificationManager::setSuppressedForOwner()` but not yet read by
+ *   any eligibility query — `findVerificationEligible()` still gates solely
+ *   on the per-car `cars.email_suppressed` flag, which the same fan-out
+ *   keeps in sync with this one. The column does NOT yet independently
+ *   survive the owner's car list changing (a car un-sold, merged, or added
+ *   after the opt-out could become eligible again despite this flag being
+ *   set) — closing that gap means wiring this column into eligibility,
+ *   which is not part of #1883's scope and is tracked as a follow-up.
  *
  * This is the original design in
  * docs/plans/car-owner-verification/car-owner-verification-frd.md, whose

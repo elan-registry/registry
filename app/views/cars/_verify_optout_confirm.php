@@ -29,7 +29,9 @@ if (count(get_included_files()) == 1) { die(); }
  *   $verifyPhoto              ?string Primary photo URL (-resized-300) or null
  *   $verifyCode               string  The plaintext vericode (format-validated)
  *   $verifySelfUrl            string  URL of this page, without query string
- *   $optOutCarCount           int     How many cars the opt-out covers
+ *   $optOutCarCount           ?int    How many cars the opt-out covers, or null
+ *                                     when verify_car.php's count query failed
+ *                                     (the count is unknown, not zero)
  *   $optOutAlreadySuppressed  bool    True once suppression is in effect
  */
 
@@ -37,7 +39,7 @@ $verifyCar ??= null;
 $verifyPhoto ??= null;
 $verifyCode ??= '';
 $verifySelfUrl ??= '';
-$optOutCarCount ??= 0;
+$optOutCarCount = $optOutCarCount ?? null;
 $optOutAlreadySuppressed ??= false;
 
 if ($verifyCar === null) {
@@ -49,8 +51,11 @@ $verifySelfAttr = htmlspecialchars($verifySelfUrl, ENT_QUOTES, 'UTF-8');
 
 // findByOwner() counts every car the owner has; a count of 0 would mean the
 // car the vericode resolved to had vanished between the two queries, so floor
-// at 1 rather than telling the owner about "your 0 registered cars".
-$carCount = max(1, (int) $optOutCarCount);
+// at 1 rather than telling the owner about "your 0 registered cars". A count
+// of null means the query itself failed — that is "unknown", not "1", and is
+// kept distinct below so the copy can speak generically instead of asserting
+// a fabricated number.
+$carCount = $optOutCarCount === null ? null : max(1, (int) $optOutCarCount);
 $carNoun  = $carCount === 1 ? 'car' : 'cars';
 ?>
 <div class="card registry-card">
@@ -71,7 +76,7 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
             <p>
                 We won&rsquo;t send you any more verification emails &mdash; not for
                 this car, and not for
-                <?= $carCount === 1
+                <?= ($carCount === null || $carCount === 1)
                     ? 'any other car you register'
                     : 'any of your ' . $carCount . ' registered cars' ?>.
                 Your cars stay in the registry exactly as they are; only the
@@ -93,12 +98,20 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
 
             <div class="alert alert-info" role="alert">
                 <i class="fas fa-circle-info me-2" aria-hidden="true"></i>
-                You won&rsquo;t receive verification emails for any of your
-                <strong><?= $carCount ?> registered <?= $carNoun ?></strong>.
-                Nothing else changes: your <?= $carNoun ?> and
-                <?= $carCount === 1 ? 'its' : 'their' ?> history stay in the
-                registry, and we&rsquo;ll still email you about your account when
-                you ask us to.
+                <?php if ($carCount === null): ?>
+                    You won&rsquo;t receive verification emails for
+                    <strong>any of your registered cars</strong>.
+                    Nothing else changes: your cars and their history stay in
+                    the registry, and we&rsquo;ll still email you about your
+                    account when you ask us to.
+                <?php else: ?>
+                    You won&rsquo;t receive verification emails for any of your
+                    <strong><?= $carCount ?> registered <?= $carNoun ?></strong>.
+                    Nothing else changes: your <?= $carNoun ?> and
+                    <?= $carCount === 1 ? 'its' : 'their' ?> history stay in the
+                    registry, and we&rsquo;ll still email you about your account when
+                    you ask us to.
+                <?php endif; ?>
             </div>
 
             <form method="POST" action="<?= $verifySelfAttr ?>?vericode=<?= $verifyCodeAttr ?>&amp;action=optout">

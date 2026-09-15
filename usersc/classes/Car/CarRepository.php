@@ -914,34 +914,6 @@ class CarRepository
     }
 
     /**
-     * Find unsold car ids belonging to an owner
-     *
-     * Sold cars are never verification-email candidates (findVerificationEligible()
-     * excludes solddate IS NOT NULL), so any owner-level verification action that
-     * fans out across "the owner's cars" — currently only the opt-out flow — must
-     * exclude them: suppressing a sold car's flag is a no-op with no real effect,
-     * and counting it in owner-facing copy ("this affects your N registered cars")
-     * overstates what the action actually does.
-     *
-     * @param int $ownerId Owner whose unsold cars to find
-     * @return array<object> Rows with only {id} populated (same shape as findByOwner())
-     * @throws CarDatabaseException If the query fails
-     */
-    public function findUnsoldByOwner(int $ownerId): array
-    {
-        $result = $this->db->query(
-            'SELECT id FROM cars WHERE user_id = ? AND solddate IS NULL',
-            [$ownerId]
-        );
-        if ($this->db->error()) {
-            throw new CarDatabaseException(
-                "CarRepository::findUnsoldByOwner failed for user={$ownerId}: " . $this->db->errorString()
-            );
-        }
-        return $result->results();
-    }
-
-    /**
      * Find the per-car email/verification state for every car this user owns
      *
      * Backs the admin user-view's email block (#1924), which shows one row per
