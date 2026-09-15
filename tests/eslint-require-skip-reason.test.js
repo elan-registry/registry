@@ -1,11 +1,12 @@
 /**
  * RuleTester coverage for the local `require-skip-reason` ESLint rule
- * defined in eslint.config.mjs. Confirms the rule's AST-matching logic
- * (arity check on `test.skip(...)` calls) catches both under-specified
- * forms and passes both legitimate 2-argument overloads, so a future edit
- * to the rule (e.g. `<=` vs `<`, or a callee-matching change) can't
- * silently break either direction. See CLAUDE.md's "Playwright Test
- * Maintenance" section and issues #1949/#1950/#2070.
+ * defined in eslint-rules/require-skip-reason.cjs. Confirms the rule's
+ * AST-matching logic (arity check on `test.skip(...)`/`testInfo.skip(...)`
+ * calls) catches both under-specified forms and passes both legitimate
+ * 2-argument overloads, so a future edit to the rule (e.g. `<=` vs `<`, or
+ * a callee-matching change) can't silently break either direction. See
+ * CLAUDE.md's "Playwright Test Maintenance" section and issues
+ * #1949/#1950/#2070/#2068.
  *
  * Run with: node --test tests/eslint-require-skip-reason.test.js
  */
