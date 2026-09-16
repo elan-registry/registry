@@ -7,10 +7,9 @@
 -- scripts/provision-schema.sh needs to DROP/CREATE from scratch.
 --
 -- Broadening the app-scoped user's grants to every elanregi_* schema (dev,
--- test, and any future one) mirrors how this project's actual dev DB user
--- is provisioned outside Docker — see docs/development/DATABASE.md — and
--- avoids handing out root or a separately-tracked root password that
--- changes on every container recreation (MYSQL_RANDOM_ROOT_PASSWORD).
+-- test, and any future one) avoids handing out root or a
+-- separately-tracked root password that changes on every container
+-- recreation (MYSQL_RANDOM_ROOT_PASSWORD).
 --
 -- KNOWN COUPLING: the username below (elanregi_spice) must match
 -- docker-compose.yml's ${DB_USER} exactly. A .sql file here gets no
