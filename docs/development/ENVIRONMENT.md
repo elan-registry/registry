@@ -367,22 +367,13 @@ This also means `scripts/provision-schema.sh` and any other script reading
 `docker compose exec -u www-data app scripts/provision-schema.sh ...`, not
 directly from the host shell.
 
-**Docker DB user needs `SYSTEM_VARIABLES_ADMIN`.** Beyond the standard
-`GRANT ALL` on `elanregi_*` schemas (`docker/mysql-init/*.sql`), the app
-DB user also needs `SYSTEM_VARIABLES_ADMIN` — one integration test
-(`VerifyCarLandingPageTest::testOptoutMidTransactionFailureReturns500...`)
-runs `SET GLOBAL lock_wait_timeout = 1` to make a deliberately-locked write
-fail fast, and without this privilege that call throws (uncaught by the
-test), which then hangs to a 10s curl timeout instead of failing cleanly.
-MAMP's app DB user apparently has this by default; the Docker image starts
-every non-root user with neither `SUPER` nor `SYSTEM_VARIABLES_ADMIN`.
-That test doesn't exist in Registry2 yet — it lives on `milestone/v2.30.3`
-(the branch `Registry/`, a separate checkout, was on when this gap was
-found during #2120) and will arrive here once this milestone branch
-eventually merges from `main`. Fixed proactively in Registry2's
-`docker/mysql-init/*.sql` so the same silent failure doesn't recur once
-that test does land; any future checkout's grant file should include the
-same line.
+**Docker DB user needs `SYSTEM_VARIABLES_ADMIN`**, beyond the standard
+`GRANT ALL` on `elanregi_*` schemas — some integration tests run
+`SET GLOBAL`, which the Docker image's non-root user can't do by default
+(MAMP's app DB user apparently can). See
+`docker/mysql-init/01-grant-all-elanregi-schemas.sql`'s comment for the
+specific test, mechanism, and failure mode; any future checkout's grant
+file should include the same `SYSTEM_VARIABLES_ADMIN` line.
 
 **Optional Traefik routing**: `docker-compose.traefik.yml` has placeholder
 Docker-label routing (join the external `traefik_proxy` network, `Host()`
@@ -392,11 +383,8 @@ a dev-domain route: `docker compose -f docker-compose.yml -f
 docker-compose.traefik.yml up -d`. See that file's header for the
 reference pattern this HomeLab already uses elsewhere
 (`HomeLab/services/user_services/elan-registry-monitoring-viewer/docker-compose.yml`).
-Root `CLAUDE.md`'s prior reference to a static
-`HomeLab/services/ansible/config/traefik/volumes/config/web-dev.yml` was
-stale — that file doesn't exist, and no live route for any ElanRegistry
-dev domain exists in Traefik's static config today. The Docker-label
-mechanism above is the actual live routing path.
+The Docker-label mechanism is the actual live routing path — Traefik's
+static config has no route for any ElanRegistry dev domain today.
 
 ### Development Setup
 

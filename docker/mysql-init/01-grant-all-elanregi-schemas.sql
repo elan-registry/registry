@@ -21,22 +21,17 @@
 -- simpler, proven-reliable .sql file. If DB_USER in .env ever changes from
 -- elanregi_spice, update the username below in the same change.
 --
--- SYSTEM_VARIABLES_ADMIN: found via issue #2120's Registry/ rollout.
+-- SYSTEM_VARIABLES_ADMIN: some tests need SET GLOBAL. E.g.
 -- VerifyCarLandingPageTest::testOptoutMidTransactionFailureReturns500...
--- (tests/integration/VerifyCarLandingPageTest.php) runs `SET GLOBAL
--- lock_wait_timeout = 1` to make a deliberately-locked write fail fast
--- instead of hanging for MySQL's documented one-year default. Without this
--- privilege the SET GLOBAL call itself throws ("Access denied; you need
--- ... SUPER or SYSTEM_VARIABLES_ADMIN"), which the test doesn't catch, so
--- it hangs to its outer 10s curl timeout instead of failing fast with a
--- clear error. MAMP's app DB user apparently already has this (or SUPER)
--- by default; the Docker image starts every non-root user with neither.
---
--- That test does NOT exist in this checkout (Registry2) yet — it lives on
--- milestone/v2.30.3, the branch Registry/ was on when this gap was found,
--- and will arrive here once that milestone merges from main. The
--- underlying gap exists in Registry2 regardless; granting it now avoids a
--- second silent failure once the test lands.
+-- (tests/integration/VerifyCarLandingPageTest.php — not present in every
+-- checkout/branch) runs `SET GLOBAL lock_wait_timeout = 1` to make a
+-- deliberately-locked write fail fast instead of hanging for MySQL's
+-- documented one-year default. Without this privilege the SET GLOBAL call
+-- itself throws ("Access denied; you need ... SUPER or
+-- SYSTEM_VARIABLES_ADMIN"), uncaught by the test, so it hangs to its outer
+-- 10s curl timeout instead of failing fast with a clear error. MAMP's app
+-- DB user apparently already has this (or SUPER) by default; the Docker
+-- image starts every non-root user with neither.
 --
 -- Grant is global-scope only (not *.* ALL), since this is a
 -- system-variable privilege, not a schema/table one — it grants no

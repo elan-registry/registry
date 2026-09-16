@@ -13,13 +13,11 @@
 # HomeLab/services/user_services/elan-registry-monitoring-viewer/docker-compose.yml
 # for a working reference of this exact label pattern in this HomeLab.
 #
-# Two independent things below are placeholders, both need changing before
-# applying: the router/service name `elan-registry2` (lines 24-28, your own
-# naming convention) and the `Host()` value `registry2.dev.unibrain.org`
-# (line 25, whatever subdomain you actually want to route). This localhost
-# port publish (127.0.0.1:8002, in docker-compose.yml) is unaffected by
-# this override — Traefik routes to the container's internal port 80
-# directly over traefik_proxy, not through the published host port.
+# `elan-registry2` (router/service name) and `registry2.dev.unibrain.org`
+# (the Host() rule) below are both placeholders — rename to your own
+# convention before applying. Routes to the container's internal port 80
+# directly over traefik_proxy, independent of the 127.0.0.1:8002 host
+# publish in docker-compose.yml.
 services:
   app:
     networks:

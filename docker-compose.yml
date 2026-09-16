@@ -1,13 +1,9 @@
 # Registry2 Docker dev environment (issue #2116 spike).
 #
-# LOCAL DEVELOPMENT ONLY, and specific to the Registry2/ checkout — this
-# workspace also has Registry/ (proven working with this same pattern via
-# #2120, but not committed there — see ENVIRONMENT.md's "Docker Dev
-# Environment" section for why). Per-issue worktrees under
-# Registry-worktrees/ are explicitly out of scope as of #2120 (that
-# directory had zero active worktrees and was removed) — if worktree usage
-# resumes, a new compose file following this same pattern is a small
-# addition, not a prerequisite. The port convention established here:
+# LOCAL DEVELOPMENT ONLY, and specific to the Registry2/ checkout. See
+# docs/development/ENVIRONMENT.md's "Docker Dev Environment" section for
+# the status of other checkouts (Registry/, worktrees) and why they aren't
+# using this pattern yet. Port convention established here:
 # Registry=8001/8081, Registry2=8002/8082, future checkouts=8003/8083, etc.
 #
 # Coexists with MAMP: MAMP keeps serving this checkout on 9999/8889
