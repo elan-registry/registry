@@ -740,18 +740,6 @@ class CarRepository
     }
 
     /**
-     * Update the timestamp at which the owner last updated their car record
-     *
-     * @param int $carId Car ID
-     * @param string $dateTime Datetime string in AppConstants::DATETIME_FORMAT
-     * @return bool True on success
-     */
-    public function updateOwnerLastUpdated(int $carId, string $dateTime): bool
-    {
-        return $this->updateCar($carId, ['owner_last_updated' => $dateTime]);
-    }
-
-    /**
      * SQL fragment that is true for a car whose registry data counts as fresh.
      *
      * A car is fresh when it was verified within the last year, or when its owner
