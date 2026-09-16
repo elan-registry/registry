@@ -460,6 +460,156 @@ final class SendVerificationBatchJobTest extends TestCase
         $this->assertSame([], $this->logsContaining('failed (manual run): '));
     }
 
+    public function testRecordRunCountsLogsWhenConfirmationSelectFindsNoRow(): void
+    {
+        $repo = $this->createStub(CarRepository::class);
+        $repo->method('findVerificationEligible')->willReturn([(object) ['id' => 1]]);
+        $repo->method('findById')->willReturn(null); // -> skipped, no exception anywhere.
+
+        $sendSvc = $this->makeSendSvc($repo);
+        $sender = $this->makeSender($repo, $sendSvc);
+
+        // The UPDATE succeeds cleanly; the confirmation SELECT that follows it
+        // finds nothing — er_cron_job_runs has no row for this job at all.
+        $db = new class extends AbstractCronJobFakeDatabase {
+            private bool $lastWasCountsUpdate = false;
+
+            private bool $lastWasConfirmationSelect = false;
+
+            public function query(string $sql, array $params = []): AbstractCronJobFakeDatabase
+            {
+                $this->lastWasCountsUpdate = stripos($sql, 'last_sent_count') !== false;
+                $this->lastWasConfirmationSelect = stripos($sql, 'SELECT job_name') !== false;
+
+                if ($this->lastWasCountsUpdate || $this->lastWasConfirmationSelect) {
+                    return $this;
+                }
+
+                return parent::query($sql, $params);
+            }
+
+            public function error(): bool
+            {
+                if ($this->lastWasCountsUpdate || $this->lastWasConfirmationSelect) {
+                    return false;
+                }
+
+                return parent::error();
+            }
+
+            public function count(): int
+            {
+                if ($this->lastWasCountsUpdate) {
+                    return 1;
+                }
+
+                if ($this->lastWasConfirmationSelect) {
+                    return 0;
+                }
+
+                return parent::count();
+            }
+
+            public function first(bool $assoc = false): array|object
+            {
+                if ($this->lastWasConfirmationSelect) {
+                    return [];
+                }
+
+                return parent::first($assoc);
+            }
+        };
+
+        $job = new SendVerificationBatchJob($db, $this->makeSettings(batchSize: 5), $sendSvc, $sender);
+        $job->runNow();
+
+        $log = $this->logsContaining('the row appears not to be seeded');
+        $this->assertNotEmpty($log, 'A genuinely missing er_cron_job_runs row must be logged');
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+        $this->assertStringContainsString('no er_cron_job_runs row to write run counts to', $log[0]['message']);
+    }
+
+    public function testRecordRunCountsDoesNotFalselyLogRowMissingOnRepeatedIdenticalWrite(): void
+    {
+        // Regression test. MySQL's rowCount() reports rows CHANGED, not rows
+        // MATCHED, so re-writing the same three counts a second night running
+        // yields count() === 0 on a perfectly healthy, present row. A
+        // count()===0 missing-row check therefore logged a false
+        // CRON_JOB_FAILURE every steady-state night — the confirmation SELECT
+        // is what distinguishes "row absent" from "row already held these
+        // values".
+        $repo = $this->createStub(CarRepository::class);
+        $repo->method('findVerificationEligible')->willReturn([(object) ['id' => 1]]);
+        $repo->method('findById')->willReturn(null); // -> skipped, no exception anywhere.
+
+        $sendSvc = $this->makeSendSvc($repo);
+        $sender = $this->makeSender($repo, $sendSvc);
+
+        $db = new class extends AbstractCronJobFakeDatabase {
+            private bool $lastWasCountsUpdate = false;
+
+            private bool $lastWasConfirmationSelect = false;
+
+            public function query(string $sql, array $params = []): AbstractCronJobFakeDatabase
+            {
+                $this->lastWasCountsUpdate = stripos($sql, 'last_sent_count') !== false;
+                $this->lastWasConfirmationSelect = stripos($sql, 'SELECT job_name') !== false;
+
+                if ($this->lastWasCountsUpdate || $this->lastWasConfirmationSelect) {
+                    return $this;
+                }
+
+                return parent::query($sql, $params);
+            }
+
+            public function error(): bool
+            {
+                if ($this->lastWasCountsUpdate || $this->lastWasConfirmationSelect) {
+                    return false;
+                }
+
+                return parent::error();
+            }
+
+            public function count(): int
+            {
+                // The UPDATE changed nothing: the row already held exactly
+                // these three values. This is the steady state, not a fault.
+                if ($this->lastWasCountsUpdate) {
+                    return 0;
+                }
+
+                if ($this->lastWasConfirmationSelect) {
+                    return 1;
+                }
+
+                return parent::count();
+            }
+
+            public function first(bool $assoc = false): array|object
+            {
+                // The row is genuinely there — the confirmation SELECT finds it.
+                if ($this->lastWasConfirmationSelect) {
+                    $row = ['job_name' => SendVerificationBatchJob::JOB_NAME];
+
+                    return $assoc ? $row : (object) $row;
+                }
+
+                return parent::first($assoc);
+            }
+        };
+
+        $job = new SendVerificationBatchJob($db, $this->makeSettings(batchSize: 5), $sendSvc, $sender);
+        $job->runNow();
+
+        $this->assertSame(
+            [],
+            $this->logsContaining('the row appears not to be seeded'),
+            'An UPDATE that changed 0 rows because the row already held these counts must NOT be '
+            . 'reported as a missing row — that false CRON_JOB_FAILURE would fire every healthy night'
+        );
+    }
+
     // --- Site-wide verification switch --------------------------------------
 
     public function testRunNowDoesNothingWhenVerificationSwitchIsOff(): void

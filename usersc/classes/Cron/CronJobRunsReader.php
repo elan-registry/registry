@@ -175,21 +175,47 @@ final class CronJobRunsReader
      *
      * Same never-throws, fails-safe contract as the rest of this class: a
      * failed query, a missing row, or a row whose counts are still NULL (the
-     * job has never recorded a run) all report null rather than raising or
-     * inventing zeros — "never run" and "ran and did nothing" must stay
-     * distinguishable in the UI. The fault cases ARE logged here rather than
-     * left to the status read the caller does alongside this one: these three
-     * columns are added by their own migration, so this query can fail on a
-     * schema where `status()`'s query succeeds (the half-applied-migration
-     * case), and an unlogged null would then read in the UI exactly like the
-     * routine "never run" case.
+     * job has never recorded a run) all report `counts => null` rather than
+     * raising or inventing zeros — "never run" and "ran and did nothing" must
+     * stay distinguishable in the UI.
+     *
+     * A bare `?array` return could not carry that far enough, which is the
+     * bug this shape fixes: it collapsed three situations into one null —
+     * the job has genuinely never run (routine), the query threw, and the
+     * query reported `error()` (both infrastructure faults). The UI rendered
+     * all three as the reassuring "No automatic run yet", so an operator had
+     * no way to tell a healthy new job from one whose dashboard bookkeeping
+     * is broken. This is the same problem {@see CronJobEnabledState} solves
+     * for the enabled/disabled read, where MISSING and UNREADABLE are
+     * deliberately not folded into DISABLED.
+     *
+     * So this returns a compound, non-nullable array in the shape
+     * {@see self::status()} established for exactly this reason — two
+     * orthogonal facts from one read, rather than one overloaded nullable:
+     *
+     * - `counts` is the tally array when a run has been recorded, and null
+     *   otherwise (never run, or unreadable — in which case there is nothing
+     *   truthful to show).
+     * - `unreadable` is true only when the read itself failed (the throw and
+     *   `error()` paths, both of which are also logged). A row that simply
+     *   has NULL counts is the routine never-run case and leaves this false.
+     *
+     * Callers must therefore check `unreadable` before treating a null
+     * `counts` as "never run". A separate `outcomeCountsUnreadable()` method
+     * was rejected for the reason `state()`/`lastRunAt()` document above: it
+     * would issue a second query and log the same fault twice for what is one
+     * logical read, and could report the two halves as of two different
+     * moments.
+     *
+     * The fault cases ARE logged here rather than left to the status read the
+     * caller does alongside this one: these three columns are added by their
+     * own migration, so this query can fail on a schema where `status()`'s
+     * query succeeds (the half-applied-migration case).
      *
      * @param string $jobName The er_cron_job_runs.job_name value to look up
-     * @return array{sent: int, skipped: int, failed: int}|null Null when no
-     *                                                          run has been
-     *                                                          recorded
+     * @return array{counts: array{sent: int, skipped: int, failed: int}|null, unreadable: bool}
      */
-    public function lastOutcomeCounts(string $jobName): ?array
+    public function lastOutcomeCounts(string $jobName): array
     {
         // query() reports ordinary failures via error() rather than raising,
         // but it is NOT throw-free: DB::query() calls PDO::prepare() outside
@@ -212,7 +238,7 @@ final class CronJobRunsReader
                 $jobName,
                 $e->getMessage()
             ));
-            return null;
+            return ['counts' => null, 'unreadable' => true];
         }
 
         if ($this->db->error()) {
@@ -222,19 +248,25 @@ final class CronJobRunsReader
                 $jobName,
                 $this->db->errorString() ?: 'unknown'
             ));
-            return null;
+            return ['counts' => null, 'unreadable' => true];
         }
 
         $row = $this->db->first(true);
 
+        // No row, or a row whose counts are still NULL: the job has never
+        // recorded a run. Routine, not a fault — `unreadable` stays false so
+        // the UI can keep showing its benign "no automatic run yet" text.
         if (!is_array($row) || !isset($row['last_sent_count'])) {
-            return null;
+            return ['counts' => null, 'unreadable' => false];
         }
 
         return [
-            'sent' => (int) $row['last_sent_count'],
-            'skipped' => (int) ($row['last_skipped_count'] ?? 0),
-            'failed' => (int) ($row['last_failed_count'] ?? 0),
+            'counts' => [
+                'sent' => (int) $row['last_sent_count'],
+                'skipped' => (int) ($row['last_skipped_count'] ?? 0),
+                'failed' => (int) ($row['last_failed_count'] ?? 0),
+            ],
+            'unreadable' => false,
         ];
     }
 

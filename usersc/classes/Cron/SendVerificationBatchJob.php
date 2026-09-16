@@ -268,16 +268,26 @@ final class SendVerificationBatchJob extends AbstractCronJob
             return;
         }
 
-        if ($this->db->count() === 0) {
-            // Same "row missing" reading as
-            // VerificationSettings::recordCronRequest(): a plain SET of three
-            // counts almost never writes the values a row already holds, so an
-            // affected-row count of zero points at there being no row for this
-            // job_name rather than at a no-op update. That is the same
-            // never-seeded condition AbstractCronJob::enabledState() reports as
-            // MISSING — unreachable on this path in practice, since a missing
-            // row would have stopped run() before execute(), but worth its own
-            // distinct line if it ever is reached.
+        // NOT a count()===0 check. Unlike recordCronRequest()'s `col = col + 1`
+        // (which always changes a matched row) or a boolean flip, this is a
+        // plain `SET` of three counts — MySQL's rowCount() reports rows
+        // CHANGED, not rows MATCHED (this connection sets no
+        // MYSQL_ATTR_FOUND_ROWS, verified against users/classes/DB.php), so
+        // writing the same three values two nights running legitimately
+        // yields count() === 0 on a batch size that hasn't moved. That is the
+        // ordinary steady state, not a missing row: a count()===0 check here
+        // would log a false "row not seeded" CRON_JOB_FAILURE on every
+        // healthy repeat run, poisoning the exact channel an operator filters
+        // on to find genuinely broken jobs. A confirmation SELECT — the same
+        // pattern VerificationSettings::setEnabled()/setBatchSize() already
+        // use for this identical pitfall — is what can actually tell "the row
+        // is missing" from "the row already held these values".
+        $this->db->query(
+            'SELECT job_name FROM er_cron_job_runs WHERE job_name = ?',
+            [self::JOB_NAME]
+        );
+
+        if ($this->db->error() || $this->db->first(true) === []) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                 "Cron job '%s': no er_cron_job_runs row to write run counts to"
                 . ' — the row appears not to be seeded.',

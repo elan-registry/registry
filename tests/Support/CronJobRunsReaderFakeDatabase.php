@@ -103,6 +103,10 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
      * docblock calls out. All-zero ($sentCount = 0, etc.) models a run that
      * genuinely sent/skipped/failed nothing, which must read back distinctly
      * from the null case.
+     *
+     * Either way this is a successful read, so `lastOutcomeCounts()` reports
+     * `unreadable => false` — the two fault configurators below are what set
+     * it true.
      */
     public function withOutcomeCounts(
         string $jobName,

@@ -157,13 +157,21 @@ $autoSendState = CronJobEnabledState::UNREADABLE;
 $autoSendLastRunAt = null;
 /** @var array{sent: int, skipped: int, failed: int}|null $autoSendCounts */
 $autoSendCounts = null;
+// True only when the counts read itself failed. A null $autoSendCounts with
+// this false is the routine "job has never run" case; with it true the counts
+// could not be confirmed and must not be rendered as reassurance. Defaults to
+// true so that a throw out of the probe below — which never reaches the
+// reader's own never-throws handling — is reported as the fault it is.
+$autoSendCountsUnreadable = true;
 
 try {
     $autoSendReader = $cronJobRunsReader ?? new CronJobRunsReader(dbi());
     $autoSendStatus = $autoSendReader->status(SendVerificationBatchJob::JOB_NAME);
     $autoSendState = $autoSendStatus['state'];
     $autoSendLastRunAt = $autoSendStatus['lastRunAt'];
-    $autoSendCounts = $autoSendReader->lastOutcomeCounts(SendVerificationBatchJob::JOB_NAME);
+    $autoSendOutcome = $autoSendReader->lastOutcomeCounts(SendVerificationBatchJob::JOB_NAME);
+    $autoSendCounts = $autoSendOutcome['counts'];
+    $autoSendCountsUnreadable = $autoSendOutcome['unreadable'];
 } catch (\Throwable $e) {
     logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
         'Automatic verification send status probe failed: ' . $e->getMessage());
@@ -392,7 +400,17 @@ if (!function_exists('vsEsc')) {
 
             <dt class="col-sm-4">Last run results</dt>
             <dd class="col-sm-8">
-                <?php if ($autoSendCounts === null) { ?>
+                <?php if ($autoSendCountsUnreadable) { ?>
+                    <!-- The counts read failed (see the system log): an
+                         infrastructure fault, not a job that has never run.
+                         Rendered as the same danger badge badgeFor() uses for
+                         MISSING/UNREADABLE so the two never look alike. -->
+                    <span class="badge text-bg-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Counts unavailable
+                    </span>
+                    <small class="text-muted ms-1">check the system log</small>
+                <?php } elseif ($autoSendCounts === null) { ?>
                     <span class="text-muted">No automatic run yet</span>
                 <?php } else { ?>
                     <?= vsEsc((string) $autoSendCounts['sent']) ?> sent,

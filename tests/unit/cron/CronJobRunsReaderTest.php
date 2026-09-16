@@ -245,10 +245,16 @@ final class CronJobRunsReaderTest extends TestCase
     // lastOutcomeCounts() — sent/skipped/failed tallies from a job's most
     // recent recorded run. Never-throws contract: a thrown prepare()-time
     // fault, an ordinary error() fault, a missing row, and a row whose counts
-    // are still NULL all report null rather than raising or inventing zeros.
-    // The "never run" (null) vs. "ran and did nothing" (all-zero) distinction
-    // is the entire point of this method per its own docblock, so both are
-    // covered explicitly below.
+    // are still NULL all report `counts => null` rather than raising or
+    // inventing zeros. The "never run" (null) vs. "ran and did nothing"
+    // (all-zero) distinction is the entire point of this method per its own
+    // docblock, so both are covered explicitly below.
+    //
+    // The second axis, `unreadable`, separates the two infrastructure faults
+    // from the routine never-run case, which a bare `?array` could not: all
+    // three used to return null and render identically as the reassuring "No
+    // automatic run yet". testLastOutcomeCountsDistinguishesNeverRunFromBoth
+    // FaultPaths below is the direct regression guard for that.
     // =========================================================================
 
     /**
@@ -258,13 +264,13 @@ final class CronJobRunsReaderTest extends TestCase
      * one path this class docblock explicitly calls out as making
      * lastOutcomeCounts() not naturally throw-free like the rest of the class.
      */
-    public function testLastOutcomeCountsReturnsNullWhenQueryThrows(): void
+    public function testLastOutcomeCountsReportsUnreadableWhenQueryThrows(): void
     {
         $db = (new CronJobRunsReaderFakeDatabase())->withOutcomeCountsThrowing('send_verification_batch');
 
         $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
 
-        $this->assertNull($result);
+        $this->assertSame(['counts' => null, 'unreadable' => true], $result);
     }
 
     public function testLastOutcomeCountsLogsCronJobFailureWhenQueryThrows(): void
@@ -278,13 +284,13 @@ final class CronJobRunsReaderTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
     }
 
-    public function testLastOutcomeCountsReturnsNullWhenDbErrorsWithoutThrowing(): void
+    public function testLastOutcomeCountsReportsUnreadableWhenDbErrorsWithoutThrowing(): void
     {
         $db = (new CronJobRunsReaderFakeDatabase())->withOutcomeCountsError('send_verification_batch');
 
         $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
 
-        $this->assertNull($result);
+        $this->assertSame(['counts' => null, 'unreadable' => true], $result);
     }
 
     public function testLastOutcomeCountsLogsCronJobFailureWhenDbErrors(): void
@@ -298,14 +304,18 @@ final class CronJobRunsReaderTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
     }
 
-    public function testLastOutcomeCountsReturnsNullWhenRowIsMissing(): void
+    public function testLastOutcomeCountsReportsNeverRunWhenRowIsMissing(): void
     {
         // Unconfigured job_name — no row, no error, no throw configured.
         $db = new CronJobRunsReaderFakeDatabase();
 
         $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
 
-        $this->assertNull($result);
+        $this->assertSame(
+            ['counts' => null, 'unreadable' => false],
+            $result,
+            'A missing row is the routine never-run case, not an unreadable one'
+        );
     }
 
     /**
@@ -320,7 +330,43 @@ final class CronJobRunsReaderTest extends TestCase
 
         $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
 
-        $this->assertNull($result, 'A row with last_sent_count still NULL means "never run", not zeros');
+        $this->assertSame(
+            ['counts' => null, 'unreadable' => false],
+            $result,
+            'A row with last_sent_count still NULL means "never run", not zeros and not a fault'
+        );
+    }
+
+    /**
+     * The regression guard for the bug this shape exists to fix: all three of
+     * these situations used to return a bare null and render identically as
+     * the reassuring "No automatic run yet". Asserting each one's null-ness
+     * separately would not prove they are distinguishable, so this asserts
+     * the full shapes side by side in one test.
+     */
+    public function testLastOutcomeCountsDistinguishesNeverRunFromBothFaultPaths(): void
+    {
+        $neverRun = (new CronJobRunsReader(
+            (new CronJobRunsReaderFakeDatabase())->withOutcomeCounts('send_verification_batch', sentCount: null)
+        ))->lastOutcomeCounts('send_verification_batch');
+
+        $threw = (new CronJobRunsReader(
+            (new CronJobRunsReaderFakeDatabase())->withOutcomeCountsThrowing('send_verification_batch')
+        ))->lastOutcomeCounts('send_verification_batch');
+
+        $errored = (new CronJobRunsReader(
+            (new CronJobRunsReaderFakeDatabase())->withOutcomeCountsError('send_verification_batch')
+        ))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertFalse($neverRun['unreadable'], 'A job that has simply never run is not a fault');
+        $this->assertTrue($threw['unreadable'], 'A thrown query fault must not read as "never run"');
+        $this->assertTrue($errored['unreadable'], 'An error()-reported fault must not read as "never run"');
+
+        // The counts half is null in all three — which is exactly why the
+        // caller cannot use it alone to tell them apart.
+        $this->assertNull($neverRun['counts']);
+        $this->assertNull($threw['counts']);
+        $this->assertNull($errored['counts']);
     }
 
     /**
@@ -335,7 +381,10 @@ final class CronJobRunsReaderTest extends TestCase
 
         $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
 
-        $this->assertSame(['sent' => 0, 'skipped' => 0, 'failed' => 0], $result);
+        $this->assertSame(
+            ['counts' => ['sent' => 0, 'skipped' => 0, 'failed' => 0], 'unreadable' => false],
+            $result
+        );
     }
 
     public function testLastOutcomeCountsReturnsPopulatedCountsWhenAllColumnsSet(): void
@@ -345,7 +394,10 @@ final class CronJobRunsReaderTest extends TestCase
 
         $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
 
-        $this->assertSame(['sent' => 12, 'skipped' => 3, 'failed' => 1], $result);
+        $this->assertSame(
+            ['counts' => ['sent' => 12, 'skipped' => 3, 'failed' => 1], 'unreadable' => false],
+            $result
+        );
     }
 
     public function testLastOutcomeCountsDoesNotLogWhenCountsArePopulated(): void
