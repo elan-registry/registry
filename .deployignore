@@ -30,6 +30,11 @@ tests/
 # Scripts (already blocked by .htaccess, but not needed on server)
 scripts/
 
+# Docker local-dev environment (already blocked by .htaccess, never used on
+# the server — MAMP/test/prod don't run this stack)
+docker/
+docker-compose.yml
+
 # Linting and static analysis
 eslint.config.mjs
 phpstan.neon

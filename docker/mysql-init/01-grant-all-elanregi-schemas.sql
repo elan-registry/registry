@@ -1,0 +1,28 @@
+-- Registry2 Docker dev environment (issue #2116 spike).
+--
+-- The official mysql image's MYSQL_USER/MYSQL_DATABASE env vars only grant
+-- that user privileges on the ONE database named at container creation
+-- (elanregi_spice2, the dev DB) — not on the separate integration-test
+-- schema (elanregi_dev_test_2, per .env.test.local) that
+-- scripts/provision-schema.sh needs to DROP/CREATE from scratch.
+--
+-- Broadening the app-scoped user's grants to every elanregi_* schema (dev,
+-- test, and any future one) avoids handing out root or a
+-- separately-tracked root password that changes on every container
+-- recreation (MYSQL_RANDOM_ROOT_PASSWORD).
+--
+-- KNOWN COUPLING: the username below (elanregi_spice) must match
+-- docker-compose.yml's ${DB_USER} exactly. A .sql file here gets no
+-- environment-variable substitution, so this can't read ${DB_USER}
+-- directly — an attempted .sh-based version (using the entrypoint's
+-- docker_process_sql helper for proper root auth under
+-- MYSQL_RANDOM_ROOT_PASSWORD) hit inconsistent executable-bit handling on
+-- Docker Desktop for Mac's bind mount and was reverted in favor of this
+-- simpler, proven-reliable .sql file. If DB_USER in .env ever changes from
+-- elanregi_spice, update the username below in the same change.
+--
+-- Runs once, only against a fresh (empty) data directory — files in
+-- /docker-entrypoint-initdb.d are ignored on a subsequent `docker compose
+-- up` against an existing volume.
+GRANT ALL PRIVILEGES ON `elanregi_%`.* TO 'elanregi_spice'@'%';
+FLUSH PRIVILEGES;
