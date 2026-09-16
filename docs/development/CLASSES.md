@@ -1055,6 +1055,12 @@ shared state or dependency exists between the two.
   (logs and returns `false` on a DB error, or if the `id = 1` settings row
   itself is missing) since the webhook's own response to Brevo must not
   hinge on this counter succeeding (#1887)
+- `batchSize(): int` - Configured verification-email batch size
+  (`er_verification_settings.batch_size`); fails closed to `5` on any read
+  problem (#1884)
+- `setBatchSize(int $size, int $actingUserId = 0): bool` - Set the batch
+  size, clamped to `[1, 25]` regardless of the submitted value; never throws
+  (logs and returns `false` on a DB error or unconfirmed write) (#1885)
 
 **Exceptions**:
 
@@ -1464,11 +1470,21 @@ public function __construct(private DatabaseInterface $db)
   (static) — Maps a state/timestamp pair to display attributes; `MISSING`
   and `UNREADABLE` render identically ("Status unavailable"), `DISABLED`
   ("Paused") is visually distinct from both
+- `lastOutcomeCounts(string $jobName): array{counts: array{sent: int, skipped: int, failed: int}|null, unreadable: bool}`
+  (#1885) — Sent/skipped/failed tallies from a job's most recent run, kept
+  separate from `status()` since these three columns are a dashboard-only
+  readout with no bearing on the enable/pause decision. `counts` is `null`
+  both when the job has genuinely never run (routine) and when the read
+  itself failed (fault) — callers must check `unreadable` to tell the two
+  apart, the same way `CronJobEnabledState::MISSING`/`UNREADABLE` are kept
+  distinct from `DISABLED`. A row entirely missing for the job name is also
+  `unreadable = true`, matching `status()`'s own `MISSING` resolution for
+  that condition.
 
 **Used By**:
 
 - `app/admin/includes/tab-verification.php` — Verification tab's "Last
-  reconciliation run" row (#2054)
+  reconciliation run" row (#2054) and "Automatic Sending" panel (#1885)
 
 **See Also**:
 
@@ -1476,6 +1492,102 @@ public function __construct(private DatabaseInterface $db)
 - `CronJobEnabledState` — the enum this class's `state()`/`status()` return
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`
   (MISSING/UNREADABLE and unparseable `last_run_at` values)
+
+---
+
+### SendVerificationBatchJob
+
+**Location**: `/usersc/classes/Cron/SendVerificationBatchJob.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Automatic nightly send of one verification-email batch (#1885).
+Puts the manual "Send Batch Now" admin tool's send path (#1882-#1884) on
+UserSpice's cron transport so batches go out unattended. No send logic lives
+here — `execute()` selects candidates via
+`CarVerificationSendService::findEligible()` and hands their ids to
+`VerificationBatchSender::processBatch()`, the exact class the manual admin
+handler already calls, so the two paths can never drift apart.
+
+**Key Features**:
+
+- **Bounded work per invocation**: one page of at most
+  `VerificationSettings::batchSize()` cars (clamped to `[1, 25]`) per claimed
+  run, never a loop until the eligible set empties — both for cron's
+  in-process dispatch model and to enforce the deliberate slow send-volume
+  ramp
+- **Ships paused everywhere**: the seed migration sets
+  `er_cron_job_runs.enabled = 0` in every environment (test and production
+  alike), since no `APP_ENV`-style environment-detection convention exists
+  in this codebase — an admin must explicitly resume it via the dashboard
+  Pause/Resume control
+- **`unrecorded` folded into `failed`**: `processBatch()` returns four
+  outcome buckets, but only three columns exist to persist them in — a car
+  whose email sent but whose bookkeeping write failed is deliberately
+  counted as `failed` for the persisted/display counts (conservative: a
+  false failure prompts investigation), while the routine completion log
+  line still reports all four buckets distinctly
+- **Manual "Send Batch Now" now respects Pause**: `app/admin/index.php`'s
+  `verification_send_batch` handler checks
+  `CronJobRunsReader::state(SendVerificationBatchJob::JOB_NAME)` before
+  doing anything else, failing closed (blocking the send) on any state other
+  than `ENABLED` — this is a different, narrower gate than
+  `VerificationSettings::isEnabled()`'s site-wide kill switch, which that
+  handler deliberately never checks (see that file's own docblock)
+
+**Configuration Constants**:
+
+- `JOB_NAME = 'send_verification_batch'` — `er_cron_job_runs.job_name` value
+- `GUARD_INTERVAL_HOURS = 20` — Claim interval (same 20-not-24 rationale as `BrevoEventReconciliationJob`)
+
+**Constructor**:
+
+```php
+public function __construct(
+    DatabaseInterface $db,
+    private readonly VerificationSettings $settings,
+    private readonly CarVerificationSendService $sendSvc,
+    private readonly VerificationBatchSender $sender,
+)
+```
+
+**Methods**:
+
+- `jobName(): string` — Returns `'send_verification_batch'`
+- `guardIntervalHours(): int` — Returns `20`
+- `execute(): void` — Read the configured batch size, ask
+  `CarVerificationSendService::findEligible()` for that many candidates,
+  hand ids to `VerificationBatchSender::processBatch()`, persist outcome
+  counts, log a routine completion line under `LOG_CATEGORY_CAR_VERIFICATION`
+
+**Private Methods**:
+
+- `recordRunCounts(int $sent, int $skipped, int $failed): void` — Persist
+  this run's outcome counts to `er_cron_job_runs`. Never rethrows — a
+  failure to write three display integers must not make
+  `AbstractCronJob::run()`'s catch-all report a successful batch as failed.
+  Uses a confirmation `SELECT` (not `count() === 0`) to detect a genuinely
+  missing row, since a plain `UPDATE` writing the same values two runs
+  running legitimately reports zero rows changed under MySQL's
+  changed-vs-matched `rowCount()` semantics
+
+**Used By**:
+
+- Cron dispatch (`users/cron/cron.php`) via `AbstractCronJob::run()`, through
+  the thin shim `users/cron/send_verification_batch.php`
+- `app/admin/index.php` — `verification_toggle_cron` (Pause/Resume) and
+  `verification_send_batch` (pause-check) commands reference
+  `SendVerificationBatchJob::JOB_NAME`
+
+**See Also**:
+
+- `AbstractCronJob` — Template-method base (crash isolation, enabled check, guard claim)
+- `BrevoEventReconciliationJob` — Closest sibling; same base class and DI style
+- `CarVerificationSendService`, `VerificationBatchSender` — Shared send path (#1884)
+- `CronJobRunsReader::lastOutcomeCounts()` — Dashboard readout of the counts this job writes
+- `CronJobGuard` — Atomic claim semantics
+- [DATABASE.md](DATABASE.md) — `er_cron_job_runs` schema (`last_sent_count`/`last_skipped_count`/`last_failed_count`)
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_CAR_VERIFICATION`
 
 ---
 

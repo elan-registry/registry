@@ -368,6 +368,9 @@ would have meant a new migration for each one.
 | `last_run_at` | `datetime NULL` | Last successful claim. `NULL` means never run. Written only via `CronJobGuard`'s atomic UPDATE, never directly. |
 | `created_at` | `datetime NOT NULL` | Set at seed/registration time. Distinguishes "registered, never run" (row present, `last_run_at NULL`) from "not a registered job at all" (no row) — a bare `job_name`/`last_run_at` pair can't tell those apart once a row exists. |
 | `last_skip_logged_at` | `datetime NULL` | (#1889) Rate-limits `AbstractCronJob`'s disabled-job skip log to roughly once per guard interval. Deliberately a separate column from `last_run_at`: a disabled job never reaches `CronJobGuard::claim()`, so `last_run_at` stays frozen for as long as the job stays paused, and any throttle keyed on it would degrade to logging on every hit — the #1974 pathology this exists to avoid. Written only by `AbstractCronJob`, immediately after the skip line actually fires. |
+| `last_sent_count` | `int NULL` | (#1885) Sent-car count from a job's most recent run, for admin dashboard display. `NULL` until the job's `execute()` first records a run — distinct from a recorded run that sent zero, which is `0`. Generic/job-agnostic naming; not scoped to one job, though `SendVerificationBatchJob` is the only writer so far. Read via `CronJobRunsReader::lastOutcomeCounts()`. |
+| `last_skipped_count` | `int NULL` | (#1885) Skipped-car count from a job's most recent run. Same NULL-until-first-run semantics as `last_sent_count`. |
+| `last_failed_count` | `int NULL` | (#1885) Failed-car count from a job's most recent run — for `SendVerificationBatchJob` specifically, this also absorbs the `unrecorded` bucket (an email sent successfully but whose bookkeeping write failed), a deliberate conservative merge documented on `SendVerificationBatchJob::execute()`. Same NULL-until-first-run semantics as `last_sent_count`. |
 
 #### `phinxlog` - Phinx migration tracking
 
