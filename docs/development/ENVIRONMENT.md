@@ -311,12 +311,30 @@ targets it yet).
 
 ### Docker Dev Environment (optional, experimental)
 
-An alternative to MAMP for this checkout: a self-contained Docker Compose
-stack (`docker-compose.yml` at the repo root) — PHP 8.4 app container,
-MySQL 8.0, phpMyAdmin — bind-mounting the checkout as the webroot. Verified
-against the full toolchain (`composer install`/`test:full`,
-`npm run build`, Playwright) as of issue #2116; not yet rolled out to other
-checkouts (`Registry/`, worktrees — tracked in #2120).
+An alternative to MAMP, available per checkout: a self-contained Docker
+Compose stack (`docker-compose.yml` at the repo root of each checkout) —
+PHP 8.4 app container, MySQL 8.0, phpMyAdmin — bind-mounting the checkout
+as the webroot. Live in `Registry2/` (port 8002/8082) as of issue #2116,
+verified against the full toolchain (`composer install`/`test:full`,
+`npm run build`, Playwright).
+
+The pattern has also been proven working against `Registry/` (port
+8001/8081, same toolchain, same verification) during #2120's
+investigation, but that checkout's Docker files were not committed —
+`Registry/` is a separate git clone on its own branch with independent,
+unrelated in-progress work, and bundling Docker tooling into that
+checkout's history belongs to a change made there directly, not to this
+repo's PR. If `Registry/`'s Docker environment is wanted, port the
+pattern from `Registry2/docker-compose.yml` (ports 8001/8081, network
+`registry`, volume `registry_db_data`, DB user `elanregi_spice` — same as
+Registry2's, Registry/'s DB just isn't suffixed `2`) as a change on that
+checkout's own branch.
+
+Worktrees under `Registry-worktrees/` are explicitly **not** covered —
+that directory had zero active worktrees at the time of #2120 and was
+removed rather than given unused Docker scaffolding; if worktree usage
+resumes, a new compose file following the same pattern (next port in the
+sequence, e.g. 8003/8083) is a small addition, not a prerequisite.
 
 ```bash
 docker compose up -d
@@ -326,24 +344,47 @@ docker compose exec -u www-data app composer test:full
 
 **Always pass `-u www-data` to `exec`** — it has no compose-file default
 and otherwise runs as root, which would root-own anything written into the
-bind mount. See `docker-compose.yml`'s header comment for the full
-rationale and the port convention for other checkouts.
+bind mount. See each checkout's `docker-compose.yml` header comment for
+the full rationale and the port convention (Registry=8001/8081,
+Registry2=8002/8082, next checkout=8003/8083, ...) plus the four things
+that must change together when copying the pattern to a new checkout
+(ports, network name, volume name, `APP_UID`/`APP_GID`).
 
-**Coexists with MAMP on ports only, not on data**: MAMP keeps serving this
-checkout on 9999/8889 unaffected, and the Docker stack runs in parallel on
-8002/8082 — but both read the same `.env`, and `.env`'s `DB_HOST` decides
-which stack can actually reach a database. `DB_HOST=db` (the Docker stack's
-setting) is unreachable from MAMP's PHP process, so MAMP-served pages will
-fail on any DB access while `.env` is pointed at Docker — the port
-coexistence does not mean both stacks are simultaneously functional. Switch
-`.env`'s `DB_HOST`/`DB_PORT` back to MAMP's values (`127.0.0.1`/`8889`) to
-use MAMP again; a backup of the original MAMP-pointed `.env` is typically
-kept alongside it as `.env.mamp.bak` (gitignored, not committed).
+**MAMP: coexists indefinitely, no deprecation planned.** This is a
+deliberate decision (#2120), not a transitional state — applies to any
+checkout with a Docker stack, not just Registry2's. Coexistence is
+port-only, not data: MAMP and Docker both read the same `.env`, and
+`.env`'s `DB_HOST` decides which stack can actually reach a database at
+any given moment. `DB_HOST=db` (the Docker stack's setting) is
+unreachable from MAMP's PHP process, so MAMP-served pages will fail on any
+DB access while `.env` is pointed at Docker. Switch `.env`'s
+`DB_HOST`/`DB_PORT` back to MAMP's values (`127.0.0.1`/`8889`) to use MAMP
+again; a backup of the original MAMP-pointed `.env` is typically kept
+alongside it as `.env.mamp.bak` (gitignored, not committed).
 
 This also means `scripts/provision-schema.sh` and any other script reading
 `.env` must run **inside** the container when `.env` is Docker-pointed:
 `docker compose exec -u www-data app scripts/provision-schema.sh ...`, not
 directly from the host shell.
+
+**Docker DB user needs `SYSTEM_VARIABLES_ADMIN`**, beyond the standard
+`GRANT ALL` on `elanregi_*` schemas — some integration tests run
+`SET GLOBAL`, which the Docker image's non-root user can't do by default
+(MAMP's app DB user apparently can). See
+`docker/mysql-init/01-grant-all-elanregi-schemas.sql`'s comment for the
+specific test, mechanism, and failure mode; any future checkout's grant
+file should include the same `SYSTEM_VARIABLES_ADMIN` line.
+
+**Optional Traefik routing**: `docker-compose.traefik.yml` has placeholder
+Docker-label routing (join the external `traefik_proxy` network, `Host()`
+rule per checkout) — not applied automatically, since this repo doesn't
+own or deploy the HomeLab Traefik instance's config. Merge it manually for
+a dev-domain route: `docker compose -f docker-compose.yml -f
+docker-compose.traefik.yml up -d`. See that file's header for the
+reference pattern this HomeLab already uses elsewhere
+(`HomeLab/services/user_services/elan-registry-monitoring-viewer/docker-compose.yml`).
+The Docker-label mechanism is the actual live routing path — Traefik's
+static config has no route for any ElanRegistry dev domain today.
 
 ### Development Setup
 

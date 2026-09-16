@@ -34,6 +34,7 @@ scripts/
 # the server — MAMP/test/prod don't run this stack)
 docker/
 docker-compose.yml
+docker-compose.traefik.yml
 
 # Linting and static analysis
 eslint.config.mjs
