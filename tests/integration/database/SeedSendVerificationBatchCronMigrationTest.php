@@ -342,20 +342,27 @@ final class SeedSendVerificationBatchCronMigrationTest extends IntegrationTestCa
 
         $migration->down();
 
-        $this->assertSame(
-            0,
-            $this->countRows('er_cron_job_runs', 'job_name', self::JOB_NAME)['count'],
-            'down() must remove the er_cron_job_runs row'
-        );
-        $this->assertSame(
-            0,
-            $this->countRows('crons', 'file', self::CRON_FILE)['count'],
-            'down() must remove the crons row'
-        );
-
-        // Restore, so this test doesn't leave the shared test schema without
-        // its seeded rows for every other test/migration run afterward.
-        $migration->up();
+        try {
+            $this->assertSame(
+                0,
+                $this->countRows('er_cron_job_runs', 'job_name', self::JOB_NAME)['count'],
+                'down() must remove the er_cron_job_runs row'
+            );
+            $this->assertSame(
+                0,
+                $this->countRows('crons', 'file', self::CRON_FILE)['count'],
+                'down() must remove the crons row'
+            );
+        } finally {
+            // Restore no matter what happened above — this row is a
+            // prerequisite every other test in this file (and
+            // CronJobGuardIntegrationTest's seeded-row round trip) depends on
+            // being present. Without this in a finally, a failed assertion
+            // above would leave the shared test schema without these rows
+            // for every test that runs after this one, and their failures
+            // would then look unrelated to this test ever having run.
+            $this->loadMigration()->up();
+        }
 
         $this->assertSame(1, $this->countRows('er_cron_job_runs', 'job_name', self::JOB_NAME)['count']);
         $this->assertSame(1, $this->countRows('crons', 'file', self::CRON_FILE)['count']);
