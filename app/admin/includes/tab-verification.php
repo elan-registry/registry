@@ -97,9 +97,11 @@ $vsEligibleError  = null;
 
 if (isset($vsSettings)) {
     // Read separately from (and before) the eligible-car query below: the
-    // Automatic Sending panel renders the configured batch size as the value of
-    // an editable field, so a failure of the preview query must not leave that
-    // field showing 0 and an admin saving it back as a clamped 1.
+    // Automatic Sending panel renders this as the value of an editable
+    // field, and a preview-query failure must not prevent that render.
+    // (batchSize() itself already fails closed to 5 on an ordinary DB error,
+    // so this split doesn't change that outcome — it only avoids re-running
+    // batchSize()'s own error-log line a second time for the same read.)
     try {
         $vsBatchSize = $vsSettings->batchSize();
     } catch (\Throwable $e) {

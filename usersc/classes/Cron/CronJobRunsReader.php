@@ -196,9 +196,13 @@ final class CronJobRunsReader
      * - `counts` is the tally array when a run has been recorded, and null
      *   otherwise (never run, or unreadable — in which case there is nothing
      *   truthful to show).
-     * - `unreadable` is true only when the read itself failed (the throw and
-     *   `error()` paths, both of which are also logged). A row that simply
-     *   has NULL counts is the routine never-run case and leaves this false.
+     * - `unreadable` is true when the read itself failed (the throw and
+     *   `error()` paths) OR when no row exists at all for this job — the same
+     *   MISSING condition {@see self::status()} reports as
+     *   {@see CronJobEnabledState::MISSING} rather than a routine state, since
+     *   a job that was never seeded cannot be claimed either. Only a row that
+     *   exists with still-NULL counts is the routine never-run case, and
+     *   leaves this false.
      *
      * Callers must therefore check `unreadable` before treating a null
      * `counts` as "never run". A separate `outcomeCountsUnreadable()` method
@@ -253,10 +257,28 @@ final class CronJobRunsReader
 
         $row = $this->db->first(true);
 
-        // No row, or a row whose counts are still NULL: the job has never
-        // recorded a run. Routine, not a fault — `unreadable` stays false so
-        // the UI can keep showing its benign "no automatic run yet" text.
-        if (!is_array($row) || !isset($row['last_sent_count'])) {
+        // No row at all is the same MISSING condition status()/fetchRow()
+        // resolve to — the seed migration never ran, or the row was deleted.
+        // That is an infrastructure fault (the job cannot even be claimed),
+        // not "healthy but new", so `unreadable` is true here, matching
+        // status()'s CronJobEnabledState::MISSING for this same case. Logged,
+        // not silent: the missing-row case elsewhere in this class (fetchRow())
+        // is always logged, and an operator has no other way to learn the seed
+        // migration is the actual cause behind a blank "Automatic Sending" card.
+        if ($row === []) {
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                "Cron job '%s': no er_cron_job_runs row — outcome counts unavailable."
+                . ' Check that the job name matches a migration-seeded row.',
+                $jobName
+            ));
+            return ['counts' => null, 'unreadable' => true];
+        }
+
+        // A row exists but its counts are still NULL: the job has genuinely
+        // never recorded a run. Routine, not a fault — `unreadable` stays
+        // false so the UI can keep showing its benign "no automatic run yet"
+        // text, distinct from the row-missing case just above.
+        if (!isset($row['last_sent_count'])) {
             return ['counts' => null, 'unreadable' => false];
         }
 

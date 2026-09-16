@@ -304,17 +304,24 @@ final class CronJobRunsReaderTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
     }
 
-    public function testLastOutcomeCountsReportsNeverRunWhenRowIsMissing(): void
+    public function testLastOutcomeCountsReportsUnreadableWhenRowIsMissing(): void
     {
         // Unconfigured job_name — no row, no error, no throw configured.
+        // No row at all is the same MISSING condition status() reports as
+        // CronJobEnabledState::MISSING — an infrastructure fault (the seed
+        // migration never ran, or the row was deleted), not "healthy but
+        // new". A previous version of this method folded this into the
+        // routine never-run case; PR #2124 review caught the resulting
+        // dashboard inconsistency (a red "Status unavailable" badge next to
+        // a calm "No automatic run yet") and this test pins the fix.
         $db = new CronJobRunsReaderFakeDatabase();
 
         $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
 
         $this->assertSame(
-            ['counts' => null, 'unreadable' => false],
+            ['counts' => null, 'unreadable' => true],
             $result,
-            'A missing row is the routine never-run case, not an unreadable one'
+            'A missing row is an infrastructure fault, matching status()\'s MISSING — not the routine never-run case'
         );
     }
 
@@ -338,16 +345,22 @@ final class CronJobRunsReaderTest extends TestCase
     }
 
     /**
-     * The regression guard for the bug this shape exists to fix: all three of
-     * these situations used to return a bare null and render identically as
-     * the reassuring "No automatic run yet". Asserting each one's null-ness
-     * separately would not prove they are distinguishable, so this asserts
-     * the full shapes side by side in one test.
+     * The regression guard for the bug this shape exists to fix: all four of
+     * these situations used to return a bare null (or, for the missing-row
+     * case specifically — fixed after PR #2124 review — a false "routine"
+     * reading) and render identically or inconsistently on the dashboard.
+     * Asserting each one's null-ness separately would not prove they are
+     * distinguishable, so this asserts the full shapes side by side in one
+     * test.
      */
-    public function testLastOutcomeCountsDistinguishesNeverRunFromBothFaultPaths(): void
+    public function testLastOutcomeCountsDistinguishesNeverRunFromAllFaultPaths(): void
     {
         $neverRun = (new CronJobRunsReader(
             (new CronJobRunsReaderFakeDatabase())->withOutcomeCounts('send_verification_batch', sentCount: null)
+        ))->lastOutcomeCounts('send_verification_batch');
+
+        $rowMissing = (new CronJobRunsReader(
+            new CronJobRunsReaderFakeDatabase()
         ))->lastOutcomeCounts('send_verification_batch');
 
         $threw = (new CronJobRunsReader(
@@ -359,12 +372,14 @@ final class CronJobRunsReaderTest extends TestCase
         ))->lastOutcomeCounts('send_verification_batch');
 
         $this->assertFalse($neverRun['unreadable'], 'A job that has simply never run is not a fault');
+        $this->assertTrue($rowMissing['unreadable'], 'A row missing entirely must match status()\'s MISSING, not "never run"');
         $this->assertTrue($threw['unreadable'], 'A thrown query fault must not read as "never run"');
         $this->assertTrue($errored['unreadable'], 'An error()-reported fault must not read as "never run"');
 
-        // The counts half is null in all three — which is exactly why the
+        // The counts half is null in all four — which is exactly why the
         // caller cannot use it alone to tell them apart.
         $this->assertNull($neverRun['counts']);
+        $this->assertNull($rowMissing['counts']);
         $this->assertNull($threw['counts']);
         $this->assertNull($errored['counts']);
     }
@@ -411,18 +426,15 @@ final class CronJobRunsReaderTest extends TestCase
         $this->assertSame([], $mockLogEntries, 'Successfully reading populated counts is not a fault');
     }
 
-    public function testLastOutcomeCountsDoesNotLogWhenRowIsMissing(): void
+    public function testLastOutcomeCountsLogsWhenRowIsMissing(): void
     {
         global $mockLogEntries;
 
         $db = new CronJobRunsReaderFakeDatabase();
         (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
 
-        $this->assertSame(
-            [],
-            $mockLogEntries,
-            'A missing row (job seeded before outcome-count columns existed) is not logged by lastOutcomeCounts() itself'
-        );
+        $this->assertCount(1, $mockLogEntries, 'A missing row is an infrastructure fault and must be logged');
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
     }
 
     public function testLastOutcomeCountsDoesNotLogWhenNeverRun(): void
