@@ -9,6 +9,9 @@ use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
 use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
+use ElanRegistry\Cron\CronJobEnabledState;
+use ElanRegistry\Cron\CronJobRunsReader;
+use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
@@ -551,6 +554,36 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
+                    // PAUSE RESPECTS THE MANUAL PATH TOO. "Send Batch Now" is a
+                    // convenience trigger for the same send the cron job
+                    // performs, not an override of it — if automatic sending is
+                    // paused, mail should not leave the building by either
+                    // route. Fail closed on every non-ENABLED state: MISSING and
+                    // UNREADABLE mean the system cannot confirm sending is safe,
+                    // which is not a licence to proceed silently. The GET-time
+                    // preview in tab-verification.php is deliberately untouched
+                    // — reviewing the eligible list is read-only.
+                    $cronRunsReader = new CronJobRunsReader(dbi());
+                    $cronState = $cronRunsReader->state(SendVerificationBatchJob::JOB_NAME);
+
+                    if ($cronState !== CronJobEnabledState::ENABLED) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification send: manual send blocked — automatic sending state is %s.',
+                            $cronState->name
+                        ));
+                        // "Resume it on this tab" is only actionable advice for
+                        // DISABLED. For MISSING/UNREADABLE there is nothing to
+                        // resume — the system cannot confirm the state at all —
+                        // and telling an admin to press a button that will not
+                        // help sends them down the wrong path.
+                        $errors[] = $cronState === CronJobEnabledState::DISABLED
+                            ? 'Automatic sending is paused — resume it on this tab before '
+                                . 'sending a batch manually.'
+                            : 'Sending is unavailable: the automatic-send status could not be '
+                                . 'confirmed. Check the system log for details.';
+                        break;
+                    }
+
                     $sendBatchJustRan = true;
 
                     // \Input::get() sanitizes arrays recursively (see
@@ -642,6 +675,152 @@ if (ElanInput::existsPost()) {
                         count($sendReportSkipped),
                         count($sendReportFailed)
                     ));
+                    break;
+
+                // Pause/Resume automatic sending.
+                //
+                // THIS IS THE ADMIN UI CronJobGuard's docblock refers to when it
+                // says pausing a job "still means a direct UPDATE on
+                // er_cron_job_runs.enabled, until #2038 adds the admin UI" —
+                // but only for this one job. #2038 remains open for a general
+                // cron-management page covering every job; nothing here is
+                // generalized, and the job name is pinned to
+                // SendVerificationBatchJob::JOB_NAME rather than read from the
+                // request, so this command cannot be pointed at a sibling job.
+                //
+                // Separate from the verification feature switch
+                // (er_verification_settings.enabled, VerificationSettings::
+                // setEnabled()): that gates the whole subsystem, this gates only
+                // the scheduled batch.
+                case "verification_toggle_cron":
+                    // Admin-only — see the identical check on
+                    // verification_send_batch above for rationale.
+                    if (!hasPerm([2], $currentUserId)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: non-admin attempted command '{$command}'");
+                        $errors[] = 'Administrator access is required for this action.';
+                        break;
+                    }
+
+                    // The button submits the state it wants, not a "flip it"
+                    // instruction: two admins on the tab at once would otherwise
+                    // each flip a state the other had already changed, and the
+                    // second click would silently undo the first. An explicit
+                    // desired state is idempotent.
+                    $cronDesiredState = (string) ElanInput::get('desired_state');
+                    if ($cronDesiredState !== 'enable' && $cronDesiredState !== 'disable') {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            'Verification cron toggle: invalid desired_state ' . var_export($cronDesiredState, true));
+                        $errors[] = 'That action could not be applied — no valid state was submitted.';
+                        break;
+                    }
+                    $cronEnabled = $cronDesiredState === 'enable';
+
+                    $cronToggleDb = dbi();
+                    $cronToggleDb->query(
+                        'UPDATE er_cron_job_runs SET enabled = ? WHERE job_name = ?',
+                        [$cronEnabled ? 1 : 0, SendVerificationBatchJob::JOB_NAME]
+                    );
+
+                    if ($cronToggleDb->error()) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification cron toggle: failed to write er_cron_job_runs (enabled=%d) for %s: %s',
+                            $cronEnabled ? 1 : 0,
+                            SendVerificationBatchJob::JOB_NAME,
+                            $cronToggleDb->errorString() ?: 'unknown'
+                        ));
+                        $errors[] = 'Failed to update automatic sending. Check the system log for details.';
+                        break;
+                    }
+
+                    // count() after an UPDATE reports rows CHANGED, not rows
+                    // MATCHED, so re-submitting the state the row already holds
+                    // legitimately yields 0 — indistinguishable from the row
+                    // being absent. Confirm with a follow-up read instead, the
+                    // same way VerificationSettings::setEnabled() does.
+                    $cronToggleDb->query(
+                        'SELECT enabled FROM er_cron_job_runs WHERE job_name = ?',
+                        [SendVerificationBatchJob::JOB_NAME]
+                    );
+                    $cronToggleRow = $cronToggleDb->error() ? null : $cronToggleDb->first();
+                    if (!is_object($cronToggleRow)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification cron toggle: UPDATE (enabled=%d) could not be confirmed — the %s '
+                            . 'er_cron_job_runs row appears to be missing. Re-run `composer migrate` to reseed it.',
+                            $cronEnabled ? 1 : 0,
+                            SendVerificationBatchJob::JOB_NAME
+                        ));
+                        $errors[] = 'Failed to update automatic sending. Check the system log for details.';
+                        break;
+                    }
+
+                    // Report what the row actually holds, not what was asked
+                    // for — an admin acting on a stale page should see the
+                    // persisted truth. But only report it as a SUCCESS when it
+                    // matches what was requested: an UPDATE that reported no
+                    // error yet left the row in the other state is a failure to
+                    // apply the change, and dressing it as a green "Automatic
+                    // sending paused." for an admin who clicked Resume tells
+                    // them the opposite of what happened.
+                    $cronNowEnabled = (int) ($cronToggleRow->enabled ?? 0) === 1;
+
+                    if ($cronNowEnabled !== $cronEnabled) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification cron toggle: requested %s but row reads %s for %s '
+                            . '— write did not take effect.',
+                            $cronEnabled ? 'enable' : 'disable',
+                            $cronNowEnabled ? 'enabled' : 'disabled',
+                            SendVerificationBatchJob::JOB_NAME
+                        ));
+                        $errors[] = sprintf(
+                            'Automatic sending could not be changed — it is still %s. '
+                            . 'Check the system log for details.',
+                            $cronNowEnabled ? 'running' : 'paused'
+                        );
+                        break;
+                    }
+
+                    $successes[] = $cronNowEnabled
+                        ? 'Automatic sending resumed.'
+                        : 'Automatic sending paused.';
+                    logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                        'Verification cron: %s %s by admin %d.',
+                        SendVerificationBatchJob::JOB_NAME,
+                        $cronNowEnabled ? 'resumed' : 'paused',
+                        $currentUserId
+                    ));
+                    break;
+
+                // Batch size for both the scheduled job and the manual send.
+                case "verification_set_batch_size":
+                    // Admin-only — see the identical check on
+                    // verification_send_batch above for rationale.
+                    if (!hasPerm([2], $currentUserId)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: non-admin attempted command '{$command}'");
+                        $errors[] = 'Administrator access is required for this action.';
+                        break;
+                    }
+
+                    $submittedBatchSize = (int) ElanInput::get('batch_size', 0);
+                    $verificationSettings = new VerificationSettings(dbi());
+
+                    // setBatchSize() clamps to [1, 25] and logs its own failures
+                    // under LOG_CATEGORY_VERIFICATION_CONFIG_* — no second log
+                    // line here, matching the other cases that defer logging to
+                    // the method they call.
+                    if (!$verificationSettings->setBatchSize($submittedBatchSize, $currentUserId)) {
+                        $errors[] = 'Failed to update batch size. Check the system log for details.';
+                        break;
+                    }
+
+                    // Read back rather than echoing the submitted value: what
+                    // was stored may have been clamped, and the admin needs to
+                    // see the effective setting.
+                    $successes[] = sprintf(
+                        'Batch size updated to %d.',
+                        $verificationSettings->batchSize()
+                    );
                     break;
 
                 // Owner-level deliverability actions.

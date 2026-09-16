@@ -240,4 +240,147 @@ final class CronJobRunsReaderTest extends TestCase
 
         $this->assertSame([], $mockLogEntries, 'A successfully parsed timestamp is not a fault');
     }
+
+    // =========================================================================
+    // lastOutcomeCounts() — sent/skipped/failed tallies from a job's most
+    // recent recorded run. Never-throws contract: a thrown prepare()-time
+    // fault, an ordinary error() fault, a missing row, and a row whose counts
+    // are still NULL all report null rather than raising or inventing zeros.
+    // The "never run" (null) vs. "ran and did nothing" (all-zero) distinction
+    // is the entire point of this method per its own docblock, so both are
+    // covered explicitly below.
+    // =========================================================================
+
+    /**
+     * The try/catch added around query() for the prepare()-time PDOException
+     * case (a missing column on a half-applied
+     * 20260916000000_add_cron_job_runs_last_outcome_counts migration) — the
+     * one path this class docblock explicitly calls out as making
+     * lastOutcomeCounts() not naturally throw-free like the rest of the class.
+     */
+    public function testLastOutcomeCountsReturnsNullWhenQueryThrows(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())->withOutcomeCountsThrowing('send_verification_batch');
+
+        $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertNull($result);
+    }
+
+    public function testLastOutcomeCountsLogsCronJobFailureWhenQueryThrows(): void
+    {
+        global $mockLogEntries;
+
+        $db = (new CronJobRunsReaderFakeDatabase())->withOutcomeCountsThrowing('send_verification_batch');
+        (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertCount(1, $mockLogEntries, 'A thrown query fault must be logged exactly once');
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+    }
+
+    public function testLastOutcomeCountsReturnsNullWhenDbErrorsWithoutThrowing(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())->withOutcomeCountsError('send_verification_batch');
+
+        $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertNull($result);
+    }
+
+    public function testLastOutcomeCountsLogsCronJobFailureWhenDbErrors(): void
+    {
+        global $mockLogEntries;
+
+        $db = (new CronJobRunsReaderFakeDatabase())->withOutcomeCountsError('send_verification_batch');
+        (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertCount(1, $mockLogEntries, 'An error()-reported fault must be logged exactly once');
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+    }
+
+    public function testLastOutcomeCountsReturnsNullWhenRowIsMissing(): void
+    {
+        // Unconfigured job_name — no row, no error, no throw configured.
+        $db = new CronJobRunsReaderFakeDatabase();
+
+        $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertNull($result);
+    }
+
+    /**
+     * The load-bearing "never run" vs. "ran and did nothing" distinction the
+     * class docblock calls out: a row exists but last_sent_count is still
+     * NULL (the job has never recorded a run) must report null, not zeros.
+     */
+    public function testLastOutcomeCountsReturnsNullWhenLastSentCountIsNull(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withOutcomeCounts('send_verification_batch', sentCount: null, skippedCount: null, failedCount: null);
+
+        $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertNull($result, 'A row with last_sent_count still NULL means "never run", not zeros');
+    }
+
+    /**
+     * The inverse of the above: a job that genuinely ran and sent/skipped/
+     * failed nothing must report real zeros, distinguishable from the NULL
+     * "never run" case.
+     */
+    public function testLastOutcomeCountsReturnsAllZerosWhenJobRanAndDidNothing(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withOutcomeCounts('send_verification_batch', sentCount: 0, skippedCount: 0, failedCount: 0);
+
+        $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertSame(['sent' => 0, 'skipped' => 0, 'failed' => 0], $result);
+    }
+
+    public function testLastOutcomeCountsReturnsPopulatedCountsWhenAllColumnsSet(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withOutcomeCounts('send_verification_batch', sentCount: 12, skippedCount: 3, failedCount: 1);
+
+        $result = (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertSame(['sent' => 12, 'skipped' => 3, 'failed' => 1], $result);
+    }
+
+    public function testLastOutcomeCountsDoesNotLogWhenCountsArePopulated(): void
+    {
+        global $mockLogEntries;
+
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withOutcomeCounts('send_verification_batch', sentCount: 12, skippedCount: 3, failedCount: 1);
+        (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertSame([], $mockLogEntries, 'Successfully reading populated counts is not a fault');
+    }
+
+    public function testLastOutcomeCountsDoesNotLogWhenRowIsMissing(): void
+    {
+        global $mockLogEntries;
+
+        $db = new CronJobRunsReaderFakeDatabase();
+        (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertSame(
+            [],
+            $mockLogEntries,
+            'A missing row (job seeded before outcome-count columns existed) is not logged by lastOutcomeCounts() itself'
+        );
+    }
+
+    public function testLastOutcomeCountsDoesNotLogWhenNeverRun(): void
+    {
+        global $mockLogEntries;
+
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withOutcomeCounts('send_verification_batch', sentCount: null);
+        (new CronJobRunsReader($db))->lastOutcomeCounts('send_verification_batch');
+
+        $this->assertSame([], $mockLogEntries, 'A "never run" NULL-counts row is not a fault');
+    }
 }

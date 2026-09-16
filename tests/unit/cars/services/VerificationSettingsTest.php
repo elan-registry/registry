@@ -7,10 +7,12 @@ use ElanRegistry\Exceptions\VerificationConfigException;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\BatchSizeRoundTripFakeDatabase;
 use Tests\Support\VerificationSettingsFakeDatabase;
 
 require_once __DIR__ . '/../../../Support/FakeDatabase.php';
 require_once __DIR__ . '/../../../Support/VerificationSettingsFakeDatabase.php';
+require_once __DIR__ . '/../../../Support/BatchSizeRoundTripFakeDatabase.php';
 
 /**
  * Unit tests for VerificationSettings — the feature switch and readiness
@@ -353,6 +355,156 @@ final class VerificationSettingsTest extends TestCase
         );
 
         $this->assertFalse((new VerificationSettings($db))->setEnabled(true));
+    }
+
+    // =========================================================================
+    // setBatchSize() (#1885) — clamps to [1, 25], never rejects
+    // =========================================================================
+
+    /**
+     * Valid in-range, clamp-above-25, boundary-at-25, and clamp-below-1 cases,
+     * data-provider driven per the plan's Test Plan. Also covers the
+     * PHP-int-coercion-boundary risk class called out for extra scrutiny:
+     * PHP_INT_MAX and PHP_INT_MIN must clamp exactly the same as any other
+     * out-of-range value, proving `max(MIN, min(MAX, $size))` holds at the
+     * extremes rather than only near the documented 0/25 boundaries.
+     *
+     * @return array<string, array{int, int}> [submitted, expectedClamped]
+     */
+    public static function setBatchSizeClampingProvider(): array
+    {
+        return [
+            'valid in-range value persists unchanged' => [10, 10],
+            'value above 25 clamps to 25' => [30, 25],
+            'value = 25 boundary is accepted unchanged' => [25, 25],
+            'value = 1 boundary is accepted unchanged' => [1, 1],
+            'value = 0 clamps to the floor of 1' => [0, 1],
+            'negative value clamps to the floor of 1' => [-5, 1],
+            'PHP_INT_MAX clamps to 25' => [PHP_INT_MAX, 25],
+            'PHP_INT_MIN clamps to the floor of 1' => [PHP_INT_MIN, 1],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('setBatchSizeClampingProvider')]
+    public function testSetBatchSizeClampsToExpectedValue(int $submitted, int $expectedClamped): void
+    {
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize($submitted));
+        $this->assertTrue($db->wasUpdateCalled());
+    }
+
+    /**
+     * The clamped value — not the submitted one — must round-trip through
+     * batchSize(), proving the write actually persisted the effective value
+     * rather than merely returning true.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('setBatchSizeClampingProvider')]
+    public function testSetBatchSizeRoundTripsTheClampedValueThroughBatchSize(int $submitted, int $expectedClamped): void
+    {
+        // A single fake instance backs both the write and the read-back, so
+        // the read must answer with whatever was actually written — not a
+        // second independently-configured double that could drift from the
+        // implementation's own clamped value.
+        $db = new BatchSizeRoundTripFakeDatabase();
+
+        $settings = new VerificationSettings($db);
+        $this->assertTrue($settings->setBatchSize($submitted));
+        $this->assertSame(
+            $expectedClamped,
+            $settings->batchSize(),
+            'batchSize() must read back the clamped value that was actually written'
+        );
+    }
+
+    /**
+     * actingUserId must reach the config-changed log line, mirroring
+     * setEnabled()'s identical contract (testSetEnabledPassesActingUserIdThroughToSuccessLog).
+     */
+    public function testSetBatchSizePassesActingUserIdThroughToSuccessLog(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize(10, 42));
+
+        $changed = array_values(array_filter(
+            $mockLogEntries,
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED
+        ));
+        $this->assertCount(1, $changed, 'setBatchSize() must log exactly one success line under LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED');
+        $this->assertSame(42, $changed[0]['user_id'], 'The acting user id must be passed through to the success log');
+        $this->assertStringContainsString('10', $changed[0]['message']);
+    }
+
+    /**
+     * The log line reports the clamped effective value, not the submitted
+     * one — an admin who typed 500 must see "set to 25" in the log, not "500".
+     */
+    public function testSetBatchSizeLogsTheClampedValueNotTheSubmittedValue(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize(500));
+
+        $changed = array_values(array_filter(
+            $mockLogEntries,
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED
+        ));
+        $this->assertCount(1, $changed);
+        $this->assertStringContainsString('25', $changed[0]['message']);
+        $this->assertStringNotContainsString('500', $changed[0]['message']);
+    }
+
+    public function testSetBatchSizeReturnsFalseWhenUpdateFails(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(errorAfterUpdateOnly: true);
+
+        $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
+    }
+
+    public function testSetBatchSizeReturnsFalseWhenConfirmationSelectFindsNoRow(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: []);
+
+        $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
+    }
+
+    public function testSetBatchSizeReturnsFalseWhenConfirmationSelectErrors(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(
+            confirmSelectRowValue: (object) ['id' => 1],
+            confirmSelectErrors: true,
+        );
+
+        $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
+    }
+
+    /**
+     * Never gated on Brevo readiness, unlike setEnabled(true) — a batch size
+     * is inert configuration and changing it cannot cause mail to go out.
+     */
+    public function testSetBatchSizeSucceedsWithoutAnySiteRootConfigured(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize(10));
+    }
+
+    /**
+     * Re-saving the same clamped value must still report success — the same
+     * rowCount()-changed-vs-matched pitfall setEnabled() already guards
+     * against via its confirmation SELECT rather than count().
+     */
+    public function testSetBatchSizeSucceedsWhenReSettingTheSameValueItAlreadyHas(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize(5));
+        $this->assertTrue($db->wasUpdateCalled());
     }
 
     // =========================================================================

@@ -162,6 +162,83 @@ final class CronJobRunsReader
     }
 
     /**
+     * Read the sent/skipped/failed tallies a job recorded on its last claimed
+     * run.
+     *
+     * Deliberately separate from {@see self::status()} rather than another key
+     * on its return array: those three columns are written by only one job so
+     * far ({@see SendVerificationBatchJob}), are purely a dashboard readout,
+     * and play no part in the enable/pause decision `status()` and `state()`
+     * exist to serve. Callers that need the state pay for one query; callers
+     * that also want the tallies pay for a second, and nothing that only
+     * checks whether a job may run has to know these columns exist.
+     *
+     * Same never-throws, fails-safe contract as the rest of this class: a
+     * failed query, a missing row, or a row whose counts are still NULL (the
+     * job has never recorded a run) all report null rather than raising or
+     * inventing zeros — "never run" and "ran and did nothing" must stay
+     * distinguishable in the UI. The fault cases ARE logged here rather than
+     * left to the status read the caller does alongside this one: these three
+     * columns are added by their own migration, so this query can fail on a
+     * schema where `status()`'s query succeeds (the half-applied-migration
+     * case), and an unlogged null would then read in the UI exactly like the
+     * routine "never run" case.
+     *
+     * @param string $jobName The er_cron_job_runs.job_name value to look up
+     * @return array{sent: int, skipped: int, failed: int}|null Null when no
+     *                                                          run has been
+     *                                                          recorded
+     */
+    public function lastOutcomeCounts(string $jobName): ?array
+    {
+        // query() reports ordinary failures via error() rather than raising,
+        // but it is NOT throw-free: DB::query() calls PDO::prepare() outside
+        // its own try block with ERRMODE_EXCEPTION set, so a prepare()-time
+        // fault — a missing column, which is precisely the half-applied
+        // migration case for these three columns — throws a PDOException
+        // straight out. Catching \Throwable here is what keeps this class's
+        // never-throws contract true.
+        try {
+            $this->db->query(
+                'SELECT last_sent_count, last_skipped_count, last_failed_count'
+                . ' FROM er_cron_job_runs WHERE job_name = ?',
+                [$jobName]
+            );
+        } catch (\Throwable $e) {
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                "Cron job '%s': er_cron_job_runs outcome counts could not be read — counts unavailable."
+                . ' This is an infrastructure fault, not a job that has never run.'
+                . ' Check that 20260916000000_add_cron_job_runs_last_outcome_counts has applied: %s',
+                $jobName,
+                $e->getMessage()
+            ));
+            return null;
+        }
+
+        if ($this->db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                "Cron job '%s': er_cron_job_runs outcome counts could not be read — counts unavailable."
+                . ' This is an infrastructure fault, not a job that has never run: %s',
+                $jobName,
+                $this->db->errorString() ?: 'unknown'
+            ));
+            return null;
+        }
+
+        $row = $this->db->first(true);
+
+        if (!is_array($row) || !isset($row['last_sent_count'])) {
+            return null;
+        }
+
+        return [
+            'sent' => (int) $row['last_sent_count'],
+            'skipped' => (int) ($row['last_skipped_count'] ?? 0),
+            'failed' => (int) ($row['last_failed_count'] ?? 0),
+        ];
+    }
+
+    /**
      * Map a job's state and last-run timestamp to display attributes for the
      * verification tab's reconciliation status badge.
      *
@@ -199,7 +276,16 @@ final class CronJobRunsReader
      */
     private function fetchRow(string $jobName): ?array
     {
-        // query() never throws; a failure is reported by error() (see DatabaseInterface).
+        // query() reports ordinary failures via error() (see
+        // DatabaseInterface) rather than raising, but it is not throw-free:
+        // DB::query() calls PDO::prepare() outside its try block with
+        // ERRMODE_EXCEPTION set, so a prepare()-time fault (a missing column
+        // or table) throws. Both columns selected here have existed since the
+        // table was created, so there is no realistic prepare() failure on
+        // this statement short of the table itself being absent — at which
+        // point nothing on the page works — and no catch is added. See
+        // lastOutcomeCounts(), which selects migration-added columns and does
+        // guard for exactly that reason.
         $this->db->query(
             'SELECT enabled, last_run_at FROM er_cron_job_runs WHERE job_name = ?',
             [$jobName]
