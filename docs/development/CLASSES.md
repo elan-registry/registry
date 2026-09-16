@@ -623,11 +623,6 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `er_email_events` rows from one car to another; used by car merge, so the
   surviving car keeps the merged-away car's bounce/suppression history
   instead of losing it (#1887)
-- `updateOwnerLastUpdated(int $carId, string $dateTime): bool` - Update the
-  timestamp of the owner's last self-initiated edit; standalone primitive not
-  currently called by `Car::update()` (which folds the same write into its
-  single `updateCar()` call to avoid a duplicate `cars_hist` audit row — see
-  `Car::update()`'s `$isOwnerInitiated` parameter)
 - `freshnessSql(string $alias = 'cars'): string` - Static; returns a SQL
   boolean expression determining if a car is fresh (verified within 1 year via
   `last_verified` OR edited by owner within 1 year via `owner_last_updated`).

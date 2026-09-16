@@ -1306,13 +1306,6 @@ final class CarRepositoryTest extends TestCase
         $repo->findProfileEmailBouncedAddress(42);
     }
 
-    public function testUpdateOwnerLastUpdatedReturnsTrue(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->updateOwnerLastUpdated(1, '2026-07-05 12:00:00');
-        $this->assertTrue($result);
-    }
-
     /**
      * findVerificationEligible() must build a WHERE clause covering every
      * eligibility condition: not sold, deliverable email, never-verified or
