@@ -151,7 +151,7 @@ except those explicitly listed as project-owned:
 
 ### System Requirements
 
-- PHP 8.2+ required (local dev and CI target 8.4.x this cycle; see `ENVIRONMENT.md` — PHP Version for details)
+- PHP 8.2.29+ required by `composer.json` (compatibility floor); local dev, CI, test, and prod all target 8.4.x (prod confirmed on 8.4.25) — see `ENVIRONMENT.md` — PHP Version for details
 - MySQL 8.0+
 - Uses `vlucas/phpdotenv` for environment variable loading (plaintext `.env`, `chmod 600`)
 

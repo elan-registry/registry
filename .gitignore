@@ -32,6 +32,7 @@ Elanegistry.sublime-project
 .env
 .env.local
 .env.test.local
+.env*.bak
 .user.ini
 USER.INI
 usersc/vericode_secret.php

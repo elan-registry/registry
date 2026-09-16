@@ -40,6 +40,10 @@ Header always set X-XSS-Protection "0"
     Require all denied
 </Files>
 
+<FilesMatch "^docker-compose.*\.ya?ml$">
+    Require all denied
+</FilesMatch>
+
 <FilesMatch "^phpunit.*\.xml$">
     Require all denied
 </FilesMatch>

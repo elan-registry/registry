@@ -281,32 +281,19 @@ targets it yet).
 
 ### PHP Version
 
-- **Local dev and CI**: Target PHP 8.4.x this cycle.
-- **Test and production**: Remain on PHP 8.2 until a later milestone switches them (tracked in issue #1968) — code written locally must still run on 8.2 this cycle.
-- **CI coverage gap**: No CI job's *runner* actually executes on PHP 8.2 —
-  all `php-version` pins in `.github/workflows/tests.yml` and
-  `static-analysis.yml` were moved to 8.4 alongside dev, including the job
-  that previously stayed on 8.2. Local testing (unit/integration suites) is
-  therefore also 8.4-only this cycle, not a substitute 8.2 signal.
-  **`phpstan.neon`'s `phpVersion: 80229` is the one remaining automated
-  guard against 8.3/8.4-only syntax** — it pins static analysis to the
-  actual test/prod floor independent of what runs the analyser, so
-  8.3-or-later-only syntax (property hooks, asymmetric visibility, etc.)
-  still fails PHPStan even though nothing else in CI or local dev executes
-  on 8.2. Runtime behavior differences that PHPStan can't catch (e.g. a
-  library function whose return shape changed between 8.2 and 8.4) still
-  rely on developer awareness until 8.2 CI/local coverage is restored —
-  tracked as a follow-up for whenever the test/prod switch issue lands.
-- **`composer.json`'s `platform.php` pin is `8.4.0`** (matches dev/CI, not
-  test/prod). PHPStan's `phpVersion` guard above covers first-party syntax
-  only — it does **not** guard *vendor* dependency version requirements. A
-  `composer update` run under this 8.4 platform pin can legally resolve a
-  package version whose own `composer.json` requires `php: >=8.3`, and that
-  selection will fatal on test/prod's 8.2 the moment it's actually deployed
-  there, with no CI signal catching it first. Run
-  `composer why-not php 8.2` after any `composer update` (not just when
-  adding a new package) until test/prod move off 8.2 — it reports which
-  installed packages, if any, would block staying on 8.2.
+- **Local dev, CI, test, and production**: All now target PHP 8.4.x.
+  Production is confirmed running PHP 8.4.25. (Issue #1968 tracked the
+  earlier test/prod hold on 8.2; that hold is resolved now that prod is
+  confirmed on 8.4.25 — this doc makes no claim about whether #1968 itself
+  should be closed.)
+- **`phpstan.neon`'s `phpVersion: 80229`** pins static analysis to a
+  compatibility floor lower than the actual deployed version — it is a
+  deliberate choice to keep first-party code free of 8.3/8.4-only syntax
+  (property hooks, asymmetric visibility, etc.), not a claim that any
+  environment still runs 8.2. Similarly, `composer.json`'s `>=8.2.29`
+  constraint is a compatibility floor, not a statement about what's
+  deployed. Neither value needs to change for this doc to be accurate, and
+  changing either is a separate decision outside the scope of this note.
 - **MAMP Apache PHP version**: MAMP's Apache does not use the
   `/Applications/MAMP/bin/php/php` symlink — it serves PHP via
   `/Applications/MAMP/fcgi-bin/php.fcgi`, a wrapper script MAMP.app
@@ -321,6 +308,42 @@ targets it yet).
   link php@8.4 --force --overwrite`, then `hash -r`) — `composer
   test:integration` and other CLI-invoked test/tooling commands run under
   whichever version is linked, not MAMP's.
+
+### Docker Dev Environment (optional, experimental)
+
+An alternative to MAMP for this checkout: a self-contained Docker Compose
+stack (`docker-compose.yml` at the repo root) — PHP 8.4 app container,
+MySQL 8.0, phpMyAdmin — bind-mounting the checkout as the webroot. Verified
+against the full toolchain (`composer install`/`test:full`,
+`npm run build`, Playwright) as of issue #2116; not yet rolled out to other
+checkouts (`Registry/`, worktrees — tracked in #2120).
+
+```bash
+docker compose up -d
+docker compose exec -u www-data app composer install
+docker compose exec -u www-data app composer test:full
+```
+
+**Always pass `-u www-data` to `exec`** — it has no compose-file default
+and otherwise runs as root, which would root-own anything written into the
+bind mount. See `docker-compose.yml`'s header comment for the full
+rationale and the port convention for other checkouts.
+
+**Coexists with MAMP on ports only, not on data**: MAMP keeps serving this
+checkout on 9999/8889 unaffected, and the Docker stack runs in parallel on
+8002/8082 — but both read the same `.env`, and `.env`'s `DB_HOST` decides
+which stack can actually reach a database. `DB_HOST=db` (the Docker stack's
+setting) is unreachable from MAMP's PHP process, so MAMP-served pages will
+fail on any DB access while `.env` is pointed at Docker — the port
+coexistence does not mean both stacks are simultaneously functional. Switch
+`.env`'s `DB_HOST`/`DB_PORT` back to MAMP's values (`127.0.0.1`/`8889`) to
+use MAMP again; a backup of the original MAMP-pointed `.env` is typically
+kept alongside it as `.env.mamp.bak` (gitignored, not committed).
+
+This also means `scripts/provision-schema.sh` and any other script reading
+`.env` must run **inside** the container when `.env` is Docker-pointed:
+`docker compose exec -u www-data app scripts/provision-schema.sh ...`, not
+directly from the host shell.
 
 ### Development Setup
 

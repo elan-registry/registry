@@ -1,0 +1,136 @@
+# Registry2 Docker dev environment (issue #2116 spike).
+#
+# LOCAL DEVELOPMENT ONLY, and specific to the Registry2/ checkout — this
+# workspace also has Registry/ and, eventually, per-issue worktrees, each
+# of which would get its own compose file and port block. The per-checkout
+# port convention established here (not yet a settled rollout scheme, see
+# docs/development/ENVIRONMENT.md's "Docker Dev Environment" section and
+# issue #2120): Registry=8001/8081, Registry2=8002/8082, future
+# checkouts=8003/8083, etc.
+#
+# Coexists with MAMP: MAMP keeps serving this checkout on 9999/8889
+# unaffected. This stack runs in parallel on 8002 (app) / 8082 (phpMyAdmin).
+#
+# Copying this file to another checkout (#2120)? Four things change together,
+# not just the two port numbers in the header comment above:
+#   1. The two `127.0.0.1:PORT:80` host ports below (app, phpmyadmin)
+#   2. The network name (`registry2` → e.g. `registry`) — every `networks:`
+#      key and the top-level `networks:` block
+#   3. The named volume (`registry2_db_data` → e.g. `registry_db_data`) —
+#      the `db` service's `volumes:` entry and the top-level `volumes:` block
+#   4. `APP_UID`/`APP_GID` build args, if the checkout is worked on by a
+#      different host user
+# Missing #2 or #3 doesn't fail loudly — Compose just silently reuses (or
+# collides with) the other checkout's network/volume.
+#
+#   docker compose up -d
+#   docker compose exec -u www-data app composer install
+#   docker compose exec -u www-data app composer test:full
+#   docker compose down        # keep DB volume
+#   docker compose down -v     # wipe DB volume too
+#
+# ALWAYS pass `-u www-data` to `exec`. `docker compose exec` has no
+# compose-file setting for its default user — it runs as the image's build
+# default, which for this Dockerfile is root (see docker/Dockerfile's UID/GID
+# comment: the request-serving Apache workers drop to www-data via
+# apache2.conf, but a bare `exec` bypasses that entirely and gets root).
+# Found via a leaked root-owned `php -S` process spawned by
+# tests/integration/BrevoWebhookEndpointTest.php during `composer test:full`
+# run without -u — harmless on this Mac (Docker Desktop's VirtioFS maps
+# container writes back to the host user regardless of in-container UID) but
+# would root-own bind-mounted files on a Linux host, defeating the whole
+# UID-matching point of this image.
+
+services:
+  app:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+      args:
+        APP_UID: "501"
+        APP_GID: "20"
+    restart: "no"
+    # No env_file here deliberately: the app reads .env itself, at runtime,
+    # via the bind mount (users/init.php + vlucas/phpdotenv) — same as it
+    # always has. Injecting it a second time via Compose's env_file would
+    # only add exposure (DB_PASS, TURNSTILE_SECRET_KEY, etc. become visible
+    # in `docker inspect` / /proc/*/environ / phpinfo() Environment section)
+    # for no benefit. The db service's ${DB_NAME}/${DB_USER}/${DB_PASS}
+    # substitutions below come from Compose's own automatic discovery of a
+    # .env file in the project directory — a separate mechanism that needs
+    # no env_file directive. Found during senior-architect review.
+    ports:
+      - "127.0.0.1:8002:80"
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [registry2]
+
+  db:
+    image: mysql:8.0
+    restart: "no"
+    # Binary logging is on by default in the official image and blocks
+    # CREATE TRIGGER (schema migrations use them for the car audit trail)
+    # unless the connecting user has SUPER, or log_bin_trust_function_creators
+    # is set — neither of which our app-scoped DB_USER has/can set. Not
+    # needed for a single-node local dev DB with no replication, so it's
+    # simplest to turn it off outright rather than grant SUPER to work
+    # around it.
+    #
+    # default-time-zone: one historical migration
+    # (20260905172137_convert_car_timestamps_to_datetime.php) hardcodes
+    # 'America/Los_Angeles' as APPLICATION_TIMEZONE and refuses to run
+    # unless MySQL's NOW() is within a few seconds of PHP time evaluated in
+    # that zone — a one-time guard against corrupting production data that
+    # was originally written under LA wall-clock time. The container's
+    # default (UTC) fails that check even against a brand-new, empty
+    # database, so `composer migrate`/`provision-schema.sh` cannot get past
+    # this migration without it. Undocumented anywhere else in the repo —
+    # found only by running provision-schema.sh from scratch.
+    command: --disable-log-bin --default-time-zone=America/Los_Angeles
+    environment:
+      # :? fails fast with a clear message if .env is missing or incomplete,
+      # instead of Compose silently substituting an empty string and MySQL's
+      # entrypoint failing in a way that reads as a container problem rather
+      # than a config one.
+      MYSQL_DATABASE: ${DB_NAME:?DB_NAME must be set in .env}
+      MYSQL_USER: ${DB_USER:?DB_USER must be set in .env}
+      MYSQL_PASSWORD: ${DB_PASS:?DB_PASS must be set in .env}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    # Not exposed on a host port: the app container reaches this service by
+    # name (`db`) over the compose network. Nothing outside the stack needs
+    # a direct connection — phpMyAdmin, below, is the intended DB-inspection
+    # path, matching the issue's "no CLI mysql client required" goal.
+    volumes:
+      - registry2_db_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [registry2]
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: "no"
+    environment:
+      PMA_HOST: db
+    # Local-only bind, per the issue's explicit access-control requirement:
+    # phpMyAdmin must not be reachable outside localhost, and is never
+    # routed through Traefik.
+    ports:
+      - "127.0.0.1:8082:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [registry2]
+
+networks:
+  registry2:
+
+volumes:
+  registry2_db_data:
