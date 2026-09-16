@@ -1,12 +1,14 @@
 # Registry2 Docker dev environment (issue #2116 spike).
 #
 # LOCAL DEVELOPMENT ONLY, and specific to the Registry2/ checkout — this
-# workspace also has Registry/ and, eventually, per-issue worktrees, each
-# of which would get its own compose file and port block. The per-checkout
-# port convention established here (not yet a settled rollout scheme, see
-# docs/development/ENVIRONMENT.md's "Docker Dev Environment" section and
-# issue #2120): Registry=8001/8081, Registry2=8002/8082, future
-# checkouts=8003/8083, etc.
+# workspace also has Registry/ (proven working with this same pattern via
+# #2120, but not committed there — see ENVIRONMENT.md's "Docker Dev
+# Environment" section for why). Per-issue worktrees under
+# Registry-worktrees/ are explicitly out of scope as of #2120 (that
+# directory had zero active worktrees and was removed) — if worktree usage
+# resumes, a new compose file following this same pattern is a small
+# addition, not a prerequisite. The port convention established here:
+# Registry=8001/8081, Registry2=8002/8082, future checkouts=8003/8083, etc.
 #
 # Coexists with MAMP: MAMP keeps serving this checkout on 9999/8889
 # unaffected. This stack runs in parallel on 8002 (app) / 8082 (phpMyAdmin).

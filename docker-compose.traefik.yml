@@ -1,0 +1,36 @@
+# Optional Traefik routing for the Registry2/ Docker dev stack (issue #2120).
+#
+# NOT applied automatically. This repo doesn't own or deploy the HomeLab
+# Traefik instance's config — apply these labels to your own Traefik setup
+# manually, or merge this file into a `docker compose up` invocation:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#
+# Requires an external Docker network named `traefik_proxy` that your
+# Traefik instance is also attached to, and that Traefik's own config has
+# `providers.docker.exposedByDefault: false` with `providers.docker.network:
+# traefik_proxy` (or equivalent) — see
+# HomeLab/services/user_services/elan-registry-monitoring-viewer/docker-compose.yml
+# for a working reference of this exact label pattern in this HomeLab.
+#
+# Two independent things below are placeholders, both need changing before
+# applying: the router/service name `elan-registry2` (lines 24-28, your own
+# naming convention) and the `Host()` value `registry2.dev.unibrain.org`
+# (line 25, whatever subdomain you actually want to route). This localhost
+# port publish (127.0.0.1:8002, in docker-compose.yml) is unaffected by
+# this override — Traefik routes to the container's internal port 80
+# directly over traefik_proxy, not through the published host port.
+services:
+  app:
+    networks:
+      - traefik_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.elan-registry2.rule=Host(`registry2.dev.unibrain.org`)"
+      - "traefik.http.routers.elan-registry2.entrypoints=https"
+      - "traefik.http.routers.elan-registry2.tls=true"
+      - "traefik.http.services.elan-registry2.loadbalancer.server.port=80"
+
+networks:
+  traefik_proxy:
+    external: true
