@@ -309,6 +309,42 @@ targets it yet).
   test:integration` and other CLI-invoked test/tooling commands run under
   whichever version is linked, not MAMP's.
 
+### Docker Dev Environment (optional, experimental)
+
+An alternative to MAMP for this checkout: a self-contained Docker Compose
+stack (`docker-compose.yml` at the repo root) — PHP 8.4 app container,
+MySQL 8.0, phpMyAdmin — bind-mounting the checkout as the webroot. Verified
+against the full toolchain (`composer install`/`test:full`,
+`npm run build`, Playwright) as of issue #2116; not yet rolled out to other
+checkouts (`Registry/`, worktrees — tracked in #2120).
+
+```bash
+docker compose up -d
+docker compose exec -u www-data app composer install
+docker compose exec -u www-data app composer test:full
+```
+
+**Always pass `-u www-data` to `exec`** — it has no compose-file default
+and otherwise runs as root, which would root-own anything written into the
+bind mount. See `docker-compose.yml`'s header comment for the full
+rationale and the port convention for other checkouts.
+
+**Coexists with MAMP on ports only, not on data**: MAMP keeps serving this
+checkout on 9999/8889 unaffected, and the Docker stack runs in parallel on
+8002/8082 — but both read the same `.env`, and `.env`'s `DB_HOST` decides
+which stack can actually reach a database. `DB_HOST=db` (the Docker stack's
+setting) is unreachable from MAMP's PHP process, so MAMP-served pages will
+fail on any DB access while `.env` is pointed at Docker — the port
+coexistence does not mean both stacks are simultaneously functional. Switch
+`.env`'s `DB_HOST`/`DB_PORT` back to MAMP's values (`127.0.0.1`/`8889`) to
+use MAMP again; a backup of the original MAMP-pointed `.env` is typically
+kept alongside it as `.env.mamp.bak` (gitignored, not committed).
+
+This also means `scripts/provision-schema.sh` and any other script reading
+`.env` must run **inside** the container when `.env` is Docker-pointed:
+`docker compose exec -u www-data app scripts/provision-schema.sh ...`, not
+directly from the host shell.
+
 ### Development Setup
 
 1. **Get Database Credentials**:

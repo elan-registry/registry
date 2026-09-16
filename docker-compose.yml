@@ -4,8 +4,9 @@
 # workspace also has Registry/ and, eventually, per-issue worktrees, each
 # of which would get its own compose file and port block. The per-checkout
 # port convention established here (not yet a settled rollout scheme, see
-# docs/plans/issue-2116-docker-dev-environment.md): Registry=8001/8081,
-# Registry2=8002/8082, future checkouts=8003/8083, etc.
+# docs/development/ENVIRONMENT.md's "Docker Dev Environment" section and
+# issue #2120): Registry=8001/8081, Registry2=8002/8082, future
+# checkouts=8003/8083, etc.
 #
 # Coexists with MAMP: MAMP keeps serving this checkout on 9999/8889
 # unaffected. This stack runs in parallel on 8002 (app) / 8082 (phpMyAdmin).
@@ -72,10 +73,11 @@ services:
     restart: "no"
     # Binary logging is on by default in the official image and blocks
     # CREATE TRIGGER (schema migrations use them for the car audit trail)
-    # unless the connecting user has SUPER — which our app-scoped DB_USER
-    # deliberately doesn't have. Not needed for a single-node local dev DB
-    # with no replication, so it's simplest to turn it off outright rather
-    # than grant SUPER just to work around it.
+    # unless the connecting user has SUPER, or log_bin_trust_function_creators
+    # is set — neither of which our app-scoped DB_USER has/can set. Not
+    # needed for a single-node local dev DB with no replication, so it's
+    # simplest to turn it off outright rather than grant SUPER to work
+    # around it.
     #
     # default-time-zone: one historical migration
     # (20260905172137_convert_car_timestamps_to_datetime.php) hardcodes
@@ -89,9 +91,13 @@ services:
     # found only by running provision-schema.sh from scratch.
     command: --disable-log-bin --default-time-zone=America/Los_Angeles
     environment:
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASS}
+      # :? fails fast with a clear message if .env is missing or incomplete,
+      # instead of Compose silently substituting an empty string and MySQL's
+      # entrypoint failing in a way that reads as a container problem rather
+      # than a config one.
+      MYSQL_DATABASE: ${DB_NAME:?DB_NAME must be set in .env}
+      MYSQL_USER: ${DB_USER:?DB_USER must be set in .env}
+      MYSQL_PASSWORD: ${DB_PASS:?DB_PASS must be set in .env}
       MYSQL_RANDOM_ROOT_PASSWORD: "yes"
     # Not exposed on a host port: the app container reaches this service by
     # name (`db`) over the compose network. Nothing outside the stack needs
