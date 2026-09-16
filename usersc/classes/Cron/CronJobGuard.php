@@ -49,6 +49,7 @@ final class CronJobGuard
     private const ALLOWED_JOB_NAMES = [
         'reconciliation',
         'brevo_suppression_sync',
+        'send_verification_batch',
     ];
 
     public function __construct(private readonly DatabaseInterface $db)

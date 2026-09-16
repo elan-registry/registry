@@ -48,6 +48,25 @@ final class VerificationSettings
     private const SETTINGS_ROW_ID = 1;
 
     /**
+     * Smallest batch size {@see setBatchSize()} will persist.
+     *
+     * A batch of zero or fewer is not "sending paused" — pausing is what the
+     * feature switch and the cron job's own enable flag are for — it is a
+     * configuration that would make the send job do nothing while still
+     * reporting itself healthy. Clamp up to 1 instead of storing it.
+     */
+    private const BATCH_SIZE_MIN = 1;
+
+    /**
+     * Largest batch size {@see setBatchSize()} will persist.
+     *
+     * The verification programme deliberately sends in small batches to protect
+     * sender reputation (#1922); 25 is the ceiling an admin can reach from the
+     * dashboard without a code change.
+     */
+    private const BATCH_SIZE_MAX = 25;
+
+    /**
      * Minutes to fall back to for {@see cronStaleAfterSeconds()} if
      * `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`) is
      * somehow undefined. Matches that constant's current value exactly — this
@@ -144,9 +163,9 @@ final class VerificationSettings
      * verification-email send tool's batch-size preview, and a database hiccup
      * should fall back to a conservative batch size, not break the page.
      *
-     * No writer exists for this field yet — a settings-dashboard writer for
-     * `batch_size` is out of scope for this issue (#1884) and belongs to a
-     * future issue; this class only reads it here.
+     * Written by {@see self::setBatchSize()}, which clamps to `[1, 25]` before
+     * writing — so a value outside that range read back here can only have come
+     * from a direct database edit, not from the admin dashboard.
      *
      * @return int Configured batch size, or 5 if it could not be read
      */
@@ -244,6 +263,77 @@ final class VerificationSettings
         logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED, sprintf(
             'Verification system %s.',
             $enabled ? 'enabled' : 'disabled'
+        ));
+
+        return true;
+    }
+
+    /**
+     * Set how many verification emails each batch sends
+     *
+     * CLAMPS, NEVER REJECTS. Anything above {@see self::BATCH_SIZE_MAX} is
+     * written as the maximum and anything below {@see self::BATCH_SIZE_MIN} as
+     * the minimum, rather than the write being refused. This matches how the
+     * admin `verification_send_batch` handler already truncates an oversized
+     * `car_ids[]` submission instead of rejecting the whole request: an admin
+     * who types 500 gets the largest batch the system will send, not a failed
+     * form. The clamped value — not the submitted one — is what gets written
+     * and logged, so the log line always reflects the effective setting.
+     *
+     * Unlike {@see setEnabled()} there is no readiness gate here, so this
+     * method never throws: a batch size is inert configuration and changing it
+     * cannot cause mail to go out. Every failure path logs and returns `false`.
+     *
+     * Confirms the write with a follow-up read rather than `count()`, for the
+     * same reason {@see setEnabled()} does: PDO's `rowCount()` after an UPDATE
+     * reports rows CHANGED, not rows MATCHED, so re-saving the value the row
+     * already held yields `count() === 0` — indistinguishable from the id=1
+     * row being absent entirely.
+     *
+     * Does not check permissions — the caller must have already done so.
+     *
+     * @param int $size Requested batch size; clamped into `[1, 25]` before writing
+     * @param int $actingUserId User id to attribute this change to in the log
+     *                          (0 for no known actor). The class performs no
+     *                          session lookups itself, so the caller — who has
+     *                          already authenticated the request — passes it.
+     * @return bool True if the clamped batch size was written and confirmed
+     */
+    public function setBatchSize(int $size, int $actingUserId = 0): bool
+    {
+        $clamped = max(self::BATCH_SIZE_MIN, min(self::BATCH_SIZE_MAX, $size));
+
+        $this->db->query(
+            'UPDATE er_verification_settings SET batch_size = ? WHERE id = ?',
+            [$clamped, self::SETTINGS_ROW_ID]
+        );
+
+        if ($this->db->error()) {
+            logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'Failed to write er_verification_settings (batch_size=%d): %s',
+                $clamped,
+                $this->db->errorString() ?: 'unknown'
+            ));
+            return false;
+        }
+
+        $this->db->query(
+            'SELECT id FROM er_verification_settings WHERE id = ?',
+            [self::SETTINGS_ROW_ID]
+        );
+        if ($this->db->error() || !is_object($this->db->first())) {
+            logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'er_verification_settings UPDATE (batch_size=%d) could not be confirmed — the id=%d '
+                . 'settings row appears to be missing. Re-run `composer migrate` to reseed it.',
+                $clamped,
+                self::SETTINGS_ROW_ID
+            ));
+            return false;
+        }
+
+        logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED, sprintf(
+            'Verification batch size set to %d.',
+            $clamped
         ));
 
         return true;

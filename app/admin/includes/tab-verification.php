@@ -5,6 +5,7 @@ use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\CronJobRunsReader;
+use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 
@@ -68,20 +69,50 @@ try {
 // governs the AUTOMATIC, owner-facing verification mailing (the cron job and
 // the webhook paths). This section is a manual admin tool gated by
 // securePage()/permissions alone, and its whole purpose is to let an
-// administrator send a batch by hand — including while automatic sending is
-// paused site-wide, which is exactly when a manual send is most likely to be
-// needed. An isEnabled() gate here would silently disable the recovery tool at
-// the moment it matters.
+// administrator send a batch by hand — including while the site-wide switch
+// is off, which is exactly when a manual send is most likely to be needed. An
+// isEnabled() gate here would silently disable the recovery tool at the
+// moment it matters.
+//
+// THIS IS A DIFFERENT GATE FROM er_cron_job_runs.enabled (#1885's Pause on
+// the "Automatic Sending" panel below), and the two are DELIBERATELY NOT
+// symmetric. isEnabled() is a site-wide kill switch — never checked here, per
+// the paragraph above. er_cron_job_runs.enabled is this specific job's
+// schedule — and it IS checked, by a pause-check in app/admin/index.php's
+// verification_send_batch handler, before this section's own "Send batch"
+// form is allowed to submit. The reasoning: Pause exists specifically to slow
+// or halt the send cadence during the cutover ramp (see the migration's
+// enabled=0-everywhere seed and #1885's Pause/Resume control) — an admin who
+// paused it to stop mail this week does not want a manual "Send batch now"
+// click to undo that pause by another route. isEnabled() has no equivalent
+// scenario: it is an emergency-off switch with no ramp/cadence concept, so
+// the "recovery tool must always work" argument above applies to it and only
+// it. GET-time preview rendering (this section) is unaffected by either gate;
+// only the POST-time send is checked.
 // ---------------------------------------------------------------------------
 /** @var array<int, object> $vsEligible */
 $vsEligible       = [];
 $vsBatchSize      = 0;
 $vsEligibleError  = null;
 
-if ($verificationSendSvc !== null && isset($vsSettings)) {
+if (isset($vsSettings)) {
+    // Read separately from (and before) the eligible-car query below: the
+    // Automatic Sending panel renders this as the value of an editable
+    // field, and a preview-query failure must not prevent that render.
+    // (batchSize() itself already fails closed to 5 on an ordinary DB error,
+    // so this split doesn't change that outcome — it only avoids re-running
+    // batchSize()'s own error-log line a second time for the same read.)
     try {
         $vsBatchSize = $vsSettings->batchSize();
-        $vsEligible  = $verificationSendSvc->findEligible($vsBatchSize, 0);
+    } catch (\Throwable $e) {
+        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+            'Verification tab: could not read the configured batch size: ' . $e->getMessage());
+    }
+}
+
+if ($verificationSendSvc !== null && isset($vsSettings)) {
+    try {
+        $vsEligible = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
         $vsEligibleError = 'The list of eligible cars could not be loaded. Check the system log for details.';
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
@@ -114,6 +145,48 @@ $reconciliationBadge = CronJobRunsReader::badgeFor($reconciliationState, $reconc
 $reconciliationBadgeClass = $reconciliationBadge['badgeClass'];
 $reconciliationBadgeIcon = $reconciliationBadge['icon'];
 $reconciliationBadgeText = $reconciliationBadge['text'];
+
+// ---------------------------------------------------------------------------
+// Automatic-sending status probe (#1885). Its own fault domain again, for the
+// same reason as the reconciliation probe above: this is a different job's row
+// and a failure to read it must not blank out either of the sections above.
+//
+// $cronJobRunsReader is reused when the reconciliation probe above managed to
+// construct it; a separate construction here would be a second connection for
+// the same never-throwing reader.
+// ---------------------------------------------------------------------------
+$autoSendState = CronJobEnabledState::UNREADABLE;
+$autoSendLastRunAt = null;
+/** @var array{sent: int, skipped: int, failed: int}|null $autoSendCounts */
+$autoSendCounts = null;
+// True only when the counts read itself failed. A null $autoSendCounts with
+// this false is the routine "job has never run" case; with it true the counts
+// could not be confirmed and must not be rendered as reassurance. Defaults to
+// true so that a throw out of the probe below — which never reaches the
+// reader's own never-throws handling — is reported as the fault it is.
+$autoSendCountsUnreadable = true;
+
+try {
+    $autoSendReader = $cronJobRunsReader ?? new CronJobRunsReader(dbi());
+    $autoSendStatus = $autoSendReader->status(SendVerificationBatchJob::JOB_NAME);
+    $autoSendState = $autoSendStatus['state'];
+    $autoSendLastRunAt = $autoSendStatus['lastRunAt'];
+    $autoSendOutcome = $autoSendReader->lastOutcomeCounts(SendVerificationBatchJob::JOB_NAME);
+    $autoSendCounts = $autoSendOutcome['counts'];
+    $autoSendCountsUnreadable = $autoSendOutcome['unreadable'];
+} catch (\Throwable $e) {
+    logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+        'Automatic verification send status probe failed: ' . $e->getMessage());
+}
+
+$autoSendBadge = CronJobRunsReader::badgeFor($autoSendState, $autoSendLastRunAt);
+$autoSendPaused = $autoSendState === CronJobEnabledState::DISABLED;
+
+// The button submits the state it wants rather than a blind flip — see the
+// verification_toggle_cron handler in index.php. Anything that is not
+// positively ENABLED (paused, missing row, unreadable) offers Resume: that is
+// the action which can recover the row's state, and it is idempotent.
+$autoSendDesiredState = $autoSendState === CronJobEnabledState::ENABLED ? 'disable' : 'enable';
 
 // Admins may toggle; editors see the same status read-only.
 $vsCanToggle = hasPerm([2], $currentUserId);
@@ -279,6 +352,128 @@ if (!function_exists('vsEsc')) {
                 and both cron jobs (reconciliation and suppression sync) from writing bounce or suppression
                 state to car records. It can always be turned off, even while Brevo or cron are unavailable.
             </small>
+        <?php } ?>
+
+    </div>
+</div>
+
+<!-- Automatic Sending (#1885) -->
+<div class="card registry-card mb-4<?= $autoSendPaused ? ' border-warning' : '' ?>">
+    <div class="card-header card-header-er-primary">
+        <h5 class="mb-0 card-header-er-primary-text">
+            <i class="fas fa-robot"></i> Automatic Sending
+        </h5>
+    </div>
+    <div class="card-body">
+
+        <?php if ($autoSendPaused) { ?>
+        <!-- The badge alone is easy to miss on a page this long; a paused batch
+             sender is a state an admin must not scroll past, so the card also
+             carries a warning border and this banner until it is resumed. -->
+        <div class="alert alert-warning" role="alert">
+            <i class="fas fa-pause-circle"></i>
+            <strong>Automatic sending is paused.</strong>
+            No verification emails go out on their own, and the manual
+            <strong>Send batch</strong> button below is blocked until it is resumed.
+        </div>
+        <?php } ?>
+
+        <p class="text-muted">
+            When running, a batch is sent unattended at most once a day. There is no
+            fixed clock time — the job simply declines to run again until enough time
+            has passed since its last run.
+        </p>
+
+        <dl class="row mb-4">
+
+            <dt class="col-sm-4">Automatic sending</dt>
+            <dd class="col-sm-8">
+                <span class="<?= vsEsc($autoSendBadge['badgeClass']) ?>">
+                    <i class="fas <?= vsEsc($autoSendBadge['icon']) ?>"></i>
+                    <?= vsEsc($autoSendBadge['text']) ?>
+                </span>
+                <?php if ($autoSendLastRunAt !== null) { ?>
+                    <small class="text-muted ms-1">
+                        <i class="fas fa-clock"></i>
+                        last ran <?= vsEsc($autoSendLastRunAt->format('M j, Y g:i A')) ?>
+                    </small>
+                <?php } ?>
+            </dd>
+
+            <dt class="col-sm-4">Last run results</dt>
+            <dd class="col-sm-8">
+                <?php if ($autoSendCountsUnreadable) { ?>
+                    <!-- The counts read failed (see the system log): an
+                         infrastructure fault, not a job that has never run.
+                         Rendered as the same danger badge badgeFor() uses for
+                         MISSING/UNREADABLE so the two never look alike. -->
+                    <span class="badge text-bg-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Counts unavailable
+                    </span>
+                    <small class="text-muted ms-1">check the system log</small>
+                <?php } elseif ($autoSendCounts === null) { ?>
+                    <span class="text-muted">No automatic run yet</span>
+                <?php } else { ?>
+                    <?= vsEsc((string) $autoSendCounts['sent']) ?> sent,
+                    <?= vsEsc((string) $autoSendCounts['skipped']) ?> skipped,
+                    <?= vsEsc((string) $autoSendCounts['failed']) ?> failed
+                <?php } ?>
+            </dd>
+
+            <dt class="col-sm-4">Batch size</dt>
+            <dd class="col-sm-8">
+                <?php if ($vsCanToggle) { ?>
+                <form action="index.php?tab=verification" method="POST" class="row g-2 align-items-center">
+                    <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
+                    <input type="hidden" name="command" value="verification_set_batch_size">
+                    <div class="col-auto">
+                        <label class="visually-hidden" for="verificationBatchSize">Batch size</label>
+                        <input type="number" class="form-control form-control-sm"
+                               id="verificationBatchSize" name="batch_size"
+                               min="1" max="25" style="width: 6rem;"
+                               value="<?= vsEsc((string) $vsBatchSize) ?>">
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                    </div>
+                </form>
+                <small class="form-text text-muted d-block mt-1">
+                    <i class="fas fa-info-circle"></i>
+                    Cars per run, for both the automatic job and the manual send below.
+                    Values outside 1&ndash;25 are clamped when saved.
+                </small>
+                <?php } else { ?>
+                    <?= vsEsc((string) $vsBatchSize) ?> cars per run
+                <?php } ?>
+            </dd>
+
+        </dl>
+
+        <?php if ($vsCanToggle) { ?>
+        <!-- Gated on $vsCanToggle to match this tab's "read-only for editors"
+             contract. The server re-checks hasPerm([2]) on the POST side; this
+             only avoids showing an editor a control their click would reject. -->
+        <form action="index.php?tab=verification" method="POST">
+            <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
+            <input type="hidden" name="command" value="verification_toggle_cron">
+            <input type="hidden" name="desired_state" value="<?= vsEsc($autoSendDesiredState) ?>">
+            <?php if ($autoSendDesiredState === 'disable') { ?>
+            <button type="submit" class="btn btn-outline-warning">
+                <i class="fas fa-pause"></i> Pause automatic sending
+            </button>
+            <?php } else { ?>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-play"></i> Resume automatic sending
+            </button>
+            <?php } ?>
+        </form>
+        <?php } else { ?>
+        <p class="text-muted mb-0">
+            <i class="fas fa-lock"></i> Administrator access is required to pause or resume automatic sending.
+        </p>
         <?php } ?>
 
     </div>

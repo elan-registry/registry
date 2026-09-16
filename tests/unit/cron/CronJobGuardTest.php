@@ -203,4 +203,18 @@ final class CronJobGuardTest extends TestCase
 
         $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 24));
     }
+
+    /**
+     * #1885: 'send_verification_batch' must be in ALLOWED_JOB_NAMES alongside
+     * 'reconciliation' and 'brevo_suppression_sync' — a job name absent from
+     * this allowlist can never claim, regardless of its er_cron_job_runs row.
+     */
+    public function testClaimAcceptsSendVerificationBatchJobName(): void
+    {
+        $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
+
+        $this->assertTrue((new CronJobGuard($db))->claim('send_verification_batch', 20));
+        $this->assertStringContainsString('job_name = ?', $db->lastSql());
+        $this->assertSame(['send_verification_batch', 20], $db->lastParams());
+    }
 }

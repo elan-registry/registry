@@ -15,7 +15,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 
 - WIP: [#1875](https://github.com/elan-registry/registry/issues/1875) — Verification cron jobs are monitored so a silent stop is caught automatically.
 - WIP: [#1884](https://github.com/elan-registry/registry/issues/1884) — The manual send tool previews before sending and no longer deletes car history on send.
-- WIP: [#1885](https://github.com/elan-registry/registry/issues/1885) — Verification emails send automatically on a guarded daily cron with a dashboard Pause/Resume control.
+- [#1885](https://github.com/elan-registry/registry/issues/1885) — Verification emails send automatically on a guarded daily cron with a dashboard Pause/Resume control and editable batch size. Seeded paused in every environment until an admin explicitly resumes it.
 - WIP: [#1886](https://github.com/elan-registry/registry/issues/1886) — Superseded admin-only verification pages are removed.
 - [#1928](https://github.com/elan-registry/registry/issues/1928) — Verification codes are hashed at rest before the first live send batch.
 - WIP: [#1930](https://github.com/elan-registry/registry/issues/1930) — Dead owner-timestamp code path is wired up or removed.
@@ -33,7 +33,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#1882](https://github.com/elan-registry/registry/issues/1882) — Compose the verification email via EmailTemplate.
 - [#1883](https://github.com/elan-registry/registry/issues/1883) — Add a one-click opt-out link to the verification email.
 - [#1884](https://github.com/elan-registry/registry/issues/1884) — Rework send_email.php into a preview/send flow with corrected Mark Bounced semantics.
-- WIP: [#1885](https://github.com/elan-registry/registry/issues/1885) — Register send_verification_batch as a guarded cron job with dashboard Pause/Resume.
+- [#1885](https://github.com/elan-registry/registry/issues/1885) — Register `send_verification_batch` as a guarded cron job (`AbstractCronJob`/`CronJobGuard`, 20-hour claim interval) with dashboard Pause/Resume, editable batch size, and last-run outcome counts.
 - WIP: [#1886](https://github.com/elan-registry/registry/issues/1886) — Remove the superseded admin-scoped verification files.
 - [#1922](https://github.com/elan-registry/registry/issues/1922) — Investigate and resolve sender-reputation issues ahead of the first live send.
 - [#1928](https://github.com/elan-registry/registry/issues/1928) — Hash cars.vericode before the first live verification batch.
