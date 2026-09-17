@@ -131,15 +131,22 @@ services:
     # Local stand-in for the real Brevo transactional email API (#2127,
     # investigated in #2118). Reachable from the `app` container as
     # http://mock-brevo:8080/v3 over the registry2 network, and from the
-    # host at http://localhost:8003 for manual inspection. No
+    # host at http://localhost:8090 for manual inspection. No
     # depends_on/healthcheck: the app only talks to it when sendinblue()
     # actually sends, not at container boot.
+    #
+    # Host port deliberately NOT 8003: this file's header comment reserves
+    # the 8001/8081, 8002/8082, 8003/8083, ... sequence for per-checkout
+    # ports (Registry, Registry2, future checkouts) — mock-brevo is an
+    # additional service within this one checkout's stack, not a new
+    # checkout, so it takes a port outside that sequence instead of
+    # colliding with it.
     image: ghcr.io/c0boleis/mock-brevo:1.0.0
     restart: "no"
     environment:
       MOCK_BREVO_DB_PATH: /app/data/brevo
     ports:
-      - "127.0.0.1:8003:8080"
+      - "127.0.0.1:8090:8080"
     networks: [registry2]
 
 networks:

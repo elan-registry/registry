@@ -121,13 +121,15 @@ Once the prerequisites are met:
 1. Trigger a test send via the plugin's admin UI (Admin → Plugins → Brevo → Test Email) or any application code that sends an email (e.g., a password reset).
 2. Verify it was received by mock-brevo:
    - Via logs: `docker compose logs mock-brevo` (shows all HTTP requests and responses)
-   - Via web UI: Open `http://localhost:8003` in your browser to browse received emails
+   - Via web UI: Open `http://localhost:8090` in your browser to browse received emails
 
 A successful round-trip returns a `messageId` (visible in the logs or web UI) and the email is stored in mock-brevo's local database.
 
 **Why mock-brevo instead of Mailtrap for this scenario:** When you're working on the Brevo plugin's code itself (e.g., changing `functions.php` template handling, testing attachment behavior, or debugging the SDK configuration), you need the real HTTP code path to run. Mailtrap bypasses it entirely by deactivating the plugin. mock-brevo exercises the exact code path that runs in production while remaining entirely local and offline.
 
-**Important:** mock-brevo is for development only. It does **not** persist data between container restarts—emails are stored in an ephemeral volume. Rebuild or restart the container to clear previous test emails. Production and staging behavior are completely unaffected by the `BREVO_API_HOST` override; that environment variable only takes effect when `US_ENVIRONMENT=development`.
+**Important:** mock-brevo is for development only. Its H2 database (`MOCK_BREVO_DB_PATH`) is written to a Docker-managed anonymous volume that **does persist** across `docker compose restart`/`stop`/`up` — a plain restart will not clear previous test emails. To reset it: `docker compose rm -f -s -v mock-brevo && docker compose up -d mock-brevo` (`-s` stops the running container first — `-f -v` alone silently no-ops against a container that's still running). A plain `docker compose down` (with no service name, stopping the whole stack) also clears it on the next `up`, since Compose doesn't reuse anonymous volumes across container recreation. Production and staging behavior are completely unaffected by the `BREVO_API_HOST` override; that environment variable only takes effect when `US_ENVIRONMENT=development`.
+
+**Coverage note:** the dev override applies to the plugin's send path (`sendinblue()`) and to the two read-only Brevo cron clients (event reconciliation, suppression sync) — see `usersc/classes/Cron/BrevoEventReconciliationClient.php` and `BrevoSuppressionSyncClient.php`. All three route to mock-brevo in dev; nothing in this codebase calls the real Brevo API when `US_ENVIRONMENT=development` and `BREVO_API_HOST` is set.
 
 ## Verification System Feature Switch
 

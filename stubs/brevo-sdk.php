@@ -85,6 +85,14 @@ namespace Brevo\Client {
         public function setApiKey($apiKeyIdentifier, $key)
         {
         }
+
+        /**
+         * @param string $host
+         * @return $this
+         */
+        public function setHost($host)
+        {
+        }
     }
 }
 

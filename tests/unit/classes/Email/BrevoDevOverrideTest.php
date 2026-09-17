@@ -80,4 +80,32 @@ final class BrevoDevOverrideTest extends TestCase
 
         $this->assertSame('http://mock-brevo:8080/v3', BrevoDevOverride::hostOverride());
     }
+
+    #[RunInSeparateProcess]
+    public function testHostOverride_DevelopmentWithHostOnlyInProcessEnv_ReturnsHost(): void
+    {
+        define('US_ENVIRONMENT', 'development');
+        putenv('BREVO_API_HOST=http://mock-brevo:8080/v3');
+        unset($_ENV['BREVO_API_HOST']);
+
+        $this->assertSame('http://mock-brevo:8080/v3', BrevoDevOverride::hostOverride());
+    }
+
+    #[RunInSeparateProcess]
+    public function testHostOverride_DevelopmentWithEmptyStringHost_ReturnsNull(): void
+    {
+        define('US_ENVIRONMENT', 'development');
+        $_ENV['BREVO_API_HOST'] = '';
+
+        $this->assertNull(BrevoDevOverride::hostOverride());
+    }
+
+    #[RunInSeparateProcess]
+    public function testHostOverride_DevelopmentWithZeroStringHost_ReturnsNull(): void
+    {
+        define('US_ENVIRONMENT', 'development');
+        $_ENV['BREVO_API_HOST'] = '0';
+
+        $this->assertNull(BrevoDevOverride::hostOverride());
+    }
 }
