@@ -42,18 +42,35 @@ $verificationSendSvc = $verificationSendSvc ?? null;
 // Readiness probes. VerificationSettings never throws from its probes, but a
 // construction or connection failure must not take the whole admin page down.
 // ---------------------------------------------------------------------------
-$vsEnabled     = false;
-$vsBrevoReady  = false;
-$vsCronReady   = false;
-$vsLastCronAt  = null;
-$vsProbeFailed = false;
+$vsEnabled         = false;
+$vsBrevoReady      = false;
+$vsCronReady       = false;
+$vsLastCronAt      = null;
+$vsUnmatchedCount  = 0;
+// True whenever unmatchedRecipientCount() could not produce a real value.
+// Defaults to true so a throw anywhere in the probe block below — which never
+// reaches that method's own never-throws handling — is reported as the fault
+// it is, rather than rendering the initial 0 as a reassuring "nothing
+// unmatched". Same convention as $autoSendCountsUnreadable further down.
+$vsUnmatchedUnreadable = true;
+$vsProbeFailed     = false;
 
 try {
-    $vsSettings   = new VerificationSettings(dbi());
-    $vsEnabled    = $vsSettings->isEnabled();
-    $vsBrevoReady = $vsSettings->brevoReady();
-    $vsCronReady  = $vsSettings->cronReady();
-    $vsLastCronAt = $vsSettings->lastCronRequestAt();
+    $vsSettings       = new VerificationSettings(dbi());
+    $vsEnabled        = $vsSettings->isEnabled();
+    $vsBrevoReady     = $vsSettings->brevoReady();
+    $vsCronReady      = $vsSettings->cronReady();
+    $vsLastCronAt     = $vsSettings->lastCronRequestAt();
+
+    // null means the counter could not be read (query error, missing row, or a
+    // malformed/negative stored value) — the method has already logged the
+    // specific reason under VerificationConfigWarning. Leave the flag true so
+    // the render below shows "Unavailable" instead of a green zero.
+    $vsUnmatchedRead = $vsSettings->unmatchedRecipientCount();
+    if ($vsUnmatchedRead !== null) {
+        $vsUnmatchedCount = $vsUnmatchedRead;
+        $vsUnmatchedUnreadable = false;
+    }
 } catch (\Throwable $e) {
     $vsProbeFailed = true;
     logger($currentUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
@@ -305,6 +322,35 @@ if (!function_exists('vsEsc')) {
                     (<code>app/api/webhooks/brevo.php</code>); the nightly reconciliation
                     job below catches anything the webhook missed.
                 </small>
+            </dd>
+
+            <dt class="col-sm-4">Unmatched recipients</dt>
+            <dd class="col-sm-8">
+                <?php if ($vsUnmatchedUnreadable) { ?>
+                    <!-- The counter read failed: an infrastructure or data
+                         fault, not a genuinely quiet system. Rendered as a
+                         danger badge — never the green zero a healthy read
+                         shows — since a rising count is this counter's whole
+                         signal and "unreadable" must not look like "healthy". -->
+                    <span class="badge text-bg-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Unavailable
+                    </span>
+                    <small class="text-muted ms-1">
+                        The unmatched-recipient counter could not be read. Check the system
+                        log for <strong>VerificationConfigWarning</strong> entries.
+                    </small>
+                <?php } else { ?>
+                <span class="badge <?= $vsUnmatchedCount > 0 ? 'text-bg-warning' : 'text-bg-success' ?>">
+                    <?= htmlspecialchars((string) $vsUnmatchedCount, ENT_QUOTES, 'UTF-8') ?>
+                </span>
+                <small class="text-muted ms-1">
+                    Brevo events and suppressed contacts whose email matched no car,
+                    across the webhook receiver, nightly reconciliation, and suppression
+                    sync. A rising count usually means recipient emails have drifted
+                    from <code>cars.email</code>.
+                </small>
+                <?php } ?>
             </dd>
 
             <dt class="col-sm-4">Last reconciliation run</dt>

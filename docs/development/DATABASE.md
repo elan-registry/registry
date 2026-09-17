@@ -348,10 +348,11 @@ the migration history in `database/migrations/` for the rest.
 | `id` | `int` | PRIMARY KEY (always `1`, single row) |
 | `enabled` | `boolean NOT NULL DEFAULT 0` | Feature switch; gates all verification-related sends (#1881–#1883). Admin-gated toggle on the Verification System tab; `setEnabled(true)` throws `VerificationConfigException` if Brevo is not ready. |
 | `last_cron_request_at` | `datetime NULL` | Timestamp of the most recent accepted cron transport hit (#1974). Used by `VerificationSettings::cronReady()` to check if the 10-minute cron transport is responsive. `NULL` until first successful hit. |
-| `unmatched_webhook_recipient_count` | `bigint unsigned NOT NULL DEFAULT 0` | Counter of inbound Brevo webhook events whose recipient matched no car (#1887). Used for operational monitoring; incremented by `BrevoWebhookEventProcessor`, never reset. |
+| `unmatched_recipient_count` | `int unsigned NOT NULL DEFAULT 0` | Counter of inbound Brevo signals (webhook events, reconciliation events, suppression-list contacts) whose recipient matched no car (#1887, #2085). Used for operational monitoring; incremented by the webhook receiver (`app/api/webhooks/brevo.php`), `BrevoEventReconciliationJob`, and `BrevoSuppressionSyncJob`, never reset. |
 | `batch_size` | `tinyint unsigned NOT NULL DEFAULT 5` | Maximum number of verification emails to send in one admin batch (#1884). Controls the preview table size in the Verification tab send-tool section and the default batch count; read via `VerificationSettings::batchSize()`. |
 
-**Written By**: `VerificationSettings` class, `BrevoWebhookEventProcessor`, admin toggle endpoint, cron transport
+**Written By**: `VerificationSettings` class (all writes), via `app/api/webhooks/brevo.php`,
+`BrevoEventReconciliationJob`, `BrevoSuppressionSyncJob`, admin toggle endpoint, cron transport
 
 #### `er_cron_job_runs` - Generic cron job "last run" tracking (#2034)
 

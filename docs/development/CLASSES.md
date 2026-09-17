@@ -1045,11 +1045,22 @@ shared state or dependency exists between the two.
   and returns `false` on a DB error, or if the `id = 1` settings row is
   missing) (#1974)
 - `incrementUnmatchedRecipientCounter(): bool` - Increment
-  `er_verification_settings.unmatched_webhook_recipient_count` when an
-  inbound Brevo webhook event's recipient matches no car; never throws
-  (logs and returns `false` on a DB error, or if the `id = 1` settings row
-  itself is missing) since the webhook's own response to Brevo must not
-  hinge on this counter succeeding (#1887)
+  `er_verification_settings.unmatched_recipient_count` when an inbound event's
+  recipient matches no car. Called by three subsystems: (1) the webhook receiver
+  (`app/api/webhooks/brevo.php`'s `NO_CAR_MATCH` branch) on per-event, tag-filtered
+  Brevo delivery-status events, (2) `BrevoEventReconciliationJob::applyEvent()` for
+  nightly backfill of missed events (same filter), and (3) `BrevoSuppressionSyncJob::syncPage()`
+  for whole-account suppression-list sync (noisier, broader population with no tag filter).
+  Never throws (logs and returns `false` on a DB error, or if the `id = 1` settings row
+  is missing) since error paths must not break the caller's own response flow (#1887, #2085)
+- `unmatchedRecipientCount(): ?int` - Read accessor for
+  `er_verification_settings.unmatched_recipient_count`; returns `null` — never `0` —
+  on a DB error, a missing `id = 1` row, or a non-numeric/negative stored value,
+  logging the specific cause under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`.
+  Never throws. Callers must branch on `null`: a genuine zero and an unreadable
+  counter must not render alike. The admin Verification tab shows a
+  `text-bg-danger` "Unavailable" badge for the `null` case
+  (`app/admin/includes/tab-verification.php`, #2085)
 - `batchSize(): int` - Configured verification-email batch size
   (`er_verification_settings.batch_size`); fails closed to `5` on any read
   problem (#1884)

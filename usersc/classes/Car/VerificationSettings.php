@@ -438,30 +438,43 @@ final class VerificationSettings
     }
 
     /**
-     * Increment the count of inbound Brevo webhook events matched to no car
+     * Increment the count of inbound Brevo signals matched to no car
      *
-     * Called by the Brevo webhook receiver (#1887) when an event's recipient
-     * email matches no `cars.email` value. A rising count with verification
-     * enabled signals recipients whose emails have drifted from what any car
-     * record has on file.
+     * Called from three places:
+     * - The Brevo webhook receiver (#1887), `app/api/webhooks/brevo.php`'s
+     *   `NO_CAR_MATCH` branch, when an event's recipient email matches no
+     *   `cars.email` value.
+     * - `BrevoEventReconciliationJob::applyEvent()`, which replays events
+     *   fetched from Brevo's Events API and hits the same no-match condition
+     *   as the live webhook receiver.
+     * - `BrevoSuppressionSyncJob::syncPage()`, which walks Brevo's
+     *   account-wide suppression list. That source is broader and noisier
+     *   than the other two: it is not filtered to any specific email tag or
+     *   campaign, so it counts any suppressed address with no matching car,
+     *   not just ones tied to verification sends. This is accepted
+     *   deliberately per #2085's scope, not an oversight.
+     *
+     * A rising count with verification enabled signals recipients whose
+     * emails have drifted from what any car record has on file.
      *
      * Never throws: a failed UPDATE is logged and swallowed, matching this
-     * class's fail-quietly contract for the write paths a webhook receiver
-     * depends on — the webhook's own 2xx/logged response to Brevo must not
-     * hinge on this counter succeeding.
+     * class's fail-quietly contract for the write paths its callers depend
+     * on — none of the webhook receiver's, the reconciliation job's, or the
+     * suppression sync job's own success/response handling may hinge on this
+     * counter succeeding.
      *
      * @return bool True if the counter was incremented successfully
      */
     public function incrementUnmatchedRecipientCounter(): bool
     {
         $this->db->query(
-            'UPDATE er_verification_settings SET unmatched_webhook_recipient_count = unmatched_webhook_recipient_count + 1 WHERE id = ?',
+            'UPDATE er_verification_settings SET unmatched_recipient_count = unmatched_recipient_count + 1 WHERE id = ?',
             [self::SETTINGS_ROW_ID]
         );
 
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
-                'Failed to increment er_verification_settings.unmatched_webhook_recipient_count: %s',
+                'Failed to increment er_verification_settings.unmatched_recipient_count: %s',
                 $this->db->errorString() ?: 'unknown'
             ));
             return false;
@@ -482,6 +495,60 @@ final class VerificationSettings
         }
 
         return true;
+    }
+
+    /**
+     * Count of inbound Brevo signals (webhook events, reconciliation events,
+     * suppression-list contacts) whose recipient matched no car.
+     *
+     * Returns `null`, NOT 0, when the value could not be read — a failed
+     * query, a missing settings row, or a malformed stored value. This is a
+     * read path the admin dashboard consults, and it never throws; but a
+     * rising count is this counter's entire signal, so "unreadable" must never
+     * render identically to "healthy". Returning 0 for an unreadable counter
+     * would let a caller show the reassuring green zero that a genuinely quiet
+     * system shows. Callers must branch on null and say so.
+     *
+     * A negative value takes the same branch as a non-numeric one: the column
+     * is `INT UNSIGNED NOT NULL DEFAULT 0` and the only write path is
+     * {@see incrementUnmatchedRecipientCounter()}'s `col = col + 1`, so a
+     * negative reading is impossible to produce legitimately and signals the
+     * same hand-edited/corrupted-data condition.
+     *
+     * @return int|null Current counter value, or null if it could not be read
+     */
+    public function unmatchedRecipientCount(): ?int
+    {
+        $this->db->query(
+            'SELECT unmatched_recipient_count FROM er_verification_settings WHERE id = ?',
+            [self::SETTINGS_ROW_ID]
+        );
+
+        if ($this->db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'Failed to read er_verification_settings.unmatched_recipient_count: %s',
+                $this->db->errorString() ?: 'unknown'
+            ));
+            return null;
+        }
+
+        $row = $this->db->first();
+        if (
+            !is_object($row)
+            || !isset($row->unmatched_recipient_count)
+            || !is_numeric($row->unmatched_recipient_count)
+            || $row->unmatched_recipient_count < 0
+        ) {
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'er_verification_settings row id=%d is missing or has a non-numeric or '
+                . 'negative unmatched_recipient_count value — reporting the unmatched-recipient '
+                . 'count as unreadable.',
+                self::SETTINGS_ROW_ID
+            ));
+            return null;
+        }
+
+        return (int) $row->unmatched_recipient_count;
     }
 
     /**

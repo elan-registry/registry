@@ -193,6 +193,10 @@ roles (read-only for editor, toggle control for admin only).
 - `cronReady()` — badge `text-bg-warning` if false; muted if true
 - Last webhook received — muted "Not yet implemented (#1887)" (placeholder for the real webhook implementation)
 - Last reconciliation run — muted "Not yet implemented (#1889)"
+- Unmatched recipients — badge `text-bg-warning` if the counter is above 0,
+  `text-bg-success` if 0, `text-bg-danger` "Unavailable" if the read itself
+  failed; counts Brevo signals (webhook events, reconciliation events,
+  suppression-list contacts) whose recipient matched no car (#2085)
 
 **Toggle Control:**
 
@@ -384,7 +388,7 @@ independent escalation.
 | --- | --- |
 | Parsed and durably written | 2xx |
 | No recognized tag | 2xx, logged |
-| Recipient matches no car | 2xx, logged, `er_verification_settings.unmatched_webhook_recipient_count` incremented |
+| Recipient matches no car | 2xx, logged, `er_verification_settings.unmatched_recipient_count` incremented |
 | Malformed/unparseable payload (incl. a top-level JSON list — Brevo's `batched: false` guarantee means a list body is never legitimate) | 4xx, logged |
 | Auth token missing/empty/wrong | 4xx, logged (hashed prefix only) |
 | Database write failure | 5xx — the only retryable case |
@@ -402,8 +406,9 @@ drives.
 **Out of scope for #1887** (see that issue's non-goals): no outbound Brevo
 API calls of any kind (webhook *registration* is #1888, blocked-contacts
 *import* is #1923, nightly *reconciliation* is #1889), and no admin UI
-rendering of the per-car event history or the unmatched-recipient counter —
-that is a follow-up issue.
+rendering of the per-car event history. Admin UI rendering of the
+unmatched-recipient counter shipped in #2085 — see the Status Indicators
+list above.
 
 ### Auto-Clear Bounce Flag on Confirmed Email Change (#1890)
 

@@ -822,6 +822,162 @@ final class VerificationSettingsTest extends TestCase
     }
 
     // =========================================================================
+    // incrementUnmatchedRecipientCounter() / unmatchedRecipientCount() (#2085)
+    // =========================================================================
+
+    public function testIncrementUnmatchedRecipientCounterSucceeds(): void
+    {
+        $db = new VerificationSettingsFakeDatabase();
+
+        $this->assertTrue((new VerificationSettings($db))->incrementUnmatchedRecipientCounter());
+        $this->assertTrue($db->wasUnmatchedCounterUpdateCalled());
+    }
+
+    public function testIncrementUnmatchedRecipientCounterReturnsFalseWhenUpdateFails(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(unmatchedCounterUpdateErrors: true);
+
+        $this->assertFalse((new VerificationSettings($db))->incrementUnmatchedRecipientCounter());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('Failed to increment', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * Unlike setEnabled()/setBatchSize(), this write uses `col = col + 1`,
+     * which always changes the row's value when a row matches — so
+     * count() === 0 here unambiguously means the id=1 row is absent, not
+     * "value unchanged" (see the method's own docblock). Simulated here via
+     * $unmatchedCounterUpdateCount: 0, matching the pattern
+     * testRecordCronRequestReturnsFalseAndLogsWhenSettingsRowMissing() already
+     * uses for recordCronRequest()'s identical count()-based check.
+     */
+    public function testIncrementUnmatchedRecipientCounterReturnsFalseWhenRowMissing(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(unmatchedCounterUpdateCount: 0);
+
+        $this->assertFalse((new VerificationSettings($db))->incrementUnmatchedRecipientCounter());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('not found', $mockLogEntries[0]['message']);
+    }
+
+    public function testUnmatchedRecipientCountReadsStoredValue(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(
+            unmatchedCounterRowValue: (object) ['unmatched_recipient_count' => 7],
+        );
+
+        $this->assertSame(7, (new VerificationSettings($db))->unmatchedRecipientCount());
+    }
+
+    /**
+     * null, not 0: a rising count is this counter's whole signal, so an
+     * unreadable value must be distinguishable by the caller from a genuine
+     * zero rather than rendering as the same reassuring "nothing unmatched".
+     */
+    public function testUnmatchedRecipientCountReturnsNullOnQueryError(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(unmatchedCounterQueryErrors: true);
+
+        $this->assertNull((new VerificationSettings($db))->unmatchedRecipientCount());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('Failed to read', $mockLogEntries[0]['message']);
+    }
+
+    public function testUnmatchedRecipientCountReturnsNullWhenRowMissing(): void
+    {
+        global $mockLogEntries;
+
+        // Default unmatchedCounterRowValue is [] — the real \DB "no rows" value.
+        $db = new VerificationSettingsFakeDatabase();
+
+        $this->assertNull((new VerificationSettings($db))->unmatchedRecipientCount());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * Wrong-typed-value risk class (this repo's /execute-plan Step 6):
+     * unmatchedRecipientCount() reads $row->unmatched_recipient_count and casts
+     * it with (int). A non-numeric string is the realistic corrupted-data case
+     * (e.g. a direct DB edit, or a driver returning every column as a string).
+     * The method's fail-closed guard checks is_numeric() alongside isset(), so
+     * this takes the same "missing/malformed" branch as a null or absent value
+     * would — it returns null and logs, rather than silently letting (int)
+     * coerce a corrupted string to 0 and rendering as a healthy counter.
+     */
+    public function testUnmatchedRecipientCountReturnsNullAndLogsForNonNumericString(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(
+            unmatchedCounterRowValue: (object) ['unmatched_recipient_count' => 'not-a-number'],
+        );
+
+        $result = (new VerificationSettings($db))->unmatchedRecipientCount();
+
+        $this->assertNull($result, 'A non-numeric value must yield null, not 0 and not throw');
+        $this->assertCount(1, $mockLogEntries, 'A non-numeric value must log, same as a missing/null value');
+        $this->assertStringContainsString('non-numeric', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * The column is `INT UNSIGNED NOT NULL DEFAULT 0` and its only write path
+     * is `col = col + 1`, so a negative reading cannot be produced by any real
+     * code path — it means the row was edited by hand or the schema drifted.
+     * That is the same condition a non-numeric value signals, so it takes the
+     * same fail-closed branch rather than being cast through as a real count.
+     */
+    public function testUnmatchedRecipientCountReturnsNullAndLogsForNegativeValue(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(
+            unmatchedCounterRowValue: (object) ['unmatched_recipient_count' => -5],
+        );
+
+        $result = (new VerificationSettings($db))->unmatchedRecipientCount();
+
+        $this->assertNull($result, 'A negative value is impossible via any real write path — report it as unreadable');
+        $this->assertCount(1, $mockLogEntries, 'A negative value must log, same as a non-numeric one');
+        $this->assertStringContainsString('negative', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * The other half of the same risk class: a null value for the column
+     * (e.g. a NULL cell reached through a schema drift, since the real column
+     * is NOT NULL DEFAULT 0 per the migration) must not throw either, and
+     * takes the same fail-closed branch as the non-numeric-string case above.
+     */
+    public function testUnmatchedRecipientCountReturnsNullWithoutThrowingWhenValueIsNull(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(
+            unmatchedCounterRowValue: (object) ['unmatched_recipient_count' => null],
+        );
+
+        $result = (new VerificationSettings($db))->unmatchedRecipientCount();
+
+        $this->assertNull($result);
+        $this->assertCount(1, $mockLogEntries, 'A null value hits the fail-closed branch, same as a non-numeric string');
+        $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
+    }
+
+    // =========================================================================
     // Wrong-typed-value test — N/A for this class
     // =========================================================================
 

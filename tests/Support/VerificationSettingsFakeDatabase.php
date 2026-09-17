@@ -42,10 +42,20 @@ namespace Tests\Support;
  * overloading `updateQueryWasIssued` (the two UPDATEs must be distinguishable
  * so a test can simulate one write failing without affecting the other).
  *
+ * Query-dispatch note (#2085): `incrementUnmatchedRecipientCounter()`'s
+ * `UPDATE ... unmatched_recipient_count = unmatched_recipient_count + 1 ...`
+ * and `unmatchedRecipientCount()`'s `SELECT unmatched_recipient_count FROM
+ * er_verification_settings ...` are tracked the same independent way as the
+ * cron-request pair above — a dedicated flag per statement, with its own
+ * row/error/count controls, so a test can simulate the increment succeeding
+ * while the read fails (or vice versa) without disturbing any other query
+ * shape this double answers.
+ *
  * @package Tests\Support
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1926
  * @see https://github.com/elan-registry/registry/issues/1974
+ * @see https://github.com/elan-registry/registry/issues/2085
  */
 class VerificationSettingsFakeDatabase extends FakeDatabase
 {
@@ -60,6 +70,12 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
 
     /** True once `lastCronRequestAt()`'s `SELECT last_cron_request_at ...` has run. */
     private bool $cronRequestSelectWasIssued = false;
+
+    /** True once `incrementUnmatchedRecipientCounter()`'s UPDATE has run. */
+    private bool $unmatchedCounterUpdateWasIssued = false;
+
+    /** True once `unmatchedRecipientCount()`'s SELECT has run. */
+    private bool $unmatchedCounterSelectWasIssued = false;
 
     /**
      * @param array<string, mixed>|object $firstRowValue Row handed back by first() for every
@@ -112,6 +128,20 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
      *                                   default in this fake, which represents the successful case
      *                                   pre-existing tests implicitly expect. Pass 0 to simulate the
      *                                   `id = 1` settings row being absent.
+     * @param array<string, mixed>|object $unmatchedCounterRowValue Row handed back by first()
+     *                                   specifically for `unmatchedRecipientCount()`'s `SELECT
+     *                                   unmatched_recipient_count FROM er_verification_settings ...`.
+     *                                   Defaults to [] (no row). Independent of $firstRowValue.
+     * @param bool $unmatchedCounterQueryErrors When true, error() reports true specifically for
+     *                                   `unmatchedRecipientCount()`'s SELECT, independent of every
+     *                                   other error flag.
+     * @param bool $unmatchedCounterUpdateErrors When true, error() reports true specifically for
+     *                                   `incrementUnmatchedRecipientCounter()`'s UPDATE, independent
+     *                                   of every other error flag.
+     * @param int $unmatchedCounterUpdateCount Value count() reports specifically after
+     *                                   `incrementUnmatchedRecipientCounter()`'s UPDATE. Defaults to 1
+     *                                   (the row matched and changed). Pass 0 to simulate the `id = 1`
+     *                                   settings row being absent.
      */
     public function __construct(
         private readonly array|object $firstRowValue = [],
@@ -124,6 +154,10 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
         private readonly bool $cronRequestQueryErrors = false,
         private readonly bool $cronRequestUpdateErrors = false,
         private readonly int $cronRequestUpdateCount = 1,
+        private readonly array|object $unmatchedCounterRowValue = [],
+        private readonly bool $unmatchedCounterQueryErrors = false,
+        private readonly bool $unmatchedCounterUpdateErrors = false,
+        private readonly int $unmatchedCounterUpdateCount = 1,
     ) {
     }
 
@@ -153,6 +187,22 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
         );
     }
 
+    private function isUnmatchedCounterUpdate(string $sql): bool
+    {
+        return (bool) preg_match(
+            '/^\s*UPDATE\s+er_verification_settings\s+SET\s+unmatched_recipient_count\b/i',
+            $sql
+        );
+    }
+
+    private function isUnmatchedCounterSelect(string $sql): bool
+    {
+        return (bool) preg_match(
+            '/^\s*SELECT\s+unmatched_recipient_count\s+FROM\s+er_verification_settings\b/i',
+            $sql
+        );
+    }
+
     public function query(string $sql, array $params = []): self
     {
         $this->queryWasCalled = true;
@@ -161,19 +211,28 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
             $this->brevoTableWasQueried = true;
         }
         $this->cronRequestUpdateWasIssued = $this->isCronRequestUpdate($sql);
+        $this->unmatchedCounterUpdateWasIssued = $this->isUnmatchedCounterUpdate($sql);
         if (stripos($sql, 'UPDATE') !== false
             && stripos($sql, 'er_verification_settings') !== false
             && !$this->cronRequestUpdateWasIssued
+            && !$this->unmatchedCounterUpdateWasIssued
         ) {
             $this->updateQueryWasIssued = true;
         }
         $this->confirmSelectWasIssued = $this->isConfirmSelect($sql);
         $this->cronRequestSelectWasIssued = $this->isCronRequestSelect($sql);
+        $this->unmatchedCounterSelectWasIssued = $this->isUnmatchedCounterSelect($sql);
         return $this;
     }
 
     public function error(): bool
     {
+        if ($this->unmatchedCounterUpdateWasIssued) {
+            return $this->unmatchedCounterUpdateErrors;
+        }
+        if ($this->unmatchedCounterSelectWasIssued) {
+            return $this->unmatchedCounterQueryErrors;
+        }
         if ($this->cronRequestUpdateWasIssued) {
             return $this->cronRequestUpdateErrors;
         }
@@ -196,6 +255,9 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
 
     public function count(): int
     {
+        if ($this->unmatchedCounterUpdateWasIssued) {
+            return $this->unmatchedCounterUpdateCount;
+        }
         if ($this->cronRequestUpdateWasIssued) {
             return $this->cronRequestUpdateCount;
         }
@@ -218,6 +280,9 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
 
     public function first(bool $assoc = false): array|object
     {
+        if ($this->unmatchedCounterSelectWasIssued) {
+            return $this->unmatchedCounterRowValue;
+        }
         if ($this->cronRequestSelectWasIssued) {
             return $this->cronRequestRowValue;
         }
@@ -240,6 +305,11 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
     public function wasCronRequestUpdateCalled(): bool
     {
         return $this->cronRequestUpdateWasIssued;
+    }
+
+    public function wasUnmatchedCounterUpdateCalled(): bool
+    {
+        return $this->unmatchedCounterUpdateWasIssued;
     }
 
     public function wasBrevoTableQueried(): bool
