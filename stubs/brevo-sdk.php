@@ -87,6 +87,10 @@ namespace Brevo\Client {
         }
 
         /**
+         * Fluent-return setter — confirmed at
+         * usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib/Configuration.php:254
+         * (v1.6.2, the version installed on this checkout as of #2127).
+         *
          * @param string $host
          * @return $this
          */

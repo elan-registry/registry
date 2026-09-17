@@ -134,8 +134,8 @@ this repository — the two read-only Brevo cron clients,
 `usersc/classes/Cron/BrevoEventReconciliationClient.php` and
 `BrevoSuppressionSyncClient.php`, both route through
 `BrevoDevOverride::hostOverride()` before constructing their API client. The
-plugin's own send path (`sendinblue()`) is wired the same way, but that file
-lives in `usersc/plugins/sendinblue/`, a manually-installed, gitignored
+plugin's own send path (`sendinblue()`) is intended to be wired the same
+way, but that file lives in `usersc/plugins/sendinblue/`, a manually-installed, gitignored
 plugin directory not present in this repository's history — it exists only
 on checkouts where the plugin has been installed, so its wiring can't be
 confirmed by reading this repo alone. If you're relying on that path being
