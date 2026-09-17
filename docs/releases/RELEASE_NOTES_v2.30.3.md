@@ -24,7 +24,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#2086](https://github.com/elan-registry/registry/issues/2086) — The Verification tab now shows a suppression-sync status badge alongside the existing reconciliation one.
 - [#2087](https://github.com/elan-registry/registry/issues/2087) — Webhook auth-failure logging is now rate-limited per IP, so spammed invalid tokens can no longer grow the logs table unbounded. The 401 rejection itself is always returned regardless of rate-limit state.
 - WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — The production Brevo webhook is registered and real verification sending is turned on.
-- WIP: [#2090](https://github.com/elan-registry/registry/issues/2090) — Cron job verification-switch gating is documented for future non-Brevo jobs.
+- [#2090](https://github.com/elan-registry/registry/issues/2090) — Documentation now states plainly that every `AbstractCronJob` subclass is gated by the site-wide verification switch, not just Brevo-driven jobs — no behavior change.
 
 ## Issues Resolved
 
@@ -43,4 +43,4 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#2086](https://github.com/elan-registry/registry/issues/2086) — Add the missing suppression-sync admin status badge; lock the cron-job name allowlist against actual job classes with a test; extract cron.php's request-gating logic into a testable class, replacing a fragile source-grep regression test; add integration coverage proving the unmatched-recipient counter increments in both cron jobs.
 - [#2087](https://github.com/elan-registry/registry/issues/2087) — Rate-limit the Brevo webhook's auth-failure logging (a new `brevo_webhook_auth_failure` key, 10 failures per IP per 5 minutes) to stop unbounded `logs` table growth from spammed garbage POSTs, without weakening the auth check itself.
 - WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — Register the production Brevo webhook and turn on the verification switch.
-- WIP: [#2090](https://github.com/elan-registry/registry/issues/2090) — Document AbstractCronJob's verification-switch gating scope.
+- [#2090](https://github.com/elan-registry/registry/issues/2090) — Correct `AbstractCronJob`'s docblock, `DEPLOYMENT.md`, and `CLASSES.md` to state the verification-switch gate is unconditional across every subclass (not scoped to Brevo-driven jobs), and fix the stale `AbstractCronJob` "Used By" list to include `BrevoSuppressionSyncJob` and `SendVerificationBatchJob`.
