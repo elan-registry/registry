@@ -1501,6 +1501,35 @@ public function __construct(private DatabaseInterface $db)
 
 ---
 
+### CronRequestGate
+
+**Location**: `/usersc/classes/Cron/CronRequestGate.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: The `cron_ip` allowlist check plus last-cron-request bookkeeping,
+extracted from `users/cron/cron.php` (#1974, #2086) so the ordering the
+original bug was about is unit-testable. `cron.php` remains the actual
+transport entry point — it still owns request bootstrapping and the per-job
+dispatch loop; this class owns exactly the two things #1974 found broken:
+deny-and-die on a `cron_ip` mismatch, and recording a successful request —
+strictly in that order, since a denied hit must never be recorded. Never
+throws: depends on `VerificationSettings::recordCronRequest()`'s documented
+never-throws contract, since `cron.php` calls this with no `try`/`catch`.
+
+**Used By**:
+
+- `users/cron/cron.php` — the sole call site, immediately before the
+  per-job dispatch loop
+
+**See Also**:
+
+- `VerificationSettings::recordCronRequest()` — the never-throws write this
+  class depends on
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_REQUEST`
+
+---
+
 ### SendVerificationBatchJob
 
 **Location**: `/usersc/classes/Cron/SendVerificationBatchJob.php`

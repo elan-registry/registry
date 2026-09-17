@@ -21,7 +21,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#1930](https://github.com/elan-registry/registry/issues/1930) — Dead owner-timestamp code path removed; no behavior change.
 - [#1991](https://github.com/elan-registry/registry/issues/1991) — Cars with no live owner are excluded from verification-email eligibility.
 - [#2085](https://github.com/elan-registry/registry/issues/2085) — The Verification tab now shows an "Unmatched recipients" counter, reflecting the webhook, cron reconciliation, and suppression-sync signals together (this counter had no admin UI at all before this release).
-- WIP: [#2086](https://github.com/elan-registry/registry/issues/2086) — Minor v2.30.2 cleanup: admin status badge, dead schema column, test coverage gaps.
+- [#2086](https://github.com/elan-registry/registry/issues/2086) — The Verification tab now shows a suppression-sync status badge alongside the existing reconciliation one.
 - WIP: [#2087](https://github.com/elan-registry/registry/issues/2087) — Webhook auth-failure logging no longer grows the logs table unbounded.
 - WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — The production Brevo webhook is registered and real verification sending is turned on.
 - WIP: [#2090](https://github.com/elan-registry/registry/issues/2090) — Cron job verification-switch gating is documented for future non-Brevo jobs.
@@ -40,7 +40,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#1930](https://github.com/elan-registry/registry/issues/1930) — Remove `CarRepository::updateOwnerLastUpdated()`: zero production callers, resolved by deletion.
 - [#1991](https://github.com/elan-registry/registry/issues/1991) — Exclude cars with no owner, or owned by the `noowner` system account, from verification-email eligibility.
 - [#2085](https://github.com/elan-registry/registry/issues/2085) — Build the previously-missing admin UI for the unmatched-recipient counter and wire all three ingestion paths (webhook, cron reconciliation, suppression sync) into it via a renamed, broadened `er_verification_settings.unmatched_recipient_count` column.
-- WIP: [#2086](https://github.com/elan-registry/registry/issues/2086) — v2.30.2 cleanup: status badge, dead schema, test-coverage gaps.
+- [#2086](https://github.com/elan-registry/registry/issues/2086) — Add the missing suppression-sync admin status badge; lock the cron-job name allowlist against actual job classes with a test; extract cron.php's request-gating logic into a testable class, replacing a fragile source-grep regression test; add integration coverage proving the unmatched-recipient counter increments in both cron jobs.
 - WIP: [#2087](https://github.com/elan-registry/registry/issues/2087) — Fix unbounded logs-table growth from webhook auth failures.
 - WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — Register the production Brevo webhook and turn on the verification switch.
 - WIP: [#2090](https://github.com/elan-registry/registry/issues/2090) — Document AbstractCronJob's verification-switch gating scope.
