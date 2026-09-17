@@ -83,7 +83,11 @@ Both `elanregistry.org` and `test.elanregistry.org` use the same Brevo account a
 
 ### Local Development
 
-Use Mailtrap to capture all email for debugging and development:
+Two options are available, depending on your development need:
+
+#### Option A: Mailtrap (Simpler—Recommended for Most Work)
+
+Use Mailtrap to capture all email without touching the Brevo code path:
 
 1. Create a Mailtrap account at [mailtrap.io](https://mailtrap.io)
 2. Get your Mailtrap SMTP credentials from the project inbox settings
@@ -92,7 +96,53 @@ Use Mailtrap to capture all email for debugging and development:
 5. Go to Admin → Settings → Email and update the SMTP settings with your Mailtrap credentials
 6. All emails sent locally will be captured in Mailtrap's inbox for inspection
 
-To switch back to Brevo for production testing: re-enter the Brevo API key in the plugin configuration and reactivate the override.
+**What this tests:** UserSpice's native PHPMailer email path (the code path when the Brevo plugin is deactivated). This is sufficient for most UI development and general testing, but it does not exercise the actual Brevo HTTP API code in `usersc/plugins/sendinblue/override.php` and `functions.php`.
+
+To switch back to Brevo: re-enter the Brevo API key in the plugin configuration and reactivate the override.
+
+#### Option B: mock-brevo (Advanced—When Testing the Brevo Integration Itself)
+
+Use mock-brevo (a local Docker Compose service) when you specifically need to test the real Brevo HTTP API code path (`usersc/plugins/sendinblue/functions.php`). This mirrors production behavior locally without hitting the real Brevo API.
+
+**Prerequisites:**
+
+The Brevo plugin's HTTP code path only runs when **all three** of these conditions are met:
+
+1. The plugin's `override.php` file must exist and be active. Check the plugin admin config page (Admin → Plugins → Brevo) for an "Activate Override" button. If you see "Deactivate Override" instead, the override is already active. If you see "Activate Override", click it. The file itself is `usersc/plugins/sendinblue/override.php`—if this file does not exist, rename `override.RENAME.php` → `override.php` before activating.
+2. `US_ENVIRONMENT=development` must be set in `.env`. This is already the default for local dev.
+3. `BREVO_API_HOST=http://mock-brevo:8080/v3` must be set in `.env`. This tells the Brevo SDK to route to the mock service inside the Docker network instead of the real Brevo API.
+
+**Setup:**
+
+The mock-brevo service is always included in the Docker Compose stack (`docker-compose.yml`). When you run `docker compose up`, it starts automatically alongside the `app`, `db`, and `phpmyadmin` services. See `docs/development/ENVIRONMENT.md`'s "Docker Dev Environment" section for the full Docker setup.
+
+Once the prerequisites are met:
+
+1. Trigger a test send via the plugin's admin UI (Admin → Plugins → Brevo → Test Email) or any application code that sends an email (e.g., a password reset).
+2. Verify it was received by mock-brevo:
+   - Via logs: `docker compose logs mock-brevo` (shows all HTTP requests and responses)
+   - Via web UI: Open `http://localhost:8090` in your browser to browse received emails
+
+A successful round-trip returns a `messageId` (visible in the logs or web UI) and the email is stored in mock-brevo's local database.
+
+**Why mock-brevo instead of Mailtrap for this scenario:** When you're working on the Brevo plugin's code itself (e.g., changing `functions.php` template handling, testing attachment behavior, or debugging the SDK configuration), you need the real HTTP code path to run. Mailtrap bypasses it entirely by deactivating the plugin. mock-brevo exercises the exact code path that runs in production while remaining entirely local and offline.
+
+**Important:** mock-brevo is for development only. Its H2 database (`MOCK_BREVO_DB_PATH`) is written to a Docker-managed anonymous volume that **does persist** across `docker compose restart`/`stop`/`up` — a plain restart will not clear previous test emails. To reset it: `docker compose rm -f -s -v mock-brevo && docker compose up -d mock-brevo` (`-s` stops the running container first — `-f -v` alone silently no-ops against a container that's still running). A plain `docker compose down` (with no service name, stopping the whole stack) also clears it on the next `up`, since Compose doesn't reuse anonymous volumes across container recreation. Production and staging behavior are completely unaffected by the `BREVO_API_HOST` override; that environment variable only takes effect when `US_ENVIRONMENT=development`.
+
+**Coverage note:** the dev override is applied in two places verifiable from
+this repository — the two read-only Brevo cron clients,
+`usersc/classes/Cron/BrevoEventReconciliationClient.php` and
+`BrevoSuppressionSyncClient.php`, both route through
+`BrevoDevOverride::hostOverride()` before constructing their API client. The
+plugin's own send path (`sendinblue()`) is intended to be wired the same
+way, but that file lives in `usersc/plugins/sendinblue/`, a manually-installed, gitignored
+plugin directory not present in this repository's history — it exists only
+on checkouts where the plugin has been installed, so its wiring can't be
+confirmed by reading this repo alone. If you're relying on that path being
+routed to mock-brevo, verify directly on your checkout (e.g. `grep -n
+BrevoDevOverride usersc/plugins/sendinblue/functions.php`, or check
+`docker compose logs mock-brevo` after a Test Email) rather than assuming
+from this doc.
 
 ## Verification System Feature Switch
 

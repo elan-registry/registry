@@ -18,8 +18,15 @@
 #      the `db` service's `volumes:` entry and the top-level `volumes:` block
 #   4. `APP_UID`/`APP_GID` build args, if the checkout is worked on by a
 #      different host user
+#   5. `mock-brevo`'s host port (127.0.0.1:8090:8080 below), if the new
+#      checkout also includes that service — it's deliberately outside the
+#      per-checkout port sequence above (see that service's own comment for
+#      why), so nothing here bumps it automatically the way #1's sequence
+#      does; two checkouts both on 8090 collide.
 # Missing #2 or #3 doesn't fail loudly — Compose just silently reuses (or
-# collides with) the other checkout's network/volume.
+# collides with) the other checkout's network/volume. Missing #5 fails
+# loudly (Docker's own "port is already allocated" error) if both stacks
+# run at once, so it's lower-risk but still worth listing.
 #
 #   docker compose up -d
 #   docker compose exec -u www-data app composer install
@@ -125,6 +132,28 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks: [registry2]
+
+  mock-brevo:
+    # Local stand-in for the real Brevo transactional email API (#2127,
+    # investigated in #2118). Reachable from the `app` container as
+    # http://mock-brevo:8080/v3 over the registry2 network, and from the
+    # host at http://localhost:8090 for manual inspection. No
+    # depends_on/healthcheck: the app only talks to it when sendinblue()
+    # actually sends, not at container boot.
+    #
+    # Host port deliberately NOT 8003: this file's header comment reserves
+    # the 8001/8081, 8002/8082, 8003/8083, ... sequence for per-checkout
+    # ports (Registry, Registry2, future checkouts) — mock-brevo is an
+    # additional service within this one checkout's stack, not a new
+    # checkout, so it takes a port outside that sequence instead of
+    # colliding with it.
+    image: ghcr.io/c0boleis/mock-brevo:1.0.0
+    restart: "no"
+    environment:
+      MOCK_BREVO_DB_PATH: /app/data/brevo
+    ports:
+      - "127.0.0.1:8090:8080"
     networks: [registry2]
 
 networks:
