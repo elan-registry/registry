@@ -35,10 +35,13 @@ use ElanRegistry\LogCategories;
  * Never logs the token itself, only a short hashed prefix, so a leaked log
  * line cannot leak the credential.
  *
- * RATE LIMITING: IP-scoped ('brevo_webhook' in usersc/includes/rate_limits.php),
- * checked only AFTER auth passes — so a rate-limiter failure (which fails
- * open, matching join-failure-report.php's pattern) can only ever become a
- * throughput bypass, never an auth bypass.
+ * RATE LIMITING: Two IP-scoped keys (usersc/includes/rate_limits.php):
+ * - 'brevo_webhook': checked AFTER auth passes; gates entire request via 429.
+ * - 'brevo_webhook_auth_failure': checked DURING auth-failure path to gate only
+ *   whether the failure gets logged (401 response is never affected). Prevents
+ *   log-table flooding from spammed invalid tokens. Both keys respect the core
+ *   invariant: a rate-limiter failure can only become a throughput bypass,
+ *   never an auth bypass.
  *
  * HTTP status contract:
  *   | Situation                                    | Response |
@@ -47,7 +50,7 @@ use ElanRegistry\LogCategories;
  *   | No recognized tag                             | 2xx, logged |
  *   | Recipient matches no car                      | 2xx, logged, unmatched counter incremented |
  *   | Malformed/unparseable payload (incl. list body)| 4xx, logged |
- *   | Auth token missing/empty/wrong                | 4xx, logged (hashed prefix only) |
+ *   | Auth token missing/empty/wrong                | 401, logged subject to brevo_webhook_auth_failure rate limit (hashed prefix only) |
  *   | DB write failure                              | 5xx — the only retryable case |
  *
  * Never acknowledges (2xx) before the er_email_events write commits — Brevo
@@ -98,10 +101,57 @@ $expectedToken = (string) ($_ENV['BREVO_WEBHOOK_TOKEN'] ?? '');
 // accepting everything (hash_equals('', '') would otherwise return true).
 if ($expectedToken === '' || $providedToken === '' || !hash_equals($expectedToken, $providedToken)) {
     $tokenPrefix = $providedToken === '' ? '(empty)' : substr(hash('sha256', $providedToken), 0, 8);
+
+    // Gate ONLY the log line, never the 401 itself (see file docblock) — an
+    // attacker spamming invalid tokens must still always get 401, but must
+    // not be able to grow the `logs` table unboundedly by doing so.
+    // Default: never suppress unless the limiter genuinely says so.
+    $shouldLog = true;
+    try {
+        /** @var array<string, array<string, int>> $rateLimits */
+        $rateLimits = [];
+        require __DIR__ . '/../../../usersc/includes/rate_limits.php';
+        if (!isset($rateLimits['brevo_webhook_auth_failure'])) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK,
+                "Brevo webhook: 'brevo_webhook_auth_failure' rate-limit config is missing — running unthrottled.");
+        }
+
+        $shouldLog = checkRateLimit('brevo_webhook_auth_failure');
+
+        // Record every attempt as success=false unconditionally — this key's
+        // job is counting the RATE of failures, not gating a response, so
+        // check() must see every attempt (logged or suppressed) to compute the
+        // rolling window correctly. Recording conditionally on $shouldLog would
+        // let the count "coast" once suppression starts, defeating the limit.
+        recordRateLimit('brevo_webhook_auth_failure', false);
+    } catch (\Throwable $e) {
+        // Broad by design: this path's ONLY contract is "always respond 401."
+        // A rate-limiter or config failure here must never become an uncaught
+        // fatal — that would turn a should-be-401 into a 500, which Brevo
+        // treats as retryable and redelivers, amplifying exactly the traffic
+        // this rate limit exists to bound. (RateLimit::__construct() throws a
+        // bare \Exception when its table can't be created, and this is that
+        // instance's first construction site.) Fail open toward MORE logging,
+        // never toward fewer 401s, matching this file's broader invariant that
+        // a limiter failure can only ever become a throughput/logging bypass,
+        // never an auth bypass.
+        $shouldLog = true;
+        try {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo webhook: auth-failure rate limit failed (%s), failing open (will log): %s',
+                get_class($e),
+                $e->getMessage()
+            ));
+        } catch (\Throwable) {
+            // Logging itself is down. The 401 below still must fire —
+            // nothing else to do here.
+        }
+    }
+
     respondAndExit(
         401,
-        LogCategories::LOG_CATEGORY_SECURITY,
-        "Brevo webhook: rejected request with invalid/missing bearer token (hash prefix: {$tokenPrefix})"
+        $shouldLog ? LogCategories::LOG_CATEGORY_SECURITY : null,
+        $shouldLog ? "Brevo webhook: rejected request with invalid/missing bearer token (hash prefix: {$tokenPrefix})" : null
     );
 }
 

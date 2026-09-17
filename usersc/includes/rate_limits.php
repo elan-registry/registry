@@ -187,3 +187,17 @@ $rateLimits['brevo_webhook']['ip_window'] = 300;
 $rateLimits['brevo_webhook']['total_max'] = 2000;
 $rateLimits['brevo_webhook']['total_window'] = 300;
 
+// Gates the LOG line for repeated auth-failure (401) responses on the same
+// endpoint, not the 401 response itself (see app/api/webhooks/brevo.php's
+// docblock — auth must stay unconditional; only whether it's *logged* is
+// throttled here) — closes #2087 (an attacker spamming garbage bearer
+// tokens previously grew the `logs` table by one row per request, with no
+// backstop). Deliberately tight and single-IP-scoped: unlike `brevo_webhook`
+// above (legitimate shared-IP Brevo traffic needing headroom), a stream of
+// auth failures from one IP is itself the abuse signal, not a false-positive
+// risk to guard against.
+$rateLimits['brevo_webhook_auth_failure']['ip_max'] = 10;
+$rateLimits['brevo_webhook_auth_failure']['ip_window'] = 300;
+$rateLimits['brevo_webhook_auth_failure']['total_max'] = 100;
+$rateLimits['brevo_webhook_auth_failure']['total_window'] = 300;
+
