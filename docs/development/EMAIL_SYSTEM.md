@@ -347,11 +347,17 @@ prefix of the provided token, never the raw value. See
 [RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md)-driven release notes
 for the per-environment setup step.
 
-**Rate limiting:** `checkRateLimit('brevo_webhook')` (IP-scoped; see
-`usersc/includes/rate_limits.php`), checked only **after** auth passes, so a
-rate-limiter failure (which fails open, matching
-`app/api/shared/join-failure-report.php`'s pattern) can only ever become a
-throughput bypass, never an auth bypass.
+**Rate limiting:** Two IP-scoped keys (see `usersc/includes/rate_limits.php`):
+
+- `brevo_webhook` — checked only **after** auth passes; gates the entire
+  request via 429 if the limit is exceeded. A rate-limiter failure (which
+  fails open, matching `app/api/shared/join-failure-report.php`'s pattern)
+  can only ever become a throughput bypass, never an auth bypass.
+- `brevo_webhook_auth_failure` — checked **during** the auth-failure branch
+  itself in `brevo.php`; gates only whether that failure gets logged (the
+  401 response is never affected by rate-limit state). Prevents a spammed
+  invalid-token attack from unboundedly growing the `logs` table while
+  preserving the security invariant above.
 
 **Verification-system gates** (unchanged from the pre-#1887 stub):
 `!isEnabled()` → 2xx, silent. `isEnabled() && !brevoReady()` → 2xx, logged

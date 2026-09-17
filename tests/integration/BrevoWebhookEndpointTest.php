@@ -92,6 +92,11 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             // Clear rate-limit rows this test may have seeded/generated for the
             // brevo_webhook action so runs stay independent.
             $this->db->query("DELETE FROM us_rate_limits WHERE action = 'brevo_webhook'");
+
+            // Same, for the auth-failure gate's own rate-limit key — kept
+            // separate from the cleanup above so neither key's rows ever leak
+            // into the other's tests.
+            $this->db->query("DELETE FROM us_rate_limits WHERE action = 'brevo_webhook_auth_failure'");
         }
 
         foreach (self::DB_ENV_VARS as $var) {
@@ -762,10 +767,11 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
                     . 'without this, checkRateLimit() would see zero attempts and the configured limit could never trip'
             );
 
-            // A rejected request (wrong auth — fails before rate limiting is
-            // even reached) must NOT write a rate-limit row at all:
-            // recordRateLimit() only runs after auth passes, per the
-            // endpoint's own ordering.
+            // A rejected request (wrong auth) must not write a row under the
+            // 'brevo_webhook' action — that key's record() calls only run
+            // after auth passes. The auth-failure path does record under its
+            // own separate 'brevo_webhook_auth_failure' key (#2087); see
+            // testAuthFailureRateLimitRecordsAttemptRegardless().
             $rejectedResult = $this->postToWebhook($this->taggedPayload(), [
                 'Authorization' => 'Bearer wrong-token',
                 'X-Forwarded-For' => $spoofedPublicIp,
@@ -777,6 +783,225 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
                 'An auth-rejected request must not record a rate-limit attempt — auth runs before rate limiting'
             );
             $this->assertSame($failureBefore, $countFor(0), 'An auth-rejected request must not record a rate-limit attempt');
+        } finally {
+            $this->db->query('UPDATE settings SET behind_reverse_proxy = 0 WHERE id = 1');
+            $this->db->query('DELETE FROM us_rate_limit_proxy_settings WHERE id = ?', [$proxyFixtureId]);
+        }
+    }
+
+    /**
+     * The auth-failure branch gates ONLY its LOG line via the
+     * 'brevo_webhook_auth_failure' rate-limit key — the 401 response itself
+     * always fires unconditionally regardless of rate-limit state (see the
+     * endpoint's own docblock at the top of the auth-failure branch). This
+     * seeds ip_max worth of prior failed attempts for a spoofed IP (matching
+     * the ip_max-exhaustion pattern in testRateLimitExceededRespondsWithTooManyRequests()
+     * above, but against the 'brevo_webhook_auth_failure' key instead of
+     * 'brevo_webhook'), then sends one more wrong-token request from that
+     * same IP and asserts the 401 still fires and that no new
+     * LOG_CATEGORY_SECURITY row is written for it.
+     */
+    public function testAuthFailureLoggingIsSuppressedAfterRateLimitExceeded(): void
+    {
+        $spoofedPublicIp = '203.0.113.88'; // TEST-NET-3 (RFC 5737)
+        $identifierKey = hash('sha256', 'ip::' . $spoofedPublicIp);
+
+        $this->db->query('UPDATE settings SET behind_reverse_proxy = 1 WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: failed to enable behind_reverse_proxy');
+
+        $this->db->insert('us_rate_limit_proxy_settings', [
+            'proxy_ip' => '127.0.0.1',
+            'header_name' => 'X-Forwarded-For',
+            'priority' => 1,
+            'enabled' => 1,
+        ]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to register trusted proxy fixture');
+        $proxyFixtureId = (int) $this->db->lastId();
+
+        try {
+            /** @var array<string, array<string, int>> $rateLimits */
+            $rateLimits = [];
+            require self::$projectRoot . '/usersc/includes/rate_limits.php';
+            $ipMax = (int) $rateLimits['brevo_webhook_auth_failure']['ip_max'];
+
+            // Match the effective (dev-multiplied) threshold the webhook
+            // server subprocess actually enforces — see
+            // testRateLimitExceededRespondsWithTooManyRequests()'s docblock
+            // for why this multiplier must be applied here too.
+            $envUsEnvironment = $_ENV['US_ENVIRONMENT'] ?? getenv('US_ENVIRONMENT') ?: 'production';
+            if ($envUsEnvironment === 'development') {
+                $ipMax = (int) min($ipMax * 100, PHP_INT_MAX);
+            }
+
+            $now = date('Y-m-d H:i:s');
+            $rows = [];
+            for ($i = 0; $i < $ipMax; $i++) {
+                $rows[] = [$identifierKey, 'brevo_webhook_auth_failure', 0, $now, '{}'];
+            }
+
+            $placeholders = implode(',', array_fill(0, count($rows), '(?, ?, ?, ?, ?)'));
+            $params = array_merge(...$rows);
+            $this->db->query(
+                "INSERT INTO us_rate_limits (identifier_key, action, success, attempt_time, metadata) VALUES {$placeholders}",
+                $params
+            );
+            $this->assertFalse($this->db->error(), 'Failed to seed rate limit rows: ' . $this->db->errorString());
+
+            $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_SECURITY, '%bearer token%');
+
+            $result = $this->postToWebhook($this->taggedPayload(), [
+                'Authorization' => 'Bearer wrong-token',
+                'X-Forwarded-For' => $spoofedPublicIp,
+            ]);
+
+            $this->assertSame(401, $result['status'], 'The 401 must fire unconditionally even once the auth-failure log rate limit is exceeded');
+
+            $after = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_SECURITY, '%bearer token%');
+            $this->assertSame($before, $after, 'No new LOG_CATEGORY_SECURITY row must be written once the auth-failure rate limit is exceeded');
+        } finally {
+            $this->db->query('UPDATE settings SET behind_reverse_proxy = 0 WHERE id = 1');
+            $this->db->query('DELETE FROM us_rate_limit_proxy_settings WHERE id = ?', [$proxyFixtureId]);
+        }
+    }
+
+    /**
+     * Companion to the suppression test above: proves the gate does not
+     * accidentally suppress logging for a normal, under-the-limit
+     * auth-failure — i.e. that the rate limit key doesn't misfire and
+     * silently blind LOG_CATEGORY_SECURITY under ordinary conditions.
+     */
+    public function testAuthFailureLoggingOccursUnderRateLimit(): void
+    {
+        // Without the reverse-proxy fixture, this request's REMOTE_ADDR is
+        // 127.0.0.1 — RateLimit::getRealIP() reports `false` for loopback
+        // (FILTER_FLAG_NO_RES_RANGE treats it as a reserved range), so the
+        // rate limiter has no 'ip' identifier, trivially allows every
+        // request, and this test would pass for the wrong reason (it never
+        // actually exercises the gate). Use the same trusted-proxy +
+        // X-Forwarded-For fixture as the suppression/recording tests below,
+        // with a fresh spoofed IP distinct from theirs, so the limiter is
+        // genuinely live and genuinely under threshold.
+        $spoofedPublicIp = '203.0.113.111'; // TEST-NET-3 (RFC 5737)
+
+        $this->db->query('UPDATE settings SET behind_reverse_proxy = 1 WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: failed to enable behind_reverse_proxy');
+
+        $this->db->insert('us_rate_limit_proxy_settings', [
+            'proxy_ip' => '127.0.0.1',
+            'header_name' => 'X-Forwarded-For',
+            'priority' => 1,
+            'enabled' => 1,
+        ]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to register trusted proxy fixture');
+        $proxyFixtureId = (int) $this->db->lastId();
+
+        try {
+            $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_SECURITY, '%bearer token%');
+
+            $result = $this->postToWebhook($this->taggedPayload(), [
+                'Authorization' => 'Bearer wrong-token',
+                'X-Forwarded-For' => $spoofedPublicIp,
+            ]);
+
+            $this->assertSame(401, $result['status']);
+
+            $after = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_SECURITY, '%bearer token%');
+            $this->assertSame($before + 1, $after, 'A single under-the-limit auth failure must still be logged exactly once');
+        } finally {
+            $this->db->query('UPDATE settings SET behind_reverse_proxy = 0 WHERE id = 1');
+            $this->db->query('DELETE FROM us_rate_limit_proxy_settings WHERE id = ?', [$proxyFixtureId]);
+        }
+    }
+
+    /**
+     * Proves recordRateLimit('brevo_webhook_auth_failure', false) fires
+     * unconditionally on every auth failure — not only while under the
+     * limit, but ALSO once logging is already being suppressed for having
+     * exceeded ip_max — which is the specific design decision behind this
+     * issue: the rolling window's count must stay accurate regardless of
+     * whether the log line itself was suppressed (see the endpoint's own
+     * comment on its recordRateLimit() call in the auth-failure branch).
+     *
+     * Mutation-verified gap this closes: a prior version of this test sent
+     * only ONE request from a fresh IP with no prior seeded attempts, so
+     * $shouldLog was always true — a mutation making the recordRateLimit()
+     * call conditional on $shouldLog (i.e. only recording while NOT
+     * suppressed) was behaviorally invisible to that scenario and the suite
+     * stayed green. This version first seeds the effective (dev-multiplied)
+     * ip_max worth of prior failed attempts — matching
+     * testAuthFailureLoggingIsSuppressedAfterRateLimitExceeded()'s fixture —
+     * so the request under test is genuinely SUPPRESSED ($shouldLog ===
+     * false), then asserts a NEW success=0 row still appears, proving
+     * recording happens even while suppressed.
+     */
+    public function testAuthFailureRateLimitRecordsAttemptRegardless(): void
+    {
+        $spoofedPublicIp = '203.0.113.100'; // TEST-NET-3 (RFC 5737), distinct from sibling tests' IPs
+        $identifierKey = hash('sha256', 'ip::' . $spoofedPublicIp);
+
+        $this->db->query('UPDATE settings SET behind_reverse_proxy = 1 WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: failed to enable behind_reverse_proxy');
+
+        $this->db->insert('us_rate_limit_proxy_settings', [
+            'proxy_ip' => '127.0.0.1',
+            'header_name' => 'X-Forwarded-For',
+            'priority' => 1,
+            'enabled' => 1,
+        ]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to register trusted proxy fixture');
+        $proxyFixtureId = (int) $this->db->lastId();
+
+        try {
+            /** @var array<string, array<string, int>> $rateLimits */
+            $rateLimits = [];
+            require self::$projectRoot . '/usersc/includes/rate_limits.php';
+            $ipMax = (int) $rateLimits['brevo_webhook_auth_failure']['ip_max'];
+
+            // Match the effective (dev-multiplied) threshold the webhook
+            // server subprocess actually enforces — see
+            // testRateLimitExceededRespondsWithTooManyRequests()'s docblock
+            // for why this multiplier must be applied here too.
+            $envUsEnvironment = $_ENV['US_ENVIRONMENT'] ?? getenv('US_ENVIRONMENT') ?: 'production';
+            if ($envUsEnvironment === 'development') {
+                $ipMax = (int) min($ipMax * 100, PHP_INT_MAX);
+            }
+
+            $now = date('Y-m-d H:i:s');
+            $rows = [];
+            for ($i = 0; $i < $ipMax; $i++) {
+                $rows[] = [$identifierKey, 'brevo_webhook_auth_failure', 0, $now, '{}'];
+            }
+
+            $placeholders = implode(',', array_fill(0, count($rows), '(?, ?, ?, ?, ?)'));
+            $params = array_merge(...$rows);
+            $this->db->query(
+                "INSERT INTO us_rate_limits (identifier_key, action, success, attempt_time, metadata) VALUES {$placeholders}",
+                $params
+            );
+            $this->assertFalse($this->db->error(), 'Failed to seed rate limit rows: ' . $this->db->errorString());
+
+            $countFailures = fn (): int => (int) $this->db->query(
+                "SELECT COUNT(*) AS cnt FROM us_rate_limits WHERE action = 'brevo_webhook_auth_failure' AND success = 0 AND identifier_key = ?",
+                [$identifierKey]
+            )->first()->cnt;
+
+            $before = $countFailures();
+            $this->assertSame($ipMax, $before, 'Test setup: expected exactly the seeded rows before the request under test');
+
+            $result = $this->postToWebhook($this->taggedPayload(), [
+                'Authorization' => 'Bearer wrong-token',
+                'X-Forwarded-For' => $spoofedPublicIp,
+            ]);
+            $this->assertSame(401, $result['status'], 'The 401 must fire unconditionally even while suppressed');
+
+            $after = $countFailures();
+            $this->assertSame(
+                $before + 1,
+                $after,
+                "recordRateLimit('brevo_webhook_auth_failure', false) must write exactly one NEW success=0 row for this "
+                    . 'request even while logging is suppressed for having exceeded ip_max — proving recording is '
+                    . 'unconditional, not gated on whether the log line itself fired'
+            );
         } finally {
             $this->db->query('UPDATE settings SET behind_reverse_proxy = 0 WHERE id = 1');
             $this->db->query('DELETE FROM us_rate_limit_proxy_settings WHERE id = ?', [$proxyFixtureId]);

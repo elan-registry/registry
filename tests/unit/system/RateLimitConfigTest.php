@@ -170,4 +170,44 @@ final class RateLimitConfigTest extends TestCase
         $this->assertSame(300, $rateLimits['verification_code_attempt']['total_window']);
     }
 
+    /**
+     * The 'brevo_webhook_auth_failure' rate-limit entry (issue #2087) must be
+     * configured in usersc/includes/rate_limits.php — app/api/webhooks/brevo.php's
+     * auth-failure branch calls checkRateLimit('brevo_webhook_auth_failure')/
+     * recordRateLimit('brevo_webhook_auth_failure', false) to gate the
+     * auth-failure LOG line (the 401 response itself stays unconditional). It
+     * will silently no-op if this key is missing, leaving repeated
+     * authentication-failure attempts unthrottled and unlogged-with-limits.
+     */
+    public function testBrevoWebhookAuthFailureActionIsConfigured(): void
+    {
+        $projectRoot = dirname(__DIR__, 3);
+
+        /** @var array<string, array<string, int>> $rateLimits */
+        $rateLimits = [];
+        require $projectRoot . '/usersc/includes/rate_limits.php';
+
+        $this->assertIsArray($rateLimits);
+        $this->assertArrayHasKey(
+            'brevo_webhook_auth_failure',
+            $rateLimits,
+            'brevo_webhook_auth_failure must be configured in usersc/includes/rate_limits.php '
+                . '(the project override, which wholesale-replaces the framework defaults) — '
+                . 'app/api/webhooks/brevo.php calls checkRateLimit() with this action name and '
+                . 'will silently no-op if it is missing, leaving the unauthenticated webhook '
+                . 'endpoint\'s auth-failure logging with no volume control at all.'
+        );
+        // Mirrors the project's actual active brevo_webhook_auth_failure limits
+        // (usersc/includes/rate_limits.php). No user_max/user_window: the
+        // webhook carries no UserSpice session, so there is no user
+        // identifier to key on (same shape as brevo_webhook and
+        // feedback_submission).
+        $this->assertSame(10, $rateLimits['brevo_webhook_auth_failure']['ip_max']);
+        $this->assertSame(300, $rateLimits['brevo_webhook_auth_failure']['ip_window']);
+        $this->assertSame(100, $rateLimits['brevo_webhook_auth_failure']['total_max']);
+        $this->assertSame(300, $rateLimits['brevo_webhook_auth_failure']['total_window']);
+        $this->assertArrayNotHasKey('user_max', $rateLimits['brevo_webhook_auth_failure']);
+        $this->assertArrayNotHasKey('user_window', $rateLimits['brevo_webhook_auth_failure']);
+    }
+
 }
