@@ -129,7 +129,20 @@ A successful round-trip returns a `messageId` (visible in the logs or web UI) an
 
 **Important:** mock-brevo is for development only. Its H2 database (`MOCK_BREVO_DB_PATH`) is written to a Docker-managed anonymous volume that **does persist** across `docker compose restart`/`stop`/`up` — a plain restart will not clear previous test emails. To reset it: `docker compose rm -f -s -v mock-brevo && docker compose up -d mock-brevo` (`-s` stops the running container first — `-f -v` alone silently no-ops against a container that's still running). A plain `docker compose down` (with no service name, stopping the whole stack) also clears it on the next `up`, since Compose doesn't reuse anonymous volumes across container recreation. Production and staging behavior are completely unaffected by the `BREVO_API_HOST` override; that environment variable only takes effect when `US_ENVIRONMENT=development`.
 
-**Coverage note:** the dev override applies to the plugin's send path (`sendinblue()`) and to the two read-only Brevo cron clients (event reconciliation, suppression sync) — see `usersc/classes/Cron/BrevoEventReconciliationClient.php` and `BrevoSuppressionSyncClient.php`. All three route to mock-brevo in dev; nothing in this codebase calls the real Brevo API when `US_ENVIRONMENT=development` and `BREVO_API_HOST` is set.
+**Coverage note:** the dev override is applied in two places verifiable from
+this repository — the two read-only Brevo cron clients,
+`usersc/classes/Cron/BrevoEventReconciliationClient.php` and
+`BrevoSuppressionSyncClient.php`, both route through
+`BrevoDevOverride::hostOverride()` before constructing their API client. The
+plugin's own send path (`sendinblue()`) is wired the same way, but that file
+lives in `usersc/plugins/sendinblue/`, a manually-installed, gitignored
+plugin directory not present in this repository's history — it exists only
+on checkouts where the plugin has been installed, so its wiring can't be
+confirmed by reading this repo alone. If you're relying on that path being
+routed to mock-brevo, verify directly on your checkout (e.g. `grep -n
+BrevoDevOverride usersc/plugins/sendinblue/functions.php`, or check
+`docker compose logs mock-brevo` after a Test Email) rather than assuming
+from this doc.
 
 ## Verification System Feature Switch
 
