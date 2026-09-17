@@ -147,17 +147,27 @@ final class BrevoSuppressionSyncJobTest extends TestCase
      * @param list<\Brevo\Client\Model\GetTransacBlockedContacts|null> $pages
      * @param FakeBrevoSuppressionSyncClient|null $client Receives the fake
      *        client this job was built with, so callers can assert on it.
+     * @param AbstractCronJobFakeDatabase|null $db Receives the fake database
+     *        this job was built with, so callers can assert on it (e.g. how
+     *        many times the unmatched-recipient counter UPDATE fired).
      * @param-out FakeBrevoSuppressionSyncClient $client
+     * @param-out AbstractCronJobFakeDatabase $db
      */
     private function makeJob(
         array $pages,
         ?FakeBrevoSuppressionSyncClient &$client = null,
         bool $verificationEnabled = true,
+        ?AbstractCronJobFakeDatabase &$db = null,
+        bool $unmatchedCounterUpdateSucceeds = true,
     ): BrevoSuppressionSyncJob {
         $client = new FakeBrevoSuppressionSyncClient($pages);
+        $db = new AbstractCronJobFakeDatabase(
+            verificationEnabled: $verificationEnabled,
+            unmatchedCounterUpdateSucceeds: $unmatchedCounterUpdateSucceeds,
+        );
 
         return new BrevoSuppressionSyncJob(
-            new AbstractCronJobFakeDatabase(verificationEnabled: $verificationEnabled),
+            $db,
             $this->mockRepo,
             $this->applier,
             $client,
@@ -170,14 +180,24 @@ final class BrevoSuppressionSyncJobTest extends TestCase
      *
      * @param list<FakeBrevoBlockedContact> $contacts
      * @param FakeBrevoSuppressionSyncClient|null $client
+     * @param AbstractCronJobFakeDatabase|null $db
      * @param-out FakeBrevoSuppressionSyncClient $client
+     * @param-out AbstractCronJobFakeDatabase $db
      */
     private function makeJobWithContacts(
         array $contacts,
         ?FakeBrevoSuppressionSyncClient &$client = null,
         bool $verificationEnabled = true,
+        ?AbstractCronJobFakeDatabase &$db = null,
+        bool $unmatchedCounterUpdateSucceeds = true,
     ): BrevoSuppressionSyncJob {
-        return $this->makeJob([FakeBrevoSuppressionSyncClient::page($contacts)], $client, $verificationEnabled);
+        return $this->makeJob(
+            [FakeBrevoSuppressionSyncClient::page($contacts)],
+            $client,
+            $verificationEnabled,
+            $db,
+            $unmatchedCounterUpdateSucceeds,
+        );
     }
 
     // --- Reason-code mapping ---------------------------------------------
@@ -1105,6 +1125,83 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(0, $summary->matchedCount);
         $this->assertSame([], $summary->reasonCodeCounts, 'An unmatched contact has no reason tally');
         $this->assertSame([], $this->logsContaining('FAILED'));
+    }
+
+    /**
+     * #2085: syncPage()'s unmatched branch also calls
+     * VerificationSettings::incrementUnmatchedRecipientCounter() before
+     * `continue`. N unmatched contacts in one page must fire the counter
+     * UPDATE exactly N times.
+     */
+    public function testSyncPageUnmatchedContactIncrementsCounter(): void
+    {
+        $this->expectRepoCalls()->expects($this->exactly(3))->method('findByEmail')->willReturn([]);
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce'),
+            FakeBrevoBlockedContact::withReason('b@example.com', 'hardBounce'),
+            FakeBrevoBlockedContact::withReason('c@example.com', 'hardBounce'),
+        ], $client, db: $db)->runFullBackfill();
+
+        $this->assertSame(3, $summary->unmatchedCount);
+        $this->assertSame(3, $db->unmatchedCounterIncrementCalls());
+    }
+
+    /**
+     * A failed counter increment must not corrupt the job's own bookkeeping or
+     * abort the run — the contact is still counted as unmatched and nothing is
+     * counted as skipped.
+     *
+     * But it is NOT invisible: counterFailureCount reports every unmatched
+     * contact that did not reach the dashboard counter, so execute()'s summary
+     * line cannot read as a clean run while the counter silently
+     * under-reports. The increment itself is attempted only once — after the
+     * first failure the call is skipped for the rest of the run (the fault is
+     * settings-row-level, not per-contact, and VerificationSettings logs a
+     * warning row on every failed call) — while the tally keeps counting, so
+     * the reported figure stays the true number missing.
+     */
+    public function testSyncPageUnmatchedContactCounterFailureIsReportedInSummary(): void
+    {
+        $this->expectRepoCalls()->expects($this->exactly(2))->method('findByEmail')->willReturn([]);
+
+        $summary = $this->makeJobWithContacts(
+            [
+                FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce'),
+                FakeBrevoBlockedContact::withReason('b@example.com', 'hardBounce'),
+            ],
+            $client,
+            db: $db,
+            unmatchedCounterUpdateSucceeds: false,
+        )->runFullBackfill();
+
+        $this->assertSame(2, $summary->counterFailureCount, 'Both unmatched contacts went unrecorded in the dashboard counter');
+        $this->assertSame(2, $summary->unmatchedCount, 'A failed counter increment must not affect the job\'s own unmatchedCount');
+        $this->assertSame(0, $summary->skippedCount, 'A failed counter increment must not be reported as a skipped contact');
+        $this->assertSame(
+            1,
+            $db->unmatchedCounterIncrementCalls(),
+            'Once one increment fails the call is not re-attempted, to avoid one duplicate warning-log row per unmatched contact'
+        );
+    }
+
+    /**
+     * The other side of the same behavior: with a healthy counter, every
+     * unmatched contact is both attempted and recorded, so counterFailureCount
+     * stays 0 and the summary line carries no failure clause.
+     */
+    public function testSyncPageUnmatchedContactCounterSuccessReportsNoFailures(): void
+    {
+        $this->expectRepoCalls()->expects($this->exactly(2))->method('findByEmail')->willReturn([]);
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce'),
+            FakeBrevoBlockedContact::withReason('b@example.com', 'hardBounce'),
+        ], $client, db: $db)->runFullBackfill();
+
+        $this->assertSame(0, $summary->counterFailureCount);
+        $this->assertSame(2, $summary->unmatchedCount);
+        $this->assertSame(2, $db->unmatchedCounterIncrementCalls());
     }
 
     // --- Synthetic message-id determinism ---------------------------------

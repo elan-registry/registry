@@ -87,7 +87,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
         if ($this->databaseConnected) {
             $this->cleanUpBrevoReadyFixture();
-            $this->db->query('UPDATE er_verification_settings SET enabled = 0, unmatched_webhook_recipient_count = 0 WHERE id = 1');
+            $this->db->query('UPDATE er_verification_settings SET enabled = 0, unmatched_recipient_count = 0 WHERE id = 1');
 
             // Clear rate-limit rows this test may have seeded/generated for the
             // brevo_webhook action so runs stay independent.
@@ -331,8 +331,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     private function unmatchedCounter(): int
     {
-        $row = $this->db->query('SELECT unmatched_webhook_recipient_count FROM er_verification_settings WHERE id = 1')->first();
-        return (int) $row->unmatched_webhook_recipient_count;
+        $row = $this->db->query('SELECT unmatched_recipient_count FROM er_verification_settings WHERE id = 1')->first();
+        return (int) $row->unmatched_recipient_count;
     }
 
     private function eventRowCount(int $carId, string $brevoMessageId, string $event): int
@@ -514,7 +514,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertLessThan(300, $result['status'], 'No-car-match must respond 2xx');
 
         $after = $this->unmatchedCounter();
-        $this->assertSame($before + 1, $after, 'unmatched_webhook_recipient_count must increment by exactly 1');
+        $this->assertSame($before + 1, $after, 'unmatched_recipient_count must increment by exactly 1');
     }
 
     // ------------------------------------------------------------------

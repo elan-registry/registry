@@ -69,6 +69,16 @@ final readonly class ReconciliationSummary
      *                                              per invocation, so this is always 0 or 1
      * @param bool               $pollFailed        True when `fetchEvents()` itself failed (mirrors
      *                                              {@see SuppressionSyncSummary}'s `pollFailed`)
+     * @param int                $counterFailureCount Unmatched events whose dashboard
+     *                                              unmatched-recipient counter increment did NOT
+     *                                              land — a subset of `unmatchedCount`, never
+     *                                              added to it. Once the first increment fails the
+     *                                              job stops re-attempting the call for the rest of
+     *                                              the run (see
+     *                                              {@see BrevoEventReconciliationJob::applyEvent()})
+     *                                              but keeps tallying here, so this stays the true
+     *                                              number of unmatched events missing from the
+     *                                              counter even though only one failure was logged
      */
     public function __construct(
         public int $matchedCount,
@@ -79,6 +89,7 @@ final readonly class ReconciliationSummary
         public int $ignoredByTagCount,
         public int $pagesFetched,
         public bool $pollFailed = false,
+        public int $counterFailureCount = 0,
     ) {
     }
 }

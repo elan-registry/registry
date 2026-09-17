@@ -20,7 +20,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#1928](https://github.com/elan-registry/registry/issues/1928) — Verification codes are hashed at rest before the first live send batch.
 - [#1930](https://github.com/elan-registry/registry/issues/1930) — Dead owner-timestamp code path removed; no behavior change.
 - [#1991](https://github.com/elan-registry/registry/issues/1991) — Cars with no live owner are excluded from verification-email eligibility.
-- WIP: [#2085](https://github.com/elan-registry/registry/issues/2085) — The unmatched-recipient counter reflects cron reconciliation and suppression-sync, not just the webhook.
+- [#2085](https://github.com/elan-registry/registry/issues/2085) — The Verification tab now shows an "Unmatched recipients" counter, reflecting the webhook, cron reconciliation, and suppression-sync signals together (this counter had no admin UI at all before this release).
 - WIP: [#2086](https://github.com/elan-registry/registry/issues/2086) — Minor v2.30.2 cleanup: admin status badge, dead schema column, test coverage gaps.
 - WIP: [#2087](https://github.com/elan-registry/registry/issues/2087) — Webhook auth-failure logging no longer grows the logs table unbounded.
 - WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — The production Brevo webhook is registered and real verification sending is turned on.
@@ -39,7 +39,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#1928](https://github.com/elan-registry/registry/issues/1928) — Hash cars.vericode before the first live verification batch.
 - [#1930](https://github.com/elan-registry/registry/issues/1930) — Remove `CarRepository::updateOwnerLastUpdated()`: zero production callers, resolved by deletion.
 - [#1991](https://github.com/elan-registry/registry/issues/1991) — Exclude cars with no owner, or owned by the `noowner` system account, from verification-email eligibility.
-- WIP: [#2085](https://github.com/elan-registry/registry/issues/2085) — Fix the unmatched-recipient counter to cover all three ingestion paths.
+- [#2085](https://github.com/elan-registry/registry/issues/2085) — Build the previously-missing admin UI for the unmatched-recipient counter and wire all three ingestion paths (webhook, cron reconciliation, suppression sync) into it via a renamed, broadened `er_verification_settings.unmatched_recipient_count` column.
 - WIP: [#2086](https://github.com/elan-registry/registry/issues/2086) — v2.30.2 cleanup: status badge, dead schema, test-coverage gaps.
 - WIP: [#2087](https://github.com/elan-registry/registry/issues/2087) — Fix unbounded logs-table growth from webhook auth failures.
 - WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — Register the production Brevo webhook and turn on the verification switch.
