@@ -342,6 +342,8 @@ docker compose exec -u www-data app composer install
 docker compose exec -u www-data app composer test:full
 ```
 
+The stack includes four services: `app` (PHP 8.4, the main application), `db` (MySQL 8.0), `phpmyadmin` (database inspection, exposed on host port 8082), and `mock-brevo` (a local mock of Brevo's transactional email API, `ghcr.io/c0boleis/mock-brevo:1.0.0`, exposed on host port 8003 for manual inspection). The `mock-brevo` service is reachable from the `app` container at `http://mock-brevo:8080/v3` over the `registry2` network. For how the application routes email requests to it (the `BREVO_API_HOST` environment variable, the `US_ENVIRONMENT=development` guard, and the Brevo plugin's override activation), see `docs/development/EMAIL_SYSTEM.md`'s "Local Development" section — Docker infrastructure is documented here, app-level wiring lives there.
+
 **Always pass `-u www-data` to `exec`** — it has no compose-file default
 and otherwise runs as root, which would root-own anything written into the
 bind mount. See each checkout's `docker-compose.yml` header comment for
