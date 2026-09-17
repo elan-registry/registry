@@ -54,6 +54,23 @@ use ElanRegistry\LogCategories;
  * only. `run()` is `final` — subclasses must not override the
  * crash-isolation/guard sequencing.
  *
+ * CONVENTION: pair `runNow()` with a subclass-defined `runNowWithSummary()`.
+ * `runNow()` is `final` and returns void — by design, since AbstractCronJob
+ * cannot know a summary type common to every job (compare
+ * {@see BrevoEventReconciliationJob::runNowWithSummary()} and
+ * {@see BrevoSuppressionSyncJob::runNowWithSummary()}, which return different
+ * summary types). A concrete job's manual "run now" admin entry point still
+ * needs to report what happened, though, so both existing jobs independently
+ * add their own `runNowWithSummary()` method that: bypasses the enabled check
+ * and guard claim the same way `runNow()` does (repeating, not inheriting,
+ * that check — `runNow()`'s own check is not reachable from a sibling method);
+ * and rethrows on unexpected failure rather than swallowing it, since a caught
+ * exception there would otherwise have to be reported as a fabricated all-zero
+ * summary, indistinguishable from a genuinely empty successful run. A third
+ * job should follow the same shape rather than rediscovering this reasoning —
+ * see either existing job's own `runNowWithSummary()` docblock for the fully
+ * worked rationale.
+ *
  * @package ElanRegistry\Cron
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1889

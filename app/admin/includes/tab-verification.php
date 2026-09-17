@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
+use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\Cron\SendVerificationBatchJob;
@@ -162,6 +163,33 @@ $reconciliationBadge = CronJobRunsReader::badgeFor($reconciliationState, $reconc
 $reconciliationBadgeClass = $reconciliationBadge['badgeClass'];
 $reconciliationBadgeIcon = $reconciliationBadge['icon'];
 $reconciliationBadgeText = $reconciliationBadge['text'];
+
+// ---------------------------------------------------------------------------
+// Suppression sync status probe. Its own fault domain again, for the same
+// reason as the reconciliation probe above: this is a different job's row and
+// a failure to read it must not blank out the reconciliation section above.
+//
+// $cronJobRunsReader is reused when the reconciliation probe above managed to
+// construct it; a separate construction here would be a second connection for
+// the same never-throwing reader.
+// ---------------------------------------------------------------------------
+$suppressionSyncState = CronJobEnabledState::UNREADABLE;
+$suppressionSyncLastRunAt = null;
+
+try {
+    $suppressionSyncReader = $cronJobRunsReader ?? new CronJobRunsReader(dbi());
+    $suppressionSyncStatus = $suppressionSyncReader->status(BrevoSuppressionSyncJob::JOB_NAME);
+    $suppressionSyncState = $suppressionSyncStatus['state'];
+    $suppressionSyncLastRunAt = $suppressionSyncStatus['lastRunAt'];
+} catch (\Throwable $e) {
+    logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+        'Suppression sync status probe failed: ' . $e->getMessage());
+}
+
+$suppressionSyncBadge = CronJobRunsReader::badgeFor($suppressionSyncState, $suppressionSyncLastRunAt);
+$suppressionSyncBadgeClass = $suppressionSyncBadge['badgeClass'];
+$suppressionSyncBadgeIcon = $suppressionSyncBadge['icon'];
+$suppressionSyncBadgeText = $suppressionSyncBadge['text'];
 
 // ---------------------------------------------------------------------------
 // Automatic-sending status probe (#1885). Its own fault domain again, for the
@@ -364,6 +392,21 @@ if (!function_exists('vsEsc')) {
                         <i class="fas fa-clock"></i>
                         last ran
                         <?= htmlspecialchars($reconciliationLastRunAt->format('M j, Y g:i A'), ENT_QUOTES, 'UTF-8') ?>
+                    </small>
+                <?php } ?>
+            </dd>
+
+            <dt class="col-sm-4">Last suppression sync run</dt>
+            <dd class="col-sm-8">
+                <span class="<?= htmlspecialchars($suppressionSyncBadgeClass, ENT_QUOTES, 'UTF-8') ?>">
+                    <i class="fas <?= htmlspecialchars($suppressionSyncBadgeIcon, ENT_QUOTES, 'UTF-8') ?>"></i>
+                    <?= htmlspecialchars($suppressionSyncBadgeText, ENT_QUOTES, 'UTF-8') ?>
+                </span>
+                <?php if ($suppressionSyncLastRunAt !== null) { ?>
+                    <small class="text-muted ms-1">
+                        <i class="fas fa-clock"></i>
+                        last ran
+                        <?= htmlspecialchars($suppressionSyncLastRunAt->format('M j, Y g:i A'), ENT_QUOTES, 'UTF-8') ?>
                     </small>
                 <?php } ?>
             </dd>

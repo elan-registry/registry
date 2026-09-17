@@ -52,6 +52,9 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     /** Original er_verification_settings.enabled value, restored in tearDown(). */
     private bool $originalVerificationEnabled = false;
 
+    /** Original er_verification_settings.unmatched_recipient_count, restored in tearDown(). */
+    private int $originalUnmatchedCount = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -61,9 +64,16 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         // v2.30.2) and it ships off by default — force it on so this file's
         // job-behavior assertions aren't short-circuited by an unrelated
         // switch. Restored in tearDown().
-        $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1');
+        // unmatched_recipient_count is read from the same singleton row and
+        // restored alongside `enabled`: IntegrationTestCase does not reset
+        // tables between tests, so the increment this file's unmatched-recipient
+        // test drives would otherwise leak into every later test reading it.
+        $this->db->query('SELECT enabled, unmatched_recipient_count FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
+        $this->originalUnmatchedCount = is_object($verificationRow)
+            ? (int) $verificationRow->unmatched_recipient_count
+            : 0;
         $this->db->query('UPDATE er_verification_settings SET enabled = 1 WHERE id = 1');
 
         $this->repo = new CarRepository($this->db);
@@ -79,8 +89,8 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         if ($this->databaseConnected) {
             $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$this->carId]);
             $this->db->query(
-                'UPDATE er_verification_settings SET enabled = ? WHERE id = 1',
-                [$this->originalVerificationEnabled ? 1 : 0]
+                'UPDATE er_verification_settings SET enabled = ?, unmatched_recipient_count = ? WHERE id = 1',
+                [$this->originalVerificationEnabled ? 1 : 0, $this->originalUnmatchedCount]
             );
         }
         parent::tearDown();
@@ -221,5 +231,58 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
 
         $this->assertCount(1, $remaining, 'Only the row older than the 24-month cutoff should be purged');
         $this->assertSame('reconcile-purge-recent', $remaining[0]->brevo_message_id);
+    }
+
+    // --- Unmatched recipient counter (#2085) --------------------------------
+
+    /**
+     * An event whose recipient matches no car must not be silently dropped: it
+     * increments both the in-memory summary tally and, separately,
+     * er_verification_settings.unmatched_recipient_count in the real database
+     * (#2085 added the increment call; this proves it survives the job's real
+     * execute() path against a live DB, not just a mocked VerificationSettings
+     * collaborator at the unit-test level).
+     */
+    public function testUnmatchedRecipientIncrementsTheDashboardCounterInTheDatabase(): void
+    {
+        $unmatchedEmail = 'reconcile-unmatched-' . uniqid() . '@example.com';
+        $messageId = 'reconcile-unmatched-' . uniqid();
+
+        $event = new FakeBrevoEvent(
+            email: $unmatchedEmail,
+            event: 'delivered',
+            messageId: $messageId,
+            date: '2026-09-08T12:00:00Z',
+            reason: null
+        );
+
+        $summary = $this->makeJob([$event], new \DateTimeImmutable('2026-09-09 03:00:00'))
+            ->runNowWithSummary();
+
+        $this->assertSame(1, $summary->unmatchedCount, 'The event matched no car, so it must be tallied as unmatched');
+        $this->assertSame(
+            0,
+            $summary->counterFailureCount,
+            'The dashboard counter increment must have succeeded against the real settings row'
+        );
+
+        $row = $this->db->query(
+            'SELECT unmatched_recipient_count FROM er_verification_settings WHERE id = 1'
+        )->first();
+        $this->assertSame(
+            $this->originalUnmatchedCount + 1,
+            (int) $row->unmatched_recipient_count,
+            'er_verification_settings.unmatched_recipient_count must be incremented by exactly one'
+        );
+
+        $orphanRows = $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE brevo_message_id = ?',
+            [$messageId]
+        )->first();
+        $this->assertSame(
+            0,
+            (int) $orphanRows->cnt,
+            'An unmatched recipient has no car to attach the event to, so no er_email_events row may be written'
+        );
     }
 }

@@ -3,14 +3,9 @@ require_once '../init.php';
 $db = DB::getInstance();
 $ip = ipCheck();
 
-if($settings->cron_ip != ''){
-if($ip != $settings->cron_ip && $ip != '127.0.0.1'){
-	logger("","CronRequest","Cron request DENIED from $ip.");
-	die;
-	}
+if (!(new \ElanRegistry\Cron\CronRequestGate(dbi()))->admitAndRecord($ip, (string) $settings->cron_ip)) {
+    die;
 }
-
-(new \ElanRegistry\Car\VerificationSettings(dbi()))->recordCronRequest();
 $from = Input::get('from');
 $primaryquery = $db->query("SELECT file FROM crons WHERE active = ? ORDER BY sort",array(1));
 $querycount = $primaryquery->count();
