@@ -658,6 +658,58 @@ final class BrevoEventReconciliationJobTest extends TestCase
         );
     }
 
+    /**
+     * #2085 (pr-test-analyzer follow-up): execute() — the unattended nightly
+     * cron path — appends a warning clause to its "incremental run complete"
+     * summary line whenever counterFailureCount > 0. That line is the ONLY
+     * artifact the nightly run leaves behind (no admin page renders it), so
+     * this drives execute() itself via runNow() rather than
+     * runNowWithSummary(), and asserts on the actual logged text rather than
+     * only on the returned summary object — which is all
+     * testApplyEventUnmatchedRecipientCounterFailureIsReportedInSummary above
+     * covers.
+     */
+    public function testNightlyRunLogsTheCounterFailureWarningClause(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([]);
+
+        $this->makeJob(
+            [
+                new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+                new FakeBrevoEvent(email: 'b@example.com', messageId: 'm2'),
+            ],
+            unmatchedCounterUpdateSucceeds: false,
+        )->runNow();
+
+        $log = $this->logsContaining('incremental run complete');
+        $this->assertNotEmpty($log);
+        $this->assertStringContainsString(
+            '2 of the 2 unmatched event(s) were NOT recorded in the dashboard'
+            . ' unmatched-recipient counter; see VerificationConfigWarning log entries',
+            $log[0]['message']
+        );
+    }
+
+    /**
+     * The other side of the same behavior (#2085): a clean run — the counter
+     * healthy — must not carry the warning clause, so a genuinely quiet or
+     * fully-successful night reads as clean in the one artifact the nightly
+     * path leaves behind.
+     */
+    public function testNightlyRunOmitsTheCounterFailureClauseWhenCounterSucceeds(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([]);
+
+        $this->makeJob([
+            new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+            new FakeBrevoEvent(email: 'b@example.com', messageId: 'm2'),
+        ])->runNow();
+
+        $log = $this->logsContaining('incremental run complete');
+        $this->assertNotEmpty($log);
+        $this->assertStringNotContainsString('NOT recorded in the dashboard', $log[0]['message']);
+    }
+
     // --- runNowWithSummary() counts ---------------------------------------
 
     public function testRunNowWithSummaryHappyPathCountsAreCorrect(): void

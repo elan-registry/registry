@@ -29,10 +29,14 @@ use Phinx\Migration\AbstractMigration;
  * so the enclosing transaction is inert for ALTER TABLE. Each statement
  * below is independently atomic at the server level; there is no
  * transactional rollback across the two ALTERs if the second one failed
- * after the first committed. That risk is accepted here because both
- * statements target the same single column and either can be safely
- * re-run (renameColumn() no-ops if already renamed by name-mismatch
- * failure; changeColumn() is idempotent for identical target attributes).
+ * after the first committed. changeColumn() is idempotent for identical
+ * target attributes, so re-running up() after BOTH statements committed is
+ * safe. Re-running it after only the rename committed is NOT: Phinx's
+ * renameColumn() throws InvalidArgumentException ("The specified column
+ * doesn't exist") rather than no-opping when the source name is already
+ * gone, so that partial state needs a manual `ALTER TABLE
+ * er_verification_settings CHANGE COLUMN unmatched_recipient_count ...` to
+ * finish applying the COMMENT. Accepted as a narrow, hand-recoverable window.
  */
 final class RenameErVerificationSettingsUnmatchedCounter extends AbstractMigration
 {
