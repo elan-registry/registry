@@ -26,12 +26,16 @@ use ElanRegistry\LogCategories;
  *   3. A job-owned `enabled` flag (`er_cron_job_runs.enabled`, independent of
  *      UserSpice's own `crons.active`) checked before any work runs.
  *   4. The site-wide verification feature switch ({@see VerificationSettings::isEnabled()})
- *      is also checked before any work runs — both `run()` and `runNow()`. Every
- *      Brevo-driven write to car records (webhook, both cron jobs, both manual
- *      admin scripts) must honor this switch so it actually gates "no real
- *      email sends" as documented, not just the webhook receiver. Fails closed
- *      like the `enabled` flag above: a database hiccup reading the switch
- *      hides the feature rather than running anyway.
+ *      is also checked before any work runs — both `run()` and `runNow()`. This
+ *      check is unconditional for every AbstractCronJob subclass, by design:
+ *      there is no per-subclass opt-out today, so a future non-Brevo job
+ *      extending this class would be silently gated too, and its author should
+ *      expect that rather than be surprised by it. The switch exists because
+ *      every Brevo-driven write to car records (webhook, both cron jobs, both
+ *      manual admin scripts) must honor it so it actually gates "no real email
+ *      sends" as documented, not just the webhook receiver. Fails closed like
+ *      the `enabled` flag above: a database hiccup reading the switch hides the
+ *      feature rather than running anyway.
  *
  * The enabled check is a dedicated read rather than an inference from
  * `CronJobGuard::claim()`'s boolean: `claim()` deliberately conflates

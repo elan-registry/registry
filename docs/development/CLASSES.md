@@ -1371,6 +1371,10 @@ a job-owned enabled flag independent of UserSpice's own `crons.active`.
   (`LOG_CATEGORY_CRON_JOB_FAILURE`)
 - **Manual run path**: `runNow()` bypasses enabled check and guard claim for
   admin-triggered immediate execution, retaining crash isolation only
+- **Verification feature switch**: `VerificationSettings::isEnabled()` is
+  checked unconditionally in both `run()` and `runNow()` for every
+  `AbstractCronJob` subclass, by design — not just Brevo-driven ones, and with
+  no per-subclass opt-out; fails closed like the `enabled` flag above
 
 **Abstract Methods (implemented by subclasses)**:
 
@@ -1396,6 +1400,10 @@ public function __construct(protected readonly DatabaseInterface $db)
 **Used By**:
 
 - `BrevoEventReconciliationJob` (extends `AbstractCronJob`)
+- `BrevoSuppressionSyncJob` (extends `AbstractCronJob`)
+- `SendVerificationBatchJob` (extends `AbstractCronJob`; no `runNowWithSummary()`
+  override — relies entirely on inherited `run()`/`runNow()`, including their
+  verification-switch check)
 
 **See Also**:
 
