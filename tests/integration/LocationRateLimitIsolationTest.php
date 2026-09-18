@@ -44,8 +44,12 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
 {
     private const ACTION = 'location_search';
 
-    /** Matches usersc/includes/rate_limits.php's location_search total_max. */
-    private const TOTAL_MAX = 10;
+    /**
+     * Matches usersc/includes/rate_limits.php's location_search total_max.
+     * Raised from 10 to 1000 (#2122) — the original value refused a real
+     * registrant's typed address after 11 debounced requests in 50s.
+     */
+    private const TOTAL_MAX = 1000;
 
     private function fakeTestNet3Ip(): string
     {
@@ -69,6 +73,39 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
         }
     }
 
+    /**
+     * Insert $count already-recorded attempt rows directly, bypassing
+     * recordRateLimit() for speed — mirrors
+     * BrevoWebhookRateLimitEnforcementTest::seedTotalAttempts() exactly
+     * (identifier_key = sha256('ip::' . $ip), matching
+     * RateLimit::buildIdentifierKey(), so a subsequent real
+     * checkRateLimit() call reads these rows as if recordRateLimit() had
+     * written them). Needed here because TOTAL_MAX raised 10 -> 1000
+     * (#2122) made looping recordRateLimit() the real function 1000 times
+     * measurably slow; only tests genuinely exercising the realistic-typing
+     * volume (testAdmitsRealisticTypingSession, 20 calls) still loop the
+     * real functions.
+     */
+    private function seedTotalAttempts(string $action, string $ip, int $count): void
+    {
+        $identifierKey = hash('sha256', 'ip::' . $ip);
+        foreach (array_chunk(range(1, $count), 1000) as $chunk) {
+            $placeholders = implode(', ', array_fill(0, count($chunk), '(?, ?, 1, NOW())'));
+            $params = [];
+            foreach ($chunk as $_) {
+                $params[] = $identifierKey;
+                $params[] = $action;
+            }
+            $result = $this->db->query(
+                "INSERT INTO us_rate_limits (identifier_key, action, success, attempt_time) VALUES {$placeholders}",
+                $params
+            );
+            if ($result->error()) {
+                throw new \RuntimeException('seedTotalAttempts insert failed: ' . $result->errorString());
+            }
+        }
+    }
+
     public function testSecondIpIsUnaffectedByFirstIpExhaustingItsBudget(): void
     {
         $this->requireDatabase();
@@ -80,13 +117,7 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
             $this->resetServerCache();
             $_SERVER['REMOTE_ADDR'] = $ipOne;
 
-            for ($i = 0; $i < self::TOTAL_MAX; $i++) {
-                $this->assertTrue(
-                    checkRateLimit(self::ACTION, null),
-                    'Attempt ' . ($i + 1) . ' of ' . self::TOTAL_MAX . ' for IP #1 should be allowed (within total_max).'
-                );
-                recordRateLimit(self::ACTION, true, null);
-            }
+            $this->seedTotalAttempts(self::ACTION, $ipOne, self::TOTAL_MAX);
 
             $this->assertFalse(
                 checkRateLimit(self::ACTION, null),
@@ -116,6 +147,101 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
             }
             // Clear the memoized value so later tests don't observe this
             // test's fake IP through Server::get('REMOTE_ADDR', ...).
+            $this->resetServerCache();
+        }
+    }
+
+    /**
+     * Proves #2122's actual fix: a realistic typing session against the
+     * join-form's manual location picker no longer trips location_search's
+     * limit. The incident this issue fixes was 11 debounced requests in 50s
+     * from one typed multi-word address; this asserts double that (20) all
+     * admit, matching a realistic-typing-session margin.
+     */
+    public function testAdmitsRealisticTypingSession(): void
+    {
+        $this->requireDatabase();
+
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        try {
+            $this->resetServerCache();
+            $_SERVER['REMOTE_ADDR'] = $this->fakeTestNet3Ip();
+
+            $realisticRequestCount = 20;
+
+            for ($i = 0; $i < $realisticRequestCount; $i++) {
+                $this->assertTrue(
+                    checkRateLimit(self::ACTION, null),
+                    'Request ' . ($i + 1) . ' of ' . $realisticRequestCount . ' should be allowed — '
+                        . 'this is the exact volume that tripped the old 10/60 threshold and blocked a '
+                        . 'real registrant typing a full address (#2122).'
+                );
+                recordRateLimit(self::ACTION, true, null);
+            }
+        } finally {
+            if ($originalRemoteAddr === null) {
+                unset($_SERVER['REMOTE_ADDR']);
+            } else {
+                $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+            }
+            $this->resetServerCache();
+        }
+    }
+
+    /**
+     * The control proving the raised threshold (#2122: TOTAL_MAX=1000) is
+     * still a real backstop, not a de facto removal — the issue's own
+     * instruction was "do not simply remove the limit" (protects the
+     * upstream Nominatim/Photon geocoder from abuse). Also confirms a
+     * blocked attempt is still recorded with success=0 in us_rate_limits,
+     * matching the project's "record every attempt, gate only admission"
+     * convention used elsewhere (see BrevoWebhookRateLimitEnforcementTest).
+     */
+    public function testTotalMaxStillBlocksAfterConfiguredThreshold(): void
+    {
+        $this->requireDatabase();
+
+        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        try {
+            $testIp = $this->fakeTestNet3Ip();
+            $this->resetServerCache();
+            $_SERVER['REMOTE_ADDR'] = $testIp;
+
+            $this->seedTotalAttempts(self::ACTION, $testIp, self::TOTAL_MAX);
+
+            $this->assertFalse(
+                checkRateLimit(self::ACTION, null),
+                'Request ' . (self::TOTAL_MAX + 1) . ' must be blocked — the raised threshold must '
+                    . 'still refuse genuinely abusive volume, not just remove the limit entirely (#2122).'
+            );
+
+            recordRateLimit(self::ACTION, false, null);
+
+            $identifierKey = hash('sha256', 'ip::' . $testIp);
+            $this->db->query(
+                'SELECT success FROM us_rate_limits '
+                    . 'WHERE action = ? AND identifier_key = ? ORDER BY id DESC LIMIT 1',
+                [self::ACTION, $identifierKey]
+            );
+            $row = $this->db->first(true);
+
+            $this->assertIsArray($row, 'Expected the just-recorded location_search attempt to be readable back');
+            $this->assertSame(
+                0,
+                (int) ($row['success'] ?? null),
+                'A blocked attempt must still be recorded with success=0 — the limiter counts every '
+                    . 'attempt toward the rolling window regardless of admission, matching the pattern '
+                    . 'this project uses everywhere else a rate limit gates admission separately from '
+                    . 'recording (#2122).'
+            );
+        } finally {
+            if ($originalRemoteAddr === null) {
+                unset($_SERVER['REMOTE_ADDR']);
+            } else {
+                $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
+            }
             $this->resetServerCache();
         }
     }

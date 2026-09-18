@@ -161,10 +161,35 @@ $rateLimits['admin_ajax_write']['ip_window'] = 300;
 $rateLimits['admin_ajax_write']['total_max'] = 100;
 $rateLimits['admin_ajax_write']['total_window'] = 300;
 
+// Shared by LocationService::searchLocation() (join-form manual picker,
+// keystroke-driven autocomplete) and reverseGeocode() (GPS lookup, at most
+// once per attempt) under one action key. ip_max stays PHP_INT_MAX by the
+// same design as admin_ajax_search above: total_max is what actually governs
+// anonymous traffic. ip_window (60) is vestigial while ip_max=PHP_INT_MAX —
+// left unequal to total_window (300) on purpose; it only starts to matter if
+// a real ip_max is ever set here, at which point size it deliberately rather
+// than assume 300 was intended for it too.
+//
+// total_max/total_window raised from 10/60 to 1000/300 (#2122) — the
+// original value refused a real registrant typing a full address through
+// the D010 manual-picker fallback after 11 debounced requests in 50s. #2122
+// itself suggested "the low hundreds" as sufficient and explicitly scoped
+// #1952 (below) as irrelevant to sizing this fix. This deliberately goes
+// higher than that suggestion: production's rate-limit buckets are
+// currently per-Cloudflare-edge-node, not per-visitor (#1952, open) —
+// several concurrent registrants behind one edge node share this bucket
+// today, which #2122's own "low hundreds" estimate did not account for.
+// Revisit downward once #1952 lands and buckets become per-visitor. Do NOT
+// raise to cars_list's old 10000/300s: that value was removed by #2018
+// after driving explosive `us_rate_limits` row growth under Playwright/
+// integration-test load specifically (3.1M+ rows in the local test DB per
+// #2018's own report) — not a proven production-safe ceiling to aim near:
+// this value is deliberately an order of magnitude below it as a margin of
+// safety, not because 10000 was shown unsafe in production traffic.
 $rateLimits['location_search']['ip_max'] = PHP_INT_MAX;
 $rateLimits['location_search']['ip_window'] = 60;
-$rateLimits['location_search']['total_max'] = 10;
-$rateLimits['location_search']['total_window'] = 60;
+$rateLimits['location_search']['total_max'] = 1000;
+$rateLimits['location_search']['total_window'] = 300;
 
 // cars_list, factory_list, car_history, and statistics_request (formerly
 // configured here as public read-only DataTables endpoints, per ADR-019)
