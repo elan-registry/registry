@@ -21,7 +21,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertTrue((new CronJobGuard($db))->claim('reconciliation', 24));
+        $this->assertTrue((new CronJobGuard($db))->claim('brevo_reconciliation', 24));
         $this->assertStringContainsString(
             'IS NULL',
             $db->lastSql(),
@@ -37,15 +37,15 @@ final class CronJobGuardTest extends TestCase
         $db = new CronJobGuardFakeDatabase(claimSucceedsOnce: true);
         $guard = new CronJobGuard($db);
 
-        $this->assertTrue($guard->claim('reconciliation', 24));
-        $this->assertFalse($guard->claim('reconciliation', 24));
+        $this->assertTrue($guard->claim('brevo_reconciliation', 24));
+        $this->assertFalse($guard->claim('brevo_reconciliation', 24));
     }
 
     public function testClaimSucceedsAtIntervalBoundary(): void
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertTrue((new CronJobGuard($db))->claim('reconciliation', 24));
+        $this->assertTrue((new CronJobGuard($db))->claim('brevo_reconciliation', 24));
         $this->assertStringContainsString(
             '< NOW() - INTERVAL ? HOUR',
             $db->lastSql(),
@@ -57,7 +57,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        (new CronJobGuard($db))->claim('reconciliation', 24);
+        (new CronJobGuard($db))->claim('brevo_reconciliation', 24);
 
         $this->assertStringContainsString('NOW()', $db->lastSql());
         $this->assertStringContainsString(
@@ -71,7 +71,7 @@ final class CronJobGuardTest extends TestCase
             'The claim must gate on the row being enabled'
         );
         $this->assertSame(
-            ['reconciliation', 24],
+            ['brevo_reconciliation', 24],
             $db->lastParams(),
             'The job name and interval hours must be bound — no PHP date()/time()-derived value'
         );
@@ -91,8 +91,8 @@ final class CronJobGuardTest extends TestCase
 
     /**
      * `job_name` is `varchar(64)` under MySQL's default case-insensitive
-     * collation — `job_name = 'RECONCILIATION'` matches the seeded
-     * `'reconciliation'` row at the SQL layer. The allowlist's strict
+     * collation — `job_name = 'BREVO_RECONCILIATION'` matches the seeded
+     * `'brevo_reconciliation'` row at the SQL layer. The allowlist's strict
      * `in_array(..., true)` check is the only thing preventing a
      * case-variant name from claiming a different job's row; if the
      * allowlist check were ever relaxed to case-insensitive comparison, the
@@ -104,7 +104,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('RECONCILIATION', 24));
+        $this->assertFalse((new CronJobGuard($db))->claim('BREVO_RECONCILIATION', 24));
         $this->assertSame(
             '',
             $db->lastSql(),
@@ -116,11 +116,11 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        (new CronJobGuard($db))->claim('reconciliation', 48);
+        (new CronJobGuard($db))->claim('brevo_reconciliation', 48);
 
         $this->assertStringContainsString('?', $db->lastSql());
         $this->assertStringNotContainsString('48', $db->lastSql(), 'The interval must be bound, not interpolated');
-        $this->assertSame(['reconciliation', 48], $db->lastParams());
+        $this->assertSame(['brevo_reconciliation', 48], $db->lastParams());
     }
 
     /**
@@ -139,7 +139,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: false);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 24));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', 24));
     }
 
     /**
@@ -156,7 +156,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 0));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', 0));
         $this->assertSame(
             '',
             $db->lastSql(),
@@ -176,7 +176,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', -1));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', -1));
         $this->assertSame(
             '',
             $db->lastSql(),
@@ -201,12 +201,12 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true, queryErrors: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 24));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', 24));
     }
 
     /**
      * #1885: 'send_verification_batch' must be in ALLOWED_JOB_NAMES alongside
-     * 'reconciliation' and 'brevo_suppression_sync' — a job name absent from
+     * 'brevo_reconciliation' and 'brevo_suppression_sync' — a job name absent from
      * this allowlist can never claim, regardless of its er_cron_job_runs row.
      */
     public function testClaimAcceptsSendVerificationBatchJobName(): void

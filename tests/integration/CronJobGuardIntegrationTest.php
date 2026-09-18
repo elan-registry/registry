@@ -26,21 +26,21 @@ use PHPUnit\Framework\Attributes\Group;
  * the `job_name` primary key, which a mocked-DB unit test cannot fully prove
  * (this repo's own convention for new SQL: execute it, don't just read it).
  *
- * Uses the seeded `reconciliation` row (created by the
- * 20260908203118_create_cron_job_runs migration) as its fixture, snapshotting
- * and restoring its `enabled`/`last_run_at` columns the same way
- * VerificationSettingsCronReadyTest.php snapshots and restores
+ * Uses the seeded `brevo_reconciliation` row (originally 'reconciliation',
+ * renamed by migration 20260918133038_rename_reconciliation_job, #2129) as
+ * its fixture, snapshotting and restoring its `enabled`/`last_run_at`
+ * columns the same way VerificationSettingsCronReadyTest.php handles
  * er_verification_settings.last_cron_request_at.
  */
 #[Group('integration')]
 final class CronJobGuardIntegrationTest extends IntegrationTestCase
 {
-    private const JOB_NAME = 'reconciliation';
+    private const JOB_NAME = 'brevo_reconciliation';
 
-    /** Original enabled value for the 'reconciliation' row, restored in tearDown(). */
+    /** Original enabled value for the 'brevo_reconciliation' row, restored in tearDown(). */
     private bool $originalEnabled = true;
 
-    /** Original last_run_at value for the 'reconciliation' row, restored in tearDown(). */
+    /** Original last_run_at value for the 'brevo_reconciliation' row, restored in tearDown(). */
     private ?string $originalLastRunAt = null;
 
     protected function setUp(): void
@@ -198,7 +198,7 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
      * claims, per CronJobGuard's own class docblock.
      *
      * Uses its own fixture snapshot/restore (distinct from the class-level
-     * 'reconciliation' fixture above) since this is a different row.
+     * 'brevo_reconciliation' fixture above) since this is a different row.
      */
     public function testClaimRoundTripAgainstSeededSendVerificationBatchRow(): void
     {
@@ -219,7 +219,7 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
         try {
             // The row is seeded enabled=0 (paused) in every environment —
             // enable it for the duration of this claim test, matching how the
-            // class-level 'reconciliation' fixture is manipulated above.
+            // class-level 'brevo_reconciliation' fixture is manipulated above.
             $this->db->query(
                 'UPDATE er_cron_job_runs SET enabled = 1, last_run_at = NULL WHERE job_name = ?',
                 [$jobName]

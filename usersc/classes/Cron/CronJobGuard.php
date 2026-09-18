@@ -47,7 +47,7 @@ use ElanRegistry\LogCategories;
 final class CronJobGuard
 {
     private const ALLOWED_JOB_NAMES = [
-        'reconciliation',
+        'brevo_reconciliation',
         'brevo_suppression_sync',
         'send_verification_batch',
     ];

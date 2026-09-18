@@ -13,20 +13,21 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * CronJobRunsReaderTest (unit, tests/unit/cron/) covers all four
  * CronJobEnabledState outcomes against a FakeDatabase, including the
- * UNREADABLE case a real connection cannot deliberately trigger. This file
- * exercises the same reader against real MySQL instead: the seeded
- * `reconciliation` row (migration 20260908203118_create_cron_job_runs),
- * real `enabled` column round-tripping, and real `datetime` round-tripping
- * through DateTimeImmutable — exactly the kind of thing a mocked-DB unit
- * test cannot fully prove. Mirrors VerificationSettingsCronReadyTest's
- * snapshot-in-setUp/restore-in-tearDown discipline for a shared row.
+ * UNREADABLE case a real connection cannot trigger. This file exercises the
+ * same reader against real MySQL: the seeded `brevo_reconciliation` row
+ * (originally 'reconciliation', renamed by migration
+ * 20260918133038_rename_reconciliation_job, #2129), real `enabled` column
+ * round-tripping, and real `datetime` round-tripping through
+ * DateTimeImmutable — the kind of detail a mocked-DB unit test cannot prove.
+ * Mirrors VerificationSettingsCronReadyTest's snapshot/restore discipline for
+ * a shared row.
  */
 #[Group('integration')]
 final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
 {
-    private const JOB_NAME = 'reconciliation';
+    private const JOB_NAME = 'brevo_reconciliation';
 
-    /** Original enabled/last_run_at values for the 'reconciliation' row, restored in tearDown(). */
+    /** Original enabled/last_run_at values for the 'brevo_reconciliation' row, restored in tearDown(). */
     private int $originalEnabled = 1;
     private ?string $originalLastRunAt = null;
 
@@ -41,7 +42,7 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
         );
         $this->assertFalse(
             $this->db->error(),
-            'Failed to read original reconciliation row: ' . $this->db->errorString()
+            'Failed to read original brevo_reconciliation row: ' . $this->db->errorString()
                 . ' — likely means this migration has not been applied to the test schema'
         );
         $row = $this->db->first();
@@ -68,7 +69,7 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
             'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
             [$enabled ? 1 : 0, $lastRunAt, self::JOB_NAME]
         );
-        $this->assertFalse($this->db->error(), 'Failed to set reconciliation row fixture: ' . $this->db->errorString());
+        $this->assertFalse($this->db->error(), 'Failed to set brevo_reconciliation row fixture: ' . $this->db->errorString());
     }
 
     public function testStateReturnsSeededRowsActualCurrentState(): void
