@@ -29,10 +29,10 @@ use Tests\Support\FakeBrevoEventReconciliationClient;
  * real MySQL rather than trusting the fake-DB unit test alone (this repo's
  * convention for new SQL: execute it, don't just read it).
  *
- * Uses the seeded `reconciliation` row (created by the
- * 20260908203118_create_cron_job_runs migration), snapshotting and restoring
- * its `enabled`/`last_run_at` columns exactly as CronJobGuardIntegrationTest
- * does, since both files mutate the same fixture row.
+ * Uses the seeded `brevo_reconciliation` row (originally 'reconciliation',
+ * renamed by migration 20260918133038_rename_reconciliation_job, #2129),
+ * snapshotting and restoring its `enabled`/`last_run_at` columns exactly as
+ * CronJobGuardIntegrationTest does, since both mutate the same fixture row.
  *
  * @see https://github.com/elan-registry/registry/issues/1889
  * @see https://github.com/elan-registry/registry/issues/2034
@@ -40,12 +40,12 @@ use Tests\Support\FakeBrevoEventReconciliationClient;
 #[Group('integration')]
 final class BrevoEventReconciliationRunNowBypassIntegrationTest extends IntegrationTestCase
 {
-    private const JOB_NAME = 'reconciliation';
+    private const JOB_NAME = 'brevo_reconciliation';
 
-    /** Original enabled value for the 'reconciliation' row, restored in tearDown(). */
+    /** Original enabled value for the 'brevo_reconciliation' row, restored in tearDown(). */
     private bool $originalEnabled = true;
 
-    /** Original last_run_at value for the 'reconciliation' row, restored in tearDown(). */
+    /** Original last_run_at value for the 'brevo_reconciliation' row, restored in tearDown(). */
     private ?string $originalLastRunAt = null;
 
     /** Original er_verification_settings.enabled value, restored in tearDown(). */

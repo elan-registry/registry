@@ -22,8 +22,9 @@ use Phinx\Migration\AbstractMigration;
  * jobs rather than duplicated per job (#2034's rationale for the table).
  *
  * Nullable with no default, so every existing row — including the
- * 'reconciliation' row seeded by 20260908203118_create_cron_job_runs.php —
- * starts NULL. NULL reads as "this job has never recorded counts", which is
+ * 'reconciliation' row seeded by 20260908203118_create_cron_job_runs.php
+ * (renamed to 'brevo_reconciliation' by 20260918133038_rename_reconciliation_job.php,
+ * #2129) — starts NULL. NULL reads as "this job has never recorded counts", which is
  * distinct from a recorded run that sent zero; a `0` default would erase that
  * distinction. A job's `execute()` writes these after each run.
  *

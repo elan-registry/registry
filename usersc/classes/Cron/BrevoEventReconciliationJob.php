@@ -49,7 +49,7 @@ use ElanRegistry\LogCategories;
 final class BrevoEventReconciliationJob extends AbstractCronJob
 {
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
-    public const JOB_NAME = 'reconciliation';
+    public const JOB_NAME = 'brevo_reconciliation';
 
     /**
      * Minimum hours between claimed runs.

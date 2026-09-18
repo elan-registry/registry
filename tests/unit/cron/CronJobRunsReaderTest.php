@@ -42,18 +42,18 @@ final class CronJobRunsReaderTest extends TestCase
 
     public function testStatusReturnsEnabledWhenRowEnabled(): void
     {
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: true);
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true);
 
-        $status = (new CronJobRunsReader($db))->status('reconciliation');
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame(CronJobEnabledState::ENABLED, $status['state']);
     }
 
     public function testStatusReturnsDisabledWhenRowDisabled(): void
     {
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: false);
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: false);
 
-        $status = (new CronJobRunsReader($db))->status('reconciliation');
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame(CronJobEnabledState::DISABLED, $status['state']);
     }
@@ -63,16 +63,16 @@ final class CronJobRunsReaderTest extends TestCase
         // Unconfigured job name defaults to "no row" per the fake DB's docblock.
         $db = new CronJobRunsReaderFakeDatabase();
 
-        $status = (new CronJobRunsReader($db))->status('reconciliation');
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame(CronJobEnabledState::MISSING, $status['state']);
     }
 
     public function testStatusReturnsUnreadableWhenQueryErrors(): void
     {
-        $db = (new CronJobRunsReaderFakeDatabase())->withError('reconciliation');
+        $db = (new CronJobRunsReaderFakeDatabase())->withError('brevo_reconciliation');
 
-        $status = (new CronJobRunsReader($db))->status('reconciliation');
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame(CronJobEnabledState::UNREADABLE, $status['state']);
     }
@@ -107,16 +107,16 @@ final class CronJobRunsReaderTest extends TestCase
     {
         $db = new CronJobRunsReaderFakeDatabase();
 
-        $status = (new CronJobRunsReader($db))->status('reconciliation');
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertNull($status['lastRunAt']);
     }
 
     public function testStatusLastRunAtIsNullWhenRowUnreadable(): void
     {
-        $db = (new CronJobRunsReaderFakeDatabase())->withError('reconciliation');
+        $db = (new CronJobRunsReaderFakeDatabase())->withError('brevo_reconciliation');
 
-        $status = (new CronJobRunsReader($db))->status('reconciliation');
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertNull($status['lastRunAt']);
     }
@@ -128,9 +128,9 @@ final class CronJobRunsReaderTest extends TestCase
      */
     public function testStatusLastRunAtIsNullWhenJobHasNeverRun(): void
     {
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: true, lastRunAt: null);
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true, lastRunAt: null);
 
-        $status = (new CronJobRunsReader($db))->status('reconciliation');
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame(CronJobEnabledState::ENABLED, $status['state']);
         $this->assertNull($status['lastRunAt']);
@@ -139,9 +139,9 @@ final class CronJobRunsReaderTest extends TestCase
     public function testStatusLastRunAtIsParsedDateTimeImmutableWhenSet(): void
     {
         $expected = '2026-09-01 12:34:56';
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: true, lastRunAt: $expected);
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true, lastRunAt: $expected);
 
-        $status = (new CronJobRunsReader($db))->status('reconciliation');
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertInstanceOf(DateTimeImmutable::class, $status['lastRunAt']);
         $this->assertSame($expected, $status['lastRunAt']->format('Y-m-d H:i:s'));
@@ -153,20 +153,20 @@ final class CronJobRunsReaderTest extends TestCase
 
     public function testStateReturnsSameStateAsStatus(): void
     {
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: true);
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true);
 
         $this->assertSame(
             CronJobEnabledState::ENABLED,
-            (new CronJobRunsReader($db))->state('reconciliation')
+            (new CronJobRunsReader($db))->state('brevo_reconciliation')
         );
     }
 
     public function testLastRunAtReturnsSameValueAsStatus(): void
     {
         $expected = '2026-09-01 12:34:56';
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: true, lastRunAt: $expected);
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true, lastRunAt: $expected);
 
-        $result = (new CronJobRunsReader($db))->lastRunAt('reconciliation');
+        $result = (new CronJobRunsReader($db))->lastRunAt('brevo_reconciliation');
 
         $this->assertInstanceOf(DateTimeImmutable::class, $result);
         $this->assertSame($expected, $result->format('Y-m-d H:i:s'));
@@ -183,7 +183,7 @@ final class CronJobRunsReaderTest extends TestCase
         global $mockLogEntries;
 
         $db = new CronJobRunsReaderFakeDatabase();
-        (new CronJobRunsReader($db))->status('reconciliation');
+        (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertCount(1, $mockLogEntries, 'A missing row must be logged exactly once, not twice');
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
@@ -193,8 +193,8 @@ final class CronJobRunsReaderTest extends TestCase
     {
         global $mockLogEntries;
 
-        $db = (new CronJobRunsReaderFakeDatabase())->withError('reconciliation');
-        (new CronJobRunsReader($db))->status('reconciliation');
+        $db = (new CronJobRunsReaderFakeDatabase())->withError('brevo_reconciliation');
+        (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertCount(1, $mockLogEntries, 'An unreadable row must be logged exactly once, not twice');
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
@@ -204,8 +204,8 @@ final class CronJobRunsReaderTest extends TestCase
     {
         global $mockLogEntries;
 
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: false);
-        (new CronJobRunsReader($db))->status('reconciliation');
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: false);
+        (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame([], $mockLogEntries, 'Reading a disabled job\'s status for display is not a fault');
     }
@@ -214,8 +214,8 @@ final class CronJobRunsReaderTest extends TestCase
     {
         global $mockLogEntries;
 
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: true);
-        (new CronJobRunsReader($db))->status('reconciliation');
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true);
+        (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame([], $mockLogEntries, 'Reading an enabled job\'s status for display is not a fault');
     }
@@ -224,8 +224,8 @@ final class CronJobRunsReaderTest extends TestCase
     {
         global $mockLogEntries;
 
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('reconciliation', enabled: true, lastRunAt: null);
-        (new CronJobRunsReader($db))->status('reconciliation');
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true, lastRunAt: null);
+        (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame([], $mockLogEntries, 'A "never run" enabled row is not a fault');
     }
@@ -235,8 +235,8 @@ final class CronJobRunsReaderTest extends TestCase
         global $mockLogEntries;
 
         $db = (new CronJobRunsReaderFakeDatabase())
-            ->withRow('reconciliation', enabled: true, lastRunAt: '2026-09-01 12:34:56');
-        (new CronJobRunsReader($db))->status('reconciliation');
+            ->withRow('brevo_reconciliation', enabled: true, lastRunAt: '2026-09-01 12:34:56');
+        (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
         $this->assertSame([], $mockLogEntries, 'A successfully parsed timestamp is not a fault');
     }

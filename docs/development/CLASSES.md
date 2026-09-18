@@ -1737,7 +1737,7 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 
 **Configuration Constants**:
 
-- `JOB_NAME = 'reconciliation'` — `er_cron_job_runs.job_name` value
+- `JOB_NAME = 'brevo_reconciliation'` — `er_cron_job_runs.job_name` value (renamed from `'reconciliation'` by #2129)
 - `GUARD_INTERVAL_HOURS = 20` — Claim interval (20h leaves slack to re-anchor within 48h window)
 - `LOOKBACK_HOURS = 48` — Fetch window (doubled guard interval for overlap)
 - `PAGE_SIZE = 1000` — Events per run (Brevo caps at 2500; 1000 is deliberate step below)
@@ -1746,7 +1746,7 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 
 **Methods**:
 
-- `jobName(): string` — Returns `'reconciliation'`
+- `jobName(): string` — Returns `'brevo_reconciliation'`
 - `guardIntervalHours(): int` — Returns `20`
 - `execute(): void` — Backfill one page, log a one-line summary (with a
   distinct suffix if the poll failed), then prune expired rows
