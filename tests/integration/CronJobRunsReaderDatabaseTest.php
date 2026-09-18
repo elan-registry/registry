@@ -63,7 +63,7 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    private function setReconciliationRow(bool $enabled, ?string $lastRunAt): void
+    private function setFixtureState(bool $enabled, ?string $lastRunAt): void
     {
         $this->db->query(
             'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
@@ -91,7 +91,7 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
 
     public function testStateReturnsDisabledWhenEnabledColumnIsZero(): void
     {
-        $this->setReconciliationRow(false, $this->originalLastRunAt);
+        $this->setFixtureState(false, $this->originalLastRunAt);
 
         $reader = new CronJobRunsReader($this->db);
 
@@ -100,7 +100,7 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
 
     public function testStateReturnsEnabledWhenEnabledColumnIsOne(): void
     {
-        $this->setReconciliationRow(true, $this->originalLastRunAt);
+        $this->setFixtureState(true, $this->originalLastRunAt);
 
         $reader = new CronJobRunsReader($this->db);
 
@@ -110,7 +110,7 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
     public function testLastRunAtRoundTripsARealTimestamp(): void
     {
         $knownTimestamp = '2026-01-15 10:30:00';
-        $this->setReconciliationRow((bool) $this->originalEnabled, $knownTimestamp);
+        $this->setFixtureState((bool) $this->originalEnabled, $knownTimestamp);
 
         $reader = new CronJobRunsReader($this->db);
 
@@ -121,7 +121,7 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
 
     public function testLastRunAtReturnsNullWhenColumnIsNull(): void
     {
-        $this->setReconciliationRow((bool) $this->originalEnabled, null);
+        $this->setFixtureState((bool) $this->originalEnabled, null);
 
         $reader = new CronJobRunsReader($this->db);
 
