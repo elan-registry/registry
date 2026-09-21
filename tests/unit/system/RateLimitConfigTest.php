@@ -47,7 +47,7 @@ final class RateLimitConfigTest extends TestCase
         // Mirrors the project's actual active password_reset_request limits
         // (usersc/includes/rate_limits.php), not the framework's inflated
         // defaults in users/includes/rate_limits.php.
-        $this->assertSame(3, $rateLimits['registration_recovery_email']['email_max']);
+        $this->assertSame(4, $rateLimits['registration_recovery_email']['email_max']);
         $this->assertSame(3600, $rateLimits['registration_recovery_email']['email_window']);
     }
 
@@ -92,7 +92,7 @@ final class RateLimitConfigTest extends TestCase
         // open) — see the full rationale in usersc/includes/rate_limits.php.
         $this->assertSame(PHP_INT_MAX, $rateLimits['location_search']['ip_max']);
         $this->assertSame(60, $rateLimits['location_search']['ip_window']);
-        $this->assertSame(1000, $rateLimits['location_search']['total_max']);
+        $this->assertSame(1500, $rateLimits['location_search']['total_max']);
         $this->assertSame(300, $rateLimits['location_search']['total_window']);
     }
 
@@ -129,9 +129,9 @@ final class RateLimitConfigTest extends TestCase
         // feedback_submission). Sized generously because every transactional
         // send produces 2-3 webhook calls within seconds from a small, shared
         // set of Brevo egress IPs; total_max is the real backstop.
-        $this->assertSame(500, $rateLimits['brevo_webhook']['ip_max']);
+        $this->assertSame(750, $rateLimits['brevo_webhook']['ip_max']);
         $this->assertSame(300, $rateLimits['brevo_webhook']['ip_window']);
-        $this->assertSame(2000, $rateLimits['brevo_webhook']['total_max']);
+        $this->assertSame(3000, $rateLimits['brevo_webhook']['total_max']);
         $this->assertSame(300, $rateLimits['brevo_webhook']['total_window']);
         $this->assertArrayNotHasKey('user_max', $rateLimits['brevo_webhook']);
         $this->assertArrayNotHasKey('user_window', $rateLimits['brevo_webhook']);
@@ -169,11 +169,11 @@ final class RateLimitConfigTest extends TestCase
         // attacker grinding many different candidate codes, since each guess
         // is a fresh token and therefore a fresh bucket — ip_max and
         // total_max are the backstops for that broader volume threat.
-        $this->assertSame(50, $rateLimits['verification_code_attempt']['ip_max']);
+        $this->assertSame(75, $rateLimits['verification_code_attempt']['ip_max']);
         $this->assertSame(300, $rateLimits['verification_code_attempt']['ip_window']);
-        $this->assertSame(10, $rateLimits['verification_code_attempt']['token_max']);
+        $this->assertSame(15, $rateLimits['verification_code_attempt']['token_max']);
         $this->assertSame(1800, $rateLimits['verification_code_attempt']['token_window']);
-        $this->assertSame(200, $rateLimits['verification_code_attempt']['total_max']);
+        $this->assertSame(300, $rateLimits['verification_code_attempt']['total_max']);
         $this->assertSame(300, $rateLimits['verification_code_attempt']['total_window']);
     }
 
@@ -209,9 +209,9 @@ final class RateLimitConfigTest extends TestCase
         // webhook carries no UserSpice session, so there is no user
         // identifier to key on (same shape as brevo_webhook and
         // feedback_submission).
-        $this->assertSame(10, $rateLimits['brevo_webhook_auth_failure']['ip_max']);
+        $this->assertSame(15, $rateLimits['brevo_webhook_auth_failure']['ip_max']);
         $this->assertSame(300, $rateLimits['brevo_webhook_auth_failure']['ip_window']);
-        $this->assertSame(100, $rateLimits['brevo_webhook_auth_failure']['total_max']);
+        $this->assertSame(150, $rateLimits['brevo_webhook_auth_failure']['total_max']);
         $this->assertSame(300, $rateLimits['brevo_webhook_auth_failure']['total_window']);
         $this->assertArrayNotHasKey('user_max', $rateLimits['brevo_webhook_auth_failure']);
         $this->assertArrayNotHasKey('user_window', $rateLimits['brevo_webhook_auth_failure']);
