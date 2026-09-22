@@ -161,10 +161,11 @@ Promise.all([
   );
   console.log('Vendored DataTables (core, fixedheader, responsive) assets.');
 
-  // Generate VersaTiles Colorful style JSON (v6 API: colorful() was replaced by
+  // Generate VersaTiles style JSON (v6 API: colorful() was replaced by
   // osm({ theme: 'colorful' }) — see node_modules/@versatiles/style/API_DESIGN.md,
-  // "Migration from v5". v5's basics sprite sheet/path was retired on
-  // tiles.versatiles.org; v6 publishes only the renamed "base" sheet.
+  // "Migration from v5"). tiles.versatiles.org retired the v5 "basics" sprite
+  // sheet; the current sheet is /assets/sprites/base.{json,png} (v6 emits the
+  // extensionless ".../sprites/base" — MapLibre appends .json/@2x.png itself).
   const { osm } = await import('@versatiles/style');
   const style = osm({ urls: { base: 'https://tiles.versatiles.org' }, text: { language: 'en' }, theme: 'colorful' });
   fs.writeFileSync('usersc/js/versatiles-colorful.json', JSON.stringify(style));
