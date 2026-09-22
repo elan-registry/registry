@@ -179,7 +179,16 @@ Promise.all([
   // before handing it to osm(): this makes osm() inline the source instead
   // of referencing the TileJSON URL, matching v5's behavior of embedding an
   // already-absolute tile template directly in the generated style.
-  const osmTileJson = await fetch(`${VERSATILES_BASE}/tiles/osm/tiles.json`).then((r) => r.json());
+  //
+  // Per ADR-018, this script runs synchronously on the production host on
+  // every deploy, and a failed build correctly halts the deploy (see the
+  // top-level .catch() below) — but a *hung* connection to this new
+  // third-party dependency would stall an otherwise-unrelated deploy
+  // indefinitely rather than fail fast. Bound it with a timeout so a slow
+  // tiles.versatiles.org degrades to a loud build failure instead.
+  const osmTileJson = await fetch(`${VERSATILES_BASE}/tiles/osm/tiles.json`, {
+    signal: AbortSignal.timeout(10000),
+  }).then((r) => r.json());
   osmTileJson.tiles = osmTileJson.tiles.map((t) => (/^https?:\/\//.test(t) ? t : VERSATILES_BASE + t));
   const style = osm({ urls: { base: VERSATILES_BASE, osm: osmTileJson }, text: { language: 'en' }, theme: 'colorful' });
   fs.writeFileSync('usersc/js/versatiles-colorful.json', JSON.stringify(style));
