@@ -134,6 +134,27 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'Owner record could not be loaded.');
         }
 
+        // `noowner` is a real, live users row (the GDPR-erasure reassignment
+        // target — see CarAdministrationService::SYSTEM_ACCOUNT_USERNAME), so
+        // the null check above does not catch it: Owner::data() loads it
+        // successfully. CarRepository::findVerificationEligible()'s SQL
+        // excludes it via `users.username != 'noowner'`, but
+        // VerificationEligibility::skipReason() (the PHP-side re-check used by
+        // the admin manual-send path) has no join to check this and relies on
+        // this method to enforce it instead — see that class's docblock. Without
+        // this check, a `noowner` car whose ->email happens to be non-blank
+        // (contactableEmail() normally blanks it, but that is a side effect of
+        // an unrelated method, not an ownership guarantee) would email an
+        // erased owner's last-known address.
+        if (($owner->username ?? '') === 'noowner') {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: car %d is owned by the noowner system account; send skipped',
+                $carId
+            ));
+
+            return SendResult::failed($carId, 'Car has no live owner.');
+        }
+
         // Scope A — durable new code BEFORE the network call.
         $this->repo->beginTransaction();
 

@@ -97,9 +97,39 @@ final class CarVerificationSendServiceTest extends TestCase
         $db->method('count')->willReturn(1);
         $db->method('first')->willReturn((object) [
             'id' => $userId,
+            'username' => 'realowner',
             'fname' => 'Owner',
             'lname' => 'Test',
             'email' => 'owner@example.com',
+            'city' => null,
+            'state' => null,
+            'country' => null,
+            'lat' => null,
+            'lon' => null,
+            'website' => null,
+        ]);
+
+        return $db;
+    }
+
+    /**
+     * A DatabaseInterface double simulating Owner::find() resolving to the
+     * `noowner` GDPR-erasure system account — a real, live users row (so the
+     * "owner cannot be loaded" path does NOT catch this case; see sendOne()'s
+     * own comment on this check).
+     */
+    private function makeNoownerAccountDb(int $userId = 1): object
+    {
+        $db = $this->createStub(DatabaseInterface::class);
+        $db->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->method('first')->willReturn((object) [
+            'id' => $userId,
+            'username' => 'noowner',
+            'fname' => 'No',
+            'lname' => 'Owner',
+            'email' => 'noowner@invalid',
             'city' => null,
             'state' => null,
             'country' => null,
@@ -491,6 +521,33 @@ final class CarVerificationSendServiceTest extends TestCase
         $this->assertNotNull($result->reason);
         $this->assertStringContainsStringIgnoringCase('owner', $result->reason);
         $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent when the owner cannot be loaded');
+    }
+
+    /**
+     * The `noowner` GDPR-reassignment account is a real, live users row, so
+     * it is NOT caught by the null-owner check above — findVerificationEligible()'s
+     * SQL excludes it via a join this class does not have, so sendOne() must
+     * enforce it itself (see that method's own comment, and
+     * VerificationEligibility's docblock, which documents this as the
+     * downstream enforcement point for the PHP-side re-check).
+     */
+    public function testSendOneReturnsFailedWhenOwnerIsNoownerSystemAccount(): void
+    {
+        $GLOBALS['hookTestDb'] = $this->makeNoownerAccountDb();
+
+        $carData = $this->eligibleCar();
+
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('updateCar');
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame(100, $result->carId);
+        $this->assertNotNull($result->reason);
+        $this->assertStringContainsStringIgnoringCase('owner', $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent to the noowner system account');
     }
 
     // ------------------------------------------------------------------

@@ -33,8 +33,10 @@ use ElanRegistry\Exceptions\CarValidationException;
  * exclusion) are deliberately NOT duplicated here: they need a join this
  * class has no row for. They stay enforced downstream —
  * {@see CarVerificationSendService::sendOne()} loads the owner and returns a
- * failure result when the users row is gone, which lands in the report's
- * Failed section rather than Skipped.
+ * failure result both when the users row is gone AND when it resolves to the
+ * `noowner` system account (a live row, so the "gone" case alone does not
+ * catch it — see that method's own comment). Either way this lands in the
+ * report's Failed section rather than Skipped.
  *
  * @package ElanRegistry\Car
  * @since v2.30.4
