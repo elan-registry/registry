@@ -18,6 +18,61 @@ test.describe('Maps and Charts', () => {
     await expect(canvas).toBeAttached({ timeout: 15000 });
   });
 
+  // A map container + canvas existing (the test above) is necessary but not
+  // sufficient: MapLibre creates both immediately on construction, before any
+  // tile has loaded, so a style whose sources 404 still passes that test with
+  // a visibly blank map. Assert on the actual tile/sprite/glyph network
+  // responses instead.
+  //
+  // The specific incident this guards against: osm()'s default urls.osm
+  // (a URL string) makes @versatiles/style emit a live {type, url} reference
+  // to tiles.versatiles.org's TileJSON, whose own "tiles" array is
+  // root-relative ("/tiles/osm/{z}/{x}/{y}"). MapLibre resolves that
+  // relative template against the *page's* origin, not the TileJSON's, so
+  // every actual tile request went to this app's own domain
+  // (elanregistry.org/tiles/osm/{z}/{x}/{y}) and 404'd there — never to
+  // tiles.versatiles.org at all. A check that only inspects
+  // tiles.versatiles.org responses (the TileJSON/sprite/glyph fetches, which
+  // succeed) would pass vacuously with the map still blank; this is why the
+  // same-origin branch below is required, not incidental.
+  test('statistics page map tiles and sprites load successfully', async ({ page }) => {
+    const versatilesResponses = [];
+    const misdirectedTileRequests = [];
+    page.on('response', (response) => {
+      const url = response.url();
+      let hostname;
+      try {
+        hostname = new URL(url).hostname;
+      } catch (_) {
+        return; // not a URL we can classify (e.g. data: URIs)
+      }
+      const isVersatiles = hostname === 'tiles.versatiles.org' || hostname.endsWith('.tiles.versatiles.org');
+      if (isVersatiles) {
+        versatilesResponses.push({ url, status: response.status() });
+      } else if (/\/tiles\/osm\/\d+\/\d+\/\d+/.test(url)) {
+        // A tile-shaped path that did NOT go to tiles.versatiles.org means
+        // the style's tile template resolved against the wrong origin.
+        misdirectedTileRequests.push({ url, status: response.status() });
+      }
+    });
+
+    await page.goto('app/owner/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+
+    // At least one tile/sprite/glyph request must actually have fired —
+    // otherwise this assertion would pass vacuously on a style that never
+    // attempted to load anything.
+    expect(versatilesResponses.length, 'Expected at least one request to tiles.versatiles.org').toBeGreaterThan(0);
+
+    const failed = versatilesResponses.filter((r) => r.status >= 400);
+    expect(failed, `versatiles.org requests must not 404/error: ${JSON.stringify(failed)}`).toHaveLength(0);
+
+    expect(
+      misdirectedTileRequests,
+      `Tile requests must go to tiles.versatiles.org, not this app's own origin: ${JSON.stringify(misdirectedTileRequests)}`
+    ).toHaveLength(0);
+  });
+
   test('statistics page marker data is inlined as JSON', async ({ page }) => {
     await page.goto('app/owner/reports/statistics.php');
     await page.waitForLoadState('networkidle');
