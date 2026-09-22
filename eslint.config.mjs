@@ -249,6 +249,8 @@ export default [
                 clearTimeout: "readonly",
                 Promise: "readonly",
                 URL: "readonly",
+                fetch: "readonly",
+                AbortSignal: "readonly",
                 // Browser globals (accessed inside page.evaluate() callbacks)
                 window: "readonly",
                 document: "readonly",
