@@ -174,22 +174,25 @@ $rateLimits['admin_ajax_write']['total_window'] = 300;
 // a real ip_max is ever set here, at which point size it deliberately rather
 // than assume 300 was intended for it too.
 //
-// total_max/total_window raised from 10/60 to 1000/300 (#2122) — the
-// original value refused a real registrant typing a full address through
-// the D010 manual-picker fallback after 11 debounced requests in 50s. #2122
-// itself suggested "the low hundreds" as sufficient and explicitly scoped
-// #1952 (below) as irrelevant to sizing this fix. This deliberately goes
-// higher than that suggestion: production's rate-limit buckets are
-// currently per-Cloudflare-edge-node, not per-visitor (#1952, open) —
-// several concurrent registrants behind one edge node share this bucket
-// today, which #2122's own "low hundreds" estimate did not account for.
-// Revisit downward once #1952 lands and buckets become per-visitor. Do NOT
-// raise to cars_list's old 10000/300s: that value was removed by #2018
-// after driving explosive `us_rate_limits` row growth under Playwright/
-// integration-test load specifically (3.1M+ rows in the local test DB per
-// #2018's own report) — not a proven production-safe ceiling to aim near:
-// this value is deliberately an order of magnitude below it as a margin of
-// safety, not because 10000 was shown unsafe in production traffic.
+// total_max/total_window raised from 10/60 to 1000/300 (#2122), then to
+// 1500/300 by the later blanket 50% raise (46ce3cb8) that fixed
+// production false-positive throttling across several browsing-shaped
+// limits. The original 10/60 value refused a real registrant typing a full
+// address through the D010 manual-picker fallback after 11 debounced
+// requests in 50s. #2122 itself suggested "the low hundreds" as sufficient
+// and explicitly scoped #1952 (below) as irrelevant to sizing this fix;
+// 1000 already went higher than that suggestion because production's
+// rate-limit buckets are currently per-Cloudflare-edge-node, not
+// per-visitor (#1952, open) — several concurrent registrants behind one
+// edge node share this bucket today, which #2122's own "low hundreds"
+// estimate did not account for. Revisit downward once #1952 lands and
+// buckets become per-visitor. Do NOT raise to cars_list's old 10000/300s:
+// that value was removed by #2018 after driving explosive `us_rate_limits`
+// row growth under Playwright/integration-test load specifically (3.1M+
+// rows in the local test DB per #2018's own report) — not a proven
+// production-safe ceiling to aim near: this value is deliberately an order
+// of magnitude below it as a margin of safety, not because 10000 was shown
+// unsafe in production traffic.
 $rateLimits['location_search']['ip_max'] = PHP_INT_MAX;
 $rateLimits['location_search']['ip_window'] = 60;
 $rateLimits['location_search']['total_max'] = 1500;

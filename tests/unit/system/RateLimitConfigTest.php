@@ -83,12 +83,13 @@ final class RateLimitConfigTest extends TestCase
         // identifier (IP, for anonymous callers) and is the limit that
         // actually governs anonymous traffic, shared by searchLocation() and
         // reverseGeocode() under the same 'location_search' action key.
-        // total_max/total_window raised 10/60 -> 1000/300 (#2122): the
-        // original value refused a real registrant's typed address after 11
+        // total_max/total_window raised 10/60 -> 1000/300 (#2122), then to
+        // 1500/300 by the later blanket 50% raise (46ce3cb8): the original
+        // value refused a real registrant's typed address after 11
         // debounced requests in 50s. #2122 itself suggested "the low
-        // hundreds" and scoped #1952 as irrelevant to sizing; this
-        // deliberately goes higher because production's rate-limit buckets
-        // are currently per-Cloudflare-edge-node, not per-visitor (#1952,
+        // hundreds" and scoped #1952 as irrelevant to sizing; 1000 already
+        // went higher because production's rate-limit buckets are
+        // currently per-Cloudflare-edge-node, not per-visitor (#1952,
         // open) — see the full rationale in usersc/includes/rate_limits.php.
         $this->assertSame(PHP_INT_MAX, $rateLimits['location_search']['ip_max']);
         $this->assertSame(60, $rateLimits['location_search']['ip_window']);

@@ -39,7 +39,7 @@ use ElanRegistry\Exceptions\CarValidationException;
  * report's Failed section rather than Skipped.
  *
  * @package ElanRegistry\Car
- * @since v2.30.4
+ * @since v2.30.3
  * @see https://github.com/elan-registry/registry/issues/1884
  */
 final class VerificationEligibility

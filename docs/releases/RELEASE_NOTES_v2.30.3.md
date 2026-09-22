@@ -3,13 +3,14 @@
 **Release Date:** September 13, 2026
 **Type:** Minor Release - Verification System Refresh - Send Pipeline Live
 
-Real verification email ships, self-monitored, pausable — the send cron with its own guard, EmailTemplate composition, one-click opt-out, and healthchecks.io monitoring on the job it depends on existing.
+Real verification email ships, self-monitored, pausable — the send cron with its own guard, EmailTemplate composition, one-click opt-out, and admin-visible run-outcome counts on the job it depends on existing.
 
 ## User-Facing Changes
 
 - [#1881](https://github.com/elan-registry/registry/issues/1881) — Owners can verify or report a car sold from a public link with no login required.
 - [#1882](https://github.com/elan-registry/registry/issues/1882) — Verification emails now carry the same branded look as every other system email.
 - [#1883](https://github.com/elan-registry/registry/issues/1883) — Owners can opt out of verification emails with one click.
+- [#2105](https://github.com/elan-registry/registry/issues/2105) — Owners who complained to their mail provider about a verification email no longer receive another one.
 
 ## Admin-Facing Changes
 
@@ -32,6 +33,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#1884](https://github.com/elan-registry/registry/issues/1884) — Rework send_email.php into a preview/send flow with corrected Mark Bounced semantics.
 - [#1885](https://github.com/elan-registry/registry/issues/1885) — Register `send_verification_batch` as a guarded cron job with dashboard Pause/Resume and editable batch size.
 - [#1922](https://github.com/elan-registry/registry/issues/1922) — Investigate and resolve sender-reputation issues ahead of the first live send.
+- [#1970](https://github.com/elan-registry/registry/issues/1970) — Remove the `isFresh()` placeholder note now that the send pipeline calls it.
 - [#1928](https://github.com/elan-registry/registry/issues/1928) — Hash cars.vericode before the first live verification batch.
 - [#1930](https://github.com/elan-registry/registry/issues/1930) — Remove `CarRepository::updateOwnerLastUpdated()` (zero production callers).
 - [#1991](https://github.com/elan-registry/registry/issues/1991) — Exclude cars with no owner or owned by the `noowner` system account from verification eligibility.
@@ -39,5 +41,6 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#2086](https://github.com/elan-registry/registry/issues/2086) — Add the missing suppression-sync admin status badge and refactor cron-job testing.
 - [#2087](https://github.com/elan-registry/registry/issues/2087) — Rate-limit Brevo webhook auth-failure logging to stop unbounded log-table growth.
 - [#2090](https://github.com/elan-registry/registry/issues/2090) — Correct `AbstractCronJob` documentation to state the verification-switch gate applies universally (no behavior change).
-- [#2122](https://github.com/elan-registry/registry/issues/2122) — Raise `location_search` rate limit from 10/60s to 1000/300s to allow normal registration form usage.
+- [#2105](https://github.com/elan-registry/registry/issues/2105) — Exclude `email_suppressed` cars from `findVerificationEligible()`, closing a gap that would have sent verification email to spam complainants.
+- [#2122](https://github.com/elan-registry/registry/issues/2122) — Raise `location_search` rate limit from 10/60s to 1000/300s (later 1500/300s) to allow normal registration form usage.
 - [#2129](https://github.com/elan-registry/registry/issues/2129) — Rename the `reconciliation` cron job identifier to `brevo_reconciliation` (data migration included).
