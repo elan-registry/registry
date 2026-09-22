@@ -167,7 +167,21 @@ Promise.all([
   // sheet; the current sheet is /assets/sprites/base.{json,png} (v6 emits the
   // extensionless ".../sprites/base" — MapLibre appends .json/@2x.png itself).
   const { osm } = await import('@versatiles/style');
-  const style = osm({ urls: { base: 'https://tiles.versatiles.org' }, text: { language: 'en' }, theme: 'colorful' });
+  const VERSATILES_BASE = 'https://tiles.versatiles.org';
+  // Passing urls.osm as a URL string makes osm() emit {type, url} — a live
+  // reference to the TileJSON MapLibre fetches at map load. That TileJSON's
+  // own "tiles" array is root-relative ("/tiles/osm/{z}/{x}/{y}"), which is
+  // non-compliant with the TileJSON 3.0.0 spec (tile URLs must be absolute)
+  // and which MapLibre 6.9.0 does not resolve against the TileJSON's own
+  // origin — it resolves against the *page's* origin instead, so every tile
+  // request 404s off the app's own domain. Work around it by fetching the
+  // TileJSON ourselves and resolving "tiles" to absolute URLs
+  // before handing it to osm(): this makes osm() inline the source instead
+  // of referencing the TileJSON URL, matching v5's behavior of embedding an
+  // already-absolute tile template directly in the generated style.
+  const osmTileJson = await fetch(`${VERSATILES_BASE}/tiles/osm/tiles.json`).then((r) => r.json());
+  osmTileJson.tiles = osmTileJson.tiles.map((t) => (/^https?:\/\//.test(t) ? t : VERSATILES_BASE + t));
+  const style = osm({ urls: { base: VERSATILES_BASE, osm: osmTileJson }, text: { language: 'en' }, theme: 'colorful' });
   fs.writeFileSync('usersc/js/versatiles-colorful.json', JSON.stringify(style));
   console.log('Generated usersc/js/versatiles-colorful.json');
 }).catch((err) => {
