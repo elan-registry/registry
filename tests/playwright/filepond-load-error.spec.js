@@ -29,6 +29,10 @@ const { ensureLoggedIn } = require('./auth-helper.js');
 
 const FAKE_IMAGE_FILENAME = 'fake-image-filepond-755.jpg';
 
+const BLOCKED_ON_2096_REASON = 'Blocked on #2096 - FilePond addFile() never rejects on a real ' +
+    'load-error with the pinned 4.32.12 version, so this app-level banner path is currently dead ' +
+    'code (see #2071)';
+
 const FETCH_IMAGES_RESPONSE = JSON.stringify({
     success: true,
     images: [{
@@ -116,6 +120,8 @@ test.describe('FilePond load error recovery (#755)', () => {
     });
 
     test('error banner appears when an existing photo fails to load', async ({ page }) => {
+        test.fail(true, BLOCKED_ON_2096_REASON);
+
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 
         const ready = await gotoEditFormWithFakeImages(page);
@@ -126,6 +132,8 @@ test.describe('FilePond load error recovery (#755)', () => {
     });
 
     test('submit button remains enabled after a photo load failure', async ({ page }) => {
+        test.fail(true, BLOCKED_ON_2096_REASON);
+
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 
         const ready = await gotoEditFormWithFakeImages(page);
@@ -137,6 +145,8 @@ test.describe('FilePond load error recovery (#755)', () => {
     });
 
     test('removing the failed photo item leaves the form submittable', async ({ page }) => {
+        test.fail(true, BLOCKED_ON_2096_REASON);
+
         await page.route('**/' + FAKE_IMAGE_FILENAME, (route) => route.abort());
 
         const ready = await gotoEditFormWithFakeImages(page);

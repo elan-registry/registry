@@ -4,7 +4,7 @@ test.describe('Elan Registry - Menu Verification (Logged In)', () => {
   // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'admin') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the admin project');
     }
   });
 
@@ -83,7 +83,7 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
   // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'admin') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the admin project');
     }
   });
 
@@ -152,7 +152,7 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
   // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'admin') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the admin project');
     }
   });
 
@@ -191,7 +191,7 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
   // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'admin') {
-      testInfo.skip();
+      testInfo.skip(true, 'Only runs under the admin project');
     }
   });
 

@@ -180,6 +180,7 @@ npm run build                   # Minify app/assets/js/, app/assets/css/, app/ad
 # Linting
 npm run lint                    # ESLint for JavaScript
 npm run lint:fix                # ESLint with auto-fix
+npm run test:eslint-rules       # RuleTester coverage for local ESLint rules (eslint-rules/)
 
 # Local Playwright tests (requires MAMP at localhost:9999)
 npm run playwright:install      # Install browsers
@@ -272,6 +273,9 @@ When adding, moving, removing, or renaming any page, update tests **in the same 
   variation (missing local credentials, absent fixture data), use the two-arg
   `test.skip(condition, reason)` form with `reason` naming the actual cause,
   not the symptom — this reports as `skipped` in CI, not a false `passed`.
+  The local `localRules/require-skip-reason` ESLint rule enforces the
+  two-argument form automatically (flags `test.skip(...)` or
+  `testInfo.skip(...)` calls with fewer than 2 arguments).
 
 Run `npm run test:e2e` to verify public pages against production. See `playwright.config.prod.js` for config.
 

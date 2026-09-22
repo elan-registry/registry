@@ -1,6 +1,6 @@
 // tests/playwright/ui-consistency.test.js
 const { test, expect } = require('@playwright/test');
-const { navigateAndWait, validateCardStructure, NO_CARDS_ERROR, waitForDataTables } = require('./auth-helper.js');
+const { navigateAndWait, validateCardStructure, NO_CARDS_ERROR, waitForDataTables, assertNoConsoleErrors } = require('./auth-helper.js');
 const { CAR_ID_STANDARD } = require('./fixtures.js');
 
 test.describe('UI Consistency After Style Refactoring', () => {
@@ -120,25 +120,39 @@ test.describe('UI Consistency After Style Refactoring', () => {
   });
 
   test('JavaScript files load without errors', async ({ page }) => {
-    const consoleErrors = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
-      }
-    });
-    
-    await page.goto('app/owner/reports/statistics.php');
-    await page.waitForTimeout(3000); // Wait for all scripts to load
-    
-    // Filter out known acceptable errors for unauthenticated local visits
-    const criticalErrors = consoleErrors.filter(error =>
-      !error.includes('Google Maps') &&
-      !error.includes('API key') &&
-      !error.includes('404') && // Optional resources that may not exist locally
-      !error.includes('403')    // Auth-gated sub-resources on public pages
-    );
+    await assertNoConsoleErrors(page, 'app/owner/reports/statistics.php', 'statistics.php');
+  });
 
-    expect(criticalErrors, `Console errors on statistics.php: ${criticalErrors.join(' | ')}`).toHaveLength(0);
+  // Issue #1778 — dedicated console-error coverage for three static reference
+  // pages that previously only had incidental page-title-loop coverage. See
+  // assertNoConsoleErrors() in auth-helper.js for why status + full-render
+  // assertions are needed together (chassis-validation.php has a history of
+  // mid-render fatals: d8cb618d, 8b81ab57). Each test below also asserts a
+  // row/card count so a silently truncated loop fails, not just a hard fatal.
+  test('docs/car-stories.php has no console errors and renders all story cards', async ({ page }) => {
+    await assertNoConsoleErrors(page, 'docs/car-stories.php', 'car-stories.php');
+    // $storyCards has 3 entries — count proves every card rendered, not just the last.
+    await expect(page.locator('.row.mt-4 .registry-card')).toHaveCount(3);
+    await expect(page.getByRole('heading', { name: 'Shapecraft Elan Story' })).toBeVisible();
+  });
+
+  test('docs/reference/chassis-validation.php has no console errors and renders race-car formats', async ({ page }) => {
+    await assertNoConsoleErrors(page, 'docs/reference/chassis-validation.php', 'chassis-validation.php');
+    // $validationRules['race_cars'] has 4 entries — count proves every
+    // iteration ran (the 'other_years' branch is keyed by year match, not
+    // loop position, so this is the actual proof of full iteration, not the
+    // presence of 26-R-08 alone). The "Validation Override" heading renders
+    // only after the loop's endforeach, proving the loop exited too.
+    await expect(page.locator('.card.border-left-dark')).toHaveCount(4);
+    await expect(page.getByRole('heading', { name: 'Validation Override' })).toBeVisible();
+  });
+
+  test('docs/reference/paint-colors.php has no console errors and renders the full color chart', async ({ page }) => {
+    await assertNoConsoleErrors(page, 'docs/reference/paint-colors.php', 'paint-colors.php');
+    // $officialColors has 27 entries — count proves every row rendered, not
+    // just that the loop reached "Laurel Green" (the true last entry).
+    await expect(page.locator('.card:has(#official-colors) table tbody tr')).toHaveCount(27);
+    await expect(page.getByText('Laurel Green')).toBeVisible();
   });
 
   test('images and assets load correctly', async ({ page }) => {
