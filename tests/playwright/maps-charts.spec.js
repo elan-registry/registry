@@ -40,7 +40,14 @@ test.describe('Maps and Charts', () => {
     const misdirectedTileRequests = [];
     page.on('response', (response) => {
       const url = response.url();
-      if (url.includes('tiles.versatiles.org')) {
+      let hostname;
+      try {
+        hostname = new URL(url).hostname;
+      } catch (_) {
+        return; // not a URL we can classify (e.g. data: URIs)
+      }
+      const isVersatiles = hostname === 'tiles.versatiles.org' || hostname.endsWith('.tiles.versatiles.org');
+      if (isVersatiles) {
         versatilesResponses.push({ url, status: response.status() });
       } else if (/\/tiles\/osm\/\d+\/\d+\/\d+/.test(url)) {
         // A tile-shaped path that did NOT go to tiles.versatiles.org means
