@@ -91,11 +91,15 @@ $rateLimits['password_reset_submit']['token_window'] = 1800;
 $rateLimits['password_reset_submit']['total_max'] = 150;
 $rateLimits['password_reset_submit']['total_window'] = 300;
 
-$rateLimits['verification_code_attempt']['ip_max'] = 75;
+// Deliberately NOT part of the blanket 50% rate-limit raise: this is a
+// brute-force ceiling on guessing a bearer-credential vericode, not a
+// browsing limit sized for false-positive throttling. Restored to its
+// original, deliberately tight values (#2108).
+$rateLimits['verification_code_attempt']['ip_max'] = 50;
 $rateLimits['verification_code_attempt']['ip_window'] = 300;
-$rateLimits['verification_code_attempt']['token_max'] = 15;
+$rateLimits['verification_code_attempt']['token_max'] = 10;
 $rateLimits['verification_code_attempt']['token_window'] = 1800;
-$rateLimits['verification_code_attempt']['total_max'] = 300;
+$rateLimits['verification_code_attempt']['total_max'] = 200;
 $rateLimits['verification_code_attempt']['total_window'] = 300;
 
 $rateLimits['registration_attempt']['ip_max'] = 15;
@@ -221,8 +225,11 @@ $rateLimits['brevo_webhook']['total_window'] = 300;
 // above (legitimate shared-IP Brevo traffic needing headroom), a stream of
 // auth failures from one IP is itself the abuse signal, not a false-positive
 // risk to guard against.
-$rateLimits['brevo_webhook_auth_failure']['ip_max'] = 15;
+// Also deliberately NOT part of the blanket 50% raise below, for the same
+// reason stated above this key: a stream of auth failures from one IP is
+// itself the abuse signal. Restored to its original values.
+$rateLimits['brevo_webhook_auth_failure']['ip_max'] = 10;
 $rateLimits['brevo_webhook_auth_failure']['ip_window'] = 300;
-$rateLimits['brevo_webhook_auth_failure']['total_max'] = 150;
+$rateLimits['brevo_webhook_auth_failure']['total_max'] = 100;
 $rateLimits['brevo_webhook_auth_failure']['total_window'] = 300;
 
