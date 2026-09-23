@@ -172,7 +172,8 @@ Promise.all([
   // reference to the TileJSON MapLibre fetches at map load. That TileJSON's
   // own "tiles" array is root-relative ("/tiles/osm/{z}/{x}/{y}"), which is
   // non-compliant with the TileJSON 3.0.0 spec (tile URLs must be absolute)
-  // and which MapLibre 6.9.0 does not resolve against the TileJSON's own
+  // and which MapLibre (observed on 6.9.0; no fix listed through 6.10.0)
+  // does not resolve against the TileJSON's own
   // origin — it resolves against the *page's* origin instead, so every tile
   // request 404s off the app's own domain. Work around it by fetching the
   // TileJSON ourselves and resolving "tiles" to absolute URLs
