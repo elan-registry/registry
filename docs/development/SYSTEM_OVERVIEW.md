@@ -183,9 +183,12 @@ relying on the page it is embedded in — so an editor cannot reach a destructiv
 script even if a page were mis-registered.
 
 **Car verification** — the annual "is this still correct?" prompt to
-owners. Removed in #1613 (was broken end to end and unreachable from any
-navigation); see [§6](#6-what-is-deliberately-not-built). A rebuild is
-planned (#1155/#1156).
+owners. The original implementation was removed in #1613 (was broken end to
+end and unreachable from any navigation). The rebuild's send pipeline
+shipped in v2.30.3 — a real, working, unattended cron send exists — but the
+job ships paused (`er_cron_job_runs.enabled = 0`) and the site-wide feature
+switch defaults off; an admin must explicitly turn both on before any real
+verification email goes out. See [§6](#6-what-is-deliberately-not-built).
 
 ### 3.4. System — runs without a person
 
@@ -230,14 +233,21 @@ request is created and **never read anywhere in production code**; there is no
 email-link possession-proof flow. Requests carry a 30-day window, and nothing
 enforces expiry automatically — admin queries filter on the timestamp.
 
-**Verification is what keeps the data true — and it is not running.** The
-intended cycle is: periodically email an owner, they confirm / mark sold /
-update, and the record's freshness clock resets. In practice the cycle has been
-broken for years (see §6), which means every other feature reads from records
-that nothing re-checks.
-Since v2.30.0 (#1872) the scheduled-job transport — UserSpice's `cron.php`,
-triggered every 10 minutes on every environment — does exist; what is missing
-is the jobs, not the scheduler (see
+**Verification is what keeps the data true — and it is built but not turned
+on.** The intended cycle is: periodically email an owner, they confirm / mark
+sold / update, and the record's freshness clock resets. That cycle was
+broken for years (see §6) and its send pipeline shipped in v2.30.3 — the
+cron job, the email composition, the public confirm/sold/opt-out landing
+page, and the eligibility rules (staleness, a 60-day re-send cooldown, a
+2-sends-per-year cap, suppression/bounce exclusion) all exist and are
+exercised by an integration test suite. What is missing is an admin turning
+it on: the job ships paused (`er_cron_job_runs.enabled = 0`) and the
+site-wide feature switch defaults off (`er_verification_settings.enabled = 0`),
+so until both are explicitly enabled, every other feature still reads from
+records that nothing re-checks — the same practical state as before v2.30.3,
+by deliberate choice rather than by gap. Since v2.30.0 (#1872) the
+scheduled-job transport — UserSpice's `cron.php`, triggered every 10 minutes
+on every environment — exists independently of this feature (see
 [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager)).
 
 **Deletion preserves the car, not the person.** Because the registry's value is
