@@ -24,6 +24,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#2087](https://github.com/elan-registry/registry/issues/2087) — Webhook auth-failure logging is now rate-limited per IP, so spammed invalid tokens can no longer grow the logs table unbounded. The 401 rejection itself is always returned regardless of rate-limit state.
 - [#2090](https://github.com/elan-registry/registry/issues/2090) — Documentation now states plainly that every `AbstractCronJob` subclass is gated by the site-wide verification switch, not just Brevo-driven jobs — no behavior change.
 - [#2122](https://github.com/elan-registry/registry/issues/2122) — The join form's location picker no longer refuses a normal typing session with "Rate limit exceeded" — a real registrant was locked out of registration by a search-rate limit sized for abuse, not ordinary use.
+- [#2148](https://github.com/elan-registry/registry/issues/2148) — The Verification tab now shows a distinct "Last run failed" badge and a cron-failure log summary, so a crashed nightly send no longer looks identical to a healthy one.
 
 ## Issues Resolved
 
@@ -44,3 +45,4 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#2105](https://github.com/elan-registry/registry/issues/2105) — Exclude `email_suppressed` cars from `findVerificationEligible()`, closing a gap that would have sent verification email to spam complainants.
 - [#2122](https://github.com/elan-registry/registry/issues/2122) — Raise `location_search` rate limit from 10/60s to 1000/300s (later 1500/300s) to allow normal registration form usage.
 - [#2129](https://github.com/elan-registry/registry/issues/2129) — Rename the `reconciliation` cron job identifier to `brevo_reconciliation` (data migration included).
+- [#2148](https://github.com/elan-registry/registry/issues/2148) — Add `er_cron_job_runs.last_failure_at` and a failure-log summary so a crashed cron job is distinguishable from a healthy one on the admin dashboard.
