@@ -19,8 +19,8 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('integration')]
 final class CarDeletionTest extends IntegrationTestCase
 {
-    private $testCarId;
-    private $testUserId;
+    private int $testCarId;
+    private int $testUserId;
 
     protected function setUp(): void
     {
@@ -100,6 +100,15 @@ final class CarDeletionTest extends IntegrationTestCase
      *
      * Verifies the trigger-only write path introduced in #593: the DELETE trigger
      * must fire once and no application-level pre-delete insert must add a second row.
+     *
+     * Also the regression guard for the admin deletion path in app/admin/index.php:
+     * prior to #956 that page issued raw DELETE statements directly against cars;
+     * #956 routed it through Car::delete() / CarAdministrationService::delete(),
+     * which handles the transaction, cars cleanup, and audit trail. A second
+     * DELETE row would indicate an accidental application-layer re-introduction
+     * of a pre-delete INSERT.
+     *
+     * @see #593, #930, #931, #956
      */
     #[Group('fast')]
     public function testDeleteCarCreatesAuditTrail(): void
@@ -115,7 +124,12 @@ final class CarDeletionTest extends IntegrationTestCase
             "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'DELETE'",
             [$carId]
         );
-        $this->assertSame(1, $historyQuery->count(), 'Expected exactly one DELETE row in cars_hist');
+        $this->assertSame(
+            1,
+            $historyQuery->count(),
+            'Expected exactly one DELETE row in cars_hist for the Car::delete() path '
+                . '(also used by app/admin/index.php)'
+        );
     }
 
     /**

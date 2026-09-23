@@ -11,13 +11,15 @@ use PHPUnit\Framework\Attributes\Group;
  * Behavioral (real-process, real-DB, real-HTTP-shaped-request) tests for
  * app/api/admin/verification-toggle.php (#1926).
  *
- * Complements VerificationToggleEndpointTest's source-text assertions (unit
- * tier) and VerificationSettingsTest's exhaustive class-level coverage of the
- * asymmetric gate with the actual runtime behavior the plan's Test Plan
- * calls for, exercised at the HTTP layer: a genuine non-admin 403 with the
- * setting left unchanged, a genuine 422 naming Brevo when enabling while
- * unready, and — the single most important non-inversion case — a genuine
- * success response when disabling while Brevo is broken.
+ * Complements VerificationSettingsTest's exhaustive class-level (unit tier)
+ * coverage of the asymmetric gate with the actual runtime behavior the
+ * plan's Test Plan calls for, exercised at the HTTP layer: a genuine
+ * non-admin 403 with the setting left unchanged, a genuine 422 naming Brevo
+ * when enabling while unready, and — the single most important
+ * non-inversion case — a genuine success response when disabling while
+ * Brevo is broken. This class is also the only home of the endpoint's
+ * wrong-typed-value coverage (see the section below); there is no separate
+ * unit-tier test of verification-toggle.php.
  *
  * Invoked in-process via require (not a separate subprocess per call): the
  * endpoint file's own `require_once '../../../users/init.php'` is executed

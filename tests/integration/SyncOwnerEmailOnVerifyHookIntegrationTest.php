@@ -9,6 +9,7 @@ use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Owner;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\PassThroughDatabase;
 
 /**
  * Integration tests for #1958 (confirmed email change via verify.php wasn't
@@ -37,7 +38,6 @@ use PHPUnit\Framework\Attributes\Group;
  * @see usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php
  * @see usersc/classes/Owner.php Owner::syncOwnerFieldsToCars()
  * @see tests/integration/OwnerSyncOwnerFieldsToCarsTest.php
- * @see tests/integration/OwnerSyncOwnerFieldsToCarsFailureTest.php
  */
 #[Group('integration')]
 #[Group('owner')]
@@ -61,99 +61,37 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     }
 
     /**
-     * A DatabaseInterface proxy backed by the real connection, except that
+     * A PassThroughDatabase proxy backed by the real connection, except that
      * query() reports a database error for the specific
      * `UPDATE cars SET ... WHERE id = ? AND user_id = ?` call issued by
      * CarRepository::updateCarForOwner() — forcing that call to throw
      * CarDatabaseException, exactly as a genuine deadlock or constraint
-     * violation would. Mirrors
-     * OwnerSyncOwnerFieldsToCarsFailureTest::dbFailingUpdateCarForOwner()
-     * exactly; duplicated here (rather than shared) because that class is
-     * `final` with a private helper, and this suite deliberately covers the
-     * hook's own catch semantics rather than extending that class's fixture.
+     * violation would. Same sabotage as
+     * OwnerSyncOwnerFieldsToCarsTest::dbFailingOwnerScopedUpdate() with no
+     * per-car targeting; kept local because this suite covers the hook's own
+     * catch semantics rather than that class's fixture.
      */
     private function dbFailingUpdateCarForOwner(): DatabaseInterface
     {
-        $real = $this->db;
-        return new class ($real) implements DatabaseInterface {
+        return new class ($this->db) extends PassThroughDatabase {
             private bool $lastCallFailed = false;
 
-            public function __construct(private DatabaseInterface $real)
-            {
-            }
-
-            public function query(string $sql, array $params = []): self
+            public function query(string $sql, array $params = []): static
             {
                 $this->lastCallFailed = str_starts_with($sql, 'UPDATE cars SET')
                     && str_ends_with($sql, 'WHERE id = ? AND user_id = ?');
 
-                if (!$this->lastCallFailed) {
-                    $this->real->query($sql, $params);
-                }
+                return $this->lastCallFailed ? $this : parent::query($sql, $params);
+            }
 
-                return $this;
-            }
-            public function get(string $table, array $where): self|false
-            {
-                $result = $this->real->get($table, $where);
-                return $result === false ? false : $this;
-            }
-            public function insert(string $table, array $fields = [], bool $update = false): bool
-            {
-                return $this->real->insert($table, $fields, $update);
-            }
-            public function update(string $table, array|int $id, array $fields): bool
-            {
-                return $this->real->update($table, $id, $fields);
-            }
-            public function delete(string $table, array|int $where): self|false
-            {
-                $result = $this->real->delete($table, $where);
-                return $result === false ? false : $this;
-            }
             public function error(): bool
             {
                 return $this->lastCallFailed || $this->real->error();
             }
+
             public function errorString(): string
             {
                 return $this->lastCallFailed ? 'simulated deadlock' : $this->real->errorString();
-            }
-            public function errorInfo(): array
-            {
-                return $this->real->errorInfo();
-            }
-            public function count(): int
-            {
-                return $this->real->count();
-            }
-            public function first(bool $assoc = false): array|object
-            {
-                return $this->real->first($assoc);
-            }
-            public function results(bool $assoc = false): array
-            {
-                return $this->real->results($assoc);
-            }
-            public function lastId(): int
-            {
-                return $this->real->lastId();
-            }
-            public function beginTransaction(): bool
-            {
-                return $this->real->beginTransaction();
-            }
-            public function commit(): bool
-            {
-                return $this->real->commit();
-            }
-            public function rollBack(): bool
-            {
-                return $this->real->rollBack();
-            }
-            public function inTransaction(): bool
-            {
-                return $this->real->inTransaction();
             }
         };
     }
@@ -199,8 +137,9 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     /**
      * Confirms the negative path the hook's catch block exists for: when
      * syncOwnerFieldsToCars() throws (a genuine per-car UPDATE failure, not
-     * the row-count ambiguity — see OwnerSyncOwnerFieldsToCarsFailureTest's
-     * class docblock), it throws CarDatabaseException, which the hook's
+     * the row-count ambiguity — see
+     * OwnerSyncOwnerFieldsToCarsTest::testUpdateQueryFailureRollsBackAndPropagates()),
+     * it throws CarDatabaseException, which the hook's
      * first catch clause (OwnerDatabaseException | CarDatabaseException)
      * names explicitly. This proves that catch clause is reachable and
      * matches what syncOwnerFieldsToCars() can actually throw against a real

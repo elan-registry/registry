@@ -5,7 +5,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Owner;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -13,12 +12,17 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * The endpoint files (process-owner-search.php, process-owner-update.php,
  * process-owner-sync-location.php) call `send()` (which exits) so they
- * cannot be included in unit/integration tests directly. This class uses:
+ * cannot be included in unit/integration tests directly. This class tests the
+ * happy-path logic via the underlying Owner class and real database fixtures;
+ * the endpoints' requireAdminAjax() auth/CSRF guards are not exercised here.
  *
- * - Source-inspection for auth-guard and CSRF-guard contracts (pins that
- *   the guard code is present in each file).
- * - Behavioral integration tests for the happy-path logic via the underlying
- *   Owner class and real database fixtures.
+ * The guard pins (every app/admin/includes/{process,load}-*.php endpoint calls
+ * requireAdminAjax() or securePage(), and requireAdminAjax() performs the
+ * admin-role and CSRF checks) live in tests/unit/security/AdminAjaxGuardTest.php.
+ * HTTP-level rejection is tested only for process-user-details.php
+ * (tests/playwright/ajax-endpoints.spec.js:814 unauthenticated,
+ * tests/playwright/e2e/ajax-endpoints-non-admin.spec.js:34 non-admin); the
+ * three owner-management endpoints have no HTTP-level guard test.
  */
 #[Group('integration')]
 #[Group('admin')]
@@ -73,63 +77,6 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
             throw new \RuntimeException("createTestProfile: insert failed for user_id={$userId}");
         }
         $this->createdProfileIds[] = (int) $row->id;
-    }
-
-    // =========================================================================
-    // Auth-guard and CSRF-guard source-inspection tests
-    // =========================================================================
-
-    /**
-     * requireAdminAjax() in custom_functions.php must contain both the admin
-     * check and CSRF validation so the chain of trust is intact.
-     */
-    public function testRequireAdminAjaxHelperContainsSecurityChecks(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../usersc/includes/custom_functions.php');
-        $this->assertNotFalse($content, 'Could not read custom_functions.php');
-        $this->assertStringContainsString(
-            'isRegistryAdmin',
-            $content,
-            'requireAdminAjax() in custom_functions.php must call isRegistryAdmin()'
-        );
-        $this->assertStringContainsString(
-            'Token::check(',
-            $content,
-            'requireAdminAjax() in custom_functions.php must call Token::check() for CSRF validation'
-        );
-    }
-
-    /**
-     * Every admin AJAX endpoint must delegate auth+CSRF guard to requireAdminAjax().
-     * To add a new endpoint to this contract, append one entry to the provider array.
-     *
-     * @return array<string, array{string}>
-     */
-    public static function adminEndpointProvider(): array
-    {
-        return [
-            'process-owner-search'       => ['app/admin/includes/process-owner-search.php'],
-            'process-owner-update'       => ['app/admin/includes/process-owner-update.php'],
-            'process-owner-sync-location' => ['app/admin/includes/process-owner-sync-location.php'],
-            'load-owner-info'            => ['app/admin/includes/load-owner-info.php'],
-            'load-owner-profile'         => ['app/admin/includes/load-owner-profile.php'],
-            'process-car-details'        => ['app/admin/includes/process-car-details.php'],
-            'process-transfer-approve'   => ['app/admin/includes/process-transfer-approve.php'],
-            'process-transfer-deny'      => ['app/admin/includes/process-transfer-deny.php'],
-            'process-user-details'       => ['app/admin/includes/process-user-details.php'],
-        ];
-    }
-
-    #[DataProvider('adminEndpointProvider')]
-    public function testEndpointHasAdminGuard(string $relativePath): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../' . $relativePath);
-        $this->assertNotFalse($content, "Could not read {$relativePath}");
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            "{$relativePath} must call requireAdminAjax() for auth+CSRF guard"
-        );
     }
 
     // =========================================================================
@@ -226,6 +173,11 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
      * triggered a sync, the one owner-contact-field write path this milestone
      * otherwise missed (user_settings.php, the email-verification hook, car
      * edit, and the standalone admin sync endpoint all already synced).
+     *
+     * Note: this re-implements the endpoint's call sequence rather than
+     * invoking process-owner-update.php, so it runs the real Owner::update()
+     * and syncOwnerFieldsToCars() but would not notice the endpoint itself
+     * dropping or reordering either call.
      */
     public function testAdminOwnerUpdateSequenceSyncsToOwnedCars(): void
     {

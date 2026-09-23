@@ -12,7 +12,9 @@ use PHPUnit\Framework\TestCase;
  * 'registration_attempt' respectively) rather than one shared bucket.
  *
  * (File renamed from JoinFailureReportSharesRateLimitBucketTest.php to
- * match — see git history for the original name/rationale.)
+ * match — see git history for the original name/rationale. Moved from
+ * tests/integration/ and given the Regression suffix in #2161; use
+ * `git log --follow` to trace it.)
  *
  * Why separate buckets: 'registration_attempt' is tight (ip_max=5/hr) and
  * IP-scoped, so beacon traffic (Turnstile retries, GPS failures, JS
@@ -37,11 +39,11 @@ use PHPUnit\Framework\TestCase;
  */
 #[Group('regression')]
 #[Group('fast')]
-final class JoinFailureReportUsesDedicatedRateLimitBucketTest extends TestCase
+final class JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest extends TestCase
 {
-    private const JOIN_PHP_PATH = __DIR__ . '/../../usersc/join.php';
-    private const BEACON_PATH = __DIR__ . '/../../app/api/shared/join-failure-report.php';
-    private const CONFIG_PATH = __DIR__ . '/../../usersc/includes/rate_limits.php';
+    private const JOIN_PHP_PATH = __DIR__ . '/../../../usersc/join.php';
+    private const BEACON_PATH = __DIR__ . '/../../../app/api/shared/join-failure-report.php';
+    private const CONFIG_PATH = __DIR__ . '/../../../usersc/includes/rate_limits.php';
 
     public function testBeaconUsesItsOwnDedicatedRateLimitAction(): void
     {

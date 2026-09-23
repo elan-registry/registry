@@ -6,25 +6,33 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarRepository;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for the verification columns added in issue #1155.
+ * Integration tests for the car verification and bounce-state columns and
+ * their capture in `cars_hist`.
  *
- * Migration 20260902104755_add_car_verification_columns added three columns
- * to `cars` (mirrored onto `cars_hist`) and extended the cars_insert,
+ * Migration 20260902104755_add_car_verification_columns (#1155) added three
+ * columns to `cars` (mirrored onto `cars_hist`) and extended the cars_insert,
  * cars_update, and cars_delete triggers to capture them:
  *
  * - `owner_last_updated` DATETIME NULL
  * - `vericode_sent_at`   DATETIME NULL
  * - `email_bounced`      TINYINT(1) NOT NULL DEFAULT 0
  *
+ * Migration 20260907141816_add_car_bounce_state_columns (#1887) added two
+ * more the same way, exactly mirroring #1155's migration:
+ *
+ * - `email_bounced_address` VARCHAR(155) NULL
+ * - `email_suppressed`      TINYINT(1) NOT NULL DEFAULT 0
+ *
  * This is real MySQL trigger behavior and cannot be verified with a mocked
  * DB — only a live database proves the trigger bodies actually capture these
  * columns on every INSERT, UPDATE, and DELETE.
  *
- * Per the migration's cars_update trigger body, these three columns follow
- * the same convention as most other columns (OLD.*), NOT the chassis_override
+ * Per the migrations' cars_update trigger bodies, all five columns follow the
+ * same convention as most other columns (OLD.*), NOT the chassis_override
  * exception (NEW.*) — see AddCarVerificationColumns::createTriggers().
  */
 #[Group('integration')]
@@ -38,7 +46,10 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        foreach (['owner_last_updated', 'vericode_sent_at', 'email_bounced'] as $column) {
+        foreach (
+            ['owner_last_updated', 'vericode_sent_at', 'email_bounced', 'email_bounced_address', 'email_suppressed']
+            as $column
+        ) {
             $this->assertColumnExists('cars', $column);
             $this->assertColumnExists('cars_hist', $column);
         }
@@ -72,36 +83,93 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
     }
 
     /**
-     * INSERT: a new car row with all three verification columns populated
-     * must produce a corresponding cars_hist INSERT row capturing those
-     * same three values.
+     * One row per trigger-captured column: [column, value written to cars,
+     * cast applied to the cars_hist value before comparing]. The value read
+     * back from cars_hist must equal the value written.
+     *
+     * @return array<string, array{string, int|string, 'int'|'string'}>
+     */
+    public static function histColumnProvider(): array
+    {
+        return [
+            'owner_last_updated'    => ['owner_last_updated', '2026-08-15 10:30:00', 'string'],
+            'vericode_sent_at'      => ['vericode_sent_at', '2026-08-20 09:00:00', 'string'],
+            'email_bounced'         => ['email_bounced', 1, 'int'],
+            'email_bounced_address' => ['email_bounced_address', 'bounced@example.com', 'string'],
+            'email_suppressed'      => ['email_suppressed', 1, 'int'],
+        ];
+    }
+
+    /**
+     * Reads $column from $histRow and casts it for a strict comparison.
+     *
+     * @param 'int'|'string' $cast
+     */
+    private function histValue(object $histRow, string $column, string $cast): int|string
+    {
+        return $cast === 'int' ? (int) $histRow->{$column} : (string) $histRow->{$column};
+    }
+
+    /**
+     * Schema assertion: cars.email_bounced_address is VARCHAR(155) NULL, no
+     * default; cars.email_suppressed is a boolean-like column NOT NULL
+     * DEFAULT 0. Same assertions apply to cars_hist.
+     */
+    #[Group('fast')]
+    public function testColumnTypesAndDefaultsMatchSpec(): void
+    {
+        foreach (['cars', 'cars_hist'] as $table) {
+            $addressColumn = $this->db->query(
+                "SELECT IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
+                 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'email_bounced_address'",
+                [$table]
+            )->first();
+
+            $this->assertIsObject($addressColumn, "{$table}.email_bounced_address must exist");
+            $this->assertSame('YES', $addressColumn->IS_NULLABLE, "{$table}.email_bounced_address must be nullable");
+            $this->assertSame(155, (int) $addressColumn->CHARACTER_MAXIMUM_LENGTH, "{$table}.email_bounced_address must be varchar(155)");
+
+            $suppressedColumn = $this->db->query(
+                "SELECT IS_NULLABLE, COLUMN_DEFAULT
+                 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'email_suppressed'",
+                [$table]
+            )->first();
+
+            $this->assertIsObject($suppressedColumn, "{$table}.email_suppressed must exist");
+            $this->assertSame('NO', $suppressedColumn->IS_NULLABLE, "{$table}.email_suppressed must be NOT NULL");
+            $this->assertSame('0', (string) $suppressedColumn->COLUMN_DEFAULT, "{$table}.email_suppressed must default to 0");
+        }
+    }
+
+    /**
+     * INSERT: a new car row with the column populated must produce a
+     * corresponding cars_hist INSERT row capturing that same value.
      *
      * Deliberately inserts via raw SQL rather than createTestCar(): that
      * helper purges any pre-existing cars_hist rows for the new car ID
      * immediately after inserting, as a safeguard against AUTO_INCREMENT
      * reuse — but that purge would also delete the very INSERT-trigger row
      * this test needs to inspect.
+     *
+     * @param 'int'|'string' $cast
      */
     #[Group('fast')]
-    public function testInsertTriggerCapturesVerificationColumns(): void
+    #[DataProvider('histColumnProvider')]
+    public function testInsertTriggerCapturesColumn(string $column, int|string $value, string $cast): void
     {
-        $ownerLastUpdated = '2026-08-15 10:30:00';
-        $vericodeSentAt   = '2026-08-20 09:00:00';
-        $chassis          = 'VC' . substr(uniqid(), -10);
-
         $inserted = $this->db->insert('cars', [
-            'user_id'            => $this->testUserId,
-            'year'               => 1973,
-            'model'              => 'Elan S4',
-            'series'             => 'S4',
-            'variant'            => 'SE',
-            'type'               => 'FHC',
-            'chassis'            => $chassis,
-            'color'              => 'Red',
-            'ctime'              => date('Y-m-d H:i:s'),
-            'owner_last_updated' => $ownerLastUpdated,
-            'vericode_sent_at'   => $vericodeSentAt,
-            'email_bounced'      => 1,
+            'user_id' => $this->testUserId,
+            'year'    => 1973,
+            'model'   => 'Elan S4',
+            'series'  => 'S4',
+            'variant' => 'SE',
+            'type'    => 'FHC',
+            'chassis' => 'VC' . substr(uniqid(), -10),
+            'color'   => 'Red',
+            'ctime'   => date('Y-m-d H:i:s'),
+            $column   => $value,
         ]);
         $this->assertTrue($inserted, 'Failed to insert test car: ' . $this->db->errorString());
 
@@ -110,10 +178,10 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
         $this->trackCarId($carId);
 
         $histRow = $this->db->query(
-            "SELECT owner_last_updated, vericode_sent_at, email_bounced
+            "SELECT *
              FROM cars_hist
              WHERE car_id = ? AND operation = 'INSERT'
-             ORDER BY timestamp DESC
+             ORDER BY timestamp DESC, id DESC
              LIMIT 1",
             [$carId]
         )->first();
@@ -123,48 +191,45 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
             'Expected an INSERT row in cars_hist — check that the cars_insert trigger is present'
         );
         $this->assertSame(
-            $ownerLastUpdated,
-            (string) $histRow->owner_last_updated,
-            'cars_hist INSERT row must capture owner_last_updated'
-        );
-        $this->assertSame(
-            $vericodeSentAt,
-            (string) $histRow->vericode_sent_at,
-            'cars_hist INSERT row must capture vericode_sent_at'
-        );
-        $this->assertSame(
-            1,
-            (int) $histRow->email_bounced,
-            'cars_hist INSERT row must capture email_bounced'
+            $value,
+            $this->histValue($histRow, $column, $cast),
+            "cars_hist INSERT row must capture {$column}"
         );
     }
 
     /**
-     * UPDATE: the cars_update trigger uses OLD.* (not NEW.*) for these three
+     * UPDATE: the cars_update trigger uses OLD.* (not NEW.*) for these five
      * columns — the deliberate NEW.* exception is chassis_override only.
      *
-     * Each column is updated independently via its dedicated CarRepository
-     * method (mirroring real application call sites in CarVerificationManager),
-     * so each UPDATE produces its own cars_hist row whose value for the
-     * just-changed column must be the PRE-update value, not the new one.
+     * Each write goes through its dedicated CarRepository method (mirroring
+     * real application call sites in CarVerificationManager), so each UPDATE
+     * produces its own cars_hist row whose value for the just-changed
+     * column(s) must be the PRE-update value, not the new one. Kept as one
+     * sequential method rather than parameterised: each block reads the
+     * newest UPDATE row, which is the one its own write just produced
+     * (ordered by `timestamp DESC, id DESC` — `timestamp` has whole-second
+     * resolution, so several blocks' rows can share one value).
      */
     #[Group('fast')]
     public function testUpdateTriggerCapturesPreUpdateOldValues(): void
     {
         $originalOwnerLastUpdated = '2026-01-01 00:00:00';
         $originalVericodeSentAt   = '2026-01-02 00:00:00';
+        $originalBouncedAddress   = 'original-' . uniqid() . '@example.com';
 
         $carId = $this->createTestCar($this->testUserId, [
-            'owner_last_updated' => $originalOwnerLastUpdated,
-            'vericode_sent_at'   => $originalVericodeSentAt,
-            'email_bounced'      => 0,
+            'owner_last_updated'    => $originalOwnerLastUpdated,
+            'vericode_sent_at'      => $originalVericodeSentAt,
+            'email_bounced'         => 0,
+            'email_bounced_address' => $originalBouncedAddress,
+            'email_suppressed'      => 0,
         ]);
 
         $repo = new CarRepository($this->db);
 
         // --- owner_last_updated -------------------------------------------
         // Via updateCar() directly, not a dedicated single-column setter
-        // (unlike vericode_sent_at/email_bounced below): CarRepository's own
+        // (unlike the columns below): CarRepository's own
         // owner_last_updated setter was removed as dead code (#1930) — no
         // production caller ever wrote this column standalone, since
         // Car::update() and CarVerificationManager fold it into their own
@@ -181,7 +246,7 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
             "SELECT owner_last_updated
              FROM cars_hist
              WHERE car_id = ? AND operation = 'UPDATE'
-             ORDER BY timestamp DESC
+             ORDER BY timestamp DESC, id DESC
              LIMIT 1",
             [$carId]
         )->first();
@@ -203,7 +268,7 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
             "SELECT vericode_sent_at
              FROM cars_hist
              WHERE car_id = ? AND operation = 'UPDATE'
-             ORDER BY timestamp DESC
+             ORDER BY timestamp DESC, id DESC
              LIMIT 1",
             [$carId]
         )->first();
@@ -215,17 +280,20 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
             'cars_hist UPDATE row must capture the pre-update (OLD) vericode_sent_at value'
         );
 
-        // --- email_bounced -------------------------------------------------
+        // --- email_bounced + email_bounced_address ---------------------------
+        // One block, not two: updateEmailBounced() writes both columns in a
+        // single UPDATE statement, so a second call would see the first
+        // call's address as OLD rather than the original fixture value.
         $this->assertTrue(
-            $repo->updateEmailBounced($carId, true, 'owner@example.com'),
+            $repo->updateEmailBounced($carId, true, 'new-' . uniqid() . '@example.com'),
             'updateEmailBounced() must succeed'
         );
 
         $histAfterBouncedUpdate = $this->db->query(
-            "SELECT email_bounced
+            "SELECT email_bounced, email_bounced_address
              FROM cars_hist
              WHERE car_id = ? AND operation = 'UPDATE'
-             ORDER BY timestamp DESC
+             ORDER BY timestamp DESC, id DESC
              LIMIT 1",
             [$carId]
         )->first();
@@ -235,6 +303,33 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
             0,
             (int) $histAfterBouncedUpdate->email_bounced,
             'cars_hist UPDATE row must capture the pre-update (OLD) email_bounced value (0, not the new 1)'
+        );
+        $this->assertSame(
+            $originalBouncedAddress,
+            (string) $histAfterBouncedUpdate->email_bounced_address,
+            'cars_hist UPDATE row must capture the pre-update (OLD) email_bounced_address value'
+        );
+
+        // --- email_suppressed ------------------------------------------------
+        $this->assertTrue(
+            $repo->updateEmailSuppressed($carId, true),
+            'updateEmailSuppressed() must succeed'
+        );
+
+        $histAfterSuppressedUpdate = $this->db->query(
+            "SELECT email_suppressed
+             FROM cars_hist
+             WHERE car_id = ? AND operation = 'UPDATE'
+             ORDER BY timestamp DESC, id DESC
+             LIMIT 1",
+            [$carId]
+        )->first();
+
+        $this->assertIsObject($histAfterSuppressedUpdate, 'Expected an UPDATE row in cars_hist');
+        $this->assertSame(
+            0,
+            (int) $histAfterSuppressedUpdate->email_suppressed,
+            'cars_hist UPDATE row must capture the pre-update (OLD) email_suppressed value (0, not the new 1)'
         );
     }
 
@@ -310,31 +405,27 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
 
     /**
      * DELETE: deleting a car must produce a cars_hist DELETE row capturing
-     * the three verification columns' final values (OLD.*, same convention
-     * as every other column in the cars_delete trigger).
+     * the column's final value (OLD.*, same convention as every other column
+     * in the cars_delete trigger).
+     *
+     * @param 'int'|'string' $cast
      */
     #[Group('fast')]
-    public function testDeleteTriggerCapturesFinalVerificationColumns(): void
+    #[DataProvider('histColumnProvider')]
+    public function testDeleteTriggerCapturesFinalColumnValue(string $column, int|string $value, string $cast): void
     {
-        $ownerLastUpdated = '2026-07-01 06:00:00';
-        $vericodeSentAt   = '2026-07-02 07:00:00';
-
-        $carId = $this->createTestCar($this->testUserId, [
-            'owner_last_updated' => $ownerLastUpdated,
-            'vericode_sent_at'   => $vericodeSentAt,
-            'email_bounced'      => 1,
-        ]);
+        $carId = $this->createTestCar($this->testUserId, [$column => $value]);
 
         $car    = new Car($carId);
-        $result = $car->delete('Test deletion for verification columns audit', $this->testUserId);
+        $result = $car->delete("Test deletion for {$column} audit", $this->testUserId);
 
         $this->assertTrue($result, 'Car::delete() must return true on success');
 
         $histRow = $this->db->query(
-            "SELECT owner_last_updated, vericode_sent_at, email_bounced
+            "SELECT *
              FROM cars_hist
              WHERE car_id = ? AND operation = 'DELETE'
-             ORDER BY timestamp DESC
+             ORDER BY timestamp DESC, id DESC
              LIMIT 1",
             [$carId]
         )->first();
@@ -344,19 +435,9 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
             'Expected a DELETE row in cars_hist — check that the cars_delete trigger is present'
         );
         $this->assertSame(
-            $ownerLastUpdated,
-            (string) $histRow->owner_last_updated,
-            'cars_hist DELETE row must capture the final owner_last_updated value'
-        );
-        $this->assertSame(
-            $vericodeSentAt,
-            (string) $histRow->vericode_sent_at,
-            'cars_hist DELETE row must capture the final vericode_sent_at value'
-        );
-        $this->assertSame(
-            1,
-            (int) $histRow->email_bounced,
-            'cars_hist DELETE row must capture the final email_bounced value'
+            $value,
+            $this->histValue($histRow, $column, $cast),
+            "cars_hist DELETE row must capture the final {$column} value"
         );
     }
 

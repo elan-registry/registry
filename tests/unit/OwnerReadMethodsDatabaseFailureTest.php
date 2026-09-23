@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Integration;
+namespace Tests\Unit;
 
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\OwnerDatabaseException;
@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration test for Owner::getCarsOwned()/getOwnershipHistory()'s
+ * Unit test for Owner::getCarsOwned()/getOwnershipHistory()'s
  * DB-error propagation (#1505 PR B).
  *
  * Before this fix, both methods checked `$this->_db->error()` and logged,
@@ -22,14 +22,12 @@ use PHPUnit\Framework\Attributes\Group;
  * CarRepositoryFindByOwnerFailureTest's pattern for the sibling Car-side gap
  * fixed in PR A (#1816).
  *
- * Extends plain TestCase, not IntegrationTestCase — it needs no DB fixtures
- * or connection (fully stubbed via DatabaseInterface), so
- * IntegrationTestCase::setUp()'s connection check/requireDatabase() would be
- * pure overhead. Don't "fix" this to extend IntegrationTestCase; it's
- * deliberate, matching CarRepositoryFindByOwnerFailureTest's own comment.
+ * Fully stubbed via DatabaseInterface (injected into Owner's constructor, so
+ * its dbi() fallback is never reached) — no database connection is needed,
+ * which is why this lives in tests/unit/ (#2161).
  */
-#[Group('integration')]
 #[Group('owner')]
+#[Group('fast')]
 final class OwnerReadMethodsDatabaseFailureTest extends TestCase
 {
     /**

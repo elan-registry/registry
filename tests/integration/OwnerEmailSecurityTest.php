@@ -8,16 +8,21 @@ use ElanRegistry\InputSanitizer;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Security regression tests for sender impersonation in owner email (H2 bug #971).
+ * Security regression tests for owner email (H2 bug #971, #1322).
  *
- * Pins the contract that from_user_id is always derived from the session,
- * never from POST input.
+ * Pins the sender display-name derivation in app/api/contact/send-owner-email.php
+ * against a real DB user row.
  *
- * Source-contract assertions (absence of Input::get('from_user_id') etc.) live in
- * tests/unit/security/SerializedDataRemovalTest.php — not duplicated here.
- * These tests add behavioral coverage using real DB users and session state.
+ * The #971 sender-impersonation contract (from_user_id is never read from POST)
+ * is pinned at source level in tests/unit/security/SerializedDataRemovalTest.php.
  *
- * Complements: tests/playwright/security/contact-owner-idor.spec.js (HTTP-level 403)
+ * IDOR guard coverage gap: tests/playwright/security/contact-owner-idor.spec.js
+ * posts a nonexistent car_id (999999), so its 403 comes from the car-not-found
+ * half of the check (`!$carOwner`, send-owner-email.php:98), not the
+ * owner-mismatch comparison `(int)$carOwner->user_id !== $toUserId` on the
+ * same line. tests/unit/regression/Issue1014RegressionTest.php pins the
+ * ownership query and its ordering, not the comparison. The :98 owner-mismatch
+ * comparison (a real car owned by someone other than to_user_id) has no test.
  */
 #[Group('integration')]
 #[Group('security')]
@@ -27,61 +32,6 @@ final class OwnerEmailSecurityTest extends IntegrationTestCase
     {
         parent::setUp();
         $this->requireDatabase();
-    }
-
-    /**
-     * H2 regression anchor: forged from_user_id in POST is ignored.
-     *
-     * The endpoint derives $fromUserId = (int) $user->data()->id
-     * (send-owner-email.php:67), never from POST input. This test confirms
-     * that even when an attacker injects from_user_id into POST, the
-     * derivation still returns the real session user.
-     */
-    public function testForgedFromUserIdInPostIsIgnored(): void
-    {
-        $realSenderId = $this->createTestUser();
-        $forgedTargetId = $this->createTestUser();
-
-        try {
-            // Login happens inside try so a throw during login can never skip the
-            // finally's restoreGlobalUser() and leak the fake session.
-            $this->loginAsTestUser($realSenderId);
-
-            // Inject the forged value inside try{} so finally always cleans it up
-            $_POST['from_user_id'] = (string) $forgedTargetId;
-
-            // Replicate the endpoint's sender derivation (send-owner-email.php:67) — read
-            // the global session, exactly as production does, not a local helper return value.
-            $fromUserId = (int) $GLOBALS['user']->data()->id;
-
-            $this->assertEquals($realSenderId, $fromUserId);
-            $this->assertNotEquals((int) $_POST['from_user_id'], $fromUserId);
-        } finally {
-            unset($_POST['from_user_id']);
-            $this->restoreGlobalUser();
-        }
-    }
-
-    /**
-     * Session user is always the sender on the normal (non-attack) path.
-     */
-    public function testSessionUserIsAlwaysSender(): void
-    {
-        $userId = $this->createTestUser();
-
-        try {
-            // Login happens inside try so a throw during login can never skip the
-            // finally's restoreGlobalUser() and leak the fake session.
-            $this->loginAsTestUser($userId);
-
-            // Replicate the endpoint's sender derivation (send-owner-email.php:67) — read
-            // the global session, exactly as production does, not a local helper return value.
-            $fromUserId = (int) $GLOBALS['user']->data()->id;
-
-            $this->assertEquals($userId, $fromUserId);
-        } finally {
-            $this->restoreGlobalUser();
-        }
     }
 
     /**
@@ -126,69 +76,5 @@ final class OwnerEmailSecurityTest extends IntegrationTestCase
         $this->assertStringNotContainsString("\r", $fromName, 'CR must be stripped');
         $this->assertStringNotContainsString("\n", $fromName, 'LF must be stripped');
         $this->assertStringNotContainsString("\t", $fromName, 'tab must be stripped');
-    }
-
-    /**
-     * Privacy fix (issue #1322, Bug B): $toName uses only fname.
-     *
-     * ROOT CAUSE
-     * ----------
-     * Before the fix, $toName was $toData->fname . ' ' . $toData->lname,
-     * leaking the recipient's surname into the email template greeting.
-     *
-     * TESTING GAP
-     * -----------
-     * Same gap as $fromName — no test verified the $toName derivation.
-     *
-     * PREVENTION
-     * ----------
-     * This test pins the contract: $toName is derived from $toData->fname
-     * alone and must not contain lname.
-     */
-    public function testToNameIsFirstNameOnly(): void
-    {
-        $toUserId = $this->createTestUser([
-            'fname' => 'Bob',
-            'lname' => 'Jones',
-            'email' => 'bob_toname@example.com',
-        ]);
-
-        // Raw SQL intentionally bypasses Owner::data() to isolate the string-derivation
-        // logic under test. Owner::data() is tested separately; we're pinning what
-        // send-owner-email.php does with the data it receives, not how it loads it.
-        $toOwnerResult = $this->db->query('SELECT fname, lname, email FROM users WHERE id = ?', [$toUserId]);
-        $toData        = $toOwnerResult->first();
-
-        // Replicate send-owner-email.php:114
-        $toName = (string)($toData->fname ?? '');
-
-        $this->assertSame('Bob', $toName, '$toName must equal fname only');
-        $this->assertStringNotContainsString('Jones', $toName, '$toName must not include lname');
-    }
-
-    /**
-     * IDOR guard: to_user_id must match the car's actual owner.
-     *
-     * Replicates the DB query and comparison from send-owner-email.php:76-87.
-     * An attacker cannot address mail to an arbitrary user by supplying a
-     * mismatched to_user_id; they must match the car's real owner.
-     */
-    public function testCarOwnershipIDORGuard(): void
-    {
-        $ownerUserId = $this->createTestUser();
-        $attackerUserId = $this->createTestUser();
-        $carId = $this->createTestCar($ownerUserId);
-
-        // Replicate the endpoint's IDOR check (send-owner-email.php:76-82)
-        $carOwnerResult = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId]);
-        $carOwner = $carOwnerResult->first();
-
-        $carActualOwner = (int) $carOwner->user_id;
-
-        // Guard passes for the real owner
-        $this->assertEquals($ownerUserId, $carActualOwner);
-
-        // Guard blocks the attacker
-        $this->assertNotEquals($attackerUserId, $carActualOwner);
     }
 }

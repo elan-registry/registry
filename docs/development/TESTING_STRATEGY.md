@@ -36,7 +36,11 @@ Three tiers, each with a distinct purpose and a hard boundary:
   (per the convention in `tests/unit/cars/services/CarRepositoryTest.php`'s
   `makeDbMock()`), or a concrete `tests/Support/FakeDatabase.php` subclass
   when a test needs mutable tracked state (hand-tracked call counts, etc.) —
-  see `tests/unit/admin/ArchiveAccountsTest.php` for that pattern. There is no
+  see `tests/unit/admin/ArchiveAccountsTest.php` for that pattern. Integration
+  tests that need a real connection but must sabotage one call extend
+  `tests/Support/PassThroughDatabase.php` as an anonymous class, overriding
+  only that method — see `tests/integration/OwnerSyncOwnerFieldsToCarsTest.php`'s
+  `db*()` factories. There is no
   shared global `DB` mock shell — a regression guardrail
   (`tests/unit/regression/DatabaseInterfaceUsageRegressionTest.php`) fails CI
   if one, or a concrete `\DB` type-hint in production code, or a call to a
