@@ -220,6 +220,44 @@ final class CronJobRunsReaderTest extends TestCase
         );
     }
 
+    /**
+     * The same missing column arriving as a throw instead of an error() — the
+     * shape this takes if ATTR_EMULATE_PREPARES is ever disabled, making
+     * prepare() server-side. Both routes must reach the identical retry, so
+     * neither deploy configuration loses the status row.
+     */
+    public function testStatusFallsBackWhenTheMissingColumnSurfacesAsAThrow(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withRow('brevo_reconciliation', enabled: true, lastRunAt: '2026-09-01 12:34:56')
+            ->withLastFailureAtColumnMissingAsThrow('brevo_reconciliation');
+
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
+
+        $this->assertSame(CronJobEnabledState::ENABLED, $status['state']);
+        $this->assertInstanceOf(DateTimeImmutable::class, $status['lastRunAt']);
+        $this->assertNull($status['lastFailureAt']);
+    }
+
+    /**
+     * The retry is deliberately narrow: only MySQL's 1054 (unknown column)
+     * triggers it. A genuine outage — a dropped connection, a missing table —
+     * must still report UNREADABLE rather than being masked by a second query
+     * that fails the same way and a fabricated "healthy" badge.
+     */
+    public function testStatusStillReportsUnreadableForAFaultThatIsNotAMissingColumn(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())->withError('brevo_reconciliation');
+
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
+
+        $this->assertSame(
+            CronJobEnabledState::UNREADABLE,
+            $status['state'],
+            'Only a 1054 unknown-column error may be retried — any other fault stays UNREADABLE'
+        );
+    }
+
     public function testStatusLogsWhenItFallsBackForAnAbsentLastFailureAtColumn(): void
     {
         global $mockLogEntries;

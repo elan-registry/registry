@@ -251,13 +251,22 @@ final class CronJobRunsReader
      */
     public function lastOutcomeCounts(string $jobName): array
     {
-        // query() reports ordinary failures via error() rather than raising,
-        // but it is NOT throw-free: DB::query() calls PDO::prepare() outside
-        // its own try block with ERRMODE_EXCEPTION set, so a prepare()-time
-        // fault — a missing column, which is precisely the half-applied
-        // migration case for these three columns — throws a PDOException
-        // straight out. Catching \Throwable here is what keeps this class's
-        // never-throws contract true.
+        // A missing column — the half-applied-migration case for these three
+        // columns — reaches this method by whichever of two routes the
+        // connection dictates, and BOTH are handled: the error() check below
+        // for this connection as configured, and the catch here if it is ever
+        // reconfigured.
+        //
+        // As configured, error() is the live route. users/classes/DB.php
+        // leaves ATTR_EMULATE_PREPARES at PDO's default of ON, so prepare() is
+        // client-side and cannot detect an unknown column; the fault lands at
+        // execute(), inside DB::query()'s own `catch (Exception)` (which
+        // PDOException extends), and query() returns normally with error()
+        // true. If emulation is ever disabled, prepare() becomes server-side
+        // and throws instead — which is what the catch is for, and what keeps
+        // this class's never-throws contract true either way. An earlier
+        // version of fetchRow() above assumed only the throw and consequently
+        // never took its fallback; see its comment.
         try {
             $this->db->query(
                 'SELECT last_sent_count, last_skipped_count, last_failed_count'
@@ -405,41 +414,62 @@ final class CronJobRunsReader
      */
     private function fetchRow(string $jobName): ?array
     {
-        // query() reports ordinary failures via error() (see
-        // DatabaseInterface) rather than raising, but it is not throw-free:
-        // DB::query() calls PDO::prepare() outside its try block with
-        // ERRMODE_EXCEPTION set, so a prepare()-time fault (a missing column
-        // or table) throws. `enabled` and `last_run_at` have existed since the
-        // table was created, but `last_failure_at` is migration-added
-        // (20260922171500), so this statement acquired the same
-        // half-applied-migration exposure lastOutcomeCounts() already guards
-        // against — hence the catch, which did not previously exist here.
+        // `enabled` and `last_run_at` have existed since the table was
+        // created, but `last_failure_at` is migration-added (20260922171500),
+        // so this statement can fail on a host where that migration has not
+        // applied. When it does, the tab must degrade to its previous
+        // behaviour (a status badge with no failure awareness) rather than
+        // blanking out every job's status row — worse information, not no
+        // information. Hence the retry on the two original columns; the row it
+        // returns simply has no `last_failure_at` key, which status() reads as
+        // "never failed".
         //
-        // The fallback re-reads the two original columns rather than giving
-        // up: an unapplied failure-timestamp migration must degrade this tab
-        // to its previous behaviour (a status badge with no failure
-        // awareness), not blank out every job's status row on the page —
-        // worse information, not no information. A row
-        // returned from that second query simply has no `last_failure_at` key,
-        // which status() reads as "never failed".
+        // A MISSING COLUMN ARRIVES VIA error(), NOT VIA A THROW — and getting
+        // this wrong is what made an earlier version of this fallback dead
+        // code. The tempting reasoning is that DB::query() calls
+        // PDO::prepare() outside its own try block with ERRMODE_EXCEPTION set,
+        // so a prepare()-time fault escapes as a PDOException (that is exactly
+        // what lastOutcomeCounts() below asserts). It does not hold on this
+        // connection: users/classes/DB.php never sets ATTR_EMULATE_PREPARES,
+        // and PDO MySQL defaults it to ON, which makes prepare() a
+        // client-side no-op that cannot detect an unknown column. The fault
+        // surfaces at execute() instead — inside DB::query()'s own
+        // `catch (Exception)`, which PDOException extends — so query() returns
+        // normally with error() true and nothing propagates. Branching on the
+        // throw alone would therefore never retry, and every badge on the tab
+        // would read "Status unavailable" on exactly the deploy this fallback
+        // exists to survive.
+        //
+        // The throw is still caught, because it IS the behaviour if
+        // ATTR_EMULATE_PREPARES is ever turned off (a reasonable hardening
+        // change someone may make); both routes then land on the same retry.
+        $selectFailureAt = 'SELECT enabled, last_run_at, last_failure_at FROM er_cron_job_runs WHERE job_name = ?';
+        $selectFallback = 'SELECT enabled, last_run_at FROM er_cron_job_runs WHERE job_name = ?';
+
+        $missingColumn = false;
+
         try {
-            $this->db->query(
-                'SELECT enabled, last_run_at, last_failure_at FROM er_cron_job_runs WHERE job_name = ?',
-                [$jobName]
-            );
+            $this->db->query($selectFailureAt, [$jobName]);
+
+            // 1054 is MySQL's ER_BAD_FIELD_ERROR ("Unknown column"). Checked
+            // specifically rather than retrying on any error(): a genuine
+            // outage must still report UNREADABLE below, not be masked by a
+            // second query that fails the same way.
+            $missingColumn = $this->db->error()
+                && ((int) ($this->db->errorInfo()[1] ?? 0)) === 1054;
         } catch (\Throwable $e) {
+            $missingColumn = true;
+        }
+
+        if ($missingColumn) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                 "Cron job '%s': er_cron_job_runs.last_failure_at could not be read — falling back to"
                 . ' status without failure detection, so a crashed run may still show as having run.'
-                . ' Check that 20260922171500_add_cron_job_runs_last_failure_at has applied: %s',
-                $jobName,
-                $e->getMessage()
+                . ' Check that 20260922171500_add_cron_job_runs_last_failure_at has applied.',
+                $jobName
             ));
 
-            $this->db->query(
-                'SELECT enabled, last_run_at FROM er_cron_job_runs WHERE job_name = ?',
-                [$jobName]
-            );
+            $this->db->query($selectFallback, [$jobName]);
         }
 
         if ($this->db->error()) {

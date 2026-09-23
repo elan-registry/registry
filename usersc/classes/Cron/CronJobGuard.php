@@ -125,14 +125,25 @@ final class CronJobGuard
      * NEVER THROWS, AND NEVER REPORTS. `run()`'s catch block calls this
      * immediately before writing the failure log line an operator actually
      * reads, and that line must be written whatever happens here — so this
-     * returns void, swallows the prepare()-time PDOException an unapplied
-     * 20260922171500 migration raises (DB::query() calls PDO::prepare()
-     * outside its own try block with ERRMODE_EXCEPTION set), and logs its own
-     * failure under a distinct message so "the job failed" and "the job failed
-     * AND we could not record it" stay separable in the log. Losing the stamp
-     * degrades the dashboard to the stale-badge behaviour that existed before
-     * this column; letting it escape would suppress the failure report
-     * entirely, which is strictly worse.
+     * returns void and reports its own failure only by logging, under a
+     * distinct message so "the job failed" and "the job failed AND we could
+     * not record it" stay separable. Losing the stamp degrades the dashboard
+     * to the stale-badge behaviour that existed before this column; letting it
+     * escape would suppress the failure report entirely, which is strictly
+     * worse.
+     *
+     * Both fault shapes are handled, and which one actually fires depends on
+     * the connection rather than on the fault. On an unapplied
+     * 20260922171500 migration this connection reports the missing column via
+     * `error()`, NOT by throwing: users/classes/DB.php leaves
+     * `ATTR_EMULATE_PREPARES` at PDO's default of ON, so `prepare()` is a
+     * client-side no-op and the fault lands at `execute()` — inside
+     * `DB::query()`'s own `catch (Exception)`, which `PDOException` extends.
+     * The `catch (\Throwable)` below is still correct and still kept: it is
+     * what happens if emulation is ever disabled, making `prepare()`
+     * server-side. Assuming only the throw would have left the error() path
+     * unhandled (see {@see CronJobRunsReader::fetchRow()}, where that exact
+     * assumption made a fallback dead code).
      *
      * A plain `UPDATE`, not an atomic claim-style write: the caller already
      * won the claim before `execute()` ran, so there is no concurrent run to

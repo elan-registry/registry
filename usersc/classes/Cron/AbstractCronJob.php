@@ -181,6 +181,17 @@ abstract class AbstractCronJob
      * admin-triggered page request, which already carries the web SAPI's own
      * `max_execution_time`. Re-arming it here would silently extend that page
      * request's budget past what the operator's own request was granted.
+     *
+     * ALSO DOES NOT STAMP `last_failure_at`, unlike `run()`. That column
+     * records the outcome of a *claimed* run, and this path deliberately
+     * bypasses the claim — it never stamps `last_run_at` either, so there is
+     * no run on the row for a failure to contradict. Writing one here would
+     * make a manual run that failed override the dashboard's account of the
+     * last automatic run, which is the thing the badge is reporting on.
+     * A failed manual run is therefore visible in the log (below, and via the
+     * Verification tab's failure summary — {@see CronJobFailureLogReader}) but
+     * not on the per-job badge; the operator who clicked the button is present
+     * to see the page's own error reporting.
      */
     final public function runNow(): void
     {

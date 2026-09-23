@@ -213,4 +213,76 @@ final class CronJobFailureRoundTripTest extends IntegrationTestCase
             CronJobRunsReader::badgeFor($status['state'], $status['lastRunAt'], $status['lastFailureAt'])['text']
         );
     }
+
+    /**
+     * The pre-migration deploy, against a real connection with the column
+     * genuinely absent.
+     *
+     * This is the one case unit tests structurally cannot settle, because the
+     * answer depends on how *this* connection reports a missing column — and
+     * getting that wrong is precisely how the first version of `fetchRow()`'s
+     * fallback became dead code. It assumed the fault escapes `query()` as a
+     * PDOException from `prepare()`; in reality `users/classes/DB.php` leaves
+     * `ATTR_EMULATE_PREPARES` at PDO's default of ON, so `prepare()` is
+     * client-side, the fault lands at `execute()` inside `DB::query()`'s own
+     * `catch (Exception)`, and `query()` returns normally with `error()` true.
+     * Branching only on the throw meant the retry never ran and every job on
+     * the Verification tab rendered "Status unavailable" on exactly the deploy
+     * the fallback was written to survive. A fake can be made to agree with
+     * whichever premise the test author held; only a real connection can
+     * falsify it.
+     *
+     * Drops and restores the column in a `finally`, so a failed assertion
+     * cannot leave the shared test schema without a column every other cron
+     * test depends on.
+     */
+    public function testStatusDegradesGracefullyWhenTheColumnIsGenuinelyAbsent(): void
+    {
+        $this->setRowState(enabled: true, lastRunAt: '2026-09-01 02:00:00', lastFailureAt: null);
+
+        $this->db->query('ALTER TABLE er_cron_job_runs DROP COLUMN last_failure_at');
+        $this->assertFalse($this->db->error(), 'Test setup: could not drop the column');
+
+        try {
+            $status = (new CronJobRunsReader($this->db))->status(self::JOB_NAME);
+
+            $this->assertSame(
+                CronJobEnabledState::ENABLED,
+                $status['state'],
+                'An absent last_failure_at must NOT blank the row out as UNREADABLE — the tab has to keep'
+                . ' rendering every job\'s status, just without failure detection'
+            );
+            $this->assertInstanceOf(
+                DateTimeImmutable::class,
+                $status['lastRunAt'],
+                'The retry must still return the two original columns'
+            );
+            $this->assertNull($status['lastFailureAt'], 'An absent column reads as "never failed"');
+
+            $this->assertSame(
+                'Ran',
+                CronJobRunsReader::badgeFor(
+                    $status['state'],
+                    $status['lastRunAt'],
+                    $status['lastFailureAt']
+                )['text'],
+                'The badge must degrade to its pre-migration behaviour, not to "Status unavailable"'
+            );
+        } finally {
+            $this->db->query(
+                'ALTER TABLE er_cron_job_runs ADD COLUMN last_failure_at DATETIME NULL DEFAULT NULL'
+                . " COMMENT 'When this job''s execute() last threw; NULL until it fails once.'"
+            );
+        }
+
+        $this->db->query(
+            'SELECT COLUMN_NAME FROM information_schema.COLUMNS'
+            . ' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1',
+            ['er_cron_job_runs', 'last_failure_at']
+        );
+        $this->assertIsObject(
+            $this->db->first(),
+            'last_failure_at must be restored after this test, regardless of the assertions above'
+        );
+    }
 }

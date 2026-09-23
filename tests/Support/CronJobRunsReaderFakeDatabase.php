@@ -64,6 +64,9 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
     /** @var array<string, bool> */
     private array $lastFailureAtColumnMissing = [];
 
+    /** @var array<string, bool> */
+    private array $lastFailureAtColumnThrows = [];
+
     private ?string $lastJobName = null;
 
     /** Whether the most recently issued query() call was the outcome-counts SELECT. */
@@ -175,11 +178,22 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
 
     /**
      * Configure the status SELECT to behave as it would on a schema where
-     * 20260922171500_add_cron_job_runs_last_failure_at has not applied: the
-     * three-column statement throws at prepare() time (as real DB::query()
-     * does for a missing column), and `fetchRow()`'s two-column fallback then
-     * succeeds and returns the row configured by {@see self::withRow()} —
-     * minus its `last_failure_at` key, exactly as MySQL would return it.
+     * 20260922171500_add_cron_job_runs_last_failure_at has not applied:
+     * `fetchRow()`'s three-column statement fails with MySQL's 1054 "Unknown
+     * column", and its two-column retry then succeeds and returns the row
+     * configured by {@see self::withRow()} — minus its `last_failure_at` key,
+     * exactly as MySQL would return it.
+     *
+     * MODELS error(), NOT A THROW, and that distinction is the whole value of
+     * this double. This connection leaves ATTR_EMULATE_PREPARES at PDO's
+     * default of ON (users/classes/DB.php never sets it), so prepare() is
+     * client-side and cannot detect an unknown column; the fault surfaces at
+     * execute(), inside DB::query()'s own `catch (Exception)`, and is reported
+     * via error()/errorInfo() with nothing propagating. An earlier version of
+     * this double threw instead — which made the fallback it was "covering"
+     * dead code in production while the tests stayed green.
+     * {@see self::withLastFailureAtColumnMissingAsThrow()} covers the
+     * non-emulated variant.
      *
      * Separate from {@see self::withError()}: that models a query that fails
      * outright (UNREADABLE), whereas this models a degraded-but-working read
@@ -188,6 +202,19 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
     public function withLastFailureAtColumnMissing(string $jobName): self
     {
         $this->lastFailureAtColumnMissing[$jobName] = true;
+
+        return $this;
+    }
+
+    /**
+     * The same missing column, but surfacing as a throw out of query() — what
+     * happens if ATTR_EMULATE_PREPARES is ever turned off, making prepare()
+     * server-side and able to reject an unknown column before execute().
+     * `fetchRow()` must take the identical retry path for both.
+     */
+    public function withLastFailureAtColumnMissingAsThrow(string $jobName): self
+    {
+        $this->lastFailureAtColumnThrows[$jobName] = true;
 
         return $this;
     }
@@ -211,7 +238,7 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
 
         if ($this->lastQuerySelectedLastFailureAt
             && $this->lastJobName !== null
-            && ($this->lastFailureAtColumnMissing[$this->lastJobName] ?? false)
+            && ($this->lastFailureAtColumnThrows[$this->lastJobName] ?? false)
         ) {
             throw new \RuntimeException(
                 'simulated prepare()-time failure: unknown column er_cron_job_runs.last_failure_at'
@@ -231,7 +258,36 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
             return $this->outcomeCountErrors[$this->lastJobName] ?? false;
         }
 
+        // Only the statement that actually selected the absent column fails;
+        // fetchRow()'s two-column retry must then succeed, which is what makes
+        // the degraded-but-working path observable.
+        if ($this->lastQuerySelectedLastFailureAt
+            && ($this->lastFailureAtColumnMissing[$this->lastJobName] ?? false)
+        ) {
+            return true;
+        }
+
         return $this->errors[$this->lastJobName] ?? false;
+    }
+
+    /**
+     * MySQL's error triple. Reports 1054 (ER_BAD_FIELD_ERROR) for the
+     * missing-column case so fetchRow() can tell an absent column from a
+     * genuine outage — it retries only on 1054, and must keep reporting
+     * UNREADABLE for anything else.
+     *
+     * @return array{0: string, 1: int|null, 2: string|null}
+     */
+    public function errorInfo(): array
+    {
+        if ($this->lastJobName !== null
+            && $this->lastQuerySelectedLastFailureAt
+            && ($this->lastFailureAtColumnMissing[$this->lastJobName] ?? false)
+        ) {
+            return ['42S22', 1054, "Unknown column 'last_failure_at' in 'field list'"];
+        }
+
+        return ['HY000', 2006, 'simulated database fault'];
     }
 
     public function first(bool $assoc = false): array|object
