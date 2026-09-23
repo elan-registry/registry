@@ -150,6 +150,7 @@ COMPOSER_LOG="$TMPROOT/composer.log"
 cat > "$STUBDIR/composer" <<'STUB'
 #!/bin/bash
 printf '%s\n' "composer $*" >> "$COMPOSER_LOG"
+[ -n "${STUB_DRAIN:-}" ] && cat >/dev/null
 exit "${STUB_EXIT:-0}"
 STUB
 chmod +x "$STUBDIR/composer"
@@ -516,6 +517,12 @@ else
         "exit: $(hook_exit)" "composer calls: $CALLS17" "output: [$OUT17]"
 fi
 
+# --- Case 17b: only the exact value "1" bypasses ---------------------------
+clear_pass
+OUT17B="$(SKIP_INTEGRATION_GATE=true STUB_EXIT=0 run_hook "$NEW_REF_LINE")"
+assert_hook "Case 17b: SKIP_INTEGRATION_GATE=true does not bypass the gate" \
+    1 0 "$OUT17B" "" "SKIP_INTEGRATION_GATE=1"
+
 # --- Case 18: two gated refs -> the suite runs once -----------------------
 clear_pass
 TWO_REFS="refs/heads/issue/one $HEAD_SHA refs/heads/issue/one $ISSUE_C4
@@ -534,6 +541,16 @@ if [ -f "$CACHE_FILE" ]; then
 else
     pass "Case 18c: a failing two-ref push caches nothing"
 fi
+
+# --- Case 18d: a suite that reads stdin can't swallow later refs ----------
+# The ref loop reads from stdin; the second ref must still be evaluated even
+# if the suite's process drains whatever stdin it inherits.
+clear_pass
+DRAIN_REFS="refs/heads/issue/seven $SEVEN_NEW refs/heads/issue/seven $SEVEN_OLD
+refs/heads/issue/docs $ISSUE_C4 refs/heads/issue/docs $ISSUE_C3"
+OUT18D="$(STUB_DRAIN=1 STUB_EXIT=0 run_hook "$DRAIN_REFS")"
+assert_hook "Case 18d: a stdin-draining suite does not end the ref loop early" \
+    1 0 "$OUT18D" "no gated changes on 'issue/docs'"
 
 # --- Case 19: a non-origin (deploy) remote is never gated -----------------
 clear_pass

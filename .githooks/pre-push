@@ -41,7 +41,7 @@ remote_name="${1:-}"
 #
 # This hook is the only place the integration suite runs (CI has no test
 # database), so when in doubt it RUNS the suite: a wrongful skip is the worst
-# outcome, an unnecessary ~30s run is acceptable.
+# outcome, an unnecessary ~20s run is acceptable.
 #
 # A push is gated when its diff touches ^(app|usersc/classes|tests/integration)/.*\.php$.
 # The diff for each ref is:
@@ -332,11 +332,13 @@ EOF
 
   Integration-test gate: push to '$branch' touches app/, usersc/classes/, or
   tests/integration/. Running the full integration suite before allowing this
-  push (composer test:integration, ~30s against the test schema)...
+  push (composer test:integration, ~20s against the test schema)...
 
 EOF
         suite_ran=1
-        if composer test:integration; then
+        # </dev/null: the loop reads the remaining refs from stdin, so a
+        # child that drained it would silently end the loop un-gated.
+        if composer test:integration </dev/null; then
             suite_status=0
         else
             suite_status=1

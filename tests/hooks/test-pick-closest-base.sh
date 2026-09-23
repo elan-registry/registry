@@ -149,8 +149,10 @@ assert_not_resolving_to() {
 
 MAIN_TIP="$(git rev-parse origin/main 2>/dev/null)"
 if [ -z "$MAIN_TIP" ]; then
-    echo "SKIP: origin/main not resolvable in this checkout (no fetch yet?) — cannot run these scenarios." >&2
-    exit 0
+    # Fail rather than exit 0: a green run that executed zero scenarios would
+    # silently disable this suite (e.g. after a switch to a shallow checkout).
+    echo "FAIL: origin/main not resolvable in this checkout (no fetch yet?) — cannot run these scenarios." >&2
+    exit 1
 fi
 
 # --- Scenario 1: the original #2024 bug ------------------------------------

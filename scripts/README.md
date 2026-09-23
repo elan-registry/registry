@@ -61,7 +61,7 @@ quality checks. Run once per developer after cloning the repo.
 1. **Blocking integration-test gate** — only on the `origin` remote (GitHub);
    `prod`/`test` deploy pushes always skip it, since those deploy
    already-CI-verified `main` and shouldn't depend on local dev-machine test-DB
-   state. Runs the full `composer test:integration` suite (~20-30s, requires
+   state. Runs the full `composer test:integration` suite (~20s, requires
    a working `.env.test.local` — see `docs/development/ENVIRONMENT.md`) and
    blocks the push (exits non-zero) on any test failure or an unreachable
    test database. When it runs:

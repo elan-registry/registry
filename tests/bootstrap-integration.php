@@ -386,12 +386,13 @@ try {
 // ============================================================
 // Purge Stale Brevo Test Key (once per suite run)
 // ============================================================
-// BrevoWebhookEndpointTest.php:303-336 and
-// VerificationToggleEndpointBehaviorTest.php:256-296 each make
-// VerificationSettings::brevoReady() report true by writing the sentinel
-// 'sib-test-key' into plg_sendinblue, and each restores the prior state in
-// tearDown(). A run that dies mid-test — a fatal, a Ctrl-C, a killed process
-// — never reaches that teardown, so the sentinel survives into the schema.
+// BrevoWebhookEndpointTest (makeBrevoReady() / cleanUpBrevoReadyFixture())
+// and VerificationToggleEndpointBehaviorTest::testAdminCanEnableWhenBrevoIsReady()
+// each make VerificationSettings::brevoReady() report true by writing the
+// sentinel 'sib-test-key' into plg_sendinblue, and each restores the prior
+// state afterwards (tearDown() / a finally block). A run that dies mid-test
+// — a fatal, a Ctrl-C, a killed process — never reaches that restore, so
+// the sentinel survives into the schema.
 // From then on Brevo looks permanently "ready" and every later run fails
 // those two files' "Brevo not ready" cases, with nothing in the failure
 // output pointing at the leftover row. Clearing it once per suite run (not
@@ -406,11 +407,11 @@ try {
 // API key.
 //
 // DB::query() swallows its own PDO exceptions and returns normally (see
-// users/classes/DB.php:187-206) — failure is only observable via
+// DB::query() in users/classes/DB.php) — failure is only observable via
 // error()/errorString(), so those are checked rather than relying on the
 // outer try/catch, which exists for throws outside query() itself (e.g.
 // DB::getInstance()). count() reports PDOStatement::rowCount(), which for a
-// DELETE is the number of rows removed (DB.php:197).
+// DELETE is the number of rows removed.
 try {
     if (class_exists('DB')) {
         $brevoKeyDb = DB::getInstance();
