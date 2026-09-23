@@ -608,6 +608,15 @@ This is not a "not yet built" gap; it cannot be built against Brevo as-is. The c
 in a Registry transactional email, including this one, is rewritten through Brevo's tracking redirect domain — see the
 broader consequence (a raw tracking URL displayed as body text in several templates) and its resolution in issue #2147.
 
+**Template-variable workaround: tested, does not work.** Some Brevo users report that supplying the URL via a
+template variable (`href="{{ params.link }}"` instead of a literal `href="https://..."`) sometimes escapes
+rewriting. Tested 2026-09-22 via a direct `POST /v3/smtp/email` send (`params: {link: <url>}`, `htmlContent`
+containing both a literal-href control link and an `href="{{ params.link }}"` link) from test.elanregistry.org to a
+real Gmail-hosted inbox. Result: **both links were rewritten** to Brevo's click-tracking redirect domain
+(`*.r.af.d.sendibt2.com/tr/cl/...`) — no difference in behavior between the literal and template-variable forms on
+this account/plan. Confirms the exclusion is not achievable via this route either; do not attempt it again without a
+new reason to expect different behavior (e.g. a plan/setting change on Brevo's side).
+
 ---
 
 ## Verifying Email Delivery
