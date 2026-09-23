@@ -74,24 +74,12 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     private function dbFailingUpdateCarForOwner(): DatabaseInterface
     {
         return new class ($this->db) extends PassThroughDatabase {
-            private bool $lastCallFailed = false;
-
             public function query(string $sql, array $params = []): static
             {
-                $this->lastCallFailed = str_starts_with($sql, 'UPDATE cars SET')
+                $fails = str_starts_with($sql, 'UPDATE cars SET')
                     && str_ends_with($sql, 'WHERE id = ? AND user_id = ?');
 
-                return $this->lastCallFailed ? $this : parent::query($sql, $params);
-            }
-
-            public function error(): bool
-            {
-                return $this->lastCallFailed || $this->real->error();
-            }
-
-            public function errorString(): string
-            {
-                return $this->lastCallFailed ? 'simulated deadlock' : $this->real->errorString();
+                return $fails ? $this->simulateFailure('simulated deadlock') : parent::query($sql, $params);
             }
         };
     }

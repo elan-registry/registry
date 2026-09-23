@@ -9,14 +9,17 @@ use PHPUnit\Framework\TestCase;
 /**
  * Source-level pins for the admin AJAX endpoint guards in app/admin/includes/.
  *
- * The endpoint files call ApiResponse::send() (which exits) and require the
- * full users/init.php bootstrap, so they cannot be executed inside PHPUnit.
- * These tests instead pin, against the live source:
+ * The endpoint files require the full users/init.php bootstrap, and their
+ * guard rejection paths terminate the process (exit/die, directly or inside
+ * the guard helper), so they cannot be executed inside PHPUnit. These tests
+ * instead pin, against the live source:
  *
- *  1. every process-*.php / load-*.php endpoint is guarded — discovered by
- *     glob, so a new endpoint is covered the moment it lands. The originally
- *     pinned endpoints must call requireAdminAjax(); others may instead use
- *     securePage() plus their own Token::check(); and
+ *  1. every process-*.php / load-*.php endpoint directly in
+ *     app/admin/includes/ is guarded — discovered by a non-recursive glob, so
+ *     a new top-level endpoint is covered the moment it lands (subdirectories
+ *     such as partials/ and system/ are not scanned). The originally pinned
+ *     endpoints must call requireAdminAjax(); others may call
+ *     requireAdminAjax() or securePage() plus their own Token::check(); and
  *  2. requireAdminAjax() itself (usersc/includes/custom_functions.php) still
  *     performs the admin-role check and the CSRF Token::check().
  *
@@ -25,9 +28,9 @@ use PHPUnit\Framework\TestCase;
  * a string literal. The pin proves the call is present, not that it runs
  * first or unconditionally.
  *
- * HTTP-level rejection is exercised only for process-user-details.php
- * (tests/playwright/ajax-endpoints.spec.js and
- * tests/playwright/e2e/ajax-endpoints-non-admin.spec.js).
+ * Of these endpoints, only process-user-details.php has an HTTP-level
+ * rejection test (unauthenticated and non-admin, in the Playwright suite);
+ * the others are exercised over HTTP, if at all, only on their success paths.
  *
  * @see usersc/includes/custom_functions.php requireAdminAjax()
  */

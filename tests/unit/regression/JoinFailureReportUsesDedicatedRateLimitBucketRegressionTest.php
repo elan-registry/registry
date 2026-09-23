@@ -11,11 +11,6 @@ use PHPUnit\Framework\TestCase;
  * use two SEPARATE rate-limit buckets ('join_failure_beacon' and
  * 'registration_attempt' respectively) rather than one shared bucket.
  *
- * (File renamed from JoinFailureReportSharesRateLimitBucketTest.php to
- * match — see git history for the original name/rationale. Moved from
- * tests/integration/ and given the Regression suffix in #2161; use
- * `git log --follow` to trace it.)
- *
  * Why separate buckets: 'registration_attempt' is tight (ip_max=5/hr) and
  * IP-scoped, so beacon traffic (Turnstile retries, GPS failures, JS
  * exceptions — none of them a real registration attempt) sharing it could

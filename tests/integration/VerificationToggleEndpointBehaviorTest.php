@@ -17,9 +17,8 @@ use PHPUnit\Framework\Attributes\Group;
  * non-admin 403 with the setting left unchanged, a genuine 422 naming Brevo
  * when enabling while unready, and — the single most important
  * non-inversion case — a genuine success response when disabling while
- * Brevo is broken. This class is also the only home of the endpoint's
- * wrong-typed-value coverage (see the section below); there is no separate
- * unit-tier test of verification-toggle.php.
+ * Brevo is broken. It also covers the endpoint's wrong-typed-value handling
+ * at the HTTP layer (see the section below).
  *
  * Invoked in-process via require (not a separate subprocess per call): the
  * endpoint file's own `require_once '../../../users/init.php'` is executed

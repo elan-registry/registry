@@ -16,13 +16,12 @@ use PHPUnit\Framework\Attributes\Group;
  * happy-path logic via the underlying Owner class and real database fixtures;
  * the endpoints' requireAdminAjax() auth/CSRF guards are not exercised here.
  *
- * The guard pins (every app/admin/includes/{process,load}-*.php endpoint calls
- * requireAdminAjax() or securePage(), and requireAdminAjax() performs the
- * admin-role and CSRF checks) live in tests/unit/security/AdminAjaxGuardTest.php.
- * HTTP-level rejection is tested only for process-user-details.php
- * (tests/playwright/ajax-endpoints.spec.js:814 unauthenticated,
- * tests/playwright/e2e/ajax-endpoints-non-admin.spec.js:34 non-admin); the
- * three owner-management endpoints have no HTTP-level guard test.
+ * The source-level guard pins (these endpoints call requireAdminAjax(), which
+ * performs the admin-role and CSRF checks) live in
+ * tests/unit/security/AdminAjaxGuardTest.php. HTTP-level rejection is tested
+ * only for process-user-details.php (Playwright: "admin user details endpoint
+ * rejects an unauthenticated request" and "...rejects a logged-in non-admin
+ * user"); the three owner-management endpoints have no HTTP-level guard test.
  */
 #[Group('integration')]
 #[Group('admin')]

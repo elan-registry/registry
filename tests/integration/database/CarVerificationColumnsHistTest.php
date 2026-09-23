@@ -31,9 +31,11 @@ use PHPUnit\Framework\Attributes\Group;
  * DB — only a live database proves the trigger bodies actually capture these
  * columns on every INSERT, UPDATE, and DELETE.
  *
- * Per the migrations' cars_update trigger bodies, all five columns follow the
- * same convention as most other columns (OLD.*), NOT the chassis_override
- * exception (NEW.*) — see AddCarVerificationColumns::createTriggers().
+ * In the cars_update trigger body, the five columns this test asserts follow
+ * the same convention as most other columns (OLD.*), NOT the chassis_override
+ * exception (NEW.*). The trigger bodies are rebuilt in full by later
+ * migrations; see the most recent one to redefine cars_update (currently
+ * AddCarsVerificationAttemptsColumns::createTriggers()).
  */
 #[Group('integration')]
 #[Group('car-verification')]

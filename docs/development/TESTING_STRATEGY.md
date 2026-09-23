@@ -39,9 +39,10 @@ Three tiers, each with a distinct purpose and a hard boundary:
   see `tests/unit/admin/ArchiveAccountsTest.php` for that pattern. Integration
   tests that need a real connection but must sabotage one call extend
   `tests/Support/PassThroughDatabase.php` as an anonymous class, overriding
-  only that method — see `tests/integration/OwnerSyncOwnerFieldsToCarsTest.php`'s
-  `db*()` factories. There is no
-  shared global `DB` mock shell — a regression guardrail
+  only that method (returning `simulateFailure()` to report a database error
+  without reaching MySQL) — see
+  `tests/integration/OwnerSyncOwnerFieldsToCarsTest.php`'s `db*()` factories.
+  There is no shared global `DB` mock shell — a regression guardrail
   (`tests/unit/regression/DatabaseInterfaceUsageRegressionTest.php`) fails CI
   if one, or a concrete `\DB` type-hint in production code, or a call to a
   `\DB` method that isn't on `DatabaseInterface`, ever reappears (#1585).

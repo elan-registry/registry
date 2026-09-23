@@ -31,57 +31,93 @@ use ElanRegistry\DatabaseInterface;
  * the real connection, so the caller keeps talking to the proxy (and any
  * overridden count()/results()); terminal reads return the real values.
  *
- * A class rather than a trait on IntegrationTestCase so the 80 classes
- * extending that base are not widened for a helper only a few tests use.
+ * To make a call fail without reaching MySQL, return simulateFailure() from
+ * the override instead of calling parent. error(), errorString() and
+ * errorInfo() then all report that failure until the next query(), get(),
+ * insert(), update() or delete() call, as they would after a genuine error.
+ * count(), first() and results() are not reset: they still return whatever
+ * the last real query left, so do not read them after a simulated failure.
+ * For example:
+ *
+ * ```php
+ * public function query(string $sql, array $params = []): static
+ * {
+ *     return str_starts_with($sql, 'UPDATE cars SET')
+ *         ? $this->simulateFailure('simulated deadlock')
+ *         : parent::query($sql, $params);
+ * }
+ * ```
+ *
+ * A class rather than a trait on IntegrationTestCase so every class
+ * extending that base is not widened for a helper only a few tests use.
  *
  * @package Tests\Support
  * @see https://github.com/elan-registry/registry/issues/2161
  */
 class PassThroughDatabase implements DatabaseInterface
 {
-    public function __construct(protected DatabaseInterface $real)
+    /** Message of the failure simulated on the most recent call, or null if that call reached $real. */
+    private ?string $simulatedFailure = null;
+
+    public function __construct(protected readonly DatabaseInterface $real)
     {
+    }
+
+    /**
+     * Record a simulated failure for the current call, in place of forwarding it.
+     */
+    protected function simulateFailure(string $message): static
+    {
+        $this->simulatedFailure = $message;
+        return $this;
     }
 
     public function query(string $sql, array $params = []): static
     {
+        $this->simulatedFailure = null;
         $this->real->query($sql, $params);
         return $this;
     }
 
     public function get(string $table, array $where): static|false
     {
+        $this->simulatedFailure = null;
         return $this->real->get($table, $where) === false ? false : $this;
     }
 
     public function insert(string $table, array $fields = [], bool $update = false): bool
     {
+        $this->simulatedFailure = null;
         return $this->real->insert($table, $fields, $update);
     }
 
     public function update(string $table, array|int $id, array $fields): bool
     {
+        $this->simulatedFailure = null;
         return $this->real->update($table, $id, $fields);
     }
 
     public function delete(string $table, array|int $where): static|false
     {
+        $this->simulatedFailure = null;
         return $this->real->delete($table, $where) === false ? false : $this;
     }
 
     public function error(): bool
     {
-        return $this->real->error();
+        return $this->simulatedFailure !== null || $this->real->error();
     }
 
     public function errorString(): string
     {
-        return $this->real->errorString();
+        return $this->simulatedFailure ?? $this->real->errorString();
     }
 
     public function errorInfo(): array
     {
-        return $this->real->errorInfo();
+        return $this->simulatedFailure !== null
+            ? ['HY000', null, $this->simulatedFailure]
+            : $this->real->errorInfo();
     }
 
     public function count(): int

@@ -1277,8 +1277,6 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
     private function dbFailingOwnerScopedUpdate(?int $targetCarId = null): DatabaseInterface
     {
         return new class ($this->db, $targetCarId) extends PassThroughDatabase {
-            private bool $lastCallFailed = false;
-
             public function __construct(DatabaseInterface $real, private ?int $targetCarId)
             {
                 parent::__construct($real);
@@ -1287,32 +1285,22 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
             public function query(string $sql, array $params = []): static
             {
                 // updateCarForOwner() binds the car id second-to-last, before user_id.
-                $this->lastCallFailed = str_starts_with($sql, 'UPDATE cars SET')
+                $fails = str_starts_with($sql, 'UPDATE cars SET')
                     && str_ends_with($sql, 'WHERE id = ? AND user_id = ?')
                     && ($this->targetCarId === null || (int) ($params[count($params) - 2] ?? 0) === $this->targetCarId);
 
-                return $this->lastCallFailed ? $this : parent::query($sql, $params);
-            }
-
-            public function error(): bool
-            {
-                return $this->lastCallFailed || $this->real->error();
-            }
-
-            public function errorString(): string
-            {
-                return $this->lastCallFailed ? 'simulated deadlock' : $this->real->errorString();
+                return $fails ? $this->simulateFailure('simulated deadlock') : parent::query($sql, $params);
             }
         };
     }
 
     /**
      * A proxy that appends one extra row — for $staleCarId, a car already
-     * reassigned away from $ownerId in the real database — to the FIRST
-     * result set of getCarsOwned()'s own
-     * `SELECT c.* FROM cars c WHERE c.user_id = ?` query for $ownerId. Only
-     * that first matching call is affected, so a later read of the same shape
-     * does not also get the stale row.
+     * reassigned away from $ownerId in the real database — to the first
+     * results() read after getCarsOwned()'s own
+     * `SELECT c.* FROM cars c WHERE c.user_id = ?` query for $ownerId. Every
+     * matching query re-arms the injection; the tests issue that SELECT only
+     * once per sync because Owner caches its owned-cars list.
      */
     private function dbWithStaleSnapshotIncluding(int $ownerId, int $staleCarId): DatabaseInterface
     {
@@ -1332,7 +1320,7 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
                 parent::query($sql, $params);
 
                 $this->pendingInjection = str_starts_with($sql, 'SELECT c.* FROM cars c WHERE c.user_id = ?')
-                    && ($params[0] ?? null) === $this->ownerId;
+                    && (int) ($params[0] ?? 0) === $this->ownerId;
 
                 return $this;
             }
