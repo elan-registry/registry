@@ -1,7 +1,7 @@
 # Deployment Guide
 
-This document provides comprehensive deployment procedures for the Lotus Elan
-Registry application.
+This document describes deployment procedures for the Lotus Elan Registry
+application.
 
 ## 🚀 Production Environment
 
