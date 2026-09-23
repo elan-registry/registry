@@ -122,13 +122,16 @@ if (!isAdmin()) {
                                         sprintf(
                                             'Brevo event reconciliation manually triggered (cron guard bypassed) —'
                                             . ' %d matched, %d unmatched, %d skipped, %d ignored (non-verification tag),'
-                                            . ' %d page(s) fetched%s',
+                                            . ' %d page(s) fetched%s%s',
                                             $summary->matchedCount,
                                             $summary->unmatchedCount,
                                             $summary->skippedCount,
                                             $summary->ignoredByTagCount,
                                             $summary->pagesFetched,
-                                            $summary->pollFailed ? ', a Brevo poll failed' : ''
+                                            $summary->pollFailed ? ', a Brevo poll failed' : '',
+                                            $summary->counterFailureCount > 0
+                                                ? sprintf(', %d unmatched-recipient counter update(s) failed', $summary->counterFailureCount)
+                                                : ''
                                         ));
                                     $recordingWarning = null;
                                     admin_script_record_completion(__FILE__, (int) $user->data()->id, function (string $msg) use (&$recordingWarning) {
@@ -139,6 +142,13 @@ if (!isAdmin()) {
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Reconciliation incomplete — Brevo poll failed</h5>
                                         <p class="mb-0">The request to Brevo failed, so no events were fetched this run. The failure is logged under <code>CronJobFailure</code>. Re-run this script once Brevo is reachable — events already reconciled are re-applied harmlessly.</p>
+                                    </div>
+                                    <?php endif; ?>
+
+                                    <?php if ($summary->counterFailureCount > 0): ?>
+                                    <div class="alert alert-warning">
+                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Unmatched-recipient counter under-reporting</h5>
+                                        <p class="mb-0"><?= (int) $summary->counterFailureCount ?> of the <?= (int) $summary->unmatchedCount ?> unmatched event(s) were not recorded in the dashboard unmatched-recipient counter — that counter is under-reporting. Check the system log for <code>VerificationConfigWarning</code> entries.</p>
                                     </div>
                                     <?php endif; ?>
 

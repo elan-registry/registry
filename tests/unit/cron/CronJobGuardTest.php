@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Cron\CronJobGuard;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\CronJobGuardFakeDatabase;
@@ -21,7 +22,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertTrue((new CronJobGuard($db))->claim('reconciliation', 24));
+        $this->assertTrue((new CronJobGuard($db))->claim('brevo_reconciliation', 24));
         $this->assertStringContainsString(
             'IS NULL',
             $db->lastSql(),
@@ -37,15 +38,15 @@ final class CronJobGuardTest extends TestCase
         $db = new CronJobGuardFakeDatabase(claimSucceedsOnce: true);
         $guard = new CronJobGuard($db);
 
-        $this->assertTrue($guard->claim('reconciliation', 24));
-        $this->assertFalse($guard->claim('reconciliation', 24));
+        $this->assertTrue($guard->claim('brevo_reconciliation', 24));
+        $this->assertFalse($guard->claim('brevo_reconciliation', 24));
     }
 
     public function testClaimSucceedsAtIntervalBoundary(): void
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertTrue((new CronJobGuard($db))->claim('reconciliation', 24));
+        $this->assertTrue((new CronJobGuard($db))->claim('brevo_reconciliation', 24));
         $this->assertStringContainsString(
             '< NOW() - INTERVAL ? HOUR',
             $db->lastSql(),
@@ -57,7 +58,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        (new CronJobGuard($db))->claim('reconciliation', 24);
+        (new CronJobGuard($db))->claim('brevo_reconciliation', 24);
 
         $this->assertStringContainsString('NOW()', $db->lastSql());
         $this->assertStringContainsString(
@@ -71,7 +72,7 @@ final class CronJobGuardTest extends TestCase
             'The claim must gate on the row being enabled'
         );
         $this->assertSame(
-            ['reconciliation', 24],
+            ['brevo_reconciliation', 24],
             $db->lastParams(),
             'The job name and interval hours must be bound — no PHP date()/time()-derived value'
         );
@@ -91,8 +92,8 @@ final class CronJobGuardTest extends TestCase
 
     /**
      * `job_name` is `varchar(64)` under MySQL's default case-insensitive
-     * collation — `job_name = 'RECONCILIATION'` matches the seeded
-     * `'reconciliation'` row at the SQL layer. The allowlist's strict
+     * collation — `job_name = 'BREVO_RECONCILIATION'` matches the seeded
+     * `'brevo_reconciliation'` row at the SQL layer. The allowlist's strict
      * `in_array(..., true)` check is the only thing preventing a
      * case-variant name from claiming a different job's row; if the
      * allowlist check were ever relaxed to case-insensitive comparison, the
@@ -104,7 +105,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('RECONCILIATION', 24));
+        $this->assertFalse((new CronJobGuard($db))->claim('BREVO_RECONCILIATION', 24));
         $this->assertSame(
             '',
             $db->lastSql(),
@@ -116,11 +117,11 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        (new CronJobGuard($db))->claim('reconciliation', 48);
+        (new CronJobGuard($db))->claim('brevo_reconciliation', 48);
 
         $this->assertStringContainsString('?', $db->lastSql());
         $this->assertStringNotContainsString('48', $db->lastSql(), 'The interval must be bound, not interpolated');
-        $this->assertSame(['reconciliation', 48], $db->lastParams());
+        $this->assertSame(['brevo_reconciliation', 48], $db->lastParams());
     }
 
     /**
@@ -139,7 +140,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: false);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 24));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', 24));
     }
 
     /**
@@ -156,7 +157,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 0));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', 0));
         $this->assertSame(
             '',
             $db->lastSql(),
@@ -176,7 +177,7 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', -1));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', -1));
         $this->assertSame(
             '',
             $db->lastSql(),
@@ -201,6 +202,146 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true, queryErrors: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 24));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', 24));
+    }
+
+    /**
+     * #1885: 'send_verification_batch' must be in ALLOWED_JOB_NAMES alongside
+     * 'brevo_reconciliation' and 'brevo_suppression_sync' — a job name absent from
+     * this allowlist can never claim, regardless of its er_cron_job_runs row.
+     */
+    public function testClaimAcceptsSendVerificationBatchJobName(): void
+    {
+        $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
+
+        $this->assertTrue((new CronJobGuard($db))->claim('send_verification_batch', 20));
+        $this->assertStringContainsString('job_name = ?', $db->lastSql());
+        $this->assertSame(['send_verification_batch', 20], $db->lastParams());
+    }
+
+    // =========================================================================
+    // recordFailure() — the claim()'s counterpart, stamping last_failure_at
+    // for a run whose execute() threw. claim() stamps last_run_at BEFORE the
+    // work runs (it must, to block a concurrent run), so without this column a
+    // job that throws every night is indistinguishable from a healthy one on
+    // the dashboard.
+    // =========================================================================
+
+    protected function setUp(): void
+    {
+        global $mockLogEntries;
+        $mockLogEntries = [];
+    }
+
+    public function testRecordFailureStampsLastFailureAtForTheNamedJob(): void
+    {
+        $db = new CronJobGuardFakeDatabase();
+
+        (new CronJobGuard($db))->recordFailure('send_verification_batch');
+
+        $this->assertStringContainsString(
+            'last_failure_at = NOW()',
+            $db->lastSql(),
+            'The failure must be stamped from the database clock, like claim()\'s own write'
+        );
+        $this->assertStringContainsString('job_name = ?', $db->lastSql());
+        $this->assertSame(
+            ['send_verification_batch'],
+            $db->lastParams(),
+            'The job name must be bound, not interpolated'
+        );
+    }
+
+    /**
+     * The same allowlist claim() enforces. A name that could never claim a row
+     * must not be able to stamp one either — otherwise an unrecognized job
+     * could write a failure onto a row it has no relationship with.
+     */
+    public function testRecordFailureRejectsUnrecognizedJobName(): void
+    {
+        $db = new CronJobGuardFakeDatabase();
+
+        (new CronJobGuard($db))->recordFailure('not_a_real_job');
+
+        $this->assertSame(
+            '',
+            $db->lastSql(),
+            'An unrecognized job name must be rejected before any query is issued'
+        );
+    }
+
+    /**
+     * recordFailure() is called from AbstractCronJob::run()'s catch block,
+     * immediately before the failure log line an operator actually reads. A
+     * throw here — the real prepare()-time PDOException on a schema where
+     * 20260922171500 has not applied — would suppress that line entirely,
+     * which is strictly worse than losing the dashboard stamp.
+     */
+    public function testRecordFailureSwallowsAThrowFromQuery(): void
+    {
+        $db = new CronJobGuardFakeDatabase(queryThrows: true);
+
+        // No expectException(): the whole point is that nothing escapes.
+        (new CronJobGuard($db))->recordFailure('send_verification_batch');
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function testRecordFailureLogsDistinctlyWhenItsOwnWriteThrows(): void
+    {
+        global $mockLogEntries;
+
+        $db = new CronJobGuardFakeDatabase(queryThrows: true);
+        (new CronJobGuard($db))->recordFailure('send_verification_batch');
+
+        $this->assertCount(1, $mockLogEntries, 'A failure to record the failure must not be silent');
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString(
+            '20260922171500_add_cron_job_runs_last_failure_at',
+            $mockLogEntries[0]['message'],
+            'The message must name the migration an operator has to run — that is the actual fix'
+        );
+    }
+
+    public function testRecordFailureLogsWhenTheWriteReportsAnError(): void
+    {
+        global $mockLogEntries;
+
+        $db = new CronJobGuardFakeDatabase(queryErrors: true);
+        (new CronJobGuard($db))->recordFailure('send_verification_batch');
+
+        $this->assertCount(1, $mockLogEntries, 'An error()-reported fault must be logged, not swallowed silently');
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+    }
+
+    /**
+     * MySQL reports rows CHANGED, not matched (this connection sets no
+     * MYSQL_ATTR_FOUND_ROWS), and NOW() has one-second resolution — so two
+     * failures inside the same second legitimately change nothing. A
+     * count()-based check would file a false "row not seeded" line into the
+     * exact category an operator filters on to find real faults.
+     */
+    public function testRecordFailureDoesNotLogWhenNoRowsChanged(): void
+    {
+        global $mockLogEntries;
+
+        $db = new CronJobGuardFakeDatabase(claimSucceeds: false);
+        (new CronJobGuard($db))->recordFailure('send_verification_batch');
+
+        $this->assertSame(
+            [],
+            $mockLogEntries,
+            'A zero-rows-changed write is the ordinary same-second repeat, not a fault worth logging'
+        );
+    }
+
+    public function testRecordFailureDoesNotLogOnASuccessfulWrite(): void
+    {
+        global $mockLogEntries;
+
+        $db = new CronJobGuardFakeDatabase();
+        (new CronJobGuard($db))->recordFailure('send_verification_batch');
+
+        $this->assertSame([], $mockLogEntries, 'Recording a failure successfully is not itself a fault');
     }
 }

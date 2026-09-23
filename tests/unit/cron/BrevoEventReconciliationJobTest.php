@@ -108,17 +108,27 @@ final class BrevoEventReconciliationJobTest extends TestCase
      * @param list<object>|null $events Null scripts a poll failure.
      * @param FakeBrevoEventReconciliationClient|null $client Receives the fake
      *        client this job was built with, so callers can assert on it.
+     * @param AbstractCronJobFakeDatabase|null $db Receives the fake database
+     *        this job was built with, so callers can assert on it (e.g. how
+     *        many times the unmatched-recipient counter UPDATE fired).
      * @param-out FakeBrevoEventReconciliationClient $client
+     * @param-out AbstractCronJobFakeDatabase $db
      */
     private function makeJob(
         ?array $events,
         ?FakeBrevoEventReconciliationClient &$client = null,
         bool $verificationEnabled = true,
+        ?AbstractCronJobFakeDatabase &$db = null,
+        bool $unmatchedCounterUpdateSucceeds = true,
     ): BrevoEventReconciliationJob {
         $client = new FakeBrevoEventReconciliationClient($events);
+        $db = new AbstractCronJobFakeDatabase(
+            verificationEnabled: $verificationEnabled,
+            unmatchedCounterUpdateSucceeds: $unmatchedCounterUpdateSucceeds,
+        );
 
         return new BrevoEventReconciliationJob(
-            new AbstractCronJobFakeDatabase(verificationEnabled: $verificationEnabled),
+            $db,
             $this->mockRepo,
             $this->applier,
             $client,
@@ -648,6 +658,58 @@ final class BrevoEventReconciliationJobTest extends TestCase
         );
     }
 
+    /**
+     * #2085 (pr-test-analyzer follow-up): execute() — the unattended nightly
+     * cron path — appends a warning clause to its "incremental run complete"
+     * summary line whenever counterFailureCount > 0. That line is the ONLY
+     * artifact the nightly run leaves behind (no admin page renders it), so
+     * this drives execute() itself via runNow() rather than
+     * runNowWithSummary(), and asserts on the actual logged text rather than
+     * only on the returned summary object — which is all
+     * testApplyEventUnmatchedRecipientCounterFailureIsReportedInSummary above
+     * covers.
+     */
+    public function testNightlyRunLogsTheCounterFailureWarningClause(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([]);
+
+        $this->makeJob(
+            [
+                new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+                new FakeBrevoEvent(email: 'b@example.com', messageId: 'm2'),
+            ],
+            unmatchedCounterUpdateSucceeds: false,
+        )->runNow();
+
+        $log = $this->logsContaining('incremental run complete');
+        $this->assertNotEmpty($log);
+        $this->assertStringContainsString(
+            '2 of the 2 unmatched event(s) were NOT recorded in the dashboard'
+            . ' unmatched-recipient counter; see VerificationConfigWarning log entries',
+            $log[0]['message']
+        );
+    }
+
+    /**
+     * The other side of the same behavior (#2085): a clean run — the counter
+     * healthy — must not carry the warning clause, so a genuinely quiet or
+     * fully-successful night reads as clean in the one artifact the nightly
+     * path leaves behind.
+     */
+    public function testNightlyRunOmitsTheCounterFailureClauseWhenCounterSucceeds(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([]);
+
+        $this->makeJob([
+            new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+            new FakeBrevoEvent(email: 'b@example.com', messageId: 'm2'),
+        ])->runNow();
+
+        $log = $this->logsContaining('incremental run complete');
+        $this->assertNotEmpty($log);
+        $this->assertStringNotContainsString('NOT recorded in the dashboard', $log[0]['message']);
+    }
+
     // --- runNowWithSummary() counts ---------------------------------------
 
     public function testRunNowWithSummaryHappyPathCountsAreCorrect(): void
@@ -683,6 +745,85 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
         $this->assertSame(0, $summary->matchedCount);
         $this->assertSame(1, $summary->unmatchedCount);
+    }
+
+    /**
+     * #2085: applyEvent()'s unmatched branch also calls
+     * VerificationSettings::incrementUnmatchedRecipientCounter() before
+     * returning. N unmatched events in one page must fire the counter UPDATE
+     * exactly N times — this is the one behavior the summary's own
+     * unmatchedCount assertion above cannot distinguish from a counter call
+     * that silently never fires.
+     */
+    public function testApplyEventUnmatchedRecipientIncrementsCounter(): void
+    {
+        $this->expectRepoCalls()->expects($this->exactly(3))->method('findByEmail')->willReturn([]);
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+            new FakeBrevoEvent(email: 'b@example.com', messageId: 'm2'),
+            new FakeBrevoEvent(email: 'c@example.com', messageId: 'm3'),
+        ], $client, db: $db)->runNowWithSummary();
+
+        $this->assertSame(3, $summary->unmatchedCount);
+        $this->assertSame(3, $db->unmatchedCounterIncrementCalls());
+    }
+
+    /**
+     * A failed counter increment must not corrupt the job's own bookkeeping or
+     * abort the run — the event is still counted as unmatched, nothing is
+     * counted as skipped, and events after it in the page are still processed.
+     *
+     * But it is NOT invisible: counterFailureCount reports every unmatched
+     * event that did not reach the dashboard counter, so execute()'s summary
+     * line cannot read as a clean run while the counter silently
+     * under-reports. The increment itself is attempted only once — after the
+     * first failure the call is skipped for the rest of the run (the fault is
+     * settings-row-level, not per-event, and VerificationSettings logs a
+     * warning row on every failed call) — while the tally keeps counting, so
+     * the reported figure stays the true number missing.
+     */
+    public function testApplyEventUnmatchedRecipientCounterFailureIsReportedInSummary(): void
+    {
+        $this->expectRepoCalls()->expects($this->exactly(2))->method('findByEmail')->willReturn([]);
+
+        $summary = $this->makeJob(
+            [
+                new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+                new FakeBrevoEvent(email: 'b@example.com', messageId: 'm2'),
+            ],
+            $client,
+            db: $db,
+            unmatchedCounterUpdateSucceeds: false,
+        )->runNowWithSummary();
+
+        $this->assertSame(2, $summary->counterFailureCount, 'Both unmatched events went unrecorded in the dashboard counter');
+        $this->assertSame(2, $summary->unmatchedCount, 'A failed counter increment must not affect the job\'s own unmatchedCount');
+        $this->assertSame(0, $summary->skippedCount, 'A failed counter increment must not be reported as a skipped event');
+        $this->assertSame(
+            1,
+            $db->unmatchedCounterIncrementCalls(),
+            'Once one increment fails the call is not re-attempted, to avoid one duplicate warning-log row per unmatched event'
+        );
+    }
+
+    /**
+     * The other side of the same behavior: with a healthy counter, every
+     * unmatched event is both attempted and recorded, so counterFailureCount
+     * stays 0 and the summary line carries no failure clause.
+     */
+    public function testApplyEventUnmatchedRecipientCounterSuccessReportsNoFailures(): void
+    {
+        $this->expectRepoCalls()->expects($this->exactly(2))->method('findByEmail')->willReturn([]);
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+            new FakeBrevoEvent(email: 'b@example.com', messageId: 'm2'),
+        ], $client, db: $db)->runNowWithSummary();
+
+        $this->assertSame(0, $summary->counterFailureCount);
+        $this->assertSame(2, $summary->unmatchedCount);
+        $this->assertSame(2, $db->unmatchedCounterIncrementCalls());
     }
 
     /**

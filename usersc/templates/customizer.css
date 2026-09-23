@@ -664,6 +664,27 @@ img.card-img-top {
   width: 85%;
 }
 
+/* ========== TEXT UTILITIES ========== */
+
+/* Muted white text on a dark (bg-primary/registry-card hero) background.
+   Used on multiple pages (usersc/account.php, app/views/cars/_verify_hero.php)
+   — promoted here per the UI_STANDARDS "applies to multiple pages" rule
+   rather than being redefined inline on each one (issue #1881). */
+.text-white-75 {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* ========== FORM VALIDATION ========== */
+
+/* Bootstrap's .is-invalid only paints the .form-control itself; inside an
+   .input-group the leading/trailing .input-group-text addon keeps its
+   neutral border, so the field reads as only half-highlighted. Add this
+   class to the .input-group wrapper (alongside .is-invalid on the control)
+   to carry the danger border across the whole group (issue #1881). */
+.input-group.has-error .input-group-text {
+  border-color: var(--er-danger);
+}
+
 /* ========== RESPONSIVE DESIGN ========== */
 
 @media (max-width: 768px) {

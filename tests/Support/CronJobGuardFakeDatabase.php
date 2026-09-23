@@ -43,16 +43,28 @@ class CronJobGuardFakeDatabase extends FakeDatabase
      *                                first query() call and 0 on every call
      *                                after — simulates a second caller
      *                                racing the same guard column and losing.
+     * @param bool $queryThrows When true, query() throws instead of returning
+     *                          — modeling the real DB::query()'s
+     *                          prepare()-time PDOException for a missing
+     *                          column, which is the half-applied-migration
+     *                          case recordFailure()'s try/catch exists for.
+     *                          Kept separate from $queryErrors because the two
+     *                          take different branches in recordFailure().
      */
     public function __construct(
         private readonly bool $claimSucceeds = true,
         private readonly bool $queryErrors = false,
         private readonly bool $claimSucceedsOnce = false,
+        private readonly bool $queryThrows = false,
     ) {
     }
 
     public function query(string $sql, array $params = []): self
     {
+        if ($this->queryThrows) {
+            throw new \RuntimeException('simulated prepare()-time failure: missing column');
+        }
+
         $this->lastSql = $sql;
         $this->lastParams = $params;
         $this->queryCount++;

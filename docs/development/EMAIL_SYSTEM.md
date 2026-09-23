@@ -193,6 +193,10 @@ roles (read-only for editor, toggle control for admin only).
 - `cronReady()` — badge `text-bg-warning` if false; muted if true
 - Last webhook received — muted "Not yet implemented (#1887)" (placeholder for the real webhook implementation)
 - Last reconciliation run — muted "Not yet implemented (#1889)"
+- Unmatched recipients — badge `text-bg-warning` if the counter is above 0,
+  `text-bg-success` if 0, `text-bg-danger` "Unavailable" if the read itself
+  failed; counts Brevo signals (webhook events, reconciliation events,
+  suppression-list contacts) whose recipient matched no car (#2085)
 
 **Toggle Control:**
 
@@ -209,6 +213,119 @@ A conditional banner appears below pending-migrations alerts when `isEnabled() &
 - `alert-warning` if `brevoReady()` is true but `!cronReady()`
 
 The banner states which prerequisite failed and links to the Verification System tab for details.
+
+## Admin Verification Email Send Tool (#1884)
+
+**Location:** `app/admin/index.php?tab=verification` (Verification System tab)  
+**Implementation:** `app/admin/index.php` (POST command handling) + `app/admin/includes/tab-verification.php` (UI rendering)  
+**Access:** Admin only (`securePage()` + `hasPerm([2])`)  
+**Independent of Feature Switch:** This manual admin tool runs regardless of
+`VerificationSettings::isEnabled()`. A deliberate decision: the admin may want
+to send a one-off batch of reminders even while the automatic system is paused
+for operational reasons, or to test sending before enabling automation.
+
+### Preview & Send Flow
+
+**GET request (no side effects):** Renders a table of eligible cars, up to the
+configured batch size (`VerificationSettings::batchSize()`, default 5), in the
+Verification tab's "Send Verification Emails" card section. Car data shown: ID,
+chassis, owner name, email address. Every dynamic value is HTML-escaped at render time.
+
+**POST `verification_send_batch` action:** Sends verification emails to one batch of cars.
+CSRF token validated first (`Token::check()`); missing/invalid token includes the
+standard UserSpice token-error page and no writes occur. For each submitted car ID:
+
+1. Look up the car row (`findById()`)
+2. Re-evaluate eligibility via `VerificationEligibility::skipReason()` — a car
+   can change state between GET and POST (sold, bounced, suppressed, verified
+   by owner), and is reported as skipped with the reason rather than sent or
+   dropped
+3. Cars passing the re-check are sent via `CarVerificationSendService::sendOne()`,
+   orchestrated per-batch by `VerificationBatchSender::processBatch()`
+4. Result is rendered in the response as a plain HTML report card: four
+   sections (Sent N / Unrecorded N with reasons / Skipped N with reasons /
+   Failed N with reasons). Unrecorded covers a send that genuinely went out
+   but whose follow-up bookkeeping failed (`SendResult::sentUnrecorded()`) —
+   distinct from a clean send so the admin isn't shown a false all-clear. No
+   PRG pattern — refresh risks double-posting, accepted as within the admin
+   tool's manual, low-frequency, single-operator trust model. No silent
+   totals (AC13): every car gets a per-row outcome line.
+
+### Mark Bounced / Clear Bounced / Clear Suppression (Owner-level Actions)
+
+**Critical semantics:** These actions fan out to **every car the owner has**.
+They are owner-level, not car-level.
+
+**Mark Bounced** (`mark_bounced` POST):
+
+- Records the owner's **current `users.email`** (not the car's denormalized
+  `cars.email`) in `profiles.email_bounced_address` via
+  `CarVerificationManager::setBouncedForOwner()`
+- Fans out to every car owned by that user, setting `cars.email_bounced = 1`
+  and `cars.email_bounced_address` to the owner's `users.email`
+- **Never reassigns car ownership** — a defect in the original, deleted tool that
+  this rebuild fixes. All cars remain owned by their original owner.
+- Writes one `cars_hist` row per affected car (audit trail), operation string
+  `'EMAIL BOUNCED'`
+
+**Clear Bounced** (`clear_bounced` POST):
+
+- Clears `profiles.email_bounced` and `profiles.email_bounced_address`
+- Fans out to every car owned by that user, clearing `cars.email_bounced` and
+  `cars.email_bounced_address` via `CarVerificationManager::clearBouncedForOwner()`
+- Idempotent: calling it twice on the same owner has no effect the second time
+- Writes one `cars_hist` row per affected car, operation string
+  `'EMAIL BOUNCE CLEARED'`
+
+**Clear Suppression** (`clear_suppression` POST):
+
+- Distinct from Clear Bounced; reverses a suppression flag instead
+- Fans out to every car owned by that user, clearing `cars.email_suppressed`
+  via `CarVerificationManager::clearSuppressedForOwner()`
+- Writes one `cars_hist` row per affected car, operation string
+  `'EMAIL SUPPRESSION CLEARED'`
+
+All three actions: CSRF validated first. On both success and error, the result is
+converted to a UserSpice session flash message (`usError()`/`usSuccess()`) and the
+page renders normally (standard POST-then-render pattern, no redirect). On success,
+the flash message names the owner and affected car count.
+
+### The Shared Send Service
+
+**Class:** `CarVerificationSendService` (`usersc/classes/Car/CarVerificationSendService.php`)
+
+The eligibility query, vericode rotation, email composition, and send sequence
+are NOT duplicated between the admin tool and the cron job. Instead, both
+callers use `CarVerificationSendService`, a stateless service whose public
+methods are pure functions of their arguments + current DB state. No
+`$_POST`/`$_SERVER`/session lookups live here — anything specific to the admin
+environment belongs in `app/admin/index.php` (the Verification tab's POST command handling).
+
+**Key Methods:**
+
+- `findEligible(int $limit, int $offset): array` — delegates to
+  `CarRepository::findVerificationEligible()` verbatim; the single query both
+  callers use
+- `sendOne(object $carData): SendResult` — send one car's email, return sent/failed
+- `sendBatch(array $cars): array` — map `sendOne()` over multiple cars
+
+**Intended Reuse by #1885:** The cron job that follows this issue will call
+`sendOne()` in the same sequence, with the same eligibility rules. This prevents
+the admin preview and cron from disagreeing about which cars are due.
+
+### Local Synthetic Email Event ID
+
+For manually-sent verification emails (via the admin tool), there is no real
+Brevo `message_id`. Instead, a synthetic id is written to `er_email_events.brevo_message_id`:
+
+```php
+'local:' . hash('sha256', $verificationCode)
+```
+
+This ensures every row in the `UNIQUE(car_id, brevo_message_id, event)` index
+has a distinct key (no NULL collision), so dedup still works if the same email
+is sent twice. Brevo webhook events (which have real message ids from Brevo)
+are distinguished from admin sends by this `'local:'` prefix.
 
 ### Brevo Webhook Receiver (#1887)
 
@@ -230,11 +347,17 @@ prefix of the provided token, never the raw value. See
 [RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md)-driven release notes
 for the per-environment setup step.
 
-**Rate limiting:** `checkRateLimit('brevo_webhook')` (IP-scoped; see
-`usersc/includes/rate_limits.php`), checked only **after** auth passes, so a
-rate-limiter failure (which fails open, matching
-`app/api/shared/join-failure-report.php`'s pattern) can only ever become a
-throughput bypass, never an auth bypass.
+**Rate limiting:** Two IP-scoped keys (see `usersc/includes/rate_limits.php`):
+
+- `brevo_webhook` — checked only **after** auth passes; gates the entire
+  request via 429 if the limit is exceeded. A rate-limiter failure (which
+  fails open, matching `app/api/shared/join-failure-report.php`'s pattern)
+  can only ever become a throughput bypass, never an auth bypass.
+- `brevo_webhook_auth_failure` — checked **during** the auth-failure branch
+  itself in `brevo.php`; gates only whether that failure gets logged (the
+  401 response is never affected by rate-limit state). Prevents a spammed
+  invalid-token attack from unboundedly growing the `logs` table while
+  preserving the security invariant above.
 
 **Verification-system gates** (unchanged from the pre-#1887 stub):
 `!isEnabled()` → 2xx, silent. `isEnabled() && !brevoReady()` → 2xx, logged
@@ -271,7 +394,7 @@ independent escalation.
 | --- | --- |
 | Parsed and durably written | 2xx |
 | No recognized tag | 2xx, logged |
-| Recipient matches no car | 2xx, logged, `er_verification_settings.unmatched_webhook_recipient_count` incremented |
+| Recipient matches no car | 2xx, logged, `er_verification_settings.unmatched_recipient_count` incremented |
 | Malformed/unparseable payload (incl. a top-level JSON list — Brevo's `batched: false` guarantee means a list body is never legitimate) | 4xx, logged |
 | Auth token missing/empty/wrong | 4xx, logged (hashed prefix only) |
 | Database write failure | 5xx — the only retryable case |
@@ -289,8 +412,9 @@ drives.
 **Out of scope for #1887** (see that issue's non-goals): no outbound Brevo
 API calls of any kind (webhook *registration* is #1888, blocked-contacts
 *import* is #1923, nightly *reconciliation* is #1889), and no admin UI
-rendering of the per-car event history or the unmatched-recipient counter —
-that is a follow-up issue.
+rendering of the per-car event history. Admin UI rendering of the
+unmatched-recipient counter shipped in #2085 — see the Status Indicators
+list above.
 
 ### Auto-Clear Bounce Flag on Confirmed Email Change (#1890)
 
@@ -396,6 +520,102 @@ the same shape to the reconciliation job via `ReconciliationSummary`.
 - [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager) — the 10-minute interval constant referenced by `cronReady()`
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` for logging failures, `LOG_CATEGORY_EMAIL_WEBHOOK` for webhook event processing
 - [CLASSES.md](CLASSES.md) — `VerificationSettings` and `VerificationConfigException` class reference
+
+## Composing and Sending Verification Emails (#1882, #1883)
+
+The periodic verification email that requests owners confirm their car records are current is built by `CarVerificationEmailComposer`
+and includes a one-click opt-out link that lets owners suppress all future verification mail via a single vericode-authenticated
+action. The composer is built and unit-tested but not yet wired to any send path — that wiring is future issue #1884's responsibility.
+
+### Verification Email Composer
+
+**Location:** `usersc/classes/Car/CarVerificationEmailComposer.php`
+
+The `CarVerificationEmailComposer` class has one public method, `compose(object $carData, object $owner, string $vericode): array{subject,
+html}`, which builds the subject line and full branded HTML body. The class intentionally performs **no database access** — everything
+it renders comes from the `$carData` (car row) and `$owner` (owner row) objects supplied by the caller. This design keeps the composer
+testable with fixture objects alone, no framework bootstrap or database required.
+
+The composed email includes:
+
+- **Greeting and explanation** — why the owner is receiving this request
+- **Verify/Sold side-by-side buttons** — confirm ownership or report the car sold
+- **Owner Information box** — ID, name, email, location, join date
+- **Car Information box** — ID, year, type, chassis, series, variant, color, purchase/sale dates, photo count, and website
+- **Conditional "About the Chassis Number" alert** — appears only when `cars.chassis_override = 1`, explaining that the chassis was
+  manually entered and may differ from factory records
+- **Conditional blank-field callout** — appears when any of Color, Variant, Purchase Date, or Website is blank, naming every blank
+  field and highlighting its row, and encouraging the owner to fill them in
+- **Edit button** — links to the full `app/owner/cars/edit.php` form (requires login)
+- **Footer block** — opt-out link (see below) and 60-day expiry notice
+
+**Public Constants:**
+
+- `LINK_TTL_DAYS = 60` — Lifetime of the Verify/Sold/Opt-Out links. Must equal `VERIFY_LINK_TTL_DAYS` in `app/verify/verify_car.php`;
+  a unit test guards against drift since the composer's expiry notice text promises this window
+- `NO_TRACK_LINK_CLASS = 'er-no-track'` — CSS class marking the opt-out (and ideally Verify/Sold) links for click-tracking exclusion
+
+**URL Builders** (public):
+
+- `verifyUrl(string $vericode): string` — Absolute URL to confirm ownership
+- `soldUrl(string $vericode): string` — Absolute URL to report the car sold
+- `optOutUrl(string $vericode): string` — Absolute URL to opt out of all future verification emails (see below)
+- `editUrl(int $carId): string` — Absolute URL to the full car edit form
+
+### One-Click Owner Opt-Out
+
+Every verification email footer includes a "Stop sending me these" link that opens
+`app/verify/verify_car.php?vericode=...&action=optout`. The owner needs no login to use it — the vericode is the credential, matching
+the Verify/Sold pattern. The flow is entirely GET/POST-driven:
+
+**GET (confirmation page):**
+
+The owner clicks the opt-out link and sees a confirmation page displaying how many cars are registered to them and whether they
+are already opted out. The page is read-only — clicking the link again (or revisiting the URL) always shows the confirmation card
+with the same information.
+
+**POST (suppression):**
+
+The owner confirms and submits a POST to the same URL. The action is **owner-initiated and scoped to the account**, not individual
+cars: `CarVerificationManager::setSuppressedForOwner(int $ownerId)` sets `profiles.email_suppressed = 1` on the owner and fans
+`cars.email_suppressed = 1` out to every unsuppressed car they have. Already-suppressed cars are skipped, making the operation
+idempotent — a repeat POST or an owner already suppressed via a Brevo complaint webhook commits a no-op and redirects identically.
+
+Each affected car gets one `EMAIL SUPPRESSED` `cars_hist` row via the explicit `insertHistory()` call in `verify_car.php` (in
+addition to the generic `UPDATE` row the `cars_update` trigger always writes for any `cars` column change) — the `EMAIL SUPPRESSED`
+row is what makes owner-initiated suppression distinguishable from other causes, with comments text `'Owner self-suppression via
+verification email opt-out link'`. All cars and their audit rows are written in a single transaction; a database failure rolls back
+the entire operation.
+
+The POST redirects via 303 (See Other) to the confirmation page (GET), which then displays the updated suppression state. A repeat
+visit always succeeds silently.
+
+**Authentication:** No CSRF token is required or present (see `app/verify/verify_car.php`'s file header for the full rationale).
+The vericode is the unguessable credential; session-less CSRF tokens would add no value while breaking legitimate email links.
+
+**Logging:** A successful opt-out writes no `logger()` entry — the `cars_hist` row (`operation = 'EMAIL SUPPRESSED'`) is the audit
+record. Failures (a DB error while counting cars, or during the suppression transaction) are logged under
+`LogCategories::LOG_CATEGORY_EMAIL_BOUNCED` before `verify_car.php` renders the post-authentication failure page
+(`renderActionFailed()`), which states plainly that the write did not complete — deliberately not the generic
+"expired or invalid link" copy, since the vericode has already authenticated by this point.
+
+### Click-Tracking Exclusion Note
+
+The Opt-Out link carries the CSS class `NO_TRACK_LINK_CLASS = 'er-no-track'`, originally intended to mark it for Brevo
+click-tracking exclusion. **No such exclusion is possible** — confirmed during #2147's investigation, Brevo has no
+per-link tracking-exclusion mechanism for transactional email (no CSS class, tag, or API parameter accomplishes this).
+This is not a "not yet built" gap; it cannot be built against Brevo as-is. The class is currently inert and every link
+in a Registry transactional email, including this one, is rewritten through Brevo's tracking redirect domain — see the
+broader consequence (a raw tracking URL displayed as body text in several templates) and its resolution in issue #2147.
+
+**Template-variable workaround: tested, does not work.** Some Brevo users report that supplying the URL via a
+template variable (`href="{{ params.link }}"` instead of a literal `href="https://..."`) sometimes escapes
+rewriting. Tested 2026-09-22 via a direct `POST /v3/smtp/email` send (`params: {link: <url>}`, `htmlContent`
+containing both a literal-href control link and an `href="{{ params.link }}"` link) from test.elanregistry.org to a
+real Gmail-hosted inbox. Result: **both links were rewritten** to Brevo's click-tracking redirect domain
+(`*.r.af.d.sendibt2.com/tr/cl/...`) — no difference in behavior between the literal and template-variable forms on
+this account/plan. Confirms the exclusion is not achievable via this route either; do not attempt it again without a
+new reason to expect different behavior (e.g. a plan/setting change on Brevo's side).
 
 ---
 
@@ -526,6 +746,91 @@ requests and the docs; treat them as unverified.
 5. `spam` carries no `reason`; `tags` is present on every event, so tag filtering is
    safe for all of them.
 6. `message-id` arrives with angle brackets — store the send API's `messageId` verbatim.
+
+## Sender Reputation (#1922)
+
+Investigated 2026-09-03 through 2026-09-14 after a transactional test message
+from `registrar@elanregistry.org`, sent via Brevo's shared relay, was
+auto-classified as Junk on arrival in a fresh Outlook.com mailbox — before any
+recipient action. v2.30.x sends verification email to every owner in a
+cohort, so a whole slice of Microsoft-domain recipients silently never seeing
+the request (and their "no response" being read as evidence of anything)
+motivated closing this out before the first live send.
+
+### Authentication (SPF/DKIM/DMARC) — confirmed passing
+
+**Root cause found and fixed:** the SPF record for `elanregistry.org` was
+missing `include:spf.brevo.com`, so Brevo's shared sending IPs were not
+authorized — the likely cause of the Outlook.com junk classification.
+
+Fix applied directly in Cloudflare's dashboard:
+
+```text
+v=spf1 +ip4:106.0.62.78 +include:spf.a2hosting.com include:spf.brevo.com ~all
+```
+
+Confirmed live via `dig` against both 1.1.1.1 and 8.8.8.8 (2026-09-13).
+
+**DKIM** was already correctly configured; confirmed working via the
+selectors:
+
+- `brevo1._domainkey.elanregistry.org` → `b1.elanregistry-org.dkim.brevo.com`
+- `brevo2._domainkey.elanregistry.org` → `b2.elanregistry-org.dkim.brevo.com`
+
+**DMARC** is `p=quarantine`, reporting to Cloudflare and Brevo. Cloudflare's
+DMARC Management report (30-day window, 2026-09-13): 100% DMARC pass (12/12),
+100% DKIM aligned, 0% SPF aligned. The 0% SPF alignment is expected on
+Brevo's shared-IP plan — Brevo's envelope-from/Return-Path stays on their own
+domain unless a dedicated IP ($251/yr) or their branded-subdomain option is
+purchased — and does not block DMARC, since DKIM alignment alone satisfies
+it. Not pursued further; the cost isn't justified by the marginal gain.
+
+**BIMI** was investigated as a side item: the DNS prerequisites (DMARC
+quarantine/reject) are already met, but displaying the logo in Gmail/Yahoo
+requires a Verified Mark Certificate, which in turn requires a registered
+trademark plus roughly $1,300–1,500/yr. Not pursued — there's no branding
+goal that changes that cost/benefit call today.
+
+**DNS caveat:** Terraform-managed DNS for this domain
+(`~/Developer/Web/Cloudflare`) is abandoned and does not reflect current
+records — the SPF fix above was applied directly in Cloudflare's dashboard.
+Treat Cloudflare's dashboard as the sole source of truth for this domain's
+DNS going forward; do not consult or trust the Terraform state/tfvars here.
+
+### Microsoft SNDS / JMRP enrollment — not independently checkable
+
+Brevo's shared-IP plan does not expose per-customer SNDS (Smart Network Data
+Services) or JMRP (Junk Mail Reporting Program) enrollment status to
+individual senders — Brevo manages IP reputation and the Microsoft
+relationship at the platform level for everyone on the shared pool. There is
+no dashboard or API on our side that would show this. The operative signal
+for our own sending is Brevo's own domain/IP reputation status (Senders,
+Domains & Dedicated IPs) plus the inbox-placement re-test below, not direct
+SNDS/JMRP visibility.
+
+### `admin@elanregistry.org` hard-bounce — historical, not a live reference
+
+Brevo's suppression list (`GET /v3/smtp/blockedContacts`) includes a
+`hardBounce` entry for `admin@elanregistry.org` dating back to 2025-12 (see
+the Fixtures section above). A repo-wide search found no place where
+`admin@elanregistry.org` is used as a live From/Reply-To sender identity —
+the only occurrences are in unit test fixture data
+(`tests/bootstrap-unit.php`, `tests/unit/system/LogCategoriesUsageTest.php`),
+and the latter's own test explicitly guards against
+`_email_template_verify_new.php` hardcoding this address as a sender, citing
+a prior fix in #368. The actual sender identity in use today is
+`registrar@elanregistry.org` (see `getAdminEmails()` /
+`getFeedbackEmail()` in `usersc/includes/custom_functions.php`, and
+`ADMIN_EMAILS`/`FEEDBACK_EMAIL` in `.env.example`). Conclusion: the 2025-12
+bounce predates the #368 fix or was a one-off manual send outside the
+codebase; there is no current code path to change.
+
+### Verified outcome
+
+A fresh Outlook.com/Hotmail/Live mailbox received a re-sent transactional
+test message in the Inbox, not Junk, on 2026-09-14 — confirmed after the SPF
+fix above. This was the hard gate for the v2.30.3 send pipeline and has
+passed.
 
 ## Updating the Plugin
 

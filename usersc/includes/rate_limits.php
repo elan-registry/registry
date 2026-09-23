@@ -5,140 +5,151 @@
  * Last updated: 2026-08-25 15:43:05
  */
 
-$rateLimits['login_attempt']['ip_max'] = 50;
+$rateLimits['login_attempt']['ip_max'] = 75;
 $rateLimits['login_attempt']['ip_window'] = 900;
-$rateLimits['login_attempt']['user_max'] = 10;
+$rateLimits['login_attempt']['user_max'] = 15;
 $rateLimits['login_attempt']['user_window'] = 300;
-$rateLimits['login_attempt']['total_max'] = 100;
+$rateLimits['login_attempt']['total_max'] = 150;
 $rateLimits['login_attempt']['total_window'] = 900;
 
-$rateLimits['totp_verify']['ip_max'] = 50;
+$rateLimits['totp_verify']['ip_max'] = 75;
 $rateLimits['totp_verify']['ip_window'] = 300;
-$rateLimits['totp_verify']['user_max'] = 25;
+$rateLimits['totp_verify']['user_max'] = 38;
 $rateLimits['totp_verify']['user_window'] = 300;
-$rateLimits['totp_verify']['total_max'] = 100;
+$rateLimits['totp_verify']['total_max'] = 150;
 $rateLimits['totp_verify']['total_window'] = 300;
 
-$rateLimits['totp_verify_and_activate']['ip_max'] = 50;
+$rateLimits['totp_verify_and_activate']['ip_max'] = 75;
 $rateLimits['totp_verify_and_activate']['ip_window'] = 300;
-$rateLimits['totp_verify_and_activate']['user_max'] = 25;
+$rateLimits['totp_verify_and_activate']['user_max'] = 38;
 $rateLimits['totp_verify_and_activate']['user_window'] = 300;
-$rateLimits['totp_verify_and_activate']['total_max'] = 100;
+$rateLimits['totp_verify_and_activate']['total_max'] = 150;
 $rateLimits['totp_verify_and_activate']['total_window'] = 300;
 
-$rateLimits['totp_regenerate_backup_codes']['ip_max'] = 50;
+$rateLimits['totp_regenerate_backup_codes']['ip_max'] = 75;
 $rateLimits['totp_regenerate_backup_codes']['ip_window'] = 300;
-$rateLimits['totp_regenerate_backup_codes']['user_max'] = 25;
+$rateLimits['totp_regenerate_backup_codes']['user_max'] = 38;
 $rateLimits['totp_regenerate_backup_codes']['user_window'] = 300;
-$rateLimits['totp_regenerate_backup_codes']['total_max'] = 100;
+$rateLimits['totp_regenerate_backup_codes']['total_max'] = 150;
 $rateLimits['totp_regenerate_backup_codes']['total_window'] = 300;
 
-$rateLimits['passkey_register']['ip_max'] = 50;
+$rateLimits['passkey_register']['ip_max'] = 75;
 $rateLimits['passkey_register']['ip_window'] = 300;
-$rateLimits['passkey_register']['user_max'] = 25;
+$rateLimits['passkey_register']['user_max'] = 38;
 $rateLimits['passkey_register']['user_window'] = 300;
-$rateLimits['passkey_register']['total_max'] = 100;
+$rateLimits['passkey_register']['total_max'] = 150;
 $rateLimits['passkey_register']['total_window'] = 300;
 
-$rateLimits['passkey_verify']['ip_max'] = 30;
+$rateLimits['passkey_verify']['ip_max'] = 45;
 $rateLimits['passkey_verify']['ip_window'] = 600;
-$rateLimits['passkey_verify']['user_max'] = 10;
+$rateLimits['passkey_verify']['user_max'] = 15;
 $rateLimits['passkey_verify']['user_window'] = 600;
-$rateLimits['passkey_verify']['credential_max'] = 6;
+$rateLimits['passkey_verify']['credential_max'] = 9;
 $rateLimits['passkey_verify']['credential_window'] = 900;
-$rateLimits['passkey_verify']['total_max'] = 50;
+$rateLimits['passkey_verify']['total_max'] = 75;
 $rateLimits['passkey_verify']['total_window'] = 900;
 
-$rateLimits['passkey_store']['ip_max'] = 50;
+$rateLimits['passkey_store']['ip_max'] = 75;
 $rateLimits['passkey_store']['ip_window'] = 300;
-$rateLimits['passkey_store']['user_max'] = 25;
+$rateLimits['passkey_store']['user_max'] = 38;
 $rateLimits['passkey_store']['user_window'] = 300;
-$rateLimits['passkey_store']['total_max'] = 100;
+$rateLimits['passkey_store']['total_max'] = 150;
 $rateLimits['passkey_store']['total_window'] = 300;
 
-$rateLimits['passkey_auth']['ip_max'] = 50;
+$rateLimits['passkey_auth']['ip_max'] = 75;
 $rateLimits['passkey_auth']['ip_window'] = 300;
-$rateLimits['passkey_auth']['user_max'] = 25;
+$rateLimits['passkey_auth']['user_max'] = 38;
 $rateLimits['passkey_auth']['user_window'] = 300;
-$rateLimits['passkey_auth']['total_max'] = 100;
+$rateLimits['passkey_auth']['total_max'] = 150;
 $rateLimits['passkey_auth']['total_window'] = 300;
 
-$rateLimits['passkey_diagnostics']['ip_max'] = 50;
+$rateLimits['passkey_diagnostics']['ip_max'] = 75;
 $rateLimits['passkey_diagnostics']['ip_window'] = 300;
-$rateLimits['passkey_diagnostics']['user_max'] = 25;
+$rateLimits['passkey_diagnostics']['user_max'] = 38;
 $rateLimits['passkey_diagnostics']['user_window'] = 300;
-$rateLimits['passkey_diagnostics']['total_max'] = 100;
+$rateLimits['passkey_diagnostics']['total_max'] = 150;
 $rateLimits['passkey_diagnostics']['total_window'] = 300;
 
-$rateLimits['passkey_network-test']['ip_max'] = 50;
+$rateLimits['passkey_network-test']['ip_max'] = 75;
 $rateLimits['passkey_network-test']['ip_window'] = 300;
-$rateLimits['passkey_network-test']['user_max'] = 25;
+$rateLimits['passkey_network-test']['user_max'] = 38;
 $rateLimits['passkey_network-test']['user_window'] = 300;
-$rateLimits['passkey_network-test']['total_max'] = 100;
+$rateLimits['passkey_network-test']['total_max'] = 150;
 $rateLimits['passkey_network-test']['total_window'] = 300;
 
-$rateLimits['password_reset_request']['ip_max'] = 20;
+$rateLimits['password_reset_request']['ip_max'] = 30;
 $rateLimits['password_reset_request']['ip_window'] = 3600;
-$rateLimits['password_reset_request']['email_max'] = 5;
+$rateLimits['password_reset_request']['email_max'] = 8;
 $rateLimits['password_reset_request']['email_window'] = 3600;
-$rateLimits['password_reset_request']['total_max'] = 30;
+$rateLimits['password_reset_request']['total_max'] = 45;
 $rateLimits['password_reset_request']['total_window'] = 3600;
 
-$rateLimits['password_reset_submit']['ip_max'] = 50;
+$rateLimits['password_reset_submit']['ip_max'] = 75;
 $rateLimits['password_reset_submit']['ip_window'] = 300;
-$rateLimits['password_reset_submit']['token_max'] = 4;
+$rateLimits['password_reset_submit']['token_max'] = 6;
 $rateLimits['password_reset_submit']['token_window'] = 1800;
-$rateLimits['password_reset_submit']['total_max'] = 100;
+$rateLimits['password_reset_submit']['total_max'] = 150;
 $rateLimits['password_reset_submit']['total_window'] = 300;
 
-$rateLimits['registration_attempt']['ip_max'] = 10;
+// Deliberately NOT part of the blanket 50% rate-limit raise: this is a
+// brute-force ceiling on guessing a bearer-credential vericode, not a
+// browsing limit sized for false-positive throttling. Restored to its
+// original, deliberately tight values (#2108).
+$rateLimits['verification_code_attempt']['ip_max'] = 50;
+$rateLimits['verification_code_attempt']['ip_window'] = 300;
+$rateLimits['verification_code_attempt']['token_max'] = 10;
+$rateLimits['verification_code_attempt']['token_window'] = 1800;
+$rateLimits['verification_code_attempt']['total_max'] = 200;
+$rateLimits['verification_code_attempt']['total_window'] = 300;
+
+$rateLimits['registration_attempt']['ip_max'] = 15;
 $rateLimits['registration_attempt']['ip_window'] = 3600;
-$rateLimits['registration_attempt']['total_max'] = 15;
+$rateLimits['registration_attempt']['total_max'] = 22;
 $rateLimits['registration_attempt']['total_window'] = 3600;
 
-$rateLimits['email_verification']['ip_max'] = 50;
+$rateLimits['email_verification']['ip_max'] = 75;
 $rateLimits['email_verification']['ip_window'] = 300;
-$rateLimits['email_verification']['email_max'] = 4;
+$rateLimits['email_verification']['email_max'] = 6;
 $rateLimits['email_verification']['email_window'] = 3600;
-$rateLimits['email_verification']['total_max'] = 100;
+$rateLimits['email_verification']['total_max'] = 150;
 $rateLimits['email_verification']['total_window'] = 300;
 
-$rateLimits['registration_recovery_email']['ip_max'] = 5;
+$rateLimits['registration_recovery_email']['ip_max'] = 8;
 $rateLimits['registration_recovery_email']['ip_window'] = 3600;
-$rateLimits['registration_recovery_email']['email_max'] = 3;
+$rateLimits['registration_recovery_email']['email_max'] = 4;
 $rateLimits['registration_recovery_email']['email_window'] = 3600;
-$rateLimits['registration_recovery_email']['total_max'] = 25;
+$rateLimits['registration_recovery_email']['total_max'] = 38;
 $rateLimits['registration_recovery_email']['total_window'] = 3600;
 
-$rateLimits['join_failure_beacon']['ip_max'] = 50;
+$rateLimits['join_failure_beacon']['ip_max'] = 75;
 $rateLimits['join_failure_beacon']['ip_window'] = 300;
-$rateLimits['join_failure_beacon']['total_max'] = 100;
+$rateLimits['join_failure_beacon']['total_max'] = 150;
 $rateLimits['join_failure_beacon']['total_window'] = 300;
 
-$rateLimits['owner_contact_email']['ip_max'] = 50;
+$rateLimits['owner_contact_email']['ip_max'] = 75;
 $rateLimits['owner_contact_email']['ip_window'] = 300;
-$rateLimits['owner_contact_email']['user_max'] = 25;
+$rateLimits['owner_contact_email']['user_max'] = 38;
 $rateLimits['owner_contact_email']['user_window'] = 300;
-$rateLimits['owner_contact_email']['total_max'] = 100;
+$rateLimits['owner_contact_email']['total_max'] = 150;
 $rateLimits['owner_contact_email']['total_window'] = 300;
 
-$rateLimits['feedback_submission']['ip_max'] = 50;
+$rateLimits['feedback_submission']['ip_max'] = 75;
 $rateLimits['feedback_submission']['ip_window'] = 300;
-$rateLimits['feedback_submission']['total_max'] = 100;
+$rateLimits['feedback_submission']['total_max'] = 150;
 $rateLimits['feedback_submission']['total_window'] = 300;
 
-$rateLimits['transfer_request']['ip_max'] = 50;
+$rateLimits['transfer_request']['ip_max'] = 75;
 $rateLimits['transfer_request']['ip_window'] = 300;
-$rateLimits['transfer_request']['user_max'] = 25;
+$rateLimits['transfer_request']['user_max'] = 38;
 $rateLimits['transfer_request']['user_window'] = 300;
-$rateLimits['transfer_request']['total_max'] = 100;
+$rateLimits['transfer_request']['total_max'] = 150;
 $rateLimits['transfer_request']['total_window'] = 300;
 
-$rateLimits['diagnostics']['ip_max'] = 50;
+$rateLimits['diagnostics']['ip_max'] = 75;
 $rateLimits['diagnostics']['ip_window'] = 300;
-$rateLimits['diagnostics']['user_max'] = 25;
+$rateLimits['diagnostics']['user_max'] = 38;
 $rateLimits['diagnostics']['user_window'] = 300;
-$rateLimits['diagnostics']['total_max'] = 100;
+$rateLimits['diagnostics']['total_max'] = 150;
 $rateLimits['diagnostics']['total_window'] = 300;
 
 // ip_max is PHP_INT_MAX by design: authenticated admin sessions are tracked
@@ -146,18 +157,46 @@ $rateLimits['diagnostics']['total_window'] = 300;
 // actually governs admin AJAX volume.
 $rateLimits['admin_ajax_search']['ip_max'] = PHP_INT_MAX;
 $rateLimits['admin_ajax_search']['ip_window'] = 300;
-$rateLimits['admin_ajax_search']['total_max'] = 100;
+$rateLimits['admin_ajax_search']['total_max'] = 150;
 $rateLimits['admin_ajax_search']['total_window'] = 300;
 
 $rateLimits['admin_ajax_write']['ip_max'] = PHP_INT_MAX;
 $rateLimits['admin_ajax_write']['ip_window'] = 300;
-$rateLimits['admin_ajax_write']['total_max'] = 100;
+$rateLimits['admin_ajax_write']['total_max'] = 150;
 $rateLimits['admin_ajax_write']['total_window'] = 300;
 
+// Shared by LocationService::searchLocation() (join-form manual picker,
+// keystroke-driven autocomplete) and reverseGeocode() (GPS lookup, at most
+// once per attempt) under one action key. ip_max stays PHP_INT_MAX by the
+// same design as admin_ajax_search above: total_max is what actually governs
+// anonymous traffic. ip_window (60) is vestigial while ip_max=PHP_INT_MAX —
+// left unequal to total_window (300) on purpose; it only starts to matter if
+// a real ip_max is ever set here, at which point size it deliberately rather
+// than assume 300 was intended for it too.
+//
+// total_max/total_window raised from 10/60 to 1000/300 (#2122), then to
+// 1500/300 by the later blanket 50% raise (46ce3cb8) that fixed
+// production false-positive throttling across several browsing-shaped
+// limits. The original 10/60 value refused a real registrant typing a full
+// address through the D010 manual-picker fallback after 11 debounced
+// requests in 50s. #2122 itself suggested "the low hundreds" as sufficient
+// and explicitly scoped #1952 (below) as irrelevant to sizing this fix;
+// 1000 already went higher than that suggestion because production's
+// rate-limit buckets are currently per-Cloudflare-edge-node, not
+// per-visitor (#1952, open) — several concurrent registrants behind one
+// edge node share this bucket today, which #2122's own "low hundreds"
+// estimate did not account for. Revisit downward once #1952 lands and
+// buckets become per-visitor. Do NOT raise to cars_list's old 10000/300s:
+// that value was removed by #2018 after driving explosive `us_rate_limits`
+// row growth under Playwright/integration-test load specifically (3.1M+
+// rows in the local test DB per #2018's own report) — not a proven
+// production-safe ceiling to aim near: this value is deliberately an order
+// of magnitude below it as a margin of safety, not because 10000 was shown
+// unsafe in production traffic.
 $rateLimits['location_search']['ip_max'] = PHP_INT_MAX;
 $rateLimits['location_search']['ip_window'] = 60;
-$rateLimits['location_search']['total_max'] = 10;
-$rateLimits['location_search']['total_window'] = 60;
+$rateLimits['location_search']['total_max'] = 1500;
+$rateLimits['location_search']['total_window'] = 300;
 
 // cars_list, factory_list, car_history, and statistics_request (formerly
 // configured here as public read-only DataTables endpoints, per ADR-019)
@@ -175,8 +214,25 @@ $rateLimits['location_search']['total_window'] = 60;
 // within seconds, from a small, shared set of Brevo egress IPs — sized
 // generously so legitimate traffic is never throttled, with total_max as the
 // real backstop.
-$rateLimits['brevo_webhook']['ip_max'] = 500;
+$rateLimits['brevo_webhook']['ip_max'] = 750;
 $rateLimits['brevo_webhook']['ip_window'] = 300;
-$rateLimits['brevo_webhook']['total_max'] = 2000;
+$rateLimits['brevo_webhook']['total_max'] = 3000;
 $rateLimits['brevo_webhook']['total_window'] = 300;
+
+// Gates the LOG line for repeated auth-failure (401) responses on the same
+// endpoint, not the 401 response itself (see app/api/webhooks/brevo.php's
+// docblock — auth must stay unconditional; only whether it's *logged* is
+// throttled here) — closes #2087 (an attacker spamming garbage bearer
+// tokens previously grew the `logs` table by one row per request, with no
+// backstop). Deliberately tight and single-IP-scoped: unlike `brevo_webhook`
+// above (legitimate shared-IP Brevo traffic needing headroom), a stream of
+// auth failures from one IP is itself the abuse signal, not a false-positive
+// risk to guard against.
+// Also deliberately NOT part of the blanket 50% raise below, for the same
+// reason stated above this key: a stream of auth failures from one IP is
+// itself the abuse signal. Restored to its original values.
+$rateLimits['brevo_webhook_auth_failure']['ip_max'] = 10;
+$rateLimits['brevo_webhook_auth_failure']['ip_window'] = 300;
+$rateLimits['brevo_webhook_auth_failure']['total_max'] = 100;
+$rateLimits['brevo_webhook_auth_failure']['total_window'] = 300;
 

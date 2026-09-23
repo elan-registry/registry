@@ -13,10 +13,10 @@ use ElanRegistry\Cron\AbstractCronJob;
  * method actually reached the job's work, and can optionally throw from
  * execute() to exercise run()/runNow()'s crash isolation.
  *
- * `jobName()` returns 'reconciliation' because that is the only entry in
+ * `jobName()` returns 'brevo_reconciliation', which is in
  * CronJobGuard::ALLOWED_JOB_NAMES — any other name would be rejected by the
- * guard before the fake database ever saw the claim, which would make a
- * "claim succeeded" test unable to reach execute().
+ * guard before the fake database saw the claim, preventing the "claim succeeded"
+ * test from reaching execute().
  *
  * Deliberately a *named* class rather than an anonymous one, per the
  * `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
@@ -41,7 +41,7 @@ class SpyCronJob extends AbstractCronJob
 
     protected function jobName(): string
     {
-        return 'reconciliation';
+        return 'brevo_reconciliation';
     }
 
     protected function guardIntervalHours(): int

@@ -235,4 +235,15 @@ scripts/check-plugin-updates/*.conf
 ########################################
 # Sprint plans, FRDs, spikes, and per-issue plan files. Registry is public;
 # these are private working documents. See CLAUDE.md — Planning Work.
-docs/plans/
+# The directory itself is NOT ignored (docs/plans/*) so the negation below
+# can re-include one specific committed file — a bare `docs/plans/` pattern
+# would exclude the directory itself and make the negation a no-op.
+docs/plans/*
+
+# Exception: the v2.30.2-v2.30.6 combined deploy sheet is committed on
+# purpose (decided during /finish-milestone v2.30.3) — it spans multiple
+# milestones and must survive between them, unlike a normal per-milestone
+# deploy sheet or plan file.
+!docs/plans/releases/
+docs/plans/releases/*
+!docs/plans/releases/v2.30-deploy.md

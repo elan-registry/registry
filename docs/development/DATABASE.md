@@ -113,6 +113,9 @@ For the full workflow, see
 | `lat`, `lon` | `float` | Geographic coordinates |
 | `bio` | `text` | User biography |
 | `website` | `varchar(100)` | Personal website |
+| `email_suppressed` | `TINYINT(1) NOT NULL DEFAULT 0` | Owner-level verification-email suppression flag (#1883). Set via the verification email's one-click opt-out; fans out to `email_suppressed = 1` on every car the owner has via `CarVerificationManager::setSuppressedForOwner()`. No audit-history table exists for `profiles`, so this column carries no `cars_hist`-style mirror. |
+| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | Owner-level bounce flag set by the admin tool (#1884). Set via the Verification tab's Mark Bounced action; fans out to `email_bounced = 1` on every car the owner has via `CarVerificationManager::setBouncedForOwner()`. No audit-history table exists for `profiles`. |
+| `email_bounced_address` | `varchar(155) NULL` | The exact `users.email` address recorded when the admin marked this owner bounced (#1884). Updated when Mark Bounced is called with a new address; nulled when Clear Bounced is called. Mirrored onto `profiles` rather than `cars` because it records an admin's action, not a delivery-status fact. |
 
 ### Car Registry
 
@@ -122,7 +125,7 @@ For the full workflow, see
 |--------|------|-------------|
 | `id` | `int UNSIGNED` | PRIMARY KEY, AUTO_INCREMENT |
 | `ctime`, `mtime` | `datetime` | Creation and modification times; `mtime` is `NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` (the `ON UPDATE` clause is deliberate — see verification system) |
-| `vericode` | `varchar(32)` | Verification code |
+| `vericode` | `varchar(64)` | Verification code (HMAC-SHA256 hashed; see CarVerificationManager) |
 | `last_verified` | `datetime NULL` | Last verification date |
 | `model` | `varchar(30)` | Car model (Elan) |
 | `series` | `varchar(12)` | Car series (S1, S2, S3, S4, +2, Sprint) |
@@ -144,6 +147,8 @@ For the full workflow, see
 | `website` | `varchar(100)` | Owner website (synced as of v2.30.1) |
 | `owner_last_updated` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Timestamp of owner's last action on this car (used for verification system); **has no `ON UPDATE` clause** — this absence is deliberate to prevent any write from resetting the verification clock |
 | `vericode_sent_at` | `datetime NULL` | Timestamp when verification code was sent to owner |
+| `verification_attempts` | `SMALLINT UNSIGNED NOT NULL DEFAULT 0` | Count of verification emails sent to this car's owner in the rolling 1-year window (#1884). Resets when `verification_attempts_since` rolls past 1 year; used to cap sending frequency. |
+| `verification_attempts_since` | `datetime NULL` | Start of the rolling 1-year window for `verification_attempts` (#1884). `NULL` until the first send; reset to now when `verification_attempts_since` exceeds 1 year old. |
 | `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether verification emails bounced. Set to `1` if email failed; `0` if deliverable or not yet tested. |
 | `email_bounced_address` | `varchar(155) NULL` | The exact address a bounce was reported against (#1887). Preserved separately from `cars.email` because the car's email can change after a bounce is recorded. Nulled when `email_bounced` is cleared. |
 | `email_suppressed` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag set when Brevo reports the address as suppressed (e.g. a spam complaint) — a distinct signal from a bounce (#1887). |
@@ -165,7 +170,7 @@ creation.
 | `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE) |
 | `car_id` | `int UNSIGNED` | Original car ID |
 | `timestamp` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Change timestamp (INDEXED as `idx_cars_hist_timestamp`) |
-| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, `email_bounced`, `email_bounced_address`, and `email_suppressed`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
+| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, `verification_attempts`, `verification_attempts_since`, `email_bounced`, `email_bounced_address`, and `email_suppressed`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
 
 > #### Removed: `car_user` and `car_user_hist`
 >
@@ -336,6 +341,19 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 Single-row config table, mostly legacy UserSpice/site-settings fields — see
 the migration history in `database/migrations/` for the rest.
 
+#### `er_verification_settings` - Verification system configuration and telemetry (singleton row, `id = 1`)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `int` | PRIMARY KEY (always `1`, single row) |
+| `enabled` | `boolean NOT NULL DEFAULT 0` | Feature switch; gates all verification-related sends (#1881–#1883). Admin-gated toggle on the Verification System tab; `setEnabled(true)` throws `VerificationConfigException` if Brevo is not ready. |
+| `last_cron_request_at` | `datetime NULL` | Timestamp of the most recent accepted cron transport hit (#1974). Used by `VerificationSettings::cronReady()` to check if the 10-minute cron transport is responsive. `NULL` until first successful hit. |
+| `unmatched_recipient_count` | `int unsigned NOT NULL DEFAULT 0` | Counter of inbound Brevo signals (webhook events, reconciliation events, suppression-list contacts) whose recipient matched no car (#1887, #2085). Used for operational monitoring; incremented by the webhook receiver (`app/api/webhooks/brevo.php`), `BrevoEventReconciliationJob`, and `BrevoSuppressionSyncJob`, never reset. |
+| `batch_size` | `tinyint unsigned NOT NULL DEFAULT 5` | Maximum number of verification emails to send in one admin batch (#1884). Controls the preview table size in the Verification tab send-tool section and the default batch count; read via `VerificationSettings::batchSize()`. |
+
+**Written By**: `VerificationSettings` class (all writes), via `app/api/webhooks/brevo.php`,
+`BrevoEventReconciliationJob`, `BrevoSuppressionSyncJob`, admin toggle endpoint, cron transport
+
 #### `er_cron_job_runs` - Generic cron job "last run" tracking (#2034)
 
 Backs `CronJobGuard::claim()`'s atomic-claim guard. Replaces the earlier
@@ -348,9 +366,13 @@ would have meant a new migration for each one.
 |--------|------|-------------|
 | `job_name` | `varchar(64)` | PRIMARY KEY. Must be in `CronJobGuard::ALLOWED_JOB_NAMES` for `claim()` to act on it — the allowlist and this table's seeded rows must stay in sync. |
 | `enabled` | `boolean NOT NULL DEFAULT true` | Lets an operator pause a single job without touching UserSpice's own `crons` table (which only supports add/delete, not pause). `claim()`'s own query requires `enabled = 1`; a disabled job's claim silently no-ops the same way a too-recent claim does. |
-| `last_run_at` | `datetime NULL` | Last successful claim. `NULL` means never run. Written only via `CronJobGuard`'s atomic UPDATE, never directly. |
+| `last_run_at` | `datetime NULL` | Last claimed run. `NULL` means never run. Stamped by `CronJobGuard::claim()` *before* the job's `execute()` runs (it must, to block a concurrent claim), so on its own this column only records "a run was claimed," never "a run succeeded." Written only via `CronJobGuard`'s atomic UPDATE, never directly. |
+| `last_failure_at` | `datetime NULL` | (#2148) When the job's `execute()` last threw. `NULL` means it never has. `CronJobRunsReader::badgeFor()` compares this against `last_run_at` (`last_failure_at >= last_run_at`) to render a distinct "Last run failed" badge — without this column, a job crashing every night is indistinguishable from a healthy one, since `last_run_at` alone reads identically either way. A later successful run naturally supersedes an earlier failure with no explicit reset step. Written only via `CronJobGuard::recordFailure()`, called from `AbstractCronJob::run()`'s catch block. |
 | `created_at` | `datetime NOT NULL` | Set at seed/registration time. Distinguishes "registered, never run" (row present, `last_run_at NULL`) from "not a registered job at all" (no row) — a bare `job_name`/`last_run_at` pair can't tell those apart once a row exists. |
 | `last_skip_logged_at` | `datetime NULL` | (#1889) Rate-limits `AbstractCronJob`'s disabled-job skip log to roughly once per guard interval. Deliberately a separate column from `last_run_at`: a disabled job never reaches `CronJobGuard::claim()`, so `last_run_at` stays frozen for as long as the job stays paused, and any throttle keyed on it would degrade to logging on every hit — the #1974 pathology this exists to avoid. Written only by `AbstractCronJob`, immediately after the skip line actually fires. |
+| `last_sent_count` | `int NULL` | (#1885) Sent-car count from a job's most recent run, for admin dashboard display. `NULL` until the job's `execute()` first records a run — distinct from a recorded run that sent zero, which is `0`. Generic/job-agnostic naming; not scoped to one job, though `SendVerificationBatchJob` is the only writer so far. Read via `CronJobRunsReader::lastOutcomeCounts()`. |
+| `last_skipped_count` | `int NULL` | (#1885) Skipped-car count from a job's most recent run. Same NULL-until-first-run semantics as `last_sent_count`. |
+| `last_failed_count` | `int NULL` | (#1885) Failed-car count from a job's most recent run — for `SendVerificationBatchJob` specifically, this also absorbs the `unrecorded` bucket (an email sent successfully but whose bookkeeping write failed), a deliberate conservative merge documented on `SendVerificationBatchJob::execute()`. Same NULL-until-first-run semantics as `last_sent_count`. |
 
 #### `phinxlog` - Phinx migration tracking
 
@@ -378,18 +400,22 @@ migrations live in `database/migrations/` — see
   (`users.id` → `cars.user_id`)
 - **Cars → History**: One-to-many audit trail (`cars.id` → `cars_hist.car_id`)
 
-### Enforced Foreign Key Constraints
+### No Enforced Foreign Key Constraints
 
-The following foreign keys are enforced at the database level. They were added
-by the Phinx migration
-`database/migrations/20260709202522_add_foreign_key_constraints.php`.
-
-- `cars.user_id → users.id` **ON DELETE SET NULL** (constraint
-  `fk_cars_user_id`) — deleting a user leaves the car record intact with a
-  null owner rather than deleting the car.
-- `car_transfer_requests.existing_car_id → cars.id` **ON DELETE CASCADE**
-  (constraint `fk_transfer_existing_car`) — deleting a car removes its
-  associated transfer requests.
+`cars.user_id → users.id` is **not** enforced at the database level. A FK
+(`fk_cars_user_id`, `ON DELETE SET NULL`) was added by
+`database/migrations/20260709202522_add_foreign_key_constraints.php`, then
+deliberately dropped by
+`database/migrations/20260719120000_drop_cars_user_id_fk.php`: its `ON DELETE
+SET NULL` cascade fired during `DELETE FROM users` and nulled `cars.user_id`
+before `usersc/scripts/after_user_deletion.php`'s reassignment hook ran, so
+the hook always saw 0 cars to reassign to the `noowner` account. No FK is
+planned as a replacement — the index on `user_id` (also named
+`fk_cars_user_id`) was retained for query performance, but nothing enforces
+referential integrity on this column. Application code that reads
+`cars.user_id` must account for it pointing at a user row that no longer
+exists (see `car_id` in the `er_email_events` table above for the equivalent
+statement about car-adjacent tables generally).
 
 ### Data Access Patterns
 

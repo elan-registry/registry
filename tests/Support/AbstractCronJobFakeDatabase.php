@@ -39,9 +39,23 @@ namespace Tests\Support;
  * `count()`, `first()` here) with a body that doesn't depend on mutable state.
  * See CronJobGuardFakeDatabase's docblock for the same rationale.
  *
+ * Unmatched-recipient counter tracking (#2085): both
+ * BrevoEventReconciliationJob::applyEvent() and BrevoSuppressionSyncJob::syncPage()
+ * call VerificationSettings::incrementUnmatchedRecipientCounter() — an `UPDATE
+ * er_verification_settings SET unmatched_recipient_count = ... + 1 ...` — on
+ * this same connection whenever a recipient matches no car. Without dedicated
+ * tracking, that UPDATE would fall through to the generic "any query touching
+ * er_verification_settings reports count() = 1" default this fake already uses
+ * to make VerificationSettings::isEnabled() pass, which would make the
+ * increment incidentally "succeed" with no way for a test to assert how many
+ * times it actually fired, or to simulate it failing independently of every
+ * other er_verification_settings query. `$unmatchedCounterUpdateSucceeds`
+ * controls the latter; `unmatchedCounterIncrementCalls()` exposes the former.
+ *
  * @package Tests\Support
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1889
+ * @see https://github.com/elan-registry/registry/issues/2085
  */
 class AbstractCronJobFakeDatabase extends FakeDatabase
 {
@@ -51,6 +65,11 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
     private bool $lastQueryWasClaim = false;
 
     private bool $lastQueryWasVerificationSettings = false;
+
+    private bool $lastQueryWasUnmatchedCounterUpdate = false;
+
+    /** How many times the unmatched-recipient counter UPDATE has fired. */
+    private int $unmatchedCounterIncrementCalls = 0;
 
     /** Simulated wall clock, in minutes since an arbitrary epoch. */
     private int $nowMinutes = 0;
@@ -63,6 +82,11 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
 
     /** How many `SET last_skip_logged_at` writes this fake has accepted. */
     private int $skipStampWrites = 0;
+
+    /** How many `SET last_failure_at` writes this fake has accepted. */
+    private int $failureStampWrites = 0;
+
+    private bool $lastQueryWasFailureStamp = false;
 
     /**
      * @param bool $enabled Value reported for the `enabled` column by the
@@ -87,6 +111,25 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
      *                        true so existing constructions of this fake, written
      *                        before that check existed, keep exercising the
      *                        job-level `enabled` behaviour they were built for.
+     * @param bool $unmatchedCounterUpdateSucceeds When false, the unmatched-recipient
+     *                        counter UPDATE (VerificationSettings::incrementUnmatchedRecipientCounter())
+     *                        reports both error() and count() as failure —
+     *                        independent of every other er_verification_settings
+     *                        query this fake answers. Defaults true (the counter
+     *                        write succeeds), matching every other write-related
+     *                        default in this fake.
+     * @param bool $failureStampThrows When true, CronJobGuard::recordFailure()'s
+     *                        `UPDATE ... SET last_failure_at = NOW()` throws
+     *                        straight out of query(), modeling the real
+     *                        DB::query() prepare()-time PDOException on a schema
+     *                        where 20260922171500 has not applied. Drives that
+     *                        method's own try/catch, whose whole purpose is that
+     *                        run()'s failure log line is still written.
+     * @param bool $failureStampErrors When true, the same write reports error()
+     *                        instead of throwing — the ordinary
+     *                        DatabaseInterface fault path, kept separate from
+     *                        the throwing one because recordFailure() handles
+     *                        them in two different branches.
      */
     public function __construct(
         private readonly bool $enabled = true,
@@ -96,6 +139,9 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
         ?int $lastSkipLoggedAtMinutesAgo = null,
         private readonly int $guardIntervalHours = 24,
         private readonly bool $verificationEnabled = true,
+        private readonly bool $unmatchedCounterUpdateSucceeds = true,
+        private readonly bool $failureStampThrows = false,
+        private readonly bool $failureStampErrors = false,
     ) {
         $this->lastSkipLoggedAtMinutes = $lastSkipLoggedAtMinutesAgo === null
             ? null
@@ -112,11 +158,33 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
     {
         $this->sqlLog[] = $sql;
         $this->lastQueryWasClaim = stripos($sql, 'last_run_at = NOW()') !== false;
-        $this->lastQueryWasVerificationSettings = stripos($sql, 'er_verification_settings') !== false;
+        // Checked and set BEFORE the generic er_verification_settings flag
+        // below, since the increment UPDATE also contains that table name and
+        // must not be classified as the ordinary isEnabled()/setEnabled() read
+        // that flag exists for.
+        $this->lastQueryWasUnmatchedCounterUpdate = stripos($sql, 'unmatched_recipient_count = unmatched_recipient_count + 1') !== false;
+        $this->lastQueryWasVerificationSettings = !$this->lastQueryWasUnmatchedCounterUpdate
+            && stripos($sql, 'er_verification_settings') !== false;
+
+        if ($this->lastQueryWasUnmatchedCounterUpdate) {
+            $this->unmatchedCounterIncrementCalls++;
+        }
 
         if (stripos($sql, 'last_skip_logged_at = NOW()') !== false) {
             $this->lastSkipLoggedAtMinutes = $this->nowMinutes;
             $this->skipStampWrites++;
+        }
+
+        $this->lastQueryWasFailureStamp = stripos($sql, 'last_failure_at = NOW()') !== false;
+
+        if ($this->lastQueryWasFailureStamp) {
+            if ($this->failureStampThrows) {
+                throw new \RuntimeException(
+                    'simulated prepare()-time failure: unknown column er_cron_job_runs.last_failure_at'
+                );
+            }
+
+            $this->failureStampWrites++;
         }
 
         return $this;
@@ -124,6 +192,18 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
 
     public function error(): bool
     {
+        if ($this->lastQueryWasFailureStamp) {
+            // Independent of $queryErrors: a test driving a failing execute()
+            // is not also asserting that every er_cron_job_runs query fails,
+            // and recordFailure()'s own error branch needs to be reachable on
+            // its own.
+            return $this->failureStampErrors;
+        }
+
+        if ($this->lastQueryWasUnmatchedCounterUpdate) {
+            return !$this->unmatchedCounterUpdateSucceeds;
+        }
+
         // queryErrors models a fault reading er_cron_job_runs specifically
         // (what this fake's tests are exercising) — the verification-settings
         // read has its own independent, always-succeeding path here so a test
@@ -138,6 +218,15 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
 
     public function count(): int
     {
+        if ($this->lastQueryWasUnmatchedCounterUpdate) {
+            // incrementUnmatchedRecipientCounter() treats count() === 0 as
+            // "the id=1 row is missing" (see that method's docblock) — reuse
+            // the same signal to simulate a failed increment when
+            // $unmatchedCounterUpdateSucceeds is false, rather than only
+            // failing via error().
+            return $this->unmatchedCounterUpdateSucceeds ? 1 : 0;
+        }
+
         if ($this->lastQueryWasVerificationSettings) {
             return 1;
         }
@@ -184,6 +273,30 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
     public function skipStampWrites(): int
     {
         return $this->skipStampWrites;
+    }
+
+    /**
+     * How many times CronJobGuard::recordFailure() stamped `last_failure_at`
+     * against this connection.
+     *
+     * Counts accepted writes only — a write configured to throw via
+     * `$failureStampThrows` never reaches the counter, which is what lets a
+     * test assert both that the stamp was attempted (by the log line it
+     * produces) and that it did not land.
+     */
+    public function failureStampWrites(): int
+    {
+        return $this->failureStampWrites;
+    }
+
+    /**
+     * How many times VerificationSettings::incrementUnmatchedRecipientCounter()'s
+     * `UPDATE ... unmatched_recipient_count = unmatched_recipient_count + 1 ...`
+     * has fired against this connection.
+     */
+    public function unmatchedCounterIncrementCalls(): int
+    {
+        return $this->unmatchedCounterIncrementCalls;
     }
 
     /**

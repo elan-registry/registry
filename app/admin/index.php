@@ -3,12 +3,22 @@ declare(strict_types=1);
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\CarVerificationEmailComposer;
+use ElanRegistry\Car\CarVerificationManager;
+use ElanRegistry\Car\CarVerificationSendService;
+use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
+use ElanRegistry\Cron\CronJobEnabledState;
+use ElanRegistry\Cron\CronJobRunsReader;
+use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Input as ElanInput;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
@@ -55,13 +65,25 @@ $db = DB::getInstance();
 
 // Check for pending Phinx migrations by querying phinxlog directly.
 // database/ is removed by .deployignore after deployment, so glob() always
-// returns empty on prod. Instead, count applied migrations up to the latest
-// known version and compare against the total. Update both constants when
-// adding a new migration.
+// returns empty on prod, and `phinx status` (composer migrate:status) has
+// the identical dependency — it also needs the migrations directory to
+// exist, so it cannot answer "how many migrations exist" on a deployed prod
+// checkout either. There is no way to derive these two numbers from a live
+// prod database alone; they are baked in here and MUST be updated by hand
+// whenever a migration is added. This has already drifted silently at least
+// three times (#2119 set these values, then #2124/#2138/#2148 each added a
+// migration without bumping them) — a database missing any migration past
+// $latestMigration reads as "0 pending" instead of surfacing the gap.
+// `ls database/migrations/*.php | wc -l` for the count, and the newest
+// filename's leading timestamp for $latestMigration, are both easy to get
+// wrong by hand: get them from git instead, from a checkout where
+// database/ still exists (i.e., not a deployed prod copy):
+//   ls database/migrations/*.php | wc -l
+//   ls database/migrations/*.php | sort | tail -1
 $pendingMigrationCount = 0;
 try {
-    $latestMigration = 20260711000000;
-    $totalMigrations = 4;
+    $latestMigration = 20260922171500;
+    $totalMigrations = 37;
     $row = $db->query(
         "SELECT COUNT(*) AS cnt FROM phinxlog WHERE version <= ?",
         [$latestMigration]
@@ -189,9 +211,140 @@ try {
            "Database or runtime error getting system status: " . $e->getMessage());
 }
 
+// ---------------------------------------------------------------------------
+// Verification send services. Constructed once here so both the POST-handling
+// switch below and the Verification System tab's GET-time eligible-car preview
+// (includes/tab-verification.php, included in this same scope) share one set of
+// collaborators rather than each building their own.
+// ---------------------------------------------------------------------------
+$verificationRepo    = new CarRepository(dbi());
+$verificationManager = new CarVerificationManager($verificationRepo);
+$verificationSendSvc = new CarVerificationSendService(
+    $verificationRepo,
+    $verificationManager,
+    new CarVerificationEmailComposer()
+);
+
+if (!function_exists('verifyHistoryFieldsForAdminAction')) {
+    /**
+     * Build a cars_hist snapshot row for an admin bounce/suppression action.
+     *
+     * The admin-side counterpart of verify_car.php's verifyHistoryFields(),
+     * kept deliberately identical in shape (full column snapshot plus
+     * `operation`) so one query on `operation` can separate these admin
+     * actions from ordinary edits and from owner self-verification.
+     *
+     * NO $soldDate PARAMETER. None of these actions sets a sale date, so there
+     * is no new value to record: the caller's snapshot carries the car's
+     * current `solddate` through unchanged and the audit row reflects the state
+     * as it stood, not a fresh value.
+     *
+     * @param object $carData   PRE-CHANGE car snapshot returned by the CarVerificationManager
+     * @param string $operation 'EMAIL BOUNCED', 'EMAIL BOUNCE CLEARED' or 'EMAIL SUPPRESSION CLEARED'
+     * @param string $comments  Free-text audit note
+     * @return array<string, mixed> Field map for CarRepository::insertHistory()
+     * @throws OwnerDatabaseException If the car's owner cannot be loaded
+     */
+    function verifyHistoryFieldsForAdminAction(object $carData, string $operation, string $comments): array
+    {
+        $owner = (new Owner((int) $carData->user_id))->data();
+
+        // Owner::data() is nullable when find() reports "not found" rather than
+        // a DB fault. A caller must not silently write a half-populated audit
+        // row if the owner vanished between the action and this snapshot. Fail
+        // loudly and let the caller's transaction roll the car mutation back
+        // too.
+        if ($owner === null) {
+            throw new OwnerDatabaseException(
+                'admin/index.php: owner ' . (int) $carData->user_id
+                . " could not be loaded while building the {$operation} history snapshot for car "
+                . (int) $carData->id
+            );
+        }
+
+        return [
+            'operation'             => $operation,
+            'car_id'                => (int) $carData->id,
+            'comments'              => $comments,
+            'ctime'                 => $carData->ctime ?? date(AppConstants::DATETIME_FORMAT),
+            'mtime'                 => date(AppConstants::DATETIME_FORMAT),
+            'model'                 => $carData->model ?? '',
+            'series'                => $carData->series ?? '',
+            'variant'               => $carData->variant ?? '',
+            'year'                  => $carData->year ?? '',
+            'type'                  => $carData->type ?? '',
+            'chassis'               => $carData->chassis ?? '',
+            'color'                 => $carData->color ?? '',
+            'engine'                => $carData->engine ?? '',
+            'purchasedate'          => $carData->purchasedate ?? null,
+            'solddate'              => $carData->solddate ?? null,
+            'email_bounced'         => $carData->email_bounced ?? 0,
+            'email_bounced_address' => $carData->email_bounced_address ?? null,
+            'email_suppressed'      => $carData->email_suppressed ?? 0,
+            // Added by migration 20260915000000, which also rebuilt the
+            // cars_update trigger to carry these two columns — this
+            // explicit snapshot must match, or every admin-action audit row
+            // written here reads attempts=0/since=NULL regardless of the
+            // car's actual state.
+            'verification_attempts'       => $carData->verification_attempts ?? 0,
+            'verification_attempts_since' => $carData->verification_attempts_since ?? null,
+            'image'                 => $carData->image ?? '',
+            'user_id'               => (int) $carData->user_id,
+            'email'                 => $carData->email ?? ($owner->email ?? ''),
+            'fname'                 => $owner->fname ?? '',
+            'lname'                 => $owner->lname ?? '',
+            'join_date'             => $owner->join_date ?? null,
+            'city'                  => $owner->city ?? '',
+            'state'                 => $owner->state ?? '',
+            'country'               => $owner->country ?? '',
+            'lat'                   => $owner->lat ?? null,
+            'lon'                   => $owner->lon ?? null,
+            'website'               => $owner->website ?? '',
+        ];
+    }
+}
+
+if (!function_exists('sendEmailOwnerLabel')) {
+    /**
+     * Human label for an owner, for flash messages.
+     *
+     * @param object|null $ownerData Owner::data() result
+     * @param int $ownerId Fallback identifier when no owner row loaded
+     */
+    function sendEmailOwnerLabel(?object $ownerData, int $ownerId): string
+    {
+        if ($ownerData === null) {
+            return "owner #{$ownerId}";
+        }
+
+        $name = trim(($ownerData->fname ?? '') . ' ' . ($ownerData->lname ?? ''));
+
+        return $name !== '' ? $name : (string) ($ownerData->email ?? "owner #{$ownerId}");
+    }
+}
+
 // Process form submissions for car management tab
 $errors = [];
 $successes = [];
+
+// Verification batch-send report. Always defined so tab-verification.php can
+// reference them whether or not a send_batch POST just ran. The report's
+// four-way sent/unrecorded/skipped/failed shape cannot be expressed as a flat
+// error/success list, so it travels in its own variables; $successes carries
+// only the one-line summary. "Unrecorded" (SendResult::sentUnrecorded()) is
+// its own bucket rather than folded into "sent": the email really was
+// delivered, but the bookkeeping that prevents a duplicate send afterward
+// failed, and that must stay visible to the admin rather than reading
+// identically to a clean send.
+$sendBatchJustRan = false;
+/** @var array<int, object> */
+$sendReportSent = [];
+/** @var array<int, array{car: object, reason: string}> */
+$sendReportUnrecorded = [];
+/** @var array<int, array{car: object, reason: string}> */
+$sendReportSkipped = [];
+/** @var array<int, array{car: object, reason: string}> */
+$sendReportFailed = [];
 
 if (ElanInput::existsPost()) {
     $token = ElanInput::get('csrf');
@@ -382,6 +535,447 @@ if (ElanInput::existsPost()) {
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION,
                             "Unexpected error deleting car ID $car_id: " . get_class($e) . ': ' . $e->getMessage());
                         $errors[] = "An unexpected error occurred. Check the system log for details.";
+                    }
+                    break;
+
+                // Verification batch send.
+                //
+                // NOTHING IS SENT ON A GET. The Verification System tab renders a
+                // read-only preview; email leaves the building only when an admin
+                // submits this command.
+                //
+                // RESIDUAL DOUBLE-SUBMISSION RISK, accepted.
+                // findVerificationEligible() orders by last_verified ASC and does
+                // not exclude a car merely because its vericode_sent_at is very
+                // recent, so re-POSTing the same batch within one request window
+                // would pass the re-check below again and mail the same owners
+                // twice. Accepted under this tool's manual, single-operator,
+                // low-frequency trust model — the same acceptance made for
+                // 26-Reconcile-Owner-Fields.php's Execute step.
+                case "verification_send_batch":
+                    // Admin-only, matching tab-verification.php's own
+                    // "read-only for editors" docblock and its
+                    // $vsCanToggle = hasPerm([2], ...) gate on the Feature
+                    // Switch. securePage() alone admits editors to this page;
+                    // this check is what keeps the send/bounce actions
+                    // themselves admin-only.
+                    if (!hasPerm([2], $currentUserId)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: non-admin attempted command '{$command}'");
+                        $errors[] = 'Administrator access is required for this action.';
+                        break;
+                    }
+
+                    // PAUSE RESPECTS THE MANUAL PATH TOO. "Send Batch Now" is a
+                    // convenience trigger for the same send the cron job
+                    // performs, not an override of it — if automatic sending is
+                    // paused, mail should not leave the building by either
+                    // route. Fail closed on every non-ENABLED state: MISSING and
+                    // UNREADABLE mean the system cannot confirm sending is safe,
+                    // which is not a licence to proceed silently. The GET-time
+                    // preview in tab-verification.php is deliberately untouched
+                    // — reviewing the eligible list is read-only.
+                    $cronRunsReader = new CronJobRunsReader(dbi());
+                    $cronState = $cronRunsReader->state(SendVerificationBatchJob::JOB_NAME);
+
+                    if ($cronState !== CronJobEnabledState::ENABLED) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification send: manual send blocked — automatic sending state is %s.',
+                            $cronState->name
+                        ));
+                        // "Resume it on this tab" is only actionable advice for
+                        // DISABLED. For MISSING/UNREADABLE there is nothing to
+                        // resume — the system cannot confirm the state at all —
+                        // and telling an admin to press a button that will not
+                        // help sends them down the wrong path.
+                        $errors[] = $cronState === CronJobEnabledState::DISABLED
+                            ? 'Automatic sending is paused — resume it on this tab before '
+                                . 'sending a batch manually.'
+                            : 'Sending is unavailable: the automatic-send status could not be '
+                                . 'confirmed. Check the system log for details.';
+                        break;
+                    }
+
+                    $sendBatchJustRan = true;
+
+                    // \Input::get() sanitizes arrays recursively (see
+                    // users/classes/Input.php::sanitize()), the same way the
+                    // "merge" case above relies on for its `cars` field. Values
+                    // are cast to int below regardless.
+                    /** @var array<int, mixed> $submittedIds */
+                    $submittedIds = (array) ElanInput::get('car_ids', []);
+
+                    // SERVER-SIDE CAP. The GET-time preview only ever renders
+                    // batchSize() cars, but nothing stops a hand-crafted POST
+                    // carrying hundreds of ids — and every one of them would
+                    // become a blocking synchronous Brevo call inside this one
+                    // request. batchSize() is the configured ceiling on a
+                    // batch, so it is enforced here too rather than trusted
+                    // from the form. VerificationSettings is constructed
+                    // locally (matching tab-verification.php) and fails closed
+                    // to 5 on any read problem.
+                    $vsSendBatchSize = (new VerificationSettings(dbi()))->batchSize();
+
+                    if (count($submittedIds) > $vsSendBatchSize) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification send: car_ids[] carried %d ids, exceeding the configured batch size '
+                            . 'of %d; truncated to the first %d.',
+                            count($submittedIds),
+                            $vsSendBatchSize,
+                            $vsSendBatchSize
+                        ));
+                        $errors[] = sprintf(
+                            'Only the first %d cars were sent — the request exceeded the configured batch size.',
+                            $vsSendBatchSize
+                        );
+                        $submittedIds = array_slice($submittedIds, 0, $vsSendBatchSize);
+                    }
+
+                    // Non-positive ids are filtered here, before the batch
+                    // reaches VerificationBatchSender — that class assumes
+                    // every id it is given is a positive int, matching
+                    // findById()'s contract.
+                    $sendCarIds = [];
+                    foreach ($submittedIds as $submittedId) {
+                        $sendCarId = (int) $submittedId;
+
+                        if ($sendCarId <= 0) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                                'Verification send: non-positive car id in car_ids[]: ' . var_export($submittedId, true));
+                            $sendReportSkipped[] = [
+                                'car'    => (object) ['id' => 0, 'chassis' => '', 'email' => ''],
+                                'reason' => 'Invalid car reference',
+                            ];
+                            continue;
+                        }
+
+                        $sendCarIds[] = $sendCarId;
+                    }
+
+                    // The per-car loop (findById() re-read, eligibility
+                    // re-check, sendOne(), and the SendResult ->
+                    // report-bucket routing) is extracted to
+                    // VerificationBatchSender so its failure-containment
+                    // behavior can be covered by a unit test — this file
+                    // cannot be require()'d directly in one. See that
+                    // class's docblock for the full rationale: an uncaught
+                    // throw for one car must never abort the rest of the
+                    // batch or drop it from the report.
+                    $batchSender = new VerificationBatchSender(
+                        $verificationRepo,
+                        $verificationSendSvc,
+                        $currentUserId,
+                    );
+                    $batchResult = $batchSender->processBatch($sendCarIds);
+
+                    $sendReportSent       = array_merge($sendReportSent, $batchResult['sent']);
+                    $sendReportUnrecorded = array_merge($sendReportUnrecorded, $batchResult['unrecorded']);
+                    $sendReportSkipped    = array_merge($sendReportSkipped, $batchResult['skipped']);
+                    $sendReportFailed     = array_merge($sendReportFailed, $batchResult['failed']);
+
+                    $successes[] = sprintf(
+                        'Batch complete: %d sent, %d unrecorded, %d skipped, %d failed.',
+                        count($sendReportSent),
+                        count($sendReportUnrecorded),
+                        count($sendReportSkipped),
+                        count($sendReportFailed)
+                    );
+                    logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                        'Verification send: batch complete — %d sent, %d unrecorded, %d skipped, %d failed',
+                        count($sendReportSent),
+                        count($sendReportUnrecorded),
+                        count($sendReportSkipped),
+                        count($sendReportFailed)
+                    ));
+                    break;
+
+                // Pause/Resume automatic sending.
+                //
+                // THIS IS THE ADMIN UI CronJobGuard's docblock refers to when it
+                // says pausing a job "still means a direct UPDATE on
+                // er_cron_job_runs.enabled, until #2038 adds the admin UI" —
+                // but only for this one job. #2038 remains open for a general
+                // cron-management page covering every job; nothing here is
+                // generalized, and the job name is pinned to
+                // SendVerificationBatchJob::JOB_NAME rather than read from the
+                // request, so this command cannot be pointed at a sibling job.
+                //
+                // Separate from the verification feature switch
+                // (er_verification_settings.enabled, VerificationSettings::
+                // setEnabled()): that gates the whole subsystem, this gates only
+                // the scheduled batch.
+                case "verification_toggle_cron":
+                    // Admin-only — see the identical check on
+                    // verification_send_batch above for rationale.
+                    if (!hasPerm([2], $currentUserId)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: non-admin attempted command '{$command}'");
+                        $errors[] = 'Administrator access is required for this action.';
+                        break;
+                    }
+
+                    // The button submits the state it wants, not a "flip it"
+                    // instruction: two admins on the tab at once would otherwise
+                    // each flip a state the other had already changed, and the
+                    // second click would silently undo the first. An explicit
+                    // desired state is idempotent.
+                    $cronDesiredState = (string) ElanInput::get('desired_state');
+                    if ($cronDesiredState !== 'enable' && $cronDesiredState !== 'disable') {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            'Verification cron toggle: invalid desired_state ' . var_export($cronDesiredState, true));
+                        $errors[] = 'That action could not be applied — no valid state was submitted.';
+                        break;
+                    }
+                    $cronEnabled = $cronDesiredState === 'enable';
+
+                    $cronToggleDb = dbi();
+                    $cronToggleDb->query(
+                        'UPDATE er_cron_job_runs SET enabled = ? WHERE job_name = ?',
+                        [$cronEnabled ? 1 : 0, SendVerificationBatchJob::JOB_NAME]
+                    );
+
+                    if ($cronToggleDb->error()) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification cron toggle: failed to write er_cron_job_runs (enabled=%d) for %s: %s',
+                            $cronEnabled ? 1 : 0,
+                            SendVerificationBatchJob::JOB_NAME,
+                            $cronToggleDb->errorString() ?: 'unknown'
+                        ));
+                        $errors[] = 'Failed to update automatic sending. Check the system log for details.';
+                        break;
+                    }
+
+                    // count() after an UPDATE reports rows CHANGED, not rows
+                    // MATCHED, so re-submitting the state the row already holds
+                    // legitimately yields 0 — indistinguishable from the row
+                    // being absent. Confirm with a follow-up read instead, the
+                    // same way VerificationSettings::setEnabled() does.
+                    $cronToggleDb->query(
+                        'SELECT enabled FROM er_cron_job_runs WHERE job_name = ?',
+                        [SendVerificationBatchJob::JOB_NAME]
+                    );
+                    $cronToggleRow = $cronToggleDb->error() ? null : $cronToggleDb->first();
+                    if (!is_object($cronToggleRow)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification cron toggle: UPDATE (enabled=%d) could not be confirmed — the %s '
+                            . 'er_cron_job_runs row appears to be missing. Re-run `composer migrate` to reseed it.',
+                            $cronEnabled ? 1 : 0,
+                            SendVerificationBatchJob::JOB_NAME
+                        ));
+                        $errors[] = 'Failed to update automatic sending. Check the system log for details.';
+                        break;
+                    }
+
+                    // Report what the row actually holds, not what was asked
+                    // for — an admin acting on a stale page should see the
+                    // persisted truth. But only report it as a SUCCESS when it
+                    // matches what was requested: an UPDATE that reported no
+                    // error yet left the row in the other state is a failure to
+                    // apply the change, and dressing it as a green "Automatic
+                    // sending paused." for an admin who clicked Resume tells
+                    // them the opposite of what happened.
+                    $cronNowEnabled = (int) ($cronToggleRow->enabled ?? 0) === 1;
+
+                    if ($cronNowEnabled !== $cronEnabled) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification cron toggle: requested %s but row reads %s for %s '
+                            . '— write did not take effect.',
+                            $cronEnabled ? 'enable' : 'disable',
+                            $cronNowEnabled ? 'enabled' : 'disabled',
+                            SendVerificationBatchJob::JOB_NAME
+                        ));
+                        $errors[] = sprintf(
+                            'Automatic sending could not be changed — it is still %s. '
+                            . 'Check the system log for details.',
+                            $cronNowEnabled ? 'running' : 'paused'
+                        );
+                        break;
+                    }
+
+                    $successes[] = $cronNowEnabled
+                        ? 'Automatic sending resumed.'
+                        : 'Automatic sending paused.';
+                    logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                        'Verification cron: %s %s by admin %d.',
+                        SendVerificationBatchJob::JOB_NAME,
+                        $cronNowEnabled ? 'resumed' : 'paused',
+                        $currentUserId
+                    ));
+                    break;
+
+                // Batch size for both the scheduled job and the manual send.
+                case "verification_set_batch_size":
+                    // Admin-only — see the identical check on
+                    // verification_send_batch above for rationale.
+                    if (!hasPerm([2], $currentUserId)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: non-admin attempted command '{$command}'");
+                        $errors[] = 'Administrator access is required for this action.';
+                        break;
+                    }
+
+                    $submittedBatchSize = (int) ElanInput::get('batch_size', 0);
+                    $verificationSettings = new VerificationSettings(dbi());
+
+                    // setBatchSize() clamps to [1, 25] and logs its own failures
+                    // under LOG_CATEGORY_VERIFICATION_CONFIG_* — no second log
+                    // line here, matching the other cases that defer logging to
+                    // the method they call.
+                    if (!$verificationSettings->setBatchSize($submittedBatchSize, $currentUserId)) {
+                        $errors[] = 'Failed to update batch size. Check the system log for details.';
+                        break;
+                    }
+
+                    // Read back rather than echoing the submitted value: what
+                    // was stored may have been clamped, and the admin needs to
+                    // see the effective setting.
+                    $successes[] = sprintf(
+                        'Batch size updated to %d.',
+                        $verificationSettings->batchSize()
+                    );
+                    break;
+
+                // Owner-level deliverability actions.
+                //
+                // Each is owner-scoped (the flags are owner-level facts fanned out
+                // to that owner's cars) and pairs every state change with a
+                // cars_hist INSERT inside one transaction. Mark Bounced goes
+                // through CarVerificationManager::setBouncedForOwner(), whose write
+                // path is structurally free of `user_id` — a bounce records a
+                // deliverability fact and never moves a car to another owner.
+                case "mark_bounced":
+                case "clear_bounced":
+                case "clear_suppression":
+                    // Admin-only — see the identical check on
+                    // verification_send_batch above for rationale.
+                    if (!hasPerm([2], $currentUserId)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: non-admin attempted command '{$command}'");
+                        $errors[] = 'Administrator access is required for this action.';
+                        break;
+                    }
+
+                    $verifyCarId = (int) ElanInput::get('car_id');
+
+                    try {
+                        $verifyCarData = $verifyCarId > 0 ? $verificationRepo->findById($verifyCarId) : null;
+                    } catch (\Throwable $e) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification %s: findById threw for car %d [%s]: %s',
+                            $command,
+                            $verifyCarId,
+                            get_class($e),
+                            $e->getMessage()
+                        ));
+                        $errors[] = 'That car could not be read. Please try again.';
+                        break;
+                    }
+
+                    if ($verifyCarData === null) {
+                        $errors[] = 'That car could not be found. It may have been removed.';
+                        break;
+                    }
+
+                    $verifyOwnerId = (int) $verifyCarData->user_id;
+
+                    // Keyed on the literal case labels above. $command is
+                    // `mixed` as far as static analysis is concerned, so a
+                    // match() on it can never be proven exhaustive; a lookup
+                    // keyed by the same three strings is equivalent and honest
+                    // about the one impossible branch.
+                    $verifyActionMap = [
+                        'mark_bounced'      => ['EMAIL BOUNCED', 'marked as bounced'],
+                        'clear_bounced'     => ['EMAIL BOUNCE CLEARED', 'cleared of the bounce flag'],
+                        'clear_suppression' => ['EMAIL SUPPRESSION CLEARED', 'cleared of the suppression flag'],
+                    ];
+                    [$verifyOperation, $verifySuccessVerb] = $verifyActionMap[(string) $command];
+
+                    $verificationRepo->beginTransaction();
+
+                    try {
+                        $verifyOwnerData = (new Owner($verifyOwnerId))->data();
+
+                        if ($command === 'mark_bounced') {
+                            // The address recorded is ALWAYS the owner's current
+                            // users.email, never the car's denormalized cars.email.
+                            // The two can differ (the car column drifts), and the
+                            // automatic bounce-clearing path keyed off a later email
+                            // confirmation compares against the address the owner
+                            // confirms — recording anything else here means that
+                            // clear never fires and the owner stays permanently
+                            // un-emailable.
+                            if ($verifyOwnerData === null || trim((string) ($verifyOwnerData->email ?? '')) === '') {
+                                throw new CarValidationException(
+                                    "Owner {$verifyOwnerId} has no usable email address to record a bounce against"
+                                );
+                            }
+
+                            $changedCars = $verificationManager->setBouncedForOwner(
+                                $verifyOwnerId,
+                                (string) $verifyOwnerData->email
+                            );
+                        } elseif ($command === 'clear_bounced') {
+                            $changedCars = $verificationManager->clearBouncedForOwner($verifyOwnerId);
+                        } else {
+                            $changedCars = $verificationManager->clearSuppressedForOwner($verifyOwnerId);
+                        }
+
+                        // One audit row per car actually changed, from the
+                        // PRE-change snapshot the manager returned — matching the
+                        // cars_update trigger's OLD.* convention.
+                        foreach ($changedCars as $beforeCar) {
+                            if (!$verificationRepo->insertHistory(verifyHistoryFieldsForAdminAction(
+                                $beforeCar,
+                                $verifyOperation,
+                                'Admin action via the Verification System tab'
+                            ))) {
+                                throw new CarDatabaseException(
+                                    "Audit trail insert failed for {$verifyOperation} on car "
+                                    . (int) $beforeCar->id
+                                );
+                            }
+                        }
+
+                        $verificationRepo->commit();
+
+                        $successes[] = sprintf(
+                            '%s: %d car%s %s.',
+                            sendEmailOwnerLabel($verifyOwnerData, $verifyOwnerId),
+                            count($changedCars),
+                            count($changedCars) === 1 ? '' : 's',
+                            $verifySuccessVerb
+                        );
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification: %s applied for owner %d (%d cars changed)',
+                            $verifyOperation,
+                            $verifyOwnerId,
+                            count($changedCars)
+                        ));
+                    } catch (CarValidationException $e) {
+                        $verificationRepo->rollback();
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: {$verifyOperation} validation failure for owner {$verifyOwnerId}: " . $e->getMessage());
+                        $errors[] = $e->getUserMessage();
+                    } catch (ElanRegistryException $e) {
+                        $verificationRepo->rollback();
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: {$verifyOperation} failed for owner {$verifyOwnerId}: " . $e->getMessage());
+                        $errors[] = 'That action could not be applied. Nothing was changed — check the logs for details.';
+                    } catch (\Throwable $e) {
+                        // Matches this file's other cases' catch-all clause
+                        // (see "reassign"/"merge"/"delete" above): a
+                        // narrower catch here would leave the transaction
+                        // open for the rest of the request on any fault
+                        // that isn't an ElanRegistryException subtype.
+                        $verificationRepo->rollback();
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification: %s unexpected error [%s] for owner %d: %s',
+                            $verifyOperation,
+                            get_class($e),
+                            $verifyOwnerId,
+                            $e->getMessage()
+                        ));
+                        $errors[] = 'That action could not be applied due to an unexpected error. Check the logs for details.';
                     }
                     break;
             }

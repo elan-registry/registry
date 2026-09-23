@@ -73,6 +73,15 @@ final readonly class SuppressionSyncSummary
      *                                                (which means the safety cap was hit, not that Brevo itself
      *                                                failed to answer) — both mean "incomplete, re-run me", but an
      *                                                operator diagnosing *why* needs to tell them apart
+     * @param int                $counterFailureCount Unmatched contacts whose dashboard unmatched-recipient
+     *                                                counter increment did NOT land — a subset of
+     *                                                `unmatchedCount`, never added to it. Once the first
+     *                                                increment fails the job stops re-attempting the call for
+     *                                                the rest of the run (see
+     *                                                {@see BrevoSuppressionSyncJob::syncPage()}) but keeps
+     *                                                tallying here, so this stays the true number of unmatched
+     *                                                contacts missing from the counter even though only one
+     *                                                failure was logged
      */
     public function __construct(
         public int $matchedCount,
@@ -84,6 +93,7 @@ final readonly class SuppressionSyncSummary
         public int $contactsExamined = 0,
         public int $skippedCount = 0,
         public bool $pollFailed = false,
+        public int $counterFailureCount = 0,
     ) {
     }
 }

@@ -26,21 +26,21 @@ use PHPUnit\Framework\Attributes\Group;
  * the `job_name` primary key, which a mocked-DB unit test cannot fully prove
  * (this repo's own convention for new SQL: execute it, don't just read it).
  *
- * Uses the seeded `reconciliation` row (created by the
- * 20260908203118_create_cron_job_runs migration) as its fixture, snapshotting
- * and restoring its `enabled`/`last_run_at` columns the same way
- * VerificationSettingsCronReadyTest.php snapshots and restores
+ * Uses the seeded `brevo_reconciliation` row (originally 'reconciliation',
+ * renamed by migration 20260918133038_rename_reconciliation_job, #2129) as
+ * its fixture, snapshotting and restoring its `enabled`/`last_run_at`
+ * columns the same way VerificationSettingsCronReadyTest.php handles
  * er_verification_settings.last_cron_request_at.
  */
 #[Group('integration')]
 final class CronJobGuardIntegrationTest extends IntegrationTestCase
 {
-    private const JOB_NAME = 'reconciliation';
+    private const JOB_NAME = 'brevo_reconciliation';
 
-    /** Original enabled value for the 'reconciliation' row, restored in tearDown(). */
+    /** Original enabled value for the 'brevo_reconciliation' row, restored in tearDown(). */
     private bool $originalEnabled = true;
 
-    /** Original last_run_at value for the 'reconciliation' row, restored in tearDown(). */
+    /** Original last_run_at value for the 'brevo_reconciliation' row, restored in tearDown(). */
     private ?string $originalLastRunAt = null;
 
     protected function setUp(): void
@@ -186,5 +186,70 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
             $guard->claim(self::JOB_NAME, 24),
             'A second claim immediately after the first must not also succeed'
         );
+    }
+
+    // --- send_verification_batch (#1885) -----------------------------------
+
+    /**
+     * A real claim() round-trip against the 'send_verification_batch' row
+     * seeded by 20260916000001_seed_send_verification_batch_cron.php, proving
+     * both that the allowlist entry (CronJobGuardTest's unit coverage) and the
+     * seeded row agree — a name present in only one of the two silently never
+     * claims, per CronJobGuard's own class docblock.
+     *
+     * Uses its own fixture snapshot/restore (distinct from the class-level
+     * 'brevo_reconciliation' fixture above) since this is a different row.
+     */
+    public function testClaimRoundTripAgainstSeededSendVerificationBatchRow(): void
+    {
+        $jobName = 'send_verification_batch';
+
+        $this->db->query('SELECT enabled, last_run_at FROM er_cron_job_runs WHERE job_name = ?', [$jobName]);
+        $this->assertFalse($this->db->error(), 'Failed to read seeded send_verification_batch row: ' . $this->db->errorString());
+        $row = $this->db->first();
+        $this->assertIsObject(
+            $row,
+            "er_cron_job_runs must already have a seeded '{$jobName}' row"
+            . ' — run: composer migrate (20260916000001_seed_send_verification_batch_cron)'
+        );
+
+        $originalEnabled = (bool) $row->enabled;
+        $originalLastRunAt = !empty($row->last_run_at) ? (string) $row->last_run_at : null;
+
+        try {
+            // The row is seeded enabled=0 (paused) in every environment —
+            // enable it for the duration of this claim test, matching how the
+            // class-level 'brevo_reconciliation' fixture is manipulated above.
+            $this->db->query(
+                'UPDATE er_cron_job_runs SET enabled = 1, last_run_at = NULL WHERE job_name = ?',
+                [$jobName]
+            );
+            $this->assertFalse($this->db->error());
+
+            $guard = new CronJobGuard($this->db);
+
+            $this->assertTrue(
+                $guard->claim($jobName, 20),
+                'A real claim() against the seeded send_verification_batch row must succeed when enabled'
+            );
+
+            $this->db->query('SELECT last_run_at FROM er_cron_job_runs WHERE job_name = ?', [$jobName]);
+            $confirmRow = $this->db->first();
+            $this->assertIsObject($confirmRow);
+            $this->assertNotEmpty(
+                $confirmRow->last_run_at,
+                'A successful claim must actually update last_run_at in the real table'
+            );
+
+            $this->assertFalse(
+                $guard->claim($jobName, 20),
+                'A second immediate claim against the same row must not also succeed'
+            );
+        } finally {
+            $this->db->query(
+                'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
+                [$originalEnabled ? 1 : 0, $originalLastRunAt, $jobName]
+            );
+        }
     }
 }

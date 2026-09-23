@@ -7,10 +7,12 @@ use ElanRegistry\Exceptions\VerificationConfigException;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\BatchSizeRoundTripFakeDatabase;
 use Tests\Support\VerificationSettingsFakeDatabase;
 
 require_once __DIR__ . '/../../../Support/FakeDatabase.php';
 require_once __DIR__ . '/../../../Support/VerificationSettingsFakeDatabase.php';
+require_once __DIR__ . '/../../../Support/BatchSizeRoundTripFakeDatabase.php';
 
 /**
  * Unit tests for VerificationSettings — the feature switch and readiness
@@ -356,6 +358,156 @@ final class VerificationSettingsTest extends TestCase
     }
 
     // =========================================================================
+    // setBatchSize() (#1885) — clamps to [1, 25], never rejects
+    // =========================================================================
+
+    /**
+     * Valid in-range, clamp-above-25, boundary-at-25, and clamp-below-1 cases,
+     * data-provider driven per the plan's Test Plan. Also covers the
+     * PHP-int-coercion-boundary risk class called out for extra scrutiny:
+     * PHP_INT_MAX and PHP_INT_MIN must clamp exactly the same as any other
+     * out-of-range value, proving `max(MIN, min(MAX, $size))` holds at the
+     * extremes rather than only near the documented 0/25 boundaries.
+     *
+     * @return array<string, array{int, int}> [submitted, expectedClamped]
+     */
+    public static function setBatchSizeClampingProvider(): array
+    {
+        return [
+            'valid in-range value persists unchanged' => [10, 10],
+            'value above 25 clamps to 25' => [30, 25],
+            'value = 25 boundary is accepted unchanged' => [25, 25],
+            'value = 1 boundary is accepted unchanged' => [1, 1],
+            'value = 0 clamps to the floor of 1' => [0, 1],
+            'negative value clamps to the floor of 1' => [-5, 1],
+            'PHP_INT_MAX clamps to 25' => [PHP_INT_MAX, 25],
+            'PHP_INT_MIN clamps to the floor of 1' => [PHP_INT_MIN, 1],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('setBatchSizeClampingProvider')]
+    public function testSetBatchSizeClampsToExpectedValue(int $submitted, int $expectedClamped): void
+    {
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize($submitted));
+        $this->assertTrue($db->wasUpdateCalled());
+    }
+
+    /**
+     * The clamped value — not the submitted one — must round-trip through
+     * batchSize(), proving the write actually persisted the effective value
+     * rather than merely returning true.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('setBatchSizeClampingProvider')]
+    public function testSetBatchSizeRoundTripsTheClampedValueThroughBatchSize(int $submitted, int $expectedClamped): void
+    {
+        // A single fake instance backs both the write and the read-back, so
+        // the read must answer with whatever was actually written — not a
+        // second independently-configured double that could drift from the
+        // implementation's own clamped value.
+        $db = new BatchSizeRoundTripFakeDatabase();
+
+        $settings = new VerificationSettings($db);
+        $this->assertTrue($settings->setBatchSize($submitted));
+        $this->assertSame(
+            $expectedClamped,
+            $settings->batchSize(),
+            'batchSize() must read back the clamped value that was actually written'
+        );
+    }
+
+    /**
+     * actingUserId must reach the config-changed log line, mirroring
+     * setEnabled()'s identical contract (testSetEnabledPassesActingUserIdThroughToSuccessLog).
+     */
+    public function testSetBatchSizePassesActingUserIdThroughToSuccessLog(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize(10, 42));
+
+        $changed = array_values(array_filter(
+            $mockLogEntries,
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED
+        ));
+        $this->assertCount(1, $changed, 'setBatchSize() must log exactly one success line under LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED');
+        $this->assertSame(42, $changed[0]['user_id'], 'The acting user id must be passed through to the success log');
+        $this->assertStringContainsString('10', $changed[0]['message']);
+    }
+
+    /**
+     * The log line reports the clamped effective value, not the submitted
+     * one — an admin who typed 500 must see "set to 25" in the log, not "500".
+     */
+    public function testSetBatchSizeLogsTheClampedValueNotTheSubmittedValue(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize(500));
+
+        $changed = array_values(array_filter(
+            $mockLogEntries,
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED
+        ));
+        $this->assertCount(1, $changed);
+        $this->assertStringContainsString('25', $changed[0]['message']);
+        $this->assertStringNotContainsString('500', $changed[0]['message']);
+    }
+
+    public function testSetBatchSizeReturnsFalseWhenUpdateFails(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(errorAfterUpdateOnly: true);
+
+        $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
+    }
+
+    public function testSetBatchSizeReturnsFalseWhenConfirmationSelectFindsNoRow(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: []);
+
+        $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
+    }
+
+    public function testSetBatchSizeReturnsFalseWhenConfirmationSelectErrors(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(
+            confirmSelectRowValue: (object) ['id' => 1],
+            confirmSelectErrors: true,
+        );
+
+        $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
+    }
+
+    /**
+     * Never gated on Brevo readiness, unlike setEnabled(true) — a batch size
+     * is inert configuration and changing it cannot cause mail to go out.
+     */
+    public function testSetBatchSizeSucceedsWithoutAnySiteRootConfigured(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize(10));
+    }
+
+    /**
+     * Re-saving the same clamped value must still report success — the same
+     * rowCount()-changed-vs-matched pitfall setEnabled() already guards
+     * against via its confirmation SELECT rather than count().
+     */
+    public function testSetBatchSizeSucceedsWhenReSettingTheSameValueItAlreadyHas(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: (object) ['id' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->setBatchSize(5));
+        $this->assertTrue($db->wasUpdateCalled());
+    }
+
+    // =========================================================================
     // brevoReady()
     // =========================================================================
 
@@ -667,6 +819,162 @@ final class VerificationSettingsTest extends TestCase
             VerificationSettings::toggleShouldBeDisabled(canToggle: true, isEnabled: true, brevoReady: false),
             'An admin must always be able to turn verification off, even while Brevo is broken'
         );
+    }
+
+    // =========================================================================
+    // incrementUnmatchedRecipientCounter() / unmatchedRecipientCount() (#2085)
+    // =========================================================================
+
+    public function testIncrementUnmatchedRecipientCounterSucceeds(): void
+    {
+        $db = new VerificationSettingsFakeDatabase();
+
+        $this->assertTrue((new VerificationSettings($db))->incrementUnmatchedRecipientCounter());
+        $this->assertTrue($db->wasUnmatchedCounterUpdateCalled());
+    }
+
+    public function testIncrementUnmatchedRecipientCounterReturnsFalseWhenUpdateFails(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(unmatchedCounterUpdateErrors: true);
+
+        $this->assertFalse((new VerificationSettings($db))->incrementUnmatchedRecipientCounter());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('Failed to increment', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * Unlike setEnabled()/setBatchSize(), this write uses `col = col + 1`,
+     * which always changes the row's value when a row matches — so
+     * count() === 0 here unambiguously means the id=1 row is absent, not
+     * "value unchanged" (see the method's own docblock). Simulated here via
+     * $unmatchedCounterUpdateCount: 0, matching the pattern
+     * testRecordCronRequestReturnsFalseAndLogsWhenSettingsRowMissing() already
+     * uses for recordCronRequest()'s identical count()-based check.
+     */
+    public function testIncrementUnmatchedRecipientCounterReturnsFalseWhenRowMissing(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(unmatchedCounterUpdateCount: 0);
+
+        $this->assertFalse((new VerificationSettings($db))->incrementUnmatchedRecipientCounter());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('not found', $mockLogEntries[0]['message']);
+    }
+
+    public function testUnmatchedRecipientCountReadsStoredValue(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(
+            unmatchedCounterRowValue: (object) ['unmatched_recipient_count' => 7],
+        );
+
+        $this->assertSame(7, (new VerificationSettings($db))->unmatchedRecipientCount());
+    }
+
+    /**
+     * null, not 0: a rising count is this counter's whole signal, so an
+     * unreadable value must be distinguishable by the caller from a genuine
+     * zero rather than rendering as the same reassuring "nothing unmatched".
+     */
+    public function testUnmatchedRecipientCountReturnsNullOnQueryError(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(unmatchedCounterQueryErrors: true);
+
+        $this->assertNull((new VerificationSettings($db))->unmatchedRecipientCount());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('Failed to read', $mockLogEntries[0]['message']);
+    }
+
+    public function testUnmatchedRecipientCountReturnsNullWhenRowMissing(): void
+    {
+        global $mockLogEntries;
+
+        // Default unmatchedCounterRowValue is [] — the real \DB "no rows" value.
+        $db = new VerificationSettingsFakeDatabase();
+
+        $this->assertNull((new VerificationSettings($db))->unmatchedRecipientCount());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * Wrong-typed-value risk class (this repo's /execute-plan Step 6):
+     * unmatchedRecipientCount() reads $row->unmatched_recipient_count and casts
+     * it with (int). A non-numeric string is the realistic corrupted-data case
+     * (e.g. a direct DB edit, or a driver returning every column as a string).
+     * The method's fail-closed guard checks is_numeric() alongside isset(), so
+     * this takes the same "missing/malformed" branch as a null or absent value
+     * would — it returns null and logs, rather than silently letting (int)
+     * coerce a corrupted string to 0 and rendering as a healthy counter.
+     */
+    public function testUnmatchedRecipientCountReturnsNullAndLogsForNonNumericString(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(
+            unmatchedCounterRowValue: (object) ['unmatched_recipient_count' => 'not-a-number'],
+        );
+
+        $result = (new VerificationSettings($db))->unmatchedRecipientCount();
+
+        $this->assertNull($result, 'A non-numeric value must yield null, not 0 and not throw');
+        $this->assertCount(1, $mockLogEntries, 'A non-numeric value must log, same as a missing/null value');
+        $this->assertStringContainsString('non-numeric', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * The column is `INT UNSIGNED NOT NULL DEFAULT 0` and its only write path
+     * is `col = col + 1`, so a negative reading cannot be produced by any real
+     * code path — it means the row was edited by hand or the schema drifted.
+     * That is the same condition a non-numeric value signals, so it takes the
+     * same fail-closed branch rather than being cast through as a real count.
+     */
+    public function testUnmatchedRecipientCountReturnsNullAndLogsForNegativeValue(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(
+            unmatchedCounterRowValue: (object) ['unmatched_recipient_count' => -5],
+        );
+
+        $result = (new VerificationSettings($db))->unmatchedRecipientCount();
+
+        $this->assertNull($result, 'A negative value is impossible via any real write path — report it as unreadable');
+        $this->assertCount(1, $mockLogEntries, 'A negative value must log, same as a non-numeric one');
+        $this->assertStringContainsString('negative', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * The other half of the same risk class: a null value for the column
+     * (e.g. a NULL cell reached through a schema drift, since the real column
+     * is NOT NULL DEFAULT 0 per the migration) must not throw either, and
+     * takes the same fail-closed branch as the non-numeric-string case above.
+     */
+    public function testUnmatchedRecipientCountReturnsNullWithoutThrowingWhenValueIsNull(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(
+            unmatchedCounterRowValue: (object) ['unmatched_recipient_count' => null],
+        );
+
+        $result = (new VerificationSettings($db))->unmatchedRecipientCount();
+
+        $this->assertNull($result);
+        $this->assertCount(1, $mockLogEntries, 'A null value hits the fail-closed branch, same as a non-numeric string');
+        $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
     }
 
     // =========================================================================

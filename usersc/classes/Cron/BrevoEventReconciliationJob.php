@@ -49,7 +49,7 @@ use ElanRegistry\LogCategories;
 final class BrevoEventReconciliationJob extends AbstractCronJob
 {
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
-    public const JOB_NAME = 'reconciliation';
+    public const JOB_NAME = 'brevo_reconciliation';
 
     /**
      * Minimum hours between claimed runs.
@@ -115,6 +115,15 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     private readonly \DateTimeImmutable $now;
 
     /**
+     * Set once {@see self::applyEvent()} has seen the unmatched-recipient
+     * counter increment fail, to stop re-attempting it for the remainder of
+     * this run — see that method's own comment for why. Scoped to the job
+     * instance because `backfillEvents()` runs exactly one page per
+     * invocation; nothing resets it, and nothing needs to.
+     */
+    private bool $unmatchedCounterFailed = false;
+
+    /**
      * Collaborators are injected rather than constructed internally, matching
      * {@see \ElanRegistry\Car\BrevoWebhookEventProcessor}'s convention — it
      * keeps this class unit-testable without a real database or the vendored
@@ -175,13 +184,25 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo event reconciliation: incremental run complete —'
             . ' %d matched, %d unmatched, %d skipped, %d ignored (non-verification tag),'
-            . ' %d page(s) fetched%s.',
+            . ' %d page(s) fetched%s%s.',
             $summary->matchedCount,
             $summary->unmatchedCount,
             $summary->skippedCount,
             $summary->ignoredByTagCount,
             $summary->pagesFetched,
-            $summary->pollFailed ? ' — a Brevo poll failed, nothing was backfilled this cycle' : ''
+            $summary->pollFailed ? ' — a Brevo poll failed, nothing was backfilled this cycle' : '',
+            // Without this clause the line above reads as a clean run while the
+            // dashboard's unmatched-recipient counter silently under-reports.
+            // Only the first failure logs its own cause (see applyEvent()), so
+            // this is the only place the run's true scale is recorded.
+            $summary->counterFailureCount > 0
+                ? sprintf(
+                    ' — %d of the %d unmatched event(s) were NOT recorded in the dashboard'
+                    . ' unmatched-recipient counter; see VerificationConfigWarning log entries',
+                    $summary->counterFailureCount,
+                    $summary->unmatchedCount
+                )
+                : ''
         ));
 
         // Independent of the backfill, and deliberately outside its error
@@ -290,6 +311,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             'unmatched' => 0,
             'skipped' => 0,
             'ignoredByTag' => 0,
+            'counterFailures' => 0,
         ];
         /** @var array<string, int> $eventTypeCounts */
         $eventTypeCounts = [];
@@ -307,6 +329,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             ignoredByTagCount: $counts['ignoredByTag'],
             pagesFetched: 1,
             pollFailed: false,
+            counterFailureCount: $counts['counterFailures'],
         );
     }
 
@@ -314,7 +337,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * Apply one Brevo event to every car registered to its recipient address.
      *
      * Threads run counts through `$counts` (keys: `matched`, `unmatched`,
-     * `skipped`, `ignoredByTag`) and `$eventTypeCounts` (keyed on the raw
+     * `skipped`, `ignoredByTag`, `counterFailures`) and `$eventTypeCounts` (keyed on the raw
      * Brevo event name) rather than returning them, so the counting logic
      * sits directly alongside the branch it is counting — see
      * {@see ReconciliationSummary}'s docblock for why `matched`/`skipped` are
@@ -431,6 +454,27 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
 
         if ($matchedCars === []) {
             $counts['unmatched']++;
+
+            // incrementUnmatchedRecipientCounter() never throws and logs its
+            // own failure — but the return value still has to be honored, or
+            // execute()'s summary line would silently imply every unmatched
+            // event reached the dashboard counter even on the one path where
+            // the method just logged that it could not (the same reasoning
+            // app/api/webhooks/brevo.php's NO_CAR_MATCH branch spells out).
+            //
+            // After the first failure the call itself is not re-attempted for
+            // the rest of this run: the failure is a settings-row-level fault,
+            // not a per-event one, so retrying would write one identical
+            // warning row per unmatched event — thousands on a bad run. The
+            // tally keeps counting regardless, so the summary reports the real
+            // number of unmatched events missing from the counter.
+            if ($this->unmatchedCounterFailed) {
+                $counts['counterFailures']++;
+            } elseif (!(new VerificationSettings($this->db))->incrementUnmatchedRecipientCounter()) {
+                $this->unmatchedCounterFailed = true;
+                $counts['counterFailures']++;
+            }
+
             return;
         }
 

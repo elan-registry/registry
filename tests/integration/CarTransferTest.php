@@ -391,6 +391,67 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
+     * vericode is a bearer token: whoever holds the plaintext verification
+     * link can Verify or mark Sold with no login (see the
+     * car-owner-verification FRD). A live link surviving a transfer would
+     * let the PREVIOUS owner keep acting on a car they no longer own, so
+     * transfer to a real owner must clear it.
+     */
+    #[Group('fast')]
+    public function testTransferClearsVericodeOnPreviouslyVerifiedCar(): void
+    {
+        $verifiedCarId = $this->createTestCar($this->testUserId, [
+            'chassis'  => 'TR' . uniqid(),
+            'vericode' => hashVericode('SOME-PLAINTEXT-CODE-' . uniqid()),
+        ]);
+
+        $car = new Car($verifiedCarId);
+        $car->transfer($this->targetUserId, 'Test transfer verified car', 'NEWOWNER', $this->testUserId);
+
+        $carRow = $this->db->query(
+            "SELECT vericode FROM cars WHERE id = ?",
+            [$verifiedCarId]
+        )->first();
+        $this->assertNull($carRow->vericode, 'vericode must be cleared on transfer to a real owner');
+    }
+
+    /**
+     * Unlike email_bounced/email_suppressed (boolean signals about the
+     * previous owner's address, preserved on system-account reassignment),
+     * vericode is an active credential — the same argument that applies to
+     * email_bounced_address's PII clearing applies here with more force: a
+     * stale live link must not survive ANY ownership change, including
+     * reassignment to the `noowner` GDPR-erasure account, since the
+     * departing owner could otherwise still use it against a car they no
+     * longer own.
+     */
+    #[Group('fast')]
+    public function testSystemAccountReassignmentAlsoClearsVericode(): void
+    {
+        $verifiedCarId = $this->createTestCar($this->testUserId, [
+            'chassis'  => 'TR' . uniqid(),
+            'vericode' => hashVericode('SOME-PLAINTEXT-CODE-' . uniqid()),
+        ]);
+
+        $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
+        $this->assertNotNull($noOwner, 'noowner system account must exist for this test');
+
+        $car = new Car($verifiedCarId);
+        $car->transfer((int) $noOwner->id, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);
+
+        $carRow = $this->db->query(
+            "SELECT vericode FROM cars WHERE id = ?",
+            [$verifiedCarId]
+        )->first();
+        $this->assertNull(
+            $carRow->vericode,
+            'vericode must be cleared even on system-account reassignment — it is a live '
+            . 'credential, not a boolean signal, so it does not get the same-as-email_bounced '
+            . 'preservation treatment'
+        );
+    }
+
+    /**
      * Test transfer works with an explicit actingUserId even when global $user is unset.
      * Verifies that Car::transfer() does not fall back to currentUserId() internally.
      */
