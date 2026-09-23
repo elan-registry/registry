@@ -1377,11 +1377,41 @@ final class CarRepositoryTest extends TestCase
             $capturedSql,
             'findVerificationEligible() must filter on stalenessSql(), the exact negation of freshnessSql()'
         );
+        $this->assertStringContainsString(
+            'LEFT JOIN profiles ON profiles.user_id = cars.user_id',
+            $capturedSql,
+            'The owner-level opt-out must be joined as a LEFT JOIN, not an INNER JOIN — users and '
+                . 'profiles are not 1:1 in this schema (see CarRepository::findProfileEmailSuppressed()\'s '
+                . 'docblock), so an INNER JOIN would silently make every owner who never filled in a '
+                . 'profile permanently un-emailable'
+        );
+        $this->assertStringContainsString(
+            'AND COALESCE(profiles.email_suppressed, 0) = 0',
+            $capturedSql,
+            'An owner who opted out (profiles.email_suppressed = 1) must be excluded regardless of the '
+                . 'per-car flag — setSuppressedForOwner() only fans out to the cars held at opt-out time, '
+                . 'so a car acquired later reads cars.email_suppressed = 0 and would otherwise re-enter '
+                . 'the eligible set (the gap named in 20260914093000_add_profile_email_suppressed.php). '
+                . 'COALESCE supplies the column default for an owner with no profiles row at all'
+        );
+        // Narrowed from a blanket assertStringNotContainsString('COALESCE'):
+        // that banned the token outright, which only ever stood in for "the
+        // #1953 mtime fallback is gone" and broke the moment an unrelated
+        // COALESCE (the profiles opt-out clause asserted above) entered the
+        // query. Pinning the actual removed expression keeps the #1953
+        // regression guard exact instead of coupling it to every future use of
+        // the function.
         $this->assertStringNotContainsString(
-            'COALESCE',
+            'COALESCE(cars.owner_last_updated',
             $capturedSql,
             'The COALESCE(owner_last_updated, mtime) fallback was removed by #1953 — owner_last_updated '
                 . 'is NOT NULL by schema, so no fallback to mtime is needed or wanted'
+        );
+        $this->assertStringNotContainsString(
+            'cars.mtime',
+            $capturedSql,
+            'mtime is ON UPDATE CURRENT_TIMESTAMP, so any unrelated write bumps it — #1953 removed it '
+                . 'from the freshness expression entirely and it must not return by any route'
         );
         $this->assertStringNotContainsString(
             'INTERVAL 2 YEAR',

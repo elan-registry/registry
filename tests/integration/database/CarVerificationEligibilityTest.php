@@ -195,6 +195,90 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         );
     }
 
+    /**
+     * The owner-level opt-out closing the gap the #1883 migration
+     * (20260914093000_add_profile_email_suppressed.php) documented in its own
+     * header: profiles.email_suppressed was written by
+     * CarVerificationManager::setSuppressedForOwner() but never read by this
+     * query, which gated solely on the per-car cars.email_suppressed flag that
+     * the same call fans out.
+     *
+     * That fan-out only reaches the cars the owner held AT THAT MOMENT, so this
+     * test reproduces the leak directly: the owner's profile carries the opt-out
+     * while the car itself is explicitly left at cars.email_suppressed = 0 —
+     * exactly the state of a car registered, transferred in, or merged in AFTER
+     * the opt-out. Before the LEFT JOIN profiles clause this car was eligible
+     * and the owner kept being emailed despite a standing opt-out.
+     *
+     * Needs withProfile: true — createTestUser() creates no profiles row by
+     * default, which is itself why the query uses a LEFT JOIN with
+     * COALESCE(..., 0) rather than an INNER JOIN: a profile-less owner must
+     * stay emailable, not become permanently suppressed. The second control car
+     * below pins that down, owned by a profile-less user in the ordinary way.
+     */
+    #[Group('fast')]
+    public function testCarIsExcludedWhenOwnerProfileEmailSuppressedEvenThoughCarFlagIsClear(): void
+    {
+        $this->assertColumnExists('profiles', 'email_suppressed');
+
+        $optedOutUserId = $this->createTestUser([], true);
+        $this->db->query(
+            'UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?',
+            [$optedOutUserId]
+        );
+        $profileRow = $this->db->query(
+            'SELECT email_suppressed FROM profiles WHERE user_id = ?',
+            [$optedOutUserId]
+        )->first();
+        $this->assertNotEmpty($profileRow, 'Test setup: no profiles row for user ' . $optedOutUserId);
+        $this->assertSame(
+            1,
+            (int) $profileRow->email_suppressed,
+            'Test setup: profiles.email_suppressed was not actually set for user ' . $optedOutUserId
+        );
+
+        $sharedFields = [
+            'email_bounced'      => 0,
+            // Explicitly clear: the whole point is that the per-car flag does
+            // NOT carry the opt-out for a car acquired after the fan-out ran.
+            'email_suppressed'   => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $optedOutCarId = $this->createTestCar($optedOutUserId, array_merge($sharedFields, [
+            'email' => 'profile-opted-out@example.com',
+        ]));
+
+        // Control: identical in every field, owned by this class's ordinary
+        // test user — who has NO profiles row at all. Proves two things at
+        // once: the exclusion above is caused by profiles.email_suppressed
+        // specifically rather than fixture drift, and the LEFT JOIN does not
+        // strand profile-less owners the way an INNER JOIN would.
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'profile-opt-out-control@example.com',
+        ]));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $optedOutCarId,
+            $eligible,
+            'A car whose owner has profiles.email_suppressed = 1 must be excluded from verification '
+            . 'eligibility even when that car\'s own cars.email_suppressed is 0 — otherwise an owner '
+            . 'who opted out keeps being emailed about cars added after the opt-out'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical car owned by a user with no profiles row must remain eligible — '
+            . 'otherwise the opt-out exclusion above proves nothing about profiles.email_suppressed '
+            . 'specifically, and a profile-less owner would be silently un-emailable'
+        );
+    }
+
     #[Group('fast')]
     public function testEmptyEmailCarIsExcluded(): void
     {

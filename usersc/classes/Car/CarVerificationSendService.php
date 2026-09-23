@@ -155,6 +155,37 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'Car has no live owner.');
         }
 
+        // The owner-level opt-out (#1883), enforced here for the same reason
+        // the `noowner` check above is: it needs a join to `profiles` that
+        // VerificationEligibility::skipReason() has no row for.
+        // findVerificationEligible()'s SQL now excludes it via a LEFT JOIN, but
+        // the admin manual-send path re-checks eligibility in PHP against a
+        // single already-loaded `cars` row, which carries only the per-car
+        // cars.email_suppressed flag. Those two flags are NOT interchangeable:
+        // setSuppressedForOwner() fans the opt-out out to the cars the owner
+        // held at that moment, so any car acquired afterwards still reads
+        // cars.email_suppressed = 0 while the owner's standing opt-out sits in
+        // profiles. Without this guard that car would be mailed.
+        //
+        // A separate one-column read rather than a field off $owner: Owner::find()'s
+        // users-LEFT JOIN-profiles projection selects only city/state/country/
+        // lat/lon/website from `profiles`, so ->data() does not carry this flag
+        // and widening that shared projection — read by every owner-facing page —
+        // to serve one send-path guard would be the larger change. A missing
+        // profiles row returns null here and is treated as "no opt-out
+        // recorded", matching the COALESCE(..., 0) in findVerificationEligible()'s
+        // own clause so the two paths cannot disagree about a profile-less owner.
+        if ($this->repo->findProfileEmailSuppressed((int) $carData->user_id) === 1) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: owner %d for car %d has opted out of verification '
+                . 'emails (profiles.email_suppressed = 1); send skipped',
+                (int) $carData->user_id,
+                $carId
+            ));
+
+            return SendResult::failed($carId, 'Owner has opted out of verification emails.');
+        }
+
         // Scope A — durable new code BEFORE the network call.
         $this->repo->beginTransaction();
 
@@ -371,8 +402,13 @@ final class CarVerificationSendService
      * per-car loop instead, because it needs to bucket each result into its
      * own report table (sent/unrecorded/skipped/failed) alongside the car
      * row itself — this method's flat array<SendResult> return drops that.
-     * This method exists for #1885's cron job, whose simpler run-to-completion
-     * use case fits the flat-array shape directly.
+     * #1885's cron job (SendVerificationBatchJob) ended up needing the same
+     * per-car bucketing and calls VerificationBatchSender::processBatch()
+     * instead, which this method predates — so this remains genuinely
+     * uncalled rather than serving the caller it was written for. Kept for
+     * the simpler run-to-completion shape a future caller with no bucketing
+     * need might still want; if one never arrives, this is a fair tech-debt
+     * removal candidate (see #1930 for the precedent).
      *
      * @param array<object> $cars Eligible car rows, typically from {@see self::findEligible()}
      * @return array<SendResult> One result per input car, in the same order

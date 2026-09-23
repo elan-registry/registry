@@ -950,6 +950,10 @@ class CarRepository
      * excluded. Emailing such a car would mail an erased owner's last-known
      * address, which the registry's privacy commitment forbids.
      *
+     * Finally, a car is ineligible when its OWNER has opted out at the profile
+     * level (profiles.email_suppressed = 1), independent of the per-car flag —
+     * see the join comment below for why the per-car flag alone was not enough.
+     *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
      * @return array<object> Eligible car rows (empty if none)
@@ -985,6 +989,36 @@ class CarRepository
         // consent (the owner asked not to be contacted). A car can be one,
         // both, or neither, and either alone is enough to exclude the row.
 
+        // profiles.email_suppressed is the OWNER-level record of that same
+        // consent decision, and it is the one that survives the owner's car
+        // list changing. CarVerificationManager::setSuppressedForOwner() writes
+        // both: the profiles flag, plus a fan-out to cars.email_suppressed for
+        // every car the owner holds AT THAT MOMENT. Gating solely on the
+        // per-car flag therefore leaked every car acquired AFTER the opt-out —
+        // a new registration, a transfer in, or a merge target all default to
+        // cars.email_suppressed = 0 and silently re-entered this result set,
+        // so the owner kept being emailed despite a standing opt-out. That is
+        // the known gap documented in
+        // database/migrations/20260914093000_add_profile_email_suppressed.php's
+        // own header ("could become eligible again despite this flag being
+        // set... tracked as a follow-up"); this clause closes it.
+        //
+        // LEFT JOIN with COALESCE, NOT the INNER JOIN used for users below,
+        // and the difference is deliberate. For `users` a missing row means the
+        // owner is gone and the car MUST be excluded, so INNER JOIN's implicit
+        // rejection is the wanted behaviour. For `profiles` a missing row means
+        // only that the owner never filled in a profile: `users` and `profiles`
+        // are NOT 1:1 in this schema (see findProfileEmailSuppressed()'s
+        // docblock, which returns null precisely to distinguish the two cases,
+        // and updateProfileEmailSuppressed(), which deliberately refuses to
+        // synthesise a row). An INNER JOIN here would silently make every
+        // profile-less owner permanently un-emailable — a far larger behaviour
+        // change than the consent fix, and one no opt-out ever asked for.
+        // COALESCE(..., 0) then supplies the column's own DEFAULT 0 for the
+        // no-row case, matching the null-safety reasoning behind the explicit
+        // `cars.email IS NOT NULL` clause above: absence is treated as the
+        // permissive value only where absence genuinely carries no opt-out.
+        //
         // INNER JOIN, not LEFT JOIN: cars.user_id has no FK to users.id (dropped
         // deliberately — see DATABASE.md's "No Enforced Foreign Key Constraints"),
         // so it can point at a row that no longer exists (e.g. a deleted user
@@ -1002,9 +1036,11 @@ class CarRepository
         $result = $this->db->query(
             "SELECT cars.* FROM cars
               INNER JOIN users ON users.id = cars.user_id
+              LEFT JOIN profiles ON profiles.user_id = cars.user_id
               WHERE cars.solddate IS NULL
                 AND cars.email_bounced = 0
                 AND cars.email_suppressed = 0
+                AND COALESCE(profiles.email_suppressed, 0) = 0
                 AND cars.email IS NOT NULL AND cars.email != ''
                 AND cars.user_id IS NOT NULL
                 AND users.username != 'noowner'

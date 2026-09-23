@@ -550,6 +550,75 @@ final class CarVerificationSendServiceTest extends TestCase
         $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent to the noowner system account');
     }
 
+    /**
+     * The owner-level opt-out (#1883), enforced here for the same reason the
+     * `noowner` check above is: it needs a `profiles` join neither
+     * VerificationEligibility::skipReason() nor the already-loaded `cars` row
+     * can supply. The car passed in is a fully eligible one whose own
+     * cars.email_suppressed is 0 — exactly a car acquired AFTER
+     * setSuppressedForOwner() fanned the opt-out out to the cars the owner held
+     * at that moment — so only the profiles flag can stop this send.
+     */
+    public function testSendOneReturnsFailedWhenOwnerProfileEmailSuppressed(): void
+    {
+        $carData = $this->eligibleCar();
+
+        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(1);
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('updateCar');
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame(100, $result->carId);
+        $this->assertNotNull($result->reason);
+        $this->assertStringContainsStringIgnoringCase('opted out', $result->reason);
+        $this->assertSame(
+            [],
+            $GLOBALS['mockSentEmails'],
+            'No email may be sent to an owner who has opted out at the profile level'
+        );
+    }
+
+    /**
+     * The permissive half of the same rule: findProfileEmailSuppressed()
+     * returns null for an owner with no `profiles` row at all (`users` and
+     * `profiles` are not 1:1 in this schema — see that method's docblock), and
+     * that must NOT be read as an opt-out. Mirrors the
+     * COALESCE(profiles.email_suppressed, 0) in findVerificationEligible()'s
+     * own clause, so the SQL and PHP paths cannot disagree about a profile-less
+     * owner. Without this the guard above would silently make every owner who
+     * never filled in a profile permanently un-emailable.
+     *
+     * mockRepo is used here purely as a behavior stub — the assertion is that
+     * the send ran to completion, verified through the returned status and the
+     * recorded email, not through call counts on the repository.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSendOneProceedsWhenOwnerHasNoProfileRow(): void
+    {
+        $carData = $this->eligibleCar();
+
+        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(null);
+        $this->mockVerifier->expects($this->once())
+            ->method('generateVerificationCode')
+            ->willReturn('NEWCODE123');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertNotSame(
+            SendResult::STATUS_FAILED,
+            $result->status,
+            'An owner with no profiles row has recorded no opt-out and must still be emailable'
+        );
+        $this->assertNotSame(
+            [],
+            $GLOBALS['mockSentEmails'],
+            'The verification email must still be sent when the owner simply has no profiles row'
+        );
+    }
+
     // ------------------------------------------------------------------
     // Statelessness contract (AC7/AC11's "pure function of args + DB state")
     // ------------------------------------------------------------------
