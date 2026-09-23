@@ -20,7 +20,7 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('database')]
 final class RateLimitEnforcementTest extends IntegrationTestCase
 {
-    private const EMAIL_MAX = 3;
+    private const EMAIL_MAX = 4;
 
     public function testEmailMaxLimitBlocksAfterConfiguredThreshold(): void
     {

@@ -47,9 +47,10 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
     /**
      * Matches usersc/includes/rate_limits.php's location_search total_max.
      * Raised from 10 to 1000 (#2122) — the original value refused a real
-     * registrant's typed address after 11 debounced requests in 50s.
+     * registrant's typed address after 11 debounced requests in 50s. Raised
+     * again to 1500 by the v2.30.3 blanket +50% rate-limit increase.
      */
-    private const TOTAL_MAX = 1000;
+    private const TOTAL_MAX = 1500;
 
     private function fakeTestNet3Ip(): string
     {
@@ -190,8 +191,9 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
     }
 
     /**
-     * The control proving the raised threshold (#2122: TOTAL_MAX=1000) is
-     * still a real backstop, not a de facto removal — the issue's own
+     * The control proving the raised threshold (#2122, later raised again to
+     * 1500 — see TOTAL_MAX above) is still a real backstop, not a de facto
+     * removal — the issue's own
      * instruction was "do not simply remove the limit" (protects the
      * upstream Nominatim/Photon geocoder from abuse). Also confirms a
      * blocked attempt is still recorded with success=0 in us_rate_limits,

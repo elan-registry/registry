@@ -36,7 +36,7 @@ use PHPUnit\Framework\Attributes\Group;
 final class BrevoWebhookRateLimitEnforcementTest extends IntegrationTestCase
 {
     private const ACTION = 'brevo_webhook';
-    private const TOTAL_MAX = 2000;
+    private const TOTAL_MAX = 3000;
 
     // brevo_webhook_auth_failure (#2087): unlike brevo_webhook above, its
     // ip_max — not total_max — is the operative limit. brevo.php's
