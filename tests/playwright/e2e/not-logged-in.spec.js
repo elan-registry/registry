@@ -299,7 +299,7 @@ test('docs/guides/car-transfer-faq.php still renders the generic site title/desc
 // vericode, rather than crashing (PHP fatal) or hanging.
 test('app/verify/verify_car.php reaches the invalid-link page for a missing vericode without a fatal error', async ({ page }, testInfo) => {
   if (testInfo.project.name !== 'not-logged-in') {
-    testInfo.skip();
+    testInfo.skip(true, 'Only runs under the not-logged-in project');
   }
 
   const response = await page.goto('app/verify/verify_car.php');
