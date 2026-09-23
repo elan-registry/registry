@@ -14,6 +14,7 @@
 - [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md) — Request initialization sequence
 - [DATABASE.md](DATABASE.md) — Schema, tables, relationships
 - [ENVIRONMENT.md](ENVIRONMENT.md) — Environment variables, URLs, local DB access
+- [MAMP_TO_DOCKER.md](MAMP_TO_DOCKER.md) — Switching a checkout from MAMP to the Docker dev stack, and back
 - [TESTING_STRATEGY.md](TESTING_STRATEGY.md) — **Why** the suite is tiered and the
   UserSpice behaviors any new test must account for (commands live in
   [tests/README.md](../../tests/README.md))
