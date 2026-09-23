@@ -383,6 +383,52 @@ try {
     fwrite(STDERR, "ERROR: Could not truncate us_rate_limits: {$e->getMessage()}\n");
 }
 
+// ============================================================
+// Purge Stale Brevo Test Key (once per suite run)
+// ============================================================
+// BrevoWebhookEndpointTest.php:303-336 and
+// VerificationToggleEndpointBehaviorTest.php:256-296 each make
+// VerificationSettings::brevoReady() report true by writing the sentinel
+// 'sib-test-key' into plg_sendinblue, and each restores the prior state in
+// tearDown(). A run that dies mid-test — a fatal, a Ctrl-C, a killed process
+// — never reaches that teardown, so the sentinel survives into the schema.
+// From then on Brevo looks permanently "ready" and every later run fails
+// those two files' "Brevo not ready" cases, with nothing in the failure
+// output pointing at the leftover row. Clearing it once per suite run (not
+// per test — the tests manage their own lifecycle within a run) makes a
+// crashed run self-healing on the next invocation. When a plg_sendinblue row
+// already exists, both tests UPDATE its key to the sentinel in place rather
+// than inserting a new row, so after a crash this purge deletes that original
+// row instead of restoring its key — acceptable on the test schema only.
+//
+// Must stay after the connected-database identity check above: this deletes
+// rows, and running it against elanregi_spice would clobber the real Brevo
+// API key.
+//
+// DB::query() swallows its own PDO exceptions and returns normally (see
+// users/classes/DB.php:187-206) — failure is only observable via
+// error()/errorString(), so those are checked rather than relying on the
+// outer try/catch, which exists for throws outside query() itself (e.g.
+// DB::getInstance()). count() reports PDOStatement::rowCount(), which for a
+// DELETE is the number of rows removed (DB.php:197).
+try {
+    if (class_exists('DB')) {
+        $brevoKeyDb = DB::getInstance();
+        if ($brevoKeyDb->tableExists('plg_sendinblue')) {
+            $brevoKeyDb->query('DELETE FROM plg_sendinblue WHERE `key` = ?', ['sib-test-key']);
+            if ($brevoKeyDb->error()) {
+                fwrite(STDERR, "ERROR: Could not purge stale 'sib-test-key' rows from plg_sendinblue: "
+                    . ($brevoKeyDb->errorString() ?: 'unknown') . "\n");
+            } elseif ($brevoKeyDb->count() > 0) {
+                fwrite(STDERR, "NOTE: Purged {$brevoKeyDb->count()} stale 'sib-test-key' row(s) from "
+                    . "plg_sendinblue (leftover from an interrupted run)\n");
+            }
+        }
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, "ERROR: Could not purge stale 'sib-test-key' rows from plg_sendinblue: {$e->getMessage()}\n");
+}
+
 /**
  * Write each message line to STDERR and exit(1).
  *

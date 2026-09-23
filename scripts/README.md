@@ -61,13 +61,41 @@ quality checks. Run once per developer after cloning the repo.
 1. **Blocking integration-test gate** — only on the `origin` remote (GitHub);
    `prod`/`test` deploy pushes always skip it, since those deploy
    already-CI-verified `main` and shouldn't depend on local dev-machine test-DB
-   state. If the push touches any file under `app/`, `usersc/classes/`, or
-   `tests/integration/`, runs the full `composer test:integration` suite
-   (~1-2 min, requires a working `.env.test.local` — see
-   `docs/development/ENVIRONMENT.md`) and blocks the push (exits non-zero) on
-   any test failure or an unreachable test database. Pushes that touch none
-   of those paths skip this step entirely. Bypass with `git push --no-verify`
-   (also skips step 2 below).
+   state. Runs the full `composer test:integration` suite (~20-30s, requires
+   a working `.env.test.local` — see `docs/development/ENVIRONMENT.md`) and
+   blocks the push (exits non-zero) on any test failure or an unreachable
+   test database. When it runs:
+   - **Gated files** are `*.php` files under `app/`, `usersc/classes/`, or
+     `tests/integration/`. A push with no gated-file changes skips the gate.
+     Renames count as a delete plus an add (`--no-renames`), so moving a
+     gated file out of those paths still runs it.
+   - **What a push is diffed against:**
+     - an existing branch whose remote tip is known locally: that remote tip;
+     - a new branch, or one whose remote tip isn't known locally: the
+       merge-base with its closest parent. Local and `origin` `milestone/*`
+       branches and `origin/main` are ranked together, and the one with the
+       fewest commits between merge-base and the pushed commit wins. The
+       pushed branch itself, and any milestone branch sitting at the pushed
+       commit, are never chosen;
+     - `main`: its remote tip, or the merge-base with `origin/main` when the
+       remote tip is unknown.
+   - **Fail-safe:** if no base resolves or a git command fails, the suite
+     runs with a warning.
+   - **Trade-offs:** merging `main` or the parent into a branch runs the
+     suite. A remote tip pushed with `--no-verify` or
+     `SKIP_INTEGRATION_GATE=1` isn't re-checked by a later push.
+   - **At most once per push.** The suite tests the working tree (`HEAD`),
+     so a multi-branch push reuses one result, and pushing a branch that
+     isn't `HEAD` prints a warning.
+   - **Cache.** `$(git rev-parse --git-path integration-passed)` holds a
+     single key — tree plus test database name — for the most recent pass,
+     so it only skips a re-push of an identical tree. It is written only when
+     the pushed commit is `HEAD` and `git status --porcelain` is empty (no
+     modified or untracked, non-ignored files). Force a
+     rerun with `rm "$(git rev-parse --git-path integration-passed)"`.
+
+   Bypass: `SKIP_INTEGRATION_GATE=1 git push` skips only this gate;
+   `git push --no-verify` skips every push hook.
 2. **Non-blocking `/review-pr` reminder** — on the first push of a
    feature/issue-style branch (`issue/*`, `claude/*`, `feat/*`, `fix/*`,
    `chore/*`, `refactor/*`), prints a reminder to run `/review-pr` locally
@@ -328,7 +356,10 @@ See `docs/development/ENVIRONMENT.md` — "Test Database Isolation" for setup.
 ```bash
 # Emergency only — fix issues before merging
 git commit --no-verify -m "message"
-git push --no-verify              # also skips the integration-test gate
+git push --no-verify              # skips every push hook, including the integration gate
+SKIP_INTEGRATION_GATE=1 git push  # skips only the integration gate; keeps the /review-pr reminder
+SKIP_REVIEW_PR_REMINDER=1 git push  # silences only the /review-pr reminder
+rm "$(git rev-parse --git-path integration-passed)"  # not a bypass: forces the gate to rerun
 ```
 
 ### Getting Help
