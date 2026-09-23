@@ -65,6 +65,12 @@ all other Cloudflare features work normally.
     crawlable; see its file header).
   - `/app/views/` - Reusable view partials: `cars/` (car page components), `email/`
     (transactional email templates)
+  - `/app/verify/` - Public vericode-authenticated pages (`verify_car.php`):
+    reachable with no UserSpice session and no `securePage()`/CSRF, the same
+    deliberate no-session shape as `/app/api/webhooks/brevo.php`. Auth is a
+    single-use, time-limited token in the URL rather than a login — see the
+    file's own header for the full threat-model reasoning before copying
+    this pattern elsewhere
 - `/docs/` - User-facing documentation: `guides/` (how-to), `reference/` (technical), `stories/` (car histories)
 - `/error/` - Branded HTTP error pages (403, 404, 500)
 - `/users/` - UserSpice authentication system

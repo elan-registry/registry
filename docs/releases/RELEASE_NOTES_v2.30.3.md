@@ -26,6 +26,8 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#2122](https://github.com/elan-registry/registry/issues/2122) — The join form's location picker no longer refuses a normal typing session with "Rate limit exceeded" — a real registrant was locked out of registration by a search-rate limit sized for abuse, not ordinary use.
 - [#2148](https://github.com/elan-registry/registry/issues/2148) — The Verification tab now shows a distinct "Last run failed" badge and a cron-failure log summary, so a crashed nightly send no longer looks identical to a healthy one.
 - All rate limits were raised 50% to stop production false-positive throttling on ordinary browsing traffic. Two limits added earlier in this same milestone (`verification_code_attempt`, the vericode brute-force ceiling; `brevo_webhook_auth_failure`, deliberately tight by design) were excluded from that raise and kept at their original values.
+- Security fix: cron job files under `users/cron/` are no longer directly reachable over HTTP — an unauthenticated direct request could previously trigger a real verification-email batch send outside the normal cron dispatch path.
+- Verification emails are no longer resent to the same car within 60 days of the last send, so consecutive nightly runs can't repeatedly re-pick the same batch before an earlier send has had a chance to be acted on.
 
 ## Issues Resolved
 
