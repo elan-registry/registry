@@ -27,14 +27,15 @@
              known-broken: pre-existing failures with an open tracking issue,
              tagged as a temporary, visible escape hatch (see tests/README.md).
 
-             CAUTION: in PHPUnit 12, a CLI "exclude group" flag REPLACES this
+             CAUTION: in PHPUnit 12, a CLI exclude-group flag REPLACES this
              list outright rather than adding to it
              (vendor/phpunit/phpunit/src/TextUI/Configuration/Merger.php:797-805),
              so composer scripts running this config must not pass that flag
              at all — doing so would silently re-enable live-network. The
-             "group" flag still opts a group back in:
-             vendor/bin/phpunit -c phpunit-integration.xml [group] live-network
-             See tests/README.md, "Second CLI gotcha". -->
+             group flag still opts a group back in; tests/README.md's
+             "Second CLI gotcha" section has the exact command to copy
+             (an XML comment cannot contain a literal double hyphen, so it
+             is not reproduced here). -->
         <exclude>
             <group>live-network</group>
             <group>known-broken</group>
