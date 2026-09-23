@@ -197,7 +197,7 @@ scripts/poll-review-posted.sh <pr-number> 30 300
 ```
 
 30s interval, 5min timeout (Fable milestone reviews run longer than the
-lightweight Opus per-push reviews). Same underlying `check-review-posted.sh`
+lightweight Sonnet per-push reviews). Same underlying `check-review-posted.sh`
 check `/address-pr-comments`, `/finish-issue`, and `/execute-plan` use — see
 its header for why this, not job status, is the ground truth, and note it
 also mirrors (but can't literally share code with) the "Strengths"-heading
