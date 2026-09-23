@@ -18,8 +18,13 @@ use ElanRegistry\LogCategories;
  * class is the three-layer mitigation every new cron job must build on:
  *
  *   1. Crash isolation: `execute()` runs inside a `try/catch(\Throwable)` that
- *      logs and never rethrows, so one job's bug can't cascade to the next job
- *      in cron.php's loop.
+ *      records the failure on `er_cron_job_runs.last_failure_at`, logs, and
+ *      never rethrows, so one job's bug can't cascade to the next job in
+ *      cron.php's loop. The failure stamp is not optional bookkeeping: the
+ *      guard claim stamps `last_run_at` *before* `execute()` runs (it must, to
+ *      block a concurrent run), so without a separate failure timestamp a job
+ *      that throws on every hit is indistinguishable from a healthy one on the
+ *      admin dashboard — see {@see CronJobGuard::recordFailure()}.
  *   2. A `set_time_limit()` backstop sized from `CRON_TRANSPORT_INTERVAL_MINUTES`,
  *      applied only once a run has actually been claimed (see `run()`), so a
  *      hung job doesn't run forever.
@@ -148,6 +153,17 @@ abstract class AbstractCronJob
 
             $this->execute();
         } catch (\Throwable $e) {
+            // Record the failure on the row BEFORE logging it. The claim above
+            // already stamped last_run_at, so without this the dashboard reads
+            // a crashed run as a fresh successful one — a job that throws every
+            // night keeps its green "Ran" badge and its last_*_count columns
+            // from the last run that actually finished, indefinitely. The guard
+            // owns this column and never throws from here (see recordFailure()),
+            // so the log line below is written either way; ordering it first
+            // only means the dashboard and the log can never disagree about
+            // whether a failure happened in the window between the two.
+            (new CronJobGuard($this->db))->recordFailure($jobName);
+
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$jobName}' failed: " . get_class($e) . ': ' . $e->getMessage());
         }
     }

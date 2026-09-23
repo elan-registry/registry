@@ -46,7 +46,7 @@ namespace Tests\Support;
  */
 class CronJobRunsReaderFakeDatabase extends FakeDatabase
 {
-    /** @var array<string, array{enabled: int, last_run_at: string|null}> */
+    /** @var array<string, array{enabled: int, last_run_at: string|null, last_failure_at: string|null}> */
     private array $rows = [];
 
     /** @var array<string, bool> */
@@ -61,21 +61,43 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
     /** @var array<string, bool> */
     private array $outcomeCountThrows = [];
 
+    /** @var array<string, bool> */
+    private array $lastFailureAtColumnMissing = [];
+
     private ?string $lastJobName = null;
 
     /** Whether the most recently issued query() call was the outcome-counts SELECT. */
     private bool $lastQueryWasOutcomeCounts = false;
 
     /**
+     * Whether the most recently issued query() call selected `last_failure_at`.
+     *
+     * fetchRow() issues one of two status statements — the three-column one,
+     * and a two-column fallback after that throws — so first() has to know
+     * which of the two it is answering in order to omit the key the fallback
+     * could not have selected.
+     */
+    private bool $lastQuerySelectedLastFailureAt = false;
+
+    /**
      * Configure the row returned for a given job_name — an ENABLED or
      * DISABLED case depending on $enabled, with $lastRunAt as the raw
-     * `last_run_at` column value (null for "has never run").
+     * `last_run_at` column value (null for "has never run") and
+     * $lastFailureAt as the raw `last_failure_at` value (null for "has never
+     * failed"). The two are separate parameters because `badgeFor()` decides
+     * which of them is current by comparing them, so a test has to be able to
+     * set either one without the other and to order them both ways.
      */
-    public function withRow(string $jobName, bool $enabled, ?string $lastRunAt = null): self
-    {
+    public function withRow(
+        string $jobName,
+        bool $enabled,
+        ?string $lastRunAt = null,
+        ?string $lastFailureAt = null
+    ): self {
         $this->rows[$jobName] = [
             'enabled' => $enabled ? 1 : 0,
             'last_run_at' => $lastRunAt,
+            'last_failure_at' => $lastFailureAt,
         ];
         unset($this->errors[$jobName]);
 
@@ -152,6 +174,25 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
     }
 
     /**
+     * Configure the status SELECT to behave as it would on a schema where
+     * 20260922171500_add_cron_job_runs_last_failure_at has not applied: the
+     * three-column statement throws at prepare() time (as real DB::query()
+     * does for a missing column), and `fetchRow()`'s two-column fallback then
+     * succeeds and returns the row configured by {@see self::withRow()} —
+     * minus its `last_failure_at` key, exactly as MySQL would return it.
+     *
+     * Separate from {@see self::withError()}: that models a query that fails
+     * outright (UNREADABLE), whereas this models a degraded-but-working read
+     * where the status row is still rendered, only without failure detection.
+     */
+    public function withLastFailureAtColumnMissing(string $jobName): self
+    {
+        $this->lastFailureAtColumnMissing[$jobName] = true;
+
+        return $this;
+    }
+
+    /**
      * @param string $sql SQL with `?` placeholders
      * @param array<mixed> $params Values bound to the placeholders, in order
      */
@@ -159,12 +200,22 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
     {
         $this->lastJobName = isset($params[0]) ? (string) $params[0] : null;
         $this->lastQueryWasOutcomeCounts = stripos($sql, 'last_sent_count') !== false;
+        $this->lastQuerySelectedLastFailureAt = stripos($sql, 'last_failure_at') !== false;
 
         if ($this->lastQueryWasOutcomeCounts
             && $this->lastJobName !== null
             && ($this->outcomeCountThrows[$this->lastJobName] ?? false)
         ) {
             throw new \RuntimeException('simulated prepare()-time failure: missing column');
+        }
+
+        if ($this->lastQuerySelectedLastFailureAt
+            && $this->lastJobName !== null
+            && ($this->lastFailureAtColumnMissing[$this->lastJobName] ?? false)
+        ) {
+            throw new \RuntimeException(
+                'simulated prepare()-time failure: unknown column er_cron_job_runs.last_failure_at'
+            );
         }
 
         return $this;
@@ -204,6 +255,13 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
         }
 
         $row = $this->rows[$this->lastJobName];
+
+        // A statement that did not select the column cannot return it. This is
+        // what makes fetchRow()'s fallback path testable: status() must read
+        // the absent key as "never failed" rather than notice-ing on it.
+        if (!$this->lastQuerySelectedLastFailureAt) {
+            unset($row['last_failure_at']);
+        }
 
         return $assoc ? $row : (object) $row;
     }

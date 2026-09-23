@@ -5,6 +5,7 @@ use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use ElanRegistry\Cron\CronJobEnabledState;
+use ElanRegistry\Cron\CronJobFailureLogReader;
 use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\LogCategories;
@@ -148,18 +149,24 @@ if ($verificationSendSvc !== null && isset($vsSettings)) {
 // ---------------------------------------------------------------------------
 $reconciliationState = CronJobEnabledState::UNREADABLE;
 $reconciliationLastRunAt = null;
+$reconciliationLastFailureAt = null;
 
 try {
     $cronJobRunsReader = new CronJobRunsReader(dbi());
     $reconciliationStatus = $cronJobRunsReader->status(BrevoEventReconciliationJob::JOB_NAME);
     $reconciliationState = $reconciliationStatus['state'];
     $reconciliationLastRunAt = $reconciliationStatus['lastRunAt'];
+    $reconciliationLastFailureAt = $reconciliationStatus['lastFailureAt'];
 } catch (\Throwable $e) {
     logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
         'Reconciliation status probe failed: ' . $e->getMessage());
 }
 
-$reconciliationBadge = CronJobRunsReader::badgeFor($reconciliationState, $reconciliationLastRunAt);
+$reconciliationBadge = CronJobRunsReader::badgeFor(
+    $reconciliationState,
+    $reconciliationLastRunAt,
+    $reconciliationLastFailureAt
+);
 $reconciliationBadgeClass = $reconciliationBadge['badgeClass'];
 $reconciliationBadgeIcon = $reconciliationBadge['icon'];
 $reconciliationBadgeText = $reconciliationBadge['text'];
@@ -175,18 +182,24 @@ $reconciliationBadgeText = $reconciliationBadge['text'];
 // ---------------------------------------------------------------------------
 $suppressionSyncState = CronJobEnabledState::UNREADABLE;
 $suppressionSyncLastRunAt = null;
+$suppressionSyncLastFailureAt = null;
 
 try {
     $suppressionSyncReader = $cronJobRunsReader ?? new CronJobRunsReader(dbi());
     $suppressionSyncStatus = $suppressionSyncReader->status(BrevoSuppressionSyncJob::JOB_NAME);
     $suppressionSyncState = $suppressionSyncStatus['state'];
     $suppressionSyncLastRunAt = $suppressionSyncStatus['lastRunAt'];
+    $suppressionSyncLastFailureAt = $suppressionSyncStatus['lastFailureAt'];
 } catch (\Throwable $e) {
     logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
         'Suppression sync status probe failed: ' . $e->getMessage());
 }
 
-$suppressionSyncBadge = CronJobRunsReader::badgeFor($suppressionSyncState, $suppressionSyncLastRunAt);
+$suppressionSyncBadge = CronJobRunsReader::badgeFor(
+    $suppressionSyncState,
+    $suppressionSyncLastRunAt,
+    $suppressionSyncLastFailureAt
+);
 $suppressionSyncBadgeClass = $suppressionSyncBadge['badgeClass'];
 $suppressionSyncBadgeIcon = $suppressionSyncBadge['icon'];
 $suppressionSyncBadgeText = $suppressionSyncBadge['text'];
@@ -202,6 +215,7 @@ $suppressionSyncBadgeText = $suppressionSyncBadge['text'];
 // ---------------------------------------------------------------------------
 $autoSendState = CronJobEnabledState::UNREADABLE;
 $autoSendLastRunAt = null;
+$autoSendLastFailureAt = null;
 /** @var array{sent: int, skipped: int, failed: int}|null $autoSendCounts */
 $autoSendCounts = null;
 // True only when the counts read itself failed. A null $autoSendCounts with
@@ -216,6 +230,7 @@ try {
     $autoSendStatus = $autoSendReader->status(SendVerificationBatchJob::JOB_NAME);
     $autoSendState = $autoSendStatus['state'];
     $autoSendLastRunAt = $autoSendStatus['lastRunAt'];
+    $autoSendLastFailureAt = $autoSendStatus['lastFailureAt'];
     $autoSendOutcome = $autoSendReader->lastOutcomeCounts(SendVerificationBatchJob::JOB_NAME);
     $autoSendCounts = $autoSendOutcome['counts'];
     $autoSendCountsUnreadable = $autoSendOutcome['unreadable'];
@@ -224,8 +239,45 @@ try {
         'Automatic verification send status probe failed: ' . $e->getMessage());
 }
 
-$autoSendBadge = CronJobRunsReader::badgeFor($autoSendState, $autoSendLastRunAt);
+$autoSendBadge = CronJobRunsReader::badgeFor($autoSendState, $autoSendLastRunAt, $autoSendLastFailureAt);
 $autoSendPaused = $autoSendState === CronJobEnabledState::DISABLED;
+
+// True when the most recent claimed run is the one that threw. The counts
+// below are written only at the END of a successful execute(), so in this
+// state they are the previous successful run's numbers standing next to a
+// "last ran" timestamp minutes old — the precise combination that reads as a
+// clean run that never happened. The render branches on this to say so rather
+// than silently showing stale figures.
+$autoSendLastRunFailed = $autoSendState === CronJobEnabledState::ENABLED
+    && $autoSendLastFailureAt !== null
+    && ($autoSendLastRunAt === null || $autoSendLastFailureAt >= $autoSendLastRunAt);
+
+// ---------------------------------------------------------------------------
+// Cron failure log summary. Its own fault domain once more, and its own
+// never-throwing reader: LOG_CATEGORY_CRON_JOB_FAILURE was written from five
+// places across this subsystem and read from none, so several of its own
+// messages told an operator to "check the system log" with nothing on this
+// page pointing at it. The per-job badges above report only each job's most
+// recent run; this reports the fault channel as a whole, including faults from
+// jobs whose bookkeeping row could not be read at all.
+//
+// A null count means the summary itself could not be read — rendered as an
+// explicit "unavailable", never as zero. Defaults to null so a throw here,
+// which never reaches the reader's own handling, reports the fault it is.
+// ---------------------------------------------------------------------------
+/** @var int|null $cronFailureCount */
+$cronFailureCount = null;
+/** @var list<array{loggedAt: string, message: string}> $cronFailureRecent */
+$cronFailureRecent = [];
+
+try {
+    $cronFailureSummary = (new CronJobFailureLogReader(dbi()))->recentFailures();
+    $cronFailureCount = $cronFailureSummary['count'];
+    $cronFailureRecent = $cronFailureSummary['recent'];
+} catch (\Throwable $e) {
+    logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+        'Cron failure log summary probe failed: ' . $e->getMessage());
+}
 
 // The button submits the state it wants rather than a blind flip — see the
 // verification_toggle_cron handler in index.php. Anything that is not
@@ -411,6 +463,49 @@ if (!function_exists('vsEsc')) {
                 <?php } ?>
             </dd>
 
+            <dt class="col-sm-4">Cron job failures</dt>
+            <dd class="col-sm-8">
+                <?php if ($cronFailureCount === null) { ?>
+                    <!-- The summary read failed. Rendered as a danger badge,
+                         never as a zero: this is the fault channel itself, and
+                         "no failures" is the one reading that tells an admin
+                         to stop looking. -->
+                    <span class="badge text-bg-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Unavailable
+                    </span>
+                    <small class="text-muted ms-1">
+                        The cron failure log could not be read. Check the system log for
+                        <strong>CronJobFailure</strong> entries directly.
+                    </small>
+                <?php } else { ?>
+                    <span class="badge <?= $cronFailureCount > 0 ? 'text-bg-danger' : 'text-bg-success' ?>">
+                        <?= vsEsc((string) $cronFailureCount) ?>
+                    </span>
+                    <small class="text-muted ms-1">
+                        <strong>CronJobFailure</strong> log entries in the last
+                        <?= vsEsc((string) CronJobFailureLogReader::LOOKBACK_DAYS) ?> days, across every
+                        verification cron job. A repeating count here means an unattended job is
+                        failing every night — the per-job badges above only report each job's most
+                        recent run.
+                    </small>
+                    <?php if ($cronFailureRecent !== []) { ?>
+                    <!-- The count alone says only that something is wrong. The
+                         most recent few entries are enough to tell one broken
+                         job from all of them before going to the full log. -->
+                    <ul class="list-unstyled small mt-2 mb-0">
+                        <?php foreach ($cronFailureRecent as $cronFailureEntry) { ?>
+                        <li class="text-muted">
+                            <i class="fas fa-triangle-exclamation text-danger"></i>
+                            <span class="text-nowrap"><?= vsEsc($cronFailureEntry['loggedAt']) ?></span>
+                            &mdash; <?= vsEsc($cronFailureEntry['message']) ?>
+                        </li>
+                        <?php } ?>
+                    </ul>
+                    <?php } ?>
+                <?php } ?>
+            </dd>
+
         </dl>
 
         <!-- Toggle control -->
@@ -507,6 +602,21 @@ if (!function_exists('vsEsc')) {
                     <?= vsEsc((string) $autoSendCounts['sent']) ?> sent,
                     <?= vsEsc((string) $autoSendCounts['skipped']) ?> skipped,
                     <?= vsEsc((string) $autoSendCounts['failed']) ?> failed
+                    <?php if ($autoSendLastRunFailed) { ?>
+                    <!-- These three counts are written only at the end of a
+                         successful execute(), so when the most recent claimed
+                         run threw they are the PREVIOUS run's numbers — sitting
+                         next to a "last ran" timestamp from that failed run.
+                         Left unqualified, that combination asserts a clean run
+                         that did not happen, which is the compounding half of
+                         the bug the failure badge above fixes. -->
+                    <div class="text-danger mt-1">
+                        <i class="fas fa-triangle-exclamation"></i>
+                        From an earlier successful run &mdash; the most recent run failed
+                        before it recorded any counts. Check the system log for
+                        <strong>CronJobFailure</strong> entries.
+                    </div>
+                    <?php } ?>
                 <?php } ?>
             </dd>
 

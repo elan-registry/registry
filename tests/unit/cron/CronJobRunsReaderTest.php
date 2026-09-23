@@ -148,6 +148,97 @@ final class CronJobRunsReaderTest extends TestCase
     }
 
     // =========================================================================
+    // status()['lastFailureAt'] — read alongside lastRunAt in the same query
+    // precisely because badgeFor() decides which is current by comparing them;
+    // two separate reads could report a failure as current that a run since
+    // completed.
+    // =========================================================================
+
+    public function testStatusLastFailureAtIsNullWhenJobHasNeverFailed(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withRow('brevo_reconciliation', enabled: true, lastRunAt: '2026-09-01 12:34:56');
+
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
+
+        $this->assertNull($status['lastFailureAt']);
+    }
+
+    public function testStatusLastFailureAtIsParsedDateTimeImmutableWhenSet(): void
+    {
+        $expected = '2026-09-02 02:00:00';
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow(
+            'brevo_reconciliation',
+            enabled: true,
+            lastRunAt: '2026-09-01 12:34:56',
+            lastFailureAt: $expected
+        );
+
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
+
+        $this->assertInstanceOf(DateTimeImmutable::class, $status['lastFailureAt']);
+        $this->assertSame($expected, $status['lastFailureAt']->format('Y-m-d H:i:s'));
+    }
+
+    public function testStatusLastFailureAtIsNullWhenRowMissingOrUnreadable(): void
+    {
+        $missing = (new CronJobRunsReader(new CronJobRunsReaderFakeDatabase()))
+            ->status('brevo_reconciliation');
+        $unreadable = (new CronJobRunsReader(
+            (new CronJobRunsReaderFakeDatabase())->withError('brevo_reconciliation')
+        ))->status('brevo_reconciliation');
+
+        $this->assertNull($missing['lastFailureAt']);
+        $this->assertNull($unreadable['lastFailureAt']);
+    }
+
+    /**
+     * The half-applied-migration path. `last_failure_at` is migration-added,
+     * so on a schema where 20260922171500 has not run, the three-column status
+     * SELECT throws at prepare() time — and fetchRow() falls back to the two
+     * original columns rather than blanking out every job's status row. The
+     * tab then degrades to its pre-failure-detection behaviour, which is the
+     * intended failure mode: worse information, not no information.
+     */
+    public function testStatusFallsBackToTheOriginalColumnsWhenLastFailureAtIsAbsent(): void
+    {
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withRow('brevo_reconciliation', enabled: true, lastRunAt: '2026-09-01 12:34:56')
+            ->withLastFailureAtColumnMissing('brevo_reconciliation');
+
+        $status = (new CronJobRunsReader($db))->status('brevo_reconciliation');
+
+        $this->assertSame(
+            CronJobEnabledState::ENABLED,
+            $status['state'],
+            'A missing last_failure_at column must not make an otherwise healthy row unreadable'
+        );
+        $this->assertInstanceOf(DateTimeImmutable::class, $status['lastRunAt']);
+        $this->assertNull(
+            $status['lastFailureAt'],
+            'An absent column reads as "never failed" — the pre-migration behaviour'
+        );
+    }
+
+    public function testStatusLogsWhenItFallsBackForAnAbsentLastFailureAtColumn(): void
+    {
+        global $mockLogEntries;
+
+        $db = (new CronJobRunsReaderFakeDatabase())
+            ->withRow('brevo_reconciliation', enabled: true, lastRunAt: '2026-09-01 12:34:56')
+            ->withLastFailureAtColumnMissing('brevo_reconciliation');
+        (new CronJobRunsReader($db))->status('brevo_reconciliation');
+
+        $this->assertCount(1, $mockLogEntries, 'A silent degradation would leave the cause undiscoverable');
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString(
+            '20260922171500_add_cron_job_runs_last_failure_at',
+            $mockLogEntries[0]['message'],
+            'The message must name the migration an operator has to run'
+        );
+    }
+
+    // =========================================================================
     // state() / lastRunAt() — thin wrappers around status()
     // =========================================================================
 

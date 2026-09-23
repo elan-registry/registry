@@ -102,4 +102,79 @@ final class CronJobGuard
 
         return $this->db->count() === 1;
     }
+
+    /**
+     * Stamp `last_failure_at` for a run whose `execute()` threw.
+     *
+     * The counterpart to {@see self::claim()}, and here rather than in
+     * {@see AbstractCronJob::run()} for the same reason `claim()` is: this
+     * class owns `er_cron_job_runs`' run-tracking columns, and a caller that
+     * wrote `last_failure_at` directly would be a second place with an opinion
+     * about how a run is recorded. It also inherits the allowlist check for
+     * free, so an unrecognized job name cannot stamp a row `claim()` would
+     * never have let it claim.
+     *
+     * WHY THIS COLUMN HAS TO EXIST AT ALL. `claim()` stamps `last_run_at`
+     * *before* the work runs — it has to, since the stamp is what stops a
+     * second concurrent run. So `last_run_at` alone can only ever say "a run
+     * was claimed", and a job that throws on every hit still presents a fresh
+     * timestamp and (via {@see CronJobRunsReader::badgeFor()}) a green "Ran"
+     * badge. Recording the failure on its own column is what lets the reader
+     * compare the two and report the most recent claimed run's actual outcome.
+     *
+     * NEVER THROWS, AND NEVER REPORTS. `run()`'s catch block calls this
+     * immediately before writing the failure log line an operator actually
+     * reads, and that line must be written whatever happens here — so this
+     * returns void, swallows the prepare()-time PDOException an unapplied
+     * 20260922171500 migration raises (DB::query() calls PDO::prepare()
+     * outside its own try block with ERRMODE_EXCEPTION set), and logs its own
+     * failure under a distinct message so "the job failed" and "the job failed
+     * AND we could not record it" stay separable in the log. Losing the stamp
+     * degrades the dashboard to the stale-badge behaviour that existed before
+     * this column; letting it escape would suppress the failure report
+     * entirely, which is strictly worse.
+     *
+     * A plain `UPDATE`, not an atomic claim-style write: the caller already
+     * won the claim before `execute()` ran, so there is no concurrent run to
+     * race. No `count()` check either — MySQL reports rows CHANGED, not
+     * matched (this connection sets no MYSQL_ATTR_FOUND_ROWS, see
+     * users/classes/DB.php), and `NOW()` at one-second resolution means two
+     * failures inside the same second legitimately change nothing. A
+     * `count() === 0` check would log a false "row not seeded" line into the
+     * very category an operator filters on to find real faults — the same
+     * pitfall {@see SendVerificationBatchJob::recordRunCounts()} documents.
+     *
+     * @param string $jobName Must be in ALLOWED_JOB_NAMES
+     */
+    public function recordFailure(string $jobName): void
+    {
+        if (!in_array($jobName, self::ALLOWED_JOB_NAMES, true)) {
+            return;
+        }
+
+        try {
+            $this->db->query(
+                'UPDATE er_cron_job_runs SET last_failure_at = NOW() WHERE job_name = ?',
+                [$jobName]
+            );
+        } catch (\Throwable $e) {
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                "Cron job '%s': the run failure itself could not be recorded on er_cron_job_runs"
+                . ' — the dashboard will keep showing the previous outcome.'
+                . ' Check that 20260922171500_add_cron_job_runs_last_failure_at has applied: %s',
+                $jobName,
+                $e->getMessage()
+            ));
+            return;
+        }
+
+        if ($this->db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                "Cron job '%s': the run failure itself could not be recorded on er_cron_job_runs"
+                . ' — the dashboard will keep showing the previous outcome: %s',
+                $jobName,
+                $this->db->errorString() ?: 'unknown'
+            ));
+        }
+    }
 }
