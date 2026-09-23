@@ -108,3 +108,11 @@ jobs:
 
       - name: Run pre-push hook regression tests
         run: bash tests/hooks/test-pick-closest-base.sh
+
+      # Covers the rest of the integration gate (#2160): parent-base
+      # selection, which changed files actually count, the pass cache, and
+      # the hook end-to-end with a stubbed `composer`. Fully hermetic — it
+      # builds its own throwaway repo under mktemp -d and never touches the
+      # checkout's refs, so it needs no fetch-depth or fixture setup.
+      - name: Run pre-push integration-gate tests
+        run: bash tests/hooks/test-pre-push-gate.sh

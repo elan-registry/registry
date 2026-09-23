@@ -59,15 +59,15 @@ use PHPUnit\Framework\TestCase;
  * - **Why `tests/integration/`.** This test needs outbound network access,
  *   so it must never run in CI, `composer test:quick`, or
  *   `composer test:medium`. Directory placement alone achieves that (the
- *   tiers are directory-scoped) — no group-based CI exclusion is required.
- *   It *is* picked up by `composer test:integration` and `composer test:full`,
- *   which run the whole `tests/integration` directory: a live outbound HTTPS
- *   request to test.elanregistry.org is expected and accepted in those two
- *   suites specifically. Both can therefore report red for environmental
- *   reasons — most commonly the Test host being unreachable, or a local
- *   `robots-test.txt` edit that has not been deployed there yet. The
- *   live-fetch tests skip rather than fail when the network is unavailable;
- *   the data-provider tests below run unconditionally.
+ *   tiers are directory-scoped). The class-level `live-network` group goes
+ *   further: `phpunit-integration.xml` excludes that group, so this class is
+ *   also skipped by `composer test:integration` and `composer test:full`,
+ *   which would otherwise report red for environmental reasons — most
+ *   commonly the Test host being unreachable, or a local `robots-test.txt`
+ *   edit that has not been deployed there yet. Run it explicitly with:
+ *     vendor/bin/phpunit -c phpunit-integration.xml --group live-network
+ *   The live-fetch tests skip rather than fail when the network is
+ *   unavailable; the data-provider tests below run unconditionally.
  * - **Deliberate scope limit.** `foreignGroups()` compares *parsed* groups,
  *   not raw bytes. Reformatting, comment edits, or trailing-whitespace churn
  *   in `robots-test.txt` will never trip it; only a semantically distinct
@@ -92,7 +92,7 @@ use PHPUnit\Framework\TestCase;
  * @phpstan-type RobotsGroup array{agents: list<string>, rules: list<RobotsRule>}
  */
 #[Group('integration')]
-#[Group('network')]
+#[Group('live-network')]
 final class RobotsTxtAsServedTest extends TestCase
 {
     private const LIVE_URL = 'https://test.elanregistry.org/robots.txt';

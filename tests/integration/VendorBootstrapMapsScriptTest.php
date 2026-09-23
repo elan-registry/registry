@@ -21,10 +21,13 @@ use PHPUnit\Framework\TestCase;
  * and idempotency-short-circuit tests genuinely hit the official jsdelivr
  * CDN (same as a real deploy would), since that's the actual behavior being
  * verified and the project already assumes deploy-time network access for
- * this exact script.
+ * this exact script. Because of those live calls the class carries
+ * `#[Group('live-network')]`, which `phpunit-integration.xml` excludes from
+ * the default run. Run it explicitly with:
+ *   vendor/bin/phpunit -c phpunit-integration.xml --group live-network
  */
 #[Group('integration')]
-#[Group('network')]
+#[Group('live-network')]
 final class VendorBootstrapMapsScriptTest extends TestCase
 {
     private const SCRIPT_PATH = __DIR__ . '/../../scripts/vendor-bootstrap-maps.php';

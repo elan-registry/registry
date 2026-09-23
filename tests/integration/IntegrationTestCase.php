@@ -258,7 +258,9 @@ abstract class IntegrationTestCase extends TestCase
 
         $defaults = [
             'username' => "testuser_{$uniqueSuffix}",
-            'password' => password_hash('testpass123', PASSWORD_BCRYPT),
+            // Minimum bcrypt cost: no test verifies this hash, and the default cost
+            // made every fixture user cost ~0.36s of pure key stretching.
+            'password' => password_hash('testpass123', PASSWORD_BCRYPT, ['cost' => 4]),
             'email' => "test_{$uniqueSuffix}@example.com",
             'fname' => 'Test',
             'lname' => 'User',

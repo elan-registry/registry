@@ -463,7 +463,7 @@ integration-suite-relevant code on any failure, including an unreachable test
 database — set up `.env.test.local` per this section *before* you first touch
 those paths, or the push will fail at `tests/bootstrap-integration.php`'s
 connectivity check. See `scripts/README.md`'s "Git Hooks Management" section
-for exactly which paths trigger it and the bypass flag.
+for when the gate runs and how to bypass it.
 
 ### Production Deployment
 
