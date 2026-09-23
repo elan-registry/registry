@@ -121,10 +121,10 @@ The test schema name must still contain `test` (checked by
 `provision-schema.sh`) and start with `elanregi_` (the only schemas the
 Docker user is granted).
 
-`DB_HOST` is a bare `db`, not `db:3306`. The file's own header says
-`DB_HOST` must be `host:port`, but that applies to MAMP: its MySQL is on
-the non-standard port 8889, and UserSpice (`users/classes/DB.php`) builds
-its connection from `DB_HOST` alone, with no separate port. Docker's `db` listens on the standard 3306, so the
+`DB_HOST` is a bare `db`, not `db:3306`. Under MAMP the test `DB_HOST`
+has to be `host:port` (e.g. `127.0.0.1:8889`): MAMP's MySQL is on the
+non-standard port 8889, and UserSpice (`users/classes/DB.php`) builds its
+connection from `DB_HOST` alone, with no separate port. Docker's `db` listens on the standard 3306, so the
 bare host is enough and avoids `DB_HOST` and `DB_PORT` disagreeing.
 
 ## 5. Start the stack and load the database
