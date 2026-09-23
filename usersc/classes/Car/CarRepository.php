@@ -1028,6 +1028,31 @@ class CarRepository
         // erased-owner leak this method exists to close. INNER JOIN requires a
         // live users row, so cars.user_id IS NOT NULL is redundant (the join
         // already excludes NULL) but kept for clarity/defense in depth.
+        //
+        // The 60-day re-send cooldown, per the FRD's Eligibility Criteria.
+        // vericode_sent_at is the ONLY column a send writes — neither
+        // last_verified nor owner_last_updated is touched by sending, so the
+        // staleness expression above cannot tell a car that was emailed last
+        // night apart from one that has never been emailed at all. Without
+        // this clause the nightly cron therefore re-picks the identical batch
+        // on consecutive nights, and every owner receives both of their two
+        // yearly allowed sends roughly 24 hours apart before the attempt cap
+        // finally bites on the third night — the queue never advances past the
+        // same head of the backlog.
+        //
+        // NULL-safe for the same reason last_verified is: a car that has never
+        // been sent to has vericode_sent_at NULL, and a bare `<` comparison
+        // evaluates to UNKNOWN for those rows, silently excluding exactly the
+        // cars the first batch should contain.
+        //
+        // This and the attempt cap below are two halves of one rule and
+        // neither works alone. This clause is what SPREADS the sends out (60
+        // days of silence before a car may be tried again); the cap is what
+        // BOUNDS them (a silent owner would otherwise re-enter every 60 days
+        // forever, six emails a year). Drop this clause and the cap degrades
+        // into a bare total-sends limit with no cadence at all; drop the cap
+        // and the cooldown has no ceiling.
+        //
         // The attempt cap: mirrors incrementVerificationAttempts()'s own
         // rolling-12-month reset logic exactly (2 sends per window, then the
         // car waits out the rest of the year), per the FRD's Eligibility
@@ -1045,6 +1070,8 @@ class CarRepository
                 AND cars.user_id IS NOT NULL
                 AND users.username != 'noowner'
                 AND {$stale}
+                AND (cars.vericode_sent_at IS NULL
+                     OR cars.vericode_sent_at < NOW() - INTERVAL 60 DAY)
                 AND (cars.verification_attempts_since IS NULL
                      OR cars.verification_attempts_since < NOW() - INTERVAL 1 YEAR
                      OR cars.verification_attempts < 2)

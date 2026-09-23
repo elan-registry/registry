@@ -38,6 +38,11 @@ use PHPUnit\Framework\TestCase;
  * covers the SQL side of the same rule) — without it, a stale car re-enters
  * every batch with no limit, which is exactly the defect this cap exists to
  * close.
+ *
+ * The 60-day cooldown is the cap's other half and is mirrored the same way: a
+ * send writes only vericode_sent_at, so without it the staleness rule alone
+ * re-admits the identical batch on consecutive nights and both allowed yearly
+ * sends land ~24 hours apart.
  */
 final class VerificationEligibilitySkipReasonTest extends TestCase
 {
@@ -68,6 +73,7 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
             'user_id'                     => 7,
             'last_verified'               => null,
             'owner_last_updated'          => date('Y-m-d H:i:s', strtotime('-2 years')),
+            'vericode_sent_at'            => null,
             'verification_attempts'       => 0,
             'verification_attempts_since' => null,
         ];
@@ -154,6 +160,69 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
         ]);
 
         $this->assertSame('Marked sold', VerificationEligibility::skipReason($car));
+    }
+
+    public function testReturnsCooldownReasonWhenSentWithinTheLastSixtyDays(): void
+    {
+        // The FRD's 60-day re-send cooldown. A send writes only
+        // vericode_sent_at — not last_verified, not owner_last_updated — so
+        // without this branch a car emailed 10 days ago still reads as stale
+        // and is offered for sending again the very next night.
+        $car = $this->makeEligibleCar([
+            'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-10 days')),
+        ]);
+
+        $this->assertSame(
+            'Verification email sent within the last 60 days',
+            VerificationEligibility::skipReason($car)
+        );
+    }
+
+    public function testAllowsACarWhoseSixtyDayCooldownHasExpired(): void
+    {
+        // The permissive side of the same boundary: 61 days of owner silence
+        // re-admits the car (subject to the attempt cap below), rather than
+        // making it wait out the rest of the annual cycle.
+        $car = $this->makeEligibleCar([
+            'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-61 days')),
+        ]);
+
+        $this->assertNull(VerificationEligibility::skipReason($car));
+    }
+
+    public function testCooldownCheckRejectsMysqlZeroDateVericodeSentAt(): void
+    {
+        // Same trap as verification_attempts_since: strtotime('0000-00-00')
+        // returns a valid negative timestamp rather than false, which would
+        // read as "cooldown long expired" and reopen the over-send this check
+        // exists to prevent.
+        $car = $this->makeEligibleCar(['vericode_sent_at' => '0000-00-00 00:00:00']);
+
+        $this->expectException(CarValidationException::class);
+        VerificationEligibility::skipReason($car);
+    }
+
+    public function testCooldownCheckRejectsMalformedVericodeSentAt(): void
+    {
+        $car = $this->makeEligibleCar(['vericode_sent_at' => 'not a date at all']);
+
+        $this->expectException(CarValidationException::class);
+        VerificationEligibility::skipReason($car);
+    }
+
+    public function testCooldownIsCheckedBeforeTheAttemptCap(): void
+    {
+        // A car that is both inside its cooldown AND at the attempt cap must
+        // report the cooldown — the first-matching-branch ordering, pinned so
+        // a future reorder is visible rather than silent.
+        $car = $this->cappedCar();
+        $car->vericode_sent_at = date('Y-m-d H:i:s', strtotime('-10 days'));
+        $car->verification_attempts_since = date('Y-m-d H:i:s', strtotime('-1 month'));
+
+        $this->assertSame(
+            'Verification email sent within the last 60 days',
+            VerificationEligibility::skipReason($car)
+        );
     }
 
     public function testSkipReasonEnforcesAttemptCap(): void
@@ -252,6 +321,9 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
             // and execution reaches the attempt-cap clause.
             'last_verified'               => date('Y-m-d H:i:s', strtotime('-5 years')),
             'owner_last_updated'          => date('Y-m-d H:i:s', strtotime('-5 years')),
+            // Never sent to, so the 60-day cooldown branch is not what these
+            // tests trip on — the attempt cap is the branch under test.
+            'vericode_sent_at'            => null,
             'verification_attempts'       => 2,
             'verification_attempts_since' => null,
         ];
@@ -312,6 +384,18 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
             'cars.verification_attempts < 2',
             $source,
             'findVerificationEligible() must enforce the same 2-send cap VerificationEligibility::skipReason() checks'
+        );
+
+        // The FRD's 60-day cooldown was specified but never transcribed into
+        // the shipped SQL, and the omission was invisible to every existing
+        // test: staleness alone still matched, so the query kept returning
+        // rows. Pinned here alongside the cap because the two clauses are one
+        // rule — the cooldown spreads sends out, the cap bounds them.
+        $this->assertStringContainsString(
+            'cars.vericode_sent_at < NOW() - INTERVAL 60 DAY',
+            $source,
+            'findVerificationEligible() must enforce the same 60-day re-send cooldown '
+                . 'VerificationEligibility::skipReason() checks'
         );
     }
 }

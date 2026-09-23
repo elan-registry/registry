@@ -66,7 +66,8 @@ final class VerificationEligibility
      * @param object $carData Car row as loaded by CarRepository::findById()
      * @return string|null Short reason the car is no longer eligible, or null if it still is
      * @throws CarValidationException If the row carries a malformed timestamp (via isFresh(), or a
-     *                                 malformed/zero-date verification_attempts_since)
+     *                                 malformed/zero-date vericode_sent_at or
+     *                                 verification_attempts_since)
      */
     public static function skipReason(object $carData): ?string
     {
@@ -102,6 +103,44 @@ final class VerificationEligibility
             (string) ($carData->owner_last_updated ?? '')
         )) {
             return 'Recently verified or updated';
+        }
+
+        // Mirrors findVerificationEligible()'s 60-day re-send cooldown:
+        // vericode_sent_at is the only column a send writes, so without this
+        // check a car emailed last night still reads as stale (last_verified
+        // and owner_last_updated are untouched by sending) and would be sent
+        // to again on consecutive nights. Paired with the attempt cap below —
+        // this clause spreads the two allowed yearly sends apart, the cap
+        // bounds how many the cooldown may ever re-admit.
+        //
+        // Same zero-date/malformed defensive parsing as the attempt-cap block
+        // below, and for the same reason: strtotime() returns false on a
+        // malformed value and a plausible-looking negative timestamp on
+        // MySQL's '0000-00-00', either of which would silently read as
+        // "cooldown long expired" and reopen the very over-send this check
+        // exists to prevent. Throwing routes into the caller's
+        // EligibilityCheckFailed catch, which skips the car instead.
+        $sentAt = $carData->vericode_sent_at ?? null;
+        if ($sentAt !== null) {
+            $sentAtValue = (string) $sentAt;
+
+            if (str_starts_with($sentAtValue, '0000-00-00')) {
+                throw new CarValidationException(
+                    'VerificationEligibility::skipReason: zero-date vericode_sent_at '
+                    . var_export($sentAt, true) . ' on car ' . (int) ($carData->id ?? 0)
+                );
+            }
+
+            $sentAtTs = strtotime($sentAtValue);
+            if ($sentAtTs === false) {
+                throw new CarValidationException(
+                    'VerificationEligibility::skipReason: malformed vericode_sent_at '
+                    . var_export($sentAt, true) . ' on car ' . (int) ($carData->id ?? 0)
+                );
+            }
+            if ($sentAtTs > strtotime('-60 days')) {
+                return 'Verification email sent within the last 60 days';
+            }
         }
 
         // Mirrors findVerificationEligible()'s attempt-cap clause: 2 sends

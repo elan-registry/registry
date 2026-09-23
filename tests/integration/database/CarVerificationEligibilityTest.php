@@ -34,6 +34,10 @@ use PHPUnit\Framework\Attributes\Group;
  *     (last_verified IS NOT NULL AND last_verified >= NOW() - INTERVAL 1 YEAR)
  *     OR owner_last_updated >= NOW() - INTERVAL 1 YEAR
  *   )
+ *   AND (vericode_sent_at IS NULL OR vericode_sent_at < NOW() - INTERVAL 60 DAY)
+ *       (the FRD's 60-day re-send cooldown — a send writes only
+ *       vericode_sent_at, so without this the staleness expression above
+ *       re-admits the same batch on consecutive nights)
  *
  * owner_last_updated is NOT NULL by schema (issue #1953) — there is no
  * COALESCE(owner_last_updated, mtime) fallback. mtime is deliberately excluded
@@ -827,6 +831,183 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             'A car that has genuinely been sent to twice within the tracked window must leave the '
             . 'eligible set — this is the real write path a nightly cron run actually exercises, not a '
             . 'hand-set fixture'
+        );
+    }
+
+    /**
+     * The 60-day re-send cooldown, the FRD's Eligibility Criteria clause that
+     * was never transcribed into the shipped SQL. A send writes only
+     * vericode_sent_at — it touches neither last_verified nor
+     * owner_last_updated — so the staleness expression alone cannot tell a car
+     * emailed last night apart from one never emailed at all. Without this
+     * clause the nightly cron re-picks the identical batch two nights running
+     * and both of an owner's two allowed yearly sends land ~24 hours apart,
+     * with the attempt cap only stopping it on the third night.
+     *
+     * Includes a control car, identical except for a NULL vericode_sent_at,
+     * so a green assertion proves the exclusion is caused by the cooldown
+     * specifically rather than by fixture drift — this file's established
+     * control pattern.
+     */
+    #[Group('fast')]
+    public function testCarSentToWithinSixtyDaysIsExcluded(): void
+    {
+        $this->assertColumnExists('cars', 'vericode_sent_at');
+
+        $sharedFields = [
+            'email_bounced'               => 0,
+            'last_verified'               => $this->staleDate(),
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            // Below the cap, so the attempt-cap clause cannot be what excludes
+            // the car — this test must fail for exactly one reason.
+            'verification_attempts'       => 1,
+            'verification_attempts_since' => $this->recentDate(),
+        ];
+
+        $cooldownCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email'            => 'cooldown-active@example.com',
+            'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-10 days')),
+        ]));
+
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email'            => 'cooldown-never-sent@example.com',
+            'vericode_sent_at' => null,
+        ]));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $cooldownCarId,
+            $eligible,
+            'A car sent a verification email 10 days ago must be excluded — otherwise the nightly '
+            . 'cron re-sends to the same batch on consecutive nights and the annual cadence collapses'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical never-sent car (vericode_sent_at IS NULL) must remain eligible — '
+            . 'otherwise the cooldown exclusion proves nothing about vericode_sent_at specifically, '
+            . 'and a NULL would be silently dropping the very cars the first batch should contain'
+        );
+    }
+
+    /**
+     * The permissive side of the same boundary: once the cooldown has expired
+     * with no response, the car re-enters the pool automatically rather than
+     * waiting out the rest of the annual cycle. Uses 61 days rather than
+     * exactly 60 to sit unambiguously outside the window regardless of
+     * sub-second timing between fixture creation and the query — the same
+     * reasoning behind the 366-day value in
+     * testAttemptCapResetsAfterOneYearMakesCarEligibleAgain() above.
+     */
+    #[Group('fast')]
+    public function testCarSentToMoreThanSixtyDaysAgoIsEligibleAgain(): void
+    {
+        $this->assertColumnExists('cars', 'vericode_sent_at');
+
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'cooldown-expired@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => $this->staleDate(),
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'vericode_sent_at'            => date('Y-m-d H:i:s', strtotime('-61 days')),
+            'verification_attempts'       => 1,
+            'verification_attempts_since' => $this->recentDate(),
+        ]);
+
+        $this->assertContains(
+            $carId,
+            $this->eligibleIds(),
+            'A car whose last verification send was more than 60 days ago must be eligible again — '
+            . 'silence is not a signal the way a bounce is, so the car gets one more attempt within '
+            . 'its yearly cap rather than waiting out the full annual cycle'
+        );
+    }
+
+    /**
+     * The FRD's own named acceptance test: "A car receives at most 2
+     * verification emails in any rolling 12-month window, even when the 60-day
+     * re-entry condition would otherwise re-admit it; covered by a test aging
+     * one car through three consecutive 60-day silent cycles and asserting
+     * exactly two sends."
+     *
+     * Both clauses are exercised together here, which is the point — the two
+     * boundary tests above each pin one clause in isolation, and neither can
+     * show that the cooldown re-admitting a car is still bounded by the cap.
+     * "Aging" is done by writing vericode_sent_at back past the 60-day mark
+     * after each simulated send (the owner stays silent, so nothing else about
+     * the row changes); the send itself is the real write path,
+     * incrementVerificationAttempts() plus a vericode_sent_at write, mirroring
+     * what CarVerificationSendService does per car. That is the only honest way
+     * to run three 60-day cycles without a clock abstraction this codebase does
+     * not have.
+     *
+     * verification_attempts_since is deliberately NOT aged with it: the cap's
+     * rolling window is 12 months and three 60-day cycles span only ~6, so the
+     * window must stay open across all three or the test would be asserting
+     * the window reset rather than the cap.
+     */
+    #[Group('fast')]
+    public function testThreeSixtyDaySilentCyclesProduceExactlyTwoSends(): void
+    {
+        $this->assertColumnExists('cars', 'vericode_sent_at');
+
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'three-cycle-silent-owner@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => null,
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'vericode_sent_at'            => null,
+            'verification_attempts'       => 0,
+            'verification_attempts_since' => null,
+        ]);
+
+        $sends = 0;
+        for ($cycle = 1; $cycle <= 3; $cycle++) {
+            if (in_array($carId, $this->eligibleIds(), true)) {
+                $sends++;
+                $this->assertTrue(
+                    $this->repo->incrementVerificationAttempts($carId),
+                    "Test setup: increment must succeed on cycle {$cycle}"
+                );
+                $this->db->query(
+                    'UPDATE cars SET vericode_sent_at = NOW() WHERE id = ?',
+                    [$carId]
+                );
+            }
+
+            // Age the cooldown out: 61 days of owner silence, nothing else
+            // about the row changes. Only vericode_sent_at moves — aging
+            // verification_attempts_since too would reset the 12-month cap
+            // window this test exists to prove holds.
+            $this->db->query(
+                'UPDATE cars SET vericode_sent_at = ? WHERE id = ? AND vericode_sent_at IS NOT NULL',
+                [date('Y-m-d H:i:s', strtotime('-61 days')), $carId]
+            );
+        }
+
+        $this->assertSame(
+            2,
+            $sends,
+            'A silent owner aged through three consecutive 60-day cycles must receive exactly 2 '
+            . 'verification emails — the cooldown re-admits the car each cycle, and the rolling '
+            . '12-month attempt cap is what stops the third send'
+        );
+
+        $row = $this->db->query(
+            'SELECT verification_attempts FROM cars WHERE id = ?',
+            [$carId]
+        )->first();
+        $this->assertSame(
+            2,
+            (int) $row->verification_attempts,
+            'The stored counter must agree with the number of sends actually made'
         );
     }
 }
