@@ -698,4 +698,135 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             . 'orphaned-owner exclusion above proves nothing about ownership specifically'
         );
     }
+
+    /**
+     * The attempt-cap clause (2 sends per rolling 12-month window, then the
+     * car waits out the rest of the year) previously had zero EXECUTING
+     * coverage against real SQL — the only prior assertions were
+     * assertStringContainsString('cars.verification_attempts < 2', ...) against
+     * a mocked/captured query string, which passes as long as the literal
+     * substring is present regardless of whether the surrounding boolean logic
+     * is actually correct. This test, and the two below, run the real WHERE
+     * clause against real rows to pin the boundary the string match cannot see:
+     * an off-by-one in the OR/AND grouping, or a disagreement with
+     * incrementVerificationAttempts()'s own reset condition, would pass every
+     * existing test and only surface here.
+     *
+     * A car at exactly the cap (2 attempts) with a fresh
+     * verification_attempts_since (well within the year) must be excluded.
+     */
+    #[Group('fast')]
+    public function testAttemptCapReachedWithinYearExcludesCar(): void
+    {
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'attempt-cap-reached@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => null,
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'verification_attempts'       => 2,
+            'verification_attempts_since' => $this->recentDate(),
+        ]);
+
+        $this->assertNotContains(
+            $carId,
+            $this->eligibleIds(),
+            'A car with verification_attempts = 2 and a verification_attempts_since well within the '
+            . 'last year must be excluded — the yearly attempt cap exists specifically to protect '
+            . 'sender reputation and must not be silently bypassed'
+        );
+    }
+
+    /**
+     * The other side of the same boundary: an identical car (attempts = 2)
+     * whose verification_attempts_since is just past the 1-year mark must be
+     * eligible again — the SQL's OR clause (verification_attempts_since < NOW()
+     * - INTERVAL 1 YEAR) is what re-admits it, independent of the counter
+     * value itself. Uses 366 days, not exactly 1 year, to stay unambiguously
+     * on the "outside the window" side of the boundary regardless of leap-year
+     * arithmetic or sub-second timing between fixture creation and the query.
+     */
+    #[Group('fast')]
+    public function testAttemptCapResetsAfterOneYearMakesCarEligibleAgain(): void
+    {
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'attempt-cap-reset@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => null,
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'verification_attempts'       => 2,
+            'verification_attempts_since' => date('Y-m-d H:i:s', strtotime('-366 days')),
+        ]);
+
+        $this->assertContains(
+            $carId,
+            $this->eligibleIds(),
+            'A car whose verification_attempts_since is more than a year old must be eligible again '
+            . 'regardless of its verification_attempts count — the window, not the counter alone, '
+            . 'gates re-eligibility'
+        );
+    }
+
+    /**
+     * Round-trip through the real write path rather than a hand-set fixture:
+     * calling incrementVerificationAttempts() twice against a freshly-eligible
+     * car must leave it ineligible by the same findVerificationEligible() query
+     * used above — proving the SQL's attempt-cap clause and
+     * incrementVerificationAttempts()'s own reset/increment logic actually
+     * agree with each other on real data, not just on paper. This is the
+     * specific gap a string-match test cannot close: two independently-correct
+     * pieces of SQL can still disagree about *when* the counter resets.
+     */
+    #[Group('fast')]
+    public function testIncrementingAttemptsTwiceMakesAnEligibleCarIneligible(): void
+    {
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'attempt-cap-round-trip@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => null,
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'verification_attempts'       => 0,
+            'verification_attempts_since' => null,
+        ]);
+
+        $this->assertContains(
+            $carId,
+            $this->eligibleIds(),
+            'Test setup: a freshly-created car with 0 attempts must start eligible'
+        );
+
+        $this->assertTrue(
+            $this->repo->incrementVerificationAttempts($carId),
+            'Test setup: first increment must succeed against a real row'
+        );
+        $this->assertTrue(
+            $this->repo->incrementVerificationAttempts($carId),
+            'Test setup: second increment must succeed against a real row'
+        );
+
+        $row = $this->db->query(
+            'SELECT verification_attempts, verification_attempts_since FROM cars WHERE id = ?',
+            [$carId]
+        )->first();
+        $this->assertSame(
+            2,
+            (int) $row->verification_attempts,
+            'Test setup: two increments from a NULL verification_attempts_since must land on exactly 2, '
+            . 'not roll the window over — incrementVerificationAttempts() only resets when the previous '
+            . 'value was NULL or more than a year old, and this second call sees neither'
+        );
+
+        $this->assertNotContains(
+            $carId,
+            $this->eligibleIds(),
+            'A car that has genuinely been sent to twice within the tracked window must leave the '
+            . 'eligible set — this is the real write path a nightly cron run actually exercises, not a '
+            . 'hand-set fixture'
+        );
+    }
 }
