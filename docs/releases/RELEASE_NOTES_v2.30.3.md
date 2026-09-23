@@ -1,6 +1,6 @@
 # Elan Registry v2.30.3 Release Notes
 
-**Release Date:** September 13, 2026
+**Release Date:** September 22, 2026
 **Type:** Minor Release - Verification System Refresh - Send Pipeline Live
 
 Real verification email ships, self-monitored, pausable — the send cron with its own guard, EmailTemplate composition, one-click opt-out, and admin-visible run-outcome counts on the job it depends on existing.
@@ -9,7 +9,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 
 - [#1881](https://github.com/elan-registry/registry/issues/1881) — Owners can verify or report a car sold from a public link with no login required.
 - [#1882](https://github.com/elan-registry/registry/issues/1882) — Verification emails now carry the same branded look as every other system email.
-- [#1883](https://github.com/elan-registry/registry/issues/1883) — Owners can opt out of verification emails with one click.
+- [#1883](https://github.com/elan-registry/registry/issues/1883) — Owners can opt out of verification emails with one click. Opting out now also excludes cars added to the account afterward, not just the ones the owner held at the time.
 - [#2105](https://github.com/elan-registry/registry/issues/2105) — Owners who complained to their mail provider about a verification email no longer receive another one.
 
 ## Admin-Facing Changes
@@ -25,6 +25,7 @@ Real verification email ships, self-monitored, pausable — the send cron with i
 - [#2090](https://github.com/elan-registry/registry/issues/2090) — Documentation now states plainly that every `AbstractCronJob` subclass is gated by the site-wide verification switch, not just Brevo-driven jobs — no behavior change.
 - [#2122](https://github.com/elan-registry/registry/issues/2122) — The join form's location picker no longer refuses a normal typing session with "Rate limit exceeded" — a real registrant was locked out of registration by a search-rate limit sized for abuse, not ordinary use.
 - [#2148](https://github.com/elan-registry/registry/issues/2148) — The Verification tab now shows a distinct "Last run failed" badge and a cron-failure log summary, so a crashed nightly send no longer looks identical to a healthy one.
+- All rate limits were raised 50% to stop production false-positive throttling on ordinary browsing traffic. Two limits added earlier in this same milestone (`verification_code_attempt`, the vericode brute-force ceiling; `brevo_webhook_auth_failure`, deliberately tight by design) were excluded from that raise and kept at their original values.
 
 ## Issues Resolved
 

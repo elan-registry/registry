@@ -1471,29 +1471,47 @@ public function __construct(private DatabaseInterface $db)
 
 **Public Methods**:
 
-- `status(string $jobName): array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable}`
-  — Single-query read of a job's state and last-run timestamp. Prefer this
-  over calling `state()`/`lastRunAt()` separately, which issues two queries
-  and can report the two values as of different moments on an intermittent
-  fault.
+- `status(string $jobName): array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable, lastFailureAt: ?DateTimeImmutable}`
+  — Single-query read of a job's state, last-run timestamp, and last-failure
+  timestamp. Prefer this over calling `state()`/`lastRunAt()` separately,
+  which issues two queries and can report the two values as of different
+  moments on an intermittent fault. `lastFailureAt` (#2148) joined this same
+  read rather than getting a method of its own because it is only ever
+  useful *compared against* `lastRunAt` (see `badgeFor()`) — reading the two
+  at different moments could report a failure as current that a run since
+  superseded.
 - `state(string $jobName): CronJobEnabledState` — Thin wrapper over `status()`
 - `lastRunAt(string $jobName): ?DateTimeImmutable` — Thin wrapper over `status()`;
   null for a missing/unreadable row, a job that has never run, or an
   unparseable stored value (including MySQL zero-dates)
-- `badgeFor(CronJobEnabledState $state, ?DateTimeImmutable $lastRunAt): array{badgeClass: string, icon: string, text: string}`
+- `badgeFor(CronJobEnabledState $state, ?DateTimeImmutable $lastRunAt, ?DateTimeImmutable $lastFailureAt = null):`
+  `array{badgeClass: string, icon: string, text: string}`
   (static) — Maps a state/timestamp pair to display attributes; `MISSING`
   and `UNREADABLE` render identically ("Status unavailable"), `DISABLED`
-  ("Paused") is visually distinct from both
+  ("Paused") is visually distinct from both. Within `ENABLED`, a distinct
+  danger "Last run failed" badge (#2148) renders when `$lastFailureAt` is at
+  or after `$lastRunAt` — `last_run_at` is stamped *before* a claimed run's
+  `execute()` runs, so on its own it cannot distinguish a run that finished
+  from one that threw; comparing the two timestamps is what closes that gap.
+  `>=`, not `>`: both columns are written by `NOW()` at one-second
+  resolution, and a job that throws immediately after being claimed stamps
+  both within the same second. `$lastFailureAt` defaults to `null` so
+  callers written before this parameter existed keep their previous
+  behavior.
 - `lastOutcomeCounts(string $jobName): array{counts: array{sent: int, skipped: int, failed: int}|null, unreadable: bool}`
-  (#1885) — Sent/skipped/failed tallies from a job's most recent run, kept
-  separate from `status()` since these three columns are a dashboard-only
-  readout with no bearing on the enable/pause decision. `counts` is `null`
-  both when the job has genuinely never run (routine) and when the read
-  itself failed (fault) — callers must check `unreadable` to tell the two
-  apart, the same way `CronJobEnabledState::MISSING`/`UNREADABLE` are kept
-  distinct from `DISABLED`. A row entirely missing for the job name is also
-  `unreadable = true`, matching `status()`'s own `MISSING` resolution for
-  that condition.
+  (#1885) — Sent/skipped/failed tallies from a job's most recent *successful*
+  run, kept separate from `status()` since these three columns are a
+  dashboard-only readout with no bearing on the enable/pause decision.
+  `counts` is `null` both when the job has genuinely never run (routine) and
+  when the read itself failed (fault) — callers must check `unreadable` to
+  tell the two apart, the same way `CronJobEnabledState::MISSING`/`UNREADABLE`
+  are kept distinct from `DISABLED`. A row entirely missing for the job name
+  is also `unreadable = true`, matching `status()`'s own `MISSING`
+  resolution for that condition. Because these columns are written only at
+  the end of a successful `execute()`, they stand as the *previous*
+  successful run's numbers when the most recent claimed run failed — see
+  `badgeFor()`'s failure case above, which is exactly when a caller should
+  qualify this readout as stale rather than current.
 
 **Used By**:
 
@@ -1504,8 +1522,63 @@ public function __construct(private DatabaseInterface $db)
 
 - `AbstractCronJob` — dispatch-context counterpart reading the same table
 - `CronJobEnabledState` — the enum this class's `state()`/`status()` return
+- `CronJobFailureLogReader` — Complementary read of the `LOG_CATEGORY_CRON_JOB_FAILURE`
+  log category itself, for when the aggregate fault history (not just the
+  latest claimed run per job) is what the page needs to show
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`
-  (MISSING/UNREADABLE and unparseable `last_run_at` values)
+  (MISSING/UNREADABLE and unparseable `last_run_at`/`last_failure_at` values)
+
+---
+
+### CronJobFailureLogReader
+
+**Location**: `/usersc/classes/Cron/CronJobFailureLogReader.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Read-only, never-throws access to recent
+`LOG_CATEGORY_CRON_JOB_FAILURE` log entries, for display (#2148).
+`AbstractCronJob::run()`, `SendVerificationBatchJob`, `CronJobRunsReader`,
+and `CronJobGuard::recordFailure()` all file entries under this category,
+but until this class existed nothing in the admin UI read it back — several
+of those log messages literally instruct the reader to "check the system
+log for details," with nothing on the page pointing there. `CronJobRunsReader`
+reports only the most recent claimed run *per job*; this reports the fault
+channel as a whole, across every job, including faults from a row that
+could not even be read (which `CronJobRunsReader` cannot represent) and from
+the manual `runNow()` path (which never stamps a row at all — see
+`AbstractCronJob::runNow()`'s own docblock).
+
+**Constructor**:
+
+```php
+public function __construct(private DatabaseInterface $db)
+```
+
+**Public Methods**:
+
+- `recentFailures(int $limit = 5): array{count: int|null, recent: list<array{loggedAt: string, message: string}>}`
+  — Summarizes failures logged within `LOOKBACK_DAYS` (7 days — long enough
+  to make a repeating nightly fault obvious by its count alone, short
+  enough that a fault fixed last month has aged out). `count` is `null`,
+  not `0`, when the summary could not be read — this is the fault channel
+  itself, so "no failures" is exactly the reading that tells an operator to
+  stop looking; rendering an unreadable count as a reassuring `0` would be
+  the same failure mode `VerificationSettings::unmatchedRecipientCount()`
+  avoids for the same reason. A genuine `0` (query succeeded, found
+  nothing) is the only case `count` is actually zero.
+
+**Used By**:
+
+- `app/admin/includes/tab-verification.php` — Verification tab's "Cron job
+  failures" summary row
+
+**See Also**:
+
+- `CronJobRunsReader` — Per-job status/badge counterpart reading `er_cron_job_runs`
+- `AbstractCronJob` — Where every `LOG_CATEGORY_CRON_JOB_FAILURE` entry this
+  class reads ultimately originates
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`
 
 ---
 

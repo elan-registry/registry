@@ -65,13 +65,25 @@ $db = DB::getInstance();
 
 // Check for pending Phinx migrations by querying phinxlog directly.
 // database/ is removed by .deployignore after deployment, so glob() always
-// returns empty on prod. Instead, count applied migrations up to the latest
-// known version and compare against the total. Update both constants when
-// adding a new migration.
+// returns empty on prod, and `phinx status` (composer migrate:status) has
+// the identical dependency — it also needs the migrations directory to
+// exist, so it cannot answer "how many migrations exist" on a deployed prod
+// checkout either. There is no way to derive these two numbers from a live
+// prod database alone; they are baked in here and MUST be updated by hand
+// whenever a migration is added. This has already drifted silently at least
+// three times (#2119 set these values, then #2124/#2138/#2148 each added a
+// migration without bumping them) — a database missing any migration past
+// $latestMigration reads as "0 pending" instead of surfacing the gap.
+// `ls database/migrations/*.php | wc -l` for the count, and the newest
+// filename's leading timestamp for $latestMigration, are both easy to get
+// wrong by hand: get them from git instead, from a checkout where
+// database/ still exists (i.e., not a deployed prod copy):
+//   ls database/migrations/*.php | wc -l
+//   ls database/migrations/*.php | sort | tail -1
 $pendingMigrationCount = 0;
 try {
-    $latestMigration = 20260915000002;
-    $totalMigrations = 32;
+    $latestMigration = 20260922171500;
+    $totalMigrations = 37;
     $row = $db->query(
         "SELECT COUNT(*) AS cnt FROM phinxlog WHERE version <= ?",
         [$latestMigration]
