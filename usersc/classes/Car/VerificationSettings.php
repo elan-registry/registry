@@ -88,6 +88,146 @@ final class VerificationSettings
     public function __construct(private DatabaseInterface $db) {}
 
     /**
+     * Read one column off the `id = 1` settings row, or `null` if it is unreadable
+     *
+     * THE SHARED MECHANISM, NOT THE SHARED POLICY. Every read method in this
+     * class runs the same three steps — issue the scoped single-row SELECT,
+     * check `error()`, check the returned row is an object carrying the column —
+     * but each one then applies a *different* fail-closed policy on top:
+     * a different sentinel (`false`, `5`, `null`), a different amount of extra
+     * validation (numeric range, date parsing), and a different log wording.
+     * This helper owns only the part that is genuinely identical, and hands the
+     * caller back a bare `null` for "could not read it" so the caller can apply
+     * its own policy. It deliberately does NOT decide the sentinel and does NOT
+     * log the row-shape failure — folding either of those in here would force
+     * every caller through one generic message and lose the per-method
+     * explanations an admin reads in the log.
+     *
+     * It DOES log the query-error case, because that message is mechanically
+     * identical in shape across callers (only the column name varies) and is
+     * about the database failing, not about what the caller wanted — except for
+     * {@see lastCronRequestAt()}, whose historical behaviour is to stay silent
+     * on a failed query, expressed here as an empty `$errorSubject` rather than
+     * by hand-rolling the query again.
+     *
+     * The two failure modes return the same `null` but are distinguishable via
+     * `$queryFailed`, set by reference. Callers need that not for their return
+     * value — every one of them fails closed identically either way — but to
+     * decide whether to add their own row-shape warning line, since the
+     * query-error line has already been written by then and this class has
+     * always logged exactly one line per failed read. Reporting it out here
+     * rather than having callers re-check `$this->db->error()` keeps the answer
+     * tied to the read that produced it instead of to whatever state the
+     * connection happens to be in afterwards.
+     *
+     * @param string $column Column to select. Interpolated into the SQL, so it
+     *                       must be a hard-coded identifier from this class —
+     *                       never caller- or request-supplied. Every call site
+     *                       passes a literal.
+     * @param string|null $errorSubject What the query-error line names as the thing
+     *                                  it failed to read. Defaults to
+     *                                  `er_verification_settings.<column>`.
+     *                                  {@see isEnabled()} passes the bare table name
+     *                                  instead, preserving the exact wording that
+     *                                  line has always had. Null here means "use the
+     *                                  default"; passing `''` suppresses the line
+     *                                  entirely, which only {@see lastCronRequestAt()}
+     *                                  does — it has always failed silently on a
+     *                                  failed query.
+     * @param bool|null $queryFailed Set by reference to true when the SELECT
+     *                               itself errored (and the query-error line was
+     *                               therefore already logged), false when the
+     *                               query succeeded but the row or column was
+     *                               absent or NULL. Accepts null purely so an
+     *                               uninitialised local can be passed in; it is
+     *                               always a bool on the way out.
+     * @param-out bool $queryFailed
+     * @return mixed The raw column value, or null if the query failed or the
+     *               row/column was absent. A stored NULL also reads back as
+     *               null, which every caller already treats as unreadable.
+     */
+    private function readSettingsColumn(
+        string $column,
+        ?string $errorSubject = null,
+        ?bool &$queryFailed = null
+    ): mixed {
+        $queryFailed = false;
+
+        $this->db->query(
+            sprintf('SELECT %s FROM er_verification_settings WHERE id = ?', $column),
+            [self::SETTINGS_ROW_ID]
+        );
+
+        if ($this->db->error()) {
+            $queryFailed = true;
+            $subject = $errorSubject ?? 'er_verification_settings.' . $column;
+            if ($subject !== '') {
+                $this->logWarning(sprintf(
+                    'Failed to read %s: %s',
+                    $subject,
+                    $this->db->errorString() ?: 'unknown'
+                ));
+            }
+            return null;
+        }
+
+        $row = $this->db->first();
+
+        return is_object($row) && isset($row->$column) ? $row->$column : null;
+    }
+
+    /**
+     * Confirm the `id = 1` row still exists after a plain `SET col = ?` UPDATE
+     *
+     * ONLY FOR PLAIN-SET WRITES. PDO's `rowCount()` after an UPDATE reports rows
+     * CHANGED, not rows MATCHED (no `MYSQL_ATTR_FOUND_ROWS` is set on this
+     * connection) — writing the same value the row already had legitimately
+     * yields `count() === 0`, so that alone cannot distinguish "row missing"
+     * from "value unchanged". A follow-up read can. This is the confirmation
+     * {@see setEnabled()} and {@see setBatchSize()} share.
+     *
+     * NOT the confirmation used by {@see incrementUnmatchedRecipientCounter()}
+     * or {@see recordCronRequest()}: `col = col + 1` and `col = NOW()` always
+     * change the row's value on a match, so `count() === 0` is already an
+     * unambiguous "row missing" signal for those two and a second round-trip
+     * would buy nothing. Those methods keep their own `count()` check
+     * deliberately — see their docblocks for the full argument. Do not
+     * generalise this helper to cover them.
+     *
+     * Logs nothing itself: the caller's warning line names the column and value
+     * it was writing, which this helper does not know.
+     *
+     * @return bool True if the settings row was confirmed present
+     */
+    private function settingsRowConfirmedPresent(): bool
+    {
+        $this->db->query(
+            'SELECT id FROM er_verification_settings WHERE id = ?',
+            [self::SETTINGS_ROW_ID]
+        );
+
+        return !$this->db->error() && is_object($this->db->first());
+    }
+
+    /**
+     * Log a fail-closed warning under this class's single warning category
+     *
+     * Every failure path in this class logs at severity 0 under
+     * LOG_CATEGORY_VERIFICATION_CONFIG_WARNING; only the acting user and the
+     * message differ. Centralising the call keeps that invariant structural
+     * rather than a convention ten call sites each have to remember, and gives
+     * one place to change if the category or severity ever needs to move.
+     *
+     * @param string $message Fully formatted message; callers do their own sprintf()
+     *                        so each keeps its own wording and placeholders
+     * @param int $actingUserId User id to attribute the line to (0 for no known actor)
+     */
+    private function logWarning(string $message, int $actingUserId = 0): void
+    {
+        logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $message);
+    }
+
+    /**
      * Whether the admin tab's feature-switch checkbox should render `disabled`
      *
      * Pure UI-affordance logic, extracted out of `tab-verification.php`'s inline
@@ -123,36 +263,34 @@ final class VerificationSettings
      */
     public function isEnabled(): bool
     {
-        $this->db->query(
-            'SELECT enabled FROM er_verification_settings WHERE id = ?',
-            [self::SETTINGS_ROW_ID]
-        );
+        // The error line names the bare table, not `...enabled`, so pin the
+        // subject rather than taking the helper's column-qualified default.
+        $enabled = $this->readSettingsColumn('enabled', 'er_verification_settings', $queryFailed);
 
-        if ($this->db->error()) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
-                'Failed to read er_verification_settings: %s',
-                $this->db->errorString() ?: 'unknown'
-            ));
+        if ($enabled === null) {
+            // Either the query failed (already logged by the helper) or the row
+            // / column is absent. The migration seeds id=1 and nothing in the
+            // app ever deletes it, so an absent row means the migration
+            // part-applied or the table was truncated/restored incompletely — a
+            // schema problem, not "switched off". Fail closed, but never
+            // silently: an admin trying to enable verification here would
+            // otherwise see a misleading Brevo-related rejection with no clue
+            // the real fault is a missing settings row.
+            //
+            // The helper logs the query-error case and stays quiet on the
+            // row-shape case, so this line fires only for the latter — the same
+            // one-line-per-failure output this method has always produced.
+            if (!$queryFailed) {
+                $this->logWarning(sprintf(
+                    'er_verification_settings row id=%d is missing — reporting verification OFF '
+                    . 'as a fail-closed default. Re-run `composer migrate` to reseed the row.',
+                    self::SETTINGS_ROW_ID
+                ));
+            }
             return false;
         }
 
-        $row = $this->db->first();
-        if (!is_object($row) || !isset($row->enabled)) {
-            // The migration seeds id=1 and nothing in the app ever deletes it, so
-            // an absent row means the migration part-applied or the table was
-            // truncated/restored incompletely — a schema problem, not "switched
-            // off". Fail closed, but never silently: an admin trying to enable
-            // verification here would otherwise see a misleading Brevo-related
-            // rejection with no clue the real fault is a missing settings row.
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
-                'er_verification_settings row id=%d is missing — reporting verification OFF '
-                . 'as a fail-closed default. Re-run `composer migrate` to reseed the row.',
-                self::SETTINGS_ROW_ID
-            ));
-            return false;
-        }
-
-        return (bool) $row->enabled;
+        return (bool) $enabled;
     }
 
     /**
@@ -171,35 +309,27 @@ final class VerificationSettings
      */
     public function batchSize(): int
     {
-        $this->db->query(
-            'SELECT batch_size FROM er_verification_settings WHERE id = ?',
-            [self::SETTINGS_ROW_ID]
-        );
+        $batchSize = $this->readSettingsColumn('batch_size', queryFailed: $queryFailed);
 
-        if ($this->db->error()) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
-                'Failed to read er_verification_settings.batch_size: %s',
-                $this->db->errorString() ?: 'unknown'
-            ));
-            return 5;
-        }
-
-        $row = $this->db->first();
-        if (!is_object($row) || !isset($row->batch_size)) {
+        if ($batchSize === null) {
             // Same fail-closed rationale as isEnabled(): the migration seeds
             // id=1 and nothing in the app ever deletes it, so an absent row
             // means the migration part-applied or the table was
             // truncated/restored incompletely — a schema problem, not "no
-            // batch size configured". Fail closed, but never silently.
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
-                'er_verification_settings row id=%d is missing — reporting default batch '
-                . 'size of 5. Re-run `composer migrate` to reseed the row.',
-                self::SETTINGS_ROW_ID
-            ));
+            // batch size configured". Fail closed, but never silently. The
+            // helper has already logged the query-error case, so this line
+            // covers only the missing-row one.
+            if (!$queryFailed) {
+                $this->logWarning(sprintf(
+                    'er_verification_settings row id=%d is missing — reporting default batch '
+                    . 'size of 5. Re-run `composer migrate` to reseed the row.',
+                    self::SETTINGS_ROW_ID
+                ));
+            }
             return 5;
         }
 
-        return (int) $row->batch_size;
+        return (int) $batchSize;
     }
 
     /**
@@ -223,7 +353,7 @@ final class VerificationSettings
     public function setEnabled(bool $enabled, int $actingUserId = 0): bool
     {
         if ($enabled && !$this->brevoReady()) {
-            logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, 'Refused to enable verification: Brevo is not configured.');
+            $this->logWarning('Refused to enable verification: Brevo is not configured.', $actingUserId);
             throw new VerificationConfigException();
         }
 
@@ -233,30 +363,24 @@ final class VerificationSettings
         );
 
         if ($this->db->error()) {
-            logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 'Failed to write er_verification_settings (enabled=%d): %s',
                 $enabled ? 1 : 0,
                 $this->db->errorString() ?: 'unknown'
-            ));
+            ), $actingUserId);
             return false;
         }
 
-        // PDO's rowCount() after an UPDATE reports rows CHANGED, not rows MATCHED
-        // (no MYSQL_ATTR_FOUND_ROWS is set on this connection) — writing the same
-        // value the row already had legitimately yields count() === 0, so that
-        // alone can't distinguish "row missing" from "value unchanged". Confirm
-        // the row actually exists with a follow-up read instead.
-        $this->db->query(
-            'SELECT id FROM er_verification_settings WHERE id = ?',
-            [self::SETTINGS_ROW_ID]
-        );
-        if ($this->db->error() || !is_object($this->db->first())) {
-            logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+        // A plain `SET enabled = ?` cannot be confirmed by count() — see
+        // {@see settingsRowConfirmedPresent()} for the rowCount()
+        // changed-vs-matched argument in full.
+        if (!$this->settingsRowConfirmedPresent()) {
+            $this->logWarning(sprintf(
                 'er_verification_settings UPDATE (enabled=%d) could not be confirmed — the id=%d '
                 . 'settings row appears to be missing. Re-run `composer migrate` to reseed it.',
                 $enabled ? 1 : 0,
                 self::SETTINGS_ROW_ID
-            ));
+            ), $actingUserId);
             return false;
         }
 
@@ -309,25 +433,21 @@ final class VerificationSettings
         );
 
         if ($this->db->error()) {
-            logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 'Failed to write er_verification_settings (batch_size=%d): %s',
                 $clamped,
                 $this->db->errorString() ?: 'unknown'
-            ));
+            ), $actingUserId);
             return false;
         }
 
-        $this->db->query(
-            'SELECT id FROM er_verification_settings WHERE id = ?',
-            [self::SETTINGS_ROW_ID]
-        );
-        if ($this->db->error() || !is_object($this->db->first())) {
-            logger($actingUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+        if (!$this->settingsRowConfirmedPresent()) {
+            $this->logWarning(sprintf(
                 'er_verification_settings UPDATE (batch_size=%d) could not be confirmed — the id=%d '
                 . 'settings row appears to be missing. Re-run `composer migrate` to reseed it.',
                 $clamped,
                 self::SETTINGS_ROW_ID
-            ));
+            ), $actingUserId);
             return false;
         }
 
@@ -363,7 +483,7 @@ final class VerificationSettings
             // admin who gets the enable-rejected message isn't sent to double-check
             // a key/override that may in fact already be correct.
             $sqlState = (string) ($this->db->errorInfo()[0] ?? '');
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 $sqlState === '42S02'
                     ? 'Brevo readiness probe: plg_sendinblue table absent (sendinblue plugin not installed) — reporting not ready. %s'
                     : 'Brevo readiness probe FAILED querying plg_sendinblue — reporting "not ready", but Brevo may in fact be configured. Check DB connectivity/grants on plg_sendinblue. %s',
@@ -473,7 +593,7 @@ final class VerificationSettings
         );
 
         if ($this->db->error()) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 'Failed to increment er_verification_settings.unmatched_recipient_count: %s',
                 $this->db->errorString() ?: 'unknown'
             ));
@@ -487,7 +607,7 @@ final class VerificationSettings
         // counter incrementing forever, with no signal anywhere that the only
         // measure of recipient email drift had gone dead.
         if ($this->db->count() === 0) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 'er_verification_settings row id=%d not found; unmatched-recipient counter is not being recorded.',
                 self::SETTINGS_ROW_ID
             ));
@@ -519,36 +639,25 @@ final class VerificationSettings
      */
     public function unmatchedRecipientCount(): ?int
     {
-        $this->db->query(
-            'SELECT unmatched_recipient_count FROM er_verification_settings WHERE id = ?',
-            [self::SETTINGS_ROW_ID]
-        );
+        $count = $this->readSettingsColumn('unmatched_recipient_count', queryFailed: $queryFailed);
 
-        if ($this->db->error()) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
-                'Failed to read er_verification_settings.unmatched_recipient_count: %s',
-                $this->db->errorString() ?: 'unknown'
-            ));
+        // The helper collapses "no row" and "column absent/NULL" into null; the
+        // is_numeric()/negative checks are this method's own and stay here,
+        // since no other read has them. All three conditions share one log line
+        // and one null return, exactly as before.
+        if ($count === null || !is_numeric($count) || $count < 0) {
+            if (!$queryFailed) {
+                $this->logWarning(sprintf(
+                    'er_verification_settings row id=%d is missing or has a non-numeric or '
+                    . 'negative unmatched_recipient_count value — reporting the unmatched-recipient '
+                    . 'count as unreadable.',
+                    self::SETTINGS_ROW_ID
+                ));
+            }
             return null;
         }
 
-        $row = $this->db->first();
-        if (
-            !is_object($row)
-            || !isset($row->unmatched_recipient_count)
-            || !is_numeric($row->unmatched_recipient_count)
-            || $row->unmatched_recipient_count < 0
-        ) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
-                'er_verification_settings row id=%d is missing or has a non-numeric or '
-                . 'negative unmatched_recipient_count value — reporting the unmatched-recipient '
-                . 'count as unreadable.',
-                self::SETTINGS_ROW_ID
-            ));
-            return null;
-        }
-
-        return (int) $row->unmatched_recipient_count;
+        return (int) $count;
     }
 
     /**
@@ -571,21 +680,21 @@ final class VerificationSettings
      */
     public function lastCronRequestAt(): ?DateTimeImmutable
     {
-        $this->db->query(
-            'SELECT last_cron_request_at FROM er_verification_settings WHERE id = ?',
-            [self::SETTINGS_ROW_ID]
-        );
+        // Empty $errorSubject: alone among this class's reads, a failed query
+        // here has always been silent — cronReady() polls this on every admin
+        // page render, so a persistent DB fault would otherwise flood the log
+        // with one line per page view. The missing-row case is silent for the
+        // same reason.
+        $raw = $this->readSettingsColumn('last_cron_request_at', '');
 
-        if ($this->db->error()) {
+        // empty(), not a null check: a NULL column (cron has never run), an
+        // absent row, and a zero-length value all mean the same "no timestamp
+        // recorded" here, and always have.
+        if (empty($raw) || !is_scalar($raw)) {
             return null;
         }
 
-        $row = $this->db->first();
-        if (!is_object($row) || empty($row->last_cron_request_at)) {
-            return null;
-        }
-
-        $value = (string) $row->last_cron_request_at;
+        $value = (string) $raw;
 
         // MySQL's zero-date ('0000-00-00 00:00:00') does not throw when passed
         // to DateTimeImmutable's constructor — it silently parses to a bogus
@@ -596,7 +705,7 @@ final class VerificationSettings
         // default misconfiguration, never a value this class itself wrote —
         // treat it the same as any other unparseable value.
         if (str_starts_with($value, '0000-00-00')) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 'Unparseable last_cron_request_at "%s": MySQL zero-date',
                 $value
             ));
@@ -606,7 +715,7 @@ final class VerificationSettings
         try {
             return new DateTimeImmutable($value);
         } catch (\Exception $e) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 'Unparseable last_cron_request_at "%s": %s',
                 $value,
                 $e->getMessage()
@@ -661,15 +770,19 @@ final class VerificationSettings
         );
 
         if ($this->db->error()) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 'Failed to record cron request in er_verification_settings: %s',
                 $this->db->errorString() ?: 'unknown'
             ));
             return false;
         }
 
+        // count(), not a confirmation SELECT — deliberately. See this method's
+        // docblock above for why `SET x = NOW()` makes count() === 0 an
+        // unambiguous "row missing" signal here, and why
+        // settingsRowConfirmedPresent() must NOT be substituted in.
         if ($this->db->count() === 0) {
-            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+            $this->logWarning(sprintf(
                 'er_verification_settings row id=%d not found; cron request is not being recorded.',
                 self::SETTINGS_ROW_ID
             ));
