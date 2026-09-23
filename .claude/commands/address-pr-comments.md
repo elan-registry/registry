@@ -53,7 +53,7 @@ scripts/poll-review-posted.sh <pr-number> 15 120
 ```
 
 15s interval, 2min timeout (`pr-to-milestone-review` is the lightweight
-Opus job — faster than the Fable milestone-level review).
+Sonnet job — faster than the Fable milestone-level review).
 
 **Exit 0 (comment found):** proceed to Step 2 — its findings feed
 into Step 4's triage same as any other comment.
