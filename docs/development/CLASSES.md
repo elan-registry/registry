@@ -564,11 +564,28 @@ to provide a focused, testable data access layer wrapping the `cars`,
   cars owned by one user to another (or clear ownership); used by the
   user-deletion hook
 - `updateVerificationCode(int $carId, string $verificationCode): bool` - Update a car's verification code
-- `updateLastVerified(int $carId, string $dateTime): bool` - Update a car's last-verified timestamp
+- `updateLastVerified(int $carId, string $dateTime): bool` - **Deprecated** (#2107), no
+  production callers — `CarVerificationManager::markVerified()` writes `last_verified` via
+  `updateCar()` directly to set `owner_last_updated` atomically alongside it
 - `updateVerificationSentAt(int $carId, string $dateTime): bool` - Update the timestamp at which a verification email was sent
 - `updateEmailBounced(int $carId, bool $bounced, ?string $bouncedAddress = null): bool` -
   Set or clear a car's email-bounced flag, and the address it bounced against (#1887)
 - `updateEmailSuppressed(int $carId, bool $suppressed): bool` - Set or clear a car's email-suppressed flag (#1887)
+- `findProfileEmailBounced(int $userId): ?int` -
+  Read the owner-level bounce flag from `profiles.email_bounced` (#1884).
+  Returns the flag value (0 or 1) or null if no row.
+- `findProfileEmailBouncedAddress(int $userId): ?string` -
+  Read the owner-level bounced address from `profiles.email_bounced_address` (#1884).
+  Returns the address string or null.
+- `updateProfileEmailBounced(int $userId, bool $bounced, ?string $bouncedAddress = null): bool` -
+  Update owner-level bounce state on `profiles` (#1884).
+  Throws `CarDatabaseException` if `$bounced === true` and `$bouncedAddress` is null/empty.
+- `restoreVerificationCodeState(int $carId, ?string $vericode, ?string $vericodeSentAt): bool` -
+  Restore a car's pre-send vericode/vericode_sent_at after a failed send (#1884), distinct from
+  `updateCar()` because it can observe a write that matched no row. Throws `CarDatabaseException` on query error.
+- `incrementVerificationAttempts(int $carId): bool` -
+  Increment `cars.verification_attempts` with rolling-year window reset via `verification_attempts_since` (#1884).
+  Returns false if no row matched; throws `CarDatabaseException` on query error.
 - `findByEmail(string $email): array` - Find cars whose `cars.email` matches a
   given address; used by the Brevo webhook receiver to map an inbound
   event's recipient back to the car(s) it belongs to (#1887)
@@ -606,11 +623,6 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `er_email_events` rows from one car to another; used by car merge, so the
   surviving car keeps the merged-away car's bounce/suppression history
   instead of losing it (#1887)
-- `updateOwnerLastUpdated(int $carId, string $dateTime): bool` - Update the
-  timestamp of the owner's last self-initiated edit; standalone primitive not
-  currently called by `Car::update()` (which folds the same write into its
-  single `updateCar()` call to avoid a duplicate `cars_hist` audit row — see
-  `Car::update()`'s `$isOwnerInitiated` parameter)
 - `freshnessSql(string $alias = 'cars'): string` - Static; returns a SQL
   boolean expression determining if a car is fresh (verified within 1 year via
   `last_verified` OR edited by owner within 1 year via `owner_last_updated`).
@@ -653,13 +665,18 @@ to provide a focused, testable data access layer wrapping the `cars`,
   query for cars eligible for a verification email: not sold, deliverable
   email, and stale — neither verified nor updated by its owner within the last
   year (see `stalenessSql()`). No longer falls back to `cars.mtime`.
-- `updateSoldDate(int $carId, string $soldDate): bool` - Update a car's sold date
+- `updateSoldDate(int $carId, string $soldDate): bool` - **Deprecated** (#2107), no
+  production callers — `CarVerificationManager::markSold()` writes `solddate` via
+  `updateCar()` directly to set `owner_last_updated` atomically alongside it
 - `updateImage(int $carId, string $newJson, string $expectedJson): bool` - Compare-and-swap update of the image JSON column; returns `false` on concurrent modification
 - `findByChassisKey(string $year, string $type, string $chassis): ?object` -
   Find a car by its composite chassis key (year, type, chassis); used by
   `chassis-availability.php` and `transfer-request.php` to check chassis
   uniqueness
-- `findByVerificationCode(string $code): ?object` - Look up a car by verification code
+- `findByVerificationCode(string $code): ?object` -
+  Look up a car by verification code. The plaintext code is hashed
+  (HMAC-SHA256 via `hashVericode()`) before the database lookup; the hash
+  stored in `cars.vericode` is never exposed to callers.
 - `getAllForSitemap(): array` - Get all car IDs and modification times for sitemap generation
 - `findByOwner(int $ownerId): array` - Find car IDs owned by a given user
 - `getHistory(int $carId): array` - Get a car's history records, most recent first
@@ -819,7 +836,11 @@ on success.
 
 **Methods**:
 
-- `setVerificationCode(object $carData, string $verificationCode): bool` - Persist a car's verification code (min. 8 characters)
+- `setVerificationCode(object $carData, string $verificationCode): bool` -
+  Persist a car's verification code (min. 8 characters). The plaintext code
+  is hashed (HMAC-SHA256 via `hashVericode()`) before storage in
+  `cars.vericode`; the plaintext is never persisted, existing only in the
+  immediate caller's scope to be composed into verification emails.
 - `generateVerificationCode(): string` - Generate a new verification code; pure function, no repository call
 - `markVerified(object $carData): bool` - Record that a car has been verified (sets `last_verified` to now)
 - `setVerificationSentAt(object $carData, string $dateTime): bool` - Record when a verification email was sent
@@ -827,6 +848,16 @@ on success.
 - `clearBounced(object $carData): bool` - Clear a car's bounced-email flag and the recorded bounced address (admin reversal)
 - `setSuppressed(object $carData): bool` - Flag a car's owner email as suppressed (e.g. a Brevo `spam` complaint) — a distinct signal from a bounce (#1887)
 - `clearSuppressed(object $carData): bool` - Clear a car's email-suppressed flag (admin reversal)
+- `setBouncedForOwner(int $ownerId, string $bouncedAddress): array` -
+  Owner-level Mark Bounced action: records the owner's current `users.email` on
+  `profiles.email_bounced_address` and fans out to set `email_bounced = 1` on every
+  car owned by that user (#1884). Returns array of pre-change car snapshots for history writing.
+- `clearBouncedForOwner(int $ownerId): array` -
+  Owner-level Clear Bounced action: clears `profiles.email_bounced` and fans out to clear
+  `email_bounced` on every car owned by that user (#1884). Returns array of pre-change car snapshots.
+- `clearSuppressedForOwner(int $ownerId): array` -
+  Owner-level Clear Suppression action: clears `profiles.email_suppressed` and fans out to clear
+  `email_suppressed` on every car owned by that user (#1884). Returns array of pre-change car snapshots.
 - `markSold(object $carData, ?string $soldDate): bool` - Record a car as sold (`null` defaults to today)
 
 **Exceptions**:
@@ -849,6 +880,126 @@ on success.
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
 - [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`,
   `cars.vericode_sent_at`, `cars.email_bounced`, `cars.email_bounced_address`, `cars.email_suppressed`, `cars.solddate`
+
+---
+
+### VerificationEligibility
+
+**Location**: `/usersc/classes/Car/VerificationEligibility.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Explains why an already-loaded car row is no longer due a
+verification email (#1884). Extracted from app/admin/index.php's former
+`eligibilitySkipReason()` function into its own class so the rule set is
+directly unit-testable — constructing car-data objects and asserting on real
+return values — instead of only via source-text inspection of an
+unrequireable file.
+
+**Key Features**:
+
+- Encodes the SAME rules as `CarRepository::findVerificationEligible()`'s
+  WHERE clause — not a second, independent definition of eligibility. If
+  that SQL changes, this changes with it.
+- Exists because the preview (GET) and the send (POST) are two separate
+  requests, and a car can leave the eligible set in between (owner verifies
+  or edits it, a bounce webhook fires, they opt out, or the car is marked
+  sold). Re-running the query would show the row is gone from the result set
+  but not WHY — this checks the row already loaded by `findById()`, with no
+  second query, so the admin report can give a per-car reason.
+- The owner-liveness clauses of the SQL (`INNER JOIN users`, the `noowner`
+  exclusion) are deliberately NOT duplicated here — they need a join this
+  class has no row for. They stay enforced downstream in
+  `CarVerificationSendService::sendOne()`.
+- Fails closed on a malformed or MySQL zero-date `verification_attempts_since`
+  by throwing rather than silently treating a corrupt timestamp as "outside
+  the rolling window" (which would bypass the attempt cap).
+
+**Methods**:
+
+- `static skipReason(object $carData): ?string` - Checks, in priority order:
+  sold, bounced, suppressed, no email on file, no owner on file, freshness
+  (recently verified or updated), then the 2-send-per-rolling-year attempt
+  cap. Returns a short human-readable reason, or `null` if the car is still
+  eligible.
+
+**Exceptions**:
+
+- `CarValidationException` - Thrown via `CarRepository::isFresh()` for a
+  malformed `last_verified`/`owner_last_updated`, or directly for a
+  malformed/zero-date `verification_attempts_since`
+
+**Used By**:
+
+- `VerificationBatchSender::processBatch()`, which re-checks eligibility for
+  each car before calling `CarVerificationSendService::sendOne()`
+
+**See Also**:
+
+- [DATABASE.md](DATABASE.md) - `cars.solddate`, `cars.email_bounced`,
+  `cars.email_suppressed`, `cars.email`, `cars.user_id`,
+  `cars.verification_attempts`, `cars.verification_attempts_since`
+
+---
+
+### VerificationBatchSender
+
+**Location**: `/usersc/classes/Car/VerificationBatchSender.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Per-car loop body for the admin `verification_send_batch` POST
+handler in `app/admin/index.php` (#1884, PR review gap-closing pass).
+Extracted so the batch-loop failure containment and the
+`SendResult::isUnrecorded()` -> report-bucket routing are directly
+unit-testable — `app/admin/index.php` itself cannot be `require()`'d in a
+unit test (needs the full UserSpice bootstrap).
+
+**Key Features**:
+
+- **Four independent try/catch guards, mirrored exactly from the original
+  inline loop**: `findById()` throwing, `findById()` returning `null`,
+  `VerificationEligibility::skipReason()` throwing, and `sendOne()`
+  throwing. Each is scoped to one car so an uncaught fault never aborts the
+  rest of the batch or silently drops subsequent cars from the report.
+- **`isUnrecorded()` routed before the `STATUS_SENT` check**: an unrecorded
+  send must land in the `unrecorded` bucket, never `sent` — reordering these
+  checks was the exact defect commit 4224b511 already fixed once at a
+  different layer.
+- Not a general-purpose service — assumes the ids it receives already
+  passed the admin authorization check and CSRF validation one layer up
+  (`app/admin/index.php` filters non-positive ids before calling this
+  class). Performs no authorization of its own.
+
+**Methods**:
+
+- `processBatch(array $carIds): array` - Given positive car ids, re-reads
+  each via `CarRepository::findById()`, re-checks eligibility via
+  `VerificationEligibility::skipReason()`, sends via
+  `CarVerificationSendService::sendOne()`, and buckets the outcome. Returns
+  `['sent' => array<object>, 'unrecorded' => array<array{car, reason}>,
+  'skipped' => array<array{car, reason}>, 'failed' => array<array{car,
+  reason}>]`.
+
+**Constructor Dependencies**:
+
+- `CarRepository $repo` - For `findById()` re-reads
+- `CarVerificationSendService $sendSvc` - For `sendOne()`
+- `int $currentUserId` - Passed through to every `logger()` call
+
+**Used By**:
+
+- Admin send tool's `verification_send_batch` case (Verification System tab
+  in `app/admin/index.php`, #1884)
+
+**See Also**:
+
+- [VerificationEligibility](#verificationeligibility) - The eligibility
+  re-check this class calls per car
+- [CarVerificationSendService](#carverificationsendservice) - The send
+  orchestration this class calls per car
+- [SendResult](#sendresult) - The value object whose `isUnrecorded()` drives
+  the bucket routing this class exists to cover
 
 ---
 
@@ -894,11 +1045,28 @@ shared state or dependency exists between the two.
   and returns `false` on a DB error, or if the `id = 1` settings row is
   missing) (#1974)
 - `incrementUnmatchedRecipientCounter(): bool` - Increment
-  `er_verification_settings.unmatched_webhook_recipient_count` when an
-  inbound Brevo webhook event's recipient matches no car; never throws
-  (logs and returns `false` on a DB error, or if the `id = 1` settings row
-  itself is missing) since the webhook's own response to Brevo must not
-  hinge on this counter succeeding (#1887)
+  `er_verification_settings.unmatched_recipient_count` when an inbound event's
+  recipient matches no car. Called by three subsystems: (1) the webhook receiver
+  (`app/api/webhooks/brevo.php`'s `NO_CAR_MATCH` branch) on per-event, tag-filtered
+  Brevo delivery-status events, (2) `BrevoEventReconciliationJob::applyEvent()` for
+  nightly backfill of missed events (same filter), and (3) `BrevoSuppressionSyncJob::syncPage()`
+  for whole-account suppression-list sync (noisier, broader population with no tag filter).
+  Never throws (logs and returns `false` on a DB error, or if the `id = 1` settings row
+  is missing) since error paths must not break the caller's own response flow (#1887, #2085)
+- `unmatchedRecipientCount(): ?int` - Read accessor for
+  `er_verification_settings.unmatched_recipient_count`; returns `null` — never `0` —
+  on a DB error, a missing `id = 1` row, or a non-numeric/negative stored value,
+  logging the specific cause under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`.
+  Never throws. Callers must branch on `null`: a genuine zero and an unreadable
+  counter must not render alike. The admin Verification tab shows a
+  `text-bg-danger` "Unavailable" badge for the `null` case
+  (`app/admin/includes/tab-verification.php`, #2085)
+- `batchSize(): int` - Configured verification-email batch size
+  (`er_verification_settings.batch_size`); fails closed to `5` on any read
+  problem (#1884)
+- `setBatchSize(int $size, int $actingUserId = 0): bool` - Set the batch
+  size, clamped to `[1, 25]` regardless of the submitted value; never throws
+  (logs and returns `false` on a DB error or unconfirmed write) (#1885)
 
 **Exceptions**:
 
@@ -923,6 +1091,122 @@ shared state or dependency exists between the two.
 - [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full feature-switch design, the asymmetric gate, readiness-check semantics
 - [DATABASE.md](DATABASE.md) - `er_verification_settings`, the `er_` table-prefix convention
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`, `LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED`
+
+---
+
+### SendResult
+
+**Location**: `/usersc/classes/Car/SendResult.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Immutable value object describing the outcome of one car's
+verification-email send attempt (#1884). Returned by
+`CarVerificationSendService::sendOne()`.
+
+**Key Features**:
+
+- Named constructors (`sent()`, `failed()`, `sentUnrecorded()`) prevent
+  inconsistent states (e.g. status "sent" with a non-null reason on a clean send)
+- `sentUnrecorded()` is the deliberate exception: status stays `STATUS_SENT`
+  (the email really was delivered and must never be retried), but `reason` is
+  non-null so callers can render a distinct warning instead of silently
+  folding a bookkeeping failure into an ordinary successful send
+- `isUnrecorded(): bool` — true only for a `sentUnrecorded()` result; callers
+  branch on this (not `reason !== null` directly) to route to a separate
+  report bucket, keeping that rule defined once rather than re-derived at
+  each call site
+- No `skipped` status — skips are decided one layer up in the admin page,
+  before `sendOne()` is called
+- `reason` field is safe to render (already escaped at the point of render)
+
+**Properties** (all `readonly`):
+
+- `int $carId` - Car ID the send was attempted for
+- `string $status` - `STATUS_SENT` or `STATUS_FAILED`
+- `?string $reason` - Failure/warning reason (null only for a clean sent result)
+
+**Factory Methods**:
+
+- `static sent(int $carId): self` - Construct a clean success result
+- `static failed(int $carId, string $reason): self` - Construct a failure result
+- `static sentUnrecorded(int $carId, string $reason): self` - Construct a
+  result for a genuinely delivered email whose bookkeeping (the
+  `er_email_events` insert and/or `verification_attempts` increment) failed
+  afterward
+
+**Instance Methods**:
+
+- `isUnrecorded(): bool` - True only for a `sentUnrecorded()` result
+
+**Used By**:
+
+- `CarVerificationSendService::sendOne()` and `sendBatch()` (#1884)
+- `VerificationBatchSender::processBatch()` (Verification System tab in
+  `app/admin/index.php`) to build the result report
+
+---
+
+### CarVerificationSendService
+
+**Location**: `/usersc/classes/Car/CarVerificationSendService.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: The single, shared verification-email send orchestration (#1884).
+Owns the "pick eligible cars, rotate their codes, mail their owners, record
+the outcome" operation. Both the manual admin tool and the future automated
+cron job (#1885) call this service to prevent their eligibility rules and send
+sequences from drifting.
+
+**Key Features**:
+
+- **Pure functions only**: every public method is a pure function of its
+  arguments + current DB state. No `$_POST`/`$_SERVER`/session reads, no exit
+  paths, no logging — anything specific to one caller's environment belongs
+  in that caller
+- **Single shared eligibility query**: `findEligible()` delegates verbatim to
+  `CarRepository::findVerificationEligible()`, not re-implemented
+- **Three separate scopes, never one transaction** in `sendOne()`: (A) rotate
+  vericode+sent_at commit before network; (B) compose+send with no transaction;
+  (C) record event+increment attempts in their own transaction on success.
+  Prevents holding DB locks during slow Brevo calls and ensures failed sends
+  don't consume the yearly attempt allowance.
+- **Failed sends restore**: if `email()` returns false, the previous
+  vericode/sent_at are atomically restored via one `updateCar()` call
+- **Never report failure after real send**: if `email()` returned true, the
+  owner has the message. Scope C is best-effort; on failure it logs the gap
+  but still returns `SendResult::sent()` to prevent retry-triggered duplicates
+
+**Methods**:
+
+- `findEligible(int $limit, int $offset = 0): array` - List cars due for
+  verification email; delegates to `CarRepository::findVerificationEligible()`
+- `sendOne(object $carData): SendResult` - Send one car's verification email,
+  return sent/failed
+- `sendBatch(array $cars): array` - Map `sendOne()` over multiple cars,
+  return array of `SendResult`
+
+**Constructor Dependencies**:
+
+- `CarRepository $repo` - For `findVerificationEligible()`, car writes, event insertion
+- `CarVerificationManager $verifier` - For code generation and writes
+- `CarVerificationEmailComposer $composer` - For email composition
+
+**Exceptions**:
+
+- `CarDatabaseException` - From repository calls
+
+**Used By**:
+
+- `VerificationBatchSender::processBatch()` (Verification System tab in
+  `app/admin/index.php`, #1884)
+- Intended reuse by cron job (#1885)
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) — Admin send tool flow and shared-service design
+- `app/admin/index.php` (Verification tab POST command handling) — How the admin tool uses this service
 
 ---
 
@@ -1087,6 +1371,10 @@ a job-owned enabled flag independent of UserSpice's own `crons.active`.
   (`LOG_CATEGORY_CRON_JOB_FAILURE`)
 - **Manual run path**: `runNow()` bypasses enabled check and guard claim for
   admin-triggered immediate execution, retaining crash isolation only
+- **Verification feature switch**: `VerificationSettings::isEnabled()` is
+  checked unconditionally in both `run()` and `runNow()` for every
+  `AbstractCronJob` subclass, by design — not just Brevo-driven ones, and with
+  no per-subclass opt-out; fails closed like the `enabled` flag above
 
 **Abstract Methods (implemented by subclasses)**:
 
@@ -1112,6 +1400,10 @@ public function __construct(protected readonly DatabaseInterface $db)
 **Used By**:
 
 - `BrevoEventReconciliationJob` (extends `AbstractCronJob`)
+- `BrevoSuppressionSyncJob` (extends `AbstractCronJob`)
+- `SendVerificationBatchJob` (extends `AbstractCronJob`; no `runNowWithSummary()`
+  override — relies entirely on inherited `run()`/`runNow()`, including their
+  verification-switch check)
 
 **See Also**:
 
@@ -1179,31 +1471,239 @@ public function __construct(private DatabaseInterface $db)
 
 **Public Methods**:
 
-- `status(string $jobName): array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable}`
-  — Single-query read of a job's state and last-run timestamp. Prefer this
-  over calling `state()`/`lastRunAt()` separately, which issues two queries
-  and can report the two values as of different moments on an intermittent
-  fault.
+- `status(string $jobName): array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable, lastFailureAt: ?DateTimeImmutable}`
+  — Single-query read of a job's state, last-run timestamp, and last-failure
+  timestamp. Prefer this over calling `state()`/`lastRunAt()` separately,
+  which issues two queries and can report the two values as of different
+  moments on an intermittent fault. `lastFailureAt` (#2148) joined this same
+  read rather than getting a method of its own because it is only ever
+  useful *compared against* `lastRunAt` (see `badgeFor()`) — reading the two
+  at different moments could report a failure as current that a run since
+  superseded.
 - `state(string $jobName): CronJobEnabledState` — Thin wrapper over `status()`
 - `lastRunAt(string $jobName): ?DateTimeImmutable` — Thin wrapper over `status()`;
   null for a missing/unreadable row, a job that has never run, or an
   unparseable stored value (including MySQL zero-dates)
-- `badgeFor(CronJobEnabledState $state, ?DateTimeImmutable $lastRunAt): array{badgeClass: string, icon: string, text: string}`
+- `badgeFor(CronJobEnabledState $state, ?DateTimeImmutable $lastRunAt, ?DateTimeImmutable $lastFailureAt = null):`
+  `array{badgeClass: string, icon: string, text: string}`
   (static) — Maps a state/timestamp pair to display attributes; `MISSING`
   and `UNREADABLE` render identically ("Status unavailable"), `DISABLED`
-  ("Paused") is visually distinct from both
+  ("Paused") is visually distinct from both. Within `ENABLED`, a distinct
+  danger "Last run failed" badge (#2148) renders when `$lastFailureAt` is at
+  or after `$lastRunAt` — `last_run_at` is stamped *before* a claimed run's
+  `execute()` runs, so on its own it cannot distinguish a run that finished
+  from one that threw; comparing the two timestamps is what closes that gap.
+  `>=`, not `>`: both columns are written by `NOW()` at one-second
+  resolution, and a job that throws immediately after being claimed stamps
+  both within the same second. `$lastFailureAt` defaults to `null` so
+  callers written before this parameter existed keep their previous
+  behavior.
+- `lastOutcomeCounts(string $jobName): array{counts: array{sent: int, skipped: int, failed: int}|null, unreadable: bool}`
+  (#1885) — Sent/skipped/failed tallies from a job's most recent *successful*
+  run, kept separate from `status()` since these three columns are a
+  dashboard-only readout with no bearing on the enable/pause decision.
+  `counts` is `null` both when the job has genuinely never run (routine) and
+  when the read itself failed (fault) — callers must check `unreadable` to
+  tell the two apart, the same way `CronJobEnabledState::MISSING`/`UNREADABLE`
+  are kept distinct from `DISABLED`. A row entirely missing for the job name
+  is also `unreadable = true`, matching `status()`'s own `MISSING`
+  resolution for that condition. Because these columns are written only at
+  the end of a successful `execute()`, they stand as the *previous*
+  successful run's numbers when the most recent claimed run failed — see
+  `badgeFor()`'s failure case above, which is exactly when a caller should
+  qualify this readout as stale rather than current.
 
 **Used By**:
 
 - `app/admin/includes/tab-verification.php` — Verification tab's "Last
-  reconciliation run" row (#2054)
+  reconciliation run" row (#2054) and "Automatic Sending" panel (#1885)
 
 **See Also**:
 
 - `AbstractCronJob` — dispatch-context counterpart reading the same table
 - `CronJobEnabledState` — the enum this class's `state()`/`status()` return
+- `CronJobFailureLogReader` — Complementary read of the `LOG_CATEGORY_CRON_JOB_FAILURE`
+  log category itself, for when the aggregate fault history (not just the
+  latest claimed run per job) is what the page needs to show
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`
-  (MISSING/UNREADABLE and unparseable `last_run_at` values)
+  (MISSING/UNREADABLE and unparseable `last_run_at`/`last_failure_at` values)
+
+---
+
+### CronJobFailureLogReader
+
+**Location**: `/usersc/classes/Cron/CronJobFailureLogReader.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Read-only, never-throws access to recent
+`LOG_CATEGORY_CRON_JOB_FAILURE` log entries, for display (#2148).
+`AbstractCronJob::run()`, `SendVerificationBatchJob`, `CronJobRunsReader`,
+and `CronJobGuard::recordFailure()` all file entries under this category,
+but until this class existed nothing in the admin UI read it back — several
+of those log messages literally instruct the reader to "check the system
+log for details," with nothing on the page pointing there. `CronJobRunsReader`
+reports only the most recent claimed run *per job*; this reports the fault
+channel as a whole, across every job, including faults from a row that
+could not even be read (which `CronJobRunsReader` cannot represent) and from
+the manual `runNow()` path (which never stamps a row at all — see
+`AbstractCronJob::runNow()`'s own docblock).
+
+**Constructor**:
+
+```php
+public function __construct(private DatabaseInterface $db)
+```
+
+**Public Methods**:
+
+- `recentFailures(int $limit = 5): array{count: int|null, recent: list<array{loggedAt: string, message: string}>}`
+  — Summarizes failures logged within `LOOKBACK_DAYS` (7 days — long enough
+  to make a repeating nightly fault obvious by its count alone, short
+  enough that a fault fixed last month has aged out). `count` is `null`,
+  not `0`, when the summary could not be read — this is the fault channel
+  itself, so "no failures" is exactly the reading that tells an operator to
+  stop looking; rendering an unreadable count as a reassuring `0` would be
+  the same failure mode `VerificationSettings::unmatchedRecipientCount()`
+  avoids for the same reason. A genuine `0` (query succeeded, found
+  nothing) is the only case `count` is actually zero.
+
+**Used By**:
+
+- `app/admin/includes/tab-verification.php` — Verification tab's "Cron job
+  failures" summary row
+
+**See Also**:
+
+- `CronJobRunsReader` — Per-job status/badge counterpart reading `er_cron_job_runs`
+- `AbstractCronJob` — Where every `LOG_CATEGORY_CRON_JOB_FAILURE` entry this
+  class reads ultimately originates
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`
+
+---
+
+### CronRequestGate
+
+**Location**: `/usersc/classes/Cron/CronRequestGate.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: The `cron_ip` allowlist check plus last-cron-request bookkeeping,
+extracted from `users/cron/cron.php` (#1974, #2086) so the ordering the
+original bug was about is unit-testable. `cron.php` remains the actual
+transport entry point — it still owns request bootstrapping and the per-job
+dispatch loop; this class owns exactly the two things #1974 found broken:
+deny-and-die on a `cron_ip` mismatch, and recording a successful request —
+strictly in that order, since a denied hit must never be recorded. Never
+throws: depends on `VerificationSettings::recordCronRequest()`'s documented
+never-throws contract, since `cron.php` calls this with no `try`/`catch`.
+
+**Used By**:
+
+- `users/cron/cron.php` — the sole call site, immediately before the
+  per-job dispatch loop
+
+**See Also**:
+
+- `VerificationSettings::recordCronRequest()` — the never-throws write this
+  class depends on
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_REQUEST`
+
+---
+
+### SendVerificationBatchJob
+
+**Location**: `/usersc/classes/Cron/SendVerificationBatchJob.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Automatic nightly send of one verification-email batch (#1885).
+Puts the manual "Send Batch Now" admin tool's send path (#1882-#1884) on
+UserSpice's cron transport so batches go out unattended. No send logic lives
+here — `execute()` selects candidates via
+`CarVerificationSendService::findEligible()` and hands their ids to
+`VerificationBatchSender::processBatch()`, the exact class the manual admin
+handler already calls, so the two paths can never drift apart.
+
+**Key Features**:
+
+- **Bounded work per invocation**: one page of at most
+  `VerificationSettings::batchSize()` cars (clamped to `[1, 25]`) per claimed
+  run, never a loop until the eligible set empties — both for cron's
+  in-process dispatch model and to enforce the deliberate slow send-volume
+  ramp
+- **Ships paused everywhere**: the seed migration sets
+  `er_cron_job_runs.enabled = 0` in every environment (test and production
+  alike), since no `APP_ENV`-style environment-detection convention exists
+  in this codebase — an admin must explicitly resume it via the dashboard
+  Pause/Resume control
+- **`unrecorded` folded into `failed`**: `processBatch()` returns four
+  outcome buckets, but only three columns exist to persist them in — a car
+  whose email sent but whose bookkeeping write failed is deliberately
+  counted as `failed` for the persisted/display counts (conservative: a
+  false failure prompts investigation), while the routine completion log
+  line still reports all four buckets distinctly
+- **Manual "Send Batch Now" now respects Pause**: `app/admin/index.php`'s
+  `verification_send_batch` handler checks
+  `CronJobRunsReader::state(SendVerificationBatchJob::JOB_NAME)` before
+  doing anything else, failing closed (blocking the send) on any state other
+  than `ENABLED` — this is a different, narrower gate than
+  `VerificationSettings::isEnabled()`'s site-wide kill switch, which that
+  handler deliberately never checks (see that file's own docblock)
+
+**Configuration Constants**:
+
+- `JOB_NAME = 'send_verification_batch'` — `er_cron_job_runs.job_name` value
+- `GUARD_INTERVAL_HOURS = 20` — Claim interval (same 20-not-24 rationale as `BrevoEventReconciliationJob`)
+
+**Constructor**:
+
+```php
+public function __construct(
+    DatabaseInterface $db,
+    private readonly VerificationSettings $settings,
+    private readonly CarVerificationSendService $sendSvc,
+    private readonly VerificationBatchSender $sender,
+)
+```
+
+**Methods**:
+
+- `jobName(): string` — Returns `'send_verification_batch'`
+- `guardIntervalHours(): int` — Returns `20`
+- `execute(): void` — Read the configured batch size, ask
+  `CarVerificationSendService::findEligible()` for that many candidates,
+  hand ids to `VerificationBatchSender::processBatch()`, persist outcome
+  counts, log a routine completion line under `LOG_CATEGORY_CAR_VERIFICATION`
+
+**Private Methods**:
+
+- `recordRunCounts(int $sent, int $skipped, int $failed): void` — Persist
+  this run's outcome counts to `er_cron_job_runs`. Never rethrows — a
+  failure to write three display integers must not make
+  `AbstractCronJob::run()`'s catch-all report a successful batch as failed.
+  Uses a confirmation `SELECT` (not `count() === 0`) to detect a genuinely
+  missing row, since a plain `UPDATE` writing the same values two runs
+  running legitimately reports zero rows changed under MySQL's
+  changed-vs-matched `rowCount()` semantics
+
+**Used By**:
+
+- Cron dispatch (`users/cron/cron.php`) via `AbstractCronJob::run()`, through
+  the thin shim `users/cron/send_verification_batch.php`
+- `app/admin/index.php` — `verification_toggle_cron` (Pause/Resume) and
+  `verification_send_batch` (pause-check) commands reference
+  `SendVerificationBatchJob::JOB_NAME`
+
+**See Also**:
+
+- `AbstractCronJob` — Template-method base (crash isolation, enabled check, guard claim)
+- `BrevoEventReconciliationJob` — Closest sibling; same base class and DI style
+- `CarVerificationSendService`, `VerificationBatchSender` — Shared send path (#1884)
+- `CronJobRunsReader::lastOutcomeCounts()` — Dashboard readout of the counts this job writes
+- `CronJobGuard` — Atomic claim semantics
+- [DATABASE.md](DATABASE.md) — `er_cron_job_runs` schema (`last_sent_count`/`last_skipped_count`/`last_failed_count`)
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_CAR_VERIFICATION`
 
 ---
 
@@ -1310,7 +1810,7 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 
 **Configuration Constants**:
 
-- `JOB_NAME = 'reconciliation'` — `er_cron_job_runs.job_name` value
+- `JOB_NAME = 'brevo_reconciliation'` — `er_cron_job_runs.job_name` value (renamed from `'reconciliation'` by #2129)
 - `GUARD_INTERVAL_HOURS = 20` — Claim interval (20h leaves slack to re-anchor within 48h window)
 - `LOOKBACK_HOURS = 48` — Fetch window (doubled guard interval for overlap)
 - `PAGE_SIZE = 1000` — Events per run (Brevo caps at 2500; 1000 is deliberate step below)
@@ -1319,7 +1819,7 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 
 **Methods**:
 
-- `jobName(): string` — Returns `'reconciliation'`
+- `jobName(): string` — Returns `'brevo_reconciliation'`
 - `guardIntervalHours(): int` — Returns `20`
 - `execute(): void` — Backfill one page, log a one-line summary (with a
   distinct suffix if the poll failed), then prune expired rows

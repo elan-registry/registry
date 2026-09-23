@@ -18,20 +18,29 @@ use ElanRegistry\LogCategories;
  * class is the three-layer mitigation every new cron job must build on:
  *
  *   1. Crash isolation: `execute()` runs inside a `try/catch(\Throwable)` that
- *      logs and never rethrows, so one job's bug can't cascade to the next job
- *      in cron.php's loop.
+ *      records the failure on `er_cron_job_runs.last_failure_at`, logs, and
+ *      never rethrows, so one job's bug can't cascade to the next job in
+ *      cron.php's loop. The failure stamp is not optional bookkeeping: the
+ *      guard claim stamps `last_run_at` *before* `execute()` runs (it must, to
+ *      block a concurrent run), so without a separate failure timestamp a job
+ *      that throws on every hit is indistinguishable from a healthy one on the
+ *      admin dashboard — see {@see CronJobGuard::recordFailure()}.
  *   2. A `set_time_limit()` backstop sized from `CRON_TRANSPORT_INTERVAL_MINUTES`,
  *      applied only once a run has actually been claimed (see `run()`), so a
  *      hung job doesn't run forever.
  *   3. A job-owned `enabled` flag (`er_cron_job_runs.enabled`, independent of
  *      UserSpice's own `crons.active`) checked before any work runs.
  *   4. The site-wide verification feature switch ({@see VerificationSettings::isEnabled()})
- *      is also checked before any work runs — both `run()` and `runNow()`. Every
- *      Brevo-driven write to car records (webhook, both cron jobs, both manual
- *      admin scripts) must honor this switch so it actually gates "no real
- *      email sends" as documented, not just the webhook receiver. Fails closed
- *      like the `enabled` flag above: a database hiccup reading the switch
- *      hides the feature rather than running anyway.
+ *      is also checked before any work runs — both `run()` and `runNow()`. This
+ *      check is unconditional for every AbstractCronJob subclass, by design:
+ *      there is no per-subclass opt-out today, so a future non-Brevo job
+ *      extending this class would be silently gated too, and its author should
+ *      expect that rather than be surprised by it. The switch exists because
+ *      every Brevo-driven write to car records (webhook, both cron jobs, both
+ *      manual admin scripts) must honor it so it actually gates "no real email
+ *      sends" as documented, not just the webhook receiver. Fails closed like
+ *      the `enabled` flag above: a database hiccup reading the switch hides the
+ *      feature rather than running anyway.
  *
  * The enabled check is a dedicated read rather than an inference from
  * `CronJobGuard::claim()`'s boolean: `claim()` deliberately conflates
@@ -53,6 +62,23 @@ use ElanRegistry\LogCategories;
  * Subclasses implement `jobName()`, `guardIntervalHours()` and `execute()`
  * only. `run()` is `final` — subclasses must not override the
  * crash-isolation/guard sequencing.
+ *
+ * CONVENTION: pair `runNow()` with a subclass-defined `runNowWithSummary()`.
+ * `runNow()` is `final` and returns void — by design, since AbstractCronJob
+ * cannot know a summary type common to every job (compare
+ * {@see BrevoEventReconciliationJob::runNowWithSummary()} and
+ * {@see BrevoSuppressionSyncJob::runNowWithSummary()}, which return different
+ * summary types). A concrete job's manual "run now" admin entry point still
+ * needs to report what happened, though, so both existing jobs independently
+ * add their own `runNowWithSummary()` method that: bypasses the enabled check
+ * and guard claim the same way `runNow()` does (repeating, not inheriting,
+ * that check — `runNow()`'s own check is not reachable from a sibling method);
+ * and rethrows on unexpected failure rather than swallowing it, since a caught
+ * exception there would otherwise have to be reported as a fabricated all-zero
+ * summary, indistinguishable from a genuinely empty successful run. A third
+ * job should follow the same shape rather than rediscovering this reasoning —
+ * see either existing job's own `runNowWithSummary()` docblock for the fully
+ * worked rationale.
  *
  * @package ElanRegistry\Cron
  * @since v2.30.2
@@ -127,6 +153,17 @@ abstract class AbstractCronJob
 
             $this->execute();
         } catch (\Throwable $e) {
+            // Record the failure on the row BEFORE logging it. The claim above
+            // already stamped last_run_at, so without this the dashboard reads
+            // a crashed run as a fresh successful one — a job that throws every
+            // night keeps its green "Ran" badge and its last_*_count columns
+            // from the last run that actually finished, indefinitely. The guard
+            // owns this column and never throws from here (see recordFailure()),
+            // so the log line below is written either way; ordering it first
+            // only means the dashboard and the log can never disagree about
+            // whether a failure happened in the window between the two.
+            (new CronJobGuard($this->db))->recordFailure($jobName);
+
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$jobName}' failed: " . get_class($e) . ': ' . $e->getMessage());
         }
     }
@@ -144,6 +181,17 @@ abstract class AbstractCronJob
      * admin-triggered page request, which already carries the web SAPI's own
      * `max_execution_time`. Re-arming it here would silently extend that page
      * request's budget past what the operator's own request was granted.
+     *
+     * ALSO DOES NOT STAMP `last_failure_at`, unlike `run()`. That column
+     * records the outcome of a *claimed* run, and this path deliberately
+     * bypasses the claim — it never stamps `last_run_at` either, so there is
+     * no run on the row for a failure to contradict. Writing one here would
+     * make a manual run that failed override the dashboard's account of the
+     * last automatic run, which is the thing the badge is reporting on.
+     * A failed manual run is therefore visible in the log (below, and via the
+     * Verification tab's failure summary — {@see CronJobFailureLogReader}) but
+     * not on the per-job badge; the operator who clicked the button is present
+     * to see the page's own error reporting.
      */
     final public function runNow(): void
     {

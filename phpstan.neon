@@ -66,6 +66,13 @@ parameters:
         - usersc/views
         - usersc/widgets/settings
         - usersc/widgets/tools
+        # users/ is upstream and excluded wholesale below, but users/cron/ is a
+        # documented project-owned carve-out (CLAUDE.md, Template Customization
+        # Rules) — cron.php carries project logging/hook calls and every job
+        # file must live here. Analysing it guards the #1974 hazard: passing a
+        # raw \DB where a job constructor wants DatabaseInterface. The explicit
+        # excludePaths entry for users/ is overridden per-file below.
+        - users/cron
 
     # Symbol sources that are NOT analysed themselves but must be resolvable.
     # The Brevo SDK and its Guzzle dependency ship vendored inside the
@@ -91,7 +98,36 @@ parameters:
             - */vendor/*
         analyseAndScan:
             - */node_modules/*
-            - users/
+            # Upstream framework, minus the users/cron/ carve-out listed in
+            # paths above. An excludePaths entry wins over a paths entry, so a
+            # blanket `users/` silently swallowed `users/cron` — PHPStan
+            # reported "No files found to analyse" for cron.php while the full
+            # run still said "No errors", i.e. the carve-out was vacuous.
+            # Matched by fnmatch with a negated first segment rather than by
+            # enumerating siblings, so a future upstream directory under
+            # users/ stays excluded by default instead of leaking into
+            # analysis the moment UserSpice adds one. The first four patterns
+            # diverge on each character of the literal "cron"; the fifth
+            # excludes anything that starts with "cron" but continues past
+            # the directory separator (e.g. a hypothetical users/cronfoo/ or
+            # users/cronjobs/) while still admitting users/cron/ itself,
+            # since its 5th character is exactly the `/` the negated class
+            # excludes from matching. Verified empirically: a throwaway
+            # users/cronfoo/ fixture with a deliberate error was excluded
+            # (no report) once this pattern was added; before it, PHPStan
+            # analysed and reported on it despite the four-pattern set above.
+            - 'users/[!c]*'
+            - 'users/c[!r]*'
+            - 'users/cr[!o]*'
+            - 'users/cro[!n]*'
+            - 'users/cron[!/]*'
+            # Upstream UserSpice boilerplate that happens to sit inside the
+            # project-owned users/cron/ carve-out. Its `die("This is just a
+            # sample")` makes the rest of the file unreachable by design, so
+            # its errors can never be fixed — same rationale as the
+            # _TEMPLATE_Fix-Script.php exclusion above. Only the real job
+            # files and cron.php are project-owned here.
+            - users/cron/sample.php
             # Excluded because its placeholder code generates errors that can never be fixed;
             # keeping it out of scope prevents those errors from entering the baseline.
             - app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
@@ -153,7 +189,7 @@ parameters:
 
         # UserSpice framework functions loaded at runtime via init.php
         -
-            message: '#Function (securePage|hasPerm|logger|currentUserId|checkMenu|lang|redirect|passwordStrength|isAdmin|email|usError|usSuccess|deleteUsers|logError|getSettings|checkRateLimit|recordRateLimit|fetchAllUsers|fetchUserDetails|checkPermission|sessionValMessages|currentPage|email_body|getMyHooks|getRateLimitErrorMessage|handleAuthFailure|handleAuthSuccess|hashVericode|includeHook|pluginActive|userSpicePasswordStrength|passwordsAllowed|safeJsonEncodeForJs|safeReturn|tokenHere|fetchUserPermissions|echousername|err|endCloak|isCloaked|passwordResetKillSessions) not found#'
+            message: '#Function (securePage|safelyCaptureDest|hasPerm|logger|currentUserId|checkMenu|lang|redirect|passwordStrength|isAdmin|email|usError|usSuccess|deleteUsers|logError|getSettings|checkRateLimit|recordRateLimit|fetchAllUsers|fetchUserDetails|checkPermission|sessionValMessages|currentPage|email_body|getMyHooks|getRateLimitErrorMessage|handleAuthFailure|handleAuthSuccess|hashVericode|includeHook|pluginActive|userSpicePasswordStrength|passwordsAllowed|safeJsonEncodeForJs|safeReturn|tokenHere|fetchUserPermissions|echousername|err|endCloak|isCloaked|passwordResetKillSessions|ipCheck|sanitizePath) not found#'
             reportUnmatched: false
 
         # UserSpice legacy code patterns

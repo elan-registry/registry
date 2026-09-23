@@ -1,0 +1,18 @@
+# Deny every job file in this directory except cron.php, the dispatcher.
+#
+# cron.php gates on settings.cron_ip via CronRequestGate before running any
+# job -- but that check lives only in cron.php, not in the individual job
+# files it dispatches (send_verification_batch.php, brevo_event_reconciliation.php,
+# brevo_suppression_sync.php, sample.php). A direct GET of one of those files
+# bypasses cron.php entirely and reaches the job's own code with no IP check
+# at all: the job files' own docblocks/comments assert cron.php's allowlist
+# protects them, which is only true for requests that actually go through
+# cron.php.
+#
+# Found during v2.30.3's /finish-milestone Step 9.8 review: an unauthenticated
+# request to this file directly could trigger a real verification-email batch
+# send, bounded only by CronJobGuard's 20-hour claim interval, at an
+# attacker-chosen moment.
+<FilesMatch "^(?!cron\.php$).*\.php$">
+    Require all denied
+</FilesMatch>

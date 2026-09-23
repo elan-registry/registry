@@ -254,6 +254,15 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     private readonly \DateTimeImmutable $now;
 
     /**
+     * Set once {@see self::syncPage()} has seen the unmatched-recipient counter
+     * increment fail, to stop re-attempting it for the remainder of this run —
+     * see that method's own comment for why. Scoped to the job instance rather
+     * than the page so a {@see self::runFullBackfill()} walk does not restart
+     * the retrying on every page.
+     */
+    private bool $unmatchedCounterFailed = false;
+
+    /**
      * Collaborators are injected rather than constructed internally, matching
      * {@see BrevoEventReconciliationJob}'s convention — it keeps this class
      * unit-testable without a real database or the vendored Brevo SDK present.
@@ -314,12 +323,24 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         // outcome sits alongside the events it acted on.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo suppression sync: incremental run complete —'
-            . ' %d matched, %d unmatched, %d already flagged, %d skipped, %d page(s) fetched.',
+            . ' %d matched, %d unmatched, %d already flagged, %d skipped, %d page(s) fetched%s.',
             $summary->matchedCount,
             $summary->unmatchedCount,
             $summary->alreadyFlaggedCount,
             $summary->skippedCount,
-            $summary->pagesFetched
+            $summary->pagesFetched,
+            // Without this clause the line above reads as a clean run while the
+            // dashboard's unmatched-recipient counter silently under-reports.
+            // Only the first failure logs its own cause (see syncPage()), so
+            // this is the only place the run's true scale is recorded.
+            $summary->counterFailureCount > 0
+                ? sprintf(
+                    ' — %d of the %d unmatched contact(s) were NOT recorded in the dashboard'
+                    . ' unmatched-recipient counter; see VerificationConfigWarning log entries',
+                    $summary->counterFailureCount,
+                    $summary->unmatchedCount
+                )
+                : ''
         ));
     }
 
@@ -375,6 +396,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         $unmatched = 0;
         $alreadyFlagged = 0;
         $skipped = 0;
+        $counterFailures = 0;
         $pages = 0;
         $exhausted = false;
         $pollFailed = false;
@@ -408,6 +430,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $unmatched += $pageSummary->unmatchedCount;
             $alreadyFlagged += $pageSummary->alreadyFlaggedCount;
             $skipped += $pageSummary->skippedCount;
+            $counterFailures += $pageSummary->counterFailureCount;
             $pages += $pageSummary->pagesFetched;
 
             foreach ($pageSummary->reasonCodeCounts as $code => $count) {
@@ -488,7 +511,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $capped,
             $matched + $unmatched + $alreadyFlagged + $skipped,
             $skipped,
-            $pollFailed
+            $pollFailed,
+            $counterFailures
         );
     }
 
@@ -582,6 +606,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         $unmatched = 0;
         $alreadyFlagged = 0;
         $skipped = 0;
+        $counterFailures = 0;
         /** @var array<string, int> $reasonCodeCounts */
         $reasonCodeCounts = [];
 
@@ -729,6 +754,28 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                 // since been removed and addresses that were never registry
                 // cars at all.
                 $unmatched++;
+
+                // incrementUnmatchedRecipientCounter() never throws and logs
+                // its own failure — but the return value still has to be
+                // honored, or execute()'s summary line would silently imply
+                // every unmatched contact reached the dashboard counter even
+                // on the one path where the method just logged that it could
+                // not (the same reasoning app/api/webhooks/brevo.php's
+                // NO_CAR_MATCH branch spells out).
+                //
+                // After the first failure the call itself is not re-attempted
+                // for the rest of this run: the failure is a settings-row-level
+                // fault, not a per-contact one, so retrying would write one
+                // identical warning row per unmatched contact — thousands
+                // across a full backfill. The tally keeps counting regardless,
+                // so the summary reports the real number missing.
+                if ($this->unmatchedCounterFailed) {
+                    $counterFailures++;
+                } elseif (!(new VerificationSettings($this->db))->incrementUnmatchedRecipientCounter()) {
+                    $this->unmatchedCounterFailed = true;
+                    $counterFailures++;
+                }
+
                 continue;
             }
 
@@ -800,7 +847,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             1,
             false,
             $contactsExamined,
-            $skipped
+            $skipped,
+            false,
+            $counterFailures
         );
     }
 

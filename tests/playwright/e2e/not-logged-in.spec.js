@@ -286,6 +286,34 @@ test('docs/guides/car-transfer-faq.php still renders the generic site title/desc
   expect(twitterTitle).toBe('Lotus Elan Registry');
 });
 
+// app/verify/verify_car.php (#1881) is a public, unauthenticated page — but
+// unlike every other entry in the pages[] table above, it deliberately
+// responds with a non-2xx status (404) for a request that lacks a valid
+// vericode, precisely to give no enumeration signal to a prober (see its own
+// docblock). That makes it structurally incompatible with the shared loop's
+// "status < 400" assertion, so it gets its own smoke test here instead. A
+// real vericode fixture isn't available to this suite (local/prod Playwright
+// runs have no seeded verification code), so the smoke assertion is
+// necessarily narrower: confirm the page is reachable and renders its
+// generic invalid-link message for an unauthenticated visitor with no
+// vericode, rather than crashing (PHP fatal) or hanging.
+test('app/verify/verify_car.php reaches the invalid-link page for a missing vericode without a fatal error', async ({ page }, testInfo) => {
+  if (testInfo.project.name !== 'not-logged-in') {
+    testInfo.skip(true, 'Only runs under the not-logged-in project');
+  }
+
+  const response = await page.goto('app/verify/verify_car.php');
+
+  // 404 is the deliberate, documented response for a missing/malformed
+  // vericode — asserting it directly (not just "< 500") pins the page's own
+  // no-enumeration-signal contract rather than merely proving it didn't crash.
+  expect(response.status()).toBe(404);
+
+  await page.waitForLoadState('domcontentloaded');
+
+  await expect(page.locator('h2')).toContainText('This link has expired or is no longer valid');
+});
+
 test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
   const pages = [
     { path: '', name: 'Home' },

@@ -32,11 +32,16 @@ use ElanRegistry\Car\CarValidator;
 class CarAdministrationService
 {
     /**
-     * Columns on `cars` that mirror the current owner's identity, and must
-     * therefore be overwritten wholesale on an ownership change — including
-     * being cleared when the new owner has no value. See
-     * withBlankedFieldsRestored(). `user_id` and `join_date` are excluded:
-     * they are never blank on a valid target.
+     * Columns on `cars` that must be overwritten wholesale on an ownership
+     * change — including being cleared to null/'' when the target value is
+     * blank — but have no dedicated CarValidator case, so CarValidator's
+     * default branch would otherwise silently drop that null/'' clear before
+     * it reaches updateCar(). See withBlankedFieldsRestored(). Most entries
+     * mirror the new owner's identity (email, fname, etc.); email_bounced_address
+     * and vericode are the exception — they are always cleared regardless of
+     * the new owner's values, for reasons documented at their write sites in
+     * transfer(). `user_id` and `join_date` are excluded from this list
+     * entirely: they are never blank on a valid target.
      *
      * @var list<string>
      */
@@ -48,6 +53,11 @@ class CarAdministrationService
         // Restoring it here, the same way the other owner-identity fields are
         // restored, is what makes the clear actually reach updateCar().
         'email_bounced_address',
+        // vericode has the same exposure: no dedicated CarValidator case, so
+        // its clear-on-transfer null value would otherwise be silently
+        // dropped by the validator's default branch. See $ownerFields'
+        // build above for why it must be cleared on every transfer.
+        'vericode',
     ];
 
     private const OPERATION_MERGE = 'MERGE';
@@ -246,6 +256,30 @@ class CarAdministrationService
                 // signal, so it does not get the same-as-solddate preservation
                 // treatment the fields below it do.
                 'email_bounced_address' => $emailBouncedAddress,
+                // vericode is a bearer token: whoever holds the plaintext link
+                // can Verify or mark Sold with no login (see the
+                // car-owner-verification FRD). A live link surviving a
+                // transfer would let the PREVIOUS owner keep acting on a car
+                // they no longer own — a real access-control concern, not
+                // merely stale data — so it is always cleared, on every
+                // transfer including a system-account reassignment. This
+                // does not follow solddate/email_bounced's preserve-on-
+                // system-account pattern: those two are informational
+                // signals about the car/address, not an active credential.
+                // Not mirrored into cars_hist below — cars_hist has no
+                // vericode column (see #1928), matching last_verified,
+                // which also isn't tracked there. (vericode_sent_at IS a
+                // cars_hist column, unlike these two — it's simply out of
+                // scope for this write, not evidence of the same pattern.)
+                //
+                // vericode_sent_at itself is deliberately left untouched by
+                // this transfer: it records when the LAST send happened, an
+                // audit fact about a past event, not a live credential the
+                // new owner could use — unlike vericode, leaving it stale
+                // grants no access. A future owner querying eligibility
+                // sees it via stalenessSql()'s freshness check either way,
+                // since the underlying vericode is already gone.
+                'vericode' => null,
             ];
             // Ordinary transfer: clear it. For the system account the key is omitted
             // entirely — DB::update() writes only the keys given, so the stored value

@@ -287,14 +287,18 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $this->assertTrue($result);
 
         // Retrieve from database
-        // Note: Database column is 'vericode', not 'verification_code'
+        // Note: Database column is 'vericode', not 'verification_code'.
+        // The column stores hashVericode($verificationCode), not the plaintext
+        // (issue #1928) — the plaintext round-trip is exercised by
+        // CarVerificationTest::testFindByVerificationCodeSuccess().
         $query = $this->db->query(
             'SELECT vericode FROM cars WHERE id = ?',
             [$this->testCarId]
         );
         $result = $query->first();
 
-        $this->assertEquals($verificationCode, $result->vericode);
+        $this->assertEquals(hashVericode($verificationCode), $result->vericode);
+        $this->assertNotEquals($verificationCode, $result->vericode);
     }
 
     /**

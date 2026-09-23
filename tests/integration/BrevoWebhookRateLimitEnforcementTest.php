@@ -36,7 +36,37 @@ use PHPUnit\Framework\Attributes\Group;
 final class BrevoWebhookRateLimitEnforcementTest extends IntegrationTestCase
 {
     private const ACTION = 'brevo_webhook';
-    private const TOTAL_MAX = 2000;
+    private const TOTAL_MAX = 3000;
+
+    // brevo_webhook_auth_failure (#2087): unlike brevo_webhook above, its
+    // ip_max — not total_max — is the operative limit. brevo.php's
+    // auth-failure branch calls recordRateLimit(..., false, ...) on every
+    // rejected request, so ip_max (which counts only failed attempts) trips
+    // well before total_max could. A prior fix attempt for this exact key
+    // was reverted after checkRateLimit() mysteriously never returned false
+    // despite matching DB rows — these tests exercise RateLimit::check()
+    // directly against seeded rows to catch that class of limiter-wiring bug
+    // independent of the HTTP layer.
+    //
+    // This constant is intentionally the RAW configured value (10), not the
+    // dev-environment-multiplied effective value used by
+    // BrevoWebhookEndpointTest.php's HTTP-subprocess tests. That multiplier
+    // (usersc/includes/rate_limits_dev_override.php, applied when
+    // US_ENVIRONMENT=development) is loaded only via
+    // usersc/includes/loader.php, which real requests reach through the
+    // normal init.php chain. This file calls checkRateLimit()/RateLimit
+    // directly, in-process, inside PHPUnit's integration bootstrap — that
+    // bootstrap never reaches loader.php (see tests/bootstrap-integration.php's
+    // "did not reach usersc/includes/loader.php" fallback and
+    // RateLimit::__construct(), which lazily requires
+    // users/includes/rate_limits.php itself when $rateLimits isn't already
+    // set — never the dev-override file). Confirmed empirically: a fresh
+    // RateLimit() constructed from this exact bootstrap context sees
+    // ip_max === 10, not 1000. Applying the x100 multiplier here would seed
+    // 1000 rows against an actual in-process threshold of 10 and make these
+    // assertions wrong, not right.
+    private const AUTH_FAILURE_ACTION = 'brevo_webhook_auth_failure';
+    private const AUTH_FAILURE_IP_MAX = 10;
 
     /**
      * Insert $count already-recorded attempt rows directly, bypassing
@@ -66,6 +96,73 @@ final class BrevoWebhookRateLimitEnforcementTest extends IntegrationTestCase
                 throw new \RuntimeException('seedTotalAttempts insert failed: ' . $result->errorString());
             }
         }
+    }
+
+    /**
+     * Insert $count already-recorded FAILED attempt rows directly, bypassing
+     * recordRateLimit() for speed. Same row shape as seedTotalAttempts()
+     * above, but success=0 — this is what RateLimit::check()'s ip_max branch
+     * counts (getAttemptCount($identifier, $action, $windowSeconds, false)),
+     * as opposed to total_max, which counts all rows regardless of success.
+     */
+    private function seedFailedAttempts(string $action, string $ip, int $count): void
+    {
+        $identifierKey = hash('sha256', 'ip::' . $ip);
+        foreach (array_chunk(range(1, $count), 1000) as $chunk) {
+            $placeholders = implode(', ', array_fill(0, count($chunk), '(?, ?, 0, NOW())'));
+            $params = [];
+            foreach ($chunk as $_) {
+                $params[] = $identifierKey;
+                $params[] = $action;
+            }
+            $result = $this->db->query(
+                "INSERT INTO us_rate_limits (identifier_key, action, success, attempt_time) VALUES {$placeholders}",
+                $params
+            );
+            if ($result->error()) {
+                throw new \RuntimeException('seedFailedAttempts insert failed: ' . $result->errorString());
+            }
+        }
+    }
+
+    public function testAuthFailureIpMaxBlocksLoggingAfterConfiguredThreshold(): void
+    {
+        $this->requireDatabase();
+
+        $ip = '203.0.113.' . random_int(1, 254); // TEST-NET-3 (RFC 5737) — never a real client IP
+
+        $this->assertTrue(
+            checkRateLimit(self::AUTH_FAILURE_ACTION, null, null, ['ip' => $ip]),
+            'A fresh IP must be allowed before any attempts are recorded for ' . self::AUTH_FAILURE_ACTION
+        );
+
+        $this->seedFailedAttempts(self::AUTH_FAILURE_ACTION, $ip, self::AUTH_FAILURE_IP_MAX);
+
+        $this->assertFalse(
+            checkRateLimit(self::AUTH_FAILURE_ACTION, null, null, ['ip' => $ip]),
+            'After ' . self::AUTH_FAILURE_IP_MAX . ' recorded failed attempts (the configured ip_max), '
+                . self::AUTH_FAILURE_ACTION . ' must reject the next request. A missing or mistyped '
+                . 'rate-limit key would make this pass unconditionally (RateLimit::check() fails OPEN '
+                . 'when no limit is configured), silently leaving brevo.php\'s auth-failure logging with '
+                . 'no protection at all — the exact regression a prior fix attempt for this key '
+                . 'introduced without this test layer catching it.'
+        );
+    }
+
+    public function testAuthFailureIpMaxIsKeyedPerIpNotGlobal(): void
+    {
+        $this->requireDatabase();
+
+        $exhaustedIp = '203.0.113.' . random_int(1, 254);
+        $this->seedFailedAttempts(self::AUTH_FAILURE_ACTION, $exhaustedIp, self::AUTH_FAILURE_IP_MAX);
+        $this->assertFalse(checkRateLimit(self::AUTH_FAILURE_ACTION, null, null, ['ip' => $exhaustedIp]));
+
+        $freshIp = '198.51.100.' . random_int(1, 254); // a different TEST-NET-2 block
+        $this->assertTrue(
+            checkRateLimit(self::AUTH_FAILURE_ACTION, null, null, ['ip' => $freshIp]),
+            'A different IP must not be affected by another IP exhausting ' . self::AUTH_FAILURE_ACTION
+                . "'s ip_max limit — ip_max is scoped per identifier, not site-wide."
+        );
     }
 
     public function testTotalMaxBlocksAfterConfiguredThreshold(): void

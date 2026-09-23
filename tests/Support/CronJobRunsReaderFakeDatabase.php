@@ -24,6 +24,16 @@ namespace Tests\Support;
  * safest-default convention `AbstractCronJobFakeDatabase`'s `$rowExists`
  * and `FakeDatabase::$firstRow` both use.
  *
+ * `lastOutcomeCounts()` issues a second, distinct query shape (`SELECT
+ * last_sent_count, last_skipped_count, last_failed_count FROM
+ * er_cron_job_runs WHERE job_name = ?`), configured independently via
+ * {@see self::withOutcomeCounts()} and {@see self::withOutcomeCountsError()}
+ * / {@see self::withOutcomeCountsThrowing()} — kept separate from
+ * `withRow()`/`withError()` above because `lastOutcomeCounts()` has its own
+ * never-throws contract (a query that throws mid-`query()` call, distinct
+ * from one that merely reports `error()`) that `status()`/`fetchRow()` do
+ * not need to model.
+ *
  * Deliberately a *named* class rather than `new class extends FakeDatabase { ... }`:
  * PHPStan reports `impureMethod.pure` when an anonymous class overrides one of
  * DatabaseInterface's `@phpstan-impure` methods (`query()`, `error()`,
@@ -36,24 +46,61 @@ namespace Tests\Support;
  */
 class CronJobRunsReaderFakeDatabase extends FakeDatabase
 {
-    /** @var array<string, array{enabled: int, last_run_at: string|null}> */
+    /** @var array<string, array{enabled: int, last_run_at: string|null, last_failure_at: string|null}> */
     private array $rows = [];
 
     /** @var array<string, bool> */
     private array $errors = [];
 
+    /** @var array<string, array{last_sent_count: int|null, last_skipped_count: int|null, last_failed_count: int|null}> */
+    private array $outcomeCountRows = [];
+
+    /** @var array<string, bool> */
+    private array $outcomeCountErrors = [];
+
+    /** @var array<string, bool> */
+    private array $outcomeCountThrows = [];
+
+    /** @var array<string, bool> */
+    private array $lastFailureAtColumnMissing = [];
+
+    /** @var array<string, bool> */
+    private array $lastFailureAtColumnThrows = [];
+
     private ?string $lastJobName = null;
+
+    /** Whether the most recently issued query() call was the outcome-counts SELECT. */
+    private bool $lastQueryWasOutcomeCounts = false;
+
+    /**
+     * Whether the most recently issued query() call selected `last_failure_at`.
+     *
+     * fetchRow() issues one of two status statements — the three-column one,
+     * and a two-column fallback after that throws — so first() has to know
+     * which of the two it is answering in order to omit the key the fallback
+     * could not have selected.
+     */
+    private bool $lastQuerySelectedLastFailureAt = false;
 
     /**
      * Configure the row returned for a given job_name — an ENABLED or
      * DISABLED case depending on $enabled, with $lastRunAt as the raw
-     * `last_run_at` column value (null for "has never run").
+     * `last_run_at` column value (null for "has never run") and
+     * $lastFailureAt as the raw `last_failure_at` value (null for "has never
+     * failed"). The two are separate parameters because `badgeFor()` decides
+     * which of them is current by comparing them, so a test has to be able to
+     * set either one without the other and to order them both ways.
      */
-    public function withRow(string $jobName, bool $enabled, ?string $lastRunAt = null): self
-    {
+    public function withRow(
+        string $jobName,
+        bool $enabled,
+        ?string $lastRunAt = null,
+        ?string $lastFailureAt = null
+    ): self {
         $this->rows[$jobName] = [
             'enabled' => $enabled ? 1 : 0,
             'last_run_at' => $lastRunAt,
+            'last_failure_at' => $lastFailureAt,
         ];
         unset($this->errors[$jobName]);
 
@@ -74,28 +121,203 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
     }
 
     /**
+     * Configure lastOutcomeCounts()'s row for a given job_name. Pass null for
+     * any of the three counts to model a row where that column is still NULL
+     * — in particular, $sentCount === null models "this job has a row but has
+     * never recorded outcome counts", the load-bearing distinction the class
+     * docblock calls out. All-zero ($sentCount = 0, etc.) models a run that
+     * genuinely sent/skipped/failed nothing, which must read back distinctly
+     * from the null case.
+     *
+     * Either way this is a successful read, so `lastOutcomeCounts()` reports
+     * `unreadable => false` — the two fault configurators below are what set
+     * it true.
+     */
+    public function withOutcomeCounts(
+        string $jobName,
+        ?int $sentCount,
+        ?int $skippedCount = null,
+        ?int $failedCount = null
+    ): self {
+        $this->outcomeCountRows[$jobName] = [
+            'last_sent_count' => $sentCount,
+            'last_skipped_count' => $skippedCount,
+            'last_failed_count' => $failedCount,
+        ];
+        unset($this->outcomeCountErrors[$jobName], $this->outcomeCountThrows[$jobName]);
+
+        return $this;
+    }
+
+    /**
+     * Configure the outcome-counts query for a given job_name to report
+     * failure via error() (not throw) — the ordinary DatabaseInterface fault
+     * path.
+     */
+    public function withOutcomeCountsError(string $jobName): self
+    {
+        $this->outcomeCountErrors[$jobName] = true;
+        unset($this->outcomeCountRows[$jobName]);
+
+        return $this;
+    }
+
+    /**
+     * Configure the outcome-counts query for a given job_name to throw a
+     * \Throwable directly out of query() — modeling the real \DB::query()
+     * prepare()-time PDOException for a missing column (the half-applied-
+     * migration case lastOutcomeCounts()'s try/catch exists for).
+     */
+    public function withOutcomeCountsThrowing(string $jobName): self
+    {
+        $this->outcomeCountThrows[$jobName] = true;
+        unset($this->outcomeCountRows[$jobName]);
+
+        return $this;
+    }
+
+    /**
+     * Configure the status SELECT to behave as it would on a schema where
+     * 20260922171500_add_cron_job_runs_last_failure_at has not applied:
+     * `fetchRow()`'s three-column statement fails with MySQL's 1054 "Unknown
+     * column", and its two-column retry then succeeds and returns the row
+     * configured by {@see self::withRow()} — minus its `last_failure_at` key,
+     * exactly as MySQL would return it.
+     *
+     * MODELS error(), NOT A THROW, and that distinction is the whole value of
+     * this double. This connection leaves ATTR_EMULATE_PREPARES at PDO's
+     * default of ON (users/classes/DB.php never sets it), so prepare() is
+     * client-side and cannot detect an unknown column; the fault surfaces at
+     * execute(), inside DB::query()'s own `catch (Exception)`, and is reported
+     * via error()/errorInfo() with nothing propagating. An earlier version of
+     * this double threw instead — which made the fallback it was "covering"
+     * dead code in production while the tests stayed green.
+     * {@see self::withLastFailureAtColumnMissingAsThrow()} covers the
+     * non-emulated variant.
+     *
+     * Separate from {@see self::withError()}: that models a query that fails
+     * outright (UNREADABLE), whereas this models a degraded-but-working read
+     * where the status row is still rendered, only without failure detection.
+     */
+    public function withLastFailureAtColumnMissing(string $jobName): self
+    {
+        $this->lastFailureAtColumnMissing[$jobName] = true;
+
+        return $this;
+    }
+
+    /**
+     * The same missing column, but surfacing as a throw out of query() — what
+     * happens if ATTR_EMULATE_PREPARES is ever turned off, making prepare()
+     * server-side and able to reject an unknown column before execute().
+     * `fetchRow()` must take the identical retry path for both.
+     */
+    public function withLastFailureAtColumnMissingAsThrow(string $jobName): self
+    {
+        $this->lastFailureAtColumnThrows[$jobName] = true;
+
+        return $this;
+    }
+
+    /**
      * @param string $sql SQL with `?` placeholders
      * @param array<mixed> $params Values bound to the placeholders, in order
      */
     public function query(string $sql, array $params = []): self
     {
         $this->lastJobName = isset($params[0]) ? (string) $params[0] : null;
+        $this->lastQueryWasOutcomeCounts = stripos($sql, 'last_sent_count') !== false;
+        $this->lastQuerySelectedLastFailureAt = stripos($sql, 'last_failure_at') !== false;
+
+        if ($this->lastQueryWasOutcomeCounts
+            && $this->lastJobName !== null
+            && ($this->outcomeCountThrows[$this->lastJobName] ?? false)
+        ) {
+            throw new \RuntimeException('simulated prepare()-time failure: missing column');
+        }
+
+        if ($this->lastQuerySelectedLastFailureAt
+            && $this->lastJobName !== null
+            && ($this->lastFailureAtColumnThrows[$this->lastJobName] ?? false)
+        ) {
+            throw new \RuntimeException(
+                'simulated prepare()-time failure: unknown column er_cron_job_runs.last_failure_at'
+            );
+        }
 
         return $this;
     }
 
     public function error(): bool
     {
-        return $this->lastJobName !== null && ($this->errors[$this->lastJobName] ?? false);
+        if ($this->lastJobName === null) {
+            return false;
+        }
+
+        if ($this->lastQueryWasOutcomeCounts) {
+            return $this->outcomeCountErrors[$this->lastJobName] ?? false;
+        }
+
+        // Only the statement that actually selected the absent column fails;
+        // fetchRow()'s two-column retry must then succeed, which is what makes
+        // the degraded-but-working path observable.
+        if ($this->lastQuerySelectedLastFailureAt
+            && ($this->lastFailureAtColumnMissing[$this->lastJobName] ?? false)
+        ) {
+            return true;
+        }
+
+        return $this->errors[$this->lastJobName] ?? false;
+    }
+
+    /**
+     * MySQL's error triple. Reports 1054 (ER_BAD_FIELD_ERROR) for the
+     * missing-column case so fetchRow() can tell an absent column from a
+     * genuine outage — it retries only on 1054, and must keep reporting
+     * UNREADABLE for anything else.
+     *
+     * @return array{0: string, 1: int|null, 2: string|null}
+     */
+    public function errorInfo(): array
+    {
+        if ($this->lastJobName !== null
+            && $this->lastQuerySelectedLastFailureAt
+            && ($this->lastFailureAtColumnMissing[$this->lastJobName] ?? false)
+        ) {
+            return ['42S22', 1054, "Unknown column 'last_failure_at' in 'field list'"];
+        }
+
+        return ['HY000', 2006, 'simulated database fault'];
     }
 
     public function first(bool $assoc = false): array|object
     {
-        if ($this->lastJobName === null || !isset($this->rows[$this->lastJobName])) {
+        if ($this->lastJobName === null) {
+            return $assoc ? [] : (object) [];
+        }
+
+        if ($this->lastQueryWasOutcomeCounts) {
+            if (!isset($this->outcomeCountRows[$this->lastJobName])) {
+                return $assoc ? [] : (object) [];
+            }
+
+            $row = $this->outcomeCountRows[$this->lastJobName];
+
+            return $assoc ? $row : (object) $row;
+        }
+
+        if (!isset($this->rows[$this->lastJobName])) {
             return $assoc ? [] : (object) [];
         }
 
         $row = $this->rows[$this->lastJobName];
+
+        // A statement that did not select the column cannot return it. This is
+        // what makes fetchRow()'s fallback path testable: status() must read
+        // the absent key as "never failed" rather than notice-ing on it.
+        if (!$this->lastQuerySelectedLastFailureAt) {
+            unset($row['last_failure_at']);
+        }
 
         return $assoc ? $row : (object) $row;
     }

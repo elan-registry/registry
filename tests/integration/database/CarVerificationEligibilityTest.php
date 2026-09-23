@@ -22,10 +22,22 @@ use PHPUnit\Framework\Attributes\Group;
  *   solddate IS NULL
  *   AND email_bounced = 0
  *   AND email IS NOT NULL AND email != ''
+ *   AND email_suppressed = 0 (#1883 — owner self-suppression via the
+ *       verification-email opt-out link, or an admin/Brevo-applied suppression;
+ *       distinct from email_bounced, see CarRepository::findVerificationEligible()'s
+ *       inline comment on the distinction)
+ *   AND user_id IS NOT NULL
+ *   AND user_id references a users row that still exists (#1991 — no FK
+ *       enforces this; see DATABASE.md's "No Enforced Foreign Key Constraints")
+ *   AND owner is not the 'noowner' system account (#1991)
  *   AND NOT (
  *     (last_verified IS NOT NULL AND last_verified >= NOW() - INTERVAL 1 YEAR)
  *     OR owner_last_updated >= NOW() - INTERVAL 1 YEAR
  *   )
+ *   AND (vericode_sent_at IS NULL OR vericode_sent_at < NOW() - INTERVAL 60 DAY)
+ *       (the FRD's 60-day re-send cooldown — a send writes only
+ *       vericode_sent_at, so without this the staleness expression above
+ *       re-admits the same batch on consecutive nights)
  *
  * owner_last_updated is NOT NULL by schema (issue #1953) — there is no
  * COALESCE(owner_last_updated, mtime) fallback. mtime is deliberately excluded
@@ -136,6 +148,138 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             $carId,
             $this->eligibleIds(),
             'A car with email_bounced = 1 must be excluded from verification eligibility'
+        );
+    }
+
+    /**
+     * #1883: a car whose owner opted out of verification emails (or was
+     * suppressed by an admin/Brevo webhook) via cars.email_suppressed = 1
+     * must be excluded, independent of email_bounced — the two are distinct
+     * concepts per CarRepository::findVerificationEligible()'s inline
+     * comment (deliverability vs. consent). Includes an otherwise-identical
+     * unsuppressed sibling car to prove the exclusion is caused specifically
+     * by email_suppressed, not by fixture drift or an unrelated condition —
+     * mirrors this file's existing control-car pattern.
+     */
+    #[Group('fast')]
+    public function testSuppressedEmailCarIsExcludedButUnsuppressedSiblingIsEligible(): void
+    {
+        $this->assertColumnExists('cars', 'email_suppressed');
+
+        $sharedFields = [
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $suppressedCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email'             => 'suppressed-owner@example.com',
+            'email_suppressed'  => 1,
+        ]));
+
+        $unsuppressedCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email'             => 'unsuppressed-owner@example.com',
+            'email_suppressed'  => 0,
+        ]));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $suppressedCarId,
+            $eligible,
+            'A car with email_suppressed = 1 must be excluded from verification eligibility'
+        );
+        $this->assertContains(
+            $unsuppressedCarId,
+            $eligible,
+            'Control: an otherwise-identical unsuppressed sibling car must remain eligible — '
+            . 'otherwise the suppression exclusion above proves nothing about email_suppressed specifically'
+        );
+    }
+
+    /**
+     * The owner-level opt-out closing the gap the #1883 migration
+     * (20260914093000_add_profile_email_suppressed.php) documented in its own
+     * header: profiles.email_suppressed was written by
+     * CarVerificationManager::setSuppressedForOwner() but never read by this
+     * query, which gated solely on the per-car cars.email_suppressed flag that
+     * the same call fans out.
+     *
+     * That fan-out only reaches the cars the owner held AT THAT MOMENT, so this
+     * test reproduces the leak directly: the owner's profile carries the opt-out
+     * while the car itself is explicitly left at cars.email_suppressed = 0 —
+     * exactly the state of a car registered, transferred in, or merged in AFTER
+     * the opt-out. Before the LEFT JOIN profiles clause this car was eligible
+     * and the owner kept being emailed despite a standing opt-out.
+     *
+     * Needs withProfile: true — createTestUser() creates no profiles row by
+     * default, which is itself why the query uses a LEFT JOIN with
+     * COALESCE(..., 0) rather than an INNER JOIN: a profile-less owner must
+     * stay emailable, not become permanently suppressed. The second control car
+     * below pins that down, owned by a profile-less user in the ordinary way.
+     */
+    #[Group('fast')]
+    public function testCarIsExcludedWhenOwnerProfileEmailSuppressedEvenThoughCarFlagIsClear(): void
+    {
+        $this->assertColumnExists('profiles', 'email_suppressed');
+
+        $optedOutUserId = $this->createTestUser([], true);
+        $this->db->query(
+            'UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?',
+            [$optedOutUserId]
+        );
+        $profileRow = $this->db->query(
+            'SELECT email_suppressed FROM profiles WHERE user_id = ?',
+            [$optedOutUserId]
+        )->first();
+        $this->assertNotEmpty($profileRow, 'Test setup: no profiles row for user ' . $optedOutUserId);
+        $this->assertSame(
+            1,
+            (int) $profileRow->email_suppressed,
+            'Test setup: profiles.email_suppressed was not actually set for user ' . $optedOutUserId
+        );
+
+        $sharedFields = [
+            'email_bounced'      => 0,
+            // Explicitly clear: the whole point is that the per-car flag does
+            // NOT carry the opt-out for a car acquired after the fan-out ran.
+            'email_suppressed'   => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $optedOutCarId = $this->createTestCar($optedOutUserId, array_merge($sharedFields, [
+            'email' => 'profile-opted-out@example.com',
+        ]));
+
+        // Control: identical in every field, owned by this class's ordinary
+        // test user — who has NO profiles row at all. Proves two things at
+        // once: the exclusion above is caused by profiles.email_suppressed
+        // specifically rather than fixture drift, and the LEFT JOIN does not
+        // strand profile-less owners the way an INNER JOIN would.
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'profile-opt-out-control@example.com',
+        ]));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $optedOutCarId,
+            $eligible,
+            'A car whose owner has profiles.email_suppressed = 1 must be excluded from verification '
+            . 'eligibility even when that car\'s own cars.email_suppressed is 0 — otherwise an owner '
+            . 'who opted out keeps being emailed about cars added after the opt-out'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical car owned by a user with no profiles row must remain eligible — '
+            . 'otherwise the opt-out exclusion above proves nothing about profiles.email_suppressed '
+            . 'specifically, and a profile-less owner would be silently un-emailable'
         );
     }
 
@@ -350,6 +494,520 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             0,
             $orphan->count(),
             'A rejected NULL owner_last_updated insert must leave no row behind'
+        );
+    }
+
+    /**
+     * #1991: a car reassigned to the seeded `noowner` system account (see
+     * RegisterNoownerAccountMigrationTest, ADR-010) must never be eligible for
+     * a verification email, even when it otherwise passes every other check
+     * (non-bounced, non-empty email, stale). `noowner` is a real, migration-
+     * provisioned account (bootstrap-integration.php asserts it exists before
+     * any integration test runs) — this test looks it up by username rather
+     * than creating one, mirroring UserDeletionReassignmentTest's pattern,
+     * since a second row with that username would violate the column's
+     * uniqueness and wouldn't reflect how the condition is reached in
+     * production (reassignment, not fresh creation).
+     *
+     * Includes a control car, identical in every field except ownership,
+     * owned by a normal test user — proving the noowner car is excluded
+     * *because of* ownership and not because it fails some other condition
+     * or because of fixture drift (mirrors this file's existing
+     * control/asserted-cause pattern from
+     * testColumnIsNotNullSoNullOwnerLastUpdatedFixtureIsRejected()).
+     *
+     * The noowner-owned car is left attached to the shared `noowner` account
+     * (a protected, non-test user never removed by tearDown) — if the
+     * teardown delete of the car row itself ever failed, a stray car could
+     * remain owned by `noowner` in the shared integration schema. tearDown()
+     * only logs such a failure rather than failing the suite; see
+     * IntegrationTestCase::tearDown() and UserDeletionReassignmentTest's
+     * similar leak-risk note.
+     */
+    #[Group('fast')]
+    public function testNoOwnerAccountCarIsExcluded(): void
+    {
+        $noOwnerRow = $this->db->query("SELECT id FROM users WHERE username = ?", ['noowner'])->first();
+        $this->assertNotEmpty(
+            $noOwnerRow,
+            'noowner system account missing — run composer migrate (RegisterNoownerAccount)'
+        );
+        $noOwnerId = (int) $noOwnerRow->id;
+
+        $sharedFields = [
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $noOwnerCarId = $this->createTestCar($noOwnerId, array_merge($sharedFields, [
+            'email' => 'noowner-owned@example.com',
+        ]));
+
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'noowner-control-normal-owner@example.com',
+        ]));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $noOwnerCarId,
+            $eligible,
+            'A car owned by the noowner system account must be excluded from verification eligibility'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical car owned by a normal user must remain eligible — '
+            . 'otherwise the noowner exclusion above proves nothing about ownership specifically'
+        );
+    }
+
+    /**
+     * #1991: a car with no owner at all (`user_id IS NULL`) must be excluded,
+     * independent of the `noowner`-account check above. createTestCar() checks
+     * the user row exists in PHP before inserting (there's no FK enforcing
+     * this at the database level — cars.user_id's FK was deliberately dropped,
+     * see database/migrations/20260719120000_drop_cars_user_id_fk.php and
+     * DATABASE.md's "No Enforced Foreign Key Constraints"), so the row is
+     * created normally and then updated to NULL directly — the only way to
+     * reach the NULL state through this fixture helper, and a mirror of how
+     * the condition can arise in production (e.g. a manual admin data-repair
+     * action) independent of the noowner reassignment path.
+     *
+     * Includes a control car with a normal (non-NULL) user_id, proving the
+     * NULL-owner car is excluded *because of* the NULL and not because of
+     * fixture drift or an unrelated condition — same rationale as the
+     * control in testNoOwnerAccountCarIsExcluded() above.
+     */
+    #[Group('fast')]
+    public function testNullUserIdCarIsExcluded(): void
+    {
+        $sharedFields = [
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $carId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'null-user-id@example.com',
+        ]));
+
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'null-user-id-control-normal-owner@example.com',
+        ]));
+
+        $this->db->query('UPDATE cars SET user_id = NULL WHERE id = ?', [$carId]);
+        $updatedRow = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertNotEmpty($updatedRow, 'Test setup: car ' . $carId . ' disappeared after UPDATE');
+        $this->assertNull(
+            $updatedRow->user_id,
+            'Test setup: cars.user_id was not actually nulled for car ' . $carId
+        );
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $carId,
+            $eligible,
+            'A car with a NULL user_id must be excluded from verification eligibility'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical car with a normal (non-NULL) user_id must remain eligible — '
+            . 'otherwise the NULL-owner exclusion above proves nothing about ownership specifically'
+        );
+    }
+
+    /**
+     * #1991: a car whose user_id points at a users row that no longer exists
+     * (an orphaned reference) must be excluded, independent of the NULL and
+     * noowner checks above. This is reachable in production, not just
+     * theoretical: cars.user_id carries no FK to users.id (deliberately
+     * dropped — see database/migrations/20260719120000_drop_cars_user_id_fk.php
+     * and DATABASE.md's "No Enforced Foreign Key Constraints"), and
+     * usersc/scripts/after_user_deletion.php's reassignment-to-noowner runs in
+     * its own transaction *after* users/helpers/users.php has already
+     * committed `DELETE FROM users` outside any transaction. Any of that
+     * hook's early-return paths (noowner lookup failure, no authenticated
+     * admin session, a rolled-back reassignment transaction) leaves cars
+     * pointing at the now-deleted user's ID — see the hook's own inline
+     * ASSUMPTION comment, which names this exact outcome.
+     *
+     * This test reproduces that state directly: deleteTestUser() is a raw
+     * DELETE FROM users that bypasses deleteUsers() and its cleanup hook, the
+     * same way an aborted hook would leave the car, so user_id is left
+     * dangling instead of reassigned or nulled. A LEFT JOIN with
+     * `users.username IS NULL OR ...` (the pre-#1991-fix shape) can't tell
+     * this "orphaned owner" state apart from "no join match because
+     * deliberately ownerless" — only an INNER JOIN rejects both, which is
+     * what this test pins down.
+     *
+     * Includes a control car with a live owner, proving the orphaned-owner
+     * car is excluded *because of* the dangling reference and not fixture
+     * drift or an unrelated condition — same rationale as the controls above.
+     */
+    #[Group('fast')]
+    public function testCarOwnedByDeletedUserIsExcluded(): void
+    {
+        $doomedUserId = $this->createTestUser();
+
+        $sharedFields = [
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        $orphanCarId = $this->createTestCar($doomedUserId, array_merge($sharedFields, [
+            'email' => 'orphaned-owner@example.com',
+        ]));
+
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email' => 'orphaned-owner-control-normal-owner@example.com',
+        ]));
+
+        // Bypasses deleteUsers()/after_user_deletion.php — a raw DELETE
+        // mirroring the hook's own DELETE FROM users, but with no
+        // reassignment step. This is what an aborted hook (or any path that
+        // deletes a users row without reassigning its cars) leaves behind.
+        $this->deleteTestUser($doomedUserId);
+        $orphanedRow = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$orphanCarId])->first();
+        $this->assertNotEmpty($orphanedRow, 'Test setup: car ' . $orphanCarId . ' disappeared after user deletion');
+        $this->assertSame(
+            $doomedUserId,
+            (int) $orphanedRow->user_id,
+            'Test setup: cars.user_id must still reference the deleted user (no FK cascades it) '
+                . 'for car ' . $orphanCarId
+        );
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $orphanCarId,
+            $eligible,
+            'A car whose user_id points at a deleted (nonexistent) users row must be excluded from '
+            . 'verification eligibility — otherwise a mail would go to an erased owner\'s last-known address'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical car with a live owner must remain eligible — otherwise the '
+            . 'orphaned-owner exclusion above proves nothing about ownership specifically'
+        );
+    }
+
+    /**
+     * The attempt-cap clause (2 sends per rolling 12-month window, then the
+     * car waits out the rest of the year) previously had zero EXECUTING
+     * coverage against real SQL — the only prior assertions were
+     * assertStringContainsString('cars.verification_attempts < 2', ...) against
+     * a mocked/captured query string, which passes as long as the literal
+     * substring is present regardless of whether the surrounding boolean logic
+     * is actually correct. This test, and the two below, run the real WHERE
+     * clause against real rows to pin the boundary the string match cannot see:
+     * an off-by-one in the OR/AND grouping, or a disagreement with
+     * incrementVerificationAttempts()'s own reset condition, would pass every
+     * existing test and only surface here.
+     *
+     * A car at exactly the cap (2 attempts) with a fresh
+     * verification_attempts_since (well within the year) must be excluded.
+     */
+    #[Group('fast')]
+    public function testAttemptCapReachedWithinYearExcludesCar(): void
+    {
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'attempt-cap-reached@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => null,
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'verification_attempts'       => 2,
+            'verification_attempts_since' => $this->recentDate(),
+        ]);
+
+        $this->assertNotContains(
+            $carId,
+            $this->eligibleIds(),
+            'A car with verification_attempts = 2 and a verification_attempts_since well within the '
+            . 'last year must be excluded — the yearly attempt cap exists specifically to protect '
+            . 'sender reputation and must not be silently bypassed'
+        );
+    }
+
+    /**
+     * The other side of the same boundary: an identical car (attempts = 2)
+     * whose verification_attempts_since is just past the 1-year mark must be
+     * eligible again — the SQL's OR clause (verification_attempts_since < NOW()
+     * - INTERVAL 1 YEAR) is what re-admits it, independent of the counter
+     * value itself. Uses 366 days, not exactly 1 year, to stay unambiguously
+     * on the "outside the window" side of the boundary regardless of leap-year
+     * arithmetic or sub-second timing between fixture creation and the query.
+     */
+    #[Group('fast')]
+    public function testAttemptCapResetsAfterOneYearMakesCarEligibleAgain(): void
+    {
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'attempt-cap-reset@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => null,
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'verification_attempts'       => 2,
+            'verification_attempts_since' => date('Y-m-d H:i:s', strtotime('-366 days')),
+        ]);
+
+        $this->assertContains(
+            $carId,
+            $this->eligibleIds(),
+            'A car whose verification_attempts_since is more than a year old must be eligible again '
+            . 'regardless of its verification_attempts count — the window, not the counter alone, '
+            . 'gates re-eligibility'
+        );
+    }
+
+    /**
+     * Round-trip through the real write path rather than a hand-set fixture:
+     * calling incrementVerificationAttempts() twice against a freshly-eligible
+     * car must leave it ineligible by the same findVerificationEligible() query
+     * used above — proving the SQL's attempt-cap clause and
+     * incrementVerificationAttempts()'s own reset/increment logic actually
+     * agree with each other on real data, not just on paper. This is the
+     * specific gap a string-match test cannot close: two independently-correct
+     * pieces of SQL can still disagree about *when* the counter resets.
+     */
+    #[Group('fast')]
+    public function testIncrementingAttemptsTwiceMakesAnEligibleCarIneligible(): void
+    {
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'attempt-cap-round-trip@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => null,
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'verification_attempts'       => 0,
+            'verification_attempts_since' => null,
+        ]);
+
+        $this->assertContains(
+            $carId,
+            $this->eligibleIds(),
+            'Test setup: a freshly-created car with 0 attempts must start eligible'
+        );
+
+        $this->assertTrue(
+            $this->repo->incrementVerificationAttempts($carId),
+            'Test setup: first increment must succeed against a real row'
+        );
+        $this->assertTrue(
+            $this->repo->incrementVerificationAttempts($carId),
+            'Test setup: second increment must succeed against a real row'
+        );
+
+        $row = $this->db->query(
+            'SELECT verification_attempts, verification_attempts_since FROM cars WHERE id = ?',
+            [$carId]
+        )->first();
+        $this->assertSame(
+            2,
+            (int) $row->verification_attempts,
+            'Test setup: two increments from a NULL verification_attempts_since must land on exactly 2, '
+            . 'not roll the window over — incrementVerificationAttempts() only resets when the previous '
+            . 'value was NULL or more than a year old, and this second call sees neither'
+        );
+
+        $this->assertNotContains(
+            $carId,
+            $this->eligibleIds(),
+            'A car that has genuinely been sent to twice within the tracked window must leave the '
+            . 'eligible set — this is the real write path a nightly cron run actually exercises, not a '
+            . 'hand-set fixture'
+        );
+    }
+
+    /**
+     * The 60-day re-send cooldown, the FRD's Eligibility Criteria clause that
+     * was never transcribed into the shipped SQL. A send writes only
+     * vericode_sent_at — it touches neither last_verified nor
+     * owner_last_updated — so the staleness expression alone cannot tell a car
+     * emailed last night apart from one never emailed at all. Without this
+     * clause the nightly cron re-picks the identical batch two nights running
+     * and both of an owner's two allowed yearly sends land ~24 hours apart,
+     * with the attempt cap only stopping it on the third night.
+     *
+     * Includes a control car, identical except for a NULL vericode_sent_at,
+     * so a green assertion proves the exclusion is caused by the cooldown
+     * specifically rather than by fixture drift — this file's established
+     * control pattern.
+     */
+    #[Group('fast')]
+    public function testCarSentToWithinSixtyDaysIsExcluded(): void
+    {
+        $this->assertColumnExists('cars', 'vericode_sent_at');
+
+        $sharedFields = [
+            'email_bounced'               => 0,
+            'last_verified'               => $this->staleDate(),
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            // Below the cap, so the attempt-cap clause cannot be what excludes
+            // the car — this test must fail for exactly one reason.
+            'verification_attempts'       => 1,
+            'verification_attempts_since' => $this->recentDate(),
+        ];
+
+        $cooldownCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email'            => 'cooldown-active@example.com',
+            'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-10 days')),
+        ]));
+
+        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
+            'email'            => 'cooldown-never-sent@example.com',
+            'vericode_sent_at' => null,
+        ]));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains(
+            $cooldownCarId,
+            $eligible,
+            'A car sent a verification email 10 days ago must be excluded — otherwise the nightly '
+            . 'cron re-sends to the same batch on consecutive nights and the annual cadence collapses'
+        );
+        $this->assertContains(
+            $controlCarId,
+            $eligible,
+            'Control: an identical never-sent car (vericode_sent_at IS NULL) must remain eligible — '
+            . 'otherwise the cooldown exclusion proves nothing about vericode_sent_at specifically, '
+            . 'and a NULL would be silently dropping the very cars the first batch should contain'
+        );
+    }
+
+    /**
+     * The permissive side of the same boundary: once the cooldown has expired
+     * with no response, the car re-enters the pool automatically rather than
+     * waiting out the rest of the annual cycle. Uses 61 days rather than
+     * exactly 60 to sit unambiguously outside the window regardless of
+     * sub-second timing between fixture creation and the query — the same
+     * reasoning behind the 366-day value in
+     * testAttemptCapResetsAfterOneYearMakesCarEligibleAgain() above.
+     */
+    #[Group('fast')]
+    public function testCarSentToMoreThanSixtyDaysAgoIsEligibleAgain(): void
+    {
+        $this->assertColumnExists('cars', 'vericode_sent_at');
+
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'cooldown-expired@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => $this->staleDate(),
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'vericode_sent_at'            => date('Y-m-d H:i:s', strtotime('-61 days')),
+            'verification_attempts'       => 1,
+            'verification_attempts_since' => $this->recentDate(),
+        ]);
+
+        $this->assertContains(
+            $carId,
+            $this->eligibleIds(),
+            'A car whose last verification send was more than 60 days ago must be eligible again — '
+            . 'silence is not a signal the way a bounce is, so the car gets one more attempt within '
+            . 'its yearly cap rather than waiting out the full annual cycle'
+        );
+    }
+
+    /**
+     * The FRD's own named acceptance test: "A car receives at most 2
+     * verification emails in any rolling 12-month window, even when the 60-day
+     * re-entry condition would otherwise re-admit it; covered by a test aging
+     * one car through three consecutive 60-day silent cycles and asserting
+     * exactly two sends."
+     *
+     * Both clauses are exercised together here, which is the point — the two
+     * boundary tests above each pin one clause in isolation, and neither can
+     * show that the cooldown re-admitting a car is still bounded by the cap.
+     * "Aging" is done by writing vericode_sent_at back past the 60-day mark
+     * after each simulated send (the owner stays silent, so nothing else about
+     * the row changes); the send itself is the real write path,
+     * incrementVerificationAttempts() plus a vericode_sent_at write, mirroring
+     * what CarVerificationSendService does per car. That is the only honest way
+     * to run three 60-day cycles without a clock abstraction this codebase does
+     * not have.
+     *
+     * verification_attempts_since is deliberately NOT aged with it: the cap's
+     * rolling window is 12 months and three 60-day cycles span only ~6, so the
+     * window must stay open across all three or the test would be asserting
+     * the window reset rather than the cap.
+     */
+    #[Group('fast')]
+    public function testThreeSixtyDaySilentCyclesProduceExactlyTwoSends(): void
+    {
+        $this->assertColumnExists('cars', 'vericode_sent_at');
+
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'                       => 'three-cycle-silent-owner@example.com',
+            'email_bounced'               => 0,
+            'last_verified'               => null,
+            'owner_last_updated'          => $this->staleDate(),
+            'mtime'                       => $this->staleDate(),
+            'solddate'                    => null,
+            'vericode_sent_at'            => null,
+            'verification_attempts'       => 0,
+            'verification_attempts_since' => null,
+        ]);
+
+        $sends = 0;
+        for ($cycle = 1; $cycle <= 3; $cycle++) {
+            if (in_array($carId, $this->eligibleIds(), true)) {
+                $sends++;
+                $this->assertTrue(
+                    $this->repo->incrementVerificationAttempts($carId),
+                    "Test setup: increment must succeed on cycle {$cycle}"
+                );
+                $this->db->query(
+                    'UPDATE cars SET vericode_sent_at = NOW() WHERE id = ?',
+                    [$carId]
+                );
+            }
+
+            // Age the cooldown out: 61 days of owner silence, nothing else
+            // about the row changes. Only vericode_sent_at moves — aging
+            // verification_attempts_since too would reset the 12-month cap
+            // window this test exists to prove holds.
+            $this->db->query(
+                'UPDATE cars SET vericode_sent_at = ? WHERE id = ? AND vericode_sent_at IS NOT NULL',
+                [date('Y-m-d H:i:s', strtotime('-61 days')), $carId]
+            );
+        }
+
+        $this->assertSame(
+            2,
+            $sends,
+            'A silent owner aged through three consecutive 60-day cycles must receive exactly 2 '
+            . 'verification emails — the cooldown re-admits the car each cycle, and the rolling '
+            . '12-month attempt cap is what stops the third send'
+        );
+
+        $row = $this->db->query(
+            'SELECT verification_attempts FROM cars WHERE id = ?',
+            [$carId]
+        )->first();
+        $this->assertSame(
+            2,
+            (int) $row->verification_attempts,
+            'The stored counter must agree with the number of sends actually made'
         );
     }
 }

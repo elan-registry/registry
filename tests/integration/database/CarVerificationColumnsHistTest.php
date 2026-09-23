@@ -163,9 +163,18 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
         $repo = new CarRepository($this->db);
 
         // --- owner_last_updated -------------------------------------------
+        // Via updateCar() directly, not a dedicated single-column setter
+        // (unlike vericode_sent_at/email_bounced below): CarRepository's own
+        // owner_last_updated setter was removed as dead code (#1930) — no
+        // production caller ever wrote this column standalone, since
+        // Car::update() and CarVerificationManager fold it into their own
+        // multi-column updateCar() calls to avoid a second cars_hist row for
+        // one logical edit. This is still a single-column UPDATE statement
+        // for this test's purposes, so the trigger assertion below is
+        // unaffected.
         $this->assertTrue(
-            $repo->updateOwnerLastUpdated($carId, '2026-09-01 12:00:00'),
-            'updateOwnerLastUpdated() must succeed'
+            $repo->updateCar($carId, ['owner_last_updated' => '2026-09-01 12:00:00']),
+            'updateCar() must succeed'
         );
 
         $histAfterOwnerUpdate = $this->db->query(

@@ -564,19 +564,20 @@ patterns.
 
 **The site-wide verification switch** (`VerificationSettings::isEnabled()`,
 `er_verification_settings.enabled`): checked before the job-owned `enabled`
-flag above, in both `run()` and `runNow()`. Any cron job whose work is
-Brevo-driven (writes bounce/suppression state to car records) must honor this
-switch, the same way the webhook receiver already does — this is what makes
-the switch's "no real email sends until this closes" framing actually true
-across every write path, not just the webhook. A job's separate
-`runNowWithSummary()` method (the pattern both current jobs use for a
-manual-run path that returns a typed summary rather than `void` — see
-`BrevoEventReconciliationJob`/`BrevoSuppressionSyncJob`) bypasses `run()`/
-`runNow()` entirely and so cannot inherit this check; it must repeat the
-`isEnabled()` check directly and throw rather than fabricate an empty
-summary, so an operator manually triggering a run while the switch is off
-sees why nothing happened. See `docs/development/CLASSES.md`'s
-`VerificationSettings` entry for the full "Used By" list.
+flag above, in both `run()` and `runNow()`. This check applies unconditionally
+to every `AbstractCronJob` subclass, by design — not scoped to Brevo-driven
+jobs specifically, the same way the webhook receiver already honors it. This
+is what makes the switch's "no real email sends until this closes" framing
+actually true across every Brevo-driven write path (webhook, both cron jobs,
+both manual admin scripts), not just the webhook. There is currently no
+opt-out: a future non-Brevo job that extends `AbstractCronJob` before the
+switch is enabled will silently never run. A job's separate
+`runNowWithSummary()` method (if used) bypasses `run()`/`runNow()` entirely
+and so cannot inherit this check; it must repeat the `isEnabled()` check
+directly and throw rather than fabricate an empty summary, so an operator
+manually triggering a run while the switch is off sees why nothing happened.
+See `docs/development/CLASSES.md`'s `AbstractCronJob` entry for the full
+"Used By" list and which jobs implement this pattern.
 
 **Implementing a new cron job:**
 
@@ -584,6 +585,8 @@ sees why nothing happened. See `docs/development/CLASSES.md`'s
    entry in `CronJobGuard::ALLOWED_JOB_NAMES` in `usersc/classes/Cron/CronJobGuard.php`),
    `guardIntervalHours(): int` (>= 1), and `execute(): void` (the actual work).
    Do not override `run()` or `runNow()` — both are `final`.
+   **Note**: The site-wide verification switch applies to your job unconditionally
+   even if its work has nothing to do with Brevo; don't assume you're exempt.
 2. Add the job name to `CronJobGuard::ALLOWED_JOB_NAMES` (manually maintained
    allowlist).
 3. Create a migration seeding a row in `er_cron_job_runs` for your job, with
@@ -703,6 +706,17 @@ After each deployment, verify:
 - [ ] Email delivery system functioning
 - [ ] Cron transport still firing: `er_verification_settings.last_cron_request_at`
       within the last 10 minutes (see "Cron Transport" above)
+- [ ] `usersc/vericode_secret.php` exists and is non-empty on this server. It
+      is gitignored/untracked, so a fresh checkout has none — `getVericodeSecret()`
+      (`users/helpers/us_helpers.php`) generates one on first use, but if the
+      file is later lost or replaced (redeploy to a fresh directory, restored
+      from a backup taken before the file existed, etc.) every previously
+      hashed `users.vericode`/`cars.vericode` value silently stops matching,
+      with no error — verification links just fail. Confirm the same file
+      persists across deploys (it must not be wiped by the deploy process) and
+      is byte-identical between test and prod only if verification codes are
+      meant to be portable between them (they normally are not — each
+      environment should have its own secret).
 - [ ] Image upload and display working
 - [ ] Search and filtering functionality
 - [ ] Mobile responsiveness maintained

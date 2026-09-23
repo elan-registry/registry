@@ -261,6 +261,64 @@ try {
         // This ensures $db in tests uses the corrected configuration
         $GLOBALS['db'] = $testDb;
         fwrite(STDERR, "NOTE: Re-initialized global \$db for integration tests\n");
+
+        // Pin this session's MySQL clock to PHP's ACTUAL runtime timezone —
+        // not php.ini's date.timezone (this project's is UTC), because
+        // users/init.php:143 unconditionally calls
+        // `date_default_timezone_set('America/Los_Angeles')`, hardcoded, with
+        // no environment override — upstream UserSpice code, off-limits to
+        // modify per CLAUDE.md. That call runs on every request, including
+        // this bootstrap's own `require_once $initPath` above, so by the time
+        // any test file runs, PHP's *effective* clock is always Pacific time
+        // regardless of php.ini or the host OS. Read date_default_timezone_get()
+        // AFTER init.php has run (not before, and not by trusting php.ini)
+        // so this reflects the value tests will actually observe.
+        //
+        // MySQL's own time_zone defaults to 'SYSTEM' — the host OS's local
+        // timezone, which has nothing to do with either PHP value above and
+        // varies per developer machine. Without reconciling the two, `NOW()`
+        // in a query and `new DateTimeImmutable('now')` in the calling PHP
+        // can disagree by whatever offset happens to separate PHP's
+        // hardcoded Pacific clock from this machine's OS timezone — on this
+        // developer's machine that was MDT vs. PST/PDT, a ~1-7 hour skew
+        // depending on DST. That's invisible most of the time, but it breaks
+        // any test asserting an exact boundary against real datetime
+        // arithmetic (e.g.
+        // CronJobGuardIntegrationTest::testClaimBoundaryIsStrictlyExclusive,
+        // which computes "-24 hours" in PHP and expects MySQL's own
+        // `NOW() - INTERVAL 24 HOUR` to agree with it to the second) — and it
+        // fails identically for every developer whose OS timezone isn't
+        // exactly Pacific, not just occasionally.
+        //
+        // MySQL's SET time_zone accepts a named zone only when the
+        // mysql.time_zone_name tables are populated (`mysql_tzinfo_to_sql`),
+        // which a fresh MAMP/Docker MySQL install typically has not run —
+        // asserting a bare named zone here would silently fail on exactly
+        // the environments most likely to need this fix. Falling back to the
+        // zone's current UTC offset (computed by PHP, which already resolved
+        // the named zone above) sidesteps that dependency entirely and is
+        // still correct for "right now" — the only thing any test in this
+        // suite's lifetime cares about. A session-scoped SET here (not a
+        // server-wide my.cnf change, which only one developer could apply
+        // and which a MAMP PRO regeneration would silently discard anyway)
+        // fixes the mismatch for whoever runs this suite, wherever they are,
+        // with no machine-level setup required.
+        $phpTimezone = new \DateTimeZone(date_default_timezone_get());
+        $phpOffset = $phpTimezone->getOffset(new \DateTimeImmutable('now', $phpTimezone));
+        $offsetHours = intdiv(abs($phpOffset), 3600);
+        $offsetMinutes = intdiv(abs($phpOffset) % 3600, 60);
+        $offsetSign = $phpOffset < 0 ? '-' : '+';
+        $offsetString = sprintf('%s%02d:%02d', $offsetSign, $offsetHours, $offsetMinutes);
+
+        $testDb->query('SET time_zone = ?', [$offsetString]);
+        if ($testDb->error()) {
+            fwrite(STDERR, "NOTE: Could not set test session time_zone to {$offsetString}: "
+                . ($testDb->errorString() ?: 'unknown') . " — datetime-boundary tests "
+                . "may be sensitive to this machine's timezone configuration.\n");
+        } else {
+            fwrite(STDERR, "NOTE: Set test session time_zone to {$offsetString}"
+                . " (matching PHP's effective timezone, {$phpTimezone->getName()})\n");
+        }
     }
 } catch (Throwable $e) {
     // Intentionally non-fatal (unlike the stricter inner catch above at the database-identity
@@ -412,7 +470,35 @@ try {
             );
         }
 
-        fwrite(STDERR, "NOTE: Reference data verified (car_models: {$carModelsCount} records, settings, noowner)\n");
+        // cars.vericode must be the widened varchar(64) column from
+        // 20260913205636_widen_cars_vericode_for_hash.php, with an index —
+        // required to hold a 64-char HMAC-SHA256 hash and to support the
+        // per-email-click lookup once #1881 ships. Catches a test
+        // environment silently running against a stale/un-migrated schema
+        // that would truncate hashed vericode values.
+        $vericodeColumn = $db->query("SHOW COLUMNS FROM cars LIKE 'vericode'")->first();
+        if (!$vericodeColumn) {
+            abortMissingSeed(
+                "ERROR: cars.vericode column is missing.",
+                "Aborting."
+            );
+        }
+        if (strtolower((string) $vericodeColumn->Type) !== 'varchar(64)') {
+            abortMissingSeed(
+                "ERROR: cars.vericode is '{$vericodeColumn->Type}', expected varchar(64).",
+                "Run the widen_cars_vericode_for_hash migration. Aborting."
+            );
+        }
+
+        $vericodeIndex = $db->query("SHOW INDEX FROM cars WHERE Column_name = 'vericode'")->first();
+        if (!$vericodeIndex) {
+            abortMissingSeed(
+                "ERROR: cars.vericode has no index.",
+                "Run the widen_cars_vericode_for_hash migration. Aborting."
+            );
+        }
+
+        fwrite(STDERR, "NOTE: Reference data verified (car_models: {$carModelsCount} records, settings, noowner, cars.vericode schema)\n");
     }
 } catch (Throwable $e) {
     abortMissingSeed("ERROR: Failed to verify reference data: {$e->getMessage()}");

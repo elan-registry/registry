@@ -57,6 +57,115 @@ final class AbstractCronJobTest extends TestCase
     }
 
     /**
+     * The Critical half of the bug this column exists for: CronJobGuard::claim()
+     * stamps last_run_at before execute() is ever entered, so a run that threw
+     * used to leave the row indistinguishable from a clean one — green "Ran"
+     * badge, fresh timestamp, and last_*_count values from whichever run last
+     * finished. Stamping last_failure_at in run()'s catch is what lets the
+     * dashboard report the actual outcome.
+     */
+    public function testRunStampsLastFailureAtWhenExecuteThrows(): void
+    {
+        $db = new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true);
+        $job = new SpyCronJob($db);
+        $job->throwOnExecute(new RuntimeException('boom'));
+
+        $job->run();
+
+        $this->assertSame(1, $db->failureStampWrites(), 'A thrown execute() must record last_failure_at');
+    }
+
+    public function testRunDoesNotStampLastFailureAtOnASuccessfulRun(): void
+    {
+        $db = new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true);
+
+        (new SpyCronJob($db))->run();
+
+        $this->assertSame(
+            0,
+            $db->failureStampWrites(),
+            'A run that completed must leave last_failure_at alone — otherwise every run would look failed'
+        );
+    }
+
+    /**
+     * A run that never reached execute() (claim lost, job paused) has not
+     * failed. Stamping the column there would make "not due yet" — the routine
+     * outcome of ~143 of 144 daily cron hits — permanently render as a failure.
+     */
+    public function testRunDoesNotStampLastFailureAtWhenClaimFails(): void
+    {
+        $db = new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: false);
+
+        (new SpyCronJob($db))->run();
+
+        $this->assertSame(0, $db->failureStampWrites(), 'A lost claim is not a failure');
+    }
+
+    public function testRunDoesNotStampLastFailureAtWhenJobDisabled(): void
+    {
+        $db = new AbstractCronJobFakeDatabase(enabled: false);
+
+        (new SpyCronJob($db))->run();
+
+        $this->assertSame(0, $db->failureStampWrites(), 'An operator\'s pause is not a failure');
+    }
+
+    /**
+     * The failure log line is what an operator actually reads, and it must
+     * survive the stamp failing — which is exactly what happens on a schema
+     * where 20260922171500 has not applied, since DB::query() raises a
+     * prepare()-time PDOException for a missing column. Two lines here, not
+     * one: the run's own failure, and the distinct "we could not record it"
+     * line, so the two faults stay separable.
+     */
+    public function testRunStillLogsTheJobFailureWhenTheFailureStampItselfThrows(): void
+    {
+        global $mockLogEntries;
+
+        $db = new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true, failureStampThrows: true);
+        $job = new SpyCronJob($db);
+        $job->throwOnExecute(new RuntimeException('boom'));
+
+        $job->run();
+
+        $this->assertCount(2, $mockLogEntries, 'Both the recording fault and the job failure must be logged');
+
+        $messages = array_column($mockLogEntries, 'message');
+        $categories = array_unique(array_column($mockLogEntries, 'category'));
+
+        $this->assertSame([LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE], array_values($categories));
+        $this->assertNotEmpty(
+            array_filter($messages, static fn (string $m): bool => str_contains($m, 'boom')),
+            'The job\'s own failure line must still be written — it is the one an operator reads'
+        );
+        $this->assertNotEmpty(
+            array_filter($messages, static fn (string $m): bool => str_contains($m, 'could not be recorded')),
+            'The failure-to-record must be reported distinctly, not folded into the job failure line'
+        );
+    }
+
+    public function testRunStillLogsTheJobFailureWhenTheFailureStampReportsAnError(): void
+    {
+        global $mockLogEntries;
+
+        $db = new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true, failureStampErrors: true);
+        $job = new SpyCronJob($db);
+        $job->throwOnExecute(new RuntimeException('boom'));
+
+        $job->run();
+
+        $this->assertCount(2, $mockLogEntries);
+        $this->assertNotEmpty(
+            array_filter(
+                array_column($mockLogEntries, 'message'),
+                static fn (string $m): bool => str_contains($m, 'boom')
+            ),
+            'An error()-reported stamp failure must not suppress the job failure line either'
+        );
+    }
+
+    /**
      * An \Error (not an \Exception) is the case a bare `catch (\Exception)`
      * would miss — and it is exactly what a fatal TypeError in a job's work
      * raises, which is the cascade this class exists to contain.

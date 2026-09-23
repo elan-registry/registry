@@ -67,6 +67,9 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     /** Original er_verification_settings.enabled value, restored in tearDown(). */
     private bool $originalVerificationEnabled = false;
 
+    /** Original er_verification_settings.unmatched_recipient_count, restored in tearDown(). */
+    private int $originalUnmatchedCount = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -76,9 +79,15 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         // first (since v2.30.2) and it ships off by default — force it on so
         // this file's job-behavior assertions aren't short-circuited by an
         // unrelated switch. Restored in tearDown().
-        $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1');
+        $this->db->query('SELECT enabled, unmatched_recipient_count FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
+        // The unmatched-recipient counter is a shared singleton-row column that
+        // the job increments; restored in tearDown() so an unmatched-contact
+        // test cannot leak a bumped count into anything else reading id = 1.
+        $this->originalUnmatchedCount = is_object($verificationRow)
+            ? (int) $verificationRow->unmatched_recipient_count
+            : 0;
         $this->db->query('UPDATE er_verification_settings SET enabled = 1 WHERE id = 1');
 
         $this->repo = new CarRepository($this->db);
@@ -99,8 +108,8 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             }
 
             $this->db->query(
-                'UPDATE er_verification_settings SET enabled = ? WHERE id = 1',
-                [$this->originalVerificationEnabled ? 1 : 0]
+                'UPDATE er_verification_settings SET enabled = ?, unmatched_recipient_count = ? WHERE id = 1',
+                [$this->originalVerificationEnabled ? 1 : 0, $this->originalUnmatchedCount]
             );
         }
 
@@ -172,6 +181,18 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         )->first();
 
         return (int) $row->cnt;
+    }
+
+    /** The dashboard's running total of suppression contacts matching no car. */
+    private function unmatchedRecipientCount(): int
+    {
+        $row = $this->db->query(
+            'SELECT unmatched_recipient_count FROM er_verification_settings WHERE id = 1'
+        )->first();
+
+        $this->assertNotEmpty($row, 'er_verification_settings row 1 must exist');
+
+        return (int) $row->unmatched_recipient_count;
     }
 
     // --- 1. Incremental path, end to end through execute() ------------------
@@ -303,11 +324,20 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
      * to, most of which were never registry cars. An unmatched contact must be
      * tallied and skipped without error — and, since there is no car id to
      * attach it to, must leave no er_email_events row anywhere.
+     *
+     * The unmatched contact must also bump the dashboard's
+     * `er_verification_settings.unmatched_recipient_count` by exactly one. That
+     * increment is a real UPDATE against the shared singleton row, so only a
+     * real-DB test can prove it lands — and the per-contact granularity matters:
+     * the counter is what tells an operator how much of Brevo's suppression list
+     * the registry does not recognize.
      */
     public function testUnmatchedContactIsTalliedAndWritesNoEventRow(): void
     {
         [$carId, $email] = $this->createSuppressionCar();
         $strangerEmail = 'stranger-' . uniqid() . '@integration-test-1923.example.com';
+
+        $countBefore = $this->unmatchedRecipientCount();
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
@@ -327,6 +357,17 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         // The matched car is still handled normally.
         $this->assertSame(1, (int) $this->carRow($carId)->email_bounced);
+
+        $this->assertSame(
+            $countBefore + 1,
+            $this->unmatchedRecipientCount(),
+            'The one unmatched contact must increment the dashboard unmatched-recipient counter by exactly one'
+        );
+        $this->assertSame(
+            0,
+            $summary->counterFailureCount,
+            'No counter increment may have failed'
+        );
     }
 
     // --- 5. Reason-code mapping, proven through real SQL --------------------

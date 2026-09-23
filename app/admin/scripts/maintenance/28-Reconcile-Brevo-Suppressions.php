@@ -147,14 +147,17 @@ if (!isAdmin()) {
                                         sprintf(
                                             'Brevo suppression sync manually triggered (cron guard bypassed) —'
                                             . ' %d matched, %d unmatched, %d already flagged, %d skipped,'
-                                            . ' %d page(s) fetched%s%s',
+                                            . ' %d page(s) fetched%s%s%s',
                                             $summary->matchedCount,
                                             $summary->unmatchedCount,
                                             $summary->alreadyFlaggedCount,
                                             $summary->skippedCount,
                                             $summary->pagesFetched,
                                             $summary->backfillCapped ? ', stopped at a safety cap (page count or elapsed time)' : '',
-                                            $summary->pollFailed ? ', a Brevo poll failed mid-run' : ''
+                                            $summary->pollFailed ? ', a Brevo poll failed mid-run' : '',
+                                            $summary->counterFailureCount > 0
+                                                ? sprintf(', %d unmatched-recipient counter update(s) failed', $summary->counterFailureCount)
+                                                : ''
                                         ));
                                     $recordingWarning = null;
                                     admin_script_record_completion(__FILE__, (int) $user->data()->id, function (string $msg) use (&$recordingWarning) {
@@ -172,6 +175,13 @@ if (!isAdmin()) {
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Backfill incomplete — Brevo poll failed</h5>
                                         <p class="mb-0">A page request to Brevo failed partway through the walk, so the import stopped early and more suppressions likely remain. The failure is logged under <code>CronJobFailure</code>. Re-run this script once Brevo is reachable — suppressions already imported are re-applied harmlessly.</p>
+                                    </div>
+                                    <?php endif; ?>
+
+                                    <?php if ($summary->counterFailureCount > 0): ?>
+                                    <div class="alert alert-warning">
+                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Unmatched-recipient counter under-reporting</h5>
+                                        <p class="mb-0"><?= (int) $summary->counterFailureCount ?> of the <?= (int) $summary->unmatchedCount ?> unmatched contact(s) were not recorded in the dashboard unmatched-recipient counter — that counter is under-reporting. Check the system log for <code>VerificationConfigWarning</code> entries.</p>
                                     </div>
                                     <?php endif; ?>
 

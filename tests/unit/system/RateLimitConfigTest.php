@@ -47,7 +47,7 @@ final class RateLimitConfigTest extends TestCase
         // Mirrors the project's actual active password_reset_request limits
         // (usersc/includes/rate_limits.php), not the framework's inflated
         // defaults in users/includes/rate_limits.php.
-        $this->assertSame(3, $rateLimits['registration_recovery_email']['email_max']);
+        $this->assertSame(4, $rateLimits['registration_recovery_email']['email_max']);
         $this->assertSame(3600, $rateLimits['registration_recovery_email']['email_window']);
     }
 
@@ -83,10 +83,18 @@ final class RateLimitConfigTest extends TestCase
         // identifier (IP, for anonymous callers) and is the limit that
         // actually governs anonymous traffic, shared by searchLocation() and
         // reverseGeocode() under the same 'location_search' action key.
+        // total_max/total_window raised 10/60 -> 1000/300 (#2122), then to
+        // 1500/300 by the later blanket 50% raise (46ce3cb8): the original
+        // value refused a real registrant's typed address after 11
+        // debounced requests in 50s. #2122 itself suggested "the low
+        // hundreds" and scoped #1952 as irrelevant to sizing; 1000 already
+        // went higher because production's rate-limit buckets are
+        // currently per-Cloudflare-edge-node, not per-visitor (#1952,
+        // open) — see the full rationale in usersc/includes/rate_limits.php.
         $this->assertSame(PHP_INT_MAX, $rateLimits['location_search']['ip_max']);
         $this->assertSame(60, $rateLimits['location_search']['ip_window']);
-        $this->assertSame(10, $rateLimits['location_search']['total_max']);
-        $this->assertSame(60, $rateLimits['location_search']['total_window']);
+        $this->assertSame(1500, $rateLimits['location_search']['total_max']);
+        $this->assertSame(300, $rateLimits['location_search']['total_window']);
     }
 
     /**
@@ -122,12 +130,92 @@ final class RateLimitConfigTest extends TestCase
         // feedback_submission). Sized generously because every transactional
         // send produces 2-3 webhook calls within seconds from a small, shared
         // set of Brevo egress IPs; total_max is the real backstop.
-        $this->assertSame(500, $rateLimits['brevo_webhook']['ip_max']);
+        $this->assertSame(750, $rateLimits['brevo_webhook']['ip_max']);
         $this->assertSame(300, $rateLimits['brevo_webhook']['ip_window']);
-        $this->assertSame(2000, $rateLimits['brevo_webhook']['total_max']);
+        $this->assertSame(3000, $rateLimits['brevo_webhook']['total_max']);
         $this->assertSame(300, $rateLimits['brevo_webhook']['total_window']);
         $this->assertArrayNotHasKey('user_max', $rateLimits['brevo_webhook']);
         $this->assertArrayNotHasKey('user_window', $rateLimits['brevo_webhook']);
+    }
+
+    /**
+     * The 'verification_code_attempt' rate-limit entry (issue #1881) must be
+     * configured in usersc/includes/rate_limits.php — the car verification
+     * landing page calls checkRateLimit('verification_code_attempt', ...) on
+     * every code submission and will silently no-op (fail open) if this key is
+     * missing, leaving the verification code open to brute-force guessing.
+     */
+    public function testVerificationCodeAttemptActionIsConfigured(): void
+    {
+        $projectRoot = dirname(__DIR__, 3);
+
+        /** @var array<string, array<string, int>> $rateLimits */
+        $rateLimits = [];
+        require $projectRoot . '/usersc/includes/rate_limits.php';
+
+        $this->assertIsArray($rateLimits);
+        $this->assertArrayHasKey(
+            'verification_code_attempt',
+            $rateLimits,
+            'verification_code_attempt must be configured in usersc/includes/rate_limits.php '
+                . '(the project override, which wholesale-replaces the framework defaults) — '
+                . 'the verification landing page calls checkRateLimit() with this action name and '
+                . 'will silently no-op if it is missing.'
+        );
+        // Mirrors the project's actual active verification_code_attempt limits
+        // (usersc/includes/rate_limits.php). Token-scoped like
+        // password_reset_submit: token_max bounds repeated attempts against
+        // one specific car's code from one visitor (e.g. someone re-guessing
+        // or grief-testing a single known token); it does NOT bound an
+        // attacker grinding many different candidate codes, since each guess
+        // is a fresh token and therefore a fresh bucket — ip_max and
+        // total_max are the backstops for that broader volume threat.
+        $this->assertSame(50, $rateLimits['verification_code_attempt']['ip_max']);
+        $this->assertSame(300, $rateLimits['verification_code_attempt']['ip_window']);
+        $this->assertSame(10, $rateLimits['verification_code_attempt']['token_max']);
+        $this->assertSame(1800, $rateLimits['verification_code_attempt']['token_window']);
+        $this->assertSame(200, $rateLimits['verification_code_attempt']['total_max']);
+        $this->assertSame(300, $rateLimits['verification_code_attempt']['total_window']);
+    }
+
+    /**
+     * The 'brevo_webhook_auth_failure' rate-limit entry (issue #2087) must be
+     * configured in usersc/includes/rate_limits.php — app/api/webhooks/brevo.php's
+     * auth-failure branch calls checkRateLimit('brevo_webhook_auth_failure')/
+     * recordRateLimit('brevo_webhook_auth_failure', false) to gate the
+     * auth-failure LOG line (the 401 response itself stays unconditional). It
+     * will silently no-op if this key is missing, leaving repeated
+     * authentication-failure attempts unthrottled and unlogged-with-limits.
+     */
+    public function testBrevoWebhookAuthFailureActionIsConfigured(): void
+    {
+        $projectRoot = dirname(__DIR__, 3);
+
+        /** @var array<string, array<string, int>> $rateLimits */
+        $rateLimits = [];
+        require $projectRoot . '/usersc/includes/rate_limits.php';
+
+        $this->assertIsArray($rateLimits);
+        $this->assertArrayHasKey(
+            'brevo_webhook_auth_failure',
+            $rateLimits,
+            'brevo_webhook_auth_failure must be configured in usersc/includes/rate_limits.php '
+                . '(the project override, which wholesale-replaces the framework defaults) — '
+                . 'app/api/webhooks/brevo.php calls checkRateLimit() with this action name and '
+                . 'will silently no-op if it is missing, leaving the unauthenticated webhook '
+                . 'endpoint\'s auth-failure logging with no volume control at all.'
+        );
+        // Mirrors the project's actual active brevo_webhook_auth_failure limits
+        // (usersc/includes/rate_limits.php). No user_max/user_window: the
+        // webhook carries no UserSpice session, so there is no user
+        // identifier to key on (same shape as brevo_webhook and
+        // feedback_submission).
+        $this->assertSame(10, $rateLimits['brevo_webhook_auth_failure']['ip_max']);
+        $this->assertSame(300, $rateLimits['brevo_webhook_auth_failure']['ip_window']);
+        $this->assertSame(100, $rateLimits['brevo_webhook_auth_failure']['total_max']);
+        $this->assertSame(300, $rateLimits['brevo_webhook_auth_failure']['total_window']);
+        $this->assertArrayNotHasKey('user_max', $rateLimits['brevo_webhook_auth_failure']);
+        $this->assertArrayNotHasKey('user_window', $rateLimits['brevo_webhook_auth_failure']);
     }
 
 }

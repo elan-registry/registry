@@ -91,7 +91,8 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 .collapse-toggle-btn:hover { background-color: var(--er-primary-light); }
 .er-section-heading { border-bottom: 2px solid var(--er-primary); padding-bottom: 0.5rem; margin-bottom: 1rem; }
 .badge-er-account { background-color: var(--er-primary); }
-.text-white-75 { color: rgba(255, 255, 255, 0.75); }
+/* .text-white-75 lives in usersc/templates/customizer.css (issue #1881) —
+   promoted there since it's now used on multiple pages. */
 </style>
 
 <div id="page-wrapper">

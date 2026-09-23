@@ -107,6 +107,63 @@ class CarRepository
     }
 
     /**
+     * Restore a car's pre-send vericode/vericode_sent_at after a failed
+     * verification-email send (CarVerificationSendService::sendOne())
+     *
+     * Deliberately NOT implemented via updateCar(): DB::update() returns
+     * true for any UPDATE that executes without a driver error, including
+     * one that matches zero rows (e.g. the car was deleted between the
+     * vericode rotation and this restore attempt) — so a caller relying on
+     * updateCar()'s bool return cannot distinguish "the car is still there"
+     * from "the car is gone." This method answers that question directly.
+     *
+     * rowCount() after an UPDATE reports rows CHANGED, not rows MATCHED (no
+     * MYSQL_ATTR_FOUND_ROWS is set on this connection), so count() === 0 is
+     * ambiguous: it covers both "no such car" and the entirely routine case
+     * where the restore writes back the values the row already holds (a car
+     * never sent to before has vericode/vericode_sent_at NULL, and the
+     * restore writes NULL/NULL). A follow-up read resolves the ambiguity —
+     * the same confirm-read pattern VerificationSettings::setEnabled() uses.
+     *
+     * @param int $carId Car ID
+     * @param string|null $vericode The pre-send stored (hashed) vericode value
+     * @param string|null $vericodeSentAt The pre-send vericode_sent_at value
+     * @return bool True if the car row exists and now holds the restored
+     *              values — including when the write was a no-op because the
+     *              row already held them; false only if no car with $carId
+     *              exists (the car was deleted mid-send)
+     * @throws CarDatabaseException If the query itself fails
+     */
+    public function restoreVerificationCodeState(int $carId, ?string $vericode, ?string $vericodeSentAt): bool
+    {
+        $this->db->query(
+            'UPDATE cars SET vericode = ?, vericode_sent_at = ? WHERE id = ?',
+            [$vericode, $vericodeSentAt, $carId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::restoreVerificationCodeState failed for car={$carId}: " . $this->db->errorString()
+            );
+        }
+
+        if ($this->db->count() > 0) {
+            return true;
+        }
+
+        // count() === 0 — either the row is gone or the write changed nothing.
+        // Confirm which with a read.
+        $this->db->query('SELECT id FROM cars WHERE id = ?', [$carId]);
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::restoreVerificationCodeState confirm-read failed for car={$carId}: "
+                . $this->db->errorString()
+            );
+        }
+
+        return is_object($this->db->first());
+    }
+
+    /**
      * Delete a car by ID
      *
      * @param int $carId Car ID
@@ -325,20 +382,26 @@ class CarRepository
     }
 
     /**
-     * Update the verification code for a car
+     * Update the stored verification-code hash for a car
      *
      * @param int $carId Car ID
-     * @param string $verificationCode Verification code to set
+     * @param string $hashedVerificationCode The HMAC-SHA256 digest from hashVericode();
+     *                                       never the plaintext code. Callers are
+     *                                       responsible for hashing — this method
+     *                                       writes the value verbatim to cars.vericode.
      * @return bool True on success
      */
-    public function updateVerificationCode(int $carId, string $verificationCode): bool
+    public function updateVerificationCode(int $carId, string $hashedVerificationCode): bool
     {
-        return $this->updateCar($carId, ['vericode' => $verificationCode]);
+        return $this->updateCar($carId, ['vericode' => $hashedVerificationCode]);
     }
 
     /**
      * Update the last-verified timestamp for a car
      *
+     * @deprecated No production callers since v2.30.3 — CarVerificationManager::markVerified()
+     *             writes `last_verified` via updateCar() directly so it can set
+     *             `owner_last_updated` in the same atomic write. Tracked for removal in #2107.
      * @param int $carId Car ID
      * @param string $dateTime Datetime string in AppConstants::DATETIME_FORMAT
      * @return bool True on success
@@ -407,15 +470,273 @@ class CarRepository
     }
 
     /**
-     * Update the timestamp at which the owner last updated their car record
+     * Read an owner's profile-level email-suppressed flag (#1883)
+     *
+     * Distinguishes "no profiles row" from "profiles row with the flag clear"
+     * by returning null for the former. `users` and `profiles` are not strictly
+     * 1:1 in this schema — a user can exist with no profiles row — and the
+     * opt-out flow must treat that as a hard error rather than write nothing,
+     * so the caller needs the two cases separated.
+     *
+     * @param int $userId Owner user ID
+     * @return int|null 0 or 1 as stored, or null when the owner has no profiles row
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findProfileEmailSuppressed(int $userId): ?int
+    {
+        $result = $this->db->query(
+            'SELECT email_suppressed FROM profiles WHERE user_id = ?',
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findProfileEmailSuppressed failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+        if ($this->db->count() === 0) {
+            return null;
+        }
+
+        return (int) $result->first()->email_suppressed;
+    }
+
+    /**
+     * Set an owner's profile-level email-suppressed flag (#1883)
+     *
+     * The owner-level counterpart to {@see updateEmailSuppressed()}: that flag
+     * is per-car and is also written by the Brevo webhook/sync paths, whereas
+     * this one records the owner's own opt-out decision and survives their car
+     * list changing.
+     *
+     * Uses a raw UPDATE rather than $this->db->update() because the caller must
+     * be able to tell "no profiles row existed" from "the write succeeded" —
+     * DatabaseInterface::update() collapses both into a bool. Mirrors
+     * {@see deleteCar()}'s query()-plus-count() treatment of the same problem.
+     *
+     * NOTE ON MySQL rowCount(): an UPDATE that sets a column to the value it
+     * already holds reports 0 affected rows, indistinguishable from a missing
+     * row. Callers must therefore read the current value first (see
+     * findProfileEmailSuppressed()) and skip the write when it already matches,
+     * rather than relying on this method to be idempotent on its own.
+     *
+     * Deliberately does NOT insert a profiles row when one is absent: profiles
+     * rows carry NOT NULL columns with no defaults (bio, city, state, country),
+     * so synthesising one here would invent owner data as a side effect of an
+     * opt-out. A missing row is surfaced to the caller instead.
+     *
+     * @param int $userId Owner user ID
+     * @param bool $suppressed True to set the flag, false to clear it
+     * @return bool True if a profiles row was actually updated; false if no row
+     *              was affected (no profiles row, or the value was unchanged)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function updateProfileEmailSuppressed(int $userId, bool $suppressed): bool
+    {
+        $this->db->query(
+            'UPDATE profiles SET email_suppressed = ? WHERE user_id = ?',
+            [$suppressed ? 1 : 0, $userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::updateProfileEmailSuppressed failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count() > 0;
+    }
+
+    /**
+     * Read an owner's profile-level email-bounced flag (#1884)
+     *
+     * Distinguishes "no profiles row" from "profiles row with the flag clear"
+     * by returning null for the former. `users` and `profiles` are not strictly
+     * 1:1 in this schema — a user can exist with no profiles row — and the
+     * bounce-recording flow must treat that as a hard error rather than write
+     * nothing, so the caller needs the two cases separated.
+     *
+     * @param int $userId Owner user ID
+     * @return int|null 0 or 1 as stored, or null when the owner has no profiles row
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findProfileEmailBounced(int $userId): ?int
+    {
+        $result = $this->db->query(
+            'SELECT email_bounced FROM profiles WHERE user_id = ?',
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findProfileEmailBounced failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+        if ($this->db->count() === 0) {
+            return null;
+        }
+
+        return (int) $result->first()->email_bounced;
+    }
+
+    /**
+     * Read the address an owner's profile-level bounce was recorded against (#1884)
+     *
+     * Exists so {@see updateProfileEmailBounced()} can tell two states apart that
+     * the flag alone collapses into one:
+     *   - already bounced against the SAME address — the write is a no-op and must
+     *     be skipped, because an UPDATE writing identical values reports 0 affected
+     *     rows and would be misread as "no profiles row" (see the rowCount note on
+     *     updateProfileEmailSuppressed()).
+     *   - already bounced against a DIFFERENT address — the owner has changed their
+     *     email since the last bounce, so the stored address is stale and the row
+     *     must be updated even though the flag itself is unchanged.
+     *
+     * Returns null for both "no profiles row" and "the column is NULL" (the flag is
+     * clear). Neither case is a recorded address, and callers only ever compare the
+     * result against a candidate address, so the two need not be separated here —
+     * findProfileEmailBounced() is the method that distinguishes a missing row.
+     *
+     * @param int $userId Owner user ID
+     * @return string|null The stored bounced address, or null when there is no
+     *                     profiles row or no address recorded
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findProfileEmailBouncedAddress(int $userId): ?string
+    {
+        $result = $this->db->query(
+            'SELECT email_bounced_address FROM profiles WHERE user_id = ?',
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findProfileEmailBouncedAddress failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+        if ($this->db->count() === 0) {
+            return null;
+        }
+
+        $address = $result->first()->email_bounced_address;
+
+        return $address === null ? null : (string) $address;
+    }
+
+    /**
+     * Set an owner's profile-level email-bounced flag, and the address it bounced
+     * against (#1884)
+     *
+     * The owner-level counterpart to {@see updateEmailBounced()}: that flag is
+     * per-car, whereas this one records the bounce against the owner themselves and
+     * survives their car list changing.
+     *
+     * The `$bouncedAddress` default of `null` exists only to make `$bounced = false`
+     * (clearing the flag) callable without a throwaway argument — it is NOT safe to
+     * omit while setting `$bounced = true`. Passing
+     * `updateProfileEmailBounced($id, true)` with no address is rejected rather than
+     * silently writing `email_bounced = 1` with a null `email_bounced_address`,
+     * which would leave the two columns observably in disagreement.
+     *
+     * Uses a raw UPDATE rather than $this->db->update() because the caller must be
+     * able to tell "no profiles row existed" from "the write succeeded" —
+     * DatabaseInterface::update() collapses both into a bool. Mirrors
+     * {@see updateProfileEmailSuppressed()}'s query()-plus-count() treatment of the
+     * same problem.
+     *
+     * NOTE ON MySQL rowCount(): an UPDATE that sets columns to the values they
+     * already hold reports 0 affected rows, indistinguishable from a missing row.
+     * Callers must therefore read the current values first (see
+     * findProfileEmailBounced() and findProfileEmailBouncedAddress()) and skip the
+     * write when they already match, rather than relying on this method to be
+     * idempotent on its own.
+     *
+     * Deliberately does NOT insert a profiles row when one is absent: profiles rows
+     * carry NOT NULL columns with no defaults (bio, city, state, country), so
+     * synthesising one here would invent owner data as a side effect of recording a
+     * bounce. A missing row is surfaced to the caller instead.
+     *
+     * @param int $userId Owner user ID
+     * @param bool $bounced True to set the flag, false to clear it
+     * @param string|null $bouncedAddress The address the bounce was reported against.
+     *                                    Required (non-null, non-empty) when $bounced is
+     *                                    true; ignored (always written as null) when false.
+     * @return bool True if a profiles row was actually updated; false if no row was
+     *              affected (no profiles row, or the values were unchanged)
+     * @throws CarDatabaseException If $bounced is true and $bouncedAddress is
+     *                              null/empty, or if the query fails
+     */
+    public function updateProfileEmailBounced(int $userId, bool $bounced, ?string $bouncedAddress = null): bool
+    {
+        if ($bounced && ($bouncedAddress === null || $bouncedAddress === '')) {
+            throw new CarDatabaseException(
+                "CarRepository::updateProfileEmailBounced (userId={$userId}): a non-empty bounced address is required when setting the flag."
+            );
+        }
+
+        $this->db->query(
+            'UPDATE profiles SET email_bounced = ?, email_bounced_address = ? WHERE user_id = ?',
+            [$bounced ? 1 : 0, $bounced ? $bouncedAddress : null, $userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::updateProfileEmailBounced failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count() > 0;
+    }
+
+    /**
+     * Record one verification-email send attempt against a car, rolling the
+     * counter over on a yearly window (#1884)
+     *
+     * Both columns move together in a single statement: when the window has never
+     * been opened (`verification_attempts_since IS NULL`) or has expired (older
+     * than one year), the counter resets to 1 and the window reopens at NOW();
+     * otherwise the counter increments and the window start is left alone. Doing
+     * this in one UPDATE keeps the pair consistent without a read-modify-write
+     * race between concurrent sends.
+     *
+     * ZERO ROWS AFFECTED IS NOT AMBIGUOUS HERE. Unlike the flag-setting methods on
+     * this class (see updateProfileEmailSuppressed()'s rowCount note), this CASE
+     * always changes at least one column for any row it matches — the counter
+     * either resets to 1 or increments, and neither can equal its prior value. So
+     * 0 affected rows means no car matched $carId, which is a caller bug.
+     *
+     * That case is logged and reported as false rather than thrown, because the
+     * only caller (CarVerificationSendService::sendOne()) runs this *after* the
+     * email has already gone out: throwing would turn a successful send into a
+     * reported failure. A genuine query error is a different matter and does throw.
      *
      * @param int $carId Car ID
-     * @param string $dateTime Datetime string in AppConstants::DATETIME_FORMAT
-     * @return bool True on success
+     * @return bool True if the car's attempt counters were updated; false if no car
+     *              matched $carId (logged, not thrown)
+     * @throws CarDatabaseException If the query fails
      */
-    public function updateOwnerLastUpdated(int $carId, string $dateTime): bool
+    public function incrementVerificationAttempts(int $carId): bool
     {
-        return $this->updateCar($carId, ['owner_last_updated' => $dateTime]);
+        $this->db->query(
+            'UPDATE cars
+                SET verification_attempts = CASE
+                      WHEN verification_attempts_since IS NULL
+                           OR verification_attempts_since < NOW() - INTERVAL 1 YEAR
+                      THEN 1 ELSE verification_attempts + 1 END,
+                    verification_attempts_since = CASE
+                      WHEN verification_attempts_since IS NULL
+                           OR verification_attempts_since < NOW() - INTERVAL 1 YEAR
+                      THEN NOW() ELSE verification_attempts_since END
+              WHERE id = ?',
+            [$carId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::incrementVerificationAttempts failed for car={$carId}: " . $this->db->errorString()
+            );
+        }
+
+        if ($this->db->count() === 0) {
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarRepository::incrementVerificationAttempts affected no rows for car={$carId}: no such car.");
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -613,9 +934,25 @@ class CarRepository
      * Find cars eligible for a verification email, ordered oldest-verified first.
      *
      * A car is eligible when it is not marked sold, has a non-null, non-empty
-     * (deliverable) email address that has not bounced, and is stale — that is,
-     * it was neither verified nor updated by its owner within the last year (see
-     * stalenessSql()).
+     * (deliverable) email address that has not bounced and has not been
+     * suppressed, and is stale — that is, it was neither verified nor updated
+     * by its owner within the last year (see stalenessSql()).
+     *
+     * A car is also ineligible when it has no live owner: cars.user_id IS NULL,
+     * user_id points at a users row that no longer exists (cars.user_id has no
+     * FK — see DATABASE.md's "No Enforced Foreign Key Constraints" — so this is
+     * reachable, e.g. if usersc/scripts/after_user_deletion.php's reassignment
+     * transaction fails after the users row is already deleted), or the owner
+     * is the `noowner` system account — the placeholder a car is reassigned to
+     * when its real owner is erased. Ownership is required via an INNER JOIN
+     * against users; the system account is resolved dynamically by username
+     * rather than a hardcoded ID, so a reseeded or re-IDed account is still
+     * excluded. Emailing such a car would mail an erased owner's last-known
+     * address, which the registry's privacy commitment forbids.
+     *
+     * Finally, a car is ineligible when its OWNER has opted out at the profile
+     * level (profiles.email_suppressed = 1), independent of the per-car flag —
+     * see the join comment below for why the per-car flag alone was not enough.
      *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
@@ -643,13 +980,102 @@ class CarRepository
         // one, but the mechanism is not the obvious one.
         $stale = self::stalenessSql('cars');
 
+        // email_suppressed is a standing owner request not to be emailed —
+        // set via a Brevo spam-complaint webhook or the one-click verification
+        // opt-out link — and stays set until the owner takes explicit action
+        // to reverse it; nothing in this method clears it. That makes it a
+        // distinct concept from email_bounced just above: bounced is about
+        // deliverability (the address doesn't work), suppressed is about
+        // consent (the owner asked not to be contacted). A car can be one,
+        // both, or neither, and either alone is enough to exclude the row.
+
+        // profiles.email_suppressed is the OWNER-level record of that same
+        // consent decision, and it is the one that survives the owner's car
+        // list changing. CarVerificationManager::setSuppressedForOwner() writes
+        // both: the profiles flag, plus a fan-out to cars.email_suppressed for
+        // every car the owner holds AT THAT MOMENT. Gating solely on the
+        // per-car flag therefore leaked every car acquired AFTER the opt-out —
+        // a new registration, a transfer in, or a merge target all default to
+        // cars.email_suppressed = 0 and silently re-entered this result set,
+        // so the owner kept being emailed despite a standing opt-out. That is
+        // the known gap documented in
+        // database/migrations/20260914093000_add_profile_email_suppressed.php's
+        // own header ("could become eligible again despite this flag being
+        // set... tracked as a follow-up"); this clause closes it.
+        //
+        // LEFT JOIN with COALESCE, NOT the INNER JOIN used for users below,
+        // and the difference is deliberate. For `users` a missing row means the
+        // owner is gone and the car MUST be excluded, so INNER JOIN's implicit
+        // rejection is the wanted behaviour. For `profiles` a missing row means
+        // only that the owner never filled in a profile: `users` and `profiles`
+        // are NOT 1:1 in this schema (see findProfileEmailSuppressed()'s
+        // docblock, which returns null precisely to distinguish the two cases,
+        // and updateProfileEmailSuppressed(), which deliberately refuses to
+        // synthesise a row). An INNER JOIN here would silently make every
+        // profile-less owner permanently un-emailable — a far larger behaviour
+        // change than the consent fix, and one no opt-out ever asked for.
+        // COALESCE(..., 0) then supplies the column's own DEFAULT 0 for the
+        // no-row case, matching the null-safety reasoning behind the explicit
+        // `cars.email IS NOT NULL` clause above: absence is treated as the
+        // permissive value only where absence genuinely carries no opt-out.
+        //
+        // INNER JOIN, not LEFT JOIN: cars.user_id has no FK to users.id (dropped
+        // deliberately — see DATABASE.md's "No Enforced Foreign Key Constraints"),
+        // so it can point at a row that no longer exists (e.g. a deleted user
+        // whose after_user_deletion.php reassignment failed partway). A LEFT
+        // JOIN would admit such a row via `users.username IS NULL` — indistinguishable
+        // from "no join match because deliberately ownerless" — reopening the
+        // erased-owner leak this method exists to close. INNER JOIN requires a
+        // live users row, so cars.user_id IS NOT NULL is redundant (the join
+        // already excludes NULL) but kept for clarity/defense in depth.
+        //
+        // The 60-day re-send cooldown, per the FRD's Eligibility Criteria.
+        // vericode_sent_at is the ONLY column a send writes — neither
+        // last_verified nor owner_last_updated is touched by sending, so the
+        // staleness expression above cannot tell a car that was emailed last
+        // night apart from one that has never been emailed at all. Without
+        // this clause the nightly cron therefore re-picks the identical batch
+        // on consecutive nights, and every owner receives both of their two
+        // yearly allowed sends roughly 24 hours apart before the attempt cap
+        // finally bites on the third night — the queue never advances past the
+        // same head of the backlog.
+        //
+        // NULL-safe for the same reason last_verified is: a car that has never
+        // been sent to has vericode_sent_at NULL, and a bare `<` comparison
+        // evaluates to UNKNOWN for those rows, silently excluding exactly the
+        // cars the first batch should contain.
+        //
+        // This and the attempt cap below are two halves of one rule and
+        // neither works alone. This clause is what SPREADS the sends out (60
+        // days of silence before a car may be tried again); the cap is what
+        // BOUNDS them (a silent owner would otherwise re-enter every 60 days
+        // forever, six emails a year). Drop this clause and the cap degrades
+        // into a bare total-sends limit with no cadence at all; drop the cap
+        // and the cooldown has no ceiling.
+        //
+        // The attempt cap: mirrors incrementVerificationAttempts()'s own
+        // rolling-12-month reset logic exactly (2 sends per window, then the
+        // car waits out the rest of the year), per the FRD's Eligibility
+        // Criteria. Without this clause the counter is written but never
+        // read, and a stale car re-enters every batch with no limit.
         $result = $this->db->query(
-            "SELECT * FROM cars
-              WHERE solddate IS NULL
-                AND email_bounced = 0
-                AND email IS NOT NULL AND email != ''
+            "SELECT cars.* FROM cars
+              INNER JOIN users ON users.id = cars.user_id
+              LEFT JOIN profiles ON profiles.user_id = cars.user_id
+              WHERE cars.solddate IS NULL
+                AND cars.email_bounced = 0
+                AND cars.email_suppressed = 0
+                AND COALESCE(profiles.email_suppressed, 0) = 0
+                AND cars.email IS NOT NULL AND cars.email != ''
+                AND cars.user_id IS NOT NULL
+                AND users.username != 'noowner'
                 AND {$stale}
-              ORDER BY last_verified ASC
+                AND (cars.vericode_sent_at IS NULL
+                     OR cars.vericode_sent_at < NOW() - INTERVAL 60 DAY)
+                AND (cars.verification_attempts_since IS NULL
+                     OR cars.verification_attempts_since < NOW() - INTERVAL 1 YEAR
+                     OR cars.verification_attempts < 2)
+              ORDER BY cars.last_verified ASC
               LIMIT {$limit} OFFSET {$offset}"
         );
         if ($this->db->error()) {
@@ -664,6 +1090,9 @@ class CarRepository
     /**
      * Update the sold date for a car
      *
+     * @deprecated No production callers since v2.30.3 — CarVerificationManager::markSold()
+     *             writes `solddate` via updateCar() directly so it can set
+     *             `owner_last_updated` in the same atomic write. Tracked for removal in #2107.
      * @param int $carId Car ID
      * @param string $soldDate Date string in Y-m-d format
      * @return bool True on success
@@ -738,13 +1167,18 @@ class CarRepository
     /**
      * Find a car by verification code
      *
-     * @param string $code Verification code
-     * @return object|null Car data or null
+     * @param string $code The plaintext verification code; it is hashed via
+     *                     hashVericode() before the lookup, since cars.vericode
+     *                     stores only the HMAC-SHA256 digest.
+     * @return object|null Car data, or null if not found. The returned object's
+     *                     ->vericode property (if accessed) is always the stored
+     *                     hash, never plaintext.
      * @throws CarDatabaseException If the query fails
      */
     public function findByVerificationCode(string $code): ?object
     {
-        $result = $this->db->query('SELECT * FROM cars WHERE vericode = ?', [$code]);
+        $hashedCode = hashVericode($code);
+        $result = $this->db->query('SELECT * FROM cars WHERE vericode = ?', [$hashedCode]);
         if ($this->db->error()) {
             throw new CarDatabaseException(
                 "CarRepository::findByVerificationCode failed: " . $this->db->errorString()
