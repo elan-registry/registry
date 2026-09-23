@@ -168,7 +168,7 @@ than silently trying to fix it inline.
 | Test Suite | car_models Required | Auto-loads |
 | --- | --- | --- |
 | `tests/unit/` | No (uses mocks) | N/A |
-| `tests/integration/Reference/CarModelTest.php` | Yes | ✅ |
+| `tests/integration/reference/CarModelTest.php` | Yes | ✅ |
 | `tests/integration/cars/services/CarValidatorModelTest.php` | Yes | ✅ |
 | Other integration tests | No | N/A |
 

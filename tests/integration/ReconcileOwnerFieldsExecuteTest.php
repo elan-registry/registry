@@ -29,7 +29,7 @@ use PHPUnit\Framework\Attributes\Group;
  * It proves only that this job's owner-ID-discovery + loop + aggregation
  * wiring is correct. It deliberately does NOT re-prove
  * Owner::syncOwnerFieldsToCars()'s own ownership-changed-mid-sync behavior —
- * that is already covered by OwnerSyncOwnerFieldsToCarsOwnershipScopingTest.
+ * that guard is covered in OwnerSyncOwnerFieldsToCarsTest.
  *
  * The drift-detection functions this suite calls (findOwnerIdsWithDrift() in
  * particular) are loaded via

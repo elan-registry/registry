@@ -2,30 +2,28 @@
 
 declare(strict_types=1);
 
-namespace Tests\Integration\Reference;
+namespace Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\Group;
 use ElanRegistry\Reference\CarModel;
 use ElanRegistry\Exceptions\CarDatabaseException;
-use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration test for CarModel::exists() and CarModel::byValue()'s DB-error propagation
+ * Unit test for CarModel::exists() and CarModel::byValue()'s DB-error propagation
  *
  * Verifies CarDatabaseException is thrown when the underlying query errors
  * (found as an untested gap while working #1505 — neither method had any
  * error() check before this fix; CarModel had no DB-failure handling
- * anywhere in the class). Stubs DatabaseInterface so nothing here touches
- * an actual database connection.
+ * anywhere in the class). Stubs DatabaseInterface (injected into CarModel's
+ * constructor, so its dbi() fallback is never reached) so nothing here
+ * touches an actual database connection.
  *
- * Extends plain TestCase, not IntegrationTestCase — it needs no DB fixtures
- * or connection (fully stubbed), matching the sibling
- * CarRepositoryFindByOwnerFailureTest pattern exactly. Named
- * CarModelFailureTest (not CarModelExistsFailureTest /
+ * Named CarModelFailureTest (not CarModelExistsFailureTest /
  * CarModelByValueFailureTest) since both fallible methods live in the same
  * small class.
  */
-#[Group('integration')]
+#[Group('fast')]
 final class CarModelFailureTest extends TestCase
 {
     public function testExistsThrowsCarDatabaseExceptionOnQueryError(): void

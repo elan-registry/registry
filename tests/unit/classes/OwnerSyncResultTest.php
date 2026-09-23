@@ -74,7 +74,8 @@ final class OwnerSyncResultTest extends TestCase
      * exactly — the boundary case behind process-owner-sync-location.php's
      * "No cars were synchronized." wording (#1954). The integration-level
      * version of this scenario lives in
-     * OwnerSyncOwnerFieldsToCarsOwnershipScopingTest, which already exercises
+     * OwnerSyncOwnerFieldsToCarsTest::testCarNoLongerOwnedIsNotOverwrittenAndSkippedAndLogged,
+     * which already exercises
      * a single-car, 100%-skipped sync end to end; this pins the numeric
      * contract at the value-object level.
      */

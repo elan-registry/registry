@@ -4,25 +4,43 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\OwnerDatabaseException;
+use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\PassThroughDatabase;
 
 /**
- * Integration tests for Owner::syncOwnerFieldsToCars()'s happy path and
- * business rules (#1873).
+ * Integration tests for Owner::syncOwnerFieldsToCars() (#1873): happy path,
+ * business rules, and every per-car failure branch.
  *
  * Supersedes AdminOwnerManagementTest::testSyncLocationToCarsCopiesCoordinatesToOwnedCar(),
  * which only checked lat/lon. This suite covers all nine synced fields
  * (fname, lname, email, city, state, country, lat, lon, website), the
  * OWNER_SYNC history-row semantics, the fold-in fix for the NOT NULL car
- * identity columns on that history row, and the no-op case.
+ * identity columns on that history row, and the no-op case. It also covers
+ * the per-car transactional semantics that replaced #1618's
+ * syncLocationToCars() bare loop: a failing history insert rolling back the
+ * UPDATE, the mid-sync ownership-change guard, a genuine UPDATE failure
+ * propagating, the outer-transaction guard, and the never-loaded Owner.
+ * (getCarsOwned() throwing before the loop starts lives in
+ * tests/unit/OwnerReadMethodsDatabaseFailureTest.php.)
  *
  * `operation='OWNER_SYNC'` is the assertion target everywhere a history row
  * is counted — the `cars_update` AFTER UPDATE trigger writes its own
  * `operation='UPDATE'` row on every changed car, so a changed car has TWO
  * cars_hist rows and only one of them is the application's.
  *
+ * Owner constructs its own internal CarRepository with no injection point,
+ * but Owner and CarRepository share the same DatabaseInterface instance — so
+ * the failure tests hand Owner a PassThroughDatabase subclass (see the db*()
+ * factories at the bottom) that sabotages one specific call while every
+ * other query runs against the real connection.
+ *
  * @see usersc/classes/Owner.php Owner::syncOwnerFieldsToCars()
+ * @see usersc/classes/Owner.php Owner::carBelongsToOwner()
  */
 #[Group('integration')]
 #[Group('owner')]
@@ -500,8 +518,8 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
      * `_carsOwned` cache (via Reflection) with two cars, then reassign one of
      * them away from the owner before calling sync — reproducing "a car
      * present in the getCarsOwned() snapshot but no longer owned at write
-     * time" without depending on timing. The dedicated
-     * OwnerSyncOwnerFieldsToCarsOwnershipScopingTest suite covers this
+     * time" without depending on timing.
+     * testCarNoLongerOwnedIsNotOverwrittenAndSkippedAndLogged() covers this
      * scenario's logging/DB-proxy details in isolation; this test just
      * confirms the returned result carries both lists correctly in one call.
      */
@@ -676,20 +694,18 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
      * issue #1954's acceptance criteria.
      *
      * Nothing else pins updated/skipped/failed as mutually exclusive buckets
-     * populated from ONE loop: each sibling suite covers only two of the three.
+     * populated from ONE loop: every other test covers only two of the three.
      * This combines their techniques —
      * testPartialSyncReportsUpdatedAndSkippedCarIds() above seeds Owner's
      * private `_carsOwned` cache via Reflection to reproduce the
      * snapshot-vs-write ownership race deterministically, and
-     * OwnerSyncOwnerFieldsToCarsRollbackTest::dbFailingHistoryInsert() proxies
-     * DatabaseInterface to fail the history insert. The proxy here fails
-     * SELECTIVELY (only the one car's cars_hist row) so the other two cars
-     * still travel their real code paths in the same call.
+     * dbFailingHistoryInsert() proxies DatabaseInterface to fail the history
+     * insert. The proxy here fails SELECTIVELY (only the one car's cars_hist
+     * row) so the other two cars still travel their real code paths in the
+     * same call.
      *
      * failedCarsPhrase() must name only the failed car: reporting a skip as a
      * failure is the exact defect #1954 addresses.
-     *
-     * @see OwnerSyncOwnerFieldsToCarsRollbackTest::dbFailingHistoryInsert()
      */
     public function testSingleSyncSortsUpdatedSkippedAndFailedIndependently(): void
     {
@@ -711,7 +727,7 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
         $otherUserId = $this->createTestUser();
         $this->db->query("UPDATE cars SET user_id = ? WHERE id = ?", [$otherUserId, $carIdSkipped]);
 
-        $db = $this->dbFailingHistoryInsertForCar($carIdFailed);
+        $db = $this->dbFailingHistoryInsert($carIdFailed);
         $owner = $this->ownerWithLoadedData($db, [
             'id'      => $userId,
             'fname'   => 'Three',
@@ -761,8 +777,8 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
     }
 
     /**
-     * Regression guard (distinct from the not-loaded-Owner case covered in
-     * OwnerSyncOwnerFieldsToCarsFailureTest): an Owner that loads
+     * Regression guard (distinct from the not-loaded-Owner case covered by
+     * testSyncOnNeverLoadedOwnerThrowsOwnerDatabaseException()): an Owner that loads
      * successfully but owns zero cars must still return an empty,
      * complete-success OwnerSyncResult — never throw. This is the case
      * getCarsOwned() legitimately returns an empty array for a valid owner,
@@ -785,90 +801,543 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
     }
 
     /**
-     * A DatabaseInterface proxy over the real connection that fails insert()
-     * ONLY for the cars_hist row belonging to $failingCarId.
+     * insertHistory() failing after a successful UPDATE must roll back the
+     * whole per-car transaction: the car row reverts to its ORIGINAL values,
+     * no OWNER_SYNC row is written, the car is reported in `failed`, and the
+     * failure is logged.
      *
-     * OwnerSyncOwnerFieldsToCarsRollbackTest::dbFailingHistoryInsert() fails
-     * every insert, which cannot express a mixed outcome. CarRepository::
-     * insertHistory() passes the target car in $fields['car_id'], so keying on
-     * that lets one car fail while its siblings commit normally in the same
-     * sync call.
+     * This supersedes the old syncLocationToCars()-era
+     * testInsertHistoryFailureStillCountsCarAsUpdatedAndLogsSeparately(),
+     * which asserted the OPPOSITE — that the update persisted despite the
+     * history failure — encoding the pre-transaction semantics #1873 replaced.
      */
-    private function dbFailingHistoryInsertForCar(int $failingCarId): \ElanRegistry\DatabaseInterface
+    public function testHistoryInsertFailureRollsBackCarUpdateAndReportsFailed(): void
     {
-        return new class ($this->db, $failingCarId) implements \ElanRegistry\DatabaseInterface {
-            public function __construct(
-                private \ElanRegistry\DatabaseInterface $real,
-                private int $failingCarId
-            ) {
-            }
-            public function query(string $sql, array $params = []): self
+        $userId = $this->createTestUser();
+        $carId = $this->createTestCar($userId, [
+            'city' => 'OriginalCity',
+            'lat'  => null,
+            'lon'  => null,
+        ]);
+
+        $logPattern = "syncOwnerFieldsToCars: failed to insert history record for car ID {$carId}%";
+        $before = $this->countMatchingLogs('OwnerActions', $logPattern);
+
+        $db = $this->dbFailingHistoryInsert();
+        $owner = $this->ownerWithLoadedData($db, [
+            'id'      => $userId,
+            'fname'   => 'Synced',
+            'lname'   => 'Owner',
+            'email'   => 'synced@example.com',
+            'city'    => 'NewCity',
+            'state'   => 'NewState',
+            'country' => 'New Country',
+            'lat'     => '45.5231',
+            'lon'     => '-122.6765',
+            'website' => 'https://example.com',
+        ]);
+
+        $result = $owner->syncOwnerFieldsToCars();
+
+        $this->assertSame([], $result->updated, 'A car whose history insert fails must not appear in updated');
+        $this->assertSame([$carId], $result->failed, 'A car whose history insert fails must appear in failed');
+        $this->assertFalse($result->isCompleteSuccess());
+
+        // The UPDATE must have been rolled back — original values persist.
+        $car = $this->db->query("SELECT city, lat FROM cars WHERE id = ?", [$carId])->first();
+        $this->assertNotNull($car);
+        $this->assertSame('OriginalCity', $car->city, 'The car UPDATE must be rolled back when the history insert fails');
+        $this->assertNull($car->lat, 'The car UPDATE must be rolled back when the history insert fails');
+
+        // No OWNER_SYNC row — the whole transaction, insert included, rolled back.
+        $this->assertSame(0, $this->countOwnerSyncHistoryRows($carId), 'No OWNER_SYNC history row must exist when its own insert fails and the transaction rolls back');
+
+        $after = $this->countMatchingLogs('OwnerActions', $logPattern);
+        $this->assertSame($before + 1, $after, 'The history-insert failure must be logged under LOG_CATEGORY_OWNER_ACTIONS');
+    }
+
+    /**
+     * Ownership-scoping guard: a car present in the getCarsOwned() snapshot
+     * but no longer owned by this user at write time (e.g. transferred to
+     * another owner between the snapshot read and the per-car write) must NOT
+     * be overwritten, must be reported in `skipped` (not `failed` — this is
+     * expected behavior, not an error), and must be logged.
+     *
+     * Reproduced deterministically rather than via real timing: the car is
+     * reassigned to another user for real, up front. dbWithStaleSnapshotIncluding()
+     * then makes getCarsOwned()'s own SELECT report that car anyway — as if
+     * the reassignment had happened just after the snapshot was taken — while
+     * every other query (the per-car UPDATE and the carBelongsToOwner()
+     * ownership check) hits the real database and sees the car's actual
+     * current owner. Unlike testPartialSyncReportsUpdatedAndSkippedCarIds(),
+     * this also pins the car row, the history row and the log row.
+     */
+    public function testCarNoLongerOwnedIsNotOverwrittenAndSkippedAndLogged(): void
+    {
+        $userId = $this->createTestUser();
+        $otherUserId = $this->createTestUser();
+        $carId = $this->createTestCar($userId, [
+            'city' => 'OriginalCity',
+            'lat'  => null,
+            'lon'  => null,
+        ]);
+
+        // The car has genuinely already been transferred away from $userId by
+        // the time syncOwnerFieldsToCars() runs — only the getCarsOwned()
+        // snapshot below is stale.
+        $this->db->query("UPDATE cars SET user_id = ? WHERE id = ?", [$otherUserId, $carId]);
+
+        $logPattern = "syncOwnerFieldsToCars: car ID {$carId} is no longer owned by user {$userId}%";
+        $before = $this->countMatchingLogs('OwnerActions', $logPattern);
+
+        $db = $this->dbWithStaleSnapshotIncluding($userId, $carId);
+        $owner = $this->ownerWithLoadedData($db, [
+            'id'      => $userId,
+            'fname'   => 'Synced',
+            'lname'   => 'Owner',
+            'email'   => 'synced@example.com',
+            'city'    => 'NewCity',
+            'state'   => 'NewState',
+            'country' => 'New Country',
+            'lat'     => '45.5231',
+            'lon'     => '-122.6765',
+            'website' => 'https://example.com',
+        ]);
+
+        $result = $owner->syncOwnerFieldsToCars();
+
+        $this->assertSame([], $result->updated, 'The reassigned car must not appear in updated');
+        $this->assertSame([$carId], $result->skipped, 'The reassigned car must appear in skipped, not failed');
+        $this->assertSame([], $result->failed, 'A mid-sync ownership change is not a failure');
+        $this->assertTrue($result->isCompleteSuccess(), 'A skip-only result must read as complete success');
+
+        // The car's real, current values must NOT have been overwritten with
+        // this (former) owner's data.
+        $car = $this->db->query("SELECT city, lat FROM cars WHERE id = ?", [$carId])->first();
+        $this->assertNotNull($car);
+        $this->assertSame('OriginalCity', $car->city, 'A car no longer owned by this user must not be overwritten');
+        $this->assertNull($car->lat, 'A car no longer owned by this user must not be overwritten');
+
+        // No OWNER_SYNC history row for a car whose write was rolled back.
+        $this->assertSame(0, $this->countOwnerSyncHistoryRows($carId), 'No OWNER_SYNC history row must be written for a car that left this owner');
+
+        $after = $this->countMatchingLogs('OwnerActions', $logPattern);
+        $this->assertSame($before + 1, $after, 'Losing ownership mid-sync must be logged under LOG_CATEGORY_OWNER_ACTIONS');
+    }
+
+    /**
+     * A genuine UPDATE failure (not a 0-row-matched ambiguity) is an
+     * infrastructure failure, not a per-car outcome: it must roll the car's
+     * transaction back and propagate as CarDatabaseException rather than be
+     * recorded in `failed`. Reporting a DB outage as N individual "car could
+     * not be updated" results hides the actual fault from the caller.
+     */
+    public function testUpdateQueryFailureRollsBackAndPropagates(): void
+    {
+        $userId = $this->createTestUser();
+        $carId = $this->createTestCar($userId, [
+            'chassis' => 'SYNCFAIL1',
+            'city'    => 'OriginalCity',
+            'lat'     => null,
+        ]);
+
+        $db = $this->dbFailingOwnerScopedUpdate();
+        $owner = $this->ownerWithLoadedData($db, [
+            'id'      => $userId,
+            'fname'   => 'Synced',
+            'lname'   => 'Owner',
+            'email'   => 'synced@example.com',
+            'city'    => 'NewCity',
+            'state'   => 'Oregon',
+            'country' => 'United States',
+            'lat'     => '45.5231',
+            'lon'     => '-122.6765',
+            'website' => 'https://example.com',
+        ]);
+
+        $thrown = null;
+        try {
+            $owner->syncOwnerFieldsToCars();
+        } catch (CarDatabaseException $e) {
+            $thrown = $e;
+        }
+
+        $this->assertNotNull($thrown, 'A DB-level UPDATE failure must propagate, not be recorded as a per-car failure');
+        $this->assertStringContainsString(
+            'simulated deadlock',
+            $thrown->getMessage(),
+            'The propagating exception must carry the underlying MySQL error string'
+        );
+
+        // Confirm the car's values were NOT actually changed in the real DB:
+        // the per-car transaction is rolled back before the exception propagates.
+        $car = $this->db->query("SELECT city, lat FROM cars WHERE id = ?", [$carId])->first();
+        $this->assertNotNull($car);
+        $this->assertSame('OriginalCity', $car->city, 'Car city must remain unchanged when the UPDATE query fails');
+        $this->assertNull($car->lat, 'Car lat must remain unchanged when the UPDATE query fails');
+    }
+
+    /**
+     * Gap A (#1873 round-two review): the outer-transaction guard at the top
+     * of syncOwnerFieldsToCars() has no test pinning it. CarRepository's
+     * beginTransaction()/commit()/rollback() are nesting-aware no-ops when an
+     * outer transaction is already open on the shared connection — so if this
+     * guard were ever deleted, a per-car rollback inside an outer transaction
+     * would silently do nothing, committing a car row without its audit row
+     * once the outer transaction later commits. That is the exact bug #1873
+     * exists to fix, inverted. This test proves the guard actually fires, and
+     * that it fires BEFORE any work — no car row touched, no OWNER_SYNC
+     * history row written — by opening a real outer transaction on the
+     * connection Owner holds before calling syncOwnerFieldsToCars().
+     */
+    public function testSyncInsideOuterTransactionThrowsBeforeAnyWork(): void
+    {
+        $userId = $this->createTestUser();
+        $carId = $this->createTestCar($userId, [
+            'chassis' => 'OUTERTXN1',
+            'city'    => 'OriginalCity',
+            'lat'     => null,
+        ]);
+
+        $owner = $this->ownerWithLoadedData($this->db, [
+            'id'      => $userId,
+            'fname'   => 'Synced',
+            'lname'   => 'Owner',
+            'email'   => 'synced@example.com',
+            'city'    => 'NewCity',
+            'state'   => 'Oregon',
+            'country' => 'United States',
+            'lat'     => '45.5231',
+            'lon'     => '-122.6765',
+            'website' => 'https://example.com',
+        ]);
+
+        $this->assertFalse(
+            $this->db->inTransaction(),
+            'Precondition: the shared connection must not already be inside a transaction'
+        );
+
+        $thrown = null;
+        $this->db->beginTransaction();
+        try {
+            $owner->syncOwnerFieldsToCars();
+        } catch (OwnerDatabaseException $e) {
+            $thrown = $e;
+        } finally {
+            // Unconditionally roll back the transaction opened above so a
+            // failing assertion below cannot leave the suite's shared
+            // connection stuck inside a transaction and cascade failures
+            // into unrelated tests. syncOwnerFieldsToCars() never commits or
+            // rolls back this outer transaction itself (it only throws), so
+            // it is always still open here.
+            $this->db->rollBack();
+        }
+
+        $this->assertNotNull(
+            $thrown,
+            'syncOwnerFieldsToCars() must throw OwnerDatabaseException when called inside an outer transaction'
+        );
+        $this->assertStringContainsString(
+            'outer transaction',
+            $thrown->getMessage(),
+            'The exception message must name the outer-transaction problem'
+        );
+
+        // Guard must fire before any per-car work — the car must be untouched.
+        $car = $this->db->query("SELECT city, lat FROM cars WHERE id = ?", [$carId])->first();
+        $this->assertNotNull($car);
+        $this->assertSame('OriginalCity', $car->city, 'The guard must fire before any car row is modified');
+        $this->assertNull($car->lat, 'The guard must fire before any car row is modified');
+
+        $this->assertSame(
+            0,
+            $this->countOwnerSyncHistoryRows($carId),
+            'The guard must fire before any OWNER_SYNC history row is written'
+        );
+    }
+
+    /**
+     * Gap B (#1873 round-two review): the one branch where diagnosability was
+     * genuinely fragile. CarRepository::updateCarForOwner() throws
+     * CarDatabaseException on a genuine UPDATE failure from inside the per-car
+     * transaction. It deliberately writes no log row of its own — one written
+     * there would be destroyed by the rollback before the exception escapes
+     * (InnoDB `logs` table; a row inserted in a transaction does not survive
+     * ROLLBACK). The propagating catch in syncOwnerFieldsToCars() therefore logs
+     * AFTER the rollback, recording the partial state (which cars already
+     * committed, and where the abort happened).
+     *
+     * This test forces the failure on the LATER of two cars, so one car has
+     * already committed by the time the failure hits, and asserts:
+     *  - CarDatabaseException propagates to the caller
+     *  - a log row under LOG_CATEGORY_DATABASE_ERROR survives (proving the
+     *    post-rollback logging placement actually works, not just that a
+     *    logger() call exists in the source)
+     *  - that surviving log names both the aborted car ID and the
+     *    already-committed car ID
+     *  - the already-committed car's synced values are genuinely present in
+     *    the DB, proving the partial state the log describes is real
+     */
+    public function testUpdateQueryFailureOnLaterCarLogsPartialStateAfterRollback(): void
+    {
+        $userId = $this->createTestUser();
+        $committedCarId = $this->createTestCar($userId, [
+            'chassis' => 'PARTIAL01',
+            'city'    => 'OriginalCity',
+            'lat'     => null,
+        ]);
+        $abortedCarId = $this->createTestCar($userId, [
+            'chassis' => 'PARTIAL02',
+            'city'    => 'OriginalCity',
+            'lat'     => null,
+        ]);
+
+        // getCarsOwned() orders by model, year — both test cars share the
+        // default model/year, so insertion order (committedCarId first) is
+        // the tie-break MySQL uses in practice for otherwise-equal sort keys
+        // on a single-table scan. Assert that ordering explicitly so the
+        // "later car" premise is verified rather than assumed.
+        $ownedIds = array_map(
+            static fn ($c) => (int) $c->id,
+            (new Owner($userId))->getCarsOwned()
+        );
+        $this->assertSame(
+            [$committedCarId, $abortedCarId],
+            $ownedIds,
+            'Precondition: committedCarId must be processed before abortedCarId'
+        );
+
+        $logCountBefore = $this->countMatchingLogs(
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+            "syncOwnerFieldsToCars: aborted at car ID {$abortedCarId}%"
+        );
+
+        $db = $this->dbFailingOwnerScopedUpdate($abortedCarId);
+        $owner = $this->ownerWithLoadedData($db, [
+            'id'      => $userId,
+            'fname'   => 'Synced',
+            'lname'   => 'Owner',
+            'email'   => 'synced@example.com',
+            'city'    => 'NewCity',
+            'state'   => 'Oregon',
+            'country' => 'United States',
+            'lat'     => '45.5231',
+            'lon'     => '-122.6765',
+            'website' => 'https://example.com',
+        ]);
+
+        $thrown = null;
+        try {
+            $owner->syncOwnerFieldsToCars();
+        } catch (CarDatabaseException $e) {
+            $thrown = $e;
+        }
+
+        $this->assertNotNull(
+            $thrown,
+            'CarDatabaseException must propagate when a later car\'s UPDATE fails'
+        );
+
+        $logCountAfter = $this->countMatchingLogs(
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+            "syncOwnerFieldsToCars: aborted at car ID {$abortedCarId}%"
+        );
+        $this->assertSame(
+            $logCountBefore + 1,
+            $logCountAfter,
+            'A log row recording the abort must survive the per-car rollback — the row is '
+            . 'written after rollback() returns, not inside the failed transaction'
+        );
+
+        $survivingLog = $this->db->query(
+            "SELECT lognote FROM logs WHERE logtype = ? AND lognote LIKE ? ORDER BY id DESC LIMIT 1",
+            [LogCategories::LOG_CATEGORY_DATABASE_ERROR, "syncOwnerFieldsToCars: aborted at car ID {$abortedCarId}%"]
+        )->first();
+        $this->assertNotNull($survivingLog, 'The surviving log row must be readable back from the DB');
+        $this->assertStringContainsString(
+            (string) $abortedCarId,
+            $survivingLog->lognote,
+            'The surviving log must name the car ID where the abort happened'
+        );
+        $this->assertStringContainsString(
+            (string) $committedCarId,
+            $survivingLog->lognote,
+            'The surviving log must name the already-committed car ID(s), proving the partial '
+            . 'state is recorded, not just the failure point'
+        );
+
+        // Prove the partial state the log describes is real: the earlier car
+        // really did commit its synced values before the later car aborted.
+        $committedCar = $this->db->query(
+            "SELECT city, lat FROM cars WHERE id = ?",
+            [$committedCarId]
+        )->first();
+        $this->assertNotNull($committedCar);
+        $this->assertSame(
+            'NewCity',
+            $committedCar->city,
+            'The already-committed car must genuinely hold the synced value in the DB'
+        );
+        $this->assertSame(
+            '45.5231',
+            $committedCar->lat,
+            'The already-committed car must genuinely hold the synced value in the DB'
+        );
+        $this->assertSame(
+            1,
+            $this->countOwnerSyncHistoryRows($committedCarId),
+            'The already-committed car must have its OWNER_SYNC history row too — the commit was whole'
+        );
+
+        // And the aborted car must show no trace of the attempted update.
+        $abortedCar = $this->db->query(
+            "SELECT city, lat FROM cars WHERE id = ?",
+            [$abortedCarId]
+        )->first();
+        $this->assertNotNull($abortedCar);
+        $this->assertSame('OriginalCity', $abortedCar->city, 'The aborted car must remain unchanged');
+        $this->assertNull($abortedCar->lat, 'The aborted car must remain unchanged');
+        $this->assertSame(
+            0,
+            $this->countOwnerSyncHistoryRows($abortedCarId),
+            'The aborted car must have no OWNER_SYNC history row — its transaction was rolled back'
+        );
+    }
+
+    /**
+     * An Owner constructed with a user ID whose row no longer exists (find()
+     * runs, queries the database, and returns false, so $this->_data stays
+     * null) must throw OwnerDatabaseException from syncOwnerFieldsToCars()
+     * rather than silently returning an empty, complete-success
+     * OwnerSyncResult. Silently succeeding here would hide a genuine
+     * precondition failure — the caller asked to sync a nonexistent owner —
+     * behind a result indistinguishable from "owner has zero cars".
+     *
+     * The user is created then deleted so find() actually executes its query
+     * and returns false for a real, once-valid ID — not merely skipped via
+     * the constructor's `if ($id)` guard, which a userId of 0 or null would
+     * trigger without ever calling find() at all.
+     */
+    public function testSyncOnNeverLoadedOwnerThrowsOwnerDatabaseException(): void
+    {
+        $userId = $this->createTestUser();
+        $this->db->delete('users', ['id', '=', $userId]);
+
+        $owner = new Owner($userId);
+        $this->assertNull($owner->data(), 'Precondition: Owner must have failed to load');
+
+        $this->expectException(OwnerDatabaseException::class);
+        $this->expectExceptionMessage('called on an Owner that failed to load');
+
+        $owner->syncOwnerFieldsToCars();
+    }
+
+    /**
+     * A proxy whose insert() fails for cars_hist rows, forcing
+     * CarRepository::insertHistory() to fail after the real UPDATE succeeded.
+     *
+     * With $failingCarId, only that car's history row fails (insertHistory()
+     * passes the target car in $fields['car_id']), so sibling cars in the same
+     * sync call commit normally — the mixed outcome the three-way test needs.
+     * With null, every car's history insert fails.
+     */
+    private function dbFailingHistoryInsert(?int $failingCarId = null): DatabaseInterface
+    {
+        return new class ($this->db, $failingCarId) extends PassThroughDatabase {
+            public function __construct(DatabaseInterface $real, private ?int $failingCarId)
             {
-                $this->real->query($sql, $params);
-                return $this;
+                parent::__construct($real);
             }
-            public function get(string $table, array $where): self|false
-            {
-                return $this->real->get($table, $where) === false ? false : $this;
-            }
+
             public function insert(string $table, array $fields = [], bool $update = false): bool
             {
-                if ($table === 'cars_hist' && (int) ($fields['car_id'] ?? 0) === $this->failingCarId) {
+                if (
+                    $table === 'cars_hist'
+                    && ($this->failingCarId === null || (int) ($fields['car_id'] ?? 0) === $this->failingCarId)
+                ) {
                     return false;
                 }
-                return $this->real->insert($table, $fields, $update);
+                return parent::insert($table, $fields, $update);
             }
-            public function update(string $table, array|int $id, array $fields): bool
+        };
+    }
+
+    /**
+     * A proxy that reports a database error ('simulated deadlock') for the
+     * `UPDATE cars SET ... WHERE id = ? AND user_id = ?` call issued by
+     * CarRepository::updateCarForOwner() — forcing it to throw
+     * CarDatabaseException, exactly as a genuine deadlock or constraint
+     * violation would. Every other query (including getCarsOwned()'s own
+     * read) passes through untouched.
+     *
+     * With $targetCarId, only that car's UPDATE fails, so cars processed
+     * before it commit for real and the failure lands after partial progress
+     * (Gap B). With null, every such UPDATE fails.
+     */
+    private function dbFailingOwnerScopedUpdate(?int $targetCarId = null): DatabaseInterface
+    {
+        return new class ($this->db, $targetCarId) extends PassThroughDatabase {
+            public function __construct(DatabaseInterface $real, private ?int $targetCarId)
             {
-                return $this->real->update($table, $id, $fields);
+                parent::__construct($real);
             }
-            public function delete(string $table, array|int $where): self|false
+
+            public function query(string $sql, array $params = []): static
             {
-                return $this->real->delete($table, $where) === false ? false : $this;
+                // updateCarForOwner() binds the car id second-to-last, before user_id.
+                $fails = str_starts_with($sql, 'UPDATE cars SET')
+                    && str_ends_with($sql, 'WHERE id = ? AND user_id = ?')
+                    && ($this->targetCarId === null || (int) ($params[count($params) - 2] ?? 0) === $this->targetCarId);
+
+                return $fails ? $this->simulateFailure('simulated deadlock') : parent::query($sql, $params);
             }
-            public function error(): bool
+        };
+    }
+
+    /**
+     * A proxy that appends one extra row — for $staleCarId, a car already
+     * reassigned away from $ownerId in the real database — to the first
+     * results() read after getCarsOwned()'s own
+     * `SELECT c.* FROM cars c WHERE c.user_id = ?` query for $ownerId. Every
+     * matching query re-arms the injection; the tests issue that SELECT only
+     * once per sync because Owner caches its owned-cars list.
+     */
+    private function dbWithStaleSnapshotIncluding(int $ownerId, int $staleCarId): DatabaseInterface
+    {
+        return new class ($this->db, $ownerId, $staleCarId) extends PassThroughDatabase {
+            private bool $pendingInjection = false;
+
+            public function __construct(
+                DatabaseInterface $real,
+                private int $ownerId,
+                private int $staleCarId
+            ) {
+                parent::__construct($real);
+            }
+
+            public function query(string $sql, array $params = []): static
             {
-                return $this->real->error();
+                parent::query($sql, $params);
+
+                $this->pendingInjection = str_starts_with($sql, 'SELECT c.* FROM cars c WHERE c.user_id = ?')
+                    && (int) ($params[0] ?? 0) === $this->ownerId;
+
+                return $this;
             }
-            public function errorString(): string
-            {
-                return $this->real->errorString();
-            }
-            public function errorInfo(): array
-            {
-                return $this->real->errorInfo();
-            }
+
             public function count(): int
             {
-                return $this->real->count();
+                return $this->real->count() + ($this->pendingInjection ? 1 : 0);
             }
-            public function first(bool $assoc = false): array|object
-            {
-                return $this->real->first($assoc);
-            }
+
             public function results(bool $assoc = false): array
             {
-                return $this->real->results($assoc);
-            }
-            public function lastId(): int
-            {
-                return $this->real->lastId();
-            }
-            public function beginTransaction(): bool
-            {
-                return $this->real->beginTransaction();
-            }
-            public function commit(): bool
-            {
-                return $this->real->commit();
-            }
-            public function rollBack(): bool
-            {
-                return $this->real->rollBack();
-            }
-            public function inTransaction(): bool
-            {
-                return $this->real->inTransaction();
+                $rows = $this->real->results($assoc);
+                if ($this->pendingInjection) {
+                    $this->pendingInjection = false;
+                    $rows[] = $this->real->query("SELECT * FROM cars WHERE id = ?", [$this->staleCarId])->first();
+                }
+                return $rows;
             }
         };
     }

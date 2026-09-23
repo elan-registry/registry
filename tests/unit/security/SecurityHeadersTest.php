@@ -292,6 +292,94 @@ class SecurityHeadersTest extends TestCase
     }
 
     /**
+     * error/500.php (the handler for every 4xx/5xx ErrorDocument) must set its
+     * own anti-clickjacking headers so they survive an init.php failure.
+     *
+     * When init.php loads, usersc/includes/security_headers.php already sends
+     * both headers, and .htaccess sets X-Frame-Options globally, so these two
+     * lines only matter when init.php fails — which no HTTP-level check (e.g.
+     * clickjacking.spec.js) can observe. This pins both calls.
+     */
+    public function testErrorPageSetsAntiClickjackingHeaders(): void
+    {
+        $code = $this->errorPageCode();
+
+        $this->assertStringContainsString(
+            'header("X-Frame-Options: SAMEORIGIN");',
+            $code,
+            'error/500.php must set X-Frame-Options: SAMEORIGIN'
+        );
+        $this->assertStringContainsString(
+            "header(\"Content-Security-Policy: frame-ancestors 'self'\");",
+            $code,
+            "error/500.php must set Content-Security-Policy: frame-ancestors 'self'"
+        );
+    }
+
+    /**
+     * SAMEORIGIN (not DENY) keeps same-origin framing working while still
+     * blocking cross-origin clickjacking.
+     */
+    public function testErrorPageUsesSameoriginPolicy(): void
+    {
+        $code = $this->errorPageCode();
+
+        $this->assertStringNotContainsString(
+            'X-Frame-Options: DENY',
+            $code,
+            'error/500.php must use SAMEORIGIN, not DENY'
+        );
+        $this->assertMatchesRegularExpression(
+            '/header\(\s*[\'"]X-Frame-Options:\s*SAMEORIGIN[\'"]\s*\)/',
+            $code,
+            'error/500.php must send X-Frame-Options with the SAMEORIGIN policy'
+        );
+    }
+
+    /**
+     * Both header() calls must come before the first code reference to
+     * users/init.php, so they are sent even when init.php is missing or throws.
+     */
+    public function testErrorPageHeadersPrecedeInitPhp(): void
+    {
+        $code = $this->errorPageCode();
+
+        $initPos = strpos($code, "/../users/init.php'");
+        $xfoPos = strpos($code, 'header("X-Frame-Options:');
+        $cspPos = strpos($code, 'header("Content-Security-Policy:');
+
+        $this->assertNotFalse($initPos, 'error/500.php must reference users/init.php');
+        $this->assertNotFalse($xfoPos, 'error/500.php must call header("X-Frame-Options: ...")');
+        $this->assertNotFalse($cspPos, 'error/500.php must call header("Content-Security-Policy: ...")');
+
+        $this->assertLessThan($initPos, $xfoPos, 'X-Frame-Options header() must precede the init.php load');
+        $this->assertLessThan($initPos, $cspPos, 'Content-Security-Policy header() must precede the init.php load');
+    }
+
+    /**
+     * error/500.php source with comments and docblocks removed, so a
+     * commented-out header() call cannot satisfy the assertions.
+     */
+    private function errorPageCode(): string
+    {
+        $source = file_get_contents(dirname(__DIR__, 3) . '/error/500.php');
+        $this->assertIsString($source, 'error/500.php must be readable');
+
+        $code = '';
+        foreach (token_get_all($source) as $token) {
+            if (is_array($token)) {
+                if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
+                    continue;
+                }
+                $code .= $token[1];
+            } else {
+                $code .= $token;
+            }
+        }
+        return $code;
+    }
+
+    /**
      * Verify that the five SHA-256 hashes in script-src match the actual upstream
      * script blocks on disk. If a UserSpice update changes one of these files, this
      * test fails and identifies which file needs a new hash in security_headers.php.
