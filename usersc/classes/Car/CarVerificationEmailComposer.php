@@ -37,7 +37,13 @@ use ElanRegistry\EmailTemplate;
  */
 final class CarVerificationEmailComposer
 {
-    /** Marks links to exclude from Brevo click-tracking (#1883 AC9; wired in #1884). */
+    /**
+     * Was meant to mark links for Brevo click-tracking exclusion (#1883 AC9),
+     * but Brevo has no per-link tracking-exclusion mechanism for transactional
+     * email — no CSS class, tag, or API parameter accomplishes this.
+     * Confirmed during #2147's investigation. This class is currently inert;
+     * see #2147 for the decision on whether to remove it.
+     */
     public const NO_TRACK_LINK_CLASS = 'er-no-track';
 
     /**
@@ -169,7 +175,11 @@ final class CarVerificationEmailComposer
             . '<p style="font-size: 13px; color: #6b7280;">You are receiving this message because'
             . ' this car is registered to you in the Lotus Elan Registry. We send it no more than'
             . ' twice in any twelve-month period.</p>'
-            // #1883 AC9 — click-tracking exclusion wired in #1884
+            // #1883 AC9 — NOTE (#2147): this class name was meant to mark the
+            // link for Brevo click-tracking exclusion, but no such per-link
+            // exclusion mechanism exists in Brevo's API for transactional
+            // email — confirmed during #2147's investigation. The class is
+            // currently inert; Brevo tracks this link like any other.
             . '<p style="font-size: 13px; color: #6b7280;"><a href="'
             . $this->esc($this->optOutUrl($vericode))
             . '" class="' . self::NO_TRACK_LINK_CLASS . '">Stop sending me these</a></p>';

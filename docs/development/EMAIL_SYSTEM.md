@@ -601,11 +601,12 @@ record. Failures (a DB error while counting cars, or during the suppression tran
 
 ### Click-Tracking Exclusion Note
 
-The Opt-Out link and ideally the Verify/Sold links carry the CSS class `NO_TRACK_LINK_CLASS = 'er-no-track'` to mark them for Brevo
-click-tracking exclusion. However, the actual Brevo API wiring to honor that exclusion is **NOT yet built** — that is deferred to
-issue #1884. Until then, click events on these links may still be tracked and counted by Brevo like any other email link. Do not
-let a reader think the tracking exclusion is already active; it is declared in the markup but enforced only once #1884 ships. The
-`app/verify/verify_car.php` file header has been updated to document the opt-out action alongside Verify/Sold for future readers.
+The Opt-Out link carries the CSS class `NO_TRACK_LINK_CLASS = 'er-no-track'`, originally intended to mark it for Brevo
+click-tracking exclusion. **No such exclusion is possible** — confirmed during #2147's investigation, Brevo has no
+per-link tracking-exclusion mechanism for transactional email (no CSS class, tag, or API parameter accomplishes this).
+This is not a "not yet built" gap; it cannot be built against Brevo as-is. The class is currently inert and every link
+in a Registry transactional email, including this one, is rewritten through Brevo's tracking redirect domain — see the
+broader consequence (a raw tracking URL displayed as body text in several templates) and its resolution in issue #2147.
 
 ---
 
