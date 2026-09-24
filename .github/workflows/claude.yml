@@ -60,7 +60,7 @@ jobs:
           claude_args: >-
             --model claude-sonnet-5
             --allowedTools
-            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue comment:*),Bash(gh issue view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
+            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue comment:*),Bash(gh issue view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
           custom_instructions: |
             This is the Elan Registry — a PHP 8.2 web application (elanregistry.org) built on UserSpice 6.
             PSR-4 namespace: ElanRegistry\ → usersc/classes/.
