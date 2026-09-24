@@ -6,6 +6,8 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\BrevoOverrideStub;
+use Tests\Support\PhpBuiltinServer;
 
 /**
  * Behavioral (real-process, real-DB) tests for app/api/webhooks/brevo.php —
@@ -31,11 +33,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     private const TEST_TOKEN = 'test-brevo-webhook-token-987654321';
 
-    /** @var resource|null */
-    private static $serverProcess = null;
-    private static int $serverPort = 0;
+    private static ?PhpBuiltinServer $server = null;
     private static string $projectRoot = '';
-    private static string $routerScriptPath = '';
 
     /** @var array<int> Car ids created by this test's own raw inserts, cleaned up in tearDown() in addition to trackCarId()-tracked ones. */
     private array $extraCarIds = [];
@@ -45,22 +44,12 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         parent::setUpBeforeClass();
 
         self::$projectRoot = dirname(__DIR__, 2);
-
-        // Pick a pseudo-random port (seeded by PID) to avoid collisions across
-        // parallel test runs — defensive even though phpunit-integration.xml
-        // runs with processIsolation="false" (single process).
-        self::$serverPort = 20000 + (getmypid() % 20000);
-
-        self::$routerScriptPath = self::writeRouterScript();
     }
 
     public static function tearDownAfterClass(): void
     {
-        self::stopServer();
-
-        if (self::$routerScriptPath !== '' && file_exists(self::$routerScriptPath)) {
-            unlink(self::$routerScriptPath);
-        }
+        self::$server?->stop();
+        self::$server = null;
 
         parent::tearDownAfterClass();
     }
@@ -71,7 +60,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->requireDatabase();
 
         $this->exposeTestDatabaseAndTokenToEnvironment();
-        self::ensureServerRunning();
+        self::$server ??= PhpBuiltinServer::start(self::$projectRoot, self::routerBody());
 
         $this->setSwitchEnabled(true);
         $this->makeBrevoReady();
@@ -111,7 +100,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     // Server lifecycle
     // ------------------------------------------------------------------
 
-    private static function writeRouterScript(): string
+    private static function routerBody(): string
     {
         $projectRoot = self::$projectRoot;
         // TEST_TOKEN is a fixed alphanumeric/dash/underscore literal (see the
@@ -133,8 +122,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         // built-in server silently omitting a header sent with an empty
         // value (confirmed empirically) — the router below maps that
         // sentinel back to an actually-empty value.
-        $routerSource = <<<PHP
-        <?php
+        return <<<PHP
         require '{$projectRoot}/vendor/autoload.php';
         \\Dotenv\\Dotenv::createMutable('{$projectRoot}', '.env.test.local')->load();
         // Default configured token for every request; the per-request test
@@ -149,14 +137,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         chdir('{$projectRoot}/app/api/webhooks');
         require '{$projectRoot}/app/api/webhooks/brevo.php';
         PHP;
-
-        $path = tempnam(sys_get_temp_dir(), 'brevo_webhook_router_') . '.php';
-        $written = file_put_contents($path, $routerSource);
-        if ($written === false) {
-            throw new RuntimeException('Could not write router script for brevo webhook test server');
-        }
-
-        return $path;
     }
 
     private function exposeTestDatabaseAndTokenToEnvironment(): void
@@ -165,7 +145,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         // process environment; it does NOT reach the already-running (or
         // not-yet-started) `php -S` child process's $_ENV, since this app's
         // .env loading reads $_ENV (populated by phpdotenv), not getenv() —
-        // see writeRouterScript()'s BREVO_WEBHOOK_TOKEN default and header
+        // see routerBody()'s BREVO_WEBHOOK_TOKEN default and header
         // override for how the subprocess actually gets its token/DB config
         // (via the router script's own Dotenv::createMutable() load).
         foreach (self::DB_ENV_VARS as $var) {
@@ -174,67 +154,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
                 putenv("$var=$value");
             }
         }
-    }
-
-    private static function ensureServerRunning(): void
-    {
-        if (self::$serverProcess !== null) {
-            return;
-        }
-
-        $descriptorSpec = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ];
-
-        $command = sprintf(
-            'php -S 127.0.0.1:%d -t %s %s',
-            self::$serverPort,
-            escapeshellarg(self::$projectRoot),
-            escapeshellarg(self::$routerScriptPath)
-        );
-
-        $process = proc_open($command, $descriptorSpec, $pipes, self::$projectRoot, null);
-        if ($process === false) {
-            throw new RuntimeException('Could not start PHP built-in server for brevo webhook test');
-        }
-
-        self::$serverProcess = $process;
-
-        // Give the server a moment to bind the port before the first request.
-        $deadline = microtime(true) + 3.0;
-        $connected = false;
-        while (microtime(true) < $deadline) {
-            $conn = @fsockopen('127.0.0.1', self::$serverPort, $errno, $errstr, 0.1);
-            if ($conn !== false) {
-                fclose($conn);
-                $connected = true;
-                break;
-            }
-            usleep(50_000);
-        }
-
-        if (!$connected) {
-            self::stopServer();
-            throw new RuntimeException('PHP built-in server did not start listening on port ' . self::$serverPort);
-        }
-    }
-
-    private static function stopServer(): void
-    {
-        if (self::$serverProcess === null) {
-            return;
-        }
-
-        $status = proc_get_status(self::$serverProcess);
-        if ($status['running']) {
-            proc_terminate(self::$serverProcess, 15);
-            // Give it a moment to exit cleanly before the process handle is closed.
-            usleep(100_000);
-        }
-        proc_close(self::$serverProcess);
-        self::$serverProcess = null;
     }
 
     // ------------------------------------------------------------------
@@ -247,7 +166,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
      */
     private function postToWebhook(?string $body, array $headers = []): array
     {
-        $url = sprintf('http://127.0.0.1:%d/app/api/webhooks/brevo.php', self::$serverPort);
+        $url = self::$server->url('/app/api/webhooks/brevo.php');
 
         $ch = curl_init($url);
         $headerLines = ['Content-Type: application/json'];
@@ -305,7 +224,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $overridePath = self::$projectRoot . '/usersc/plugins/sendinblue/override.php';
         $this->brevoOverrideCreatedByTest = !file_exists($overridePath);
         if ($this->brevoOverrideCreatedByTest) {
-            file_put_contents($overridePath, "<?php\n");
+            file_put_contents($overridePath, BrevoOverrideStub::CONTENT);
         }
 
         $this->existingBrevoRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
@@ -458,8 +377,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     public function testEmptyConfiguredTokenRejectsEverythingFailClosed(): void
     {
         // Simulate BREVO_WEBHOOK_TOKEN being empty in the environment via the
-        // router script's test-only override header (see writeRouterScript()'s
-        // docblock for why a real env var can't be changed per-request against
+        // router script's test-only override header (see the comments in
+        // routerBody() for why a real env var can't be changed per-request against
         // an already-running php -S child process) — even a "valid-looking"
         // provided token must be rejected (fail closed, not fail open).
         $result = $this->postToWebhook($this->taggedPayload(), [

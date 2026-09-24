@@ -29,8 +29,9 @@ local check's result; MAMP is no longer needed.
   files that were renamed away.
 - [#2161](https://github.com/elan-registry/registry/issues/2161) — Cleaned up `tests/integration/`,
   moving, merging or deleting low-signal tests and adding a `PassThroughDatabase` test double.
-- WIP: [#2166](https://github.com/elan-registry/registry/issues/2166) — Integration fixtures and
-  `php -S` servers no longer leak when a test process dies.
+- WIP: [#2166](https://github.com/elan-registry/registry/issues/2166) — Integration tests' `php -S`
+  servers no longer leak (two per container run), and a crashed run's leftover servers and Brevo
+  `override.php` stub are cleaned up by the next run instead of silently changing dev email routing.
 - [#2168](https://github.com/elan-registry/registry/issues/2168) — The integration suite no longer
   calls live geocoding services during the pre-push gate.
 - [#2171](https://github.com/elan-registry/registry/issues/2171) — The pre-push gate runs the
