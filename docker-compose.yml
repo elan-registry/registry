@@ -1,32 +1,33 @@
-# Registry2 Docker dev environment (issue #2116 spike).
+# Docker dev environment (issue #2116).
 #
-# LOCAL DEVELOPMENT ONLY, and specific to the Registry2/ checkout. See
-# docs/development/ENVIRONMENT.md's "Docker Dev Environment" section for
-# the status of other checkouts (Registry/, worktrees) and why they aren't
-# using this pattern yet. Port convention established here:
-# Registry=8001/8081, Registry2=8002/8082, future checkouts=8003/8083, etc.
+# LOCAL DEVELOPMENT ONLY. See docs/development/ENVIRONMENT.md's "Docker Dev
+# Environment" section. Per-checkout host ports:
 #
-# Coexists with MAMP: MAMP keeps serving this checkout on 9999/8889
-# unaffected. This stack runs in parallel on 8002 (app) / 8082 (phpMyAdmin).
+#   checkout    site   phpMyAdmin   mock-brevo   landing page
+#   Registry    8001   8081         8091         8101
+#   Registry2   8002   8082         8090         8102   (the defaults below)
+#   next        8003   8083         8092         8103
 #
-# Copying this file to another checkout (#2120)? Four things change together,
-# not just the two port numbers in the header comment above:
-#   1. The two `127.0.0.1:PORT:80` host ports below (app, phpmyadmin)
-#   2. The network name (`registry2` → e.g. `registry`) — every `networks:`
-#      key and the top-level `networks:` block
-#   3. The named volume (`registry2_db_data` → e.g. `registry_db_data`) —
-#      the `db` service's `volumes:` entry and the top-level `volumes:` block
-#   4. `APP_UID`/`APP_GID` build args, if the checkout is worked on by a
-#      different host user
-#   5. `mock-brevo`'s host port (127.0.0.1:8090:8080 below), if the new
-#      checkout also includes that service — it's deliberately outside the
-#      per-checkout port sequence above (see that service's own comment for
-#      why), so nothing here bumps it automatically the way #1's sequence
-#      does; two checkouts both on 8090 collide.
-# Missing #2 or #3 doesn't fail loudly — Compose just silently reuses (or
-# collides with) the other checkout's network/volume. Missing #5 fails
-# loudly (Docker's own "port is already allocated" error) if both stacks
-# run at once, so it's lower-risk but still worth listing.
+# Coexists with MAMP: MAMP keeps serving each checkout on 9999/8889
+# unaffected. This stack runs in parallel on the ports below.
+#
+# Running this stack in another checkout? This file is shared by every
+# checkout on the branch, so do NOT edit it per checkout. Set the host ports
+# in that checkout's own (gitignored) .env instead; the defaults below are
+# Registry2's:
+#
+#   CHECKOUT_NAME=Registry        # label on the landing page
+#   APP_HOST_PORT=8001            # site           (Registry2: 8002)
+#   PMA_HOST_PORT=8081            # phpMyAdmin     (Registry2: 8082)
+#   MOCK_BREVO_HOST_PORT=8091     # mock-brevo UI  (Registry2: 8090)
+#   LANDING_HOST_PORT=8101        # landing page   (Registry2: 8102)
+#
+# Two stacks with the same port fail loudly ("port is already allocated").
+# The network and volume need no per-checkout change: Compose prefixes both
+# with the project name (the checkout's directory), so Registry/ gets
+# registry_elan and registry_db_data, separate from
+# Registry2's. `APP_UID`/`APP_GID` below still need changing if the checkout
+# is worked on by a different host user.
 #
 #   docker compose up -d
 #   docker compose exec -u www-data app composer install
@@ -65,13 +66,13 @@ services:
     # .env file in the project directory — a separate mechanism that needs
     # no env_file directive. Found during senior-architect review.
     ports:
-      - "127.0.0.1:8002:80"
+      - "127.0.0.1:${APP_HOST_PORT:-8002}:80"
     volumes:
       - ./:/var/www/html
     depends_on:
       db:
         condition: service_healthy
-    networks: [registry2]
+    networks: [elan]
 
   db:
     image: mysql:8.0
@@ -109,7 +110,7 @@ services:
     # a direct connection — phpMyAdmin, below, is the intended DB-inspection
     # path, matching the issue's "no CLI mysql client required" goal.
     volumes:
-      - registry2_db_data:/var/lib/mysql
+      - db_data:/var/lib/mysql
       - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -117,7 +118,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-    networks: [registry2]
+    networks: [elan]
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
@@ -128,36 +129,56 @@ services:
     # phpMyAdmin must not be reachable outside localhost, and is never
     # routed through Traefik.
     ports:
-      - "127.0.0.1:8082:80"
+      - "127.0.0.1:${PMA_HOST_PORT:-8082}:80"
     depends_on:
       db:
         condition: service_healthy
-    networks: [registry2]
+    networks: [elan]
 
   mock-brevo:
     # Local stand-in for the real Brevo transactional email API (#2127,
     # investigated in #2118). Reachable from the `app` container as
-    # http://mock-brevo:8080/v3 over the registry2 network, and from the
-    # host at http://localhost:8090 for manual inspection. No
-    # depends_on/healthcheck: the app only talks to it when sendinblue()
-    # actually sends, not at container boot.
-    #
-    # Host port deliberately NOT 8003: this file's header comment reserves
-    # the 8001/8081, 8002/8082, 8003/8083, ... sequence for per-checkout
-    # ports (Registry, Registry2, future checkouts) — mock-brevo is an
-    # additional service within this one checkout's stack, not a new
-    # checkout, so it takes a port outside that sequence instead of
-    # colliding with it.
+    # http://mock-brevo:8080/v3 over the elan network, and from the
+    # host at http://localhost:$MOCK_BREVO_HOST_PORT (its web inbox) for
+    # manual inspection. No depends_on/healthcheck: the app only talks to
+    # it when sendinblue() actually sends, not at container boot. Its host
+    # port follows the per-checkout table in the header.
     image: ghcr.io/c0boleis/mock-brevo:1.0.0
     restart: "no"
     environment:
       MOCK_BREVO_DB_PATH: /app/data/brevo
     ports:
-      - "127.0.0.1:8090:8080"
-    networks: [registry2]
+      - "127.0.0.1:${MOCK_BREVO_HOST_PORT:-8090}:8080"
+    networks: [elan]
+
+  landing:
+    # Local index page linking this checkout's site, phpMyAdmin and the
+    # mock-brevo inbox. The HTML is rendered once at startup from
+    # docker/landing/index.html.template, substituting the same host-port
+    # variables the services above publish on, so the links always match
+    # this checkout's ports. The link targets are the host's published ports,
+    # so this needs no network access to the other services.
+    image: nginx:1.27-alpine
+    restart: "no"
+    environment:
+      CHECKOUT_NAME: ${CHECKOUT_NAME:-Registry2}
+      APP_HOST_PORT: ${APP_HOST_PORT:-8002}
+      PMA_HOST_PORT: ${PMA_HOST_PORT:-8082}
+      MOCK_BREVO_HOST_PORT: ${MOCK_BREVO_HOST_PORT:-8090}
+    volumes:
+      - ./docker/landing/index.html.template:/landing/index.html.template:ro
+    # envsubst is limited to the four names above so any other `$` in the
+    # template is left alone. `$$` escapes `$` from Compose interpolation.
+    command: >-
+      sh -c "envsubst '$$CHECKOUT_NAME $$APP_HOST_PORT $$PMA_HOST_PORT $$MOCK_BREVO_HOST_PORT'
+      < /landing/index.html.template > /usr/share/nginx/html/index.html
+      && exec nginx -g 'daemon off;'"
+    ports:
+      - "127.0.0.1:${LANDING_HOST_PORT:-8102}:80"
+    networks: [elan]
 
 networks:
-  registry2:
+  elan:
 
 volumes:
-  registry2_db_data:
+  db_data:
