@@ -607,8 +607,10 @@ After the initial setup, tests can be re-run safely and repeatedly against the t
 integration-suite-relevant code on any failure, including an unreachable test
 database — set up `.env.test.local` per this section *before* you first touch
 those paths, or the push will fail at `tests/bootstrap-integration.php`'s
-connectivity check. See `scripts/README.md`'s "Git Hooks Management" section
-for when the gate runs and how to bypass it.
+connectivity check. With `DB_HOST=db` (Docker) the gate runs the suite inside
+the `app` container, so the stack must be up when you push. See
+`scripts/README.md`'s "Git Hooks Management" section for when the gate runs
+and how to bypass it.
 
 ### Production Deployment
 

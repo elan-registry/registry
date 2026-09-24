@@ -64,14 +64,21 @@ remote_name="${1:-}"
 #   - A remote tip pushed with --no-verify or SKIP_INTEGRATION_GATE=1 is not
 #     re-checked by a later push; only remote_sha..local_sha is.
 #
+# WHERE IT RUNS. On the host by default. When .env.test.local has DB_HOST=db
+# (the Docker dev stack), inside this checkout's `app` container instead,
+# via `docker compose exec`: `db` resolves only on the Compose network. A
+# stopped stack blocks the push with "docker compose up -d" rather than
+# skipping. See _integration_runner / _run_integration_suite (#2171).
+#
 # The suite (composer test:integration, against the schema in
 # .env.test.local) tests the WORKING TREE, so it runs at most ONCE per hook
 # invocation and later refs reuse its exit code; pushing a ref that is not
 # HEAD prints a warning. Any non-zero exit blocks the push — a test failure
 # or an unreachable test DB (tests/bootstrap-integration.php fails loudly).
 #
-# CACHE. $GIT_DIR/integration-passed holds one key — the pushed tree SHA plus
-# the test DB_NAME — for the most recent pass. It is written only when the
+# CACHE. $GIT_DIR/integration-passed holds one key — the pushed tree SHA, the
+# test DB_NAME and the runner (host/docker) — for the most recent pass. It is
+# written only when the
 # suite exits 0, the pushed commit is HEAD and the working tree has no
 # modified or untracked (non-ignored) files, so
 # it only skips a re-push of an identical tree (e.g. a retried force push).
@@ -232,7 +239,10 @@ _integration_cache_key() {
     db_name="$(printf '%s' "$db_name" | tr -d '\r"'"'" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     [ -z "$db_name" ] && return 0
 
-    printf '%s %s\n' "$tree" "$db_name"
+    # The runner is part of the key: MAMP_TO_DOCKER.md keeps DB_NAME when
+    # switching DB_HOST to Docker, so tree + DB_NAME alone would let a host
+    # pass skip the first in-container run of the same tree (#2171 review).
+    printf '%s %s %s\n' "$tree" "$db_name" "$(_integration_runner)"
 }
 
 _integration_cache_file() {
@@ -268,6 +278,72 @@ _integration_cache_record() {
     printf '%s\n' "$key" > "$tmp" 2>/dev/null || return 1
     mv -f "$tmp" "$file" 2>/dev/null || { rm -f "$tmp"; return 1; }
     return 0
+}
+
+# Echoes where the suite must run: "docker" when .env.test.local points at
+# the Docker Compose `db` service (DB_HOST=db, with or without a :port),
+# otherwise "host". `db` resolves only on the Compose network, and the `db`
+# service publishes no host port, so a host-side run can never reach it
+# (#2171). INTEGRATION_GATE_RUNNER=host|docker overrides the detection.
+_integration_runner() {
+    local env_file db_host
+    case "${INTEGRATION_GATE_RUNNER:-}" in
+        host|docker)
+            printf '%s\n' "$INTEGRATION_GATE_RUNNER"
+            return 0
+            ;;
+        '')
+            ;;
+        *)
+            echo "  WARNING: INTEGRATION_GATE_RUNNER='$INTEGRATION_GATE_RUNNER' is not 'host' or 'docker' — ignored; detecting from .env.test.local." >&2
+            ;;
+    esac
+
+    env_file="$(git rev-parse --show-toplevel 2>/dev/null)/.env.test.local"
+    db_host="$(grep -E '^[[:space:]]*DB_HOST[[:space:]]*=' "$env_file" 2>/dev/null | tail -n 1)"
+    db_host="${db_host#*=}"
+    db_host="$(printf '%s' "$db_host" | tr -d '\r"'"'" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    db_host="${db_host%%:*}"
+
+    if [ "$db_host" = "db" ]; then
+        echo "docker"
+    else
+        echo "host"
+    fi
+}
+
+# Runs the integration suite where the test database is reachable and
+# returns its exit status. In Docker mode it runs inside this checkout's
+# `app` container (as www-data, see docker-compose.yml's header), and a
+# missing `docker` or a stopped stack is a non-zero return with an
+# actionable message — never a silent skip.
+_run_integration_suite() {
+    local running ps_err
+    if [ "$(_integration_runner)" = "docker" ]; then
+        if ! command -v docker >/dev/null 2>&1; then
+            echo "  .env.test.local points at the Docker 'db' service (DB_HOST=db), but 'docker' is not on PATH." >&2
+            return 1
+        fi
+        # A failing `compose ps` (daemon down, no compose plugin) is reported
+        # with docker's own error, not misdiagnosed as a stopped stack.
+        ps_err="$(mktemp 2>/dev/null || echo /dev/null)"
+        if ! running="$(docker compose ps --status running -q app 2>"$ps_err")"; then
+            echo "  Could not query this checkout's Docker stack ('docker compose ps' failed):" >&2
+            sed 's/^/    /' "$ps_err" >&2 2>/dev/null
+            [ "$ps_err" != /dev/null ] && rm -f "$ps_err"
+            return 1
+        fi
+        [ "$ps_err" != /dev/null ] && rm -f "$ps_err"
+        if [ -z "$running" ]; then
+            echo "  .env.test.local points at the Docker 'db' service, but this checkout's stack is not running." >&2
+            echo "  Start it with: docker compose up -d" >&2
+            return 1
+        fi
+        echo "  (running in the Docker 'app' container: .env.test.local has DB_HOST=db)"
+        docker compose exec -T -u www-data app composer test:integration
+        return $?
+    fi
+    composer test:integration
 }
 
 if [ "${SKIP_INTEGRATION_GATE:-}" = "1" ]; then
@@ -338,7 +414,7 @@ EOF
         suite_ran=1
         # </dev/null: the loop reads the remaining refs from stdin, so a
         # child that drained it would silently end the loop un-gated.
-        if composer test:integration </dev/null; then
+        if _run_integration_suite </dev/null; then
             suite_status=0
         else
             suite_status=1
