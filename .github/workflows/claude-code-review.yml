@@ -192,10 +192,18 @@ jobs:
           # Do NOT set track_progress — it forces "tag mode" (waits for @claude
           # comment trigger) and prevents the prompt from running automatically.
           # Omitting it lets the action detect "agent mode" from the prompt input.
+          #
+          # --effort medium: this job runs on every push, making it the
+          # highest-frequency (and most cost-sensitive) Claude job in the repo.
+          # `medium` is a starting point, not a measured value — untested
+          # against review quality on this codebase. Tune up (quality dips)
+          # or down (cost matters more than the marginal quality gain) as
+          # evidence comes in.
           claude_args: >-
             --allowedTools
             "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(cat:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
             --model claude-sonnet-5
+            --effort medium
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ steps.ctx.outputs.pr_number }}
