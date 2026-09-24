@@ -10,12 +10,15 @@ Registry application.
 Access the development database using MAMP's MySQL 8.0:
 
 ```bash
-# MySQL CLI access (credentials from .env.local file)
+# MySQL CLI access (credentials from .env)
 /Applications/MAMP/Library/bin/mysql80/bin/mysql -h 127.0.0.1 -P 8889 \
   -u [DB_USER from .env] -p \
   -D [DB_NAME from .env]
-# Enter password from .env.local when prompted
+# Enter DB_PASS from .env when prompted
 ```
+
+Under Docker, use phpMyAdmin on the checkout's `PMA_HOST_PORT` (see
+"Docker Dev Environment" below); the `db` service has no host port.
 
 ### Remote Database Access (Test/Production)
 
@@ -24,8 +27,8 @@ Test and production databases require SSH tunnel or direct connection:
 ```bash
 # Test environment: https://test.elanregistry.org
 # Production environment: https://elanregistry.org
-# Database credentials are in .env.local file
-# See DEPLOYMENT.md for SSH tunnel setup and connection details
+# Credentials are in each server's own .env, not in any local env file
+# See DEPLOYMENT.md for the servers and how to reach them
 ```
 
 ## Overview
@@ -38,6 +41,40 @@ The Elan Registry uses **vlucas/phpdotenv** v5 for environment variable loading 
 - **Permissions**: `chmod 600` restricts file to web server user only
 - **Library**: `vlucas/phpdotenv` v5
 - **Loading**: Variables loaded in Phase 1.6 of `users/init.php` via `Dotenv::createImmutable()->safeLoad()`
+
+### Which File Is Read by What
+
+A local checkout has up to three env files. They are **not** a base file
+plus a local override: each is read by a different set of tools, and each
+tool takes its settings from exactly one of them. (The one cross-read is a
+safety check: `scripts/provision-schema.sh` provisions from
+`.env.test.local` but also reads `.env`'s `DB_NAME`, to refuse dropping the
+app's database.) Put a variable in the file its reader loads, and nowhere
+else — a copy in another file is never read and drifts.
+
+| File | Read by | Holds | Template |
+| --- | --- | --- | --- |
+| `.env` | The PHP app (`users/init.php`), Phinx (`phinx.php`), `scripts/log-deployment.php`, Docker Compose (variable interpolation only) | Everything the app needs at runtime: `DB_*`, Turnstile, admin emails, webhook token — plus local-only switches (`US_ENVIRONMENT`, `BREVO_API_HOST`, session names, Docker host ports) | `.env.example` |
+| `.env.local` | Playwright (`playwright.config*.js`) and `scripts/playwright-auth-setup.js` — nothing else | Browser-test settings: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD` | the `.env.local` block of `.env.example` |
+| `.env.test.local` | `tests/bootstrap-integration.php` only | The five `DB_*` keys of the disposable integration-test schema | `.env.test.local.sample` |
+
+Why they stay separate:
+
+- **`.env` vs production.** Production and test servers have only `.env`,
+  holding their own values. The local-only switches in `.env` are optional
+  and simply absent there, so the file's *keys* match production's without
+  a separate "prod-like" file.
+- **`.env.local` is not loaded by the app.** Keeping browser-test
+  credentials (including Test/Prod admin passwords) out of `.env` keeps them
+  out of the PHP process's environment. Conversely, `DB_*` or
+  `US_ENVIRONMENT` placed in `.env.local` has no effect on the app.
+- **`.env.test.local` stands alone, by design.** The integration suite
+  writes to and reprovisions its database, so the bootstrap aborts if the
+  file is missing rather than falling back to `.env`/`.env.local`. Set all
+  five keys even where they equal `.env`'s (under Docker, everything but
+  `DB_NAME` does): a key missing from it is backfilled from `.env` by
+  `users/init.php`, and the bootstrap catches that only when the result
+  lands on the dev database name.
 
 ## Environment Variables
 
@@ -208,7 +245,7 @@ their real deployed environments)
   `tests/playwright/.auth/user-dev-non-admin.json`, feeding
   `playwright.config.dev.js`'s `logged-in-non-admin` project (infrastructure only —
   no spec targets it yet).
-- All four are gitignored via `.env.local` and must never be committed. See
+- All four live in `.env.local` (gitignored) and must never be committed. See
   `.env.example` for the placeholder entries.
 - These are Local/Dev-only accounts (plain-HTTP MAMP, no Turnstile) — same
   `E2E_<TIER>_<ROLE>_*` naming scheme as the Test/Prod credentials below (#2059
@@ -240,7 +277,7 @@ targets it yet).
   per tier/role to produce `tests/playwright/.auth/user-<tier>-<role>.json`,
   then re-enables Turnstile. See `docs/testing/PLAYWRIGHT_E2E.md` for the
   full setup process.
-- All eight are gitignored via `.env.local` and must never be committed. See
+- All eight live in `.env.local` (gitignored) and must never be committed. See
   `.env.example` for the placeholder entries.
 
 ### Multi-Clone Session Isolation
@@ -432,8 +469,10 @@ static config has no route for any ElanRegistry dev domain today.
 
 1. **Get Database Credentials**:
 
-   Database credentials are stored in `.env.local` file (not committed to git).
-   This file should be provided separately and contains local development database credentials.
+   The local dev database credentials go in `.env` (step 2), the only file
+   the app reads. `.env.local` is for Playwright settings and
+   `.env.test.local` for the integration-test schema — see
+   [Which File Is Read by What](#which-file-is-read-by-what).
 
    See "Database Access" section above for connecting to databases.
 
@@ -549,7 +588,7 @@ database, the test suite requires a dedicated test schema:
 - Separately, `scripts/provision-schema.sh` guards the one truly destructive operation in this
   workflow — the `DROP DATABASE` on the target schema. It refuses to run against a schema name
   that does not contain `test` (case-folded), or against the database this checkout's application
-  is configured to use (`DB_NAME` in `.env.local`/`.env`). Both guards require an explicit
+  is configured to use (`DB_NAME` in `.env`, the file the app reads). Both guards require an explicit
   `--force` to override, since the same script also provisions fresh dev and CI databases.
 
 **Files involved:**
@@ -622,20 +661,27 @@ The `.env` file contains database credentials for the running environment:
 **Security**: File permissions (`chmod 600`) combined with `.gitignore` and GitGuardian CI scanning
 provide industry-standard protection. See ADR-014 for security analysis.
 
-### .env.local File (Local Development)
+### .env.local File (Playwright Only)
 
-The `.env.local` file contains local development database credentials:
+The `.env.local` file holds browser-test settings, read by Playwright's
+configs and `scripts/playwright-auth-setup.js` — **not** by the app:
 
 - **Location**: Root directory (not committed to git)
-- **Permissions**: `chmod 600`
-- **Format**: Plain text key-value pairs using `DB_*` variable names
-- **Distribution**: Created locally, following the format in `.env.example`
-- **Usage**: Local development against the dev database (`elanregi_spice`). Also used
-  as the source when cloning structure into the test schema — see
-  "Test Database Isolation" above; integration tests themselves use `.env.test.local`,
-  not `.env.local`.
+- **Permissions**: `chmod 600` (it holds Test/Prod account passwords)
+- **Contents**: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD`
+- **Distribution**: Created locally, from the Playwright entries in `.env.example`
+- **Not here**: `DB_*`, `TURNSTILE_*`, `US_ENVIRONMENT` and other app
+  settings. The app never reads this file, so copies here have no effect
+  and go stale; they belong in `.env`. See
+  [Which File Is Read by What](#which-file-is-read-by-what).
 
-**Important**: Never commit `.env`, `.env.local`, or other environment files to version control. All are listed in `.gitignore`.
+### .env.test.local File (Integration Tests Only)
+
+Holds the five `DB_*` keys for the disposable integration-test schema, read
+only by `tests/bootstrap-integration.php`. Create it from
+`.env.test.local.sample`; see "Test Database Isolation" above.
+
+**Important**: Never commit `.env`, `.env.local`, `.env.test.local`, or other environment files to version control. All are listed in `.gitignore`.
 
 ## Security Requirements
 
