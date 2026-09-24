@@ -126,7 +126,7 @@ FN_FILE="$TMPROOT/fns.sh"
     grep -E '^(integration_gate_paths|zero_sha)=' "$HOOK_SRC"
     for fn in _diff_names _pick_closest_base _gate_base_for_ref _gated_files_for_ref \
         _integration_cache_key _integration_cache_file \
-        _integration_cache_hit _integration_cache_record; do
+        _integration_cache_hit _integration_cache_record _integration_runner; do
         body="$(extract_fn "$fn")"
         if [ -z "$body" ]; then
             echo "FATAL: could not extract $fn() from $HOOK_SRC" >&2
@@ -155,6 +155,29 @@ exit "${STUB_EXIT:-0}"
 STUB
 chmod +x "$STUBDIR/composer"
 export COMPOSER_LOG
+
+# Stub docker (#2171): `compose ps` prints a container id only when
+# STUB_DOCKER_RUNNING=1; `compose exec` exits with STUB_EXIT, like the
+# composer stub. Every call is logged. Shadows any real docker on PATH, so
+# no scenario can touch a real stack.
+DOCKER_LOG="$TMPROOT/docker.log"
+: > "$DOCKER_LOG"
+cat > "$STUBDIR/docker" <<'STUB'
+#!/bin/bash
+printf '%s\n' "docker $*" >> "$DOCKER_LOG"
+case " $* " in
+    *" ps "*)
+        [ "${STUB_DOCKER_RUNNING:-0}" = "1" ] && echo "c0ffee00"
+        exit 0
+        ;;
+    *" exec "*)
+        exit "${STUB_EXIT:-0}"
+        ;;
+esac
+exit 0
+STUB
+chmod +x "$STUBDIR/docker"
+export DOCKER_LOG
 
 GITSTUBDIR="$TMPROOT/gitbin"
 mkdir -p "$GITSTUBDIR"
@@ -697,6 +720,87 @@ git mv app/base.php app/c.inc
 J1="$(commit_all "j: rename app/base.php to a non-.php name")"
 OUTJ="$(STUB_EXIT=0 run_hook "refs/heads/issue/j $J1 refs/heads/issue/j $ZERO")"
 assert_hook "Case J: renaming a gated file to a non-.php name runs the suite" 1 0 "$OUTJ"
+
+# =========================================================================
+# Docker runner (#2171): DB_HOST=db runs the suite in the `app` container
+# =========================================================================
+
+set_test_db_host() {
+    printf 'DB_HOST=%s\nDB_NAME="elan_test"\n' "$1" > "$REPO/.env.test.local"
+}
+docker_exec_calls() { grep -c ' compose exec ' "$DOCKER_LOG" | tr -d ' '; }
+
+# --- Case D1: _integration_runner detection ---------------------------------
+set_test_db_host "localhost";    assert_eq "Case D1a: DB_HOST=localhost -> host"      "host"   "$(_integration_runner)"
+set_test_db_host "127.0.0.1:8889"; assert_eq "Case D1b: DB_HOST=127.0.0.1:8889 -> host" "host" "$(_integration_runner)"
+set_test_db_host "db";           assert_eq "Case D1c: DB_HOST=db -> docker"           "docker" "$(_integration_runner)"
+set_test_db_host "db:3306";      assert_eq "Case D1d: DB_HOST=db:3306 -> docker"      "docker" "$(_integration_runner)"
+set_test_db_host '"db"';         assert_eq "Case D1e: quoted DB_HOST=\"db\" -> docker" "docker" "$(_integration_runner)"
+set_test_db_host "dbhost";       assert_eq "Case D1f: DB_HOST=dbhost is not db -> host" "host" "$(_integration_runner)"
+set_test_db_host "db"
+assert_eq "Case D1g: INTEGRATION_GATE_RUNNER=host overrides DB_HOST=db" \
+    "host" "$(INTEGRATION_GATE_RUNNER=host _integration_runner)"
+set_test_db_host "localhost"
+assert_eq "Case D1h: INTEGRATION_GATE_RUNNER=docker overrides DB_HOST=localhost" \
+    "docker" "$(INTEGRATION_GATE_RUNNER=docker _integration_runner)"
+
+# A gated push used by the whole-hook Docker cases.
+clear_pass
+git checkout -q -b issue/dk "$MAIN_C3"
+write_file app/dk.php "<?php // docker runner"
+DK1="$(commit_all "dk: gated change")"
+DK_LINE="refs/heads/issue/dk $DK1 refs/heads/issue/dk $ZERO"
+
+# --- Case D2: DB_HOST=db, stack running, suite passes -----------------------
+set_test_db_host "db"; clear_pass; : > "$DOCKER_LOG"
+OUTD2="$(STUB_DOCKER_RUNNING=1 STUB_EXIT=0 run_hook "$DK_LINE")"
+if [ "$(hook_exit)" = "0" ] && [ "$(composer_calls)" = "0" ] && [ "$(docker_exec_calls)" = "1" ] \
+    && grep -q 'compose exec -T -u www-data app composer test:integration' "$DOCKER_LOG"; then
+    pass "Case D2: DB_HOST=db runs the suite once in the app container, not on the host"
+else
+    fail "Case D2: DB_HOST=db runs the suite once in the app container, not on the host" \
+        "exit: $(hook_exit)" "host composer calls: $(composer_calls)" \
+        "docker log: [$(cat "$DOCKER_LOG")]" "output: [$OUTD2]"
+fi
+
+# --- Case D3: DB_HOST=db, stack running, suite fails -> blocked -------------
+clear_pass; : > "$DOCKER_LOG"
+OUTD3="$(STUB_DOCKER_RUNNING=1 STUB_EXIT=1 run_hook "$DK_LINE")"
+if [ "$(hook_exit)" = "1" ] && [ "$(docker_exec_calls)" = "1" ] && [ ! -f "$CACHE_FILE" ] \
+    && printf '%s' "$OUTD3" | grep -q "BLOCKED"; then
+    pass "Case D3: a failing in-container suite blocks the push and caches nothing"
+else
+    fail "Case D3: a failing in-container suite blocks the push and caches nothing" \
+        "exit: $(hook_exit)" "docker log: [$(cat "$DOCKER_LOG")]" "output: [$OUTD3]"
+fi
+
+# --- Case D4: DB_HOST=db, stack NOT running -> blocked, never skipped -------
+clear_pass; : > "$DOCKER_LOG"
+OUTD4="$(STUB_DOCKER_RUNNING=0 STUB_EXIT=0 run_hook "$DK_LINE")"
+if [ "$(hook_exit)" = "1" ] && [ "$(docker_exec_calls)" = "0" ] && [ "$(composer_calls)" = "0" ] \
+    && printf '%s' "$OUTD4" | grep -q "docker compose up -d"; then
+    pass "Case D4: a stopped stack blocks the push with 'docker compose up -d', no fallback to host"
+else
+    fail "Case D4: a stopped stack blocks the push with 'docker compose up -d', no fallback to host" \
+        "exit: $(hook_exit)" "host composer calls: $(composer_calls)" \
+        "docker log: [$(cat "$DOCKER_LOG")]" "output: [$OUTD4]"
+fi
+
+# --- Case D5: DB_HOST=db + INTEGRATION_GATE_RUNNER=host -> host run ---------
+clear_pass; : > "$DOCKER_LOG"
+OUTD5="$(INTEGRATION_GATE_RUNNER=host STUB_DOCKER_RUNNING=1 STUB_EXIT=0 run_hook "$DK_LINE")"
+assert_eq "Case D5: INTEGRATION_GATE_RUNNER=host runs on the host even with DB_HOST=db" \
+    "0 1 0" "$(hook_exit) $(composer_calls) $(docker_exec_calls)"
+
+# --- Case D6: DB_HOST=localhost -> host run, docker never called ------------
+set_test_db_host "localhost"; clear_pass; : > "$DOCKER_LOG"
+OUTD6="$(STUB_DOCKER_RUNNING=1 STUB_EXIT=0 run_hook "$DK_LINE")"
+assert_eq "Case D6: a MAMP-style DB_HOST runs on the host and never calls docker" \
+    "0 1 0" "$(hook_exit) $(composer_calls) $(wc -l < "$DOCKER_LOG" | tr -d ' ')"
+
+git checkout -q main
+git branch -D issue/dk >/dev/null 2>&1
+clear_pass
 
 # --- Case 32: unresolvable parent -> fail-safe run ------------------------
 # Destructive to the topology, so it runs last.

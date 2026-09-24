@@ -87,6 +87,14 @@ quality checks. Run once per developer after cloning the repo.
    - **At most once per push.** The suite tests the working tree (`HEAD`),
      so a multi-branch push reuses one result, and pushing a branch that
      isn't `HEAD` prints a warning.
+   - **Where it runs (#2171).** On the host by default. When
+     `.env.test.local` has `DB_HOST=db` (the Docker dev stack), it runs
+     inside this checkout's `app` container instead, with
+     `docker compose exec -T -u www-data app composer test:integration`, since
+     `db` resolves only on the Compose network. If the stack isn't running,
+     the push is blocked with `docker compose up -d` as the fix; it never
+     falls back to the host or skips. `INTEGRATION_GATE_RUNNER=host|docker`
+     overrides the detection.
    - **Cache.** `$(git rev-parse --git-path integration-passed)` holds a
      single key — tree plus test database name — for the most recent pass,
      so it only skips a re-push of an identical tree. It is written only when

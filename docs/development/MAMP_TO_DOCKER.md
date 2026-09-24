@@ -240,14 +240,13 @@ the real source address from the logs.
 
 ### Git hooks
 
-`.githooks/pre-push` runs `composer test:integration` **on the host**
-when a push to `origin` changes PHP under `app/`, `usersc/classes/` or
-`tests/integration/`. With `.env.test.local` pointed at `db`, the host
-can't resolve `db`, so the hook fails and blocks those pushes. Until the
-hook learns about Docker, run
-`docker compose exec -u www-data app composer test:integration` first, and
-push with `git push --no-verify` only when it passes. `--no-verify` skips
-the only automated integration-test gate; CI doesn't run that suite.
+Nothing to change. `.githooks/pre-push` runs the integration suite when a
+push to `origin` changes PHP under `app/`, `usersc/classes/` or
+`tests/integration/`. Once `.env.test.local` has `DB_HOST=db`, it runs the
+suite inside the `app` container automatically (#2171), because the host
+can't resolve `db`. Keep the stack running when you push: a stopped stack
+blocks the push and names `docker compose up -d` as the fix. See
+`scripts/README.md`'s "Git Hooks Management" for the full gate rules.
 
 ### Scripts that don't support Docker yet
 
