@@ -32,101 +32,118 @@ ref_updates="$(cat)"
 remote_name="${1:-}"
 
 # =============================================================================
-# 1. Integration-test gate (#1439)
+# 1. Integration-test gate (#1439, #2160)
 #
-# Restricted to the `origin` remote (GitHub) only. This repo also has `prod`
-# and `test` deploy remotes (see Registry/CLAUDE.md) — `git push prod main` /
-# `git push test main` deploy already-CI-verified, already-merged `main`
-# code, not new work. Running a ~2 min blocking suite (and hard-failing the
-# whole push if the *local* test schema happens to be unreachable at that
-# exact moment — see #1591) on a deploy would tie deploy success to local
-# dev-machine state that has nothing to do with the code being deployed.
+# Restricted to the `origin` remote (GitHub). `prod` and `test` are deploy
+# remotes (see Registry/CLAUDE.md) that receive already-merged, CI-verified
+# `main`; gating them would tie deploy success to local test-DB state (#1591).
+# Deletes and blank stdin lines are skipped.
 #
-# Only runs when the push touches files matching
-# ^(app|usersc/classes|tests/integration)/.*\.php$ — those are the paths the
-# integration suite actually exercises. Pushes that touch none of them skip
-# this section entirely (fast path).
+# This hook is the only place the integration suite runs (CI has no test
+# database), so when in doubt it RUNS the suite: a wrongful skip is the worst
+# outcome, an unnecessary ~20s run is acceptable.
 #
-# Runs the FULL integration suite (composer test:integration, ~2 min locally)
-# against the dedicated test schema configured in .env.test.local.
-# tests/bootstrap-integration.php already fails loudly (exit 1) if that
-# database is unreachable or misconfigured (#1591) — this hook does not
-# duplicate that preflight check, it just blocks the push on ANY non-zero
-# exit code from composer test:integration, whether that's an unreachable DB
-# or an actual test failure. Both are "block the push" per the issue's
-# acceptance criteria.
+# A push is gated when its diff touches ^(app|usersc/classes|tests/integration)/.*\.php$.
+# The diff for each ref is:
 #
-# Escape hatch: `git push --no-verify` skips this hook entirely (standard git
-# behavior — no extra code needed here).
+#   - refs/heads/main: remote_sha..local_sha, or the merge-base with
+#     origin/main when the remote tip is unknown locally.
+#   - An existing ref whose remote tip exists locally: remote_sha..local_sha.
+#   - A new ref (remote_sha all zeros), or an existing ref whose remote tip is
+#     not present locally: the merge-base with the closest parent branch
+#     (see _pick_closest_base).
+#
+# All file lists use `--no-renames`, so a rename reports both the deleted and
+# the added path (`git mv app/a.php lib/a.php` still gates app/a.php).
+# An unresolvable base or any git failure while computing the list RUNS the
+# suite with a WARNING (fail-safe).
+#
+# Accepted trade-offs:
+#   - Merging main or the parent branch into a branch runs the suite when the
+#     merge brings in gated files.
+#   - A remote tip pushed with --no-verify or SKIP_INTEGRATION_GATE=1 is not
+#     re-checked by a later push; only remote_sha..local_sha is.
+#
+# The suite (composer test:integration, against the schema in
+# .env.test.local) tests the WORKING TREE, so it runs at most ONCE per hook
+# invocation and later refs reuse its exit code; pushing a ref that is not
+# HEAD prints a warning. Any non-zero exit blocks the push — a test failure
+# or an unreachable test DB (tests/bootstrap-integration.php fails loudly).
+#
+# CACHE. $GIT_DIR/integration-passed holds one key — the pushed tree SHA plus
+# the test DB_NAME — for the most recent pass. It is written only when the
+# suite exits 0, the pushed commit is HEAD and the working tree has no
+# modified or untracked (non-ignored) files, so
+# it only skips a re-push of an identical tree (e.g. a retried force push).
+# Clear it with:
+#   rm "$(git rev-parse --git-path integration-passed)"
+#
+# Bypass: `git push --no-verify` skips the whole hook; SKIP_INTEGRATION_GATE=1
+# skips only this section and keeps the /review-pr reminder below.
 # =============================================================================
 
-integration_gate_paths='^(app|usersc/classes|tests/integration)/.*\.php$'
+# The optional quotes match a path git still C-quotes under
+# core.quotepath=false (one containing a tab, newline, quote or backslash).
+integration_gate_paths='^"?(app|usersc/classes|tests/integration)/.*\.php"?$'
+zero_sha="0000000000000000000000000000000000000000"
 gate_failed=0
 
-# Picks the closest true parent branch for a brand-new ref with no upstream
-# (see the "New ref" comment block below for why this exists). Issue/bug/
-# feature branches fork from a local `milestone/*` branch, not `main` — so
-# among all candidate ancestors, the correct parent is whichever one has the
-# FEWEST commits between its merge-base and $1. A milestone branch that is
-# the true parent will show 0+ commits ahead; origin/main, being further back
-# in history, will show many more.
+# Changed paths between two commits, unquoted (non-ASCII names included), with
+# renames reported as delete + add. Propagates git's exit status so callers
+# can tell "no changes" from "failed".
+_diff_names() {
+    git -c core.quotepath=false diff --no-renames --name-only "$@"
+}
+
+# Picks the closest true parent branch of $1 and echoes its merge-base with
+# $1. Issue branches fork from a `milestone/*` branch, not `main`, so every
+# candidate — local `refs/heads/milestone/*`, `refs/remotes/origin/milestone/*`
+# and origin/main — is ranked together, and the one with the FEWEST commits
+# between its merge-base and $1 wins. Local and remote branches of the same
+# name are not deduped; the ranking already prefers the closer one.
 #
-# A candidate is rejected only when $1 (the pushed branch) is a STRICT
-# (proper) ancestor of that candidate — i.e. the candidate has commits $1
-# lacks, because it was cut FROM $1's own tip (a stale/scratch milestone
-# branch someone branched off the issue branch after diverging from it)
-# rather than being a real, independent parent. This is checked as
-# `! git merge-base --is-ancestor target candidate` PLUS a `target !=
-# candidate` guard (#2024 review) — `--is-ancestor` treats a commit as its
-# own ancestor, so without that guard, a candidate whose tip happens to
-# equal $1's own tip exactly (e.g. $1 is a brand-new branch pushed before
-# it has any commits of its own beyond main's current tip, and origin/main
-# is itself a candidate) gets wrongly excluded as if it were a scratch
-# branch cut off $1 — when it's actually the SAME commit, not a strict
-# descendant, and should remain eligible. This exact mechanism caused the
-# original #2024 bug: origin/main, sharing $1's exact tip, was excluded
-# here, leaving only a stale, unrelated milestone branch as a candidate,
-# which then "won" on its own (much larger, but nonzero) commit-ahead
-# count against ITS OWN merge-base — a different commit than $1's, and
-# not comparable to the near-zero count main would have produced had it
-# not been wrongly excluded.
+# Rejected candidates:
+#   - one whose tip EQUALS $1, except origin/main (#2024: a branch with no
+#     commits beyond main must still resolve via main). Any other candidate
+#     at $1's tip (e.g. a milestone branch fast-forwarded to the issue branch)
+#     would win with 0 commits and empty the diff (#2160);
+#   - one that has $1 as an ancestor, i.e. was cut from $1's own tip.
+# A candidate that moved on after $1 forked from it is still accepted — it is
+# $1's true parent even though $1 is not reachable from it (PR #1767).
 #
-# Rejecting the strict-ancestor case only (not equality) is also NOT the
-# reverse check: requiring the candidate to be an ancestor of $1 would
-# reject a milestone branch that has legitimately moved on since $1 forked
-# from it (e.g. another issue merged into the milestone branch before $1's
-# first push) — that milestone branch is still $1's true logical parent
-# even though $1's tip isn't reachable from it anymore (PR #1767 review).
-# A commit-count comparison alone can't tell a true ancestor with zero
-# commits ahead (e.g. $1 is a genuinely fresh branch with no commits yet)
-# apart from a diverged sibling — both show count=0 — so the
-# ancestor-direction check is required first; count only breaks ties among
-# confirmed candidates (#1751 review). Picking a sibling strictly cut from
-# $1's own tip would silently zero out (or under-report) the diff and
-# defeat the gate exactly like the bug this function fixes, just via a
-# different trigger.
+# $2 and $3, both optional, are the remote and local names of the branch
+# being pushed (they differ for `git push origin feature:milestone/x`). Any
+# candidate equal to either, or to origin/<either>, is skipped so a
+# `milestone/*` push never resolves to itself (#2160).
 #
-# Echoes the winning base SHA on success, and the winning candidate + commit
-# count to stderr for diagnosability. Returns non-zero (echoes nothing) if no
-# candidate resolves at all.
+# Echoes the winning base SHA, and the winning candidate + commit count to
+# stderr. Returns non-zero (echoing nothing) if no candidate resolves.
 _pick_closest_base() {
     local target="$1"
+    local self_remote="${2:-}" self_local="${3:-}"
     local best_base="" best_count="" best_candidate=""
-    local candidate base count candidate_sha
+    local candidate base count candidate_sha target_sha
+
+    target_sha="$(git rev-parse --verify --quiet "${target}^{commit}" 2>/dev/null)" || return 1
+    [ -n "$target_sha" ] || return 1
 
     while IFS= read -r candidate; do
         [ -z "$candidate" ] && continue
-        base="$(git merge-base "$target" "$candidate" 2>/dev/null)" || continue
+        # Never rank the pushed branch against itself — see above.
+        case "$candidate" in
+            "$self_remote"|"origin/$self_remote"|"$self_local"|"origin/$self_local")
+                continue
+                ;;
+        esac
+        base="$(git merge-base "$target_sha" "$candidate" 2>/dev/null)" || continue
         candidate_sha="$(git rev-parse "$candidate" 2>/dev/null)" || continue
-        # Reject only candidates STRICTLY cut FROM $target's own tip (i.e.
-        # $target is a proper ancestor of $candidate, not the same commit)
-        # — see the function comment above for why this direction, and why
-        # the equality guard, are both required.
-        if [ "$target" != "$candidate_sha" ] \
-            && git merge-base --is-ancestor "$target" "$candidate" 2>/dev/null; then
+        # See the function comment above for both rejection rules.
+        if [ "$target_sha" = "$candidate_sha" ]; then
+            [ "$candidate" = "origin/main" ] || continue
+        elif git merge-base --is-ancestor "$target_sha" "$candidate" 2>/dev/null; then
             continue
         fi
-        count="$(git rev-list --count "$base".."$target" 2>/dev/null)" || continue
+        count="$(git rev-list --count "$base".."$target_sha" 2>/dev/null)" || continue
         case "$count" in
             ''|*[!0-9]*)
                 echo "  WARNING: unexpected 'git rev-list --count' output for candidate '$candidate': '$count' — skipping it." >&2
@@ -138,7 +155,7 @@ _pick_closest_base() {
             best_count="$count"
             best_candidate="$candidate"
         fi
-    done <<< "$(git for-each-ref --format='%(refname:short)' 'refs/heads/milestone/*' 2>/dev/null; echo 'origin/main')"
+    done <<< "$(git for-each-ref --format='%(refname:short)' 'refs/heads/milestone/*' 'refs/remotes/origin/milestone/*' 2>/dev/null; echo 'origin/main')"
 
     if [ -n "$best_base" ]; then
         echo "  (merge-base resolved via closest branch: $best_candidate, $best_count commit(s) ahead)" >&2
@@ -148,11 +165,125 @@ _pick_closest_base() {
     return 1
 }
 
-while read -r local_ref local_sha remote_ref remote_sha; do
-    # Skip deletes
-    if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
-        continue
+# Echoes the base to diff a pushed ref against (see the section header for
+# the rules). Returns 1, echoing nothing, when nothing resolves; the caller
+# then RUNS the suite.
+#
+# Args: $1 = local_sha, $2 = the remote ref being updated, $3 = remote_sha,
+# $4 = the local branch name (both optional).
+_gate_base_for_ref() {
+    local local_sha="$1" remote_ref="$2" remote_sha="${3:-}" local_branch="${4:-}"
+    local branch="${remote_ref#refs/heads/}"
+    local base
+
+    if [ -n "$remote_sha" ] && [ "$remote_sha" != "$zero_sha" ] \
+        && git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+        printf '%s\n' "$remote_sha"
+        return 0
     fi
+
+    if [ "$branch" = "main" ]; then
+        if base="$(git merge-base origin/main "$local_sha" 2>/dev/null)" && [ -n "$base" ]; then
+            printf '%s\n' "$base"
+            return 0
+        fi
+        echo "  WARNING: could not resolve a base for '$remote_ref' (remote tip unknown, no origin/main?)." >&2
+        return 1
+    fi
+
+    if base="$(_pick_closest_base "$local_sha" "$branch" "$local_branch")"; then
+        printf '%s\n' "$base"
+        return 0
+    fi
+
+    echo "  WARNING: could not resolve a parent merge-base for '$remote_ref' (no origin/main, no milestone/* branch?)." >&2
+    return 1
+}
+
+# Echoes the gated files changed between $1 (base) and $2 (local_sha).
+# Returns 1 after a WARNING if the diff fails, so the caller RUNS the suite
+# rather than reading a failure as "no changes".
+_gated_files_for_ref() {
+    local base="$1" local_sha="$2" files
+
+    if ! files="$(_diff_names "$base" "$local_sha" 2>/dev/null)"; then
+        echo "  WARNING: 'git diff $base $local_sha' failed." >&2
+        return 1
+    fi
+    printf '%s\n' "$files" | grep -E "$integration_gate_paths"
+    return 0
+}
+
+# Cache key for a recorded pass: the pushed TREE (not the commit — a reword
+# or an amended message doesn't change what the tests exercise) plus the test
+# database name, so pointing .env.test.local at a different schema invalidates
+# it. Echoes nothing (= caching disabled) when the file or the value is
+# missing, rather than keying on a blank DB name.
+_integration_cache_key() {
+    local local_sha="$1" tree env_file db_name
+    tree="$(git rev-parse "${local_sha}^{tree}" 2>/dev/null)" || return 0
+    [ -z "$tree" ] && return 0
+
+    env_file="$(git rev-parse --show-toplevel 2>/dev/null)/.env.test.local"
+    [ -f "$env_file" ] || return 0
+
+    db_name="$(grep -E '^[[:space:]]*DB_NAME[[:space:]]*=' "$env_file" 2>/dev/null | tail -n 1)"
+    db_name="${db_name#*=}"
+    db_name="$(printf '%s' "$db_name" | tr -d '\r"'"'" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [ -z "$db_name" ] && return 0
+
+    printf '%s %s\n' "$tree" "$db_name"
+}
+
+_integration_cache_file() {
+    git rev-parse --git-path integration-passed 2>/dev/null
+}
+
+# Returns 0 when $1 (a non-empty key) matches the recorded pass.
+_integration_cache_hit() {
+    local key="$1" file
+    [ -z "$key" ] && return 1
+    file="$(_integration_cache_file)"
+    [ -n "$file" ] && [ -f "$file" ] || return 1
+    [ "$(cat "$file" 2>/dev/null)" = "$key" ]
+}
+
+# Records a pass. Refuses unless the key is non-empty AND the pushed commit
+# is HEAD AND the working tree has no modified tracked files and no untracked,
+# non-ignored files — the suite ran against the WORKING TREE, so a pass that
+# depended on an uncommitted or un-added file (e.g. a new app/*.php never
+# `git add`ed) must not be cached against a tree that lacks it. A failing
+# `git status` also refuses. Written via temp file + mv so a crash mid-write
+# can't leave a truncated key that silently never matches.
+_integration_cache_record() {
+    local key="$1" local_sha="$2" file tmp status_out
+    [ -n "$key" ] || return 1
+    [ "$local_sha" = "$(git rev-parse HEAD 2>/dev/null)" ] || return 1
+    status_out="$(git status --porcelain 2>/dev/null)" || return 1
+    [ -z "$status_out" ] || return 1
+
+    file="$(_integration_cache_file)"
+    [ -n "$file" ] || return 1
+    tmp="${file}.tmp.$$"
+    printf '%s\n' "$key" > "$tmp" 2>/dev/null || return 1
+    mv -f "$tmp" "$file" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    return 0
+}
+
+if [ "${SKIP_INTEGRATION_GATE:-}" = "1" ]; then
+    echo ""
+    echo "  Integration-test gate SKIPPED (SKIP_INTEGRATION_GATE=1)."
+    echo ""
+else
+# The suite tests the working tree, not any particular ref, so it runs at
+# most once per invocation; later refs reuse this result.
+suite_ran=0
+suite_status=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Blank line (git can send one on an up-to-date push) or a delete.
+    [ -z "$local_sha" ] && continue
+    [ "$local_sha" = "$zero_sha" ] && continue
 
     # Restricted to origin — see the comment block above this loop.
     if [ "$remote_name" != "origin" ]; then
@@ -161,65 +292,60 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
     branch="${local_ref#refs/heads/}"
 
-    if [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
-        # Updating an existing remote ref — diff against its current tip.
-        base="$remote_sha"
+    gated_status=0
+    if base="$(_gate_base_for_ref "$local_sha" "${remote_ref:-$local_ref}" "$remote_sha" "$branch")"; then
+        gated_files="$(_gated_files_for_ref "$base" "$local_sha")" || gated_status=1
     else
-        # New ref (first push of this branch, e.g. right after /start-issue's
-        # `git checkout -b` + `git push -u`). At the moment this hook runs,
-        # the branch may not have an upstream configured yet — the tracking
-        # lookup below fails to resolve in that case. Falling back to diffing
-        # local_sha against itself (empty diff) would silently skip the gate
-        # on exactly the case this issue (#1439) exists to cover: the first
-        # push of new feature work. Fall back through:
-        #   1. the pushed branch's own configured upstream, if any. Uses
-        #      "$branch@{upstream}" — the *named* branch being pushed, not
-        #      bare '@{u}', which resolves against whatever's currently
-        #      checked out and would silently compute the wrong base for an
-        #      explicit `git push origin some-other-branch:some-other-branch`
-        #      run from a different branch.
-        #   2. the closest local `milestone/*` branch or origin/main (see
-        #      _pick_closest_base above) — issue/bug/feature branches fork
-        #      from a milestone branch, not main (#1751), so origin/main
-        #      alone would pick up that milestone's entire accumulated diff.
-        #      _pick_closest_base picks whichever candidate has the fewest
-        #      commits ahead, excluding only candidates cut FROM local_sha's
-        #      own tip (e.g. a stale milestone branch someone branched off
-        #      this same branch after diverging from it, which would
-        #      otherwise zero out the diff) — a milestone branch that has
-        #      simply moved on since local_sha forked from it is still a
-        #      valid, rankable candidate, which reliably isolates just this
-        #      branch's own commits
-        #      regardless of which branch it actually forked from.
-        #   3. local_sha itself, only if both above fail to resolve (e.g. no
-        #      'origin' remote at all) — printed loudly so it's never a
-        #      silent gap.
-        if base="$(git merge-base "$local_sha" "${branch}@{upstream}" 2>/dev/null)"; then
-            :
-        elif base="$(_pick_closest_base "$local_sha")"; then
-            :
-        else
-            echo "  WARNING: could not resolve a merge-base for '$local_ref' (no upstream, no origin/main)." >&2
-            echo "  Integration gate cannot determine changed files and will be SKIPPED for this ref." >&2
-            base="$local_sha"
-        fi
+        gated_status=1
+    fi
+    if [ "$gated_status" -ne 0 ]; then
+        # Fail-safe: we cannot tell what changed. Run rather than skip — a
+        # missed gate is the failure mode this hook exists to prevent.
+        echo "  Integration gate will RUN for '$branch' anyway (fail-safe)." >&2
+        gated_files="unresolved-base"
     fi
 
-    changed_files="$(git diff --name-only "$base" "$local_sha")"
-
-    if ! printf '%s\n' "$changed_files" | grep -qE "$integration_gate_paths"; then
+    if [ -z "$gated_files" ]; then
+        echo "  Integration gate: no gated changes on '$branch' vs ${base:-parent} — skipping."
         continue
     fi
 
-    cat <<EOF
+    cache_key="$(_integration_cache_key "$local_sha")"
+    if _integration_cache_hit "$cache_key"; then
+        cat <<EOF
+
+  Integration gate: skip — this exact tree already passed the integration
+  suite against the configured test database.
+
+  Force a re-run with: rm "\$(git rev-parse --git-path integration-passed)"
+
+EOF
+        continue
+    fi
+
+    if [ "$local_sha" != "$(git rev-parse HEAD 2>/dev/null)" ]; then
+        echo "  WARNING: '$branch' ($local_sha) is not HEAD — the suite tests the working tree (HEAD), not the pushed commit." >&2
+    fi
+
+    if [ "$suite_ran" -eq 0 ]; then
+        cat <<EOF
 
   Integration-test gate: push to '$branch' touches app/, usersc/classes/, or
   tests/integration/. Running the full integration suite before allowing this
-  push (composer test:integration, ~2 min against the test schema)...
+  push (composer test:integration, ~20s against the test schema)...
 
 EOF
+        suite_ran=1
+        # </dev/null: the loop reads the remaining refs from stdin, so a
+        # child that drained it would silently end the loop un-gated.
+        if composer test:integration </dev/null; then
+            suite_status=0
+        else
+            suite_status=1
+        fi
+    fi
 
-    if ! composer test:integration; then
+    if [ "$suite_status" -ne 0 ]; then
         cat <<EOF
 
   BLOCKED: integration suite failed (or the test database was unreachable —
@@ -229,8 +355,11 @@ EOF
 
 EOF
         gate_failed=1
+    else
+        _integration_cache_record "$cache_key" "$local_sha" || true
     fi
 done <<< "$ref_updates"
+fi
 
 if [ "$gate_failed" -eq 1 ]; then
     exit 1

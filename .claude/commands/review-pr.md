@@ -408,12 +408,12 @@ start, or skipped.
   before PHPUnit reports), and skips, warnings, incomplete, and risky tests
   all exit 0 under the current configs. Step 1 counts summary lines for this
   reason; keep it that way if the step is ever refactored.
-- Step 1 is the only automated step anywhere that runs `tests/integration/`.
-  The pre-commit hook (`.githooks/pre-commit`) runs
+- Nothing runs `tests/integration/` in CI. It runs locally in two places:
+  Step 1 here, and the blocking integration-test gate in `.githooks/pre-push`
+  (#1439; trigger rules in `scripts/README.md`). The pre-commit hook
+  (`.githooks/pre-commit`) runs
   `vendor/bin/phpunit --testsuite=Unit --exclude-group known-broken` and a
   full-project PHPStan, but each only when the commit stages matching files —
-  a docs-only commit runs neither. `.githooks/pre-push` runs no tests at all.
-  CI's `tests.yml` runs `test:quick:ci` + `test:regression:ci` (unit only, no
-  MySQL service). Whether CI should also run integration tests is a separate
-  open question — it does not today.
+  a docs-only commit runs neither. CI's `tests.yml` runs `test:quick:ci` +
+  `test:regression:ci` (unit only, no MySQL service).
 - `$ARGUMENTS` selects which review *agents* run. It never skips Step 1.

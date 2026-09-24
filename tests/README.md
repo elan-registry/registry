@@ -272,6 +272,21 @@ multiple groups, repeat the flag: `--exclude-group foo --exclude-group bar`. Ver
 while adding the `requires-upstream-install` group (#1471) — the comma form ran the excluded
 test anyway with no error or warning, so this is easy to get wrong silently.
 
+**Second CLI gotcha — CLI exclusions *replace* XML ones:** `phpunit-integration.xml` declares
+`<groups><exclude>` for `live-network` (tests making real outbound HTTP calls — `LocationServiceTest`'s
+live methods, `RobotsTxtAsServedTest`, `VendorBootstrapMapsScriptTest`) and `known-broken`. In
+PHPUnit 12 any `--exclude-group` passed on the command line **replaces** that XML list entirely
+rather than adding to it (`vendor/phpunit/phpunit/src/TextUI/Configuration/Merger.php:797-805`),
+so a `--exclude-group known-broken` on an integration run would silently re-enable `live-network`.
+That is why the integration composer scripts pass no `--exclude-group` at all and rely on the XML
+— only the `phpunit-unit.xml` scripts (`test:quick:ci`, `test:regression:ci`) use the flag, and
+`phpunit-unit.xml` has no `<groups>` block for them to clobber. To run an excluded group
+deliberately, opt it back in with `--group`, which is unaffected:
+
+```bash
+vendor/bin/phpunit -c phpunit-integration.xml --group live-network
+```
+
 **Why this exists:** landing a new CI gate (`#1437`) should never be blocked indefinitely by
 an unrelated, already-tracked, pre-existing bug — but a bypass that's silent or permanent is
 worse than no gate at all. The `known-broken` group is the explicit, visible, temporary
