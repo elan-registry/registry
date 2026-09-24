@@ -141,8 +141,9 @@ final class PhpBuiltinServer
      * @return self A running server that has answered its readiness probe.
      *
      * @throws RuntimeException If $routerBody opens with `<?php` (any case, after optional
-     *                          whitespace), $docroot is not a directory, the router file
-     *                          cannot be created, or the server never becomes ready.
+     *                          whitespace), $docroot is not a directory, no $ownerPid was
+     *                          given and getmypid() fails, the router file cannot be
+     *                          created, or the server never becomes ready.
      */
     public static function start(string $docroot, string $routerBody, ?int $ownerPid = null): self
     {
@@ -311,6 +312,7 @@ final class PhpBuiltinServer
 
         if (!$plan['usable']) {
             fwrite(STDERR, "PhpBuiltinServer::sweep(): `ps` snapshot unusable (exit {$exitCode}, own PID not listed); skipping sweep.\n");
+            return;
         }
 
         foreach ($plan['kill'] as $orphan) {
@@ -530,6 +532,8 @@ final class PhpBuiltinServer
      * @param array<mixed> $headers Raw response header lines ($http_response_header), status line first.
      * @param string|false $body    Response body, or false when the request failed.
      * @param string       $token   This instance's readiness token.
+     *
+     * @return bool True only for a 200 response whose body is exactly $token.
      */
     public static function isReadyResponse(array $headers, string|false $body, string $token): bool
     {
