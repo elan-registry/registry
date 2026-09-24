@@ -20,7 +20,7 @@ local check's result; MAMP is no longer needed.
   Brevo email code path runs fully offline.
 - WIP: [#1993](https://github.com/elan-registry/registry/issues/1993) — Freshly provisioned test
   schemas get one collation matching dev and production.
-- WIP: [#2134](https://github.com/elan-registry/registry/issues/2134) — All three PHPUnit configs set
+- [#2134](https://github.com/elan-registry/registry/issues/2134) — All three PHPUnit configs set
   an explicit 512M memory limit, so test runs no longer die at PHP's 128MB default.
 - [#2159](https://github.com/elan-registry/registry/issues/2159) — The activity-chart
   Playwright test no longer fails every September on "Sept".
