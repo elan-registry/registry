@@ -22,7 +22,7 @@ local check's result; MAMP is no longer needed.
   schemas get one collation matching dev and production.
 - WIP: [#2134](https://github.com/elan-registry/registry/issues/2134) — Both PHPUnit suites set an
   explicit memory limit so they no longer die at PHP's 128MB default.
-- WIP: [#2159](https://github.com/elan-registry/registry/issues/2159) — The activity-chart
+- [#2159](https://github.com/elan-registry/registry/issues/2159) — The activity-chart
   Playwright test no longer fails every September on "Sept".
 - [#2160](https://github.com/elan-registry/registry/issues/2160) — The blocking pre-push integration
   gate runs in about 20 seconds instead of five minutes, skips live-network tests, and catches gated
