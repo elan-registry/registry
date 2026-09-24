@@ -167,6 +167,10 @@ cat > "$STUBDIR/docker" <<'STUB'
 printf '%s\n' "docker $*" >> "$DOCKER_LOG"
 case " $* " in
     *" ps "*)
+        if [ "${STUB_DOCKER_PS_FAIL:-0}" = "1" ]; then
+            echo "Cannot connect to the Docker daemon (stub)" >&2
+            exit 1
+        fi
         [ "${STUB_DOCKER_RUNNING:-0}" = "1" ] && echo "c0ffee00"
         exit 0
         ;;
@@ -414,9 +418,23 @@ else
 fi
 mv "$TMPROOT/env.saved" "$REPO/.env.test.local"
 
-assert_eq "Case 10c: key is '<tree> <DB_NAME>' with quotes stripped" \
-    "$(git rev-parse "${HEAD_SHA}^{tree}") elan_test" \
+assert_eq "Case 10c: key is '<tree> <DB_NAME> <runner>' with quotes stripped" \
+    "$(git rev-parse "${HEAD_SHA}^{tree}") elan_test host" \
     "$(_integration_cache_key "$HEAD_SHA")"
+
+# --- Case 10d: same tree + DB_NAME, different runner -> different key -----
+# A host (MAMP) pass must not satisfy the first in-container push of the
+# same tree: the migration guide keeps DB_NAME when DB_HOST becomes `db`.
+KEY_HOST="$(_integration_cache_key "$HEAD_SHA")"
+printf 'DB_HOST=db\nDB_NAME="elan_test"\n' > "$REPO/.env.test.local"
+KEY_DOCKER="$(_integration_cache_key "$HEAD_SHA")"
+printf 'DB_HOST=localhost\nDB_NAME="elan_test"\n' > "$REPO/.env.test.local"
+if [ -n "$KEY_HOST" ] && [ -n "$KEY_DOCKER" ] && [ "$KEY_HOST" != "$KEY_DOCKER" ]; then
+    pass "Case 10d: the cache key distinguishes a host run from a Docker run"
+else
+    fail "Case 10d: the cache key distinguishes a host run from a Docker run" \
+        "host key:   [$KEY_HOST]" "docker key: [$KEY_DOCKER]"
+fi
 
 # --- Case 11: record refused when local_sha != HEAD -----------------------
 clear_pass
@@ -798,6 +816,50 @@ OUTD6="$(STUB_DOCKER_RUNNING=1 STUB_EXIT=0 run_hook "$DK_LINE")"
 assert_eq "Case D6: a MAMP-style DB_HOST runs on the host and never calls docker" \
     "0 1 0" "$(hook_exit) $(composer_calls) $(wc -l < "$DOCKER_LOG" | tr -d ' ')"
 
+# --- Case D7: DB_HOST=db but no docker binary -> blocked --------------------
+# PATH = a stub dir holding only composer, plus every real PATH entry that
+# does not contain a docker executable.
+set_test_db_host "db"; clear_pass; : > "$DOCKER_LOG"; : > "$COMPOSER_LOG"
+NODOCKER_DIR="$TMPROOT/bin-nodocker"
+mkdir -p "$NODOCKER_DIR" && cp "$STUBDIR/composer" "$NODOCKER_DIR/composer"
+NODOCKER_PATH="$NODOCKER_DIR"
+IFS=: read -r -a _path_dirs <<< "$PATH"
+for _d in "${_path_dirs[@]}"; do
+    [ -n "$_d" ] && [ ! -x "$_d/docker" ] && NODOCKER_PATH="$NODOCKER_PATH:$_d"
+done
+OUTD7="$(printf '%s\n' "$DK_LINE" | PATH="$NODOCKER_PATH" "$HOOK" origin "git@example.invalid:x/y.git" 2>&1)"
+EXITD7=$?
+if [ "$EXITD7" = "1" ] && [ "$(composer_calls)" = "0" ] \
+    && printf '%s' "$OUTD7" | grep -q "'docker' is not on PATH"; then
+    pass "Case D7: DB_HOST=db with no docker binary blocks the push, no host fallback"
+else
+    fail "Case D7: DB_HOST=db with no docker binary blocks the push, no host fallback" \
+        "exit: $EXITD7" "host composer calls: $(composer_calls)" "output: [$OUTD7]"
+fi
+
+# --- Case D8: `docker compose ps` fails -> blocked with docker's own error --
+clear_pass; : > "$DOCKER_LOG"
+OUTD8="$(STUB_DOCKER_PS_FAIL=1 STUB_EXIT=0 run_hook "$DK_LINE")"
+if [ "$(hook_exit)" = "1" ] && [ "$(docker_exec_calls)" = "0" ] \
+    && printf '%s' "$OUTD8" | grep -q "Cannot connect to the Docker daemon (stub)" \
+    && ! printf '%s' "$OUTD8" | grep -q "stack is not running"; then
+    pass "Case D8: a failing 'compose ps' blocks with docker's own error, not 'stack not running'"
+else
+    fail "Case D8: a failing 'compose ps' blocks with docker's own error, not 'stack not running'" \
+        "exit: $(hook_exit)" "docker log: [$(cat "$DOCKER_LOG")]" "output: [$OUTD8]"
+fi
+
+# --- Case D1i: an unrecognised override warns and falls back to detection --
+WARN_D1I="$(INTEGRATION_GATE_RUNNER=Docker _integration_runner 2>&1 >/dev/null)"
+RES_D1I="$(INTEGRATION_GATE_RUNNER=Docker _integration_runner 2>/dev/null)"
+if [ "$RES_D1I" = "docker" ] && printf '%s' "$WARN_D1I" | grep -q "INTEGRATION_GATE_RUNNER='Docker' is not"; then
+    pass "Case D1i: INTEGRATION_GATE_RUNNER=Docker (typo) warns and uses detection"
+else
+    fail "Case D1i: INTEGRATION_GATE_RUNNER=Docker (typo) warns and uses detection" \
+        "result: [$RES_D1I]" "stderr: [$WARN_D1I]"
+fi
+
+set_test_db_host "localhost"
 git checkout -q main
 git branch -D issue/dk >/dev/null 2>&1
 clear_pass

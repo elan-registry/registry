@@ -96,8 +96,9 @@ quality checks. Run once per developer after cloning the repo.
      falls back to the host or skips. `INTEGRATION_GATE_RUNNER=host|docker`
      overrides the detection.
    - **Cache.** `$(git rev-parse --git-path integration-passed)` holds a
-     single key — tree plus test database name — for the most recent pass,
-     so it only skips a re-push of an identical tree. It is written only when
+     single key — tree, test database name and runner (host or Docker) — for
+     the most recent pass, so it only skips a re-push of an identical tree to
+     the same environment. It is written only when
      the pushed commit is `HEAD` and `git status --porcelain` is empty (no
      modified or untracked, non-ignored files). Force a
      rerun with `rm "$(git rev-parse --git-path integration-passed)"`.
