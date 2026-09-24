@@ -312,29 +312,56 @@ targets it yet).
 ### Docker Dev Environment (optional, experimental)
 
 An alternative to MAMP, available per checkout: a self-contained Docker
-Compose stack (`docker-compose.yml` at the repo root of each checkout) —
-PHP 8.4 app container, MySQL 8.0, phpMyAdmin — bind-mounting the checkout
-as the webroot. Live in `Registry2/` (port 8002/8082) as of issue #2116,
-verified against the full toolchain (`composer install`/`test:full`,
-`npm run build`, Playwright).
+Compose stack (`docker-compose.yml` at the repo root) — PHP 8.4 app
+container, MySQL 8.0, phpMyAdmin, a mock Brevo API, and a landing page —
+bind-mounting the checkout as the webroot. Introduced in #2116 for
+`Registry2/`, and running in `Registry/` as well, both verified against the
+full toolchain (`composer install`/`test:full`, `npm run build`,
+Playwright).
 
-The pattern has also been proven working against `Registry/` (port
-8001/8081, same toolchain, same verification) during #2120's
-investigation, but that checkout's Docker files were not committed —
-`Registry/` is a separate git clone on its own branch with independent,
-unrelated in-progress work, and bundling Docker tooling into that
-checkout's history belongs to a change made there directly, not to this
-repo's PR. If `Registry/`'s Docker environment is wanted, port the
-pattern from `Registry2/docker-compose.yml` (ports 8001/8081, network
-`registry`, volume `registry_db_data`, DB user `elanregi_spice` — same as
-Registry2's, Registry/'s DB just isn't suffixed `2`) as a change on that
-checkout's own branch.
+**One compose file, per-checkout ports in `.env`.** `docker-compose.yml` is
+shared by every checkout on the branch, so never edit it for one checkout.
+Each checkout sets its host ports in its own gitignored `.env` (the
+defaults are Registry2's, so Registry2 needs no entries):
 
-Worktrees under `Registry-worktrees/` are explicitly **not** covered —
-that directory had zero active worktrees at the time of #2120 and was
-removed rather than given unused Docker scaffolding; if worktree usage
-resumes, a new compose file following the same pattern (next port in the
-sequence, e.g. 8003/8083) is a small addition, not a prerequisite.
+| Checkout | `APP_HOST_PORT` | `PMA_HOST_PORT` | `MOCK_BREVO_HOST_PORT` | `LANDING_HOST_PORT` |
+| --- | --- | --- | --- | --- |
+| `Registry/` | 8001 | 8081 | 8091 | 8101 |
+| `Registry2/` (defaults) | 8002 | 8082 | 8090 | 8102 |
+| next checkout | 8003 | 8083 | 8092 | 8103 |
+
+Also set `CHECKOUT_NAME` (the landing page's label). The network and
+volume need no per-checkout change: Compose prefixes both with the project
+name (the checkout's directory), so `Registry/` gets `registry_elan`
+and `registry_db_data`, separate from Registry2's.
+
+**Upgrading a stack created before the rename.** The network and volume
+keys used to be `registry2`/`registry2_db_data`, so an existing stack's
+data sits in `<project>_registry2_db_data` (e.g.
+`registry2_registry2_db_data`). The next `up` would start an empty
+`<project>_db_data` instead. Copy the data across once, with the stack
+down:
+
+```bash
+docker compose down
+docker compose up --no-start            # creates <project>_db_data and <project>_elan
+docker run --rm -v registry2_registry2_db_data:/from:ro \
+  -v registry2_db_data:/to alpine sh -c 'cp -a /from/. /to/'
+docker compose up -d
+# once verified: docker volume rm registry2_registry2_db_data
+#                docker network rm registry2_registry2
+```
+
+Substitute your project name for `registry2`.
+
+**Landing page:** `http://localhost:<LANDING_HOST_PORT>/` (e.g.
+`localhost:8101` for `Registry/`) links that checkout's site, phpMyAdmin
+and the mock Brevo inbox. It is rendered at container start from
+`docker/landing/index.html.template` using the same port variables, so the
+links always match the checkout.
+
+Worktrees under `Registry-worktrees/` get the same treatment: give the
+worktree's `.env` the next row of ports.
 
 ```bash
 docker compose up -d
@@ -346,15 +373,13 @@ Switching an existing MAMP setup over (env files, database import,
 Playwright, cron, git hooks) and back: see
 [MAMP_TO_DOCKER.md](MAMP_TO_DOCKER.md).
 
-The stack includes four services: `app` (PHP 8.4, the main application),
-`db` (MySQL 8.0), `phpmyadmin` (database inspection, exposed on host port
-8082), and `mock-brevo` (a local mock of Brevo's transactional email API,
-`ghcr.io/c0boleis/mock-brevo:1.0.0`, exposed on host port 8090 for manual
-inspection — deliberately outside the 8001/8081, 8002/8082, 8003/8083...
-per-checkout port sequence documented above, since it's an additional
-service within one checkout's stack, not a new checkout). The `mock-brevo`
-service is reachable from the `app` container at `http://mock-brevo:8080/v3`
-over the `registry2` network. For how the application routes email requests
+The stack includes five services: `app` (PHP 8.4, the main application),
+`db` (MySQL 8.0, no host port), `phpmyadmin` (database inspection),
+`mock-brevo` (a local mock of Brevo's transactional email API,
+`ghcr.io/c0boleis/mock-brevo:1.0.0`, with a web inbox for manual
+inspection), and `landing` (the index page above). Host ports follow the
+table above. The `mock-brevo` service is reachable from the `app` container
+at `http://mock-brevo:8080/v3` over the `elan` network. For how the application routes email requests
 to it (the `BREVO_API_HOST` environment variable, the
 `US_ENVIRONMENT=development` guard, and the Brevo plugin's override
 activation), see `docs/development/EMAIL_SYSTEM.md`'s "Local Development"
@@ -363,11 +388,9 @@ there.
 
 **Always pass `-u www-data` to `exec`** — it has no compose-file default
 and otherwise runs as root, which would root-own anything written into the
-bind mount. See each checkout's `docker-compose.yml` header comment for
-the full rationale and the port convention (Registry=8001/8081,
-Registry2=8002/8082, next checkout=8003/8083, ...) plus the four things
-that must change together when copying the pattern to a new checkout
-(ports, network name, volume name, `APP_UID`/`APP_GID`).
+bind mount. See the `docker-compose.yml` header comment for the full
+rationale, the port table, and the one per-checkout setting outside `.env`
+(`APP_UID`/`APP_GID`, if a different host user works on the checkout).
 
 **MAMP: coexists indefinitely, no deprecation planned.** This is a
 deliberate decision (#2120), not a transitional state — applies to any

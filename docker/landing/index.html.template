@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<!--
+  Docker dev landing page, rendered at container start by the `landing`
+  service in docker-compose.yml. envsubst replaces only CHECKOUT_NAME,
+  APP_HOST_PORT, PMA_HOST_PORT and MOCK_BREVO_HOST_PORT; set them in the
+  checkout's .env (see the compose file's header).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${CHECKOUT_NAME} · Docker dev</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6677;
+    --border: #dfe3ea; --accent: #0b6e4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171d; --card: #1c2029; --text: #e6e9ef; --muted: #9aa3b2;
+      --border: #2c3240; --accent: #4cc39a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 16px; background: var(--bg); color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 28px; }
+  a.card {
+    display: block; padding: 18px 20px; margin-bottom: 12px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    color: inherit; text-decoration: none;
+  }
+  a.card:hover, a.card:focus-visible { border-color: var(--accent); outline: none; }
+  .name { font-weight: 600; color: var(--accent); }
+  .url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; color: var(--muted); }
+  .desc { margin-top: 4px; font-size: .95rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Elan Registry — ${CHECKOUT_NAME}</h1>
+  <p class="sub">Local Docker dev stack</p>
+
+  <a class="card" href="http://localhost:${APP_HOST_PORT}/">
+    <div class="name">Registry site</div>
+    <div class="url">localhost:${APP_HOST_PORT}</div>
+    <div class="desc">The application (index.php), served from this checkout.</div>
+  </a>
+
+  <a class="card" href="http://localhost:${PMA_HOST_PORT}/">
+    <div class="name">phpMyAdmin</div>
+    <div class="url">localhost:${PMA_HOST_PORT}</div>
+    <div class="desc">Browse and query this stack's MySQL database.</div>
+  </a>
+
+  <a class="card" href="http://localhost:${MOCK_BREVO_HOST_PORT}/">
+    <div class="name">Brevo emulator</div>
+    <div class="url">localhost:${MOCK_BREVO_HOST_PORT}</div>
+    <div class="desc">Inbox for email sent through the mock Brevo API (when BREVO_API_HOST points at it).</div>
+  </a>
+</main>
+</body>
+</html>

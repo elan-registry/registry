@@ -1,16 +1,16 @@
 # Migrating a Checkout from MAMP to Docker
 
-Step-by-step switch of one checkout (`Registry2/`) from MAMP to the Docker
-Compose dev stack, and back. For what the stack *is* — services, ports,
-grants, Traefik — see
+Step-by-step switch of one checkout from MAMP to the Docker Compose dev
+stack, and back. For what the stack *is* — services, ports, grants,
+Traefik — see
 [ENVIRONMENT.md — Docker Dev Environment](ENVIRONMENT.md#docker-dev-environment-optional-experimental).
 This page only covers the move.
 
-**`Registry2/` only, as committed.** `docker-compose.yml` hard-codes that
-checkout's host ports (8002, 8082, 8090), network and volume. Running
-these steps unchanged in any other checkout collides with Registry2's
-stack. Adapting it is covered by the checklist in `docker-compose.yml`'s
-header comment, not here.
+**The examples use `Registry2/`**, whose host ports are the compose file's
+defaults (site 8002, phpMyAdmin 8082, mock-brevo 8090, landing page 8102).
+Any other checkout sets its own ports in `.env` (step 3) and substitutes
+them throughout; `Registry/` uses 8001/8081/8091/8101. Two stacks on the
+same ports can't run at once.
 
 MAMP is not being retired: both can stay installed indefinitely. What
 decides which one works at any moment is the database host in `.env` and
@@ -27,6 +27,7 @@ decides which one works at any moment is the database host in `.env` and
 | Where `composer test:*`, `migrate`, `provision-schema.sh` run | Host shell | Inside the `app` container |
 | Where `npm run build` / Playwright run | Host shell | Host shell (no Node in the container) |
 | Email | Brevo / Mailtrap per `EMAIL_SYSTEM.md` | Same, plus optional `mock-brevo` on `:8090` |
+| Index of the above | MAMP workspace page (`localhost:9999/ElanRegistry/`) | Landing page, `http://localhost:8102/` |
 
 Files under the checkout (code, `vendor/`, `node_modules/`, built assets,
 `userimages/`) are bind-mounted, so nothing needs copying — only the
@@ -88,6 +89,19 @@ DB_PORT=3306
 `DB_USER`, `DB_PASS` and `DB_NAME` are also what Compose uses to create the
 `db` service's user and database on first start, so they must be set
 before step 4.
+
+**Any checkout other than `Registry2/`** also adds its host ports, from the
+table in
+[ENVIRONMENT.md](ENVIRONMENT.md#docker-dev-environment-optional-experimental).
+For `Registry/`:
+
+```dotenv
+CHECKOUT_NAME=Registry
+APP_HOST_PORT=8001
+PMA_HOST_PORT=8081
+MOCK_BREVO_HOST_PORT=8091
+LANDING_HOST_PORT=8101
+```
 
 **`DB_USER` must be `elanregi_spice`** unless you also edit
 `docker/mysql-init/01-grant-all-elanregi-schemas.sql` — that file
@@ -176,8 +190,9 @@ migration.
 ## 7. Verify
 
 ```bash
-docker compose ps                                   # 4 services up, db healthy
+docker compose ps                                   # 5 services up, db healthy
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8002/   # 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8102/   # 200, landing page
 docker compose exec -u www-data app composer migrate:status        # nothing "down"
 docker compose exec -u www-data app composer test:full             # unit + integration green
 ```
@@ -250,8 +265,9 @@ cp .env.test.local.mamp.bak .env.test.local
 
 Revert `PLAYWRIGHT_BASE_URL` and the launchd URL if you changed them. The
 Docker database stays in its named volume for next time (Compose prefixes
-the project name, so `docker volume ls` shows
-`registry2_registry2_db_data`); `docker compose down -v` deletes it.
+the project name, so `docker volume ls` shows `registry2_db_data`
+for `Registry2/` and `registry_db_data` for `Registry/`);
+`docker compose down -v` deletes it.
 
 The two databases are independent — changes in one never appear in the
 other. Run `composer migrate` in whichever you switch to.
