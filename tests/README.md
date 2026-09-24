@@ -432,6 +432,22 @@ here.
 
 **Solution**: Move to `tests/integration/` or remove database dependency and use mocks.
 
+### Suite Dies with "Allowed memory size of … bytes exhausted"
+
+**Problem**: The run stops with "Premature end of PHP process" and prints no
+summary line, usually inside an unrelated test.
+
+**Cause**: Each suite runs in one PHP process (`processIsolation="false"`), and
+the unit suite's memory peaks around 126MB. At PHP's default 128M, whichever
+test happens to be running when a small allocation tips it over dies. The test
+itself isn't the problem.
+
+**Solution**: All three PHPUnit configs (`phpunit.xml`, `phpunit-unit.xml`,
+`phpunit-integration.xml`) set `memory_limit` to `512M` in their `<php>` block,
+so this shouldn't recur (#2134). If it does, the suite has grown past that
+limit: raise it in all three configs together, and check for a genuine leak
+first.
+
 ## See Also
 
 - [TESTING.md](../docs/testing/TESTING.md) - Comprehensive testing guide

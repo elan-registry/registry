@@ -48,6 +48,13 @@
         <ini name="error_reporting" value="E_ALL"/>
         <ini name="display_errors" value="1"/>
         <ini name="display_startup_errors" value="1"/>
+        <!-- Explicit, so a run never depends on the ambient php.ini (128M on a
+             default host CLI). Each suite runs in one process, and at 128M the
+             unit suite (peak ~126MB) dies mid-run with no summary line (#2134).
+             PHPUnit applies this with ini_set(), overriding php.ini and any
+             `php -d memory_limit`, so this is the one place to change it; keep
+             all three phpunit*.xml configs in step. -->
+        <ini name="memory_limit" value="512M"/>
     </php>
 
     <source>
