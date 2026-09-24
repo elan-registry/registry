@@ -1,6 +1,6 @@
 ---
 description: Execute an approved plan file from /start-issue — implementation, tests, and reviews
-model: claude-opus-5
+model: claude-opus-5-5
 ---
 
 # Execute Plan
