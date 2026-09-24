@@ -817,16 +817,36 @@ assert_eq "Case D6: a MAMP-style DB_HOST runs on the host and never calls docker
     "0 1 0" "$(hook_exit) $(composer_calls) $(wc -l < "$DOCKER_LOG" | tr -d ' ')"
 
 # --- Case D7: DB_HOST=db but no docker binary -> blocked --------------------
-# PATH = a stub dir holding only composer, plus every real PATH entry that
-# does not contain a docker executable.
+# PATH = a stub dir holding only composer, then the real PATH with docker
+# removed. A real PATH entry that holds docker can't simply be dropped: on
+# Linux runners docker sits in /usr/bin beside cat, sed and git. Such an
+# entry is replaced by a shadow dir symlinking everything in it except docker.
 set_test_db_host "db"; clear_pass; : > "$DOCKER_LOG"; : > "$COMPOSER_LOG"
 NODOCKER_DIR="$TMPROOT/bin-nodocker"
 mkdir -p "$NODOCKER_DIR" && cp "$STUBDIR/composer" "$NODOCKER_DIR/composer"
 NODOCKER_PATH="$NODOCKER_DIR"
 IFS=: read -r -a _path_dirs <<< "$PATH"
+_shadow_n=0
 for _d in "${_path_dirs[@]}"; do
-    [ -n "$_d" ] && [ ! -x "$_d/docker" ] && NODOCKER_PATH="$NODOCKER_PATH:$_d"
+    [ -n "$_d" ] && [ -d "$_d" ] || continue
+    [ "$_d" = "$STUBDIR" ] && continue
+    if [ -e "$_d/docker" ]; then
+        _shadow_n=$((_shadow_n + 1))
+        _shadow="$TMPROOT/shadow-$_shadow_n"
+        mkdir -p "$_shadow"
+        for _f in "$_d"/*; do
+            [ "$(basename "$_f")" = "docker" ] && continue
+            ln -s "$_f" "$_shadow/" 2>/dev/null
+        done
+        NODOCKER_PATH="$NODOCKER_PATH:$_shadow"
+    else
+        NODOCKER_PATH="$NODOCKER_PATH:$_d"
+    fi
 done
+if PATH="$NODOCKER_PATH" command -v docker >/dev/null 2>&1; then
+    echo "FATAL: Case D7 could not build a PATH without docker" >&2
+    exit 1
+fi
 OUTD7="$(printf '%s\n' "$DK_LINE" | PATH="$NODOCKER_PATH" "$HOOK" origin "git@example.invalid:x/y.git" 2>&1)"
 EXITD7=$?
 if [ "$EXITD7" = "1" ] && [ "$(composer_calls)" = "0" ] \
