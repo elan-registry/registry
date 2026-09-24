@@ -37,7 +37,7 @@
 #
 # Examples:
 #   scripts/provision-schema.sh                    # test schema
-#   scripts/provision-schema.sh --env-file .env.local --full --force
+#   scripts/provision-schema.sh --env-file .env --full --force
 #                                                  # fresh dev/prod-shaped install
 #                                                  # (--force: name isn't a test schema)
 #
@@ -197,14 +197,14 @@ DB_HOST="${DB_HOST%%:*}"
 #      case-insensitive filesystem, so a typo'd-case name would otherwise slip
 #      past a naive comparison.
 #   2. Refuse the database this checkout's application is configured to use
-#      (DB_NAME in .env.local, else .env), which is the specific accident the
-#      old guard existed to prevent.
+#      (DB_NAME in .env), which is the specific accident the old guard existed
+#      to prevent. Only .env counts: it is the file the app (users/init.php)
+#      loads. .env.local is read by Playwright alone, so a DB_NAME there can
+#      be stale; trusting it would protect the wrong database (#2175).
 DB_NAME_LOWER="$(tr '[:upper:]' '[:lower:]' <<< "${DB_NAME}")"
 
 APP_ENV_FILE=""
-if [[ -f "${REPO_ROOT}/.env.local" ]]; then
-    APP_ENV_FILE="${REPO_ROOT}/.env.local"
-elif [[ -f "${REPO_ROOT}/.env" ]]; then
+if [[ -f "${REPO_ROOT}/.env" ]]; then
     APP_ENV_FILE="${REPO_ROOT}/.env"
 fi
 

@@ -150,8 +150,13 @@ real `car_models` row and is proven only in the integration tier above.
 
 ### Environment Variables (Integration Tests)
 
-- `DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`
-- Reads from `.env.local` (local dev) or `.env` (CI), loaded via phpdotenv
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`
+- Read from `.env.test.local` (template: `.env.test.local.sample`), by
+  `tests/bootstrap-integration.php`. The bootstrap aborts if the file is
+  missing rather than falling back to `.env` or `.env.local`. A key missing
+  *from* it is backfilled from `.env` by `users/init.php`, and the bootstrap
+  aborts only if that lands on the dev database — so set all five keys. See
+  `docs/development/ENVIRONMENT.md`'s "Which File Is Read by What"
 
 ### PHPUnit Config Files
 

@@ -38,8 +38,9 @@
 // ensureLoggedIn() (auth-helper.js) inside the plain `chromium` project,
 // rather than depending on the `logged-in` project's storageState.
 //
-// Requires local MAMP with TEST_USERNAME/TEST_PASSWORD (an admin account) set
-// in .env.local. Default base URL: http://localhost:9999/ElanRegistry/Registry/
+// Requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD (an admin account;
+// read by auth-helper.js) set in .env.local. Default base URL:
+// http://localhost:9999/ElanRegistry/Registry/
 // — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md.
 // Also requires US_ENVIRONMENT=development locally (see the seed fixture's
 // own guard) — the fixture refuses to run against a deployed environment.
