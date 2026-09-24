@@ -68,6 +68,16 @@ name: Claude Code Review
 #   with a Blocking section — a silent "nothing was posted" no longer
 #   reads as a pass.
 #
+# allowedTools no longer includes `composer check:php` / `vendor/bin/phpstan
+# analyse` (dropped from both jobs' claude_args): neither job runs `composer
+# install` before invoking Claude, so `vendor/` — gitignored, per the prompt's
+# own "Scope" section — never exists here, and both commands could only ever
+# fail. Both prompts already tell Claude to skip PHPStan/coding-standards-
+# covered checks entirely (static-analysis.yml's job is the real gate for
+# those), so this was dead permission surface, not a capability anything
+# relied on. `php -l` stays — it needs only the runner's system PHP, not
+# `vendor/`, and still works.
+#
 # IMPORTANT — track_progress and agent-mode detection (v1.0+):
 #   Setting track_progress: true forces "tag mode" — the action waits for an
 #   @claude trigger comment and never runs the prompt automatically. To run
@@ -192,10 +202,18 @@ jobs:
           # Do NOT set track_progress — it forces "tag mode" (waits for @claude
           # comment trigger) and prevents the prompt from running automatically.
           # Omitting it lets the action detect "agent mode" from the prompt input.
+          #
+          # --effort medium: this job runs on every push, making it the
+          # highest-frequency (and most cost-sensitive) Claude job in the repo.
+          # `medium` is a starting point, not a measured value — untested
+          # against review quality on this codebase. Tune up (quality dips)
+          # or down (cost matters more than the marginal quality gain) as
+          # evidence comes in.
           claude_args: >-
             --allowedTools
-            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(cat:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
+            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(cat:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
             --model claude-sonnet-5
+            --effort medium
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ steps.ctx.outputs.pr_number }}
@@ -282,6 +300,13 @@ jobs:
             - JS style issues — ESLint flags these
 
             ## Output
+
+            **Post the review before you end the turn.** This job has no human
+            watching it run — a turn that ends with a summary of your findings,
+            or an offer/announcement that you're about to post them, is not the
+            same as posting them: nothing else will pick this up, and the task
+            isn't done until the `gh pr comment` call below actually happens.
+            Don't stop to narrate that step — call it in the same turn.
 
             Post your review as a PR comment using:
 
@@ -520,8 +545,8 @@ jobs:
           # Fable is worth it here: this runs once per milestone, not per push.
           claude_args: >-
             --allowedTools
-            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
-            --model claude-fable-5
+            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
+            --model claude-fable-5-1
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -607,6 +632,13 @@ jobs:
                flags, or pre-deploy steps missing from the release notes?
 
             ## Output
+
+            **Post the review before you end the turn.** This job has no human
+            watching it run — a turn that ends with a summary of your findings,
+            or an offer/announcement that you're about to post them, is not the
+            same as posting them: nothing else will pick this up, and the task
+            isn't done until the `gh pr comment` call below actually happens.
+            Don't stop to narrate that step — call it in the same turn.
 
             Post your review as a PR comment using:
 
