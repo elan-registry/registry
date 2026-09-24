@@ -438,15 +438,23 @@ here.
 summary line, usually inside an unrelated test.
 
 **Cause**: Each suite runs in one PHP process (`processIsolation="false"`), and
-the unit suite's memory peaks around 126MB. At PHP's default 128M, whichever
-test happens to be running when a small allocation tips it over dies. The test
-itself isn't the problem.
+the unit suite's memory peaks at about 128MB, right at PHP's default 128M
+limit. Whichever test happens to be running when a small allocation tips it
+over dies. The test itself isn't the problem.
 
 **Solution**: All three PHPUnit configs (`phpunit.xml`, `phpunit-unit.xml`,
 `phpunit-integration.xml`) set `memory_limit` to `512M` in their `<php>` block,
-so this shouldn't recur (#2134). If it does, the suite has grown past that
-limit: raise it in all three configs together, and check for a genuine leak
-first.
+so this shouldn't recur (#2134). PHPUnit applies that value with `ini_set()`,
+so it overrides both `php.ini` and any `php -d memory_limit`. The configs are
+therefore the one place to change it; don't add `-d memory_limit` to composer
+scripts or hooks. 512M is about 4x the current peak and matches PHPStan's
+`--memory-limit`.
+
+`tests/unit/regression/Issue2134RegressionTest.php` fails if any
+`phpunit*.xml` loses the setting or the configs disagree. If the suite ever
+outgrows 512M, check for a genuine leak first. PHPUnit prints the peak on
+every run, so growth shows up there long before a fatal. Then raise the value
+in every config together.
 
 ## See Also
 
