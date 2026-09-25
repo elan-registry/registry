@@ -383,9 +383,9 @@ write the plan to disk (Step 9), which is what the user actually reviews.
 
 ### Step 9: Write the Plan File and Present for Approval
 
-Write the plan to `docs/plans/issue-<ISSUE_NUMBER>-<slug>.md`, where `<slug>`
+Write the plan to `docs/plans/issues/issue-<ISSUE_NUMBER>-<slug>.md`, where `<slug>`
 is the same short kebab-case description used for the branch name (Step 3).
-Create the `docs/plans/` directory if it does not exist yet. The
+Create the `docs/plans/issues/` directory if it does not exist yet. The
 `**Milestone:**` field is the `milestone/*` branch Step 3 already determined
 — record it here so `/execute-plan` (which runs on the issue branch, with no
 milestone version in its own branch name) doesn't have to re-derive it.
@@ -449,7 +449,7 @@ risks two agents corrupting the same file.
 After writing the file, present it for approval:
 
 "I've written the implementation plan for issue #ISSUE_NUMBER to
-`docs/plans/issue-<NUMBER>-<slug>.md`. Please review and let me know if
+`docs/plans/issues/issue-<NUMBER>-<slug>.md`. Please review and let me know if
 you'd like any changes before I mark it approved."
 
 **STOP. Do not mark the plan approved, and do not end this command's turn
@@ -471,7 +471,7 @@ this command.
 
 This command's work is done once the plan file is approved (Step 9). State
 plainly that the plan is approved and saved at
-`docs/plans/issue-<NUMBER>-<slug>.md`, then use AskUserQuestion to offer the
+`docs/plans/issues/issue-<NUMBER>-<slug>.md`, then use AskUserQuestion to offer the
 next step rather than a plain-text menu:
 
 - Question: "Plan approved. What next?"
