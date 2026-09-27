@@ -24,7 +24,7 @@ Draw the rules from these authoritative sources:
   `declare(strict_types=1)`, naming, organization, PHPDoc
 - `docs/development/ERROR_HANDLING.md` — typed exceptions, ApiResponse,
   LogCategories, Pattern A AJAX response format
-- `docs/development/USERSPICE_FUNCTIONS.md` — prefer UserSpice helpers over
+- `usersc/plugins/ai_prompts/prompts/00_start_here.md` — prefer UserSpice over
   custom reimplementations
 
 Focus on:
@@ -34,7 +34,7 @@ Focus on:
 - `declare(strict_types=1)` in new PHP files
 - PHPDoc on public methods (`@param`, `@return`, `@throws`)
 - Typed exceptions instead of generic `Exception`
-- `ElanRegistryAPI` client with Pattern A responses for new AJAX endpoints
+- `ElanRegistryAPI` client for new AJAX endpoints
 - Validated server globals (`$scheme`, `$is_https`, `$host`, etc.) instead of
   raw `$_SERVER`
 - `securePage($php_self)` check on protected pages
@@ -43,7 +43,6 @@ Focus on:
   action handlers without `securePage()` (e.g. `app/api/cars/`, `app/api/shared/`) are
   intentionally omitted
 - Use `(new Owner($userId))->data()` for combined user+profile data access
-  (`getUserWithProfile()` was removed in v2.26.2)
 
 **Bug Detection**
 Logic errors, null handling, race conditions, resource leaks, wrong SQL
