@@ -26,8 +26,8 @@
 # scripts/lib/pick-closest-base.sh) returns a merge-base SHA, tuned for
 # .githooks/pre-push's diff-since-push use. Callers of this script mostly
 # want a symbolic ref for `git diff <ref>...HEAD` or a PR base name, so this
-# script re-derives the winning ref name (not just its SHA) using the same
-# candidate list and ranking.
+# script reads the winning ref name that the function records in
+# PICK_CLOSEST_CANDIDATE.
 
 set -euo pipefail
 
@@ -65,41 +65,14 @@ if [ -z "$target_sha" ]; then
     exit 1
 fi
 
-# Re-run the same ranking _pick_closest_base uses, but keep the candidate's
-# NAME (not only its merge-base SHA) — this loop is intentionally a thin
-# mirror of that function's internals rather than a second copy of the
-# rejection rules, so any behavior change there (the tested contract) stays
-# the single source of truth; only the "what do we print" step differs here.
-best_candidate=""
-best_count=""
-while IFS= read -r candidate; do
-    [ -z "$candidate" ] && continue
-    case "$candidate" in
-        "$branch"|"origin/$branch")
-            continue
-            ;;
-    esac
-    base="$(git merge-base "$target_sha" "$candidate" 2>/dev/null)" || continue
-    candidate_sha="$(git rev-parse "$candidate" 2>/dev/null)" || continue
-    if [ "$target_sha" = "$candidate_sha" ]; then
-        [ "$candidate" = "origin/main" ] || continue
-    elif git merge-base --is-ancestor "$target_sha" "$candidate" 2>/dev/null; then
-        continue
-    fi
-    count="$(git rev-list --count "$base".."$target_sha" 2>/dev/null)" || continue
-    case "$count" in
-        ''|*[!0-9]*)
-            continue
-            ;;
-    esac
-    if [ -z "$best_count" ] || [ "$count" -lt "$best_count" ]; then
-        best_count="$count"
-        best_candidate="$candidate"
-    fi
-done <<< "$(git for-each-ref --format='%(refname:short)' 'refs/heads/milestone/*' 'refs/remotes/origin/milestone/*' 2>/dev/null; echo 'origin/main')"
-
-if [ -n "$best_candidate" ]; then
-    printf '%s\n' "$best_candidate"
+# Call _pick_closest_base directly (not in $(...)) so its
+# PICK_CLOSEST_CANDIDATE global survives. The ranking rules live only in
+# scripts/lib/pick-closest-base.sh. Its SHA output and progress note are
+# not needed here.
+PICK_CLOSEST_CANDIDATE=""
+if _pick_closest_base "$target_sha" "$branch" "$branch" >/dev/null 2>&1 \
+    && [ -n "$PICK_CLOSEST_CANDIDATE" ]; then
+    printf '%s\n' "$PICK_CLOSEST_CANDIDATE"
     exit 0
 fi
 

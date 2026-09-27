@@ -240,6 +240,34 @@ else
     fi
 fi
 
+# --- Scenario 4b: parse_porcelain_z() handles renames and spaces -----------
+# Regression for the #2209 review: line-mode porcelain turned a rename into
+# the single bogus path "old -> new", and a move INTO docs/plans/ slipped
+# past is_forbidden_path() because the string started with the old path.
+PZ_FILE="$(mktemp)"
+TMP_FILES+=("$PZ_FILE")
+sed -n '/^parse_porcelain_z() {/,/^}/p' "$SCRIPT" > "$PZ_FILE"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ ! -s "$PZ_FILE" ]; then
+    echo "FAIL: Scenario 4b: could not extract parse_porcelain_z() from $SCRIPT"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+    # shellcheck source=/dev/null
+    source "$PZ_FILE"
+    got="$(printf 'R  docs/plans/moved.md\0app/old.php\0 M has space.txt\0?? new.txt\0' | parse_porcelain_z)"
+    want="$(printf 'docs/plans/moved.md\napp/old.php\nhas space.txt\nnew.txt')"
+    scenario4b_ok=1
+    [ "$got" = "$want" ] || { echo "FAIL: Scenario 4b: got [$got], want [$want]"; scenario4b_ok=0; }
+    forbidden_hit=0
+    while IFS= read -r f; do is_forbidden_path "$f" && forbidden_hit=1; done <<< "$got"
+    [ "$forbidden_hit" -eq 1 ] || { echo "FAIL: Scenario 4b: a rename into docs/plans/ was not flagged"; scenario4b_ok=0; }
+    if [ "$scenario4b_ok" -eq 1 ]; then
+        echo "PASS: Scenario 4b: parse_porcelain_z splits renames and flags a move into docs/plans/"
+    else
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+    fi
+fi
+
 # --- Scenario 5: missing message/body file is a usage error -----------------
 
 assert_exit \

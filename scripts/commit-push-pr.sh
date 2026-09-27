@@ -156,7 +156,28 @@ is_forbidden_path() {
     esac
 }
 
-mapfile -t CHANGED_FILES < <(git status --porcelain=v1 | sed -E 's/^...//')
+# parse_porcelain_z — read `git status --porcelain=v1 -z` on stdin and print
+# one changed path per line. The line format ("XY old -> new") is ambiguous
+# for renames and for paths with spaces. In -z mode a rename or copy entry is
+# "XY new" followed by a separate "old" field. Print both paths, so a move
+# into a forbidden directory is caught and the old path's removal is staged.
+# Pure (stdin only) so tests/hooks/test-commit-push-pr.sh can feed it input.
+parse_porcelain_z() {
+    local entry status orig
+    while IFS= read -r -d '' entry; do
+        status="${entry:0:2}"
+        printf '%s\n' "${entry:3}"
+        if [[ "$status" == R* || "$status" == C* ]]; then
+            IFS= read -r -d '' orig || break
+            printf '%s\n' "$orig"
+        fi
+    done
+}
+
+CHANGED_FILES=()
+while IFS= read -r f; do
+    CHANGED_FILES+=("$f")
+done < <(git status --porcelain=v1 -z --untracked-files=all | parse_porcelain_z)
 
 FORBIDDEN=()
 for f in "${CHANGED_FILES[@]:-}"; do
@@ -179,7 +200,10 @@ done
 if [ "${#TO_STAGE[@]}" -eq 0 ]; then
     echo "Nothing to stage (working tree clean)." >&2
 else
-    run git add -- "${TO_STAGE[@]}"
+    if ! run git add -A -- "${TO_STAGE[@]}"; then
+        echo "git add failed" >&2
+        exit 2
+    fi
 fi
 
 # --- Commit ----------------------------------------------------------------

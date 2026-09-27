@@ -39,6 +39,10 @@ _pick_closest_base() {
     local target="$1"
     local self_remote="${2:-}" self_local="${3:-}"
     local best_base="" best_count="" best_candidate=""
+    # Also exposed to a caller that does not use a subshell, so
+    # scripts/resolve-base-branch.sh can print the winning ref name.
+    # shellcheck disable=SC2034  # read by scripts/resolve-base-branch.sh
+    PICK_CLOSEST_CANDIDATE=""
     local candidate base count candidate_sha target_sha
 
     target_sha="$(git rev-parse --verify --quiet "${target}^{commit}" 2>/dev/null)" || return 1
@@ -75,6 +79,8 @@ _pick_closest_base() {
     done <<< "$(git for-each-ref --format='%(refname:short)' 'refs/heads/milestone/*' 'refs/remotes/origin/milestone/*' 2>/dev/null; echo 'origin/main')"
 
     if [ -n "$best_base" ]; then
+        # shellcheck disable=SC2034
+        PICK_CLOSEST_CANDIDATE="$best_candidate"
         echo "  (merge-base resolved via closest branch: $best_candidate, $best_count commit(s) ahead)" >&2
         printf '%s\n' "$best_base"
         return 0
