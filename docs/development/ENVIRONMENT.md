@@ -1,5 +1,12 @@
 # Environment Variables Documentation
 
+> **Maintainer:** Registry maintainer.
+> **Repository review:** 2026-09-27.
+> **Review triggers:** PHP runtime, hosting, database, or environment-file changes.
+> **Claim scope:** Local paths and code behavior are repository facts. Test and
+> production values are live settings. No live host check is recorded here.
+> Record the date and evidence when you check those settings.
+
 This document covers environment variables and environments used in the Elan
 Registry application.
 
