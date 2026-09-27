@@ -184,7 +184,11 @@ fi
 
 # --- Commit ----------------------------------------------------------------
 
-if ! run git commit -F "$MESSAGE_FILE"; then
+# A clean tree with commits already made is normal (the user ran /commit
+# first). Skip the commit and push what exists.
+if [ "${#TO_STAGE[@]}" -eq 0 ]; then
+    echo "Nothing to commit; pushing existing commits." >&2
+elif ! run git commit -F "$MESSAGE_FILE"; then
     echo "git commit failed" >&2
     exit 2
 fi
