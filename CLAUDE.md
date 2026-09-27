@@ -317,7 +317,7 @@ Most work follows a structured milestone lifecycle with these commands:
 **Branch structure:** `main` ← `milestone/vX.Y.Z` ← `issue/NNN-slug`
 
 - `/start-issue` handles branch creation, research, and planning, ending in
-  an approved plan file at `docs/plans/issue-NNN-slug.md` — it never
+  an approved plan file at `docs/plans/issues/issue-NNN-slug.md` — it never
   implements, commits, or pushes.
 - `/execute-plan` reads that approved plan file and does the full
   implementation cycle (implement, test, security/architect review),
@@ -358,11 +358,21 @@ and architecture agents.
 - Working documents (sprint plans, triage reports, FRDs, per-issue plan
   files) live in `docs/plans/`, which is **gitignored** — this repo is public
   and these are private scratch. Nothing under `docs/plans/` is ever
-  committed; deleting a plan is a plain `rm`, not a `git rm`. Sprint plans go
-  in `docs/plans/sprints/<version>.md`; large multi-file plans (an FRD plus
-  mockups and images) get their own subdirectory. Delete a plan once its
-  decisions are applied to GitHub milestones/issues — the issues, code, and
-  committed docs are then the source of truth
+  committed; deleting a plan is a plain `rm`, not a `git rm`. Delete a plan
+  once its decisions are applied to GitHub milestones/issues — the issues,
+  code, and committed docs are then the source of truth
+- **Read `docs/plans/README.md` before reading, writing, or deleting
+  anything under `docs/plans/`.** It is the authoritative layout: which
+  subdirectory each kind of document goes in, which command writes it, when
+  it is deleted, and which current files are sensitive (e.g. spike captures
+  containing member email addresses). Because it is gitignored it exists only
+  on machines that already hold plans; on a fresh clone, use this summary:
+  `issues/issue-<NNN>-<slug>.md` (per-issue plans), `sprints/<version>.md`,
+  `features/<name>/` (FRDs with mockups), `spikes/<issue>-<slug>/`,
+  `analysis/` (one-off reports), `summaries/` (`/summary` HTML pages — write
+  them here, not to the repo root), `releases/` (deploy sheets); only
+  `README.md` and `HANDOFF.md` sit at the top level. Nothing new goes at the
+  top level — if a document fits no subdirectory, it goes in `analysis/`
 - For milestone planning, use the `senior-product-manager`, `senior-architect`,
   and `security-reviewer` agents in parallel for comprehensive analysis
 

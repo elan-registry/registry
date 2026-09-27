@@ -378,7 +378,7 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * markSold() must NOT clear vericode. Per the verification-system FRD
-     * (docs/plans/car-owner-verification/car-owner-verification-frd.md,
+     * (docs/plans/features/car-owner-verification/car-owner-verification-frd.md,
      * "Enforce the 60-day expiry"): the vericode stays live between actions
      * within the 60-day window measured from vericode_sent_at, so an owner
      * who marks a car sold today can still use the same link for a

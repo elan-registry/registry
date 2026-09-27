@@ -28,6 +28,16 @@ define('TESTING_ROOT', $projectRoot);
 // Load Composer autoloader for project classes FIRST (before UserSpice)
 require_once $projectRoot . '/vendor/autoload.php';
 
+// Register the leaked-`php -S`-server shutdown hook as early as possible.
+// PHPUnit's own ShutdownHandler (vendor/phpunit/phpunit/src/Runner/ShutdownHandler.php)
+// registers lazily, from TestCase::run() and TestCase::startErrorLogCapture()
+// (called from TestCase::runTest()) on the first test that calls
+// ShutdownHandler::setMessage(), not at bootstrap time — but its handler can
+// call exit(2), and a shutdown function that exits prevents every
+// later-registered shutdown function from running. Registering here, before
+// any test runs, guarantees we come first regardless.
+\Tests\Support\PhpBuiltinServer::registerShutdownHook();
+
 // Load UserSpice framework for real database testing and authentication
 $initPath = $projectRoot . '/users/init.php';
 if (!file_exists($initPath)) {
@@ -428,6 +438,30 @@ try {
     }
 } catch (Throwable $e) {
     fwrite(STDERR, "ERROR: Could not purge stale 'sib-test-key' rows from plg_sendinblue: {$e->getMessage()}\n");
+}
+
+// ============================================================
+// Sweep Leaked Brevo Override Stub (once per suite run)
+// ============================================================
+// usersc/plugins/sendinblue/override.php is gitignored and shared with the
+// dev app running on the same checkout — a run that dies mid-test before
+// restoring it leaves the 6-byte stub in place. brevoReady() needs only a key
+// row plus the file's existence, so a dev DB with a real key then sees Brevo
+// as "ready" with an empty override — a test artifact changing dev email
+// routing, invisible to `git status`. #2160's purge above
+// only covered the DB half of this same leak; this covers the file half.
+// Touches no DB, so it runs outside that block's try: a DB failure inside the
+// purge block above doesn't skip this, and an unreachable DB or a failed
+// DB-identity check earlier in this file already exits loudly via exit(1)
+// before execution ever reaches here — so the next good run is what sweeps it.
+$brevoOverridePath = $projectRoot . '/usersc/plugins/sendinblue/override.php';
+if (\Tests\Support\BrevoOverrideStub::sweep($brevoOverridePath)) {
+    fwrite(STDERR, "NOTE: Removed leaked Brevo override stub usersc/plugins/sendinblue/override.php "
+        . "(6-byte test artifact) — leftover from an interrupted run\n");
+} elseif (\Tests\Support\BrevoOverrideStub::matches($brevoOverridePath)) {
+    fwrite(STDERR, "WARNING: Leaked Brevo override stub usersc/plugins/sendinblue/override.php "
+        . "could not be removed (check permissions) — the dev site will see Brevo as "
+        . "\"ready\" with an empty override\n");
 }
 
 /**

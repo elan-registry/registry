@@ -142,6 +142,113 @@ database belongs in `tests/integration/` instead.
 - `:functionality` - Core features
 - `:ui` - Visual consistency
 
+## Test Support Helpers (`tests/Support/`)
+
+### `PhpBuiltinServer` — Leak-Proof `php -S` for HTTP Testing
+
+Integration tests that need a real HTTP layer (to access `php://input`, real `$_SERVER` values, and
+response headers) use `PhpBuiltinServer` as a shared harness. This centralizes the lifecycle of a
+spawned `php -S` process, adds cleanup for servers leaked by previous runs (fatal errors, crashes,
+interrupts), and prevents the classic issue where a string command runs under `sh -c`: in the Debian
+container `sh` (dash) stays as the parent, so `proc_terminate` kills only `sh` and leaves `php -S`
+running forever. (macOS `sh` execs the command, so there it leaks only on a crash.)
+
+**Usage pattern** (from `tests/integration/VerifyCarLandingPageTest.php`):
+
+```php
+private static ?PhpBuiltinServer $server = null;
+private static string $projectRoot = '';
+
+public static function setUpBeforeClass(): void
+{
+    parent::setUpBeforeClass();
+    self::$projectRoot = dirname(__DIR__, 2);
+}
+
+public static function tearDownAfterClass(): void
+{
+    self::$server?->stop();
+    self::$server = null;
+    parent::tearDownAfterClass();
+}
+
+protected function setUp(): void
+{
+    parent::setUp();
+    $this->requireDatabase();
+    $this->exposeTestDatabaseToEnvironment();
+    self::$server ??= PhpBuiltinServer::start(self::$projectRoot, self::routerBody());
+}
+
+// The router body: PHP source WITHOUT the opening tag.
+private static function routerBody(): string
+{
+    $projectRoot = self::$projectRoot;
+
+    return <<<PHP
+    require '{$projectRoot}/vendor/autoload.php';
+    \\Dotenv\\Dotenv::createMutable('{$projectRoot}', '.env.test.local')->load();
+    chdir('{$projectRoot}/app/verify');
+    require '{$projectRoot}/app/verify/verify_car.php';
+    PHP;
+}
+
+// In a test: self::$server->url('/app/verify/verify_car.php') . '?' . $queryString
+```
+
+**Key rules:**
+
+- Router body (`$routerBody`) parameter must **NOT** start with `<?php` — the opening tag is
+  supplied by the harness.
+- Start the server lazily with `??=` in `setUp()`, after `requireDatabase()`, so a class skipped
+  for lack of a DB never spawns one.
+- Stop it in `tearDownAfterClass()` with `$server?->stop(); $server = null;`.
+- Never hand-roll `proc_open('php -S …')` in a test — always use this harness.
+
+**Tests using this helper:**
+
+- `tests/integration/BrevoWebhookEndpointTest.php` — Brevo webhook endpoint (POST, Authorization
+  header, `php://input`)
+- `tests/integration/VerifyCarLandingPageTest.php` — Car verification landing page (GET/POST,
+  vericode tokens)
+
+**Leak recovery:**
+
+- Router files are `{realpath(tempdir)}/elanreg-phpsrv-{ownerPid}-{nonce}.php`, so the owner is
+  recorded in the file name and in the server's command line.
+- Each `start()` sweeps first. It kills a server only if it is ours (a `php -S 127.0.0.1:N` whose
+  last argument matches that pattern) **and** its owner PID is absent from the same `ps` snapshot,
+  then removes router files whose owner is dead. A concurrent run's servers have a live owner, so
+  they are left alone. A developer's own `php -S` never matches. If `ps` fails, nothing is killed
+  or removed.
+- A shutdown hook, registered early in both test bootstraps (ahead of PHPUnit's own handler, which
+  can `exit(2)`), stops live servers on a fatal error or `exit()`. After a SIGKILL or an OOM kill, the next run's sweep reclaims them.
+- No string ever reaches a shell. The server and the sweep's `ps` and `kill` calls are all spawned
+  with array-form `proc_open()`. `stop()` uses `proc_terminate()`, and the sweep runs the `kill`
+  binary, not `pkill` or `posix_kill`. Pattern-matching tools can't express the "owner absent from
+  the same snapshot" rule, and using the binary keeps one code path.
+- Tests: `tests/unit/system/PhpBuiltinServerTest.php` (pure helpers) and
+  `PhpBuiltinServerProcessTest.php` (real processes; runs in CI).
+
+### `BrevoOverrideStub` — Sweep Leaked Brevo Test Stub
+
+Two integration tests (`BrevoWebhookEndpointTest`, `VerificationToggleEndpointBehaviorTest`) write
+the 6-byte `BrevoOverrideStub::CONTENT` to `usersc/plugins/sendinblue/override.php` to make
+`brevoReady()` return true (it checks only for a key row plus the file's existence). That path is
+gitignored, so a stub left behind by a crashed run becomes invisible to `git status` and silently
+changes the dev site's email routing: if the dev DB has a Brevo key row, the site sees Brevo as
+"ready" with an empty override.
+
+At the start of each integration run, `tests/bootstrap-integration.php` calls
+`BrevoOverrideStub::sweep()`. It removes the file only on an exact byte-for-byte match with the
+stub, and prints a `NOTE:`. If the stub is present but cannot be removed, the bootstrap prints a
+`WARNING:` instead (checked with `BrevoOverrideStub::matches()`).
+
+A real override (a 1,193-byte copy of `override.RENAME.php`) and any near-miss such as `"<?php\n\n"`
+are never touched: deleting a real override would be far worse than leaving a stub behind. The class
+itself prints nothing, so the bootstrap owns the messages. Tests:
+`tests/unit/system/BrevoOverrideStubTest.php`.
+
 ## Database Fixtures
 
 Integration tests require the `car_models` reference table (plus `settings`

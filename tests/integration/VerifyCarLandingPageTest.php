@@ -6,6 +6,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\PhpBuiltinServer;
 
 /**
  * Behavioral (real-process, real-DB) tests for app/verify/verify_car.php —
@@ -28,11 +29,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     /** @var list<string> */
     private const DB_ENV_VARS = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS'];
 
-    /** @var resource|null */
-    private static $serverProcess = null;
-    private static int $serverPort = 0;
+    private static ?PhpBuiltinServer $server = null;
     private static string $projectRoot = '';
-    private static string $routerScriptPath = '';
 
     private int $testUserId = 0;
     private int $testCarId = 0;
@@ -42,25 +40,12 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         parent::setUpBeforeClass();
 
         self::$projectRoot = dirname(__DIR__, 2);
-
-        // Pseudo-random port seeded by PID; phpunit-integration.xml runs with
-        // processIsolation="false" (single process) so a collision with
-        // BrevoWebhookEndpointTest's own range (20000 + pid%20000, i.e.
-        // 20000-39999) is possible in principle — both ranges are wide enough,
-        // relative to the number of concurrently-running test classes, that
-        // this has not been observed in practice, but the ranges do overlap.
-        self::$serverPort = 40000 + (getmypid() % 10000);
-
-        self::$routerScriptPath = self::writeRouterScript();
     }
 
     public static function tearDownAfterClass(): void
     {
-        self::stopServer();
-
-        if (self::$routerScriptPath !== '' && file_exists(self::$routerScriptPath)) {
-            unlink(self::$routerScriptPath);
-        }
+        self::$server?->stop();
+        self::$server = null;
 
         parent::tearDownAfterClass();
     }
@@ -71,7 +56,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->requireDatabase();
 
         $this->exposeTestDatabaseToEnvironment();
-        self::ensureServerRunning();
+        self::$server ??= PhpBuiltinServer::start(self::$projectRoot, self::routerBody());
 
         // $withProfile: the #1883 opt-out records profiles.email_suppressed on
         // the owner, so the fixture needs the profiles row every real owner has.
@@ -98,28 +83,19 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     // ------------------------------------------------------------------
-    // Server lifecycle (mirrors BrevoWebhookEndpointTest.php)
+    // Server lifecycle (Tests\Support\PhpBuiltinServer owns the process)
     // ------------------------------------------------------------------
 
-    private static function writeRouterScript(): string
+    private static function routerBody(): string
     {
         $projectRoot = self::$projectRoot;
 
-        $routerSource = <<<PHP
-        <?php
+        return <<<PHP
         require '{$projectRoot}/vendor/autoload.php';
         \\Dotenv\\Dotenv::createMutable('{$projectRoot}', '.env.test.local')->load();
         chdir('{$projectRoot}/app/verify');
         require '{$projectRoot}/app/verify/verify_car.php';
         PHP;
-
-        $path = tempnam(sys_get_temp_dir(), 'verify_car_router_') . '.php';
-        $written = file_put_contents($path, $routerSource);
-        if ($written === false) {
-            throw new RuntimeException('Could not write router script for verify_car.php test server');
-        }
-
-        return $path;
     }
 
     private function exposeTestDatabaseToEnvironment(): void
@@ -130,65 +106,6 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
                 putenv("$var=$value");
             }
         }
-    }
-
-    private static function ensureServerRunning(): void
-    {
-        if (self::$serverProcess !== null) {
-            return;
-        }
-
-        $descriptorSpec = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ];
-
-        $command = sprintf(
-            'php -S 127.0.0.1:%d -t %s %s',
-            self::$serverPort,
-            escapeshellarg(self::$projectRoot),
-            escapeshellarg(self::$routerScriptPath)
-        );
-
-        $process = proc_open($command, $descriptorSpec, $pipes, self::$projectRoot, null);
-        if ($process === false) {
-            throw new RuntimeException('Could not start PHP built-in server for verify_car.php test');
-        }
-
-        self::$serverProcess = $process;
-
-        $deadline = microtime(true) + 3.0;
-        $connected = false;
-        while (microtime(true) < $deadline) {
-            $conn = @fsockopen('127.0.0.1', self::$serverPort, $errno, $errstr, 0.1);
-            if ($conn !== false) {
-                fclose($conn);
-                $connected = true;
-                break;
-            }
-            usleep(50_000);
-        }
-
-        if (!$connected) {
-            self::stopServer();
-            throw new RuntimeException('PHP built-in server did not start listening on port ' . self::$serverPort);
-        }
-    }
-
-    private static function stopServer(): void
-    {
-        if (self::$serverProcess === null) {
-            return;
-        }
-
-        $status = proc_get_status(self::$serverProcess);
-        if ($status['running']) {
-            proc_terminate(self::$serverProcess, 15);
-            usleep(100_000);
-        }
-        proc_close(self::$serverProcess);
-        self::$serverProcess = null;
     }
 
     // ------------------------------------------------------------------
@@ -217,7 +134,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
      */
     private function request(string $method, string $queryString, ?string $body): array
     {
-        $url = sprintf('http://127.0.0.1:%d/app/verify/verify_car.php', self::$serverPort);
+        $url = self::$server->url('/app/verify/verify_car.php');
         if ($queryString !== '') {
             $url .= '?' . $queryString;
         }
@@ -1273,7 +1190,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
      * reusing the generic "nothing is wrong" copy).
      *
      * A second, unrelated PDO connection is required for the lock: PHP's
-     * built-in server (self::ensureServerRunning()) serves one request per
+     * built-in server (the PhpBuiltinServer started lazily in setUp()) serves one request per
      * process with no persistent state between requests, so the DB
      * connection the POST below uses is necessarily a fresh one opened after
      * the SET GLOBAL below — it cannot be the same connection holding the

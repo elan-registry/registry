@@ -299,7 +299,7 @@ this convention), add the entry now instead — don't skip it.
 **Plan file:** check for one on the milestone branch:
 
 ```bash
-ls docs/plans/issue-$ARGUMENTS-*.md 2>/dev/null
+ls docs/plans/issues/issue-$ARGUMENTS-*.md docs/plans/issue-$ARGUMENTS-*.md 2>/dev/null
 ```
 
 If found, delete it — its job (a verifiable, resumable record other
@@ -313,7 +313,7 @@ fixes done ad hoc).
 and nothing to mention in the PR:
 
 ```bash
-rm -f docs/plans/issue-$ARGUMENTS-*.md
+rm -f docs/plans/issues/issue-$ARGUMENTS-*.md docs/plans/issue-$ARGUMENTS-*.md
 ```
 
 Commit the release notes update:

@@ -217,6 +217,11 @@ if (!function_exists('currentUserId')) {
 // Load Composer autoloader for all custom classes and exceptions
 require_once $projectRoot . '/vendor/autoload.php';
 
+// Register PhpBuiltinServer's shutdown hook before PHPUnit registers its own
+// (lazily, during the first test): PHPUnit's handler can exit(2), which stops
+// every later-registered shutdown function. See tests/bootstrap-integration.php.
+\Tests\Support\PhpBuiltinServer::registerShutdownHook();
+
 // Mock securePage function - only for unit tests
 if (!function_exists('securePage')) {
     function securePage($page): bool {

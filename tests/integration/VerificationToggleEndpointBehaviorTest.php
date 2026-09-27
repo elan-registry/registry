@@ -6,6 +6,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\BrevoOverrideStub;
 
 /**
  * Behavioral (real-process, real-DB, real-HTTP-shaped-request) tests for
@@ -265,7 +266,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 
         try {
             if ($overrideCreatedByThisTest) {
-                file_put_contents($overridePath, "<?php\n");
+                file_put_contents($overridePath, BrevoOverrideStub::CONTENT);
             }
 
             if (is_object($existingKeyRow) && isset($existingKeyRow->id)) {

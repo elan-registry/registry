@@ -40,7 +40,7 @@ execute before checking the item off.
 
 - `$ARGUMENTS` — (optional) an issue number or a path to a plan file. If
   omitted, auto-detect from the current branch name (e.g.,
-  `issue/423-car-data-export` → `docs/plans/issue-423-car-data-export.md`),
+  `issue/423-car-data-export` → `docs/plans/issues/issue-423-car-data-export.md`),
   the same inference `/finish-issue` uses.
 
 ## Step 0: Initialize TaskList
@@ -57,7 +57,8 @@ you progress.
 ### Step 1: Locate the Plan File
 
 If `$ARGUMENTS` is a path ending in `.md`, use it directly. If it's an issue
-number, look for `docs/plans/issue-<NUMBER>-*.md`. If omitted, extract the
+number, look for `docs/plans/issues/issue-<NUMBER>-*.md` (or, for a plan written
+before 2026-09-25, `docs/plans/issue-<NUMBER>-*.md`). If omitted, extract the
 issue number from the current branch (`git branch --show-current`) the same
 way `/finish-issue` does, then locate the matching plan file.
 
@@ -384,7 +385,7 @@ milestone branch directly (its own Step 3) before ever branching off it.
 Get the milestone version from the plan file's `**Milestone:**` field first:
 
 ```bash
-grep -oP '(?<=\*\*Milestone:\*\* `)[^`]+' docs/plans/issue-<NUMBER>-<slug>.md
+grep -oP '(?<=\*\*Milestone:\*\* `)[^`]+' docs/plans/issues/issue-<NUMBER>-<slug>.md
 ```
 
 **If that field is missing** (an older plan file predating this field, or one
@@ -405,7 +406,7 @@ the `technical-documentation-writer` agent for non-trivial entries.
 ### Step 10: Hand Off
 
 **Do NOT commit, push, or create PRs.** State plainly that implementation is
-complete and the plan file at `docs/plans/issue-<NUMBER>-<slug>.md` shows
+complete and the plan file at `docs/plans/issues/issue-<NUMBER>-<slug>.md` shows
 every item verified complete. Then use AskUserQuestion instead of a
 plain-text menu — and only ever offer the actual next runnable step, not the
 full remaining sequence at once:

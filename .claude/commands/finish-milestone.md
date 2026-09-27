@@ -112,7 +112,7 @@ grep -rn "Group('known-broken')" tests/ || echo "None found"
 
 ### Step 3.6: Check for leftover plan files
 
-Each issue's `/finish-issue` run deletes its `docs/plans/issue-NNN-*.md` file
+Each issue's `/finish-issue` run deletes its `docs/plans/issues/issue-NNN-*.md` file
 as part of closing out that issue (see `/finish-issue`'s Step 8). A file
 still present here means that step was skipped — most likely an issue whose
 PR was merged some other way (bypassing `/finish-issue`), or an interrupted
@@ -123,7 +123,7 @@ accumulate silently on disk, and nothing else is positioned to catch them.
 List them directly:
 
 ```bash
-ls docs/plans/issue-*.md 2>/dev/null
+ls docs/plans/issues/issue-*.md docs/plans/issue-*.md 2>/dev/null
 ```
 
 **If any files are found:** present them to the user and ask whether to
