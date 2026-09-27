@@ -44,6 +44,8 @@ test or production hosts or in vendor accounts.
 - [DEPLOYMENT.md](DEPLOYMENT.md) — deployment procedure and live settings.
 - [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) — email integration and vendor settings.
 - [FIX_SCRIPTS.md](FIX_SCRIPTS.md) — admin maintenance script rules.
+- [ISSUE_WORKFLOW.md](ISSUE_WORKFLOW.md) — capture, planning, build, and ship
+  loops: signal labels, the theme gate, review rules, backlog hygiene.
 
 ## Templates
 
