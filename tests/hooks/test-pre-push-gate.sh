@@ -124,7 +124,7 @@ extract_fn() {
 FN_FILE="$TMPROOT/fns.sh"
 {
     grep -E '^(integration_gate_paths|zero_sha)=' "$HOOK_SRC"
-    for fn in _diff_names _pick_closest_base _gate_base_for_ref _gated_files_for_ref \
+    for fn in _diff_names _gate_base_for_ref _gated_files_for_ref \
         _integration_cache_key _integration_cache_file \
         _integration_cache_hit _integration_cache_record _integration_runner; do
         body="$(extract_fn "$fn")"
@@ -137,6 +137,11 @@ FN_FILE="$TMPROOT/fns.sh"
 } > "$FN_FILE" || exit 1
 # shellcheck source=/dev/null
 source "$FN_FILE"
+# _pick_closest_base() itself now lives in scripts/lib/pick-closest-base.sh,
+# not in the hook text — source it directly (same file already copied into
+# the throwaway repo above for the hook-under-test to find at run time).
+# shellcheck source=/dev/null
+source "$REAL_REPO/scripts/lib/pick-closest-base.sh"
 if [ -z "${integration_gate_paths:-}" ] || [ -z "${zero_sha:-}" ]; then
     echo "FATAL: could not extract integration_gate_paths/zero_sha from $HOOK_SRC" >&2
     exit 1
@@ -200,6 +205,15 @@ chmod +x "$GITSTUBDIR/git"
 HOOK="$REPO/pre-push-under-test"
 printf '%s\n' "$HOOK_TEXT" > "$HOOK"
 chmod +x "$HOOK"
+
+# The real hook lives at .githooks/pre-push and sources ../scripts/lib/
+# pick-closest-base.sh relative to its OWN location — one directory above
+# .githooks/. This throwaway hook copy sits directly at $REPO (not inside a
+# ".githooks" subdirectory), so the same "../scripts/lib/..." lookup
+# resolves one level above $REPO, i.e. under $TMPROOT. Put the copy there to
+# match, not under $REPO itself.
+mkdir -p "$TMPROOT/scripts/lib"
+cp "$REAL_REPO/scripts/lib/pick-closest-base.sh" "$TMPROOT/scripts/lib/pick-closest-base.sh"
 
 CACHE_FILE="$(git rev-parse --git-path integration-passed)"
 

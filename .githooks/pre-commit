@@ -37,11 +37,14 @@ echo "🔍 Running pre-commit quality checks..."
 #     a heading: agent prose uses **Bold Label** sections instead of proper
 #     headings), MD032 (blank lines around lists). Verified directly against
 #     .claude/agents/code-reviewer.md.
+#   .claude/skills/ — same file shape as agents (frontmatter + LLM prose).
+#     The userspice-* skills are vendored from UserSpice and kept close to
+#     their source. Matching entry in .markdownlintignore.
 #   docs/releases/ — release notes' issue-link markdown structurally exceed
 #     the 160-char line-length rule (long GitHub issue URLs in links); see
 #     58b244c7, which added the matching entry in .markdownlintignore.
 STAGED_PHP_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.php$' || true)
-STAGED_MD_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.md$' | grep -v '^\.claude/agents/' | grep -v '^docs/releases/' || true)
+STAGED_MD_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.md$' | grep -v '^\.claude/agents/' | grep -v '^\.claude/skills/' | grep -v '^docs/releases/' || true)
 STAGED_JS_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.js$' | grep -v '\.min\.js$' || true)
 
 # Check if any critical files are modified (tests, core classes, etc.)

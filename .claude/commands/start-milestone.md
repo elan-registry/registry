@@ -1,6 +1,6 @@
 ---
 description: Begin work on a milestone by creating a milestone branch and drafting release notes
-model: claude-opus-5
+model: opus
 ---
 
 # Start Milestone
@@ -9,9 +9,10 @@ Keep output brief — terse status lines, no preamble, no restating of steps.
 
 ## Step 0: Initialize TaskList
 
-Before any other action, create one tracking task per major step below using
-TaskCreate (sprint plan check, branch creation, fix-script cleanup, issue quality review, release-notes draft, issue
-ordering, output). Set to `in_progress`/`completed` as you progress.
+Create one tracking task per major step below using TaskCreate (sprint plan
+check, branch creation, fix-script cleanup, issue quality review,
+release-notes draft, issue ordering, output). Set to
+`in_progress`/`completed` as you progress.
 
 Begin work on a milestone by creating a milestone branch from main, drafting
 release notes, and recommending an issue order.
@@ -69,53 +70,66 @@ This repo may be checked out in more than one local clone sharing the same
 parallel without UserSpice's gitignored `users/` framework breaking git
 worktrees). A local `git branch --list 'milestone/*'` only sees branches in
 *this* clone, so it can silently miss a milestone branch already active in a
-sibling clone. Check the shared remote instead:
+sibling clone. Check for THIS milestone first, locally and on `origin`:
 
 ```bash
-git ls-remote --heads origin 'milestone/*'
+scripts/find-milestone-branch.sh $ARGUMENTS
 ```
 
-If this returns a `milestone/$ARGUMENTS` branch for the SAME milestone
-already on `origin`, don't create a duplicate — check it out locally instead
-(do not check out a `milestone/*` branch as a `git worktree` of another local
-clone; get it from `origin` directly):
+- **Exit 0** — a `milestone/$ARGUMENTS` branch already exists (locally, on
+  `origin`, or both — the script prints the branch name either way). Don't
+  create a duplicate — check it out locally instead (do not check out a
+  `milestone/*` branch as a `git worktree` of another local clone; get it
+  from `origin` directly):
 
-```bash
-git fetch origin milestone/$ARGUMENTS
-git checkout -b milestone/$ARGUMENTS origin/milestone/$ARGUMENTS
-```
+  ```bash
+  git fetch origin milestone/$ARGUMENTS
+  git checkout -b milestone/$ARGUMENTS origin/milestone/$ARGUMENTS
+  ```
 
-If it returns a `milestone/*` branch for a DIFFERENT milestone, that's
-another milestone already active elsewhere (possibly in a sibling clone).
-Working two milestones in parallel across separate clones is supported —
-confirm with the user that a second parallel milestone is intended before
-proceeding; don't create it silently and don't treat the existing branch as
-an automatic block.
+  Skip the `checkout -b` line if the branch already exists locally too —
+  just `git checkout milestone/$ARGUMENTS` and pull.
 
-Otherwise (no `milestone/*` branch at all on `origin`), create it fresh from
-`main`:
+- **Exit 1** — no branch for this exact milestone exists yet. Check whether
+  a DIFFERENT milestone branch is active elsewhere (possibly in a sibling
+  clone):
 
-```bash
-git checkout main
-git pull origin main
-git checkout -b milestone/$ARGUMENTS
-git push -u origin milestone/$ARGUMENTS
-```
+  ```bash
+  git ls-remote --heads origin 'milestone/*'
+  ```
+
+  If this returns any `milestone/*` branch, that's another milestone
+  already active elsewhere. Working two milestones in parallel across
+  separate clones is supported — confirm with the user that a second
+  parallel milestone is intended before proceeding; don't create it
+  silently and don't treat the existing branch as an automatic block.
+
+  Otherwise (no `milestone/*` branch at all on `origin`), create it fresh
+  from `main`:
+
+  ```bash
+  git checkout main
+  git pull origin main
+  git checkout -b milestone/$ARGUMENTS
+  git push -u origin milestone/$ARGUMENTS
+  ```
+
+- **Exit 2** — usage error. Check `$ARGUMENTS` was given.
 
 ### Step 3.5: Clean up fix scripts from the previous release
 
-List all remaining fix scripts (excludes `_TEMPLATE_Fix-Script.php`; non-PHP
-files are naturally excluded by the pattern):
+List remaining fix scripts (excludes `_TEMPLATE_Fix-Script.php`), each with
+its first-commit date and message:
 
 ```bash
-find app/admin/scripts/fix/ -maxdepth 1 -name "*.php" \
-  ! -name "_TEMPLATE_Fix-Script.php"
+scripts/list-fix-scripts.sh
 ```
 
-If the command returns no output, skip this step silently and continue to
-Step 4.
+No output → skip silently, continue to Step 4.
 
-If scripts are found, prompt the developer to classify each one:
+Found scripts → ask the developer to classify each one (this call is
+per-script human judgment, not something a script can decide — "confirmed
+ran on production?" needs a real answer, not an inference):
 
 - **Confirmed ran on production** → delete it; git history is the permanent
   record (see `docs/development/FIX_SCRIPTS.md`)
@@ -123,13 +137,17 @@ If scripts are found, prompt the developer to classify each one:
   move to `app/admin/scripts/maintenance/`
 - **Not yet confirmed / hold** → leave in place; note why
 
-Use `git rm` to delete and `git mv` to promote, so both are staged
-automatically:
+Apply the decided action with the same script — it runs `git rm` or
+`git mv` so the change is staged automatically:
 
 ```bash
-git rm app/admin/scripts/fix/NN-Script.php
-git mv app/admin/scripts/fix/NN-Script.php app/admin/scripts/maintenance/
+scripts/list-fix-scripts.sh --apply app/admin/scripts/fix/NN-Script.php delete
+scripts/list-fix-scripts.sh --apply app/admin/scripts/fix/NN-Script.php promote
 ```
+
+Exit 0 means the action completed. Exit 2 is a usage error (bad action,
+file not found, or file outside `app/admin/scripts/fix/`). Exit 3 means the
+underlying `git rm`/`git mv` itself failed — check the error and retry.
 
 If any files were removed or moved, commit them as the first commit on the new
 milestone branch:
@@ -143,19 +161,12 @@ Skip the commit if nothing changed.
 ### Step 4: List the milestone's open issues
 
 ```bash
-gh issue list --milestone "<full milestone title>" --state open \
-  --json number,title,labels,body
-```
-
-**Important:** `gh issue list --milestone` can silently return empty results even
-when issues exist. Always verify with the direct API call:
-
-```bash
 gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=50" \
   --jq '.[] | {number, title, labels: [.labels[].name], body}'
 ```
 
-Use the API result as the authoritative issue list.
+Use the direct API call, not `gh issue list --milestone` (see CLAUDE.md's
+`gh` gotchas). Use the API result as the authoritative issue list.
 
 ### Step 4.4: State the milestone theme
 
@@ -191,58 +202,30 @@ gh api repos/elan-registry/registry/milestones/<NUMBER> -X PATCH \
 
 ### Step 4.5: Issue quality review
 
-This is the lighter-weight fallback of `/plan-milestone` Step 3's gate, for
-when this milestone reached `/start-milestone` without `/plan-milestone`
-having sealed it first (see `/plan-milestone`'s own "Important" section,
-which names this step as its equivalent). The two lists below are not
-independent of `/plan-milestone`'s three questions and edge-case test — they
-are this step's own phrasing of the same underlying decision, expanded with
-milestone-specific categories (make-work, trivial tests, superseded,
-duplicate scope) that `/plan-milestone`'s backlog-wide gate doesn't need
-because it runs before an issue has any implementation detail to judge those
-against. **If either gate's criteria change, check whether the other needs
-the same change** — a milestone that skipped `/plan-milestone` should not
-get a meaningfully different bar than one that didn't.
+This is the lighter-weight fallback of `/plan-milestone` Step 3's gate, for a
+milestone that reached `/start-milestone` without `/plan-milestone` sealing
+it first. Run the same gate here: the three questions (who noticed? / what
+do they do today instead? / what breaks if this never ships?), the edge-case
+test, and the inclusion question ("which of these serve the theme?" —
+default is out, not in). Cap: **3–6 theme issues, plus at most one
+housekeeping (`signal:forced`) issue, plus every open `gate-critical` issue**
+(uncapped, bypasses the theme test).
 
-Before ordering, analyze the full issue list inline and produce two outputs:
+Deltas from `/plan-milestone` Step 3, since this gate runs after issues
+already have implementation detail to judge:
 
-**A. Issues that have not earned a place** — flag any issue that meets one or
-more of these criteria:
+- Also flag: **make-work** (no real value, cosmetic-only), **trivial tests**
+  (delegation/passthrough only, no realistic failure mode), **already
+  superseded** (resolved by other recent work), **duplicate scope** (two
+  issues, same root problem).
+- Also produce a **consolidation candidates** list: issue groups touching the
+  same 1–2 files, small enough that separate PRs add overhead without
+  benefit. Recommendation only.
 
-- **Off-theme**: the issue does not serve the Step 4.4 theme sentence. This is
-  the primary filter, and it is not a judgement about the issue's worth — good
-  work belonging to a different theme is *deferred*, not closed. Testing
-  against a theme is a comparison, which is easy; testing worth in the
-  abstract is not, and almost always returns "well, it's not worthless"
-- **Edge case that fails gracefully**: few real owners take this path in a
-  year, and not handling it degrades quietly rather than badly. Build the
-  guard, not the feature — a clear error beats a code path maintained forever
-  for three people
-- **Make-work / no real value**: the change produces no meaningful improvement
-  — purely stylistic, cosmetic renaming with no functional impact, or
-  "cleaning up" something that isn't actually causing a problem
-- **Trivial tests**: adds tests only for delegation, passthrough, or obvious
-  behavior that has never caused a bug and has no realistic failure mode
-- **Extreme edge cases**: tests or guards for scenarios that have never occurred
-  in production and are not a realistic risk given the app's usage patterns
-- **Already superseded**: the issue's stated problem was resolved by other
-  recent work (check against recently closed issues in this milestone)
-- **Duplicate scope**: two issues that address the same root problem with only
-  cosmetic differences
+**If either gate's criteria change, update both** — a milestone that skipped
+`/plan-milestone` should not get a meaningfully different bar.
 
-For each flagged issue, provide: issue number, title, and a one-sentence reason.
-
-**B. Consolidation candidates** — identify pairs or groups of issues that:
-
-- Touch the same 1–2 files
-- Are small enough that splitting them into separate PRs adds overhead without
-  benefit
-- Share a logical theme that makes a combined PR easier to review
-
-For each group, list the issue numbers and explain what makes them a natural
-fit together. This is a recommendation only — no action is taken.
-
-**Output format:**
+Output format:
 
 ```text
 ## Issue Quality Review
@@ -252,76 +235,51 @@ fit together. This is a recommendation only — no action is taken.
 |---|-------|--------|
 | #NNN | ... | one sentence |
 
-(none — all issues look worthwhile)
-
 ### Consolidation candidates
 - #NNN + #NNN: both touch [file], small scope, natural pair
 - (none)
 ```
 
-After displaying the review, ask two questions in sequence:
-
-**Question 1 — Inclusion (the default is out, not in):**
-
-Do not ask which issues to remove. Ask which ones earn their place:
+Ask inclusion first:
 
 > "Which of these serve the theme? List the numbers. Anything you don't list
 > comes out of the milestone — deferred, not closed."
 
-Making inclusion the answer rather than the default is the point of this step:
-declining to make a commitment is far easier than reversing one already made,
-and by the time an issue is sitting in a milestone the commitment has been
-made.
-
-**Cap the result.** A sealed milestone holds **3–6 theme issues, plus at most
-one housekeeping issue, plus every open `gate-critical` issue**. The
-housekeeping issue is `signal:forced` work (security advisory, dependency EOL,
-platform change) that fits no theme but has to happen. `gate-critical` issues
-are uncapped and do not consume the housekeeping slot — a broken CI gate makes
-every other check decorative, so its repairs never wait. Both kinds bypass the
-theme test entirely. If more than six theme issues survive, ask which are the
-first six; the remainder return to the backlog.
-
-**Deferring** — the normal outcome for off-theme work — clears the milestone
-and leaves the issue open:
+Defer (leaves the issue open, out of the milestone):
 
 ```bash
 gh issue edit NNN --repo elan-registry/registry --remove-milestone
 ```
 
-**Closing** is for issues that fail the three planning questions outright:
-*who noticed?* / *what do they do today instead?* / *what breaks if this never
-ships?* If the honest answers are "nobody", "nothing — the workaround is
-fine", and "nothing", close it:
+Close (fails all three planning questions outright):
 
 ```bash
 gh issue close NNN --repo elan-registry/registry \
   --comment "Closing as low-value / make-work during milestone planning. Can be reopened if prioritized."
 ```
 
-After closing, remove the closed issues from the working issue list before
-proceeding.
+Remove closed/deferred issues from the working list before proceeding.
 
-**Question 2 — Consolidations** (only ask if consolidation candidates were identified):
+If more than six theme issues survive, ask the user which six take priority;
+the remainder return to the backlog.
+
+If consolidation candidates exist, ask second:
 
 > "Which consolidation groups (if any) should I merge into a single issue? List
 > the group numbers (e.g., '1, 3') or press Enter to keep all as separate issues."
 
-For each accepted consolidation group:
-
-1. **Identify the primary issue** — pick the one with the more complete scope
-   or the lower number; ask the user if it's not obvious.
-2. **Update the primary issue** — edit its body to incorporate the full scope
-   of the secondary issue(s) (acceptance criteria, affected files, etc.).
-3. **Close the secondary issue(s)** with a linking comment:
+For each accepted group: pick the primary issue (more complete scope, or
+lower number if unclear — ask the user if not obvious), fold the secondary
+issue's scope into its body, then close the secondary with a linking
+comment:
 
 ```bash
 gh issue close NNN --repo elan-registry/registry \
   --comment "Consolidated into #PRIMARY — scope merged there."
 ```
 
-After closing, remove the secondary issues from the working issue list. The
-primary issue carries the full combined scope into Step 5.
+Remove secondary issues from the working list. The primary carries the full
+combined scope into Step 5.
 
 ### Step 4.6: Offer a production data refresh
 
@@ -466,5 +424,5 @@ Display:
   work progresses (`/start-issue` only plans; it doesn't touch release
   notes).
 - `docs/plans/` is gitignored local scratch space, never committed (see
-  `CLAUDE.md`, Planning Work). Sprint plan files are deleted once a
+  `.claude/rules/planning-docs.md`). Sprint plan files are deleted once a
   milestone is released — do not treat a missing file as an error.

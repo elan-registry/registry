@@ -1,5 +1,12 @@
 # Email System
 
+> **Maintainer:** Registry maintainer.
+> **Repository review:** 2026-09-27.
+> **Review triggers:** Email plugin, API, webhook, DNS, or account changes.
+> **Claim scope:** Plugin behavior is a repository fact. Brevo plan, tenant,
+> sender, DNS, and webhook settings are live settings. No live vendor check is
+> recorded here. Record the date and evidence when you check those settings.
+
 The Lotus Elan Registry uses Brevo (formerly Sendinblue) as its transactional email service
 for production and staging environments. This document covers account setup, configuration,
 troubleshooting, and the developer API.

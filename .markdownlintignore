@@ -2,6 +2,11 @@
 # that don't conform to standard markdown linting rules
 .claude/agents/
 
+# Skill files have the same YAML frontmatter and long description lines.
+# The userspice-* skills are vendored from UserSpice and kept close to
+# their source so upstream updates merge cleanly.
+.claude/skills/
+
 # Release notes contain long GitHub issue URLs embedded in markdown links
 # that structurally exceed the 160-char line limit without loss of meaning
 docs/releases/

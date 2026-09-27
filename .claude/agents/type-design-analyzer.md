@@ -1,6 +1,6 @@
 ---
 name: type-design-analyzer
-description: "Use this agent to review PHP class / type design when introducing a new class, adding a new value object or DTO, or refactoring existing types for stronger invariants. The agent provides both qualitative feedback and 1-10 ratings on encapsulation, invariant expression, usefulness, and enforcement.\n\n<example>\nContext: The user just introduced a new class to represent a car transfer.\nuser: \"I've added a CarTransferRequest class.\"\nassistant: \"I'll use the type-design-analyzer agent to review its invariants and encapsulation.\"\n<commentary>\nNew domain types deserve a design review to catch weak invariants early.\n</commentary>\n</example>\n\n<example>\nContext: A PR adds several data model classes.\nuser: \"PR has three new model types.\"\nassistant: \"Let me run the type-design-analyzer agent across the new types.\"\n<commentary>\nBatch review of new types at PR time is the right moment to raise design concerns.\n</commentary>\n</example>"
+description: "Review PHP class and type design. Use this agent when a change adds a new class, value object, or DTO, or refactors an existing type's invariants. It rates encapsulation, invariant expression, usefulness, and enforcement, each on a 1-10 scale, with written feedback."
 model: sonnet
 color: pink
 ---
@@ -20,6 +20,15 @@ Use this agent for **new or refactored classes** in:
   the change set
 
 Reference `docs/development/CLASSES.md` for existing project type patterns.
+
+## UserSpice Prompts
+
+Before UserSpice work, read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`.
+Then read the ElanRegistry overrides in `usersc/plugins/ai_prompts/custom_prompts/`:
+`elanregistry_overrides`, `elanregistry_classes`, `elanregistry_directories`, and
+`elanregistry_database`. Where a rule conflicts, the overrides win. One fixed rule:
+use `ElanRegistry\Input::raw()` for values bound for the database. Never use
+`\Input::get()` for those values — it pre-encodes the value and causes double encoding.
 
 ## Analysis Framework
 

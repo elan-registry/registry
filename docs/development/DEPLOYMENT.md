@@ -1,5 +1,13 @@
 # Deployment Guide
 
+> **Maintainer:** Registry maintainer or release manager.
+> **Repository review:** 2026-09-27.
+> **Review triggers:** Deploy hook, remote, CI, cron, or host changes.
+> **Claim scope:** Tracked workflow and script behavior are repository facts.
+> Remote URLs, host configuration, and deploy-hook state are live settings. No
+> live host check is recorded here. Record the date and evidence when you check
+> those settings.
+
 This document provides comprehensive deployment procedures for the Lotus Elan
 Registry application.
 

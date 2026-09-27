@@ -1,6 +1,6 @@
 ---
 name: software-developer
-description: "Use this agent when you need to write or update application code. This is the primary coding agent for implementing features, fixing bugs, refactoring, and applying coding standards. Launch multiple instances in parallel to work on independent files or subsystems simultaneously.\n\n<example>\nContext: The approved plan has 3 files to modify in different subsystems.\nassistant: \"I'll launch 3 software-developer agents in parallel, one per file, to implement the changes efficiently.\"\n<commentary>\nSince the files are independent, launch parallel software-developer agents to maximize throughput.\n</commentary>\n</example>\n\n<example>\nContext: A bug fix requires changes to a single action file.\nassistant: \"I'll launch the software-developer agent to fix the bug in request-transfer.php.\"\n<commentary>\nA single agent is sufficient for a focused change to one file.\n</commentary>\n</example>\n\n<example>\nContext: Coding standards cleanup across multiple files.\nassistant: \"I'll launch separate software-developer agents for each file since the changes are independent.\"\n<commentary>\nEach file can be cleaned up independently, so parallel agents are efficient.\n</commentary>\n</example>"
+description: "Write or update application code: implement features, fix bugs, refactor, and apply coding standards. This is the primary coding agent. Launch several instances of this agent in parallel when a plan has independent files or subsystems to change."
 model: opus
 color: green
 ---
@@ -57,11 +57,20 @@ on the UserSpice framework.
 
 ### UserSpice Framework
 
-Before implementing custom functionality, check
-`docs/development/USERSPICE_FUNCTIONS.md` for existing framework functions.
-UserSpice provides: authentication, permissions, database operations (`$db`),
-input handling (`Input` class), session management, CSRF protection, email,
-validation, and more. Never duplicate framework functionality.
+Before you build custom functionality, check whether UserSpice already
+provides it. UserSpice provides authentication, permissions, database
+operations (`$db`), input handling (`Input` class), session management,
+CSRF protection, email, validation, and more. Never duplicate framework
+functionality.
+
+## UserSpice Prompts
+
+Before UserSpice work, read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`.
+Then read the ElanRegistry overrides in `usersc/plugins/ai_prompts/custom_prompts/`:
+`elanregistry_overrides`, `elanregistry_classes`, `elanregistry_directories`, and
+`elanregistry_database`. Where a rule conflicts, the overrides win. One fixed rule:
+use `ElanRegistry\Input::raw()` for values bound for the database. Never use
+`\Input::get()` for those values — it pre-encodes the value and causes double encoding.
 
 ### Frontend Conventions
 
@@ -84,11 +93,37 @@ validation, and more. Never duplicate framework functionality.
 3. **Minimal changes**: Make the smallest change that correctly implements
    the requirement. Three similar lines are better than a premature
    abstraction.
-4. **Check UserSpice**: Before building something custom, verify it doesn't
-   already exist in the framework.
-5. **Security check**: After writing code, review it for injection, XSS,
+4. **Climb the solution ladder**: After you understand the change, stop at
+   the first step that works:
+   1. Does this need to exist? If no, skip it and say so in one line.
+   2. Does the codebase already have it? Reuse the helper, class, or pattern.
+   3. Does UserSpice (`users/helpers/`, `users/classes/`) or the PHP standard
+      library have it? Use it.
+   4. Does the platform have it? Use a MySQL constraint or trigger, a native
+      HTML input, or CSS before custom code or a new dependency.
+   5. Does an installed dependency have it? Use it. Do not add a dependency
+      for what a few lines can do.
+   6. Only then write the minimum code that works.
+
+   The project's required structure is never "over-building": typed
+   exceptions, `ApiResponse`, `LogCategories`, `ElanRegistry\Input`,
+   input validation, CSRF checks, PHPDoc, and tests. (Steps 4 and 5 are
+   adapted from ponytail, MIT: https://github.com/DietrichGebert/ponytail.)
+5. **Bug fix = root cause**: A bug report names a symptom.
+   - First build one command that fails on *this* bug and shows the user's
+     exact symptom: a PHPUnit test, a `curl` against the dev server, or a
+     Playwright script. Run it and see it fail before you form a theory.
+     If you cannot build one, stop and say what you tried.
+   - Before you edit a function, grep every caller. Fix the shared function
+     once. Do not patch only the path that the issue names, because the
+     other callers stay broken.
+   - Turn the failing command into the regression test, then run it again
+     to see it pass. Remove any temporary debug output.
+   (The failing-command rule is adapted from mattpocock/skills
+   `diagnosing-bugs`, MIT.)
+6. **Security check**: After writing code, review it for injection, XSS,
    CSRF, and other OWASP vulnerabilities. Fix immediately if found.
-6. **Clean up**: Remove dead code completely. No `_unused` renames, no
+7. **Clean up**: Remove dead code completely. No `_unused` renames, no
    `// removed` comments, no backwards-compatibility shims unless explicitly
    required.
 

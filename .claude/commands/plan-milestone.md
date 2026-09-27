@@ -1,6 +1,6 @@
 ---
 description: Signal review, theme selection, and gate — seal a milestone's issue list before branching
-model: claude-opus-5
+model: opus
 ---
 
 # Plan Milestone

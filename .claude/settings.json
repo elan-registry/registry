@@ -1,9 +1,7 @@
 {
   "enabledPlugins": {
     "commit-commands@claude-plugins-official": true,
-    "pr-review-toolkit@claude-plugins-official": true,
     "code-review@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true
   },
@@ -30,6 +28,10 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/guard-deploy-push.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-private-paths.sh"
           }
         ]
       },
@@ -39,6 +41,18 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/guard-upstream-paths.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/phpstan-on-edit.sh",
+            "timeout": 120
           }
         ]
       }

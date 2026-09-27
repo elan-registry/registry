@@ -1,13 +1,14 @@
 # Quick Reference Guide
 
-Quick reference for common development tasks and commands. For detailed
-information, see the linked documentation.
+Use this guide for common development tasks and commands. Read the linked
+documents for details.
 
 ## Essential Commands
 
 ### Testing
 
-See [CLAUDE.md](../../CLAUDE.md) → Quick Start Commands for the full testing and build command reference.
+See the Quick Start Commands section in [CLAUDE.md](../../CLAUDE.md) for the
+full testing and build commands.
 
 ### Pre-commit Quality Checks
 
@@ -17,11 +18,12 @@ composer check:php               # Coding standards + PHPStan (no `composer phpc
 
 ### Milestone Lifecycle
 
-See [CLAUDE.md](../../CLAUDE.md) → Developer Workflow for the full milestone lifecycle and slash command reference.
+See the Developer Workflow section in [CLAUDE.md](../../CLAUDE.md) for the
+milestone lifecycle and slash commands.
 
 ### Git & Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for complete release procedures.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the release procedures.
 
 ## Common File Locations
 
@@ -75,11 +77,12 @@ See [CODING_STANDARDS.md](CODING_STANDARDS.md)
 See [LOG_CATEGORIES.md](LOG_CATEGORIES.md)
 
 **Server Globals (v2.13.0+):**
-Never use `$_SERVER` directly — use validated globals instead.
+Never use `$_SERVER` directly. Use the checked global variables instead.
 See [CLAUDE.md](../../CLAUDE.md) for the full list and [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md) for details.
 
 **Writing a Cron Job:**
-The transport hits `users/cron/cron.php` every 10 minutes and runs every active job on every hit — jobs must be idempotent and gate their own cadence
+The transport calls `users/cron/cron.php` every 10 minutes. Each call runs
+every active job. Jobs must be idempotent and control their own schedule.
 See [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager)
 
 **New PHP Directories:**
@@ -88,24 +91,23 @@ See [GitHub Wiki: UserSpice Integration Guide](https://github.com/elan-registry/
 
 ## Custom Functions Available on All Pages
 
-These functions are loaded globally and available on every page:
+UserSpice loads these functions for every page:
 
 | Function | Returns | Purpose | Example |
 | --- | --- | --- | --- |
 | `isRegistryAdmin($userId)` | bool | Check if user has admin/editor perms | `if (isRegistryAdmin()) { ... }` |
 | `requireAdminAjax($context)` | void | Guard an admin AJAX endpoint (exits on failure) | `requireAdminAjax('transfer approval')` |
-| `getBaseUrl()` | string | Get app base URL (environment-aware) | `$base = getBaseUrl()` |
+| `getBaseUrl()` | string | Get the app base URL for the current environment | `$base = getBaseUrl()` |
 | `getAdminEmails()` | string | Get comma-separated admin emails | `$emails = getAdminEmails()` |
 | `getFeedbackEmail()` | string | Get feedback form email address | `$email = getFeedbackEmail()` |
 | `dbInt($value)` | int | Cast database value to int safely | `$id = dbInt($row->id)` |
-| `currentUserId()` | int | Get logged-in user's ID (throws if not) | `$uid = currentUserId()` |
+| `currentUserId()` | int | Get the logged-in user's ID or throw an exception | `$uid = currentUserId()` |
 | `logger($userId, $type, $note, $metadata)` | bool | Log user action for audit trail | `logger($uid, LogCategories::LOG_CATEGORY_LOGIN, 'User logged in')` |
 
 **Examples:**
 
 ```php
 // Get owner data with profile information
-// (getUserWithProfile() was removed in v2.26.2 — use the Owner class)
 use ElanRegistry\Owner;
 $owner = (new Owner($userId))->data();
 echo $owner->fname . " from " . $owner->city;
@@ -116,28 +118,25 @@ if (isRegistryAdmin()) {
 }
 
 // Log an action
-logger(currentUserId(), LogCategories::LOG_CATEGORY_CAR_CREATE, 'Created new car');
+logger(currentUserId(), LogCategories::LOG_CATEGORY_CAR_CREATION, 'Created new car');
 ```
 
-See [USERSPICE_FUNCTIONS.md](USERSPICE_FUNCTIONS.md) for the full UserSpice method reference.
+Read the [UserSpice framework guidance](../../usersc/plugins/ai_prompts/prompts/00_start_here.md.php) before you build a custom solution.
 
 ## Model Management
 
-Models are in the `car_models` table — managed in DB, not hardcoded JS. To add/modify:
+The `car_models` table stores model definitions. Do not hard-code models in
+JavaScript. Add a row to `database/seeds/data/car_models.csv`, then run the
+Phinx seed:
 
-**Add New Car Model Definition**:
-
-```sql
--- Insert new model definition into car_models table
-INSERT INTO car_models
-(year_available_from, year_available_to, display_name, human_readable_short,
- series, variant, type_code, model_value)
-VALUES
-(1970, 1973, 'New Model ( Type 36 Description )', 'New Model',
- 'Series', 'Variant', '36', 'Series|Variant|36');
+```bash
+vendor/bin/phinx seed:run -s CarModelsSeed
 ```
 
-**Test Availability**:
+The seed is idempotent. See [database/seeds/README.md](../../database/seeds/README.md)
+for the seed data format and rules.
+
+**Check Availability**:
 
 ```php
 // Check if model is available in a specific year
@@ -150,7 +149,7 @@ foreach ($models as $model) {
     echo $model->human_readable_short . " (" . $model->model_value . ")\n";
 }
 
-// Validate if model combination exists
+// Check if the model combination exists
 if ($carModel->exists('S4', 'FHC', '36')) {
     echo 'Valid model combination';
 }
@@ -158,26 +157,26 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 
 **Dynamic Dropdown Updates**:
 
-- Model dropdowns in `form.php` load dynamically from database (no JS changes needed)
+- The car form in `app/owner/cars/edit.php` loads model data dynamically (no
+  hard-coded JavaScript model list)
 - API endpoint: `app/api/cars/models.php`
 - JavaScript module: `app/assets/js/model-loader.js`
-- Models are cached client-side after first load
+- The browser caches models after the first load.
 
 **Notes**:
 
 - Model definitions replace hardcoded `cardefinition.js` (now removed)
 - Form submission still uses format: `series|variant|type`
-- Backend validates model combination exists via CarModel::exists()
+- The backend checks model combinations with `CarModel::exists()`.
 - No data migration of existing cars required
 
 ## Security Scanning (Semgrep)
 
-Semgrep runs automatically on every PR via GitHub App Managed Scan
-(`semgrep-cloud-platform/scan` check). PRs that introduce new findings will
-fail the check. The dashboard at semgrep.dev/orgs/jim_unibrain_org shows all
-open findings for all repos.
+GitHub App Managed Scan runs Semgrep on every pull request. A pull request
+fails the `semgrep-cloud-platform/scan` check if it adds findings. The dashboard
+at `semgrep.dev/orgs/jim_unibrain_org` shows open findings for all repositories.
 
-### Fetch open findings for this repo
+### Get open findings for this repository
 
 ```bash
 SEMGREP_APP_TOKEN=$(op read "op://HomeLab/SEMGREP_APP_TOKEN/credential")
@@ -189,16 +188,16 @@ curl -s "https://semgrep.dev/api/v1/deployments/jim_unibrain_org/findings?dedup=
   }'
 ```
 
-Requires 1Password CLI (`op`). Token stored at
-`op://HomeLab/SEMGREP_APP_TOKEN/credential` — must have **Web API** scope.
+This command requires the 1Password CLI (`op`). The token at
+`op://HomeLab/SEMGREP_APP_TOKEN/credential` must have **Web API** scope.
 
 ### Periodic triage (keep the dashboard clean)
 
-Run after a milestone or when findings accumulate:
+Run this process after a milestone or when findings accumulate:
 
-1. Pull findings using the curl above
-2. Review each rule against the actual code — check for int casts, `htmlspecialchars()`, whitelist validation, etc.
-3. Bulk-mark confirmed false positives via the API:
+1. Pull the findings with the `curl` command above.
+2. Review each rule against the code. Check for integer casts, `htmlspecialchars()`, and allowlist checks.
+3. Mark known false positives through the API with this command:
 
 ```bash
 SEMGREP_APP_TOKEN=$(op read "op://HomeLab/SEMGREP_APP_TOKEN/credential")
@@ -214,11 +213,11 @@ curl -s -X POST "https://semgrep.dev/api/v1/deployments/jim_unibrain_org/triage"
   }'
 ```
 
-1. Create GitHub issues for confirmed real findings; assign to appropriate milestone.
+1. Create GitHub issues for real findings. Assign each issue to its milestone.
 
-### What is excluded from scanning
+### Paths Semgrep Does Not Scan
 
-See `.semgrepignore` in the repo root. Key exclusions:
+See `.semgrepignore` in the repository root. Semgrep skips these paths:
 
 - `users/` — UserSpice framework core (not our code)
 - `app/admin/scripts/fix/` — one-time admin migration scripts
@@ -230,21 +229,21 @@ See `.semgrepignore` in the repo root. Key exclusions:
 
 | Semgrep rule | Why it fires | Why it's safe |
 | --- | --- | --- |
-| `taint-unsafe-echo-tag` | Follows `$_REQUEST` source | Output is int-cast or wrapped in `htmlspecialchars()` |
-| `tainted-sql-string` | Follows input through exception handlers | Actual DB calls use prepared statements via `Owner` |
-| `tainted-filename` | Flags `basename()` as insufficient | `basename()` + extension check + directory validation is sufficient |
-| `tainted-path-traversal` | Flags `include` with derived path | `$activeTab` validated against `$validTabs` whitelist before use |
+| `taint-unsafe-echo-tag` | Traces input from `$_REQUEST` | The code casts output to an integer or passes it to `htmlspecialchars()`. |
+| `tainted-sql-string` | Traces input through exception handlers | `Owner` uses prepared statements for database calls. |
+| `tainted-filename` | Treats `basename()` as insufficient | The code checks the basename, extension, and directory. |
+| `tainted-path-traversal` | Flags an `include` call with a derived path | The code checks `$activeTab` against the `$validTabs` allowlist first. |
 
 ## Troubleshooting
 
 | Problem | Solution |
 | --- | --- |
-| `securePage()` redirecting to login | Register page in UserSpice admin; add dir to `z_us_root.php` `$path` array |
-| CSRF validation failed | Ensure `<input name="csrf" value="<?php echo Token::generate(); ?>">` in form |
-| API returns 500 error | Check PHP error log; verify exception types are correct |
-| Database query returns no results | Verify table name, column names, and WHERE clause |
-| Tests failing | Check PHP 8.2+; run `composer install` && `npm install` |
-| NotificationHelper not showing | Verify footer.php is included; check browser console for JS errors |
+| `securePage()` redirects to login | Register the page in UserSpice admin. Add its directory to the `$path` array in `z_us_root.php`. |
+| CSRF validation fails | Add `<input name="csrf" value="<?php echo Token::generate(); ?>">` to the form. |
+| API returns a 500 error | Read the PHP error log. Check that the code uses the correct exception type. |
+| Database query returns no results | Check the table name, column names, and `WHERE` clause. |
+| Tests fail | Check that PHP 8.2 or later runs. Run `composer install` and `npm install`. |
+| `NotificationHelper` does not show | Check that `footer.php` loads. Read the browser console for JavaScript errors. |
 
 ## Documentation Index
 

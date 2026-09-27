@@ -91,6 +91,7 @@ final class DocsChecker
         $this->checkBadUrls();
         $this->checkDeadSymbols();
         $this->checkDroppedTables();
+        $this->checkDocumentedValues();
 
         return $this->report();
     }
@@ -330,6 +331,92 @@ final class DocsChecker
                         'dropped-table',
                         $rel . ':' . ($i + 1),
                         "`{$table}` was dropped by a migration but is documented as current"
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Rule 7 — selected documented values must agree with tracked source files.
+     * Live host and vendor settings are outside this checker's scope.
+     */
+    private function checkDocumentedValues(): void
+    {
+        $logSource = $this->root . '/usersc/classes/LogCategories.php';
+        $logDoc = $this->root . '/docs/development/LOG_CATEGORIES.md';
+        if (is_file($logSource) && is_file($logDoc)) {
+            $source = (string) file_get_contents($logSource);
+            $doc = (string) file_get_contents($logDoc);
+            preg_match_all('/public\s+const\s+LOG_CATEGORY_[A-Z0-9_]+\s*=/i', $source, $constants);
+            if (preg_match('/\*\*Current count:\*\*\s*(\d+)/', $doc, $count)
+                && count($constants[0]) !== (int) $count[1]) {
+                $this->problem(
+                    'documented-value-drift',
+                    'docs/development/LOG_CATEGORIES.md',
+                    'current count does not match usersc/classes/LogCategories.php (' . count($constants[0]) . ' constants found)'
+                );
+            }
+        }
+
+        $composerPath = $this->root . '/composer.json';
+        $standardsPath = $this->root . '/docs/development/CODING_STANDARDS.md';
+        if (is_file($composerPath) && is_file($standardsPath)) {
+            $composer = json_decode((string) file_get_contents($composerPath), true);
+            $standards = (string) file_get_contents($standardsPath);
+            $composerPhp = is_array($composer) ? ($composer['require']['php'] ?? '') : '';
+            if (preg_match('/(\d+\.\d+(?:\.\d+)?)/', (string) $composerPhp, $sourceVersion)
+                && preg_match('/\*\*Minimum:\*\*\s*PHP\s+(\d+\.\d+(?:\.\d+)?)/', $standards, $docVersion)
+                && $sourceVersion[1] !== $docVersion[1]) {
+                $this->problem(
+                    'documented-value-drift',
+                    'docs/development/CODING_STANDARDS.md',
+                    "minimum PHP version {$docVersion[1]} does not match composer.json ({$sourceVersion[1]})"
+                );
+            }
+        }
+
+        $packagePath = $this->root . '/package.json';
+        $dataTablesPath = $this->root . '/docs/development/DATATABLES.md';
+        if (is_file($packagePath) && is_file($dataTablesPath)) {
+            $package = json_decode((string) file_get_contents($packagePath), true);
+            $dependencies = is_array($package) ? ($package['dependencies'] ?? []) : [];
+            $doc = (string) file_get_contents($dataTablesPath);
+            $versions = [
+                'DataTables Core' => 'datatables.net-bs5',
+                'FixedHeader' => 'datatables.net-fixedheader-bs5',
+                'Responsive' => 'datatables.net-responsive-bs5',
+            ];
+            foreach ($versions as $label => $packageName) {
+                $version = $dependencies[$packageName] ?? null;
+                if (!is_string($version) || !preg_match('/^\d+\.\d+\.\d+$/', $version)) {
+                    continue;
+                }
+                if (!preg_match('/^\|\s*' . preg_quote($label, '/') . '\s*\|\s*' . preg_quote($version, '/') . '\s*\|/m', $doc)) {
+                    $this->problem(
+                        'documented-value-drift',
+                        'docs/development/DATATABLES.md',
+                        "active {$label} version must match package.json ({$version})"
+                    );
+                }
+            }
+        }
+
+        $assetDocPath = $this->root . '/docs/development/CSS_AND_ASSETS.md';
+        $buildPath = $this->root . '/scripts/build.js';
+        $ignorePath = $this->root . '/.gitignore';
+        if (is_file($assetDocPath) && is_file($buildPath) && is_file($ignorePath)) {
+            $assetDoc = (string) file_get_contents($assetDocPath);
+            $build = (string) file_get_contents($buildPath);
+            $ignore = (string) file_get_contents($ignorePath);
+            foreach (['usersc/js', 'usersc/css'] as $directory) {
+                if (!str_contains($build, "'{$directory}/")
+                    || !preg_match('/^' . preg_quote($directory, '/') . '\/\*$/m', $ignore)
+                    || !str_contains($assetDoc, "`{$directory}/`")) {
+                    $this->problem(
+                        'documented-value-drift',
+                        'docs/development/CSS_AND_ASSETS.md',
+                        "generated asset path {$directory} must match scripts/build.js and .gitignore"
                     );
                 }
             }
