@@ -42,18 +42,18 @@ authorization, and application scaffolding framework.
 
 UserSpice provides the following capabilities used by the Elan Registry:
 
-| Category | Capabilities |
-| --- | --- |
-| **Authentication** | Login, registration, password reset, email verification, remember-me, TOTP 2FA, passkeys |
-| **Authorization** | Permission/role system with page-level access control |
-| **Session & Security** | Session management, CSRF protection (Token class), rate limiting, IP ban system |
-| **Database** | PDO-based DB abstraction (DB class singleton) |
-| **Administration** | Admin panel for user, permission, and page management |
-| **Email** | PHPMailer integration |
-| **Logging** | Logger/audit system |
-| **Input Handling** | Input and Validate classes for form processing |
-| **Extensibility** | Template system, plugin system (Hooker), lifecycle hook scripts, i18n |
-| **UI Infrastructure** | Database-driven menus, view includes |
+| Category               | Capabilities                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| **Authentication**     | Login, registration, password reset, email verification, remember-me, TOTP 2FA, passkeys |
+| **Authorization**      | Permission/role system with page-level access control                                    |
+| **Session & Security** | Session management, CSRF protection (Token class), rate limiting, IP ban system          |
+| **Database**           | PDO-based DB abstraction (DB class singleton)                                            |
+| **Administration**     | Admin panel for user, permission, and page management                                    |
+| **Email**              | PHPMailer integration                                                                    |
+| **Logging**            | Logger/audit system                                                                      |
+| **Input Handling**     | Input and Validate classes for form processing                                           |
+| **Extensibility**      | Template system, plugin system (Hooker), lifecycle hook scripts, i18n                    |
+| **UI Infrastructure**  | Database-driven menus, view includes                                                     |
 
 ### Integration Architecture
 
@@ -64,7 +64,7 @@ The integration follows a strict two-directory separation:
 /usersc/         Application extensions (fully version-controlled)
 ```
 
-*Exception: `users/cron/` and `users/images/logo.png` are tracked in Git.
+\*Exception: `users/cron/` and `users/images/logo.png` are tracked in Git.
 
 This separation is the key architectural insight: `/usersc/` acts as an override
 layer on top of `/users/`. UserSpice checks `/usersc/` first for templates,
@@ -141,14 +141,14 @@ PHP directories must be added to the `$path` array in `/z_us_root.php`.
 
 UserSpice establishes several global variables available on every page:
 
-| Variable | Type | Purpose |
-| --- | --- | --- |
-| `$db` | `DB` | Database singleton (PDO wrapper) |
-| `$user` | `User` | Current user instance |
-| `$settings` | `object` | Site configuration from database |
-| `$abs_us_root` | `string` | Absolute filesystem root |
-| `$us_url_root` | `string` | URL root path |
-| `$lang` | `array` | Internationalization strings |
+| Variable       | Type     | Purpose                          |
+| -------------- | -------- | -------------------------------- |
+| `$db`          | `DB`     | Database singleton (PDO wrapper) |
+| `$user`        | `User`   | Current user instance            |
+| `$settings`    | `object` | Site configuration from database |
+| `$abs_us_root` | `string` | Absolute filesystem root         |
+| `$us_url_root` | `string` | URL root path                    |
+| `$lang`        | `array`  | Internationalization strings     |
 
 #### Custom Bridge Functions
 
@@ -204,12 +204,12 @@ that wrap UserSpice internals with type-safe, domain-appropriate interfaces:
 
 ### Risks
 
-| Risk | Likelihood | Impact | Mitigation |
-| --- | --- | --- | --- |
-| UserSpice breaking changes to hook/override API | Medium | High | Pin to known-good version; test on staging; `/usersc/` override layer buffers |
-| UserSpice project discontinuation | Low-Medium | High | Self-contained in `/users/`; can run indefinitely; auth code forkable |
-| Password hashing migration (bcrypt to Argon2id) | Low | Medium | Would require changes in `/users/` core; monitor PHP defaults and UserSpice roadmap |
-| Performance degradation as page count grows | Low | Low | OPcache mitigates file loading overhead; application size is inherently bounded |
+| Risk                                            | Likelihood | Impact | Mitigation                                                                          |
+| ----------------------------------------------- | ---------- | ------ | ----------------------------------------------------------------------------------- |
+| UserSpice breaking changes to hook/override API | Medium     | High   | Pin to known-good version; test on staging; `/usersc/` override layer buffers       |
+| UserSpice project discontinuation               | Low-Medium | High   | Self-contained in `/users/`; can run indefinitely; auth code forkable               |
+| Password hashing migration (bcrypt to Argon2id) | Low        | Medium | Would require changes in `/users/` core; monitor PHP defaults and UserSpice roadmap |
+| Performance degradation as page count grows     | Low        | Low    | OPcache mitigates file loading overhead; application size is inherently bounded     |
 
 ## Alternatives Considered
 
@@ -271,7 +271,7 @@ SaaS authentication providers with API/SDK integration.
 
 - **UserSpice**: <https://userspice.com>
 - **Page Loading Flow**: [docs/development/PAGE_LOADING_FLOW.md](../PAGE_LOADING_FLOW.md)
-- **UserSpice Functions Reference**: [docs/development/USERSPICE_FUNCTIONS.md](../USERSPICE_FUNCTIONS.md)
+- **UserSpice Functions Reference**: [usersc/plugins/ai_prompts/prompts/00_start_here.md.php](../USERSPICE_FUNCTIONS.md)
 - **Coding Standards**: [docs/development/CODING_STANDARDS.md](../CODING_STANDARDS.md)
 - **Class Documentation**: [docs/development/CLASSES.md](../CLASSES.md)
 - **Error Handling**: [docs/development/ERROR_HANDLING.md](../ERROR_HANDLING.md)

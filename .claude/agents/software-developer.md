@@ -58,7 +58,7 @@ on the UserSpice framework.
 ### UserSpice Framework
 
 Before implementing custom functionality, check
-`docs/development/USERSPICE_FUNCTIONS.md` for existing framework functions.
+`usersc/plugins/ai_prompts/prompts/00_start_here.md.php` for existing framework functions.
 UserSpice provides: authentication, permissions, database operations (`$db`),
 input handling (`Input` class), session management, CSRF protection, email,
 validation, and more. Never duplicate framework functionality.

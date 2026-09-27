@@ -37,7 +37,7 @@ test coverage for critical functionality, without demanding 100% line coverage.
 - No tests that pass only because they assert on internal state
 
 **Project-specific concerns**:
-- AJAX endpoints: tests must assert Pattern A response format
+- AJAX endpoints: tests must assert response format
   (`{success, message, ...}`)
 - Forms: tests must exercise CSRF token path
 - DB changes: tests must cover audit-trail trigger behavior where relevant

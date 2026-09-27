@@ -29,7 +29,7 @@ Follow `docs/development/CODING_STANDARDS.md`, including:
 - Readonly properties for value objects
 - Typed exception classes over generic `\Exception`
 - `ApiResponse::success/error` for AJAX endpoints (Pattern A)
-- UserSpice helpers from `docs/development/USERSPICE_FUNCTIONS.md`
+- UserSpice helpers from `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`
   instead of custom reimplementations
 - Validated server globals (`$scheme`, `$is_https`, `$host`, ...)
   instead of raw `$_SERVER`

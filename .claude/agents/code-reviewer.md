@@ -24,7 +24,7 @@ Draw the rules from these authoritative sources:
   `declare(strict_types=1)`, naming, organization, PHPDoc
 - `docs/development/ERROR_HANDLING.md` — typed exceptions, ApiResponse,
   LogCategories, Pattern A AJAX response format
-- `usersc/plugins/ai_prompts/prompts/00_start_here.md` — prefer UserSpice over
+- `usersc/plugins/ai_prompts/prompts/00_start_here.md.php` — prefer UserSpice over
   custom reimplementations
 
 Focus on:

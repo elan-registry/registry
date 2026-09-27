@@ -26,7 +26,7 @@ working with code in this repository.
 
 **UserSpice context (AI Prompts plugin):** Before any UserSpice task, read the
 shipped prompts starting at:
-`usersc/plugins/ai_prompts/prompts/00_start_here.md.php`
+`usersc/plugins/ai_prompts/prompts/00_start_here.md.php.php`
 Then load ElanRegistry-specific augmentation from `custom_prompts/`:
 
 - `elanregistry_overrides` — six places ElanRegistry diverges from standard UserSpice (incl. the `$pageTitle`/`$pageDescription` page-metadata convention)
@@ -36,7 +36,7 @@ Then load ElanRegistry-specific augmentation from `custom_prompts/`:
 
 **As needed:** See [docs/README.md](docs/README.md) for the complete documentation
 index (error handling, classes, DataTables, CSS, testing, UserSpice functions,
-etc.). Always check `docs/development/USERSPICE_FUNCTIONS.md` before building
+etc.). Always check `usersc/plugins/ai_prompts/prompts/00_start_here.md.php` before building
 custom solutions.
 
 ## Architecture Overview
@@ -134,12 +134,12 @@ all other Cloudflare features work normally.
 The following directories are **upstream UserSpice — do NOT modify** any files
 except those explicitly listed as project-owned:
 
-| Directory | Status | Project-owned exceptions (tracked by git) |
-| --- | --- | --- |
-| `/users/` | Upstream framework | `users/cron/` — `cron.php` carries project logging/hook calls (see [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)) and is where all job files must live (see the cron bullet below); `users/init.php`'s `$GLOBALS['config']` array — reads DB and session/cookie-naming values from `.env` (`DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, `SESSION_NAME`/`TOKEN_NAME`/`REMEMBER_COOKIE_NAME`); this is config wiring, not framework logic; everywhere else in `/users/`, extend via `usersc/classes/` instead |
-| `usersc/templates/` | Upstream templates | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` and `customizer/assets/child_themes/dashboard.php` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead |
-| `usersc/plugins/` | Upstream plugins | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts) |
-| `usersc/user_settings.php` | Project-owned (customizes `users/user_settings.php`) | the entire file is project-owned — make changes here rather than in `users/user_settings.php` |
+| Directory                  | Status                                               | Project-owned exceptions (tracked by git)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/users/`                  | Upstream framework                                   | `users/cron/` — `cron.php` carries project logging/hook calls (see [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)) and is where all job files must live (see the cron bullet below); `users/init.php`'s `$GLOBALS['config']` array — reads DB and session/cookie-naming values from `.env` (`DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, `SESSION_NAME`/`TOKEN_NAME`/`REMEMBER_COOKIE_NAME`); this is config wiring, not framework logic; everywhere else in `/users/`, extend via `usersc/classes/` instead |
+| `usersc/templates/`        | Upstream templates                                   | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` and `customizer/assets/child_themes/dashboard.php` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead                                                                                                                                                                                           |
+| `usersc/plugins/`          | Upstream plugins                                     | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `usersc/user_settings.php` | Project-owned (customizes `users/user_settings.php`) | the entire file is project-owned — make changes here rather than in `users/user_settings.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 - To add new behavior, extend via custom classes in `usersc/classes/` under the
   `ElanRegistry\` namespace instead of modifying `/users/`.
@@ -218,7 +218,7 @@ Run `./scripts/setup-git-hooks.sh` once per developer. Bypass with `git commit -
 ## Essential Development Guidelines
 
 See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for PHP 8+ type requirements, security standards, and PHPDoc.
-Check [USERSPICE_FUNCTIONS.md](docs/development/USERSPICE_FUNCTIONS.md) before building custom solutions — UserSpice likely has it already.
+Check [USERSPICE_FUNCTIONS.md](usersc/plugins/ai_prompts/prompts/00_start_here.md.php) before building custom solutions — UserSpice likely has it already.
 
 ### Error Handling
 

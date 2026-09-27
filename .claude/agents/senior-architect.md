@@ -32,9 +32,10 @@ This is the Lotus Elan Registry (elanregistry.org), a PHP application built on U
 - "Owner" terminology in UI/domain code, "User" in auth/UserSpice code
 - Server environment globals ($scheme, $host, etc.) instead of raw $_SERVER
 
+
 ## When Reviewing Code
 
-- Check for duplicated UserSpice functionality (see `docs/development/USERSPICE_FUNCTIONS.md`)
+- Check for duplicated UserSpice functionality (see `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`)
 - Check for SQL injection, XSS, CSRF vulnerabilities
 - Verify type declarations on all function parameters and returns
 - Identify dead code, unused variables, redundant abstractions
@@ -46,7 +47,7 @@ This is the Lotus Elan Registry (elanregistry.org), a PHP application built on U
 ## When Designing Features
 
 - **Check UserSpice first**: Before designing custom functionality, consult
-  `docs/development/USERSPICE_FUNCTIONS.md` for existing framework functions.
+  `usersc/plugins/ai_prompts/prompts/00_start_here.md.php` for existing framework functions.
   UserSpice provides authentication, permissions, database operations, input
   handling, session management, CSRF protection, email, validation, and more.
   Never duplicate what the framework already offers.
