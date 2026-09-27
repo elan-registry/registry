@@ -1,6 +1,6 @@
 ---
 description: Start work on a GitHub issue within a milestone workflow
-model: claude-opus-5
+model: opus
 ---
 
 # GitHub Issue Workflow Command
@@ -124,38 +124,42 @@ This command requires a milestone workflow. The user must already be on a
    git branch --list 'milestone/*'
    ```
 
-   - **If exactly one exists**, switch to it:
+   - **If exactly one exists locally**, switch to it:
 
      ```bash
      git checkout milestone/vX.Y.Z
      git pull origin milestone/vX.Y.Z
      ```
 
-   - **If zero exist locally**, this clone may not be the one where
-     `/start-milestone` was run — see `/start-milestone` Step 3 for why a
-     local-only check can miss a branch that exists on `origin` (multi-clone
-     setups sharing one `origin`, e.g. `Registry/` and `Registry2/`). Check
-     the shared remote before giving up:
+   - **If zero or multiple exist locally**, resolve which one applies with
+     `scripts/find-milestone-branch.sh <version>` — it also checks `origin`
+     directly (see its own header for why: a local-only check can miss a
+     branch that exists on `origin`, in multi-clone setups sharing one
+     `origin`, e.g. `Registry/` and `Registry2/`). If you don't yet know
+     `<version>`, ask the user which milestone this issue belongs to first.
 
      ```bash
-     git ls-remote --heads origin 'milestone/*'
+     scripts/find-milestone-branch.sh vX.Y.Z
      ```
 
-     - **If one exists on `origin`**, fetch and check it out (do not create
-       a `git worktree` pointing at another local clone — pull from
-       `origin`):
+     - **Exit 0** — printed `milestone/vX.Y.Z` exists (locally, on `origin`,
+       or both). If it's not checked out locally yet, fetch and check it out
+       (do not create a `git worktree` pointing at another local clone —
+       pull from `origin`):
 
        ```bash
        git fetch origin milestone/vX.Y.Z
        git checkout -b milestone/vX.Y.Z origin/milestone/vX.Y.Z
        ```
 
-     - **If none exist on `origin` either**, stop and tell the user:
-       "No milestone branch found. Please run `/start-milestone` first to
-       create one, then re-run `/start-issue ISSUE_NUMBER`."
-   - **If multiple exist locally**, stop and tell the user:
-     "Multiple milestone branches found: [list them]. Please checkout the one
-     you want to work on and re-run `/start-issue ISSUE_NUMBER`."
+     - **Exit 1** — not found locally or on `origin`. Stop and tell the
+       user: "No milestone branch found. Please run `/start-milestone`
+       first to create one, then re-run `/start-issue ISSUE_NUMBER`."
+     - **Exit 2** — usage error (no version given). Ask the user which
+       milestone this issue belongs to, then retry.
+   - **If multiple exist locally for different versions**, stop and tell the
+     user: "Multiple milestone branches found: [list them]. Please checkout
+     the one you want to work on and re-run `/start-issue ISSUE_NUMBER`."
 
 4. **Branch naming**: Use the issue labels to determine the branch prefix:
    - `bug` label -> `bug/ISSUE_NUMBER-short-description`
@@ -471,25 +475,14 @@ this command.
 
 This command's work is done once the plan file is approved (Step 9). State
 plainly that the plan is approved and saved at
-`docs/plans/issues/issue-<NUMBER>-<slug>.md`, then use AskUserQuestion to offer the
-next step rather than a plain-text menu:
-
-- Question: "Plan approved. What next?"
-- Options: `Run /execute-plan now` (recommended — this is the only real next
-  step in the workflow), `Compact context first` (recommended before a long
-  next step — the plan is already persisted to `docs/plans/`, so compacting
-  here is safe and won't lose it), `Ask more questions / discuss the plan
-  first`
-- If the user picks `/execute-plan`, invoke it immediately via the Skill
-  tool (`Skill({skill: "execute-plan"})`) rather than telling the user to
-  type it themselves.
-- If the user picks `Compact context first`, tell them to run `/compact`
-  themselves — it's a client-level operation, not something this command can
-  trigger via a tool.
-- If the user picks the discuss option, drop back into normal conversation —
-  do not re-offer the same question on every reply; only re-present it once
-  the discussion reaches a natural stopping point or the user asks "what's
-  next."
+`docs/plans/issues/issue-<NUMBER>-<slug>.md`. Then ask via AskUserQuestion —
+"Plan approved. What next?" Options: `Run /execute-plan now` (recommended),
+`Compact context first` (plan is already persisted, safe to compact), `Ask
+more questions / discuss the plan first`. Invoke `/execute-plan` immediately
+via the Skill tool if chosen. For `Compact context first`, tell the user to
+run `/compact` themselves — this command can't trigger it. For the discuss
+option, drop into normal conversation; don't re-offer until the discussion
+reaches a stopping point or the user asks what's next.
 
 Do not implement anything, and do not update the issue or release notes from
 this command — `/execute-plan` does that once there is actual work done to
@@ -497,12 +490,9 @@ describe.
 
 ## Critical Rules
 
-- **PLAN APPROVAL IS A HARD GATE** — do not mark the plan file approved until
-  the user explicitly approves it at Step 9. Partial feedback, silence, or a
-  change of subject is NOT approval. Ask again if unclear.
-- **THIS COMMAND NEVER WRITES APPLICATION CODE OR TOUCHES GIT** — no
-  `git add`/`git commit`/`git push`, no software-developer agents, no
-  implementation of any kind. That is entirely `/execute-plan`'s job.
+See Hard Constraints at top for the approval gate and the no-code/no-git
+rule — both apply throughout, not only at Step 9.
+
 - **The plan file is the artifact of record** — if the user requests changes
   during approval, edit the file directly and re-present it. Do not describe
   revisions only in chat.

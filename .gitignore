@@ -17,6 +17,9 @@ Elanegistry.sublime-project
 .claude/*
 !.claude/commands/
 !.claude/agents/
+!.claude/skills/
+!.claude/rules/
+!.claude/hooks/
 !.claude/settings.json
 .claude.local.md
 
@@ -248,3 +251,6 @@ docs/plans/*
 !docs/plans/releases/
 docs/plans/releases/*
 !docs/plans/releases/v2.30-deploy.md
+
+# Local-only scratch (audit reports, etc.) — never commit
+_noupload/

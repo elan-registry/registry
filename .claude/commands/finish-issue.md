@@ -1,6 +1,6 @@
 ---
 description: Monitor CI, squash-merge an issue PR into the milestone branch, and close the issue
-model: claude-sonnet-5
+model: sonnet
 ---
 
 # Finish Issue
@@ -64,58 +64,28 @@ Check if the PR is a draft:
 gh pr view <pr-number> --json isDraft --repo elan-registry/registry -q .isDraft
 ```
 
-**If the PR is a draft:**
+**Whether draft or already ready** (an already-ready PR skipped this step
+once before — run it anyway; do not assume a prior pass happened), trigger
+and verify the review, then act on the result:
 
-1. Trigger the Claude Code Review workflow on the draft PR before notifying
-   anyone:
+```bash
+scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=workflow
+```
 
-   ```bash
-   gh workflow run claude-code-review.yml \
-     --ref main \
-     --field pr_number=<pr-number> \
-     --repo elan-registry/registry
-   ```
+- **Exit 0** — comment confirmed, no unresolved Blocking finding. Mark the PR
+  ready: `gh pr ready <pr-number> --repo elan-registry/registry`. This is the
+  moment watchers are notified — proceed straight to Step 3.
+- **Exit 1** — could not verify (auth/network/rate-limit). Report the error;
+  do not mark ready and do not treat this as "no review."
+- **Exit 2** — comment confirmed but an unresolved **Blocking** finding
+  exists. Report it; stop here and tell the user to fix it before proceeding.
+- **Exit 4** — no comment posted, even after the script's one recovery
+  attempt (or recovery couldn't apply — see its stderr, e.g. the
+  self-referential-workflow-file case). Report to the user and do not mark
+  the PR ready.
 
-2. Wait for the workflow run to complete. Poll every 30 seconds:
-
-   ```bash
-   # Get the most recent run of claude-code-review.yml
-   gh run list --workflow=claude-code-review.yml --limit=1 \
-     --repo elan-registry/registry --json databaseId,status,conclusion
-   gh run watch <run-id> --repo elan-registry/registry
-   ```
-
-3. **The run completing is not proof a review was posted** — a job can
-   report success while the action silently skipped (e.g. the workflow-file-
-   match guard) or exhausted its turns before calling `gh pr comment`. Verify
-   the actual comment exists before trusting the result:
-
-   ```bash
-   scripts/check-review-posted.sh <pr-number>
-   ```
-
-   (Same check `/address-pr-comments` and `/review-milestone` use — see the
-   script's header for why the job's own success status isn't proof enough,
-   and #1724 for the original incident.) If the run completed but no
-   matching comment exists, treat this the same as a failed trigger: report
-   it to the user and do not proceed to marking the PR ready.
-
-4. Report the review result. If the review posted **Blocking** findings, stop
-   here and tell the user to fix them before proceeding.
-
-5. Once the review is clean (no Blocking items) and item 3 above confirmed a
-   comment was actually posted, mark the PR as ready. This is the moment
-   watchers are notified — immediately followed by merge:
-
-   ```bash
-   gh pr ready <pr-number> --repo elan-registry/registry
-   ```
-
-**If the PR is already ready (not a draft):** this means it was opened
-outside the standard `/commit-push-pr` flow (which always opens as draft —
-see that command). Perform the same review-trigger-and-verify sequence as
-the draft path above (items 1–5) before proceeding to Step 3 — a PR that
-skipped Step 2.5 entirely could reach here with no verified review at all.
+See `scripts/verify-ci-review.sh`'s header for the full exit-code contract
+and why job success alone is never proof of a posted review (#1724).
 
 ### Step 3: Monitor CI checks
 
@@ -170,36 +140,21 @@ Do NOT merge until the user confirms.
 
 ### Step 4.5: Verify PHPStan baseline hygiene
 
-Per CLAUDE.md's fix-when-you-touch-it policy (see CODING_STANDARDS.md —
-PHPStan Baseline Hygiene), any project-owned PHP file this PR modified must
-not carry `phpstan-baseline.neon` entries — reported errors on touched files
-must be fixed, not grandfathered into the baseline. Check the PR's changed
-files against the baseline using the shared script (also called by
-`/execute-plan` Step 6.5 and `/review-pr` Step 1 — fix the lookup logic there,
-not here, if it ever needs to change):
+Per the fix-when-you-touch-it policy
+(`docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene):
 
 ```bash
 gh pr view <pr-number> --repo elan-registry/registry --json files --jq '.files[].path' \
   | scripts/check-baseline-hygiene.sh
 ```
 
-**Exit 2 means the check couldn't run at all** (baseline file not found) —
-treat as "can't verify," not "clean." Fix the working directory and re-run
-rather than proceeding as if this step passed.
-
-**If any modified PHP file appears in `phpstan-baseline.neon`:** stop before
-merging. Report the affected file(s) to the user and explain that either:
-
-- the underlying PHPStan errors need to be fixed and
-  `composer phpstan:baseline` re-run to drop the now-resolved entries, or
-- the user explicitly confirms the pre-existing entry is still valid to carry
-  over untouched (e.g. the error is in code outside the lines this PR
-  changed).
-
-Do not merge until this is resolved or the user explicitly confirms it's
-acceptable to proceed.
-
-**If no modified file appears in the baseline:** proceed to Step 4.6.
+- **Exit 0, no output** — clean. Proceed to Step 4.6.
+- **Exit 0, `BASELINE OVERRIDE: <file>` lines** — stop before merging. Report
+  the file(s); either fix the errors and re-run `composer phpstan:baseline`,
+  or get the user's explicit confirmation the pre-existing entry may carry
+  over untouched. Do not merge until resolved.
+- **Exit 2** — could not run the check at all (not "clean"). Fix the working
+  directory and re-run.
 
 ### Step 4.6: Documentation drift check
 
@@ -299,15 +254,16 @@ this convention), add the entry now instead — don't skip it.
 **Plan file:** check for one on the milestone branch:
 
 ```bash
-ls docs/plans/issues/issue-$ARGUMENTS-*.md docs/plans/issue-$ARGUMENTS-*.md 2>/dev/null
+scripts/check-plan-state.sh $ARGUMENTS
 ```
 
-If found, delete it — its job (a verifiable, resumable record other
-agents/sessions could check against) is done once the code is merged and the
-issue is closed; the merged diff and closed issue are now the source of
-truth, same lifecycle as sprint plans. If no matching file exists, skip
-silently — not every issue goes through the plan-file workflow (e.g. trivial
-fixes done ad hoc).
+Read the `path:` line. `(none)` means no matching file exists — skip
+silently, not every issue goes through the plan-file workflow (e.g. trivial
+fixes done ad hoc). Any other path means the plan file exists — delete it.
+Its job (a verifiable, resumable record other agents/sessions could check
+against) is done once the code is merged and the issue is closed; the merged
+diff and closed issue are now the source of truth, same lifecycle as sprint
+plans.
 
 `docs/plans/` is gitignored, so this is a plain delete with no git operation
 and nothing to mention in the PR:
@@ -326,28 +282,22 @@ git push origin <milestone-branch>
 
 ### Step 8.5: Mark the issue complete in the sprint plan
 
-Look for a sprint plan matching this milestone under `docs/plans/sprints/`
-(gitignored local working documents — see `CLAUDE.md`, Planning Work):
+Mark this issue done in the sprint plan under `docs/plans/sprints/`
+(gitignored local working documents — see `.claude/rules/planning-docs.md`):
 
 ```bash
-ls docs/plans/sprints/<version>.md
+scripts/mark-sprint-issue-done.sh <version> $ARGUMENTS
 ```
 
 (where `<version>` is the same one used in Step 8, e.g. `v2.29.3`.)
 
-**If no matching file exists:** skip this step silently.
-
-**If found:** read its sequence line (e.g. `**#1591 → #1547 → #1438 → #1439**`) and check whether issue `#$ARGUMENTS` appears in it.
-
-- **If present and not already marked complete:** prefix the issue's number
-  with a checkmark, e.g. `#1591` → `✅#1591`. Preserve the rest of the line
-  (arrows, other issue numbers, formatting) exactly. Write the change to
-  `docs/plans/sprints/<version>.md`.
-- **If present and already marked complete:** skip, nothing to do.
-- **If issue `#$ARGUMENTS` does not appear in the sequence line at all**
-  (e.g. an unplanned bugfix not part of the tracked sprint): make no edit to
-  the file. Note in the Step 9 summary that this issue wasn't part of the
-  tracked sequence.
+- **Exit 0** — marked done (or was already marked done). Nothing further to do.
+- **Exit 1** — no sprint file for this version. Normal — skip this step
+  silently; not every milestone has one.
+- **Exit 2** — sprint file exists, but issue `#$ARGUMENTS` doesn't appear in
+  its sequence line (e.g. an unplanned bugfix not part of the tracked
+  sprint). Make no edit. Note in the Step 9 summary that this issue wasn't
+  part of the tracked sequence.
 
 `docs/plans/` is gitignored, so this edit is a plain local file write —
 there is nothing to stage or commit (same convention as the
@@ -369,7 +319,8 @@ Output a summary:
 - Release notes updated at `docs/releases/RELEASE_NOTES_<version>.md`
 - Now on `<milestone-branch>`
 
-List remaining open issues in the milestone. Use the direct API (`gh issue list --milestone` can silently return empty results):
+List remaining open issues in the milestone. Use the direct API, not
+`gh issue list --milestone` (see CLAUDE.md's `gh` CLI gotchas):
 
 ```bash
 # Get milestone number from the milestone branch name, then query API directly
@@ -392,38 +343,25 @@ Determine the recommended next issue:
   sequence:** the recommended next issue is just the next open one from the
   API list above, if any.
 
-Use AskUserQuestion rather than a plain-text menu:
-
-- Question: "Issue #$ARGUMENTS closed. What next?"
-- Options, built from the above: `Run /start-issue <next-issue>` (only offer
-  if an open issue was identified — label it "next in sprint plan sequence"
-  when that's why it was picked), `Run /finish-milestone $ARGUMENTS` (only
-  offer if no open issues remain in the milestone), `Compact context first`
-  (recommended before a long next step — the issue is closed and merged, so
-  compacting here is safe and won't lose that state), `Ask more questions /
-  discuss first`
-- If the user picks a command, invoke it immediately via the Skill tool
-  rather than telling them to type it.
-- If the user picks `Compact context first`, tell them to run `/compact`
-  themselves — it's a client-level operation, not something this command can
-  trigger via a tool.
-- If the user picks the discuss option, drop into normal conversation and
-  don't re-offer until they ask what's next.
+Ask via AskUserQuestion, not a plain-text menu — "Issue #$ARGUMENTS closed.
+What next?" Options: `Run /start-issue <next-issue>` (only if one was
+identified; label it "next in sprint plan sequence" when that's why),
+`Run /finish-milestone $ARGUMENTS` (only if no open issues remain),
+`Compact context first` (state is already saved, safe to compact),
+`Ask more questions / discuss first`. Invoke a chosen command immediately
+via the Skill tool. If the user picks compacting, tell them to run
+`/compact` themselves — this command can't trigger it. For the discuss
+option, drop into normal conversation and don't re-offer until asked.
 
 ## Important
 
 - **Never trust a completed CI review run without confirming its comment
-  posted.** A job `conclusion: success` does not prove `gh pr comment` was
-  called — GitHub's abuse/rate throttle can suppress the triggering event
-  entirely, and the action's own workflow-file-match guard (or turn
-  exhaustion) can complete a job while posting nothing. Step 2.5 verifies
-  actual comment presence, not job status (see #1724).
+  posted** — Step 2.5's `verify-ci-review.sh` checks the comment itself, not
+  job status (see its header, and #1724).
 - **Never force-merge if checks are failing.** Always investigate and report
   first.
-- **Never merge with new PHPStan baseline entries on touched files.** CI's
-  `reportUnmatchedIgnoredErrors` only catches baseline entries for errors that
-  were already fixed — it doesn't catch a modified file that still has
-  baseline suppressions. Step 4.5 checks for this explicitly.
+- **Never merge with new PHPStan baseline entries on touched files** — Step
+  4.5 checks for this explicitly.
 - The squash merge keeps the milestone branch history clean — one commit per
   issue.
 - If the PR targets `main` instead of a milestone branch, warn the user.
@@ -434,5 +372,5 @@ Use AskUserQuestion rather than a plain-text menu:
   milestone PR body (created by `/review-milestone`) serves as a backup for
   any issues that weren't closed here.
 - `docs/plans/` is gitignored local scratch space, never committed (see
-  `CLAUDE.md`, Planning Work). Sprint plan files are deleted once a
+  `.claude/rules/planning-docs.md`). Sprint plan files are deleted once a
   milestone is released — a missing file is normal, not an error.

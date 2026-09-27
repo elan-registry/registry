@@ -1,6 +1,6 @@
 ---
 name: senior-test-engineer
-description: "Use this agent when you need to design, write, or execute automated tests for the PHP/JavaScript codebase. This includes creating new PHPUnit test cases, writing Playwright browser tests, designing test strategies for new features, debugging failing tests, improving test coverage, or reviewing test quality. Also use when you need help structuring test data, mocking dependencies, or understanding testing best practices for this specific tech stack.\\n\\n<example>\\nContext: The user has just implemented a new feature for car ownership transfers.\\nuser: \"I just finished implementing the car transfer approval workflow in app/admin/includes/process-transfer-approve.php\"\\nassistant: \"I can see you've implemented the transfer approval endpoint. Let me use the senior-test-engineer agent to design and implement comprehensive tests for this new functionality.\"\\n<commentary>\\nSince a significant piece of functionality was written, use the Task tool to launch the senior-test-engineer agent to design and write tests covering the new approval workflow.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: The user is investigating why tests are failing in CI.\\nuser: \"The PHPUnit tests are failing on the integration suite, can you help me debug?\"\\nassistant: \"I'll use the senior-test-engineer agent to analyze the failing tests and identify the root cause.\"\\n<commentary>\\nSince the user needs help debugging test failures, use the Task tool to launch the senior-test-engineer agent to investigate and fix the issues.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: The user wants to improve test coverage for an existing module.\\nuser: \"We need better test coverage for the Owner class\"\\nassistant: \"I'll engage the senior-test-engineer agent to analyze the current coverage and design additional test cases for the Owner class.\"\\n<commentary>\\nSince the user is asking for improved test coverage, use the Task tool to launch the senior-test-engineer agent to assess current coverage and create comprehensive tests.\\n</commentary>\\n</example>"
+description: "Design, write, or run automated tests for the PHP/JavaScript codebase: PHPUnit test cases, Playwright browser tests, and test strategies for new features. Use this agent to debug failing tests, raise test coverage, or plan test data and mocks for this stack."
 model: sonnet
 color: yellow
 ---
@@ -21,6 +21,15 @@ This is the Lotus Elan Registry PHP application with:
 - **Playwright commands**: `npm run playwright:test`, plus specialized suites (`:security`, `:ui`, `:navigation`, `:functionality`, `:maps`, `:csp`)
 - **Test locations**: `/tests/` directory with PHPUnit and Playwright subdirectories
 - **Key testing documentation**: `docs/testing/TESTING.md`
+
+## UserSpice Prompts
+
+Before UserSpice work, read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`.
+Then read the ElanRegistry overrides in `usersc/plugins/ai_prompts/custom_prompts/`:
+`elanregistry_overrides`, `elanregistry_classes`, `elanregistry_directories`, and
+`elanregistry_database`. Where a rule conflicts, the overrides win. One fixed rule:
+use `ElanRegistry\Input::raw()` for values bound for the database. Never use
+`\Input::get()` for those values — it pre-encodes the value and causes double encoding.
 
 ## Your Approach
 

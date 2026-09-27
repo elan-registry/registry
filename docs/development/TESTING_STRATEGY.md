@@ -188,7 +188,7 @@ overloading these two.
 
 UserSpice ships no test suite and no testing conventions of its own — the
 following is derived directly from reading `users/classes/DB.php` (upstream,
-do not modify — see `CLAUDE.md`'s Template Customization Rules), not from
+do not modify — see `.claude/rules/upstream-userspice.md`), not from
 UserSpice documentation. This is the source of truth for how to write
 assertions against it.
 

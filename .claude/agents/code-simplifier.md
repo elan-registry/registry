@@ -1,6 +1,6 @@
 ---
 name: code-simplifier
-description: "Use this agent to simplify and refine recently modified code for clarity, consistency, and maintainability while preserving all functionality. Trigger after completing a coding task or finishing a logical chunk of work. The agent focuses on recently modified code unless instructed otherwise.\n\n<example>\nContext: The assistant just implemented a new action endpoint.\nuser: \"Add the new transfer approval endpoint.\"\nassistant: \"Endpoint implemented. Now let me run the code-simplifier agent to tighten it up.\"\n<commentary>\nAfter a logical chunk of code, simplify it while behaviour is fresh.\n</commentary>\n</example>\n\n<example>\nContext: Bug fix introduced several null checks.\nuser: \"Fix the null handling in the data processor.\"\nassistant: \"Fix applied. Let me use the code-simplifier agent to make sure the null checks are the simplest form.\"\n<commentary>\nBug fixes often leave extra complexity — simplify afterward.\n</commentary>\n</example>"
+description: "Simplify and refine recently modified code for clarity, consistency, and maintainability, and keep all behavior the same. Use this agent after a coding task or a bug fix, once the code works, to remove extra complexity. It edits only recently modified code unless told otherwise."
 model: sonnet
 color: purple
 ---
@@ -29,10 +29,17 @@ Follow `docs/development/CODING_STANDARDS.md`, including:
 - Readonly properties for value objects
 - Typed exception classes over generic `\Exception`
 - `ApiResponse::success/error` for AJAX endpoints (Pattern A)
-- UserSpice helpers from `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`
-  instead of custom reimplementations
 - Validated server globals (`$scheme`, `$is_https`, `$host`, ...)
   instead of raw `$_SERVER`
+
+## UserSpice Prompts
+
+Before UserSpice work, read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`.
+Then read the ElanRegistry overrides in `usersc/plugins/ai_prompts/custom_prompts/`:
+`elanregistry_overrides`, `elanregistry_classes`, `elanregistry_directories`, and
+`elanregistry_database`. Where a rule conflicts, the overrides win. One fixed rule:
+use `ElanRegistry\Input::raw()` for values bound for the database. Never use
+`\Input::get()` for those values — it pre-encodes the value and causes double encoding.
 
 ### 3. Enhance clarity
 - Reduce unnecessary nesting

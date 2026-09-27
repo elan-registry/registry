@@ -40,20 +40,18 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT" || exit 1
 
 # --- Load the function under test in isolation ------------------------------
-# Sourcing .githooks/pre-push directly would execute its main body (which
-# reads from stdin and expects git's pre-push argument protocol) — instead,
-# extract just the function definition, matching the manual verification
-# approach used during #2024's own review.
-FN_FILE="$(mktemp)"
-sed -n '/^_pick_closest_base() {/,/^}/p' .githooks/pre-push > "$FN_FILE"
-if [ ! -s "$FN_FILE" ]; then
-    echo "FAIL: could not extract _pick_closest_base() from .githooks/pre-push" >&2
-    rm -f "$FN_FILE"
+# _pick_closest_base() lives in scripts/lib/pick-closest-base.sh (extracted
+# from .githooks/pre-push so scripts/resolve-base-branch.sh can share it —
+# see that file's header). Source it directly, rather than sourcing
+# .githooks/pre-push itself, which would execute its main body (that body
+# reads from stdin and expects git's pre-push argument protocol).
+LIB_FILE="scripts/lib/pick-closest-base.sh"
+if [ ! -s "$LIB_FILE" ]; then
+    echo "FAIL: $LIB_FILE not found or empty" >&2
     exit 1
 fi
 # shellcheck source=/dev/null
-source "$FN_FILE"
-rm -f "$FN_FILE"
+source "$LIB_FILE"
 
 # --- Test scaffolding ---------------------------------------------------
 

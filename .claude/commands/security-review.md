@@ -1,6 +1,6 @@
 ---
 description: Run a security review of recent code changes (OWASP, CSRF, SQL injection, XSS)
-model: claude-haiku-4-5
+model: haiku
 ---
 
 # Security Review
@@ -26,20 +26,7 @@ rest of `/execute-plan`'s review round.
    the current branch against its **actual base branch** — not always `main`:
 
    ```bash
-   BRANCH=$(git branch --show-current)
-   case "$BRANCH" in
-     issue/*|bug/*|feature/*|fix/*)
-       # Issue branches base off the current milestone branch.
-       BASE=$(git branch -a --list 'origin/milestone/*' | sort -V | tail -1 | sed 's|.*origin/||')
-       [ -z "$BASE" ] && BASE="origin/main"
-       ;;
-     milestone/*)
-       BASE="origin/main"
-       ;;
-     *)
-       BASE="origin/main"
-       ;;
-   esac
+   BASE=$(scripts/resolve-base-branch.sh) || BASE="origin/main"
    git diff --name-only "$BASE...HEAD"
    ```
 
