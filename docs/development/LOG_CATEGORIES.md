@@ -4,7 +4,7 @@
 
 **Version:** v2.12.0+
 
-**Last Updated:** 2026-01-17
+**Current count:** 115 constants in `LogCategories.php` (checked 2026-09-27)
 
 ## Quick Start
 
@@ -46,6 +46,7 @@ Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.
 ### Owner/User Management Categories
 
 - `LOG_CATEGORY_OWNER_ACTIONS` → `OwnerActions` (Profile updates)
+- `LOG_CATEGORY_OWNER_ERRORS` → `OwnerErrors` (Owner operation failures)
 - `LOG_CATEGORY_USER_DELETION` → `UserDeletion` (Account deleted)
 - `LOG_CATEGORY_USER` → `User` (General user operations)
 - `LOG_CATEGORY_USER_CREATION` → `UserCreation` (New user account)
@@ -66,6 +67,7 @@ Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.
 - `LOG_CATEGORY_LOGIN` → `Login` (Successful login)
 - `LOG_CATEGORY_LOGIN_FAIL` → `LoginFail` (Failed attempt)
 - `LOG_CATEGORY_LOGIN_METHOD` → `LoginMethod` (Method tracking)
+- `LOG_CATEGORY_REGISTRATION_FAILED` → `RegistrationFailed` (Registration failure)
 
 ### Passkey Authentication Categories
 
@@ -118,6 +120,7 @@ Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.
 - `LOG_CATEGORY_DATABASE_MIGRATION` → `DatabaseMigration` (Migrations)
 - `LOG_CATEGORY_BACKUP_MANAGER` → `BackupManager` (Backup management)
 - `LOG_CATEGORY_BACKUP_ERROR` → `BackupError` (Backup failures)
+- `LOG_CATEGORY_BACKUP_FAILED` → `BackupFailed` (Backup attempt failed)
 
 ### System & File Operation Categories
 
@@ -142,6 +145,9 @@ Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.
 - `LOG_CATEGORY_SYSTEM_UPDATES` → `SystemUpdates` (System updates)
 - `LOG_CATEGORY_LOGS` → `Logs` (Logging system operations)
 - `LOG_CATEGORY_CRON_REQUEST` → `CronRequest` (Scheduled tasks)
+- `LOG_CATEGORY_CRON_JOB_FAILURE` → `CronJobFailure` (Cron job failed)
+- `LOG_CATEGORY_CRON_JOB_SKIPPED` → `CronJobSkipped` (Cron job was paused)
+- `LOG_CATEGORY_DEPLOYMENT` → `Deployment` (Deployment events)
 - `LOG_CATEGORY_MIGRATIONS` → `Migrations` (System migrations)
 - `LOG_CATEGORY_USER_MANAGER` → `UserManager` (User management)
 
@@ -366,5 +372,5 @@ try {
 
 ## Version History
 
-- **v2.12.0** (2026-01-17) - Initial LogCategories implementation with 140+
-  constants
+- The class contains 115 constants as of 2026-09-27. The class is the source
+  of truth. Use the discovery command above for the current list and count.

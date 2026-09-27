@@ -108,7 +108,6 @@ UserSpice loads these functions for every page:
 
 ```php
 // Get owner data with profile information
-// (getUserWithProfile() was removed in v2.26.2 — use the Owner class)
 use ElanRegistry\Owner;
 $owner = (new Owner($userId))->data();
 echo $owner->fname . " from " . $owner->city;
@@ -119,7 +118,7 @@ if (isRegistryAdmin()) {
 }
 
 // Log an action
-logger(currentUserId(), LogCategories::LOG_CATEGORY_CAR_CREATE, 'Created new car');
+logger(currentUserId(), LogCategories::LOG_CATEGORY_CAR_CREATION, 'Created new car');
 ```
 
 Read the [UserSpice framework guidance](../../usersc/plugins/ai_prompts/prompts/00_start_here.md.php) before you build a custom solution.
@@ -127,19 +126,15 @@ Read the [UserSpice framework guidance](../../usersc/plugins/ai_prompts/prompts/
 ## Model Management
 
 The `car_models` table stores model definitions. Do not hard-code models in
-JavaScript. Follow these steps to add a model:
+JavaScript. Add a row to `database/seeds/data/car_models.csv`, then run the
+Phinx seed:
 
-**Add New Car Model Definition**:
-
-```sql
--- Insert new model definition into car_models table
-INSERT INTO car_models
-(year_available_from, year_available_to, display_name, human_readable_short,
- series, variant, type_code, model_value)
-VALUES
-(1970, 1973, 'New Model ( Type 36 Description )', 'New Model',
- 'Series', 'Variant', '36', 'Series|Variant|36');
+```bash
+vendor/bin/phinx seed:run -s CarModelsSeed
 ```
+
+The seed is idempotent. See [database/seeds/README.md](../../database/seeds/README.md)
+for the seed data format and rules.
 
 **Check Availability**:
 
@@ -162,7 +157,8 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 
 **Dynamic Dropdown Updates**:
 
-- Model dropdowns in `form.php` load dynamically from database (no JS changes needed)
+- The car form in `app/owner/cars/edit.php` loads model data dynamically (no
+  hard-coded JavaScript model list)
 - API endpoint: `app/api/cars/models.php`
 - JavaScript module: `app/assets/js/model-loader.js`
 - The browser caches models after the first load.

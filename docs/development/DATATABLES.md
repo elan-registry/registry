@@ -2,9 +2,8 @@
 
 ## Overview
 
-This document provides comprehensive guidance on our DataTables implementation,
-including which extensions we use, where they're used, and how to manage CDN
-configuration.
+This document records the DataTables pages, extensions, and asset update
+process used by this project.
 
 ## What is DataTables?
 
@@ -16,15 +15,15 @@ paginated table views of cars and factory data.
 
 ## Current Configuration
 
-### Active Extensions (v2.11.0+)
+### Active Extensions (checked 2026-09-27)
 
 As of v2.11.0, we use **only 3 DataTables extensions** for optimal performance:
 
-| Extension           | Version  | Purpose                  | Usage      |
-| ------------------- | -------- | ------------------------ | ---------- |
-| **DataTables Core** | dt-3.0.2 | Base table functionality | All tables |
-| **FixedHeader**     | fh-5.0.0 | Sticky table headers     | All tables |
-| **Responsive**      | r-4.0.2  | Mobile-responsive tables | All tables |
+| Extension       | Version | Purpose                     | Used on                       |
+| --------------- | ------- | --------------------------- | ----------------------------- |
+| DataTables Core | 3.0.4   | Base table functionality    | All DataTables views          |
+| FixedHeader     | 5.0.0   | Sticky table headers        | List, factory, history, admin |
+| Responsive      | 4.0.3   | Mobile-responsive tables    | Main and admin views          |
 
 ## Where DataTables is Used
 
@@ -104,9 +103,10 @@ Two dedicated POST-only endpoints (v2.25.3+, issue #1036):
 
 ### Self-Hosted DataTables JS (v2.17.0+)
 
-As of #405 (ADR-015), DataTables JavaScript is self-hosted in the repository
-rather than loaded from a CDN. The bundle (DataTables Core + FixedHeader +
-Responsive, BS4 styling) is committed at:
+DataTables assets are self-hosted. `package.json` pins the source packages and
+`scripts/build.js` creates the deployed files under `usersc/js/` and
+`usersc/css/`. These generated files are ignored by Git and rebuilt during
+deployment under [ADR-018](adr/ADR-018-build-at-deploy-for-frontend-vendoring.md).
 
 ```text
 usersc/js/datatables.min.js
@@ -119,9 +119,9 @@ Pages that need DataTables load it directly with a source-controlled
 <script src="<?=$us_url_root?>usersc/js/datatables.min.js"></script>
 ```
 
-The previous `elan_datatables_js_cdn` and `elan_datatables_css_cdn`
-settings-table columns are no longer referenced. The matching CSS bundle is
-vendored alongside the JS at `usersc/css/datatables.min.css` and loaded with:
+The pages load the DataTables core, FixedHeader, and Responsive JavaScript
+files separately. The CSS bundle at `usersc/css/datatables.min.css` is loaded
+with:
 
 ```php
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/datatables.min.css">
@@ -129,14 +129,13 @@ vendored alongside the JS at `usersc/css/datatables.min.css` and loaded with:
 
 ### Bundle Contents
 
-The vendored bundle was generated from the official DataTables download
-builder with:
+The build uses the pinned npm packages:
 
 | Extension Code | Full Name       | Version    |
 | -------------- | --------------- | ---------- |
-| `dt`           | DataTables Core | `3.0.2`    |
+| `dt`           | DataTables Core | `3.0.4`    |
 | `fh`           | FixedHeader     | `5.0.0`    |
-| `r`            | Responsive      | `4.0.2`    |
+| `r`            | Responsive      | `4.0.3`    |
 
 The styling target is `bs5` (Bootstrap 5).
 
@@ -144,17 +143,16 @@ The styling target is `bs5` (Bootstrap 5).
 
 When a security advisory or required feature drives an update:
 
-1. Visit the official CDN/download builder: <https://datatables.net/download/>
-2. Select Bootstrap 4 styling and the extensions listed above (or the new
-   set), choose the desired versions
-3. Download both the combined `datatables.min.js` and `datatables.min.css` files
-4. Replace `usersc/js/datatables.min.js` and `usersc/css/datatables.min.css` with the new files
-5. Bump the DataTables version pin in `package.json`
-6. Commit — the diff documents what changed and why
-7. Test the List Cars and Factory Information pages
+1. Update the DataTables package versions in `package.json` and
+   `package-lock.json`.
+2. Run `npm ci` and `npm run build`.
+3. Review the generated output locally. Do not commit output under `usersc/js/`
+   or `usersc/css/`; deployment regenerates it.
+4. Test the List Cars and Factory Information pages.
 
-This workflow is the standard maintenance flow established in ADR-015 for all
-vendored frontend libraries.
+The build uses Bootstrap 5 integration packages. See
+[ADR-017](adr/ADR-017-automate-frontend-vendoring-via-npm-build-pipeline.md)
+for the asset selection and build details.
 
 ## Configuration Best Practices
 
@@ -189,21 +187,19 @@ grep -r "rowGroup\|scroller\|searchBuilder\|searchPanes" app/owner/cars/
 - Better performance (only loads visible page of data)
 - Reduced memory usage on client browsers
 
-**Important Limitation**: Some DataTables extensions (SearchPanes, SearchBuilder)
-are **incompatible** with server-side processing without significant backend
-work. They require ALL data to be loaded at once, which defeats the purpose of
-server-side processing.
-
-**Guideline**: Before adding any new DataTables extension, verify it supports
-server-side processing or assess if the UX trade-offs are acceptable.
+**Important**: DataTables extensions can require additional server-side
+parameters and backend query logic. SearchPanes and SearchBuilder support
+server-side processing, but the server must handle their filtering requests.
+Before adding an extension, check its current documentation and update the
+endpoint and tests as required.
 
 ### Version Management
 
 **Current versions are stable and battle-tested**:
 
-- DataTables Core: 3.0.2
+- DataTables Core: 3.0.4
 - FixedHeader: 5.0.0
-- Responsive: 4.0.2
+- Responsive: 4.0.3
 
 **When to upgrade**:
 
@@ -215,8 +211,8 @@ server-side processing or assess if the UX trade-offs are acceptable.
 
 1. Test on development/staging environment first
 2. Review DataTables release notes for breaking changes
-3. Replace `usersc/js/datatables.min.js` with the new bundle and bump the
-   version pin in `package.json` (see "Updating the Vendored Bundle" above)
+3. Bump the npm package versions, update `package-lock.json`, and rebuild the
+   assets (see "Updating the Vendored Bundle" above)
 4. Clear browser caches (users may need to hard refresh)
 5. Monitor for JavaScript console errors
 
@@ -229,7 +225,7 @@ server-side processing or assess if the UX trade-offs are acceptable.
 **Solution**:
 
 - Check browser console for specific error messages
-- Verify `usersc/js/datatables.min.js` was replaced cleanly (no truncation)
+- Run `npm run build` again to regenerate the local assets
 - Ensure all extension dependencies are met (e.g., SearchPanes requires Select)
 - Clear browser cache and hard refresh (Ctrl+Shift+R)
 
@@ -248,8 +244,8 @@ server-side processing or assess if the UX trade-offs are acceptable.
 
 - Verify column count in HTML matches JavaScript configuration
 - Check for responsive breakpoints hiding columns on mobile
-- Ensure `usersc/css/datatables.min.css` was replaced from the same download
-  builder run as `usersc/js/datatables.min.js` (same extensions)
+- Run `npm run build` after you change package versions so JavaScript and CSS
+  use the same pinned package set
 
 ### Testing After Changes
 
@@ -266,9 +262,8 @@ server-side processing or assess if the UX trade-offs are acceptable.
 **Automated Testing**:
 
 ```bash
-# Run Playwright UI tests
-npm run playwright:functionality
-npm run playwright:ui
+# Run the Playwright suite
+npm run playwright:test
 ```
 
 ## Testing DataTables Implementations
@@ -406,12 +401,16 @@ Unit Tests (many, fast)
 ## References
 
 - **Official Documentation**: <https://datatables.net>
-- **CDN Builder**: <https://datatables.net/download/>
 - **Server-Side Processing**: <https://datatables.net/manual/server-side>
+- **SearchPanes server-side processing**: <https://datatables.net/manual/server/nodejs/searchpanes>
+- **SearchBuilder server-side processing**: <https://datatables.net/extensions/searchbuilder/serverside>
 - **Extensions Reference**: <https://datatables.net/extensions/>
-- **GitHub Issue #168**: SearchPanes/SearchBuilder investigation and removal
-  decision
-- **FIX Script #19**: DataTables CDN optimization implementation
+- **Package pins and build output**: `package.json`, `package-lock.json`,
+  `scripts/build.js`
+- **Build-at-deploy decision**: [ADR-018](adr/ADR-018-build-at-deploy-for-frontend-vendoring.md)
+
+The download-builder workflow and FIX Script #19 references describe the old
+CDN-based asset process. They do not apply to the current npm build.
 
 ## Version History
 

@@ -20,7 +20,7 @@
 
 ## References
 
-- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — 107 audit logging constants
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — log category constants
 - [UserSpice framework guidance](../../usersc/plugins/ai_prompts/prompts/00_start_here.md.php) — read this before you build a custom solution
 - [STRICT_TYPE_HANDLING.md](STRICT_TYPE_HANDLING.md) — dbInt() and type helpers
 - [DATATABLES.md](DATATABLES.md) — DataTables configuration

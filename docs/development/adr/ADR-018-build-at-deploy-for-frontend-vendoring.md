@@ -10,6 +10,15 @@ Accepted
 
 2026-08-27
 
+## Implementation status
+
+Implemented on 2026-08-27 in #1806. The post-receive hook runs
+`npm ci --omit=dev` and `npm run build` before it removes development files
+from the deployed work tree. Build-time packages are listed in `dependencies`.
+The generated `usersc/js/` and `usersc/css/` files are ignored by Git. The
+`vendor-drift` CI job was removed. These implementation details supersede the
+follow-up items in the original decision text below.
+
 ## Context
 
 ADR-017 automated frontend vendoring by having `scripts/build.js` copy/build
@@ -202,35 +211,20 @@ already exists.
 
 ### Negative
 
-- Deploy time increases by the build step's cost — measured ~16s
-  (`npm ci`, network-bound) + <1s (`npm run build`) on `test.elanregistry.org`.
-  Small in absolute terms, but a real addition to an already-synchronous,
-  non-atomic deploy window (see "New considerations" above).
+- Deploy time increases because the hook installs npm packages and builds
+  frontend assets. The original test-host measurement was about 16 seconds
+  for a full `npm ci` and less than one second for `npm run build`. The hook
+  now uses `npm ci --omit=dev`, so the install time can differ. The deploy
+  remains synchronous and non-atomic (see "New considerations" above).
 - New supply-chain exposure: `npm ci` executes on the production host
   itself, under the site's OS user, on every deploy — a larger blast
   radius than CI-only npm execution. Accepted per the analysis above, not
   eliminated.
-- `esbuild` (required by `scripts/build.js`) is currently listed under
-  `devDependencies` alongside test/lint/docs tooling that a production
-  build step does not need (`eslint`, `@playwright/test`,
-  `markdownlint-cli2`, `dotenv`, `@versatiles/style` is needed;
-  `eslint`/`@playwright/test`/`markdownlint-cli2` are not). A plain
-  `npm ci` on the deploy host installs the full `devDependencies` list,
-  including packages with `EBADENGINE` warnings against this host's Node
-  18 (though none are fatal today). The follow-up implementation issue
-  should split `package.json` so the deploy-host install only pulls what
-  `scripts/build.js` actually needs (e.g. `npm ci --omit=dev` after moving
-  `esbuild`/`@versatiles/style` to `dependencies`, or an `npm ci
-  --include=<specific packages>` equivalent), both to shrink the
-  deploy-time install and to stop masking real engine-compatibility
-  signal behind unrelated dev-tooling noise.
-- `.deployignore`'s cleanup ordering must change: `package.json`,
-  `package-lock.json`, and `scripts/` (containing `build.js` itself) are
-  currently deleted post-checkout, before the build step would need to
-  run. The follow-up implementation issue must reorder cleanup so these
-  three survive until after the new build step completes, then are still
-  deleted as today (they remain correctly excluded from the deployed
-  document root's final state — only their *removal timing* changes).
+- **Resolved during implementation:** Build-time packages, including
+  `esbuild` and `@versatiles/style`, are production dependencies. The deploy
+  hook runs `npm ci --omit=dev`, then removes `package.json`,
+  `package-lock.json`, and `scripts/` during cleanup. This avoids installing
+  test and lint dependencies on the server.
 - No maintenance-mode gate or atomic release-swap is introduced by this
   ADR — the existing brief-inconsistency window during deploy (already
   present for Composer/migrations) is accepted as-is, scaled slightly by
@@ -299,8 +293,7 @@ insufficient in practice.
 - **Build pipeline:** `scripts/build.js`
 - **Deploy hook:** `scripts/server-hooks/post-receive`
 - **Deploy cleanup list:** `.deployignore`
-- **Implementation follow-up:** filed separately — see issue tracker for
-  the `post-receive`/`.deployignore`/`package.json`-split/CI-removal work
-  this ADR's decision requires but does not itself implement
+- **Implementation:** #1806 updated `scripts/server-hooks/post-receive`,
+  `.deployignore`, `package.json`, and CI to apply this decision.
 - **Nygard ADR Format:**
   [https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
