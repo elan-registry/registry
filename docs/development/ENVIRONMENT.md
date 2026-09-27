@@ -17,8 +17,8 @@ Access the development database using MAMP's MySQL 8.0:
 # Enter DB_PASS from .env when prompted
 ```
 
-Under Docker, use phpMyAdmin on the checkout's `PMA_HOST_PORT` (see
-"Docker Dev Environment" below); the `db` service has no host port.
+Under Docker, use phpMyAdmin on the checkout's `PMA_HOST_PORT`. See the
+"Docker Dev Environment" section below. The `db` service has no host port.
 
 ### Remote Database Access (Test/Production)
 
@@ -33,24 +33,25 @@ Test and production databases require SSH tunnel or direct connection:
 
 ## Overview
 
-The Elan Registry uses **vlucas/phpdotenv** v5 for environment variable loading from plaintext `.env` files with `chmod 600` filesystem permissions.
+The Elan Registry uses **vlucas/phpdotenv** v5 to load environment variables
+from plaintext `.env` files. Set file permissions to `chmod 600`.
 
 ### Loading System
 
-- **Plaintext Storage**: Variables stored in `.env` (plaintext file)
-- **Permissions**: `chmod 600` restricts file to web server user only
-- **Library**: `vlucas/phpdotenv` v5
-- **Loading**: Variables loaded in Phase 1.6 of `users/init.php` via `Dotenv::createImmutable()->safeLoad()`
+- **Plaintext storage**: Store variables in the plaintext `.env` file.
+- **Permissions**: Set `chmod 600` to restrict access to the web server user.
+- **Library**: The app uses `vlucas/phpdotenv` v5.
+- **Loading**: `users/init.php` loads variables in Phase 1.6 with `Dotenv::createImmutable()->safeLoad()`.
 
-### Which File Is Read by What
+### Which Tools Read Each File
 
-A local checkout has up to three env files. They are **not** a base file
-plus a local override: each is read by a different set of tools, and each
-tool takes its settings from exactly one of them. (The one cross-read is a
-safety check: `scripts/provision-schema.sh` provisions from
-`.env.test.local` but also reads `.env`'s `DB_NAME`, to refuse dropping the
-app's database.) Put a variable in the file its reader loads, and nowhere
-else — a copy in another file is never read and drifts.
+A local checkout can have up to three environment files. Different tools read
+each file. Each tool gets its settings from one file only. One tool reads two
+files as a safety measure. `scripts/provision-schema.sh` reads `.env.test.local`
+to set up the test database. It also reads `DB_NAME` from `.env` to protect the
+application database from deletion. Put each variable in the file that its
+reader uses. Do not copy it to another file because other tools ignore the
+copy.
 
 | File | Read by | Holds | Template |
 | --- | --- | --- | --- |
@@ -68,13 +69,12 @@ Why they stay separate:
   credentials (including Test/Prod admin passwords) out of `.env` keeps them
   out of the PHP process's environment. Conversely, `DB_*` or
   `US_ENVIRONMENT` placed in `.env.local` has no effect on the app.
-- **`.env.test.local` stands alone, by design.** The integration suite
-  writes to and reprovisions its database, so the bootstrap aborts if the
-  file is missing rather than falling back to `.env`/`.env.local`. Set all
-  five keys even where they equal `.env`'s (under Docker, everything but
-  `DB_NAME` does): a key missing from it is backfilled from `.env` by
-  `users/init.php`, and the bootstrap catches that only when the result
-  lands on the dev database name.
+- **`.env.test.local` stands alone by design.** The integration suite writes
+  to and reprovisions its database. The bootstrap stops if this file is
+  missing. It does not fall back to `.env` or `.env.local`. Set all five keys,
+  even when they match `.env`. Under Docker, only `DB_NAME` differs. If a key
+  is missing, `users/init.php` reads it from `.env`. The bootstrap detects
+  this only when the result matches the development database name.
 
 ## Environment Variables
 
@@ -110,15 +110,17 @@ Why they stay separate:
   if multiple
 - `FEEDBACK_EMAIL` — feedback-form recipient address
 
-Both fall back to `registrar@elanregistry.org` if unset or empty. Formerly
-web-editable `settings` table columns (`elan_admin_emails`/`elan_feedback_email`);
-moved to `.env` in #1067 to close a web-writable path to reroute these
-addresses via a compromised admin session — see PR #1823.
+Both use `registrar@elanregistry.org` when they are unset or empty. These
+values used to come from the web-editable `settings` columns
+`elan_admin_emails` and `elan_feedback_email`. PR #1823 moved them to `.env`
+in #1067. This change closed a path that could let a compromised admin
+session reroute the addresses.
 
 One-time migration: `scripts/generate-config.php` reads the live `settings`
-row and appends these two keys to `.env` (preserving all other keys), then
-re-applies `chmod 600`. Deletable from the repo once test/prod are both
-confirmed populated — it is not ongoing deploy infrastructure.
+row and appends these two keys to `.env`. It preserves all other keys and then
+sets `chmod 600` again. Delete this script from the repository after you check
+that both test and production contain these values. The script is not part of
+ongoing deploy work.
 
 ### Brevo Webhook Authentication
 
@@ -126,8 +128,8 @@ confirmed populated — it is not ongoing deploy infrastructure.
 
 - `BREVO_WEBHOOK_TOKEN` — bearer token Brevo must present
   (`Authorization: Bearer <token>`) on every call to the webhook receiver
-  (#1887). Compared with `hash_equals()`; an empty or missing value rejects
-  **every** request rather than accepting everything (fail-closed).
+  (#1887). The receiver compares the token with `hash_equals()`. An empty or
+  missing value rejects every request. The receiver fails closed.
 
 **Generating a good token:** use at least 32 bytes (256 bits) of
 cryptographically secure randomness, hex- or base64-encoded — do not hand-type
@@ -137,12 +139,13 @@ a password or reuse a value from elsewhere. On any machine with OpenSSL:
 openssl rand -hex 32
 ```
 
-Set the same value on both sides: this app's `.env` (`BREVO_WEBHOOK_TOKEN=...`,
-`chmod 600 .env`) and the Brevo-side webhook configuration for that
-environment's URL (webhook registration is #1888). Rotate by generating a new
-value and updating both sides together — updating only one side rejects every
-webhook call until they match again. Not needed in local dev — no public URL
-reaches a dev machine, so Brevo can never call it (see the note under
+Set the same value in the app's `.env` (`BREVO_WEBHOOK_TOKEN=...`,
+`chmod 600 .env`) and in the Brevo webhook configuration for that environment's
+URL (#1888). To rotate the token, generate a new value and update both sides
+together. If you update only one side, the receiver rejects every webhook call
+until both values match. You do not need this token in local development.
+Brevo cannot call a development machine because it has no public URL. See
+the note under
 [Test Database Isolation](#test-database-isolation) and
 `docs/development/EMAIL_SYSTEM.md`'s "Brevo Webhooks — Verified Behaviour"
 section for why webhook testing happens on test.elanregistry.org instead).
@@ -151,30 +154,30 @@ section for why webhook testing happens on test.elanregistry.org instead).
 
 **Usage**: `usersc/includes/turnstile.php`
 
-- `TURNSTILE_SITE_KEY` — Turnstile widget site key (public; rendered in HTML)
-- `TURNSTILE_SECRET_KEY` — Turnstile secret key (private; server-side token verification)
+- `TURNSTILE_SITE_KEY` — Turnstile widget site key. The page shows this key in HTML.
+- `TURNSTILE_SECRET_KEY` — Turnstile secret key. The server uses it to check tokens.
 
 Omit either key to disable Turnstile (off mode — forms work without CAPTCHA).
-Production keys: Cloudflare Dashboard → Turnstile → your site.
+Get production keys from Cloudflare Dashboard → Turnstile → your site.
 See [test key combinations](#testing-turnstile-in-development) below.
 
 #### Testing Turnstile in Development
 
-Turnstile requires HTTPS — the widget iframe is served over `https://` and
-browsers block cross-protocol frame loading, causing **TurnstileError 110200**
-on plain `http://localhost`.
+Turnstile requires HTTPS. Cloudflare serves the widget iframe over `https://`.
+Browsers block this frame on plain `http://localhost` and report
+**TurnstileError 110200**.
 
 #### Option A — Disable Turnstile (simplest)
 
-Remove or omit either key from `.env`. The widget is hidden and forms work
+Delete or omit either key from `.env`. The widget is hidden and forms work
 without CAPTCHA validation. Use this when Turnstile behaviour is not under test.
 
 #### Option B — Cloudflare Tunnel (test the full widget)
 
 `cloudflared` creates a temporary public HTTPS URL that proxies to your local
-MAMP server. Cloudflare Tunnel terminates TLS upstream and forwards HTTP
-internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
-`true` and Turnstile enables.
+MAMP server. Cloudflare Tunnel ends TLS upstream and forwards HTTP internally.
+It sets the `X-Forwarded-Proto: https` header, so `$is_https` is `true` and
+Turnstile enables.
 
 1. **Install `cloudflared`**:
 
@@ -196,71 +199,70 @@ internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
    | Scenario           | `TURNSTILE_SITE_KEY`       | `TURNSTILE_SECRET_KEY`                | Widget result                  | Server result    |
    | ------------------ | -------------------------- | ------------------------------------- | ------------------------------ | ---------------- |
    | Always pass        | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` | Green check ✓                  | `success: true`  |
-   | Widget block       | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` | Shows blocked / "Troubleshoot" | `success: false` |
+   | Widget block       | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` | Blocked / "Troubleshoot"       | `success: false` |
    | Server-side reject | `1x00000000000000000000AA` | `2x0000000000000000000000000000000AB` | Green check ✓                  | `success: false` |
 
-   - **Always pass** — use for normal development; widget auto-verifies, form submits.
-   - **Widget block** — the widget itself shows a failed state before the form is submitted.
-     A "Troubleshoot" link appears — this is expected Cloudflare behaviour for this test key.
-   - **Server-side reject** — the widget shows a green check (client-side pass), but
-     `verifyTurnstile()` returns `false` on the server. Use this to test the PHP
-     validation path — the form submission is blocked with the CAPTCHA error message —
-     independently of the widget UI.
+   - **Always pass** — Use this for normal development. The widget passes the
+     check automatically, and the form submits.
+   - **Widget block** — The widget shows a failed state before the form submits.
+     It also shows a "Troubleshoot" link. Cloudflare provides this link for this test key.
+   - **Server-side reject** — The widget shows a green check. The server-side
+     `verifyTurnstile()` function returns `false`. Use this case to check PHP
+     validation. The server rejects the form and shows a CAPTCHA error. This
+     tests server validation separately from the widget.
 
 > **Note:** The tunnel URL changes every run. Browser DevTools → Network tab
 > will show requests to `challenges.cloudflare.com` succeeding under HTTPS.
 
 ### Local Playwright Base URL
 
-**Usage**: `playwright.config.js` and `playwright.config.dev.js` (local configs only —
-not `playwright.config.prod.js` or `playwright.config.test.js`, which stay hardcoded to
-their real deployed environments)
+**Usage**: `playwright.config.js` and `playwright.config.dev.js` use this setting.
+The prod and test configs use their deployed environment URLs.
 
 - `PLAYWRIGHT_BASE_URL` — overrides the default local Playwright `baseURL`
   (`http://localhost:9999/ElanRegistry/Registry/`) for developers whose MAMP
-  document root serves the site from a different path. Must include a
-  trailing slash, same as the default value — `page.goto('')` collapses the
-  path without one. Unset behaves identically to today.
+  document root serves the site from a different path. Include a trailing
+  slash, as in the default value. Without it, `page.goto('')` collapses the
+  path. When unset, the setting behaves as it did before.
 
-  Excluded from the prod/test configs intentionally, to avoid accidentally
-  pointing a destructive test run at the wrong live site.
+  Do not add this setting to the prod or test configs. This prevents a
+  destructive test run from using the wrong live site.
 
 ### Playwright Test Credentials (Local/Dev)
 
-**Usage**: `playwright.config.js`'s `admin` project (via `auth.setup.js`),
-`playwright.config.dev.js`'s `admin`/`logged-in-non-admin` projects (via
-`auth-dev.setup.js` / `auth-non-admin.setup.js`)
+**Usage**: `playwright.config.js` uses these values for its `admin` project
+through `auth.setup.js`. `playwright.config.dev.js` uses them for its `admin`
+and `logged-in-non-admin` projects through `auth-dev.setup.js` and
+`auth-non-admin.setup.js`.
 
-- `E2E_DEV_ADMIN_USERNAME` / `E2E_DEV_ADMIN_PASSWORD` — credentials for an admin test
-  account, used to populate a storageState file via a live login through
-  `usersc/login.php` each time the corresponding `setup` project runs —
-  `tests/playwright/.auth/user.json` for `playwright.config.js`,
-  `tests/playwright/.auth/user-dev.json` for `playwright.config.dev.js` (kept separate so
-  a dev run can't overwrite the Local storageState). Required for the
-  `admin` project; if unset, the setup test skips and the storageState file is
-  removed, so `admin` tests run unauthenticated instead of failing on a missing
-  file.
+- `E2E_DEV_ADMIN_USERNAME` / `E2E_DEV_ADMIN_PASSWORD` — credentials for an
+  admin test account. Each setup project logs in through `usersc/login.php`
+  and saves a storage state file. The local config uses
+  `tests/playwright/.auth/user.json`. The dev config uses
+  `tests/playwright/.auth/user-dev.json`. Separate files prevent a dev run
+  from overwriting the local storage state. The `admin` project requires these
+  credentials. If they are unset, the setup test skips and deletes the storage
+  state file. The `admin` tests then run without authentication.
 - `E2E_DEV_NONADMIN_USERNAME` / `E2E_DEV_NONADMIN_PASSWORD` — credentials for a
-  non-admin test account, used the same way by `auth-non-admin.setup.js` to populate
-  `tests/playwright/.auth/user-dev-non-admin.json`, feeding
-  `playwright.config.dev.js`'s `logged-in-non-admin` project (infrastructure only —
-  no spec targets it yet).
+  non-admin test account. `auth-non-admin.setup.js` saves its storage state to
+  `tests/playwright/.auth/user-dev-non-admin.json`. The dev config uses this
+  file for the `logged-in-non-admin` project. The project has no test specs yet.
 - All four live in `.env.local` (gitignored) and must never be committed. See
   `.env.example` for the placeholder entries.
-- These are Local/Dev-only accounts (plain-HTTP MAMP, no Turnstile) — same
-  `E2E_<TIER>_<ROLE>_*` naming scheme as the Test/Prod credentials below (#2059
-  renamed these from `TEST_USERNAME`/`TEST_PASSWORD`/`TEST_USERNAME2`/`TEST_PASSWORD2`
-  for consistency).
+- These accounts are for local and dev environments. They use plain HTTP on
+  MAMP and do not use Turnstile. Issue #2059 renamed the variables to match
+  the `E2E_<TIER>_<ROLE>_*` pattern used for test and production. The old
+  names were `TEST_USERNAME`, `TEST_PASSWORD`, `TEST_USERNAME2`, and
+  `TEST_PASSWORD2`.
 
 ### Playwright Test Credentials (Test/Prod)
 
-**Usage**: `scripts/playwright-auth-setup.js` (consolidated setup script,
-issue #2035), invoked manually to populate the pre-authenticated storageState
-files that `tests/playwright/e2e/auth-staleness.setup.js` /
-`auth-staleness-admin.setup.js` check for staleness before each Test/Prod run
-(`playwright.config.test.js` / `playwright.config.prod.js`'s `admin` project;
-`logged-in` also wires up but is infrastructure only — no non-admin spec
-targets it yet).
+**Usage**: Run `scripts/playwright-auth-setup.js` manually to create the
+pre-authenticated storage state files. Issue #2035 consolidated this script.
+Before each test or production run, `auth-staleness.setup.js` and
+`auth-staleness-admin.setup.js` check these files. The test and production
+configs use them for the `admin` project. The `logged-in` project also uses a
+storage state file, but no non-admin spec targets it yet.
 
 - `E2E_TEST_ADMIN_USERNAME` / `E2E_TEST_ADMIN_PASSWORD` — admin account on
   `test.elanregistry.org`.
@@ -270,13 +272,13 @@ targets it yet).
   `elanregistry.org`.
 - `E2E_PROD_NONADMIN_USERNAME` / `E2E_PROD_NONADMIN_PASSWORD` — non-admin
   account on `elanregistry.org`.
-- Both environments run HTTPS with an active Cloudflare Turnstile challenge,
-  which blocks automated login entirely — these credentials are never used
-  for a live per-run login. Instead a human manually disables Turnstile, runs
-  `node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>` once
-  per tier/role to produce `tests/playwright/.auth/user-<tier>-<role>.json`,
-  then re-enables Turnstile. See `docs/testing/PLAYWRIGHT_E2E.md` for the
-  full setup process.
+- Both environments use HTTPS and an active Cloudflare Turnstile challenge.
+  This challenge blocks automated login. A human must disable Turnstile before
+  running `node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>`
+  once for each tier and role. The script creates
+  `tests/playwright/.auth/user-<tier>-<role>.json`. Re-enable Turnstile after
+  the script completes. See `docs/testing/PLAYWRIGHT_E2E.md` for the full
+  setup process.
 - All eight live in `.env.local` (gitignored) and must never be committed. See
   `.env.example` for the placeholder entries.
 
@@ -285,25 +287,23 @@ targets it yet).
 **Usage**: `users/init.php` (`$GLOBALS['config']['session']` /
 `['remember']`)
 
-- `SESSION_NAME` / `TOKEN_NAME` / `REMEMBER_COOKIE_NAME` — override
-  UserSpice's `$_SESSION` key names (`user`, `token`) and its existing
-  hardcoded remember-me cookie name (see `users/init.php`). Only needed
-  when running more than one local
-  clone of this repo from the same MAMP host/port (e.g. `Registry/` and
-  `Registry2/`, a supported workflow for working two milestones in parallel
-  — see the top-level `Web/ElanRegistry/CLAUDE.md`). Every clone shares the
-  same PHP session cookie (`PHPSESSID`, scoped `path=/` on the same origin)
-  regardless of these vars — `SESSION_NAME`/`TOKEN_NAME` only change which
-  key each clone uses *inside* that shared session, so without distinct
-  names, one clone's login state and CSRF token silently collide with
-  another's — surfacing as inexplicable login failures with no error in any
-  log (see #1935). `REMEMBER_COOKIE_NAME` is the one exception: it names an
-  actual separate browser cookie, so setting it does give each clone its own
-  remember-me cookie rather than just a distinct key within a shared one.
-- Unset in production, test, and a single-clone local install — the app
-  falls back to the original hardcoded values, so this is a no-op there. Set
-  only in the `.env` (not `.env.local`) of whichever clone should get
-  distinct session state; the other clone(s) can keep the defaults.
+- `SESSION_NAME` / `TOKEN_NAME` / `REMEMBER_COOKIE_NAME` — These variables
+  override UserSpice's `$_SESSION` keys (`user`, `token`) and its hardcoded
+  remember-me cookie name. See `users/init.php`. Use them only when you run
+  more than one local clone on the same MAMP host and port, such as `Registry/`
+  and `Registry2/`. This setup supports work on two milestones at the same
+  time. See the top-level `Web/ElanRegistry/CLAUDE.md` file.
+
+  Each clone shares the same PHP session cookie (`PHPSESSID`) on the same
+  origin. Its `path` value is `/`. `SESSION_NAME` and `TOKEN_NAME` select the
+  keys that each clone uses inside the shared session. Without unique names,
+  clones can overwrite each other's login state and CSRF token. This can cause
+  login failures with no log entry (#1935). `REMEMBER_COOKIE_NAME` sets a
+  separate browser cookie for each clone.
+- Leave these variables unset in production, test, and single-clone local
+  installs. The app uses the original hardcoded values in those environments.
+  Set them only in the `.env` file for a clone that needs separate session
+  state. Do not set them in `.env.local`. Other clones can use the defaults.
 - `SESSION_NAME` also feeds `users/helpers/us_helpers.php`'s vericode-secret
   *fallback* (used only if `usersc/vericode_secret.php` cannot be written —
   see that file's `hash('sha256', mysql/password . session/session_name)`).
@@ -318,48 +318,44 @@ targets it yet).
 
 ### PHP Version
 
-- **Local dev, CI, test, and production**: All now target PHP 8.4.x.
-  Production is confirmed running PHP 8.4.25. (Issue #1968 tracked the
-  earlier test/prod hold on 8.2; that hold is resolved now that prod is
-  confirmed on 8.4.25 — this doc makes no claim about whether #1968 itself
-  should be closed.)
-- **`phpstan.neon`'s `phpVersion: 80229`** pins static analysis to a
-  compatibility floor lower than the actual deployed version — it is a
-  deliberate choice to keep first-party code free of 8.3/8.4-only syntax
-  (property hooks, asymmetric visibility, etc.), not a claim that any
-  environment still runs 8.2. Similarly, `composer.json`'s `>=8.2.29`
-  constraint is a compatibility floor, not a statement about what's
-  deployed. Neither value needs to change for this doc to be accurate, and
-  changing either is a separate decision outside the scope of this note.
+- **Local development, CI, test, and production**: These environments use
+  PHP 8.4.x. Production uses PHP 8.4.25. Issue #1968 tracked an earlier hold
+  on PHP 8.2 for test and production. That hold ended when production moved to
+  PHP 8.4.25. This statement does not say whether anyone should close #1968.
+- **`phpstan.neon` value `phpVersion: 80229`**: This setting pins static
+  analysis to the compatibility floor. The floor is lower than the deployed
+  version. This choice keeps first-party code from using syntax that PHP 8.3
+  or 8.4 introduced, such as property hooks and asymmetric visibility. It does
+  not mean that any environment uses PHP 8.2. `composer.json` also sets the
+  compatibility floor with `>=8.2.29`. Neither value describes the deployed
+  version. Changing either value requires a separate decision.
 - **MAMP Apache PHP version**: MAMP's Apache does not use the
-  `/Applications/MAMP/bin/php/php` symlink — it serves PHP via
-  `/Applications/MAMP/fcgi-bin/php.fcgi`, a wrapper script MAMP.app
-  regenerates on every Apache restart based on the PHP version selected in
-  MAMP's Preferences → PHP panel. To switch versions, use MAMP.app's
-  Preferences GUI (the wrapper file itself says "Do not modify, it will be
-  overwritten"). Verify the actual serving version with a `phpinfo()` page
-  load after restarting MAMP's servers, not by checking any symlink.
-- **CLI PHP (Homebrew)**: The `php`/`composer` commands on the shell PATH
-  resolve to Homebrew's linked PHP, separate from MAMP's Apache-served PHP.
-  Keep it on the same target version as MAMP (`brew install php@8.4 && brew
-  link php@8.4 --force --overwrite`, then `hash -r`) — `composer
-  test:integration` and other CLI-invoked test/tooling commands run under
-  whichever version is linked, not MAMP's.
+  `/Applications/MAMP/bin/php/php` symlink. It uses the wrapper script at
+  `/Applications/MAMP/fcgi-bin/php.fcgi`. MAMP.app rewrites this script each
+  time Apache restarts. It uses the PHP version selected in Preferences → PHP.
+  To change versions, use the MAMP.app preferences. Do not edit the wrapper.
+  MAMP.app overwrites it. To check the version that serves the site, restart
+  MAMP and load a `phpinfo()` page. Do not check a symlink.
+- **CLI PHP (Homebrew)**: The shell finds `php` and `composer` through PATH.
+  These commands use Homebrew's linked PHP. MAMP's Apache uses a separate PHP
+  version. Keep both on the same version with `brew install php@8.4`, then
+  `brew link php@8.4 --force --overwrite` and `hash -r`. The shell runs
+  `composer test:integration` and other command-line tools with Homebrew's
+  linked PHP, not MAMP's PHP.
 
 ### Docker Dev Environment (optional, experimental)
 
-An alternative to MAMP, available per checkout: a self-contained Docker
-Compose stack (`docker-compose.yml` at the repo root) — PHP 8.4 app
-container, MySQL 8.0, phpMyAdmin, a mock Brevo API, and a landing page —
-bind-mounting the checkout as the webroot. Introduced in #2116 for
-`Registry2/`, and running in `Registry/` as well, both verified against the
-full toolchain (`composer install`/`test:full`, `npm run build`,
-Playwright).
+The repository provides an optional Docker Compose stack for each checkout.
+The stack runs a PHP 8.4 app container, MySQL 8.0, phpMyAdmin, a mock Brevo
+API, and a landing page. It bind-mounts the checkout as the web root. Issue
+2116 introduced the stack for `Registry2/`. Both `Registry2/` and `Registry/`
+run the full toolchain with this stack: `composer install`,
+`composer test:full`, `npm run build`, and Playwright.
 
-**One compose file, per-checkout ports in `.env`.** `docker-compose.yml` is
-shared by every checkout on the branch, so never edit it for one checkout.
-Each checkout sets its host ports in its own gitignored `.env` (the
-defaults are Registry2's, so Registry2 needs no entries):
+**One compose file, per-checkout ports in `.env`.** Every checkout on the
+branch shares `docker-compose.yml`. Do not edit it for one checkout. Each
+checkout sets host ports in its own gitignored `.env`. The defaults match
+`Registry2/`, so that checkout needs no port entries.
 
 | Checkout | `APP_HOST_PORT` | `PMA_HOST_PORT` | `MOCK_BREVO_HOST_PORT` | `LANDING_HOST_PORT` |
 | --- | --- | --- | --- | --- |
@@ -391,11 +387,11 @@ docker compose up -d
 
 Substitute your project name for `registry2`.
 
-**Landing page:** `http://localhost:<LANDING_HOST_PORT>/` (e.g.
-`localhost:8101` for `Registry/`) links that checkout's site, phpMyAdmin
-and the mock Brevo inbox. It is rendered at container start from
-`docker/landing/index.html.template` using the same port variables, so the
-links always match the checkout.
+**Landing page:** Open `http://localhost:<LANDING_HOST_PORT>/`. For `Registry/`,
+use `localhost:8101`. The page links to that checkout's site, phpMyAdmin, and
+the mock Brevo inbox. The container renders the page at startup from
+`docker/landing/index.html.template` and the same port variables. The links
+therefore match the checkout.
 
 Worktrees under `Registry-worktrees/` get the same treatment: give the
 worktree's `.env` the next row of ports.
@@ -406,22 +402,16 @@ docker compose exec -u www-data app composer install
 docker compose exec -u www-data app composer test:full
 ```
 
-Switching an existing MAMP setup over (env files, database import,
-Playwright, cron, git hooks) and back: see
-[MAMP_TO_DOCKER.md](MAMP_TO_DOCKER.md).
-
-The stack includes five services: `app` (PHP 8.4, the main application),
-`db` (MySQL 8.0, no host port), `phpmyadmin` (database inspection),
-`mock-brevo` (a local mock of Brevo's transactional email API,
-`ghcr.io/c0boleis/mock-brevo:1.0.0`, with a web inbox for manual
-inspection), and `landing` (the index page above). Host ports follow the
-table above. The `mock-brevo` service is reachable from the `app` container
-at `http://mock-brevo:8080/v3` over the `elan` network. For how the application routes email requests
-to it (the `BREVO_API_HOST` environment variable, the
-`US_ENVIRONMENT=development` guard, and the Brevo plugin's override
-activation), see `docs/development/EMAIL_SYSTEM.md`'s "Local Development"
-section — Docker infrastructure is documented here, app-level wiring lives
-there.
+The stack has five services. `app` runs PHP 8.4. `db` runs MySQL 8.0 and has
+no host port. `phpmyadmin` provides database inspection. `mock-brevo` runs the
+local mock of Brevo's transactional email API
+(`ghcr.io/c0boleis/mock-brevo:1.0.0`) and provides a web inbox. `landing`
+serves the landing page. Use the port table above. The `app` container reaches
+`mock-brevo` at `http://mock-brevo:8080/v3` on the `elan` network. See the
+"Local Development" section in `docs/development/EMAIL_SYSTEM.md` for the
+`BREVO_API_HOST` variable, the `US_ENVIRONMENT=development` check, and the
+Brevo plugin override. This document covers the Docker setup. The email guide
+covers application configuration.
 
 **Always pass `-u www-data` to `exec`** — it has no compose-file default
 and otherwise runs as root, which would root-own anything written into the
@@ -429,50 +419,51 @@ bind mount. See the `docker-compose.yml` header comment for the full
 rationale, the port table, and the one per-checkout setting outside `.env`
 (`APP_UID`/`APP_GID`, if a different host user works on the checkout).
 
-**MAMP: coexists indefinitely, no deprecation planned.** This is a
-deliberate decision (#2120), not a transitional state — applies to any
-checkout with a Docker stack, not just Registry2's. Coexistence is
-port-only, not data: MAMP and Docker both read the same `.env`, and
-`.env`'s `DB_HOST` decides which stack can actually reach a database at
-any given moment. `DB_HOST=db` (the Docker stack's setting) is
-unreachable from MAMP's PHP process, so MAMP-served pages will fail on any
-DB access while `.env` is pointed at Docker. Switch `.env`'s
-`DB_HOST`/`DB_PORT` back to MAMP's values (`127.0.0.1`/`8889`) to use MAMP
-again; a backup of the original MAMP-pointed `.env` is typically kept
-alongside it as `.env.mamp.bak` (gitignored, not committed).
+**MAMP and Docker will coexist. The project has no plan to retire MAMP.**
+This decision applies to every checkout that uses Docker (#2120). The two
+stacks share ports, but they do not share database access. MAMP and Docker
+read the same `.env` file. The `DB_HOST` value selects the stack that can
+reach the database.
 
-This also means `scripts/provision-schema.sh` and any other script reading
-`.env` must run **inside** the container when `.env` is Docker-pointed:
-`docker compose exec -u www-data app scripts/provision-schema.sh ...`, not
-directly from the host shell.
+The Docker value `DB_HOST=db` does not work from MAMP's PHP process. MAMP pages
+cannot access the database while `.env` uses this value. To use MAMP again,
+set `DB_HOST` and `DB_PORT` to `127.0.0.1` and `8889`. Developers often keep a
+backup of the MAMP `.env` file beside it as `.env.mamp.bak`. Git ignores this
+backup file.
 
-**Docker DB user needs `SYSTEM_VARIABLES_ADMIN`**, beyond the standard
-`GRANT ALL` on `elanregi_*` schemas — some integration tests run
-`SET GLOBAL`, which the Docker image's non-root user can't do by default
-(MAMP's app DB user apparently can). See
-`docker/mysql-init/01-grant-all-elanregi-schemas.sql`'s comment for the
-specific test, mechanism, and failure mode; any future checkout's grant
-file should include the same `SYSTEM_VARIABLES_ADMIN` line.
+When `.env` uses Docker values, run `scripts/provision-schema.sh` and other
+scripts that read `.env` inside the container. Use
+`docker compose exec -u www-data app scripts/provision-schema.sh ...`. Do not
+run these scripts from the host shell.
 
-**Optional Traefik routing**: `docker-compose.traefik.yml` has placeholder
-Docker-label routing (join the external `traefik_proxy` network, `Host()`
-rule per checkout) — not applied automatically, since this repo doesn't
-own or deploy the HomeLab Traefik instance's config. Merge it manually for
-a dev-domain route: `docker compose -f docker-compose.yml -f
-docker-compose.traefik.yml up -d`. See that file's header for the
-reference pattern this HomeLab already uses elsewhere
-(`HomeLab/services/user_services/elan-registry-monitoring-viewer/docker-compose.yml`).
-The Docker-label mechanism is the actual live routing path — Traefik's
-static config has no route for any ElanRegistry dev domain today.
+**The Docker database user needs `SYSTEM_VARIABLES_ADMIN`.** The standard
+`GRANT ALL` on `elanregi_*` schemas does not grant this permission. Some
+integration tests run `SET GLOBAL`. The Docker image's non-root user cannot
+run that command without the additional permission. The MAMP database user
+appears to have it. See the comment in
+`docker/mysql-init/01-grant-all-elanregi-schemas.sql` for the test, mechanism,
+and failure mode. Add the same permission to the grant file for each new
+checkout.
+
+**Optional Traefik routing**: `docker-compose.traefik.yml` defines Docker-label
+routing. It joins the external `traefik_proxy` network and sets a `Host()` rule
+for each checkout. The project does not apply this file automatically because
+it does not own or deploy the HomeLab Traefik configuration.
+
+To create a dev-domain route, merge the files manually with
+`docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d`.
+See the header in `docker-compose.traefik.yml` for the pattern used in
+`HomeLab/services/user_services/elan-registry-monitoring-viewer/docker-compose.yml`.
+Docker labels provide the active route. Traefik's static configuration has no
+route for an ElanRegistry dev domain.
 
 ### Development Setup
 
 1. **Get Database Credentials**:
 
-   The local dev database credentials go in `.env` (step 2), the only file
-   the app reads. `.env.local` is for Playwright settings and
-   `.env.test.local` for the integration-test schema — see
-   [Which File Is Read by What](#which-file-is-read-by-what).
+   Put local development database credentials in `.env` (step 2). The app
+   reads only this file. Playwright reads `.env.local`. Integration tests read
+   `.env.test.local`. See [Which Tools Read Each File](#which-tools-read-each-file).
 
    See "Database Access" section above for connecting to databases.
 
@@ -548,69 +539,72 @@ static config has no route for any ElanRegistry dev domain today.
    tail -3 ~/Library/Logs/ElanRegistry/local-cron.log   # expect status=200 lines
    ```
 
-   `cron.php` only logs when `cron_ip` is already set to something and a
-   request's IP doesn't match it (and isn't `127.0.0.1`, which is always
-   allowed) — with `cron_ip` empty (the default), the allowlist check never
-   runs at all, so nothing to read is logged either way (#1974 also removed
-   the unconditional per-hit log, so a *matching* request was never
-   discoverable via Admin → Logs regardless). The launchd log
-   (`~/Library/Logs/ElanRegistry/local-cron.log`) only records a
-   `status=200`/`4xx` HTTP code, not the request's source IP, so it can't
-   answer this. To find the address this machine's curl actually connects
-   from, deliberately set `cron_ip` to a wrong value first, run the curl
-   command above once by hand, and read the resulting
-   `Cron request DENIED from <ip>.` line from Admin → Logs (or
-   `SELECT ip FROM logs ORDER BY id DESC LIMIT 1`) — that line shows the
-   real address regardless of what `cron_ip` was set to. On a standard
-   macOS `/etc/hosts` curl reaches `localhost` over IPv6, so this is
-   normally `::1`; `cron.php` only hard-codes `127.0.0.1` as the
-   always-allowed address, so `::1` must be set explicitly. Once `cron_ip`
-   is set correctly, `er_verification_settings.last_cron_request_at`
-   (Admin → Verification tab) confirms accepted hits are landing.
-   Interval semantics, the allowlist table, and the contract every cron job
-   must honour are in
-   [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager).
+   `cron.php` logs a request only when `cron_ip` has a value and the request
+   comes from a different IP address. The allowlist always permits
+   `127.0.0.1`. When `cron_ip` is empty, the default, the allowlist check does
+   not run and the app writes no log entry. Issue #1974 also stopped
+   `cron.php` from logging each accepted request. The launchd log at
+   `~/Library/Logs/ElanRegistry/local-cron.log` records only an HTTP status
+   such as `200` or `4xx`. It does not record the source IP.
+
+   To find the IP address that `curl` uses, set `cron_ip` to an incorrect
+   value. Run the curl command above by hand. Then read the
+   `Cron request DENIED from <ip>.` entry in Admin → Logs. You can also run
+   `SELECT ip FROM logs ORDER BY id DESC LIMIT 1`. The entry shows the source
+   IP even when `cron_ip` has the wrong value. On standard macOS systems,
+   `/etc/hosts` makes curl connect to `localhost` over IPv6. The address is
+   usually `::1`. Since `cron.php` always allows only `127.0.0.1`, add `::1`
+   to `cron_ip` explicitly. After you set the correct value,
+   `er_verification_settings.last_cron_request_at` in Admin → Verification
+   shows that the app accepts requests.
+
+   See [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager)
+   for the interval rules, allowlist table, and cron job requirements.
 
 ### Test Database Isolation
 
-Integration tests are **destructive** — they insert, update, delete, and merge real database
-records to verify application logic end-to-end. To prevent accidental damage to the development
-database, the test suite requires a dedicated test schema:
+Integration tests change real database records. They insert, update, delete,
+and merge records to check application logic. The test suite requires a
+dedicated test schema to protect the development database:
 
-- **Separate Schema**: Tests run against `elanregi_spice_test` (or equivalent), never the dev database `elanregi_spice`.
-- **Mandatory Configuration**: `tests/bootstrap-integration.php` **fails immediately with an error message** if `.env.test.local` is missing or fails to load.
-- **Safety Guards**: Two layers of defense-in-depth in `tests/bootstrap-integration.php` — the loaded
-  `DB_NAME` value is checked before connecting, and the *actual* connected database is checked again
-  afterward (catching the case where `.env.test.local` omits a `DB_*` key and it gets silently
-  backfilled from the root `.env`). Either guard tripping aborts with `exit(1)`. Both guards check
-  against the literal name `elanregi_spice` — if the dev database is ever renamed, update these
-  checks accordingly.
-- Separately, `scripts/provision-schema.sh` guards the one truly destructive operation in this
-  workflow — the `DROP DATABASE` on the target schema. It refuses to run against a schema name
-  that does not contain `test` (case-folded), or against the database this checkout's application
-  is configured to use (`DB_NAME` in `.env`, the file the app reads). Both guards require an explicit
-  `--force` to override, since the same script also provisions fresh dev and CI databases.
+- **Separate schema**: Tests use `elanregi_spice_test` or an equivalent schema.
+  They never use the development database `elanregi_spice`.
+- **Required configuration**: `tests/bootstrap-integration.php` stops with an
+  error if `.env.test.local` is missing or cannot load.
+- **Safety checks**: `tests/bootstrap-integration.php` checks `DB_NAME` before
+  connecting. It checks the connected database again after the connection.
+  The second check catches a missing `DB_*` key in `.env.test.local` when the
+  app fills it from the root `.env`. Either check exits with `exit(1)` if the
+  database name is `elanregi_spice`. If you rename the development database,
+  update both checks.
+- `scripts/provision-schema.sh` protects the `DROP DATABASE` command. It stops
+  if the schema name does not contain `test` (case-insensitive). It also stops
+  if the target name matches `DB_NAME` in the app's `.env` file. Use
+  `--force` to override either check. The script also creates new development
+  and CI databases.
 
 **Files involved:**
 
 - `.env.test.local` — Test database credentials (gitignored, created once per developer)
 - `.env.test.local.sample` — Template with safe defaults (tracked in repo)
-- `scripts/provision-schema.sh` — Provisioning script; safe to rerun any time the schema changes
-  (e.g. after a new migration) — it drops and recreates only the target schema each run, then
-  rebuilds it from `database/vendor/userspice-6.1.4-base.sql`, `composer migrate`, and the Phinx
-  seeds. Requires a `mysql` client on `$PATH`, or `MYSQL_BIN` pointing at one (MAMP's client is
-  not on `$PATH` by default)
+- `scripts/provision-schema.sh` — You can rerun this script when the schema
+  changes, such as after a new migration. Each run drops and recreates only
+  the target schema. It then loads `database/vendor/userspice-6.1.4-base.sql`,
+  runs `composer migrate`, and loads the Phinx seeds. The script needs a
+  `mysql` client on `$PATH` or a `MYSQL_BIN` value that points to one. MAMP's
+  client is not on `$PATH` by default.
 
-After the initial setup, tests can be re-run safely and repeatedly against the test schema without risking the development database.
+After setup, you can run tests against the test schema as often as needed.
+These runs do not affect the development database.
 
-**Blocking pre-push gate (#1439):** `.githooks/pre-push` blocks pushes that touch
-integration-suite-relevant code on any failure, including an unreachable test
-database — set up `.env.test.local` per this section *before* you first touch
-those paths, or the push will fail at `tests/bootstrap-integration.php`'s
-connectivity check. With `DB_HOST=db` (Docker) the gate runs the suite inside
-the `app` container, so the stack must be up when you push. See
-`scripts/README.md`'s "Git Hooks Management" section for when the gate runs
-and how to bypass it.
+**Blocking pre-push gate (#1439):** `.githooks/pre-push` checks changes to
+code that affects integration tests. The push fails if any check fails,
+including a connection to the test database. Set up `.env.test.local` before
+you change these files. Otherwise, the connectivity check in
+`tests/bootstrap-integration.php` fails during the push. With Docker, set
+`DB_HOST=db`. The gate runs the suite inside the `app` container, so start the
+stack before you push. See the "Git Hooks Management" section in
+`scripts/README.md` for the gate schedule and bypass instructions.
 
 ### Production Deployment
 
@@ -635,8 +629,8 @@ shred -vfz -n 3 .env.enc .env.key
 
 ## Code Usage
 
-Environment variables are loaded during application bootstrap and accessed via
-PHP's `$_ENV` superglobal:
+The application loads environment variables during bootstrap. PHP code accesses
+them through the `$_ENV` superglobal:
 
 ```php
 // Loading (in users/init.php, Phase 1.6)
@@ -673,17 +667,18 @@ configs and `scripts/playwright-auth-setup.js` — **not** by the app:
 - **Contents**: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD`
 - **Distribution**: Created locally, from the Playwright entries in `.env.example`
 - **Not here**: `DB_*`, `TURNSTILE_*`, `US_ENVIRONMENT` and other app
-  settings. The app never reads this file, so copies here have no effect
-  and go stale; they belong in `.env`. See
-  [Which File Is Read by What](#which-file-is-read-by-what).
+  settings. The app does not read this file. Copies here have no effect and
+  can become stale. Put these values in `.env`. See
+  [Which Tools Read Each File](#which-tools-read-each-file).
 
 ### .env.test.local File (Integration Tests Only)
 
-Holds the five `DB_*` keys for the disposable integration-test schema, read
-only by `tests/bootstrap-integration.php`. Create it from
-`.env.test.local.sample`; see "Test Database Isolation" above.
+This file holds the five `DB_*` keys for the disposable integration-test
+schema. Only `tests/bootstrap-integration.php` reads it. Create it from
+`.env.test.local.sample`. See "Test Database Isolation" above.
 
-**Important**: Never commit `.env`, `.env.local`, `.env.test.local`, or other environment files to version control. All are listed in `.gitignore`.
+**Important**: Do not commit `.env`, `.env.local`, `.env.test.local`, or other
+environment files. Git lists all of them in `.gitignore`.
 
 ## Security Requirements
 
@@ -696,10 +691,10 @@ only by `tests/bootstrap-integration.php`. Create it from
 
 ### API Key Security
 
-As of v2.22.0 the application uses no external map API keys. Map display uses
-self-hosted **MapLibre GL JS** with **VersaTiles** tile servers — no Google
-Maps key required. Location geocoding uses **Nominatim** (OpenStreetMap) which
-also requires no API key.
+As of v2.22.0, the application uses no external map API keys. It shows maps
+with self-hosted **MapLibre GL JS** and **VersaTiles** tile servers. The
+map does not need a Google Maps key. The app uses **Nominatim** (OpenStreetMap)
+for location geocoding. Nominatim does not need an API key.
 
 ### Database Security
 
@@ -709,42 +704,41 @@ also requires no API key.
 
 ## PHP Error Logging
 
-PHP errors, warnings, and fatals are logged to per-environment files on
-test and production. mod_php is the confirmed PHP SAPI on both servers.
+PHP logs errors, warnings, and fatal errors to separate files on test and
+production. Both servers use the mod_php SAPI.
 
 - **Test**: `/home/unibrain/php_error/test.elanregistry.org-php-error.log`
 - **Production**: `/home/unibrain/php_error/elanregistry.org-php-error.log`
 
-The destination is resolved at Apache request-time in the root `.htaccess`
-via an `HTTP_HOST`-conditional `RewriteRule` that sets an environment
-variable consumed by `php_value error_log %{ENV:PHP_ERROR_LOG}` — not by
-deploy-time templating, since `.htaccess` is committed once and deployed
-identically everywhere. See `.htaccess` (search `PHP_ERROR_LOG`) for the
-block.
+The root `.htaccess` file selects the log destination during each Apache
+request. An `HTTP_HOST`-conditional `RewriteRule` sets the environment
+variable that `php_value error_log %{ENV:PHP_ERROR_LOG}` uses. The deploy
+process does not change this value. Git tracks one `.htaccess` file and
+deploys it to every environment. Search `.htaccess` for `PHP_ERROR_LOG` to
+find this rule.
 
-The block is wrapped in `<IfModule mod_php.c>`, so it silently becomes a
-no-op if the server ever moves off mod_php (e.g. to PHP-FPM) — Apache skips
-unrecognized `IfModule` bodies without error. If error logs stop appearing
-after a server/PHP change, verify mod_php is still the active SAPI.
+The `<IfModule mod_php.c>` block does nothing if the server changes from
+mod_php to another SAPI, such as PHP-FPM. Apache skips unknown `IfModule`
+blocks without an error. If the error logs stop after a server or PHP change,
+check that the server still uses mod_php.
 
-Local MAMP development is unaffected and continues to use PHP's default
-error log location.
+Local MAMP development continues to use PHP's default error log location.
 
 ## Troubleshooting
 
 **Environment Loading Issues**:
 
-- Verify `.env` file exists and is readable by web server
-- Check file permissions: `ls -la .env` should show `-rw-------` (600)
-- Ensure `.env` file is not world-readable or group-readable
-- Verify ownership: `chown www-data:www-data .env`
+- Check that `.env` exists and the web server can read it.
+- Run `ls -la .env`. The permissions should show `-rw-------` (600).
+- Check that the file is not readable by other users or groups.
+- Set the owner with `chown www-data:www-data .env`.
 
 **Database Connection Issues**:
 
-- Verify credentials in `.env` are correct
-- Test database connection: use MySQL CLI to verify connectivity
-- Check database server accessibility from application host
-- Verify database user permissions (SELECT, INSERT, UPDATE, DELETE as needed)
+- Check that `.env` has the correct credentials.
+- Use the MySQL CLI to check the database connection.
+- Check that the application host can reach the database server.
+- Check the database user's permissions. It may need `SELECT`, `INSERT`, `UPDATE`, and `DELETE`.
 
 **Debug Environment Loading**:
 
@@ -760,5 +754,5 @@ if (empty($_ENV['DB_HOST'])) {
 - [vlucas/phpdotenv Documentation](https://github.com/vlucas/phpdotenv)
 - [ADR-014: Replace secure-env-php with phpdotenv](adr/ADR-014-replace-secure-env-php-with-phpdotenv.md)
 - [MapLibre GL JS Documentation](https://maplibre.org/maplibre-gl-js/docs/)
-- [VersaTiles Documentation](https://versatiles.org/) — tile server used for map display
+- [VersaTiles Documentation](https://versatiles.org/) — documentation for the tile server that provides map tiles
 - [Nominatim API Documentation](https://nominatim.org/release-docs/latest/api/Search/) — used for location geocoding (lat/lon lookup on car save)

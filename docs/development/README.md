@@ -14,23 +14,20 @@
 - [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md) — Request initialization sequence
 - [DATABASE.md](DATABASE.md) — Schema, tables, relationships
 - [ENVIRONMENT.md](ENVIRONMENT.md) — Environment variables, URLs, local DB access
-- [MAMP_TO_DOCKER.md](MAMP_TO_DOCKER.md) — Switching a checkout from MAMP to the Docker dev stack, and back
-- [TESTING_STRATEGY.md](TESTING_STRATEGY.md) — **Why** the suite is tiered and the
+- [TESTING_STRATEGY.md](TESTING_STRATEGY.md) — **Why** the suite has tiers and the
   UserSpice behaviors any new test must account for (commands live in
   [tests/README.md](../../tests/README.md))
 
 ## References
 
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — 107 audit logging constants
-- [USERSPICE_FUNCTIONS.md](USERSPICE_FUNCTIONS.md) — UserSpice framework function reference
+- [UserSpice framework guidance](../../usersc/plugins/ai_prompts/prompts/00_start_here.md.php) — read this before you build a custom solution
 - [STRICT_TYPE_HANDLING.md](STRICT_TYPE_HANDLING.md) — dbInt() and type helpers
 - [DATATABLES.md](DATATABLES.md) — DataTables configuration
 - [BACKUP_SYSTEM.md](BACKUP_SYSTEM.md) — BackupManager API
 
 ## Operations
 
-- [ISSUE_WORKFLOW.md](ISSUE_WORKFLOW.md) — Capture, planning, build, and ship
-  loops — signal labels, the theme gate, review rules, backlog hygiene
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Git remotes, CI checks, release procedures
 - [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) — Brevo setup and configuration
 - [FIX_SCRIPTS.md](FIX_SCRIPTS.md) — Admin fix/maintenance script guidelines

@@ -271,7 +271,7 @@ SaaS authentication providers with API/SDK integration.
 
 - **UserSpice**: <https://userspice.com>
 - **Page Loading Flow**: [docs/development/PAGE_LOADING_FLOW.md](../PAGE_LOADING_FLOW.md)
-- **UserSpice Functions Reference**: [usersc/plugins/ai_prompts/prompts/00_start_here.md.php](../USERSPICE_FUNCTIONS.md)
+- **UserSpice framework guidance**: [00_start_here.md.php](../../../usersc/plugins/ai_prompts/prompts/00_start_here.md.php)
 - **Coding Standards**: [docs/development/CODING_STANDARDS.md](../CODING_STANDARDS.md)
 - **Class Documentation**: [docs/development/CLASSES.md](../CLASSES.md)
 - **Error Handling**: [docs/development/ERROR_HANDLING.md](../ERROR_HANDLING.md)

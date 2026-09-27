@@ -9,8 +9,8 @@ working with code in this repository.
 
 - `CLAUDE.md` (this file) - Overview and quick reference
 - `docs/development/SYSTEM_OVERVIEW.md` - **What the registry does and for whom** —
-  capabilities by role, what is deliberately not built, and what is built but
-  broken. Read before designing any feature change.
+  capabilities by role, deliberate omissions, and existing features that do
+  not work. Read it before you design a feature change.
 - `docs/development/UI_STANDARDS.md` - **UI component standards** (color tokens, card hierarchy, component patterns) — read before any UI change
 - `docs/development/EMAIL_SYSTEM.md` - Brevo email plugin setup and configuration
 - `docs/development/CODING_STANDARDS.md` - Code quality requirements
@@ -26,7 +26,7 @@ working with code in this repository.
 
 **UserSpice context (AI Prompts plugin):** Before any UserSpice task, read the
 shipped prompts starting at:
-`usersc/plugins/ai_prompts/prompts/00_start_here.md.php.php`
+`usersc/plugins/ai_prompts/prompts/00_start_here.md.php`
 Then load ElanRegistry-specific augmentation from `custom_prompts/`:
 
 - `elanregistry_overrides` — six places ElanRegistry diverges from standard UserSpice (incl. the `$pageTitle`/`$pageDescription` page-metadata convention)
@@ -34,16 +34,16 @@ Then load ElanRegistry-specific augmentation from `custom_prompts/`:
 - `elanregistry_directories` — `app/` subtree, `$path` in `z_us_root.php`, parsers location
 - `elanregistry_database` — DB Explainer workflow and ElanRegistry-specific tables
 
-**As needed:** See [docs/README.md](docs/README.md) for the complete documentation
-index (error handling, classes, DataTables, CSS, testing, UserSpice functions,
-etc.). Always check `usersc/plugins/ai_prompts/prompts/00_start_here.md.php` before building
-custom solutions.
+**As needed:** See [docs/README.md](docs/README.md) for the full documentation
+index. It covers error handling, classes, DataTables, CSS, testing, and more.
+Read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php` before you build a
+custom solution.
 
 ## Architecture Overview
 
-This is a PHP web application for the Lotus Elan Registry hosted at
-<https://elanregistry.org>. Built on UserSpice 6 (<https://userspice.com>) for
-authentication, with custom car registry functionality. Cloudflare provides
+This PHP web application runs the Lotus Elan Registry at
+<https://elanregistry.org>. It uses UserSpice 6 (<https://userspice.com>) for
+authentication and custom code for car registry functions. Cloudflare provides
 edge caching and CDN for global users (US, EU, AU). **Cloudflare Rocket Loader
 and Email Obfuscation must remain disabled** — both inject inline scripts that
 are incompatible with the strict CSP nonce policy (v2.27.0+). Edge caching and
@@ -61,8 +61,8 @@ all other Cloudflare features work normally.
     validation), `contact/` (contact forms, auth-required), `shared/` (public endpoints:
     statistics, location search, `sitemap.xml`), `admin/` (admin-only settings updates).
     Most endpoints follow the `ApiResponse` JSON format — `shared/sitemap.php` is a
-    documented exception (XML output, no auth/CSRF/rate-limit, must stay freely
-    crawlable; see its file header).
+    documented exception. It returns XML and has no authentication, CSRF check,
+    or rate limit. Keep it open to search crawlers. See its file header.
   - `/app/views/` - Reusable view partials: `cars/` (car page components), `email/`
     (transactional email templates)
   - `/app/verify/` - Public vericode-authenticated pages (`verify_car.php`):
@@ -77,7 +77,7 @@ all other Cloudflare features work normally.
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
 - `/usersc/classes/` - Custom application classes (PSR-4: `ElanRegistry\` →
   `usersc/classes/`, `ElanRegistry\Exceptions\` → `usersc/classes/Exceptions/`)
-- `/tests/` - PHPUnit and Playwright tests: `unit/` (no DB; includes
+- `/tests/` - PHPUnit and Playwright tests: `unit/` (no DB, includes
   `unit/regression/`, tagged `#[Group('regression')]`), `integration/`
   (real DB), `playwright/` (browser), `manual/`
 
@@ -85,9 +85,10 @@ all other Cloudflare features work normally.
 
 - **Page Security**: All protected pages require `securePage($php_self)` check.
   See [GitHub Wiki: UserSpice Integration Guide](https://github.com/elan-registry/registry/wiki/Customization-and-Integration-Patterns).
-- **Role Hierarchy**: Two privileged roles — `admin` and `editor`. Most admin
-  pages are admin-only; some tools (e.g. data repair, image management) grant
-  access to both. Always check the issue scope before defaulting to admin-only.
+- **Role Hierarchy**: The privileged roles are `admin` and `editor`. Most admin
+  pages require the `admin` role. Some tools, such as data repair and image
+  management, also allow `editor` access. Check the issue scope before you
+  default to admin-only access.
 - **Car Image Storage**: `cars.image` column is a JSON array of bare filenames
   (e.g. `["abc123.jpg"]`). Files live at `userimages/{carid}/{filename}` with
   resized variants as `{basename}-resized-{size}.{ext}` (sizes: 100, 300, 768,
@@ -95,23 +96,23 @@ all other Cloudflare features work normally.
   `userimages/{carid}/` on success. On car merge, the `CarImageRelocator` moves
   all files (base + variants) from source to target car's directory, renaming on
   collision, and appends the source's filenames to the target's `cars.image`.
-  Use `CarImageProcessor` to decode; `CarRepository::updateImage()` to write;
-  `CarImageRelocator` for merge-time file relocation.
+  Use `CarImageProcessor` to decode images. Use
+  `CarRepository::updateImage()` to write image data. Use `CarImageRelocator`
+  to move image files during a merge.
 - **New PHP Directories**: Only add a directory to the `$path` array in
   `/z_us_root.php` when it contains files that call `securePage()`. Pure API
   endpoints, action handlers, and partials that do not call `securePage()` are
   **not** added — `app/api/cars/` and `app/api/shared/` are examples of this
-  pattern. (`app/api/contact/` is an exception: it contains files that call `securePage()` and
-  is therefore included.)
+  pattern. `app/api/contact/` is an exception. It contains files that call
+  `securePage()`, so add it to `$path`.
   New admin scripts go under `app/admin/scripts/fix/` (one-time migrations) or
   `app/admin/scripts/maintenance/` (repeatable maintenance). **After adding any
   new page or admin script, run `21-Fix-Page-Permissions.php` on test then prod
   to register the new path in UserSpice's permission table.**
-  All cron jobs must live in `users/cron/` — `cron.php`'s dispatcher hard-codes
-  that directory as the only path it will resolve a job's `file` column
-  against, so a job placed elsewhere cannot run. See
-  [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)
-  for the full contract before writing one.
+  Put all cron jobs in `users/cron/`. The `cron.php` dispatcher only looks for
+  job files in this directory. A job in another directory cannot run. Read the
+  [Cron Transport section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)
+  before you write a cron job.
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).
 - **Classes**: See [CLASSES.md](docs/development/CLASSES.md) for Car,
@@ -119,39 +120,44 @@ all other Cloudflare features work normally.
 
 **Template Architecture:**
 
-- Active template: `/usersc/templates/customizer/` with `elanregistry` child theme (Bootstrap 5.3.8,
-  UserSpice's own `users/css`/`users/js` copy — no separate `usersc/` Bootstrap copy; source maps
-  auto-vendored on every `git pull`/deploy via `scripts/vendor-bootstrap-maps.php`, see ADR-015)
-- jQuery is a UserSpice 6 dependency (`users/js/jquery.php`) — cannot be removed
-- ADRs: `docs/development/adr/` — update ADR-018 when changing frontend
-  dependencies (supersedes ADR-017, which supersedes ADR-015; Bootstrap
-  source-map vendoring above is still ADR-015's territory), ADR-016 for nav
-  changes, ADR-007 for CSP changes, ADR-019 when adding or removing
-  CSRF/rate-limiting on public API endpoints
+- The active template is `/usersc/templates/customizer/`. It uses the
+  `elanregistry` child theme and Bootstrap 5.3.8. The theme uses UserSpice's
+  copies in `users/css` and `users/js`. Do not add another Bootstrap copy to
+  `usersc/`. The repository vendors source maps on each `git pull` and deploy
+  with `scripts/vendor-bootstrap-maps.php`. See ADR-015.
+- UserSpice 6 requires jQuery from `users/js/jquery.php`. Keep it.
+- Architecture decisions are in `docs/development/adr/`. Update ADR-018 when
+  you change frontend dependencies. ADR-018 supersedes ADR-017, which
+  supersedes ADR-015. ADR-015 still covers Bootstrap source-map vendoring.
+  Update ADR-016 for navigation changes and ADR-007 for CSP changes. Update
+  ADR-019 when you enable or disable CSRF or rate limiting on public API endpoints.
 
 **Template Customization Rules:**
 
-The following directories are **upstream UserSpice — do NOT modify** any files
-except those explicitly listed as project-owned:
+The following directories contain upstream UserSpice files. Do not change
+those files, except for the project-owned files listed below.
 
-| Directory                  | Status                                               | Project-owned exceptions (tracked by git)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/users/`                  | Upstream framework                                   | `users/cron/` — `cron.php` carries project logging/hook calls (see [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)) and is where all job files must live (see the cron bullet below); `users/init.php`'s `$GLOBALS['config']` array — reads DB and session/cookie-naming values from `.env` (`DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, `SESSION_NAME`/`TOKEN_NAME`/`REMEMBER_COOKIE_NAME`); this is config wiring, not framework logic; everywhere else in `/users/`, extend via `usersc/classes/` instead |
-| `usersc/templates/`        | Upstream templates                                   | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` and `customizer/assets/child_themes/dashboard.php` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead                                                                                                                                                                                           |
-| `usersc/plugins/`          | Upstream plugins                                     | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `usersc/user_settings.php` | Project-owned (customizes `users/user_settings.php`) | the entire file is project-owned — make changes here rather than in `users/user_settings.php`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Directory | Status | Project-owned files and rules |
+| --- | --- | --- |
+| `/users/` | Upstream framework | `users/cron/` contains project logging and hook calls in `cron.php`. Put all cron jobs in this directory. See the [Cron Transport section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager). The `$GLOBALS['config']` array in `users/init.php` reads database and session values from `.env`. These values include `DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`, `SESSION_NAME`, `TOKEN_NAME`, and `REMEMBER_COOKIE_NAME`. This is project configuration. Keep all other files in `/users/` unchanged. Extend the framework through `usersc/classes/`. |
+| `usersc/templates/` | Upstream templates | Project files include `customizer/file_nav_custom.php`, the `elanregistry*` and `dashboard.php` child themes, and `customizer.css`. UserSpice requires `customizer/navigation.php`, so Git tracks it. Do not edit it. Add navigation content to `file_nav_custom.php`. |
+| `usersc/plugins/` | Upstream plugins | Project files include `hooker/hooks/` and `ai_prompts/custom_prompts/`. |
+| `usersc/user_settings.php` | Project-owned override for `users/user_settings.php` | Make changes in this file. Do not change `users/user_settings.php`. |
 
-- To add new behavior, extend via custom classes in `usersc/classes/` under the
-  `ElanRegistry\` namespace instead of modifying `/users/`.
-- To add content to the footer without touching upstream files, inject via JS
-  in `usersc/includes/footer.php` (included by UserSpice after the footer renders).
-- To add content to the header/nav, use `usersc/templates/customizer/file_nav_custom.php`.
+- To add behavior, create a custom class in `usersc/classes/` under the
+  `ElanRegistry\` namespace. Do not change files in `/users/`.
+- To add footer content, add JavaScript to `usersc/includes/footer.php`.
+  UserSpice includes this file after it renders the footer.
+- To add header or navigation content, edit
+  `usersc/templates/customizer/file_nav_custom.php`.
 
 ## Development Setup
 
 ### System Requirements
 
-- PHP 8.2.29+ required by `composer.json` (compatibility floor); local dev, CI, test, and prod all target 8.4.x (prod confirmed on 8.4.25) — see `ENVIRONMENT.md` — PHP Version for details
+- `composer.json` requires PHP 8.2.29 or later. This is the compatibility
+  floor. Local development, CI, test, and production use PHP 8.4.x. Production
+  uses PHP 8.4.25. See the PHP Version section in `ENVIRONMENT.md`.
 - MySQL 8.0+
 - Uses `vlucas/phpdotenv` for environment variable loading (plaintext `.env`, `chmod 600`)
 
@@ -218,7 +224,9 @@ Run `./scripts/setup-git-hooks.sh` once per developer. Bypass with `git commit -
 ## Essential Development Guidelines
 
 See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for PHP 8+ type requirements, security standards, and PHPDoc.
-Check [USERSPICE_FUNCTIONS.md](usersc/plugins/ai_prompts/prompts/00_start_here.md.php) before building custom solutions — UserSpice likely has it already.
+Read the [UserSpice framework guidance](usersc/plugins/ai_prompts/prompts/00_start_here.md.php)
+before you build a custom solution. UserSpice may already provide the required
+function.
 
 ### Error Handling
 
@@ -236,22 +244,26 @@ All AJAX endpoints use `ApiResponse` (PHP) + `ElanRegistryAPI` (JS) — response
 
 ### Server Environment Globals (v2.13.0+)
 
-Never use `$_SERVER` directly. Validated globals (`$php_self`, `$is_https`, `$host`, `$method`, `$request_uri`,
-`$current_url`, `$current_origin`, `$remote_addr`, `$referer`, `$user_agent`) are initialized in
-`usersc/includes/server_globals.php`. See [PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md).
+Never use `$_SERVER` directly. The file `usersc/includes/server_globals.php`
+initializes these safe globals: `$php_self`, `$is_https`, `$host`,
+`$method`, `$request_uri`, `$current_url`, `$current_origin`, `$remote_addr`,
+`$referer`, and `$user_agent`. See
+[PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md).
 
 ### Code Quality
 
 **ALWAYS run before completing any task:**
 
-- Use `software-developer` agent for changes spanning 3+ files or introducing new patterns. For targeted single-file fixes, edit directly.
+- Use the `software-developer` agent when a change affects three or more files
+  or introduces a new pattern. Edit a single-file task directly.
 - Run `/security-review` when changes touch forms, SQL queries, auth, or user input
-- Fix any linting or type errors before considering the task complete (pre-commit hooks run PHPStan automatically on staged files)
+- Resolve lint or type errors before you complete the task. Pre-commit hooks
+  run PHPStan on staged files.
 - Run appropriate test suites for modified functionality
 
-**PHPStan hygiene (fix-when-you-touch-it):** When modifying any PHP file in
+**PHPStan hygiene:** When you change any PHP file in
 `app/`, `usersc/`, or any other path listed in `phpstan.neon`, run PHPStan on
-it and fix **all** errors it reports (the baseline silently suppresses
+it and resolve **all** errors it reports (the baseline silently suppresses
 pre-existing ones, so anything reported is new):
 
 ```bash
@@ -259,8 +271,9 @@ vendor/bin/phpstan analyse <file>   # check the file you touched
 composer phpstan:baseline           # regenerate baseline after fixing
 ```
 
-Pre-existing baseline errors are tracked debt — clear them for files you touch.
-`reportUnmatchedIgnoredErrors: true` ensures CI rejects stale entries once fixed.
+Treat pre-existing baseline errors as debt. Resolve them in files you change.
+When you resolve an error, `reportUnmatchedIgnoredErrors: true` makes CI reject
+the stale baseline entry.
 See `docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene.
 
 ### Playwright Test Maintenance
@@ -269,27 +282,29 @@ When adding, moving, removing, or renaming any page, update tests **in the same 
 
 - **Public pages** → add or update an e2e smoke test in `tests/playwright/e2e/not-logged-in.spec.js`
 - **Owner/authenticated pages** → add or update a local Playwright test in `tests/playwright/`
-- **Removed or moved pages** → update any test referencing the old path — stale paths silently test 404s without failing
-- **Moved or renamed DOM elements/classes and JS globals** → update every guard
+- **Deleted or moved pages** → update any test that uses the old path. A stale path can test a 404 without failing.
+- **Moved or renamed DOM elements, classes, and JS globals** → update every guard
   that depends on them **in the same PR**. A defensive guard (a bare `return`
   after `test.skip('reason')`, or `if (await x.count() > 0) { assert }` with no
-  `else`) silently absorbs a moved class or renamed global — the test passes
-  having run zero real assertions, and CI never goes red (#1949, #1950). Prefer
-  asserting directly; when a guard is genuinely needed for environmental
-  variation (missing local credentials, absent fixture data), use the two-arg
-  `test.skip(condition, reason)` form with `reason` naming the actual cause,
-  not the symptom — this reports as `skipped` in CI, not a false `passed`.
-  The local `localRules/require-skip-reason` ESLint rule enforces the
-  two-argument form automatically (flags `test.skip(...)` or
+  `else`) can hide a moved class or renamed global. The test can pass without
+  running an assertion. CI will not report a failure (#1949, #1950). Assert
+  directly when possible. Use a guard only when the environment requires it,
+  such as when local credentials or fixture data are missing. In that case,
+  use the two-argument form `test.skip(condition, reason)`. Set `reason` to the
+  cause, not the symptom. CI then reports the test as skipped, not passed.
+  The `localRules/require-skip-reason` ESLint rule requires two arguments for
+  `test.skip(...)` or
   `testInfo.skip(...)` calls with fewer than 2 arguments).
 
-Run `npm run test:e2e` to verify public pages against production. See `playwright.config.prod.js` for config.
+Run `npm run test:e2e` to check public pages against production. See
+`playwright.config.prod.js` for the configuration.
 
 ### Security Scanning (Semgrep)
 
-Semgrep runs automatically on every PR (GitHub App Managed Scan). New findings fail the `semgrep-cloud-platform/scan`
-check. See [QUICK_REFERENCE.md](docs/development/QUICK_REFERENCE.md#security-scanning-semgrep) for triage workflow
-and known false positive patterns.
+GitHub App Managed Scan runs Semgrep on every pull request. The
+`semgrep-cloud-platform/scan` check fails when the scan finds new issues. See
+[QUICK_REFERENCE.md](docs/development/QUICK_REFERENCE.md#security-scanning-semgrep)
+for triage steps and known false positive patterns.
 
 ## Developer Workflow
 
@@ -319,27 +334,27 @@ Most work follows a structured milestone lifecycle with these commands:
 - `/start-issue` handles branch creation, research, and planning, ending in
   an approved plan file at `docs/plans/issues/issue-NNN-slug.md` — it never
   implements, commits, or pushes.
-- `/execute-plan` reads that approved plan file and does the full
-  implementation cycle (implement, test, security/architect review),
-  re-verifying the plan's checklist against actual repo state so it can be
-  resumed or re-run safely — it also **does not commit or push**.
-- `/address-pr-comments` fetches all CI check annotations and reviewer comments
-  after a PR is pushed, triages blocking vs. advisory findings, fixes blocking
-  items with a software-developer agent, and re-verifies CI before handoff
-- Each issue gets its own PR targeting the milestone branch (squash-merged by
-  `/finish-issue` for clean history)
-- `/finish-milestone` reviews the milestone branch (security, multi-agent,
-  aggregate deep review) and updates release notes/wiki/architecture docs —
-  it ends before any PR exists
+- `/execute-plan` reads the approved plan file and implements the full plan.
+  It tests the changes and requests security and architecture reviews. It also
+  checks the plan against the current repository state so you can resume or
+  rerun it safely. It **does not commit or push**.
+- `/address-pr-comments` reads CI annotations and reviewer comments after you
+  push a PR. It sorts findings into blocking and advisory groups. It assigns
+  blocking resolutions to the `software-developer` agent and checks CI before handoff.
+- Create one PR for each issue. Target the milestone branch. `/finish-issue`
+  squash-merges the PR to keep the history clean.
+- `/finish-milestone` reviews the milestone branch for security and other
+  issues. It updates the release notes, wiki, and architecture documents. It
+  stops before it creates a PR.
 - `/review-milestone` creates the final PR to `main` with all closing
-  keywords, verifies the CI milestone review posted, and confirms CI is
-  fully green
-- `/release-milestone` merges, tags, and publishes — deployment to test/prod
-  is a separate manual step
+  keywords. It checks for the CI milestone review and requires all CI checks
+  to pass.
+- `/release-milestone` merges, tags, and publishes the release. Deploy to test
+  and production in a separate manual step.
 
 ### Ad-Hoc Work (no GitHub issue)
 
-For quick fixes, refactoring, or exploratory work not tied to a milestone:
+For small tasks, refactoring, or exploratory work not tied to a milestone:
 
 ```text
 /feature-dev        — Guided implementation with codebase exploration
@@ -355,26 +370,28 @@ and architecture agents.
 
 ### Planning Work
 
-- Working documents (sprint plans, triage reports, FRDs, per-issue plan
-  files) live in `docs/plans/`, which is **gitignored** — this repo is public
-  and these are private scratch. Nothing under `docs/plans/` is ever
-  committed; deleting a plan is a plain `rm`, not a `git rm`. Delete a plan
-  once its decisions are applied to GitHub milestones/issues — the issues,
-  code, and committed docs are then the source of truth
+- Store sprint plans, triage reports, FRDs, and per-issue plan files in
+  `docs/plans/`. Git ignores this directory because the repository is public
+  and these files are private working notes. Never commit files from this
+  directory. After you apply a plan to GitHub milestones or issues, run `rm`
+  on the plan. Do not run `git rm`. GitHub issues, code, and committed
+  documents then provide the source of truth.
 - **Read `docs/plans/README.md` before reading, writing, or deleting
   anything under `docs/plans/`.** It is the authoritative layout: which
   subdirectory each kind of document goes in, which command writes it, when
-  it is deleted, and which current files are sensitive (e.g. spike captures
-  containing member email addresses). Because it is gitignored it exists only
-  on machines that already hold plans; on a fresh clone, use this summary:
+  you delete it, and which current files contain sensitive data, such as spike
+  captures with member email addresses. Git ignores this directory. It exists
+  only on machines that already hold plans. On a fresh clone, use this summary:
   `issues/issue-<NNN>-<slug>.md` (per-issue plans), `sprints/<version>.md`,
   `features/<name>/` (FRDs with mockups), `spikes/<issue>-<slug>/`,
-  `analysis/` (one-off reports), `summaries/` (`/summary` HTML pages — write
-  them here, not to the repo root), `releases/` (deploy sheets); only
-  `README.md` and `HANDOFF.md` sit at the top level. Nothing new goes at the
-  top level — if a document fits no subdirectory, it goes in `analysis/`
-- For milestone planning, use the `senior-product-manager`, `senior-architect`,
-  and `security-reviewer` agents in parallel for comprehensive analysis
+  `analysis/` (one-off reports), `summaries/` (`/summary` HTML pages), and
+  `releases/` (deploy sheets). Put summary pages in `summaries/`, not in the
+  repository root. Only `README.md` and `HANDOFF.md` belong at the top level.
+  Put every other document in a subdirectory. Use `analysis/` when no other
+  subdirectory fits.
+- For milestone planning, ask the `senior-product-manager`,
+  `senior-architect`, and `security-reviewer` agents to analyze the work in
+  parallel.
 
 ### Other Commands
 
@@ -386,7 +403,7 @@ and architecture agents.
 /sprint-status       — Render the current milestone's derived state: theme, issue status, blocked items
 /architecture-update — Full wiki architecture documentation refresh
 /revise-claude-md    — Update CLAUDE.md with session learnings
-/clean_gone          — Delete local branches removed from remote
+/clean_gone          — Prune local branches that no longer exist on remote
 ```
 
 ### Release Notes
@@ -398,23 +415,24 @@ at `docs/development/RELEASE_NOTES_TEMPLATE.md`.
 
 - **Users**: Authentication/session context (UserSpice framework, `users` table)
 - **Owners**: Car registry business domain (UI elements, business logic)
-- Use `(new Owner($userId))->data()` for combined user+profile data access (`getUserWithProfile()` was removed in v2.26.2)
+- Use `(new Owner($userId))->data()` to access user and profile data together.
 - See [CLASSES.md](docs/development/CLASSES.md) for Owner patterns
 
 ## Quick Deployment Reference
 
-See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures. **Critical:**
-deploying is `git push prod vX.Y.Z` then `git push prod 'vX.Y.Z^{commit}:main'` — this hits
-the **live site**. Never confuse `prod` with `origin`, and never push bare `main` to a deploy
-remote (it may carry commits merged after the tag).
+See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for full instructions.
+**Critical:** Use `git push prod vX.Y.Z`, then run
+`git push prod 'vX.Y.Z^{commit}:main'`. These commands deploy to the **live
+site**. Do not confuse `prod` with `origin`. Do not push bare `main` to a
+deploy remote because it may include commits that merged after the tag.
 
 ## GitHub Repository
 
 - **GitHub owner/repo:** `elan-registry/registry` (not `jimboone/elan-registry`)
-- Use `gh` CLI for GitHub operations — the MCP GitHub tools require the correct
+- Use `gh` CLI for GitHub operations. The MCP GitHub tools require the matching
   owner/repo pair above
 - Milestone descriptions should state the goal, not list issue numbers
-- Remove closed issues from milestones to keep progress tracking accurate
+- Clear closed issues from milestones to keep progress tracking accurate
 
 **gh CLI gotchas:**
 
@@ -424,19 +442,18 @@ remote (it may carry commits merged after the tag).
 
 ## GitHub Wiki
 
-The wiki is a **separate git repository**, cloned once per machine outside this
-repo. Its path is machine-specific — look it up in `.claude.local.md` (copy
-`.claude.local.md.example` to `.claude.local.md` and fill it in if you haven't
-yet).
+The wiki is a **separate Git repository**. Clone it once per machine outside
+this repository. The path varies by machine. Find it in `.claude.local.md`.
+If that file does not exist, copy `.claude.local.md.example` to
+`.claude.local.md` and add the path.
 
 **CRITICAL:** ALWAYS use that one permanent clone. NEVER clone to `/tmp/`, a
 worktree, or any other temporary location.
 
-The wiki clone uses a two-branch workflow: edit on `master-upload`, then
-fast-forward that into `master` (what readers see on github.com) — never
-edit or push `master` directly. Publish with the wiki repo's own
-`/publish-wiki` command rather than driving git by hand; substitute your own
-clone path for `<wiki-clone>`:
+The wiki uses two branches. Edit `master-upload`, then fast-forward it to
+`master`. Readers see the `master` branch on GitHub. Do not edit or push
+`master` directly. Use the wiki repository's `/publish-wiki` command to
+publish. Replace `<wiki-clone>` with the path to your clone:
 
 ```bash
 cd <wiki-clone>
@@ -447,8 +464,8 @@ git add <file>.md
 git commit -m "docs: <description>"
 ```
 
-Then run `/publish-wiki` (from within the wiki clone) to push
-`master-upload`, fast-forward `master`, push that, and verify. If driving it
-manually, the publish step is `git merge master-upload --ff-only` — if that
-fails, stop; a non-fast-forward means `master` has diverged and needs
-manual review, not a forced merge.
+Run `/publish-wiki` from the wiki clone. The command pushes `master-upload`,
+fast-forwards `master`, pushes `master`, and checks the result. To publish
+manually, run `git merge master-upload --ff-only`. If this command fails,
+stop and review the branch history. The branches do not fast-forward. Do not
+force the merge.
