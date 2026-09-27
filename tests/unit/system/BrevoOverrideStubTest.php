@@ -77,6 +77,8 @@ final class BrevoOverrideStubTest extends TestCase
         $this->assertFileDoesNotExist($path);
     }
 
+    // Reads the gitignored upstream sendinblue plugin, which CI never has.
+    #[Group('requires-upstream-install')]
     public function test_sweep_realOverrideCopy_isKeptAndReturnsFalse(): void
     {
         $source = dirname(__DIR__, 3) . '/usersc/plugins/sendinblue/override.RENAME.php';
