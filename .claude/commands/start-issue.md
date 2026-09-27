@@ -208,7 +208,7 @@ Before asking questions, launch Explore agents to understand the codebase contex
 - **Medium:** 1-2 Explore agents — one per distinct subsystem touched.
 - **Large:** 2-3 Explore agents in parallel — one per subsystem, one for patterns/conventions, one for tests.
 
-Each Explore agent should check the relevant docs (USERSPICE_FUNCTIONS.md, CLASSES.md,
+Each Explore agent should check the relevant docs (the UserSpice AI prompts in `usersc/plugins/ai_prompts/`, CLASSES.md,
 CODING_STANDARDS.md, ERROR_HANDLING.md, DATABASE.md) only when those areas are plausibly
 affected — don't blanket-read all docs for every issue.
 
@@ -305,7 +305,7 @@ and your answers. I'll ask clarifying questions as I refine the approach."
 4. **Verify UserSpice Integration** (Step 7.1): Before finalizing the approach,
    check if the solution duplicates existing UserSpice functionality:
 
-   - Review USERSPICE_FUNCTIONS.md for relevant framework functions
+   - Read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php` and the ElanRegistry overrides in `custom_prompts/` for relevant framework functions
    - Ask: "Does UserSpice provide this functionality already?"
    - If yes: Leverage UserSpice instead of custom implementation
    - If no: Verify the custom approach doesn't conflict with UserSpice patterns

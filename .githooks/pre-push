@@ -177,8 +177,8 @@ _integration_cache_key() {
     db_name="$(printf '%s' "$db_name" | tr -d '\r"'"'" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     [ -z "$db_name" ] && return 0
 
-    # The runner is part of the key: MAMP_TO_DOCKER.md keeps DB_NAME when
-    # switching DB_HOST to Docker, so tree + DB_NAME alone would let a host
+    # The runner is part of the key: switching DB_HOST to Docker keeps
+    # DB_NAME, so tree + DB_NAME alone would let a host
     # pass skip the first in-container run of the same tree (#2171 review).
     printf '%s %s %s\n' "$tree" "$db_name" "$(_integration_runner)"
 }
