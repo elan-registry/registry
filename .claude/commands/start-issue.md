@@ -252,9 +252,32 @@ When you do launch the PM agent, provide: issue details, Explore results, and sp
 concerns. Ask it to evaluate: completeness, acceptance criteria gaps, decomposition needs,
 and questions to ask the user.
 
-After any PM input, interview the user using AskUserQuestion. Ask only non-obvious
-questions — scope clarity, approach decisions, edge case handling. When providing options,
-note best practice or industry standard.
+After any PM input, interview the user with the **round method** below. Step 7
+uses the same method.
+
+#### The round method
+
+- **Facts are your job. Decisions are the user's.** Never ask the user for a
+  fact you can find: file contents, callers, schema, current behavior, git
+  history. Look it up, or send an Explore agent. Ask only for decisions:
+  scope, approach, trade-offs, edge-case policy.
+- **Ask the frontier, one round at a time.** The frontier is every open
+  decision whose prerequisites are already settled. Ask all of it in one
+  AskUserQuestion call (up to 4 questions; if more are ready, ask the rest
+  in the next round). Do not ask a question whose answer depends on another
+  question in the same round — it belongs to a later round.
+- **Recommend an answer for each question.** Put your recommended option
+  first with "(Recommended)" in its label. Say in its description why, and
+  name the best practice or industry standard where one exists.
+- **Recompute after each round.** Each answer settles decisions and opens
+  new ones. If an Explore agent is still running, hold back only the
+  questions that depend on its result. Ask the rest now.
+- **Stop when the frontier is empty.** Every open decision is either answered
+  or written down as a stated assumption. Before you write the plan (Step 9),
+  list any assumptions in one line each so the user can correct them.
+- **Small issues:** usually one round of one or two questions, or none.
+
+(Adapted from mattpocock/skills `grilling`, MIT.)
 
 **If the PM agent recommends issue decomposition**, discuss with the user before proceeding.
 
@@ -270,27 +293,16 @@ and your answers. I'll ask clarifying questions as I refine the approach."
 1. **Deepen research as needed**: Launch additional Explore or general-purpose
    agents for specific questions that arise during planning.
 
-2. **Ask clarifying questions ONE AT A TIME as you discover them**:
+2. **Keep interviewing in rounds** (the round method, Step 6): planning
+   opens new decisions — two workable approaches, an unclear scope edge, two
+   existing patterns to choose from, a dependency on another component (fix
+   it here, or file a separate issue?). Add each one to the frontier. Settle
+   the facts yourself first, then ask the next round.
 
-   - When you find multiple approaches: "I found that we could implement this
-     using [Approach A] or [Approach B]. Which would you prefer?"
-   - When scope is unclear: "Should this feature also handle [related scenario]?"
-   - When you need preferences: "I see we use [Pattern X] in some places and
-     [Pattern Y] in others. Which should I follow for this issue?"
-   - When dependencies are involved: "This change will affect [Component X].
-     Should I update it as part of this issue or create a separate issue?"
-   - When requirements need clarification: "The issue mentions [Feature]. Should
-     this include [specific behavior]?"
-   - When providing options, tell me what is the best known practice or the
-     industry standard.
+3. **Continue research after each round**: use the answers to direct the next
+   Explore or general-purpose agent.
 
-3. **Continue research after each answer**: Use their responses to guide your
-   exploration and planning.
-
-4. **Ask follow-up questions as needed**: Don't batch questions - ask them
-   naturally as you work through the planning process.
-
-5. **Verify UserSpice Integration** (Step 7.1): Before finalizing the approach,
+4. **Verify UserSpice Integration** (Step 7.1): Before finalizing the approach,
    check if the solution duplicates existing UserSpice functionality:
 
    - Review USERSPICE_FUNCTIONS.md for relevant framework functions
@@ -300,7 +312,7 @@ and your answers. I'll ask clarifying questions as I refine the approach."
 
    Document the UserSpice integration decision in your plan.
 
-6. **Assess Database and Security Impacts** (Step 7.2): For issues that may
+5. **Assess Database and Security Impacts** (Step 7.2): For issues that may
    affect the database, security, or sensitive operations, ask these questions:
 
    - Does this change affect database schema, triggers, or audit trails?
@@ -336,7 +348,7 @@ and your answers. I'll ask clarifying questions as I refine the approach."
    This analysis will be included in the implementation plan and highlighted in
    the PR description.
 
-7. **Consult specialized agents** (Step 7.3 — Medium/Large only):
+6. **Consult specialized agents** (Step 7.3 — Medium/Large only):
 
    **Skip this step for Small issues.** The architect reviews code after implementation, not plans.
 
@@ -361,7 +373,7 @@ and your answers. I'll ask clarifying questions as I refine the approach."
    post-implementation, inside `/execute-plan`, when there is actual code to
    review — never against a plan.
 
-8. **Incorporate agent feedback into the plan** (Step 7.4): Merge feedback
+7. **Incorporate agent feedback into the plan** (Step 7.4): Merge feedback
    into a single comprehensive plan. Include sections only for agents that
    were consulted:
    - **Bug Escape Analysis** (from Step 7.2.5, if bug issue)
@@ -503,7 +515,8 @@ rule — both apply throughout, not only at Step 9.
   verify yourself. When it's a judgment call, a preference, or genuinely
   ambiguous scope, use AskUserQuestion — don't silently pick an answer either
   way. Never present something as settled without having done one of the two.
-- **Ask questions ONE AT A TIME** - wait for each answer before asking the next
+- **Ask in rounds** (Step 6's round method) - ask every ready decision at once,
+  each with a recommended answer, then wait for the answers before the next round
 - **Continue asking questions WHILE IN PLAN MODE** - don't wait until
   after plan mode
 - **Use AskUserQuestion tool** for every clarifying question, hand-off choice,

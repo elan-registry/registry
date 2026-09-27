@@ -19,7 +19,7 @@ working-tree-only reviews miss.
 Run this before pushing or creating a PR.
 
 **Review aspects (optional):** `$ARGUMENTS`  
-Available: `code` | `errors` | `comments` | `tests` | `simplify` | `all` (default)
+Available: `code` | `errors` | `comments` | `tests` | `spec` | `simplify` | `all` (default)
 
 ---
 
@@ -133,6 +133,7 @@ Based on `$ARGUMENTS` (default: all applicable):
 | `comments` | `comment-analyzer` + independent fact-check (Step 4.5) | If PHPDoc, inline comments, or docstrings changed |
 | `tests` | `pr-test-analyzer` | If test files changed or new features added |
 | `simplify` | `code-simplifier` | After all other agents pass; final polish only |
+| `spec` | fresh `general-purpose` agent (Step 4.6) | Always, when the branch maps to an issue |
 
 These are the project agents in `.claude/agents/` (the same ones
 `/execute-plan` Step 7 and `/finish-milestone` Step 9.7 use). They carry the
@@ -242,6 +243,32 @@ new information, since they simply confirm what the diff already claimed.
 
 ---
 
+## Step 4.6: Spec check (if `spec` applies)
+
+The agents above check the code against the project's standards. None of
+them checks that the diff does what the issue asked for. Code can follow
+every standard and still implement the wrong thing, and the reverse is also
+true. So this check runs as a separate lane, and its findings stay separate.
+
+1. Find the spec. Run `scripts/check-plan-state.sh`. It derives the issue
+   number from the branch and finds the plan file. Then read the issue with
+   `gh issue view <N> -R elan-registry/registry --json title,body` and read
+   the plan file's Implementation Checklist and acceptance criteria. If no
+   issue maps to the branch, skip this step and write "Spec: no issue found"
+   in Step 5.
+2. Launch one fresh agent (`subagent_type: "general-purpose"`, not `fork`,
+   in parallel with Step 4) with the diff command, the commit list, the issue
+   text, and the plan file path. Give it this brief:
+
+> "Compare this diff with the issue and its plan. Report: (a) each
+> requirement or acceptance criterion that is missing or partly done;
+> (b) each change in the diff that the issue did not ask for (scope creep);
+> (c) each requirement that looks done but where the implementation looks
+> wrong. Quote the issue or plan line for each finding. Do not review code
+> style — other reviewers do that. Under 400 words."
+
+---
+
 ## Step 5: Aggregate and triage findings
 
 Collect all agent findings and categorize them:
@@ -270,6 +297,11 @@ Output a triage table:
 State actual counts, never "passed" alone. If a suite did not run, say so
 here and why — this table is how the reviewer tells what was and was not
 executed.
+
+### Spec (Step 4.6 — reported separately, not merged into the tiers below)
+
+<missing or partial requirements, unrequested changes, wrong implementations,
+each with the quoted issue/plan line — or "Spec: no issue found">
 
 ### Blocking (must fix)
 | Agent | File:Line | Issue |

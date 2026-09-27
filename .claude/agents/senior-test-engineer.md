@@ -40,6 +40,26 @@ use `ElanRegistry\Input::raw()` for values bound for the database. Never use
 4. Consider boundary conditions, error handling, security implications, and data validation
 5. Ensure tests are deterministic, isolated, and fast where possible
 
+### Test Anti-Patterns (reject these in tests you write or review)
+
+- **Tautological:** the expected value is computed the same way the code
+  computes it, so the test passes by construction. Take expected values from
+  an independent source: a known literal, a worked example, or the issue.
+  Bad: `assertSame(array_sum($prices), $cart->total())`. Good:
+  `assertSame(15, $cart->total())` for prices 10 and 5.
+- **Coupled to the implementation:** the test mocks internal collaborators,
+  calls private methods, or checks through a side channel when the public
+  interface can show the result. The sign: the test fails after a refactor
+  that did not change behavior. (A query against a live test database *is*
+  the right check for SQL, triggers, and `*_hist` audit rows — that is the
+  behavior under test.)
+- **A test that cannot fail:** a guard that skips or returns before the
+  assertion (see `.claude/rules/playwright-tests.md`, #1949, #1950).
+- **Horizontal slicing:** writing all tests first, then all code. Work one
+  behavior at a time: one failing test, the code to pass it, then the next.
+
+(Adapted from mattpocock/skills `tdd`, MIT.)
+
 ### When Writing PHPUnit Tests
 - Follow PHP 8+ strict typing with `declare(strict_types=1)`
 - Use descriptive test method names: `test_methodName_condition_expectedResult()`

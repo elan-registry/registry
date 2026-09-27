@@ -109,9 +109,18 @@ use `ElanRegistry\Input::raw()` for values bound for the database. Never use
    exceptions, `ApiResponse`, `LogCategories`, `ElanRegistry\Input`,
    input validation, CSRF checks, PHPDoc, and tests. (Steps 4 and 5 are
    adapted from ponytail, MIT: https://github.com/DietrichGebert/ponytail.)
-5. **Bug fix = root cause**: A bug report names a symptom. Before you edit a
-   function, grep every caller. Fix the shared function once. Do not patch
-   only the path that the issue names, because the other callers stay broken.
+5. **Bug fix = root cause**: A bug report names a symptom.
+   - First build one command that fails on *this* bug and shows the user's
+     exact symptom: a PHPUnit test, a `curl` against the dev server, or a
+     Playwright script. Run it and see it fail before you form a theory.
+     If you cannot build one, stop and say what you tried.
+   - Before you edit a function, grep every caller. Fix the shared function
+     once. Do not patch only the path that the issue names, because the
+     other callers stay broken.
+   - Turn the failing command into the regression test, then run it again
+     to see it pass. Remove any temporary debug output.
+   (The failing-command rule is adapted from mattpocock/skills
+   `diagnosing-bugs`, MIT.)
 6. **Security check**: After writing code, review it for injection, XSS,
    CSRF, and other OWASP vulnerabilities. Fix immediately if found.
 7. **Clean up**: Remove dead code completely. No `_unused` renames, no
