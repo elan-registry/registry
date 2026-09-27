@@ -226,6 +226,16 @@ See `tests/README.md`'s "Provisioning a Test Schema" and "Database Fixtures"
 sections for the full walkthrough, seed class list, and what
 `tests/bootstrap-integration.php` verifies vs. seeds itself.
 
+## HTTP Integration Tests (`PhpBuiltinServer`)
+
+Some integration tests need a real HTTP layer: genuine `php://input`, real `$_SERVER` values,
+response headers, and status codes. **Never hand-roll `proc_open('php -S …')` in a test.** Use
+`PhpBuiltinServer`. Separately, the integration bootstrap uses `BrevoOverrideStub` to remove a Brevo
+`override.php` stub leaked by a crashed run. See
+[`tests/README.md`'s "Test Support Helpers"
+section](../../tests/README.md#test-support-helpers-testssupport)
+for usage and leak recovery of both.
+
 ## Related Work
 
 Framework-divergence documentation (which upstream UserSpice files this

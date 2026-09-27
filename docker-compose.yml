@@ -1,26 +1,23 @@
-# Docker dev environment (issue #2116).
+# Docker dev environment
 #
 # LOCAL DEVELOPMENT ONLY. See docs/development/ENVIRONMENT.md's "Docker Dev
 # Environment" section. Per-checkout host ports:
 #
 #   checkout    site   phpMyAdmin   mock-brevo   landing page
-#   Registry    8001   8081         8091         8101
-#   Registry2   8002   8082         8090         8102   (the defaults below)
-#   next        8003   8083         8092         8103
-#
-# Coexists with MAMP: MAMP keeps serving each checkout on 9999/8889
-# unaffected. This stack runs in parallel on the ports below.
+#   Registry    8001   8081         8091         8101 (default)
+#   Registry2   8002   8082         8092         8102
+#   next        8003   8083         8093         8103
 #
 # Running this stack in another checkout? This file is shared by every
 # checkout on the branch, so do NOT edit it per checkout. Set the host ports
 # in that checkout's own (gitignored) .env instead; the defaults below are
-# Registry2's:
+# Registry's:
 #
 #   CHECKOUT_NAME=Registry        # label on the landing page
-#   APP_HOST_PORT=8001            # site           (Registry2: 8002)
-#   PMA_HOST_PORT=8081            # phpMyAdmin     (Registry2: 8082)
-#   MOCK_BREVO_HOST_PORT=8091     # mock-brevo UI  (Registry2: 8090)
-#   LANDING_HOST_PORT=8101        # landing page   (Registry2: 8102)
+#   APP_HOST_PORT=8001            # site         
+#   PMA_HOST_PORT=8081            # phpMyAdmin    
+#   MOCK_BREVO_HOST_PORT=8091     # mock-brevo UI 
+#   LANDING_HOST_PORT=8101        # landing page 
 #
 # Two stacks with the same port fail loudly ("port is already allocated").
 # The network and volume need no per-checkout change: Compose prefixes both
@@ -56,17 +53,8 @@ services:
         APP_UID: "501"
         APP_GID: "20"
     restart: "no"
-    # No env_file here deliberately: the app reads .env itself, at runtime,
-    # via the bind mount (users/init.php + vlucas/phpdotenv) — same as it
-    # always has. Injecting it a second time via Compose's env_file would
-    # only add exposure (DB_PASS, TURNSTILE_SECRET_KEY, etc. become visible
-    # in `docker inspect` / /proc/*/environ / phpinfo() Environment section)
-    # for no benefit. The db service's ${DB_NAME}/${DB_USER}/${DB_PASS}
-    # substitutions below come from Compose's own automatic discovery of a
-    # .env file in the project directory — a separate mechanism that needs
-    # no env_file directive. Found during senior-architect review.
     ports:
-      - "127.0.0.1:${APP_HOST_PORT:-8002}:80"
+      - "127.0.0.1:${APP_HOST_PORT:-8001}:80"
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -121,34 +109,42 @@ services:
     networks: [elan]
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin
+    # image: phpmyadmin/phpmyadmin
+    image: phpmyadmin
     restart: "no"
     environment:
       PMA_HOST: db
-    # Local-only bind, per the issue's explicit access-control requirement:
-    # phpMyAdmin must not be reachable outside localhost, and is never
-    # routed through Traefik.
     ports:
-      - "127.0.0.1:${PMA_HOST_PORT:-8082}:80"
+      - "127.0.0.1:${PMA_HOST_PORT:-8081}:80"
     depends_on:
       db:
         condition: service_healthy
     networks: [elan]
 
   mock-brevo:
-    # Local stand-in for the real Brevo transactional email API (#2127,
-    # investigated in #2118). Reachable from the `app` container as
+    # Local stand-in for the real Brevo transactional email API Reachable from the `app` container as
     # http://mock-brevo:8080/v3 over the elan network, and from the
     # host at http://localhost:$MOCK_BREVO_HOST_PORT (its web inbox) for
-    # manual inspection. No depends_on/healthcheck: the app only talks to
-    # it when sendinblue() actually sends, not at container boot. Its host
-    # port follows the per-checkout table in the header.
-    image: ghcr.io/c0boleis/mock-brevo:1.0.0
+    # manual inspection. N
+    image: ghcr.io/unibrain1/mock-brevo:latest
     restart: "no"
     environment:
       MOCK_BREVO_DB_PATH: /app/data/brevo
+      MOCK_STATUS_REVEAL_KEYS: "true"
+      MOCK_DEFAULT_WEBHOOK_URL: "${MOCK_DEFAULT_WEBHOOK_URL:-}"
+      MOCK_AUTO_FIRE_DELIVERED: "${MOCK_AUTO_FIRE_DELIVERED:-false}"
+      # SMTP forward: relay POST /v3/smtp/email to a real SMTP catcher
+      # for visual inspection (Mailpit/Mailcatcher/etc.)
+      MOCK_SMTP_ENABLED: "${MOCK_SMTP_ENABLED:-false}"
+      MOCK_SMTP_HOST: "${MOCK_SMTP_HOST:-mailcatcher}"
+      MOCK_SMTP_PORT: "${MOCK_SMTP_PORT:-1025}"
+      MOCK_SMTP_USERNAME: "${MOCK_SMTP_USERNAME:-}"
+      MOCK_SMTP_PASSWORD: "${MOCK_SMTP_PASSWORD:-}"
+      MOCK_SMTP_STARTTLS: "${MOCK_SMTP_STARTTLS:-false}"
     ports:
-      - "127.0.0.1:${MOCK_BREVO_HOST_PORT:-8090}:8080"
+      - "127.0.0.1:${MOCK_BREVO_HOST_PORT:-8091}:8080"
+    volumes:
+      - brevo-data:/app/data
     networks: [elan]
 
   landing:
@@ -161,10 +157,10 @@ services:
     image: nginx:1.27-alpine
     restart: "no"
     environment:
-      CHECKOUT_NAME: ${CHECKOUT_NAME:-Registry2}
-      APP_HOST_PORT: ${APP_HOST_PORT:-8002}
-      PMA_HOST_PORT: ${PMA_HOST_PORT:-8082}
-      MOCK_BREVO_HOST_PORT: ${MOCK_BREVO_HOST_PORT:-8090}
+      CHECKOUT_NAME: ${CHECKOUT_NAME:-Registry}
+      APP_HOST_PORT: ${APP_HOST_PORT:-8001}
+      PMA_HOST_PORT: ${PMA_HOST_PORT:-8081}
+      MOCK_BREVO_HOST_PORT: ${MOCK_BREVO_HOST_PORT:-8091}
     volumes:
       - ./docker/landing/index.html.template:/landing/index.html.template:ro
     # envsubst is limited to the four names above so any other `$` in the
@@ -174,7 +170,7 @@ services:
       < /landing/index.html.template > /usr/share/nginx/html/index.html
       && exec nginx -g 'daemon off;'"
     ports:
-      - "127.0.0.1:${LANDING_HOST_PORT:-8102}:80"
+      - "127.0.0.1:${LANDING_HOST_PORT:-8101}:80"
     networks: [elan]
 
 networks:
@@ -182,3 +178,4 @@ networks:
 
 volumes:
   db_data:
+  brevo-data:
