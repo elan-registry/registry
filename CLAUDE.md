@@ -119,6 +119,7 @@ Semgrep (GitHub App managed scan) runs on every PR; the
 
 Branches: `main` ← `milestone/vX.Y.Z` ← `issue/NNN-slug`. One PR per issue,
 targeting the milestone branch. Each command describes its own steps.
+`/simplify` is the built-in Claude Code skill, not a project command.
 
 ```text
 /plan-milestone → /start-milestone

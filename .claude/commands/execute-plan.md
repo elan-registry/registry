@@ -390,7 +390,8 @@ the `technical-documentation-writer` agent for non-trivial entries.
 complete and the plan file at `docs/plans/issues/issue-<NUMBER>-<slug>.md`
 shows every item verified complete. Then ask via AskUserQuestion, offering
 only the actual next step, not the full sequence — "Implementation
-complete. What next?" Options: `/simplify` (recommended), `/commit`,
+complete. What next?" Options: `/simplify` (recommended — the built-in
+Claude Code skill, not a project command), `/commit`,
 `Compact context first` (state is already saved, safe to compact), `Ask
 more questions / discuss first`. Invoke a chosen command immediately via
 the Skill tool. For `Compact context first`, tell the user to run
@@ -400,7 +401,7 @@ The full remaining sequence, each step handed off the same way once the
 prior one completes — do not present this whole list to the user at once,
 re-offer one step at a time as each becomes the actual next action:
 
-1. `/simplify` (optional)
+1. `/simplify` (optional; built-in Claude Code skill)
 2. `/commit`
 3. `/review-pr` — **must run after `/commit`, not before.** It diffs
    committed history (`merge-base..HEAD`) against the milestone branch, per

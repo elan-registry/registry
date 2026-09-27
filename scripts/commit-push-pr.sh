@@ -137,10 +137,9 @@ elif [ -n "$NEW_BRANCH" ] && [ "$NEW_BRANCH" != "$CURRENT_BRANCH" ]; then
 fi
 
 # --- Staging -------------------------------------------------------------
-# The command stages specific changed files (tracked modifications plus any
-# new untracked files it identified), never `git add -A` — mirror that here
-# rather than widen it. We derive the same file set from git status and
-# refuse if any of it falls under a forbidden path.
+# Stage only the changed files that git status lists, never the whole tree.
+# `git add -A` is used with that explicit pathspec list so a rename's old
+# path is staged as a removal. Refuse if any listed path is forbidden.
 
 # is_forbidden_path <path> — true if the path must never be staged. A pure
 # function (no I/O) so tests/hooks/test-commit-push-pr.sh can source it and
