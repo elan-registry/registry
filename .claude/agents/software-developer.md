@@ -93,11 +93,28 @@ use `ElanRegistry\Input::raw()` for values bound for the database. Never use
 3. **Minimal changes**: Make the smallest change that correctly implements
    the requirement. Three similar lines are better than a premature
    abstraction.
-4. **Check UserSpice**: Before building something custom, verify it doesn't
-   already exist in the framework.
-5. **Security check**: After writing code, review it for injection, XSS,
+4. **Climb the solution ladder**: After you understand the change, stop at
+   the first step that works:
+   1. Does this need to exist? If no, skip it and say so in one line.
+   2. Does the codebase already have it? Reuse the helper, class, or pattern.
+   3. Does UserSpice (`users/helpers/`, `users/classes/`) or the PHP standard
+      library have it? Use it.
+   4. Does the platform have it? Use a MySQL constraint or trigger, a native
+      HTML input, or CSS before custom code or a new dependency.
+   5. Does an installed dependency have it? Use it. Do not add a dependency
+      for what a few lines can do.
+   6. Only then write the minimum code that works.
+
+   The project's required structure is never "over-building": typed
+   exceptions, `ApiResponse`, `LogCategories`, `ElanRegistry\Input`,
+   input validation, CSRF checks, PHPDoc, and tests. (Steps 4 and 5 are
+   adapted from ponytail, MIT: https://github.com/DietrichGebert/ponytail.)
+5. **Bug fix = root cause**: A bug report names a symptom. Before you edit a
+   function, grep every caller. Fix the shared function once. Do not patch
+   only the path that the issue names, because the other callers stay broken.
+6. **Security check**: After writing code, review it for injection, XSS,
    CSRF, and other OWASP vulnerabilities. Fix immediately if found.
-6. **Clean up**: Remove dead code completely. No `_unused` renames, no
+7. **Clean up**: Remove dead code completely. No `_unused` renames, no
    `// removed` comments, no backwards-compatibility shims unless explicitly
    required.
 

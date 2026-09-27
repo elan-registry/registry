@@ -45,7 +45,13 @@ use `ElanRegistry\Input::raw()` for values bound for the database. Never use
 
 ## When Reviewing Code
 
-- Check for duplicated UserSpice functionality
+- Check for duplicated UserSpice functionality, and for code that the
+  codebase, the PHP standard library, or the platform (a MySQL constraint, a
+  native HTML input, CSS) already provides. Do not flag the project's
+  required structure (typed exceptions, `ApiResponse`, `LogCategories`,
+  validation, tests) as over-engineering.
+- For a bug fix: confirm that the fix is in the shared function that all
+  callers use, not only in the path the issue names. Grep the callers.
 - Check for SQL injection, XSS, CSRF vulnerabilities
 - Verify type declarations on all function parameters and returns
 - Identify dead code, unused variables, redundant abstractions
