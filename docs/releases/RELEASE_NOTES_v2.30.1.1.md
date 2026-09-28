@@ -14,12 +14,15 @@ release, merge the fixes forward into `main` and the open milestone branches.
 
 - #2227: none. After deploy, check that `logs` gets no new
   `Invalid CSRF token in join-failure-report beacon` rows.
+- #2144: none. No page is added, so `21-Fix-Page-Permissions.php` does not
+  need to run. After deploy, open a car page while logged out and check that
+  the history card shows a login prompt, not the table.
 
 ## User-Facing Changes
 
 ### Improvements
 
-[To be completed as issues are implemented.]
+- **Car update history is for members only** ([#2144](https://github.com/elan-registry/registry/issues/2144)): each history row shows a past owner's first name and location, so a visitor who is not logged in now sees a prompt to log in instead of the history table. The rest of the car page is unchanged for every visitor. Members see the history as before.
 
 ## Admin-Facing Changes
 

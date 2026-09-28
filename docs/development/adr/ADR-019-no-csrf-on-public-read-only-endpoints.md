@@ -60,7 +60,7 @@ This was already recorded in `docs/development/SYSTEM_OVERVIEW.md`:
 > independent access check of its own.
 
 The documentation had reached the correct conclusion; the code had not
-followed.
+followed. (Superseded by #2144 — see Notes.)
 
 ### The cost the control imposed
 
@@ -106,6 +106,8 @@ it keeps its CSRF token.
    session mutation, no third-party side effect.
 2. **No privileged read.** It returns nothing an anonymous visitor could not
    already obtain from the public page — no PII, no per-viewer branching.
+   Check this against the endpoint's actual column list. Do not check it by
+   analogy with a similar endpoint (#2144).
 3. **No authority to borrow.** The endpoint performs no authentication or
    authorization check of its own, so a victim's session confers no capability
    an attacker lacks. Note this is a property of the *endpoint*: the host page
@@ -122,7 +124,6 @@ Applied to the current codebase:
 | --- | --- | --- |
 | `app/api/cars/list.php` | removed | `cars_list` |
 | `app/api/cars/factory-list.php` | removed | `factory_list` |
-| `app/api/cars/history.php` | removed | `car_history` |
 | `app/api/shared/statistics.php` | removed | `statistics_request` (existing) |
 | `app/api/shared/join-failure-report.php` | removed (diagnostic-log exception) | `join_failure_beacon` |
 
@@ -360,8 +361,37 @@ The fixes in this ADR do not depend on the per-render-rotation mechanism.
 Do not reuse that explanation to justify a future change without checking it
 against `Token.php` first.
 
+### 2026-09-28 — #2144
+
+`app/api/cars/history.php` now requires login. An anonymous caller gets
+HTTP 401. The check runs before the `car_history` rate limit, so an
+anonymous call cannot use up that limit's budget. The rate limit itself is
+unchanged and still applies to logged-in members.
+
+The endpoint still carries no CSRF token. Two reasons hold this in place.
+First, the session cookie (`users/init.php`) and the remember-me cookie
+(`users/classes/Cookie.php`) are both `SameSite=Strict`. A cross-site
+request arrives with no cookie, so it gets the 401 like any other
+anonymous call. Second, the endpoint only reads. A cross-site page cannot
+read the response, because there is no CORS.
+
+This endpoint had failed criterion 2 all along.
+`CarRepository::getHistory()` returns each history row's past owner first
+name, join date, city, state, country and website. This ADR had approved
+`history.php` under criterion 2 by analogy with `list.php` and
+`factory-list.php`, whose SELECT lists #1501 had restricted.
+`getHistory()`'s own column list was never checked. Issue #1305 had
+earlier decided history was "public by design" and stripped only email
+and last name. #2144 reverses that decision: history rows go to logged-in
+members only.
+
+`app/owner/cars/details.php` still renders for anonymous visitors. Its
+history card now shows a login prompt instead of the table, toggle and
+summary.
+
 ## References
 
+- Issue #2144 — car history requires login; reverses #1305's "public by design" for that endpoint
 - Issue #1913 — cars-list DataTable never recovers from a stale/lost CSRF token
 - Issue #2227 — join-form failure beacon refused 403 on a stale/lost CSRF token; added the diagnostic-log exception
 - Issue #1852 / PR #1861 — earlier attempt, closed as a test bug

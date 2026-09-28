@@ -232,10 +232,11 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   });
 
   test('car history endpoint returns DataTables JSON structure', async ({ page }) => {
-    // app/api/cars/history.php is public and read-only (per ADR-019); it
-    // carries no CSRF gate — abuse is bounded by the `car_history` rate limit
-    // instead. A deliberately bogus token is included here purely to prove
-    // it is ignored, not required.
+    // app/api/cars/history.php is members-only (#2144) — the beforeEach hook
+    // above already logs this test in, so this proves the success path for a
+    // real session. It carries no CSRF gate — abuse is bounded by the
+    // `car_history` rate limit instead. A deliberately bogus token is
+    // included here purely to prove it is ignored, not required.
     const response = await page.request.post('app/api/cars/history.php', {
       form: {
         car_id: String(CAR_ID_STANDARD),
@@ -653,13 +654,17 @@ test.describe('Issue #1913 — car list survives session loss (no auth, no CSRF 
 });
 
 test.describe('Issue #1913 — public read-only DataTables endpoints survive a lost/absent CSRF token', () => {
-  // These four endpoints (list.php, factory-list.php, history.php,
-  // statistics.php) are public and read-only per ADR-019: no state change,
-  // no login gate, no non-public data. They must succeed whether a CSRF
-  // field is entirely absent (models a lost session — the actual
-  // production failure mode observed in #1913) or present but
-  // garbage/expired (models a stale page-embedded token). Abuse is bounded
-  // by rate limiting instead, not asserted here.
+  // These three endpoints (list.php, factory-list.php, statistics.php) are
+  // public and read-only per ADR-019: no state change, no login gate, no
+  // non-public data. They must succeed whether a CSRF field is entirely
+  // absent (models a lost session — the actual production failure mode
+  // observed in #1913) or present but garbage/expired (models a stale
+  // page-embedded token). Abuse is bounded by rate limiting instead, not
+  // asserted here.
+  //
+  // history.php left this set in #2144: it now requires login, because each
+  // history row carries a past owner's first name, location and website. Its
+  // own anonymous-request coverage lives in the "Issue #2144" describe below.
 
   // Deliberately OUTSIDE the authenticated describe above. Nested inside it,
   // these ran only after ensureLoggedIn() — the one session state in which
@@ -734,39 +739,6 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
     expect(Array.isArray(jsonResponse.data)).toBe(true);
   });
 
-  test('history.php with no csrf field at all returns 200', async ({ page }) => {
-    const response = await page.request.post('app/api/cars/history.php', {
-      form: {
-        car_id: String(CAR_ID_STANDARD),
-        draw: '1',
-        start: '0',
-        length: '10'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', true);
-    expect(jsonResponse).toHaveProperty('history');
-    expect(Array.isArray(jsonResponse.history)).toBe(true);
-  });
-
-  test('history.php with a garbage/expired csrf token returns 200', async ({ page }) => {
-    const response = await page.request.post('app/api/cars/history.php', {
-      form: {
-        car_id: String(CAR_ID_STANDARD),
-        draw: '1',
-        start: '0',
-        length: '10',
-        csrf: 'this-is-not-a-valid-token'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', true);
-  });
-
   test('statistics.php with no csrf field at all returns 200', async ({ page }) => {
     const response = await page.request.post('app/api/shared/statistics.php', {
       form: {
@@ -791,6 +763,70 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
     expect(response.status()).toBe(200);
     const jsonResponse = await response.json();
     expect(jsonResponse).toHaveProperty('success', true);
+  });
+});
+
+test.describe('Issue #2144 — car history requires login', () => {
+  // history.php used to be public and read-only (per ADR-019, #1913). #2144
+  // reverses that: CarRepository::getHistory() returns each past owner's
+  // first name, location and website per history row, so an anonymous caller
+  // must not receive it. The endpoint now sends a 401 to anyone not logged
+  // in, checked before the `car_history` rate limit so an anonymous call
+  // neither uses up the bucket nor writes a us_rate_limits row.
+  //
+  // These tests must FAIL (200, with a `history` array and owner PII in the
+  // body) against the pre-#2144 endpoint and PASS after the fix.
+
+  // Deliberately OUTSIDE the authenticated describe above, mirroring the
+  // #1913 blocks: clearing cookies models a visitor whose session is gone or
+  // was never established.
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+  });
+
+  test('history.php with no csrf field at all returns 401 and no history', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/history.php', {
+      form: {
+        car_id: String(CAR_ID_STANDARD),
+        draw: '1',
+        start: '0',
+        length: '10'
+      }
+    });
+
+    expect(response.status()).toBe(401);
+    const rawBody = await response.text();
+    const jsonResponse = JSON.parse(rawBody);
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).not.toHaveProperty('history');
+
+    // History rows carry a past owner's first name and location — none of
+    // that PII may reach an anonymous caller's response body.
+    expect(rawBody).not.toContain('fname');
+    expect(rawBody).not.toContain('city');
+    expect(rawBody).not.toContain('country');
+  });
+
+  test('history.php with a garbage/expired csrf token returns 401 and no history', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/history.php', {
+      form: {
+        car_id: String(CAR_ID_STANDARD),
+        draw: '1',
+        start: '0',
+        length: '10',
+        csrf: 'this-is-not-a-valid-token'
+      }
+    });
+
+    expect(response.status()).toBe(401);
+    const rawBody = await response.text();
+    const jsonResponse = JSON.parse(rawBody);
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).not.toHaveProperty('history');
+
+    expect(rawBody).not.toContain('fname');
+    expect(rawBody).not.toContain('city');
+    expect(rawBody).not.toContain('country');
   });
 });
 
