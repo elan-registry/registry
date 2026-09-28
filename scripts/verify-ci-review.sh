@@ -30,7 +30,7 @@
 #   --trigger=label      recovery re-applies the `deep-review` label
 #   --trigger=none       no recovery trigger is attempted; a missing comment
 #                        after the poll window is reported as-is (exit 4)
-#   --include-important  after a comment is confirmed, also fail (exit 5) on
+#   --include-important  after a comment is confirmed, also fail (exit 2) on
 #                        an unresolved `Important` heading, not only `Blocking`
 #   --check-skip-tag     before recovering, check the PR title for
 #                        `[skip-review]` — milestone-review honors this tag
@@ -152,8 +152,11 @@ else
   fi
 
   echo "Recovery trigger sent (--trigger=${TRIGGER}); re-polling once."
-  if ! poll; then
-    poll_status=$?
+  # Capture the status before testing it: `if ! poll; then s=$?` stores the
+  # negated result, which is always 0 (#2222).
+  poll_status=0
+  poll || poll_status=$?
+  if [ "$poll_status" -ne 0 ]; then
     if [ "$poll_status" -eq 2 ]; then
       echo "verify-ci-review.sh: could not verify after recovery (see output above)." >&2
       exit 1
@@ -171,8 +174,9 @@ else
   FLAG=""
 fi
 
-if ! "$SCRIPT_DIR/check-blocking-findings.sh" "$PR_NUM" $FLAG; then
-  check_status=$?
+check_status=0
+"$SCRIPT_DIR/check-blocking-findings.sh" "$PR_NUM" $FLAG || check_status=$?
+if [ "$check_status" -ne 0 ]; then
   if [ "$check_status" -eq 2 ]; then
     echo "verify-ci-review.sh: check-blocking-findings.sh could not verify findings." >&2
     exit 1
