@@ -449,42 +449,44 @@ jobs:
             echo "::error::No review comment was found at all (not even after the fallback-post step) — the review did not run or failed silently. Investigate before merging."
             exit 1
           fi
-          # This grep is deliberately dumb: it cannot tell a confirmed defect
-          # from a hypothesis, so the calibration lives in the prompt (Blocking
-          # = verified only; suspicions go under Important). Keep the two in
-          # sync — loosening the prompt's bar silently loosens this gate.
+          # This grep is deliberately dumb. The calibration lives in the
+          # prompt: Blocking means a verified defect. Suspicions go under
+          # Important. See scripts/check-blocking-findings.sh for the full
+          # rationale.
           #
-          # A Blocking heading may carry trailing words ("### Blocking
-          # findings", "### Blocking issues") — match the word with a
-          # boundary, not an exact-line anchor, so a genuine section with
-          # extra heading text still trips the gate (a prior exact-match
-          # version silently fail-opened on that shape). Excluded separately:
-          # a re-review recapping a previously-resolved finding under a
-          # heading like "### Blocking finding from the previous round:
-          # resolved" is prose, not a live findings section, and must not
-          # match (#1843) — filtered by checking each matched line for
-          # recap/resolution language rather than by narrowing the heading
-          # match itself.
-          #
-          # Count every non-excluded match across the WHOLE body rather than
-          # inspecting only the first (`head -1`) — a comment can contain a
-          # resolved-recap heading earlier and a genuine new Blocking section
-          # later; taking only the first match would silently pass on the
-          # excluded recap line and never see the real section below it.
-          #
-          # `|| true` guards the pipeline itself: this job's default shell
-          # runs with `-e -o pipefail` (no explicit `shell:` override), so
-          # the common case — no Blocking heading anywhere, both greps exit
-          # 1 for "no match" — would otherwise abort the step before
-          # BLOCKING_COUNT is ever assigned, failing the check by shell
-          # accident rather than by finding anything.
-          BLOCKING_COUNT=$(echo "$REVIEW_BODY" \
-            | grep -E '^#{1,6}[[:space:]]+Blocking([[:space:]]|$)|^\*\*Blocking\*\*([[:space:]]|$)' \
-            | grep -cviE 'resolved|previous round|prior round|earlier round' || true)
-          if [ "$BLOCKING_COUNT" -gt 0 ]; then
-            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+          # Quick reference for editing this step:
+          # - The heading pattern allows trailing words, like "### Blocking
+          #   findings".
+          # - The exclusion is narrow. It only drops a real recap, not any
+          #   line with "resolved" in it. A bare match would also drop
+          #   "unresolved" (#1843).
+          # - The step checks every match in the body, not only the first.
+          # - Each grep has its own guard. A real grep error fails the step.
+          # - `set -o pipefail` is required. This step's shell is `bash -e`,
+          #   which has no pipefail on its own, so a failed first grep would
+          #   otherwise be hidden by a successful second grep.
+          # - HEADING_PATTERN and EXCLUSION_PATTERN must match
+          #   scripts/check-blocking-findings.sh exactly.
+          #   tests/hooks/test-check-blocking-findings.sh (Part C) enforces
+          #   this and also runs this block to check its logic.
+          # - Part C extracts this block from the `HEADING_PATTERN=` line
+          #   below through the `✓ Review posted...` echo. Keep both exact.
+          HEADING_PATTERN='#{1,6}[[:space:]]+Blocking([[:space:]]|$)|\*\*Blocking\*\*([[:space:]]|$)'
+          EXCLUSION_PATTERN='(previous|prior|earlier)[[:space:]]+round|:[[:space:]]*resolved[[:space:]]*$|\(resolved\)'
+          set -o pipefail
+          if ! MATCHES=$(printf '%s\n' "$REVIEW_BODY" \
+            | { grep -E "^(${HEADING_PATTERN})" || [ $? -eq 1 ]; } \
+            | { grep -viE "$EXCLUSION_PATTERN" || [ $? -eq 1 ]; }); then
+            echo "::error::grep failed while scanning the review. Cannot verify Blocking status. Investigate before merging."
             exit 1
           fi
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+            printf '%s\n' "$MATCHES"
+            exit 1
+          fi
+          # Part C's extraction ends at this echo's exact text — see the
+          # note above HEADING_PATTERN.
           echo "✓ Review posted, no Blocking section found."
 
 
@@ -774,40 +776,42 @@ jobs:
             echo "::error::No review comment was found at all (not even after the fallback-post step) — the review did not run or failed silently. Investigate before merging."
             exit 1
           fi
-          # This grep is deliberately dumb: it cannot tell a confirmed defect
-          # from a hypothesis, so the calibration lives in the prompt (Blocking
-          # = verified only; suspicions go under Important). Keep the two in
-          # sync — loosening the prompt's bar silently loosens this gate.
+          # This grep is deliberately dumb. The calibration lives in the
+          # prompt: Blocking means a verified defect. Suspicions go under
+          # Important. See scripts/check-blocking-findings.sh for the full
+          # rationale.
           #
-          # A Blocking heading may carry trailing words ("### Blocking
-          # findings", "### Blocking issues") — match the word with a
-          # boundary, not an exact-line anchor, so a genuine section with
-          # extra heading text still trips the gate (a prior exact-match
-          # version silently fail-opened on that shape). Excluded separately:
-          # a re-review recapping a previously-resolved finding under a
-          # heading like "### Blocking finding from the previous round:
-          # resolved" is prose, not a live findings section, and must not
-          # match (#1843) — filtered by checking each matched line for
-          # recap/resolution language rather than by narrowing the heading
-          # match itself.
-          #
-          # Count every non-excluded match across the WHOLE body rather than
-          # inspecting only the first (`head -1`) — a comment can contain a
-          # resolved-recap heading earlier and a genuine new Blocking section
-          # later; taking only the first match would silently pass on the
-          # excluded recap line and never see the real section below it.
-          #
-          # `|| true` guards the pipeline itself: this job's default shell
-          # runs with `-e -o pipefail` (no explicit `shell:` override), so
-          # the common case — no Blocking heading anywhere, both greps exit
-          # 1 for "no match" — would otherwise abort the step before
-          # BLOCKING_COUNT is ever assigned, failing the check by shell
-          # accident rather than by finding anything.
-          BLOCKING_COUNT=$(echo "$REVIEW_BODY" \
-            | grep -E '^#{1,6}[[:space:]]+Blocking([[:space:]]|$)|^\*\*Blocking\*\*([[:space:]]|$)' \
-            | grep -cviE 'resolved|previous round|prior round|earlier round' || true)
-          if [ "$BLOCKING_COUNT" -gt 0 ]; then
-            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+          # Quick reference for editing this step:
+          # - The heading pattern allows trailing words, like "### Blocking
+          #   findings".
+          # - The exclusion is narrow. It only drops a real recap, not any
+          #   line with "resolved" in it. A bare match would also drop
+          #   "unresolved" (#1843).
+          # - The step checks every match in the body, not only the first.
+          # - Each grep has its own guard. A real grep error fails the step.
+          # - `set -o pipefail` is required. This step's shell is `bash -e`,
+          #   which has no pipefail on its own, so a failed first grep would
+          #   otherwise be hidden by a successful second grep.
+          # - HEADING_PATTERN and EXCLUSION_PATTERN must match
+          #   scripts/check-blocking-findings.sh exactly.
+          #   tests/hooks/test-check-blocking-findings.sh (Part C) enforces
+          #   this and also runs this block to check its logic.
+          # - Part C extracts this block from the `HEADING_PATTERN=` line
+          #   below through the `✓ Review posted...` echo. Keep both exact.
+          HEADING_PATTERN='#{1,6}[[:space:]]+Blocking([[:space:]]|$)|\*\*Blocking\*\*([[:space:]]|$)'
+          EXCLUSION_PATTERN='(previous|prior|earlier)[[:space:]]+round|:[[:space:]]*resolved[[:space:]]*$|\(resolved\)'
+          set -o pipefail
+          if ! MATCHES=$(printf '%s\n' "$REVIEW_BODY" \
+            | { grep -E "^(${HEADING_PATTERN})" || [ $? -eq 1 ]; } \
+            | { grep -viE "$EXCLUSION_PATTERN" || [ $? -eq 1 ]; }); then
+            echo "::error::grep failed while scanning the review. Cannot verify Blocking status. Investigate before merging."
             exit 1
           fi
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+            printf '%s\n' "$MATCHES"
+            exit 1
+          fi
+          # Part C's extraction ends at this echo's exact text — see the
+          # note above HEADING_PATTERN.
           echo "✓ Review posted, no Blocking section found."
