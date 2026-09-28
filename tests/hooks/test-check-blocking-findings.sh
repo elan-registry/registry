@@ -13,9 +13,8 @@
 # Also covers #2223: CI's own Blocking gate in claude-code-review.yml (both
 # the pr-to-milestone-review and milestone-review jobs) must keep using the
 # exact same HEADING_PATTERN, EXCLUSION_PATTERN, and per-grep
-# `|| [ $? -eq 1 ]` guard as scripts/check-blocking-findings.sh. Part C
-# checks the two never drift apart, so a command-line check and CI's gate
-# can never silently disagree about the same comment.
+# `|| [ $? -eq 1 ]` guard as scripts/check-blocking-findings.sh. See that
+# script's header for why. Part C checks the two never drift apart.
 #
 # HERMETIC: Part A stubs `gh` (and, for case 16, `grep`) first on PATH. Part B
 # runs a copy of verify-ci-review.sh from a directory that also holds stub
@@ -23,7 +22,8 @@
 # copy finds through its own SCRIPT_DIR. Part B also puts a logging `gh` stub
 # first on PATH for the recovery path. Part C reads files under $REAL_REPO
 # and temp copies of the workflow file, and also runs the extracted gate
-# blocks with `bash -c` (no network, no real `gh`, no `eval`).
+# blocks with `bash -e -c` (GitHub Actions' real default shell, no
+# `-o pipefail`; no network, no real `gh`, no `eval`).
 #
 # Usage: bash tests/hooks/test-check-blocking-findings.sh
 # Exit code: 0 if all scenarios pass, 1 otherwise.
@@ -742,9 +742,12 @@ fi
 # dropping the `!` on `if ! MATCHES=$(...)` — passes that check untouched
 # and silently makes the gate pass every PR, findings or not. This section
 # pulls each of the 2 gate blocks out of the workflow file as literal shell
-# text and actually runs it, under the same `bash -eo pipefail` GitHub Actions
-# uses, so a change to the gate's control flow gets caught here even when
-# the patterns it operates on stay the same.
+# text and actually runs it, under `bash -e` — GitHub Actions' real default
+# shell for a `run:` step with no `shell:` override (`bash -e {0}`, NOT
+# `-o pipefail`; only an explicit `shell: bash` gets pipefail) — so a change
+# to the gate's control flow gets caught here even when the patterns it
+# operates on stay the same. This is also why each block sets its own
+# `set -o pipefail` (see the comment above HEADING_PATTERN in the workflow).
 
 # Extracts gate block number `n` (1 or 2, by order of appearance) from a
 # workflow file: from its `HEADING_PATTERN=` line through the first
@@ -769,7 +772,7 @@ extract_gate_block() {
     ' "$wf"
 }
 
-# Runs the 5 behavioral cases (a-e) against both gate blocks in a workflow
+# Runs the 6 behavioral cases (a-f) against both gate blocks in a workflow
 # file. Prints a reason and returns non-zero on the first failure. Reuses
 # the case 16/16b grep stub (GREPSTUBDIR) for cases (d) and (e).
 check_gate_blocks_behave() {
@@ -789,7 +792,7 @@ check_gate_blocks_behave() {
         }
 
         # (a) a clean review -> exit 0
-        out="$(REVIEW_BODY=$'### Strengths\n- ok' bash -eo pipefail -c "$block" < /dev/null 2>&1)"
+        out="$(REVIEW_BODY=$'### Strengths\n- ok' bash -e -c "$block" < /dev/null 2>&1)"
         rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "block $n, case (a) clean review: exit $rc (want 0): $out"
@@ -797,7 +800,7 @@ check_gate_blocks_behave() {
         fi
 
         # (b) a live, unresolved Blocking heading -> exit 1, error printed
-        out="$(REVIEW_BODY=$'### Blocking issues, unresolved\n- x' bash -eo pipefail -c "$block" < /dev/null 2>&1)"
+        out="$(REVIEW_BODY=$'### Blocking issues, unresolved\n- x' bash -e -c "$block" < /dev/null 2>&1)"
         rc=$?
         if [ "$rc" -ne 1 ] || ! printf '%s' "$out" | grep -q '::error::Review posted Blocking findings'; then
             echo "block $n, case (b) unresolved Blocking: exit $rc (want 1), output: [$out]"
@@ -805,7 +808,7 @@ check_gate_blocks_behave() {
         fi
 
         # (c) a resolved recap heading -> exit 0
-        out="$(REVIEW_BODY=$'### Blocking finding from the previous round: resolved' bash -eo pipefail -c "$block" < /dev/null 2>&1)"
+        out="$(REVIEW_BODY=$'### Blocking finding from the previous round: resolved' bash -e -c "$block" < /dev/null 2>&1)"
         rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "block $n, case (c) recap resolved: exit $rc (want 0): $out"
@@ -814,7 +817,7 @@ check_gate_blocks_behave() {
 
         # (d) the first grep errors -> exit 1, "cannot verify" error printed,
         # never a silent pass
-        out="$(PATH="$GREPSTUBDIR:$PATH" STUB_GREP_FAIL_ON=-E REVIEW_BODY=$'### Strengths\n- ok' bash -eo pipefail -c "$block" < /dev/null 2>&1)"
+        out="$(PATH="$GREPSTUBDIR:$PATH" STUB_GREP_FAIL_ON=-E REVIEW_BODY=$'### Strengths\n- ok' bash -e -c "$block" < /dev/null 2>&1)"
         rc=$?
         if [ "$rc" -ne 1 ] || ! printf '%s' "$out" | grep -q 'grep failed while scanning'; then
             echo "block $n, case (d) grep error: exit $rc (want 1), output: [$out]"
@@ -826,10 +829,22 @@ check_gate_blocks_behave() {
         # first grep matches and passes it to the second grep, which is the
         # one that fails here (case 16b's same approach, applied to the
         # workflow block instead of the script).
-        out="$(PATH="$GREPSTUBDIR:$PATH" STUB_GREP_FAIL_ON=-viE REVIEW_BODY=$'### Blocking\n- x' bash -eo pipefail -c "$block" < /dev/null 2>&1)"
+        out="$(PATH="$GREPSTUBDIR:$PATH" STUB_GREP_FAIL_ON=-viE REVIEW_BODY=$'### Blocking\n- x' bash -e -c "$block" < /dev/null 2>&1)"
         rc=$?
         if [ "$rc" -ne 1 ] || ! printf '%s' "$out" | grep -q 'grep failed while scanning'; then
             echo "block $n, case (e) second grep error: exit $rc (want 1), output: [$out]"
+            return 1
+        fi
+
+        # (f) a resolved recap heading followed by a live Blocking heading in
+        # the same body -> exit 1, Blocking error printed (#1843). Checks
+        # every match across the whole body, not just the first one: a
+        # `head -n 1` (or similar) on the heading grep would drop the live
+        # heading here and silently pass.
+        out="$(REVIEW_BODY=$'### Strengths\n- ok\n### Blocking finding from the previous round: resolved\n### Blocking\n- SQLi' bash -e -c "$block" < /dev/null 2>&1)"
+        rc=$?
+        if [ "$rc" -ne 1 ] || ! printf '%s' "$out" | grep -q '::error::Review posted Blocking findings'; then
+            echo "block $n, case (f) recap then live heading: exit $rc (want 1), output: [$out]"
             return 1
         fi
     done
@@ -837,13 +852,13 @@ check_gate_blocks_behave() {
     return 0
 }
 
-# --- Case 27: both real gate blocks behave correctly (a)-(e) --------------
+# --- Case 27: both real gate blocks behave correctly (a)-(f) --------------
 OUT27="$(check_gate_blocks_behave "$WORKFLOW_FILE" 2>&1)"
 STATUS27=$?
 if [ "$STATUS27" -eq 0 ]; then
-    pass "Case 27: both claude-code-review.yml gate blocks pass cases (a)-(e)"
+    pass "Case 27: both claude-code-review.yml gate blocks pass cases (a)-(f)"
 else
-    fail "Case 27: both claude-code-review.yml gate blocks pass cases (a)-(e)" \
+    fail "Case 27: both claude-code-review.yml gate blocks pass cases (a)-(f)" \
         "output: [$OUT27]"
 fi
 
@@ -872,11 +887,12 @@ fi
 
 # --- Case 29: negative control — `if !` dropped from the grep guard -------
 # Mutates only the second block's `if ! MATCHES=$(printf ...)` to
-# `if MATCHES=$(printf ...)`. Under `bash -e`, dropping the `!` means a
-# non-zero pipeline exit inside the assignment is no longer covered by the
-# `if`'s exemption from `-e`, so the block aborts under `set -e` before it
-# even reaches a real REVIEW_BODY comparison. Case (a) on block 2 fails
-# against this mutant first, catching the break.
+# `if MATCHES=$(printf ...)`. This inverts the branch, it is not a `set -e`
+# abort: a command in an `if` condition is exempt from `-e` whether or not
+# it has a leading `!`. With the `!` gone, a clean review's assignment
+# succeeds, so `if MATCHES=...` is now true, and the block runs the
+# "grep failed" error branch on a review that has no grep error at all.
+# Case (a) on block 2 fails against this mutant first, catching the break.
 MUTANT_UNGUARDED_WORKFLOW="$TMPROOT/mutant-unguarded-claude-code-review.yml"
 # shellcheck disable=SC2016 # literal find/replace strings; no expansion wanted
 if MUTANT_ERR="$(make_mutant "$WORKFLOW_FILE" "$MUTANT_UNGUARDED_WORKFLOW" \
@@ -916,6 +932,82 @@ if [ "$STATUS30" -ne 0 ]; then
 else
     fail "Case 30: '|| true' added to both blocks' exclusion-grep guard is caught (negative control)" \
         "exit: $STATUS30 (want non-zero)" "output: [$OUT30]"
+fi
+
+# --- Case 31: negative control — `set -o pipefail` removed from block 1 ---
+# Removes block 1's `set -o pipefail` (replaced with a no-op `:`), leaving
+# block 2's untouched. This step's real shell has no pipefail of its own
+# (`bash -e {0}`), so without this line the `$(... | {grep1} | {grep2})`
+# pipeline's exit status comes from grep2 alone. Case (d) — the first grep
+# erroring — is the one this breaks: grep2 still succeeds on empty input, so
+# the block reports "clean" instead of "cannot verify" (the exact CI bug,
+# confirmed in run 36491820008). Case (e) still catches its own scenario,
+# because the failing grep there is the pipeline's last command, so its exit
+# status is never lost even without pipefail.
+MUTANT_NO_PIPEFAIL_WORKFLOW="$TMPROOT/mutant-no-pipefail-claude-code-review.yml"
+if MUTANT_ERR="$(make_mutant "$WORKFLOW_FILE" "$MUTANT_NO_PIPEFAIL_WORKFLOW" \
+    '          set -o pipefail' '          :' 1 2>&1)"; then
+    OUT31="$(check_gate_blocks_behave "$MUTANT_NO_PIPEFAIL_WORKFLOW" 2>&1)"
+    STATUS31=$?
+else
+    OUT31="make_mutant could not build the mutant: $MUTANT_ERR"
+    STATUS31=0
+fi
+if [ "$STATUS31" -ne 0 ] && printf '%s' "$OUT31" | grep -q 'case (d)'; then
+    pass "Case 31: 'set -o pipefail' removed from block 1 is caught by case (d) (negative control)"
+else
+    fail "Case 31: 'set -o pipefail' removed from block 1 is caught by case (d) (negative control)" \
+        "exit: $STATUS31 (want non-zero, case (d))" "output: [$OUT31]"
+fi
+
+# --- Case 32: negative control — `| head -n 1` added to the heading grep --
+# Appends ` | head -n 1` onto both blocks' heading-grep line, keeping the
+# `\` line continuation valid. This drops every heading match after the
+# first, so a resolved recap heading followed by a genuine live Blocking
+# heading in the same comment (#1843) is silently reduced to just the
+# recap, and the live heading never reaches the exclusion grep. Case (f) on
+# both blocks must fail against this mutant.
+MUTANT_HEAD1_WORKFLOW="$TMPROOT/mutant-head1-claude-code-review.yml"
+# shellcheck disable=SC2016,SC1003 # literal find/replace strings ending in a
+# real trailing backslash (the line continuation), not an escape attempt
+if MUTANT_ERR="$(make_mutant "$WORKFLOW_FILE" "$MUTANT_HEAD1_WORKFLOW" \
+    '            | { grep -E "^(${HEADING_PATTERN})" || [ $? -eq 1 ]; } \' \
+    '            | { grep -E "^(${HEADING_PATTERN})" || [ $? -eq 1 ]; } | head -n 1 \' \
+    all 2>&1)"; then
+    OUT32="$(check_gate_blocks_behave "$MUTANT_HEAD1_WORKFLOW" 2>&1)"
+    STATUS32=$?
+else
+    OUT32="make_mutant could not build the mutant: $MUTANT_ERR"
+    STATUS32=0
+fi
+if [ "$STATUS32" -ne 0 ] && printf '%s' "$OUT32" | grep -q 'case (f)'; then
+    pass "Case 32: '| head -n 1' added to the heading grep is caught by case (f) (negative control)"
+else
+    fail "Case 32: '| head -n 1' added to the heading grep is caught by case (f) (negative control)" \
+        "exit: $STATUS32 (want non-zero, case (f))" "output: [$OUT32]"
+fi
+
+# --- Case 33: negative control — a drifted HEADING_PATTERN must fail the --
+# check (like case 26, but for HEADING_PATTERN instead of EXCLUSION_PATTERN)
+# Replaces the first HEADING_PATTERN= line with the old, exact-line-only
+# pattern that #2223's predecessor fix replaced — it has no `([[:space:]]|$)`
+# boundary, so it would silently fail-open on a heading with trailing words
+# ("### Blocking findings"). check_workflow_matches_script must catch this,
+# or the HEADING_PATTERN half of case 25/26 isn't actually testing anything.
+DRIFTED_HEADING_WORKFLOW="$TMPROOT/drifted-heading-claude-code-review.yml"
+if MUTANT_ERR="$(make_mutant "$WORKFLOW_FILE" "$DRIFTED_HEADING_WORKFLOW" "$SCRIPT_HEADING_LINE" \
+    "HEADING_PATTERN='^#{1,6}[[:space:]]+Blocking\$'" 1 2>&1)"; then
+    OUT33="$(check_workflow_matches_script "$DRIFTED_HEADING_WORKFLOW" 2>&1)"
+    STATUS33=$?
+else
+    OUT33="make_mutant could not build the drifted copy: $MUTANT_ERR"
+    STATUS33=0
+fi
+if [ "$STATUS33" -ne 0 ]; then
+    pass "Case 33: a drifted HEADING_PATTERN in the workflow is caught (negative control)"
+else
+    fail "Case 33: a drifted HEADING_PATTERN in the workflow is caught (negative control)" \
+        "exit: $STATUS33 (want non-zero)" "output: [$OUT33]"
 fi
 
 # --- Report ------------------------------------------------------------
