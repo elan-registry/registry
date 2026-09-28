@@ -69,10 +69,12 @@ if ! git init --quiet --bare "$BARE_ORIGIN_DIR" >/dev/null 2>&1; then
 fi
 # Scenarios need origin/main to exist (scripts/resolve-base-branch.sh
 # resolves a PR base against it), so seed the bare origin with main before
-# retargeting "origin" — the clone only has main as a remote-tracking ref
-# (refs/remotes/origin/main), not a local branch, since the clone checked
-# out whatever branch this test itself is running from.
-if ! git -C "$CLONE_DIR" push --quiet "$BARE_ORIGIN_DIR" refs/remotes/origin/main:refs/heads/main >/dev/null 2>&1; then
+# retargeting "origin". Seed from the source checkout, not the clone: the
+# clone's remote refs are the source's LOCAL branches, and a CI runner
+# (actions/checkout) has no local main, only refs/remotes/origin/main.
+MAIN_REF="refs/remotes/origin/main"
+git -C "$SOURCE_REPO_ROOT" rev-parse --verify --quiet "$MAIN_REF" >/dev/null || MAIN_REF="refs/heads/main"
+if ! git -C "$SOURCE_REPO_ROOT" push --quiet "$BARE_ORIGIN_DIR" "$MAIN_REF:refs/heads/main" >/dev/null 2>&1; then
     echo "FAIL: could not push main to the throwaway bare origin" >&2
     exit 1
 fi
@@ -268,10 +270,9 @@ git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
 # failure. `--dry-run` would skip the real checkout and hide the bug.
 # TO_STAGE is empty in this clone (nothing staged/changed), so if the bug
 # were present the script would skip `git commit` and go straight to `git
-# push`. The clone's "origin" is the real repo (from `git clone --local`),
-# so a push would fail without network access — but this test does not rely
-# on that: exit code and "no new commit" are asserted directly, so the
-# assertions hold regardless of network reachability.
+# push`. The clone's "origin" is a throwaway bare repo (see the setup at the
+# top of this file), so even that push cannot reach the real checkout. The
+# test asserts the exit code and "no new commit" directly.
 
 git checkout -b milestone/__test_refused4 >/dev/null 2>&1
 SYNTH_BRANCHES+=("milestone/__test_refused4")

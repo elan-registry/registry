@@ -49,8 +49,9 @@ _integration_runner() {
 # Exit code reserved for a pre-flight failure in _run_integration_suite —
 # the runner never got as far as starting PHPUnit, so this is not a test
 # result. Kept clear of PHPUnit's own exit codes (0-3, plus 255 on a fatal
-# error) so callers can tell "could not run" apart from any PHPUnit result.
-INTEGRATION_PREFLIGHT_FAIL=3
+# error) and of the shell's 126-165 range, so callers can tell "could not
+# run" apart from any PHPUnit, composer or docker result.
+INTEGRATION_PREFLIGHT_FAIL=90
 
 # Runs the integration suite where the test database is reachable and
 # returns its exit status. In Docker mode it runs inside this checkout's
