@@ -65,10 +65,10 @@ final class JoinFailureReportEndpointTest extends TestCase
 
     /**
      * The beacon carried the join page's render-time CSRF token until #2227.
-     * That token went stale on a long-lived join page and the endpoint
-     * answered 403, dropping the reports it exists to collect. The token is
-     * gone for good: re-adding it would reintroduce the bug, so assert its
-     * absence rather than only its non-use.
+     * In production that token went stale and the endpoint answered 403,
+     * dropping the reports it exists to collect. The token is gone for good:
+     * re-adding it would reintroduce the bug, so assert its absence rather
+     * than only its non-use.
      */
     public function testHasNoCsrfCheck(): void
     {
@@ -77,15 +77,53 @@ final class JoinFailureReportEndpointTest extends TestCase
         $this->assertStringNotContainsString(
             'Token::check(',
             $source,
-            'The beacon must not validate a CSRF token — a render-time token goes stale on a '
-                . 'long-lived join page and silently drops the report (#2227). Abuse is bounded by '
-                . "the enforced 'join_failure_beacon' rate limit under ADR-019 instead"
+            'The beacon must not validate a CSRF token — a render-time token can go stale and '
+                . 'silently drop the report (#2227). Abuse is bounded by the enforced '
+                . "'join_failure_beacon' rate limit under ADR-019 instead"
         );
 
         $this->assertStringNotContainsString(
             "Input::get('csrf')",
             $source,
             'The beacon must not read a csrf field at all — the client stopped sending one in #2227'
+        );
+    }
+
+    /**
+     * The client half of #2227. Before it, the beacon looked up the join
+     * form's csrf input and returned early, with no warning, when the input
+     * was missing — a silent drop of the report. The server test above cannot
+     * see a token quietly returning on the client, so pin it here too.
+     *
+     * The source file keeps a comment that mentions CSRF, so it is checked
+     * for the two code shapes that were removed. The minified build has no
+     * comments and is what production serves, so it must not mention csrf at
+     * all.
+     */
+    public function testBeaconClientSendsNoCsrfToken(): void
+    {
+        $jsDir = __DIR__ . '/../../../app/assets/js/';
+
+        $js = file_get_contents($jsDir . 'join-form-beacon.js');
+        $this->assertIsString($js, 'app/assets/js/join-form-beacon.js must be readable');
+        $this->assertStringNotContainsString(
+            'input[name="csrf"]',
+            $js,
+            'The beacon must not look up the join form\'s csrf input — its early return on a '
+                . 'missing input silently dropped reports'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\bcsrf\s*:/',
+            $js,
+            'The beacon must not send a csrf field (#2227)'
+        );
+
+        $minJs = file_get_contents($jsDir . 'join-form-beacon.min.js');
+        $this->assertIsString($minJs, 'app/assets/js/join-form-beacon.min.js must be readable');
+        $this->assertStringNotContainsStringIgnoringCase(
+            'csrf',
+            $minJs,
+            'The served build still references csrf — run npm run build after editing the source'
         );
     }
 
@@ -130,11 +168,23 @@ final class JoinFailureReportEndpointTest extends TestCase
             'recordRateLimit() writes to the database and can throw — it needs its own try'
         );
 
-        $recordCatch = substr($source, $recordPos, 400);
+        // Slice to the start of the next section rather than a fixed length,
+        // so a comment added inside the catch cannot push the log call out of
+        // the window and fail this test for the wrong reason.
+        $nextSectionPos = strpos($source, '$allowedReasons', $recordPos);
+        $this->assertNotFalse($nextSectionPos, 'Could not locate the section after the record block');
+        $recordCatch = substr($source, $recordPos, $nextSectionPos - $recordPos);
+
         $this->assertStringContainsString(
             'rate limit record failed',
             $recordCatch,
             'A failed record must be logged as a record failure, not as a failed check'
+        );
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_SYSTEM_ERROR',
+            $recordCatch,
+            'A failed record is an infrastructure fault, not a registration event — log it as '
+                . 'SystemError so it is not mixed in with the client-blocked registration rows'
         );
         $this->assertStringNotContainsString(
             '$rateLimitAllowed',

@@ -168,6 +168,11 @@ Known limits of the rate limit, the same as for the other keys in this ADR:
   node (see "Rate limits get their own action key" below). One client can
   use up the bucket for everyone behind the same edge node. For this
   endpoint, the effect is lost diagnostic reports for up to one window.
+- Point 4 holds only while the database accepts writes. If
+  `recordRateLimit()` throws, the endpoint still lets the request through,
+  because losing the report is worse than one uncounted request, and logs a
+  `SystemError`. For as long as those writes keep failing, no request is
+  counted and the limit cannot trip.
 
 Explicitly **not** qualifying, and retaining their tokens:
 

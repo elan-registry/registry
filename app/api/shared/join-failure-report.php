@@ -41,11 +41,11 @@ if ($method !== 'POST') {
 }
 
 // Uses its own dedicated rate limit ('join_failure_beacon'), deliberately
-// separate from 'registration_attempt' — sharing that tight bucket
-// (ip_max=5/hr) would let beacon traffic (Turnstile retries, GPS failures,
-// JS exceptions — none of them a real registration attempt) exhaust the cap
-// for every visitor behind a shared/NAT IP before any of them could submit
-// the form. See usersc/includes/rate_limits.php for the current values.
+// separate from 'registration_attempt' — sharing that much tighter bucket
+// would let beacon traffic (Turnstile retries, GPS failures, JS exceptions —
+// none of them a real registration attempt) exhaust the cap for every
+// visitor behind a shared/NAT IP before any of them could submit the form.
+// See usersc/includes/rate_limits.php for both buckets' current values.
 //
 // checkRateLimit() lazily constructs \RateLimit on first call per request,
 // whose constructor opens a database connection and can throw — the same
@@ -54,13 +54,10 @@ if ($method !== 'POST') {
 // server-side trace of a failed join attempt, so a DB hiccup here must not
 // turn into an uncaught fatal; fail open (treat as allowed) and log instead.
 //
-// Every admitted request must also be recorded: RateLimit::check() counts
-// us_rate_limits rows, and only record() writes them, so a check-without-record
-// endpoint can never trip its own limit (this one never did until #2227 made
-// the limit the only abuse control). Recording successes only — as the ADR-019
-// endpoints do — makes total_max (per IP) the operative cap; ip_max counts
-// failures, of which there are none here. See the comment above cars_list in
-// usersc/includes/rate_limits.php.
+// Every admitted request must also be recorded, or the limit never trips —
+// this one never did until #2227. See ADR-019: "Exception: anonymous
+// diagnostic log writes" for why, and "Rate limits get their own action key"
+// for why total_max, not ip_max, is the operative cap.
 try {
     $rateLimitAllowed = checkRateLimit('join_failure_beacon');
 } catch (\Throwable $e) {
@@ -77,7 +74,10 @@ if (!$rateLimitAllowed) {
 try {
     recordRateLimit('join_failure_beacon', true);
 } catch (\Throwable $e) {
-    logger(0, LogCategories::LOG_CATEGORY_REGISTRATION_FAILED, 'join-failure-report: rate limit record failed, request not counted toward the limit: ' . $e->getMessage());
+    // A failed write is an infrastructure fault, not a registration event, so
+    // it goes under SystemError where an operator looking for broken
+    // bookkeeping will find it.
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'join-failure-report: rate limit record failed, request not counted toward the limit: ' . $e->getMessage());
 }
 
 // Client sends a short enum reason, not free-text, to keep log payloads
