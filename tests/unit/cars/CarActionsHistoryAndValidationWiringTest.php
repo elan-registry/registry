@@ -69,8 +69,9 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
      * further processing on the `car_history` rate limit rather than a CSRF
      * token.
      *
-     * Per ADR-019, history.php is public and read-only, so it deliberately
-     * carries no CSRF check — abuse is bounded by rate limiting instead.
+     * history.php requires a login (#2144), but it still carries no CSRF token:
+     * the session and remember-me cookies are SameSite=Strict, so a cross-site
+     * request cannot present a session, and the endpoint only reads.
      *
      * Source inspection: all guards read request state ($method, $_POST, the
      * rate-limit bucket) that only exists during a real HTTP request.
@@ -101,21 +102,23 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
             'An empty POST must return an ApiResponse error'
         );
 
-        // Per ADR-019: public, read-only endpoints are rate-limited instead of
-        // CSRF-gated. This endpoint must no longer check a CSRF token at all —
-        // its presence would mean the removal in #1913 was reverted or
-        // reintroduced.
+        // The endpoint requires a login (#2144) but still checks no CSRF token:
+        // the session and remember-me cookies are SameSite=Strict, so a
+        // cross-site request arrives anonymous and is refused by the login
+        // check, and the endpoint only reads. A Token::check here would mean the
+        // removal in #1913 was reverted or reintroduced.
         $this->assertStringNotContainsString(
             'Token::check',
             $content,
-            'history.php must not check a CSRF token — per ADR-019 it is rate-limited instead'
+            'history.php must not check a CSRF token — the SameSite=Strict session cannot reach a '
+                . 'cross-site request, and the endpoint only reads'
         );
 
         // The negation is part of the asserted literal on purpose: an inverted guard
         // (`if (checkRateLimit(...))`) would reject every legitimate request while a
         // presence-only assertion still passed.
         $this->assertStringContainsString(
-            "if (!checkRateLimit('car_history', \$rateUserId))",
+            "if (!checkRateLimit('car_history', \$userId))",
             $content,
             'Rate-limit check must reject (not accept) a request over the car_history limit'
         );
@@ -141,6 +144,61 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
             '/if \(!checkRateLimit\(\'car_history\',[^)]*\)\) \{\s*ApiResponse::error\([^;]*429\)\s*->withLogging\([^;]*LOG_CATEGORY_SECURITY/s',
             $content,
             'A rate-limit rejection must return a 429 logged under the security category'
+        );
+    }
+
+    /**
+     * history.php refuses an anonymous caller with a logged 401, before the
+     * rate limit.
+     *
+     * Every history row carries a past owner's first name, location and website,
+     * so the endpoint is members-only (#2144).
+     *
+     * The order matters: if the rate limit ran first, anonymous calls would use
+     * up the `car_history` bucket and write us_rate_limits rows, so a flood of
+     * refused calls could lock a real member out. Ordering is what this tier can
+     * pin — the unit suite cannot execute the endpoint, so the 401 itself is
+     * proved by the Playwright anonymous-request tests.
+     */
+    public function testHistoryRequiresLoginBeforeRateLimit(): void
+    {
+        $content = $this->readEndpointSource(self::HISTORY_ENDPOINT);
+
+        // The negation is part of the asserted literal on purpose: an inverted guard
+        // (`if ($user->isLoggedIn())`) would refuse every member while a
+        // presence-only assertion still passed.
+        $this->assertStringContainsString(
+            'if (!$user->isLoggedIn())',
+            $content,
+            'Endpoint must refuse a caller who is not logged in'
+        );
+        $this->assertStringContainsString(
+            "ApiResponse::unauthorized('Login required')",
+            $content,
+            'An anonymous request must return HTTP 401 via ApiResponse::unauthorized()'
+        );
+
+        $loginCheckOffset = strpos($content, 'if (!$user->isLoggedIn())');
+        $this->assertIsInt($loginCheckOffset, 'The login check must appear in the endpoint source');
+
+        $sendOffset = strpos($content, '->send();', $loginCheckOffset);
+        $this->assertIsInt($sendOffset, 'The login check must end in an ApiResponse ->send()');
+
+        $loginBranch = substr($content, $loginCheckOffset, $sendOffset - $loginCheckOffset);
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_ACCESS_DENIED',
+            $loginBranch,
+            'The refused request must be logged under the access-denied category, in the login branch itself'
+        );
+
+        $rateLimitOffset = strpos($content, "checkRateLimit('car_history'");
+        $this->assertIsInt($rateLimitOffset, 'The car_history rate-limit check must appear in the endpoint source');
+
+        $this->assertLessThan(
+            $rateLimitOffset,
+            $loginCheckOffset,
+            'The login check must run before the car_history rate limit, so that anonymous calls do not '
+                . 'use up a real member\'s bucket or write us_rate_limits rows'
         );
     }
 

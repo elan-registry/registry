@@ -548,8 +548,9 @@ final class CarDataTablesTest extends IntegrationTestCase
      * Anchors the behavioral contract independently of the SQL-capture unit test in
      * CarRepositoryTest — if getHistory() is refactored to use a query builder or
      * SELECT *, this test catches the PII regression at the return-value level.
-     * user_id/lat/lon added for #1501 — getHistory() backs the public, unauthenticated
-     * app/api/cars/history.php endpoint.
+     * user_id/lat/lon added for #1501 — getHistory() backs the
+     * app/api/cars/history.php endpoint, which any logged-in member can call
+     * (since #2144; before that, anyone).
      */
     #[Group('fast')]
     public function testGetHistoryExcludesPIIFromReturnedRows(): void

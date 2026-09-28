@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { CAR_ID_WITH_HISTORY } = require('../fixtures.js');
 
 test.describe('Elan Registry - Menu Verification (Logged In)', () => {
   // Skip these tests if NOT running in logged-in project
@@ -387,5 +388,63 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
     console.log(`Downloadable files: ${downloadableLinks.length}`);
     console.log(`Successful: ${successCount}`);
     console.log(`Failed: ${failCount}`);
+  });
+});
+
+test.describe('Issue #2144 — car history requires login (member regression coverage)', () => {
+  // history.php now requires login (#2144). These are regression guards for
+  // a member session: the history table must still load its rows (the
+  // feature must keep working for the audience it is now restricted to),
+  // and a session that ends while the page is open must surface the
+  // "session has ended" message from car_details.js's 401 branch rather than
+  // the generic "could not be loaded" text.
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      testInfo.skip();
+    }
+  });
+
+  test('member sees history table rows after opening the history section', async ({ page }) => {
+    // Skip only for the environmental cause: no member session. Everything
+    // after that is asserted, not guarded, so a regression that hides the
+    // history card from members fails this test instead of skipping it.
+    test.skip(!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+
+    await page.goto(`app/owner/cars/details.php?car_id=${CAR_ID_WITH_HISTORY}`, { waitUntil: 'domcontentloaded' });
+
+    const toggleBtn = page.locator('#historyToggleBtn');
+    await expect(toggleBtn).toBeVisible();
+    await toggleBtn.click();
+
+    await page.locator('#carHistoryTable_wrapper').waitFor({ timeout: 15000 });
+    await expect(page.locator('#carHistoryTable tbody tr').first()).toBeVisible({ timeout: 15000 });
+
+    // An empty DataTable still renders one <tr> with a td.dt-empty
+    // "No data available" cell, so a row count alone cannot prove history
+    // loaded. CAR_ID_WITH_HISTORY (fixtures.js) has at least one history row.
+    await expect(page.locator('#carHistoryTable tbody td.dt-empty')).toHaveCount(0);
+    await expect(page.locator('.alert-warning', { hasText: 'could not be loaded' })).toHaveCount(0);
+  });
+
+  test('a 401 from history.php shows the "session has ended" message', async ({ page }) => {
+    test.skip(!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+
+    // DataTables' ajax sets `cache: false`, so jQuery appends `?_=<timestamp>`
+    // even to this POST. A plain glob on the path never matches; the regex
+    // allows the query string.
+    await page.route(/\/app\/api\/cars\/history\.php(\?|$)/, (route) => route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: false, message: 'Login required' }),
+    }));
+
+    await page.goto(`app/owner/cars/details.php?car_id=${CAR_ID_WITH_HISTORY}`, { waitUntil: 'domcontentloaded' });
+
+    const toggleBtn = page.locator('#historyToggleBtn');
+    await expect(toggleBtn).toBeVisible();
+    await toggleBtn.click();
+
+    const sessionEndedWarning = page.locator('.alert-warning', { hasText: 'Your session has ended' });
+    await expect(sessionEndedWarning).toBeVisible({ timeout: 15000 });
   });
 });

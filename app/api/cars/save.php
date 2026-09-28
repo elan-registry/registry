@@ -47,14 +47,14 @@ if ($method !== 'POST' || empty($_POST)) {
 
 if (!$user->isLoggedIn()) {
     ApiResponse::unauthorized('Login required')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthenticated access attempt to edit.php')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthenticated access attempt to save.php')
         ->send();
 }
 
 $token = Input::get('csrf');
 if (!Token::check($token)) {
     ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data() !== null ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF check failed in edit.php')
+        ->withLogging($user->data() !== null ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF check failed in save.php')
         ->send();
 }
 

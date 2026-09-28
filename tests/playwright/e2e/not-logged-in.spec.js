@@ -1137,6 +1137,108 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
   });
 });
 
+test.describe('Issue #2144 — anonymous visitor sees a login prompt, not car history', () => {
+  // history.php now requires login (#2144), because each history row carries
+  // a past owner's first name, location and website. details.php's guest
+  // branch must show only a login prompt in #historyCard — no toggle, no
+  // table, no summary — and must not load the history-only assets
+  // (DataTables, highlightDifferences.min.js, car_details.min.js).
+  //
+  // This file also runs against production via `npm run test:e2e`, so these
+  // tests are the production guard that history stays members-only.
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'not-logged-in') {
+      testInfo.skip();
+    }
+  });
+
+  /**
+   * Discover a real car id from the list page rather than assuming a fixed
+   * one — mirrors the JSON-LD test above's approach, since a fixed id
+   * (e.g. CAR_ID_STANDARD's default of 1) doesn't exist on every test DB
+   * snapshot.
+   * @param {import('@playwright/test').Page} page
+   * @returns {Promise<string>} a car id, asserted to be numeric
+   */
+  async function discoverCarId(page) {
+    await page.goto('/app/owner/cars/index.php');
+    const firstDetailsLink = page.locator('a[href*="details.php?car_id="]').first();
+    await firstDetailsLink.waitFor();
+    const href = await firstDetailsLink.getAttribute('href');
+    const carId = new URL(href, page.url()).searchParams.get('car_id');
+    expect(carId, 'first Details link must carry a car_id').toMatch(/^\d+$/);
+    return carId;
+  }
+
+  test('anonymous details.php shows a login prompt in #historyCard, with no table, toggle or summary', async ({ page }) => {
+    // Registered only after the discovery navigation settles — index.php's
+    // own DataTable (car-list.js) is still finishing its own asset/ajax
+    // requests when firstDetailsLink resolves, and a collector attached
+    // before this point would wrongly attribute those in-flight requests to
+    // the details.php navigation that follows.
+    const carId = await discoverCarId(page);
+
+    const consoleErrors = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') {
+        consoleErrors.push({ text: msg.text(), url: msg.location().url || '' });
+      }
+    });
+
+    await page.goto(`/app/owner/cars/details.php?car_id=${carId}`, { waitUntil: 'networkidle' });
+
+    const prompt = page.locator('#historyCard .alert.alert-primary');
+    await expect(prompt).toHaveCount(1);
+    await expect(prompt).toContainText("to see this car's update history.");
+
+    const loginLink = prompt.locator('a[href*="users/login.php"]');
+    await expect(loginLink).toHaveCount(1);
+
+    await expect(page.locator('#carHistoryTable')).toHaveCount(0);
+    await expect(page.locator('#historyToggleBtn')).toHaveCount(0);
+    await expect(page.locator('#historySummary')).toHaveCount(0);
+
+    // A car with a map (lat/lon) can 404 on a third-party map tile sprite
+    // (tiles.versatiles.org) in a test environment. That happens for every
+    // visitor, logged in or not, and has nothing to do with history. Only
+    // errors from that one host are ignored; any other console error,
+    // including a 404 for one of this site's own assets, still fails.
+    const unexpectedErrors = consoleErrors.filter((e) => !e.url.includes('tiles.versatiles.org'));
+    expect(unexpectedErrors, `console errors: ${unexpectedErrors.map((e) => `${e.text} (${e.url})`).join('; ')}`).toEqual([]);
+  });
+
+  test('anonymous details.php does not request history-only assets, but does request imagedisplay.min.js', async ({ page }) => {
+    // Registered only after the discovery navigation settles — see the
+    // comment in the previous test for why (index.php's own DataTable is
+    // still finishing requests when firstDetailsLink resolves).
+    const carId = await discoverCarId(page);
+
+    const requestUrls = [];
+    page.on('request', (request) => {
+      requestUrls.push(request.url());
+    });
+
+    await page.goto(`/app/owner/cars/details.php?car_id=${carId}`, { waitUntil: 'networkidle' });
+
+    const historyOnlyAssets = [
+      'car_details.min.js',
+      'highlightDifferences.min.js',
+      'datatables.min.js',
+      'datatables-fixedheader.min.js',
+      'datatables-responsive.min.js',
+      'datatables.min.css',
+    ];
+    for (const asset of historyOnlyAssets) {
+      const matched = requestUrls.filter((url) => url.includes(asset));
+      expect(matched, `unexpected request(s) for ${asset}: ${matched.join(', ')}`).toEqual([]);
+    }
+
+    // Proves the request collector actually saw script tags — imagedisplay.min.js
+    // is unrelated to history and must still be requested for every visitor.
+    expect(requestUrls.some((url) => url.includes('imagedisplay.min.js'))).toBe(true);
+  });
+});
+
 test.describe('Location picker city disambiguation (#1400)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
