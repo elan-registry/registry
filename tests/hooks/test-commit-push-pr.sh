@@ -4,54 +4,111 @@
 # /commit-push-pr (branch-safety refusal, forbidden-path refusal, and the
 # dry-run command sequence for commit/push/PR create-or-reuse).
 #
-# Runs entirely with --dry-run: no commit, push, or `gh` call is ever
-# executed for real. Creates a synthetic scratch branch and worktree-local
-# test files, and always cleans them up (even on failure, via a trap).
-# Does not modify any existing branch, ref, or file outside its own scratch
-# area. Safe to run repeatedly; does not require a specific branch to be
-# checked out (it returns to whatever branch was checked out before the run).
+# Hermetic: every scenario runs inside a throwaway `git clone --local` of
+# this repo in a temp directory. No `git checkout`, `commit`, or `branch` is
+# ever run against the real working tree this test was launched from — only
+# read-only queries (`git rev-parse --show-toplevel`) touch it, to find the
+# repo to clone. `git clone --local` sets the clone's "origin" to the real
+# repo's working directory, so this test repoints "origin" at a throwaway
+# bare repo right after cloning — otherwise a regression in the script under
+# test (a real `git push`) would land a branch in the real repo. A stub `gh`
+# is put first on PATH so no scenario reaches the real GitHub CLI either.
+# The clone, the bare repo, and all temp files are removed on exit (even on
+# failure, via a trap), so this test is safe to run concurrently with other
+# work in the real checkout.
 #
 # Usage: bash tests/hooks/test-commit-push-pr.sh
 # Exit code: 0 if all scenarios pass, 1 otherwise.
 
 set -u
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT" || exit 1
+SOURCE_REPO_ROOT="$(git rev-parse --show-toplevel)"
 
-SCRIPT="scripts/commit-push-pr.sh"
-if [ ! -f "$SCRIPT" ]; then
-    echo "FAIL: $SCRIPT not found" >&2
+SCRIPT_REL="scripts/commit-push-pr.sh"
+if [ ! -f "$SOURCE_REPO_ROOT/$SCRIPT_REL" ]; then
+    echo "FAIL: $SCRIPT_REL not found in $SOURCE_REPO_ROOT" >&2
     exit 1
 fi
 
 TESTS_RUN=0
 TESTS_FAILED=0
 
-ORIGINAL_BRANCH="$(git branch --show-current)"
-SYNTH_BRANCHES=()
-SCRATCH_FILES=()
+SCRATCH_PARENT=""
+BARE_ORIGIN_DIR=""
+STUB_BIN_DIR=""
 TMP_FILES=()
 
 cleanup() {
-    # Return to the original branch first so branch deletion below doesn't
-    # refuse (git won't delete the branch you're currently on).
-    if [ -n "$ORIGINAL_BRANCH" ]; then
-        git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
+    if [ -n "$SCRATCH_PARENT" ]; then
+        rm -rf "$SCRATCH_PARENT"
     fi
-    local ref
-    for ref in "${SYNTH_BRANCHES[@]:-}"; do
-        [ -n "$ref" ] && git branch -D "$ref" >/dev/null 2>&1
-    done
     local f
-    for f in "${SCRATCH_FILES[@]:-}"; do
-        [ -n "$f" ] && rm -f "$f"
-    done
     for f in "${TMP_FILES[@]:-}"; do
         [ -n "$f" ] && rm -f "$f"
     done
 }
 trap cleanup EXIT
+
+SCRATCH_PARENT="$(mktemp -d)"
+CLONE_DIR="$SCRATCH_PARENT/repo"
+if ! git clone --quiet --local --no-hardlinks "$SOURCE_REPO_ROOT" "$CLONE_DIR" >/dev/null 2>&1; then
+    echo "FAIL: could not clone $SOURCE_REPO_ROOT into $CLONE_DIR" >&2
+    exit 1
+fi
+
+# `git clone --local` points the clone's "origin" at $SOURCE_REPO_ROOT — the
+# real checkout this test was launched from. If the script under test ever
+# regresses to a real `git push` (instead of staying inside --dry-run or a
+# throwaway scratch branch), that push would land in the real repo. Replace
+# "origin" with a throwaway bare repo so every push in this test — including
+# one from a bug this test is meant to catch — lands somewhere disposable.
+BARE_ORIGIN_DIR="$SCRATCH_PARENT/origin.git"
+if ! git init --quiet --bare "$BARE_ORIGIN_DIR" >/dev/null 2>&1; then
+    echo "FAIL: could not create bare origin at $BARE_ORIGIN_DIR" >&2
+    exit 1
+fi
+# Scenarios need origin/main to exist (scripts/resolve-base-branch.sh
+# resolves a PR base against it), so seed the bare origin with main before
+# retargeting "origin". Seed from the source checkout, not the clone: the
+# clone's remote refs are the source's LOCAL branches, and a CI runner
+# (actions/checkout) has no local main, only refs/remotes/origin/main.
+MAIN_REF="refs/remotes/origin/main"
+git -C "$SOURCE_REPO_ROOT" rev-parse --verify --quiet "$MAIN_REF" >/dev/null || MAIN_REF="refs/heads/main"
+if ! git -C "$SOURCE_REPO_ROOT" push --quiet "$BARE_ORIGIN_DIR" "$MAIN_REF:refs/heads/main" >/dev/null 2>&1; then
+    echo "FAIL: could not push main to the throwaway bare origin" >&2
+    exit 1
+fi
+git -C "$CLONE_DIR" remote set-url origin "$BARE_ORIGIN_DIR"
+git -C "$CLONE_DIR" fetch --quiet origin >/dev/null 2>&1
+
+# `git clone` only copies committed history, not uncommitted edits in
+# SOURCE_REPO_ROOT's working tree. Overlay the working-tree copy of the
+# script under test so this test exercises in-progress changes, not just
+# what's committed.
+cp "$SOURCE_REPO_ROOT/$SCRIPT_REL" "$CLONE_DIR/$SCRIPT_REL"
+
+# Stub `gh` on PATH ahead of the real one so no scenario reaches GitHub,
+# even a scenario that runs the script for real (not --dry-run).
+STUB_BIN_DIR="$SCRATCH_PARENT/stub-bin"
+mkdir -p "$STUB_BIN_DIR"
+cat > "$STUB_BIN_DIR/gh" <<'EOF'
+#!/bin/bash
+# Stub gh for test-commit-push-pr.sh: no scenario in that test expects an
+# existing PR, and none should reach the real GitHub CLI.
+case "$1 $2" in
+    "pr view") echo "" ; exit 1 ;;
+    "pr create") echo "https://example.invalid/pr/stub" ; exit 0 ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$STUB_BIN_DIR/gh"
+export PATH="$STUB_BIN_DIR:$PATH"
+
+cd "$CLONE_DIR" || exit 1
+
+SCRIPT="scripts/commit-push-pr.sh"
+ORIGINAL_BRANCH="$(git branch --show-current)"
+SYNTH_BRANCHES=()
 
 MESSAGE_FILE="$(mktemp)"
 TMP_FILES+=("$MESSAGE_FILE")
@@ -132,6 +189,8 @@ assert_output_not_matches() {
 # main/master names are instead tested with is_refused_branch() extracted
 # the same way is_forbidden_path() is tested in Scenario 4 — this avoids
 # ever needing to check out the genuinely-existing `main`/`master` branches.
+# All checkouts below run in the throwaway clone at $CLONE_DIR, never in the
+# real repo this test was launched from.
 
 FN_FILE2="$(mktemp)"
 TMP_FILES+=("$FN_FILE2")
@@ -200,6 +259,56 @@ assert_exit \
     "Scenario 3: --branch milestone/foo is rejected even from a refused branch" \
     1 \
     -- --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --branch milestone/__test_still_refused
+git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
+
+# --- Scenario 3b: --branch names a branch that already exists --------------
+# Bug #2245: `git checkout -b` on an existing branch name fails, but the old
+# code did not check the result — it set CURRENT_BRANCH to the new name
+# anyway and went on to commit on the still-checked-out (refused) branch,
+# push, and open a PR. This scenario runs the script for real (no --dry-run)
+# in the throwaway clone, so it exercises the actual `git checkout -b`
+# failure. `--dry-run` would skip the real checkout and hide the bug.
+# TO_STAGE is empty in this clone (nothing staged/changed), so if the bug
+# were present the script would skip `git commit` and go straight to `git
+# push`. The clone's "origin" is a throwaway bare repo (see the setup at the
+# top of this file), so even that push cannot reach the real checkout. The
+# test asserts the exit code and "no new commit" directly.
+
+git checkout -b milestone/__test_refused4 >/dev/null 2>&1
+SYNTH_BRANCHES+=("milestone/__test_refused4")
+git checkout -b __test_existing_target >/dev/null 2>&1
+SYNTH_BRANCHES+=("__test_existing_target")
+BEFORE_SHA_S3B="$(git rev-parse __test_existing_target)"
+git checkout milestone/__test_refused4 >/dev/null 2>&1
+
+assert_exit \
+    "Scenario 3b: --branch naming an already-existing branch fails (does not silently continue)" \
+    2 \
+    -- --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --branch __test_existing_target
+
+git checkout milestone/__test_refused4 >/dev/null 2>&1
+CURRENT_SHA_S3B="$(git rev-parse HEAD)"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$CURRENT_SHA_S3B" = "$(git rev-parse milestone/__test_refused4)" ]; then
+    echo "PASS: Scenario 3b: no commit landed on the starting branch"
+else
+    echo "FAIL: Scenario 3b: no commit landed on the starting branch"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$(git rev-parse __test_existing_target)" = "$BEFORE_SHA_S3B" ]; then
+    echo "PASS: Scenario 3b: the existing target branch was not moved"
+else
+    echo "FAIL: Scenario 3b: the existing target branch was not moved"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+assert_output_matches \
+    "Scenario 3b: prints a clear checkout-failure error to stderr" \
+    "git checkout -b '__test_existing_target' failed" \
+    -- --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --branch __test_existing_target
+
 git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
 
 # --- Scenario 4: is_forbidden_path() rejects docs/plans/ and _noupload/ ----
@@ -291,6 +400,108 @@ else
     TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
+
+# --- Scenario 7: a failing `git status` is not swallowed --------------------
+# Bug #2245: `git status --porcelain` ran inside a process substitution, so a
+# failing `git status` was lost. The script then reported "Nothing to
+# commit; pushing existing commits", pushed, opened a PR, and exited 0
+# without the change. This scenario puts a `git` wrapper first on PATH that
+# fails only for the `status` subcommand and passes every other subcommand
+# through to the real `git`, then asserts the script exits 2 before it
+# pushes or opens a PR.
+
+GIT_STATUS_FAIL_DIR="$SCRATCH_PARENT/git-status-fail-bin"
+mkdir -p "$GIT_STATUS_FAIL_DIR"
+REAL_GIT="$(command -v git)"
+cat > "$GIT_STATUS_FAIL_DIR/git" <<EOF
+#!/bin/bash
+if [ "\$1" = "status" ]; then
+    echo "git: fatal: synthetic status failure for test-commit-push-pr Scenario 7" >&2
+    exit 128
+fi
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$GIT_STATUS_FAIL_DIR/git"
+
+git checkout -b __test_scratch_statusfail >/dev/null 2>&1
+SYNTH_BRANCHES+=("__test_scratch_statusfail")
+BEFORE_SHA_S7="$(git rev-parse HEAD)"
+BEFORE_ORIGIN_HEAD_S7="$(git ls-remote origin main | cut -f1)"
+
+TESTS_RUN=$((TESTS_RUN + 1))
+OUTPUT_S7="$(PATH="$GIT_STATUS_FAIL_DIR:$PATH" bash "$SCRIPT" --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" 2>&1)"
+ACTUAL_S7=$?
+if [ "$ACTUAL_S7" = 2 ]; then
+    echo "PASS: Scenario 7: a failing git status exits 2"
+else
+    echo "FAIL: Scenario 7: a failing git status exits 2"
+    echo "      expected exit: 2"
+    echo "      actual exit:   $ACTUAL_S7"
+    echo "      output:"
+    printf '        %s\n' "${OUTPUT_S7//$'\n'/$'\n'        }"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+AFTER_SHA_S7="$(git rev-parse HEAD)"
+AFTER_ORIGIN_HEAD_S7="$(git ls-remote origin main | cut -f1)"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$BEFORE_SHA_S7" = "$AFTER_SHA_S7" ] && [ "$BEFORE_ORIGIN_HEAD_S7" = "$AFTER_ORIGIN_HEAD_S7" ]; then
+    echo "PASS: Scenario 7: no commit and no push happened after a failing git status"
+else
+    echo "FAIL: Scenario 7: no commit and no push happened after a failing git status"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if printf '%s' "$OUTPUT_S7" | grep -qE '^(git status failed|Refused:)'; then
+    echo "PASS: Scenario 7: prints a clear error rather than 'Nothing to commit'"
+else
+    echo "FAIL: Scenario 7: prints a clear error rather than 'Nothing to commit'"
+    echo "      output: $OUTPUT_S7"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if printf '%s' "$OUTPUT_S7" | grep -q "Nothing to commit"; then
+    echo "FAIL: Scenario 7: must not report 'Nothing to commit' when git status itself failed"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+    echo "PASS: Scenario 7: does not report 'Nothing to commit' when git status itself failed"
+fi
+
+git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
+
+# --- Scenario 8: several changed files stay separate paths -----------------
+# `git status -z` separates records with NUL bytes. Bash command substitution
+# drops NUL bytes, so a version that stored the status output in a variable
+# merged every changed path into one bogus path (PR #2249 review). That
+# breaks both the forbidden-path check and `git add`. Scenarios 3b and 7 run
+# with a clean tree, so they cannot catch it. This scenario creates three
+# untracked files, one with a space in its name, and checks that the dry-run
+# `git add` receives each path as its own argument.
+
+S8_FILES=("s8-a.txt" "s8 b.txt" "s8-c.txt")
+for f in "${S8_FILES[@]}"; do
+    printf 'scenario 8\n' > "$f"
+done
+
+TESTS_RUN=$((TESTS_RUN + 1))
+OUTPUT_S8="$(bash "$SCRIPT" --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --branch __test_scratch_multi 2>&1)"
+# The dry-run prints each argument with printf %q, so a space shows as "\ ".
+# Match only the three scenario paths on the `git add` line: the overlaid
+# copy of the script can also show as changed when it has uncommitted edits.
+# shellcheck disable=SC1003 # a literal backslash in the expected %q output
+S8_EXPECTED='s8\ b.txt s8-a.txt s8-c.txt'
+if printf '%s\n' "$OUTPUT_S8" | grep -F -- 'git add -A -- ' | grep -qF -- " $S8_EXPECTED"; then
+    echo "PASS: Scenario 8: each changed file is staged as its own path"
+else
+    echo "FAIL: Scenario 8: each changed file is staged as its own path"
+    echo "      expected output to contain: $S8_EXPECTED"
+    echo "      output:"
+    printf '        %s\n' "${OUTPUT_S8//$'\n'/$'\n'        }"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+rm -f -- "${S8_FILES[@]}"
 
 # --- Report ---------------------------------------------------
 

@@ -60,19 +60,28 @@ Cloudflare provides edge caching and CDN (US, EU, AU users).
 - PHP: `composer.json` requires 8.2.29 or later (compatibility floor). Local,
   CI, test, and production use PHP 8.4.x (production 8.4.25). MySQL 8.0+.
 - `vlucas/phpdotenv` loads a plaintext `.env` (`chmod 600`).
+- Docker is the only local environment. Start it with `docker compose up -d`.
+  `DB_HOST=db` resolves only inside the Compose network, so run each command
+  that needs the database in the app container:
+  `docker compose exec -u www-data app <command>`. The container has no Node.js
+  or git, so npm and git-hooks setup run on the host. Setup and ports:
+  `ENVIRONMENT.md` "Docker Dev Environment".
 
 ```bash
-composer install && npm install
+docker compose exec -u www-data app composer install
+npm install
 npm run build                   # Required after install/clone — frontend is build output
 ./scripts/setup-git-hooks.sh    # Pre-commit quality checks (once per developer)
 
-composer test:quick             # Unit tests (<30s)
-composer test:medium            # Unit + Integration (<2min)
-composer test:full              # All PHP tests
-composer check:php              # Coding standards + PHPStan
-composer check                  # PHP standards + PHPStan + ESLint
+composer test:quick             # Unit tests (<30s), host
+composer check:php              # Coding standards + PHPStan, host
+composer check                  # PHP standards + PHPStan + ESLint, host
+scripts/run-verification-suite.sh  # Unit + integration (in the container) + docs + PHPStan
 
-composer migrate                # Apply pending migrations (also :status, :dry-run, :rollback)
+# Database commands — run in the app container:
+docker compose exec -u www-data app composer test:integration  # Integration tests
+docker compose exec -u www-data app composer test:full         # All PHP tests
+docker compose exec -u www-data app composer migrate           # Also :status, :dry-run, :rollback
 
 npm run lint                    # ESLint (lint:fix to auto-fix)
 npm run playwright:test         # Local Playwright tests (also :security, :maps, :csp)

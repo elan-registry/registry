@@ -18,8 +18,6 @@ local check's result; MAMP is no longer needed.
   Traefik label routing and a DB grant fix.
 - [#2127](https://github.com/elan-registry/registry/issues/2127) — Added a mock-brevo service so the
   Brevo email code path runs fully offline.
-- WIP: [#1993](https://github.com/elan-registry/registry/issues/1993) — Freshly provisioned test
-  schemas get one collation matching dev and production.
 - [#2134](https://github.com/elan-registry/registry/issues/2134) — All three PHPUnit configs set
   an explicit 512M memory limit, so test runs no longer die at PHP's 128MB default.
 - [#2159](https://github.com/elan-registry/registry/issues/2159) — The activity-chart
@@ -29,9 +27,9 @@ local check's result; MAMP is no longer needed.
   files that were renamed away.
 - [#2161](https://github.com/elan-registry/registry/issues/2161) — Cleaned up `tests/integration/`,
   moving, merging or deleting low-signal tests and adding a `PassThroughDatabase` test double.
-- WIP: [#2166](https://github.com/elan-registry/registry/issues/2166) — Integration tests' `php -S`
-  servers no longer leak (two per container run), and a crashed run's leftover servers and Brevo
-  `override.php` stub are cleaned up by the next run instead of silently changing dev email routing.
+- [#2166](https://github.com/elan-registry/registry/issues/2166) — Integration tests no longer leak
+  `php -S` servers, and the next run cleans up a crashed run's leftover servers and Brevo
+  `override.php` stub.
 - [#2168](https://github.com/elan-registry/registry/issues/2168) — The integration suite no longer
   calls live geocoding services during the pre-push gate.
 - [#2171](https://github.com/elan-registry/registry/issues/2171) — The pre-push gate runs the
@@ -43,32 +41,35 @@ local check's result; MAMP is no longer needed.
 - [#2175](https://github.com/elan-registry/registry/issues/2175) — Documented which tool reads each
   env file and fixed a provisioning guard that checked the wrong one.
 - [#2178](https://github.com/elan-registry/registry/issues/2178) — mock-brevo is pinned to the
-  maintained fork `ghcr.io/unibrain1/mock-brevo:1.2.0` (English UI; event report, block list,
-  Brevo-style webhooks; mock webhooks send `BREVO_WEBHOOK_TOKEN`). `EMAIL_SYSTEM.md` now states that the
-  app's send path does not use `BREVO_API_HOST` until [#2184](https://github.com/elan-registry/registry/issues/2184).
-- [#2180](https://github.com/elan-registry/registry/issues/2180) — MAMP is retired for the
-  Registry. Docker is now the only supported local environment. Local cron is an opt-in `cron`
-  Compose service (`docker compose --profile cron up -d`) that runs with `cron_ip` set to `off`.
-  Also lifted the `.htaccess`-skip gate on Playwright's `not-logged-in` suite.
-  Remove an old MAMP `PLAYWRIGHT_BASE_URL` (for example `http://localhost:9999/...`) from `.env.local`.
+  maintained fork `ghcr.io/unibrain1/mock-brevo:1.2.0`, and `EMAIL_SYSTEM.md` states that the app's
+  send path does not use `BREVO_API_HOST` until [#2184](https://github.com/elan-registry/registry/issues/2184).
+- [#2180](https://github.com/elan-registry/registry/issues/2180) — MAMP is retired for the Registry:
+  Docker is the only supported local environment, and local cron is an opt-in `cron` Compose service.
+- [#2199](https://github.com/elan-registry/registry/issues/2199) — The UserSpice audit, helper-lookup
+  and page-scaffold skills are now committed under `.claude/skills/`.
 - [#2222](https://github.com/elan-registry/registry/issues/2222) — The review-gate scripts no longer
   report a clean review as blocked, and `verify-ci-review.sh` reports "could not verify" as that, not
   as a finding.
 - [#2223](https://github.com/elan-registry/registry/issues/2223) — The CI review gate in
-  `claude-code-review.yml` now fails on a heading such as `### Blocking issues, unresolved`, and a
-  grep error fails the step instead of passing it. Both gate blocks set `set -o pipefail`
-  themselves, because the step's shell (`bash -e`) has no pipefail by default, so a failed first
-  grep could otherwise be hidden by a successful second grep. Both jobs now use the same heading
-  and recap patterns as `check-blocking-findings.sh`, and a hook test fails if the patterns or the
-  gate's logic drift apart.
-- [#2225](https://github.com/elan-registry/registry/issues/2225) — `verify-ci-review.sh` no longer misses
-  a change to its own workflow file on a large PR. It reads the PR's file list from the files API,
-  because `gh pr diff` returns HTTP 406 for a diff over 20,000 lines, and a failure to read the list now
-  reports "could not verify" (exit 1). `render-deploy-sheet.sh` no longer drops the trigger-migration
-  step on a large release diff, and it exits 2 if it cannot read the full diff. Both scripts read
-  `grep -q` input from a here-string, because a pipe returned 141 under `pipefail` when `grep -q`
-  stopped at an early match.
-- [#2228](https://github.com/elan-registry/registry/issues/2228) — Local URLs use the address the
-  browser opens (`http://localhost:8001`). The local `cron` service sends that Host header, so emailed
-  links no longer point at `http://127.0.0.1`. Canonical, `og:url` and sitemap links keep the port.
-  Behind a TLS proxy such as `cloudflared`, `getBaseUrl()` no longer adds `:80`.
+  `claude-code-review.yml` now fails on an unresolved Blocking heading and on any grep error, and a
+  hook test keeps its patterns and logic the same as `check-blocking-findings.sh`.
+- [#2225](https://github.com/elan-registry/registry/issues/2225) — `verify-ci-review.sh` and
+  `render-deploy-sheet.sh` no longer miss a match on a large PR or release diff, and each reports
+  "could not verify" when it cannot read its input.
+- [#2228](https://github.com/elan-registry/registry/issues/2228) — Local URLs keep the browser's host
+  and port (`http://localhost:8001`), also in cron emails, and `getBaseUrl()` no longer adds `:80`
+  behind a TLS proxy such as `cloudflared`.
+
+## Developer Actions
+
+- Remove an old MAMP `PLAYWRIGHT_BASE_URL` (for example `http://localhost:9999/...`) from
+  `.env.local` (#2180).
+
+## Retrospective
+
+- **Shipped but not needed:** nothing.
+- **What we learned about the audience:** gates must fail closed. The review and test gates did
+  most of the work for the agents, and each silent pass (#2222, #2223, #2225) cost more than a
+  noisy failure would have.
+- **Signal we ignored:** #2157 asked for integration tests in CI. We merged it into the #2044
+  spike, which was right, because the earlier try (#1746) failed.

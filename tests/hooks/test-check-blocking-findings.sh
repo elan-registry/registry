@@ -409,7 +409,10 @@ chmod +x "$VSCRIPTS/check-blocking-findings.sh"
 #                  path lines from a pre-built file — big enough to fill the
 #                  pipe buffer (#2225).
 #   fail         : the file list call itself fails (simulated `gh` error).
-# `gh workflow run` and `gh pr edit` just succeed in every mode.
+# `gh workflow run` fails when STUB_GH_WORKFLOW_RUN_FAIL=1, `gh pr edit` fails
+# when STUB_GH_PR_EDIT_FAIL=1, and `gh pr view` fails when STUB_GH_PR_VIEW_FAIL=1
+# (each prints a distinct stderr message so a case can assert on it). All
+# other calls succeed.
 cat > "$STUBDIR/gh" <<'STUB'
 #!/bin/bash
 printf '%s\n' "gh $*" >> "${STUB_GH_LOG:?STUB_GH_LOG not set}"
@@ -429,6 +432,18 @@ if [ "$1" = "api" ] && case "$2" in repos/*/pulls/*/files) true ;; *) false ;; e
             ;;
     esac
 fi
+if [ "$1" = "workflow" ] && [ "$2" = "run" ] && [ "${STUB_GH_WORKFLOW_RUN_FAIL:-0}" = "1" ]; then
+    echo "gh: simulated workflow run failure (stub)" >&2
+    exit 1
+fi
+if [ "$1" = "pr" ] && [ "$2" = "edit" ] && [ "${STUB_GH_PR_EDIT_FAIL:-0}" = "1" ]; then
+    echo "gh: simulated pr edit failure (stub)" >&2
+    exit 1
+fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ] && [ "${STUB_GH_PR_VIEW_FAIL:-0}" = "1" ]; then
+    echo "gh: simulated pr view failure (stub)" >&2
+    exit 1
+fi
 exit 0
 STUB
 chmod +x "$STUBDIR/gh"
@@ -442,6 +457,20 @@ run_verify() {
         STUB_GH_DIFF_MATCH_FILE="$STUB_GH_DIFF_MATCH_FILE" \
         PATH="$STUBDIR:$PATH" \
         bash "$VSCRIPTS/verify-ci-review.sh" 1 1 1 --trigger=workflow "$@"
+}
+
+# Same as run_verify, but with --trigger=label — for cases that exercise the
+# `gh pr edit --add-label deep-review` recovery path instead of
+# `gh workflow run`.
+# shellcheck disable=SC2120,SC2119 # kept symmetric with run_verify; no case
+# needs extra flags on the label path yet, but "$@" costs nothing to keep
+run_verify_label() {
+    rm -f "$POLL_COUNT_FILE"
+    : > "$GH_LOG"
+    : > "$CHECK_ARGS_LOG"
+    STUB_POLL_COUNT_FILE="$POLL_COUNT_FILE" STUB_GH_LOG="$GH_LOG" \
+        PATH="$STUBDIR:$PATH" \
+        bash "$VSCRIPTS/verify-ci-review.sh" 1 1 1 --trigger=label "$@"
 }
 
 # --- Case 10: poll 0, check 0 -> 0 -----------------------------------------
@@ -569,6 +598,50 @@ if [ "$STATUS24" -eq 1 ] && printf '%s' "$OUT24" | grep -q 'file list could not 
 else
     fail "Case 24: PR file list call fails -> exit 1, message mentions the failure, no recovery workflow run" \
         "exit: $STATUS24 (want 1)" "output: [$OUT24]"
+fi
+
+# --- Case 34: recovery `gh workflow run` fails -> 1, no false "trigger sent" ----
+# On the old code, `gh workflow run ...` ran with its result unchecked, so a
+# failed trigger still fell through to "Recovery trigger sent" and then, once
+# the re-poll also found nothing, exit 4 ("no review posted") — misreporting
+# a trigger failure as "review never posted."
+OUT34="$(STUB_POLL_EXIT=1 STUB_CHECK_EXIT=0 STUB_GH_WORKFLOW_RUN_FAIL=1 run_verify 2>&1)"
+STATUS34=$?
+if [ "$STATUS34" -eq 1 ] && printf '%s' "$OUT34" | grep -q 'recovery trigger failed' \
+    && printf '%s' "$OUT34" | grep -q 'simulated workflow run failure' \
+    && ! printf '%s' "$OUT34" | grep -q 'Recovery trigger sent'; then
+    pass "Case 34: recovery 'gh workflow run' fails -> exit 1, message shown, no 'Recovery trigger sent'"
+else
+    fail "Case 34: recovery 'gh workflow run' fails -> exit 1, message shown, no 'Recovery trigger sent'" \
+        "exit: $STATUS34 (want 1)" "output: [$OUT34]"
+fi
+
+# --- Case 35: recovery `gh pr edit` fails (label trigger) -> 1, no false ----
+# "trigger sent" (same bug as case 34, on the --trigger=label path instead of
+# --trigger=workflow).
+OUT35="$(STUB_POLL_EXIT=1 STUB_CHECK_EXIT=0 STUB_GH_PR_EDIT_FAIL=1 run_verify_label 2>&1)"
+STATUS35=$?
+if [ "$STATUS35" -eq 1 ] && printf '%s' "$OUT35" | grep -q 'recovery trigger failed' \
+    && printf '%s' "$OUT35" | grep -q 'simulated pr edit failure' \
+    && ! printf '%s' "$OUT35" | grep -q 'Recovery trigger sent'; then
+    pass "Case 35: recovery 'gh pr edit' fails -> exit 1, message shown, no 'Recovery trigger sent'"
+else
+    fail "Case 35: recovery 'gh pr edit' fails -> exit 1, message shown, no 'Recovery trigger sent'" \
+        "exit: $STATUS35 (want 1)" "output: [$OUT35]"
+fi
+
+# --- Case 36: title lookup fails (--check-skip-tag) -> a warning is printed,
+# and the script still proceeds to recovery rather than silently treating the
+# failed lookup as "no skip tag" without a word. The old code's
+# `2>/dev/null || true` swallowed the failure and its stderr both.
+OUT36="$(STUB_POLL_EXIT=1 STUB_CHECK_EXIT=0 STUB_GH_PR_VIEW_FAIL=1 run_verify --check-skip-tag 2>&1)"
+STATUS36=$?
+if printf '%s' "$OUT36" | grep -q 'could not read the PR title' \
+    && grep -q 'pr view' "$GH_LOG"; then
+    pass "Case 36: title lookup fails -> a warning is printed"
+else
+    fail "Case 36: title lookup fails -> a warning is printed" \
+        "exit: $STATUS36" "output: [$OUT36]"
 fi
 
 # =========================================================================

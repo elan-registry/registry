@@ -87,14 +87,18 @@ quality checks. Run once per developer after cloning the repo.
    - **At most once per push.** The suite tests the working tree (`HEAD`),
      so a multi-branch push reuses one result, and pushing a branch that
      isn't `HEAD` prints a warning.
-   - **Where it runs (#2171).** On the host by default. When
-     `.env.test.local` has `DB_HOST=db` (the Docker dev stack), it runs
-     inside this checkout's `app` container instead, with
-     `docker compose exec -T -u www-data app composer test:integration`, since
-     `db` resolves only on the Compose network. If the stack isn't running,
-     the push is blocked with `docker compose up -d` as the fix; it never
-     falls back to the host or skips. `INTEGRATION_GATE_RUNNER=host|docker`
-     overrides the detection.
+   - **Where it runs (#2171, #2245).** In this checkout's Docker `app`
+     container by default, since Docker is the only supported dev
+     environment (MAMP retired, #2180) and `.env.test.local` has
+     `DB_HOST=db`, which resolves only on the Compose network:
+     `docker compose exec -T -u www-data app composer test:integration`. The
+     host is a fallback, used only when `.env.test.local` does not point at
+     the Docker `db` service. If the stack isn't running, the push is
+     blocked with `docker compose up -d` as the fix; it never falls back to
+     the host or skips. `INTEGRATION_GATE_RUNNER=host|docker` overrides the
+     detection. The detection and run logic (`_integration_runner`,
+     `_run_integration_suite`) live in `scripts/lib/integration-runner.sh`,
+     shared with `scripts/run-verification-suite.sh` below.
    - **Cache.** `$(git rev-parse --git-path integration-passed)` holds a
      single key — tree, test database name and runner (host or Docker) — for
      the most recent pass, so it only skips a re-push of an identical tree to

@@ -12,9 +12,13 @@
 # script with that directory as the working directory — it never touches
 # this repo's real tests/ tree. Always cleaned up via a trap.
 #
-# gh calls in this test hit the real GitHub API (read-only `gh issue view`)
-# against a fixed, known-closed issue in this repo, matching how the
-# script itself would behave for a real citation.
+# Hermetic: a stub `gh` is put first on PATH before any scenario runs, so
+# every `gh issue view` call in this test is answered locally — none reaches
+# the real GitHub API. A GitHub-hosted CI runner has no gh credentials, so a
+# real call would fail there. The stub answers issue 1 as closed, issue 2 as
+# open, and issue 999999 as a lookup failure (exit 1, no output), matching
+# the shape scripts/check-known-broken-tests.sh expects from
+# `gh issue view <n> --repo elan-registry/registry --json state --jq .state`.
 #
 # Usage: bash tests/hooks/test-check-known-broken-tests.sh
 # Exit code: 0 if all scenarios pass, 1 otherwise.
@@ -28,13 +32,36 @@ TESTS_RUN=0
 TESTS_FAILED=0
 
 SCRATCH_DIR="$(mktemp -d)"
+STUB_BIN_DIR=""
 
 cleanup() {
     rm -rf "$SCRATCH_DIR"
+    [ -n "$STUB_BIN_DIR" ] && rm -rf "$STUB_BIN_DIR"
 }
 trap cleanup EXIT
 
 mkdir -p "$SCRATCH_DIR/tests"
+
+# --- Stub gh: answers `issue view <n> --repo ... --json state --jq .state` -
+STUB_BIN_DIR="$(mktemp -d)"
+cat > "$STUB_BIN_DIR/gh" <<'EOF'
+#!/bin/bash
+# Stub gh for test-check-known-broken-tests.sh. Only implements the one call
+# scripts/check-known-broken-tests.sh makes:
+#   gh issue view <n> --repo elan-registry/registry --json state --jq .state
+if [ "$1" = "issue" ] && [ "$2" = "view" ]; then
+    issue_num="$3"
+    case "$issue_num" in
+        1) echo "closed"; exit 0 ;;
+        2) echo "open"; exit 0 ;;
+        999999) exit 1 ;;
+        *) exit 1 ;;
+    esac
+fi
+exit 1
+EOF
+chmod +x "$STUB_BIN_DIR/gh"
+export PATH="$STUB_BIN_DIR:$PATH"
 
 assert() {
     local desc="$1" expected_exit="$2" actual_exit="$3"
@@ -62,7 +89,7 @@ else
 fi
 
 # --- Scenario 2: tag citing an issue number -> exit 1, state looked up ------
-# #1 is this repo's first issue and is closed — a stable, cheap fixture.
+# Issue 1 is stubbed as closed.
 cat > "$SCRATCH_DIR/tests/TaggedTest.php" <<'EOF'
 <?php
 // #1 — fails on Linux CI, root cause under investigation
@@ -74,7 +101,7 @@ EXIT_CODE=$?
 assert "tagged test citing an issue exits 1" 1 "$EXIT_CODE"
 
 TESTS_RUN=$((TESTS_RUN + 1))
-if printf '%s' "$OUTPUT" | grep -qEi $'^tests/TaggedTest\\.php\t[0-9]+\t1\t(open|closed)$'; then
+if printf '%s' "$OUTPUT" | grep -qEi $'^tests/TaggedTest\\.php\t[0-9]+\t1\tclosed$'; then
     echo "PASS: match line reports file, line, issue number, and looked-up state"
 else
     echo "FAIL: unexpected match line format: $OUTPUT"
@@ -96,6 +123,28 @@ assert "tagged test with no issue number exits 1" 1 "$EXIT_CODE"
 TESTS_RUN=$((TESTS_RUN + 1))
 if printf '%s' "$OUTPUT" | grep -qE $'^tests/UncitedTest\\.php\t[0-9]+\t\\(none\\)\t\\(unknown\\)$'; then
     echo "PASS: uncited match reports (none)/(unknown)"
+else
+    echo "FAIL: unexpected match line format: $OUTPUT"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# --- Scenario 4: gh lookup fails -> exit 2, state (lookup-failed) -----------
+# Issue 999999 is stubbed to fail, simulating an auth/network/rate-limit
+# error from the real `gh issue view`.
+rm -f "$SCRATCH_DIR/tests/UncitedTest.php"
+cat > "$SCRATCH_DIR/tests/LookupFailedTest.php" <<'EOF'
+<?php
+// #999999 — fails on Linux CI, root cause under investigation
+#[Group('known-broken')]
+public function testSomething(): void {}
+EOF
+OUTPUT="$(cd "$SCRATCH_DIR" && "$SCRIPT" 2>/dev/null)"
+EXIT_CODE=$?
+assert "gh lookup failure exits 2" 2 "$EXIT_CODE"
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if printf '%s' "$OUTPUT" | grep -qE $'^tests/LookupFailedTest\\.php\t[0-9]+\t999999\t\\(lookup-failed\\)$'; then
+    echo "PASS: failed lookup reports (lookup-failed)"
 else
     echo "FAIL: unexpected match line format: $OUTPUT"
     TESTS_FAILED=$((TESTS_FAILED + 1))

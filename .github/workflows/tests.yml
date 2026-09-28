@@ -76,10 +76,10 @@ jobs:
             hooks:
               - ".githooks/**"
               - "tests/hooks/**"
-              - "scripts/provision-schema.sh"
-              - "scripts/render-deploy-sheet.sh"
-              - "scripts/check-blocking-findings.sh"
-              - "scripts/verify-ci-review.sh"
+              - "scripts/lib/**"
+              - "scripts/*.sh"
+              - ".claude/hooks/**"
+              - ".github/workflows/tests.yml"
               - ".github/workflows/claude-code-review.yml"
 
   git-hooks:
@@ -111,26 +111,50 @@ jobs:
           # resolve correctly against them.
           fetch-depth: 0
 
-      - name: Run pre-push hook regression tests
-        run: bash tests/hooks/test-pick-closest-base.sh
-
-      # Covers the rest of the integration gate (#2160): parent-base
-      # selection, which changed files actually count, the pass cache, and
-      # the hook end-to-end with a stubbed `composer`. Fully hermetic — it
-      # builds its own throwaway repo under mktemp -d and never touches the
-      # checkout's refs, so it needs no fetch-depth or fixture setup.
-      - name: Run pre-push integration-gate tests
-        run: bash tests/hooks/test-pre-push-gate.sh
-
-      # Pins the DB_HOST=db guard in scripts/provision-schema.sh. A host run
-      # can resolve `db` to another machine and DROP a database there.
-      - name: Run provision-schema guard tests
-        run: bash tests/hooks/test-provision-schema-guard.sh
-
-      # Pins the #2225 fix: a match early in a >64 KB diff or file list must
-      # still be found. A piped `grep -q` under `pipefail` read it as no match.
-      - name: Run render-deploy-sheet tests
-        run: bash tests/hooks/test-render-deploy-sheet.sh
-
-      - name: Run check-blocking-findings and verify-ci-review tests
-        run: bash tests/hooks/test-check-blocking-findings.sh
+      # Runs every tests/hooks/test-*.sh file, not a hand-picked subset, so a
+      # new test file is covered the moment it lands — no separate step to
+      # remember to add. Notes that still apply to specific tests in this
+      # set:
+      #   - test-pick-closest-base.sh: pins `.githooks/pre-push`'s
+      #     `_pick_closest_base()`, regressed three times across separate
+      #     reviews (#1751, #1767, #2029) with zero automated coverage until
+      #     this test was added (#2024).
+      #   - test-pre-push-gate.sh: covers the rest of the integration gate
+      #     (#2160). Fully hermetic — builds its own throwaway repo under
+      #     mktemp -d and never touches the checkout's refs.
+      #   - test-provision-schema-guard.sh: pins the DB_HOST=db guard in
+      #     scripts/provision-schema.sh. A host run can resolve `db` to
+      #     another machine and DROP a database there.
+      #   - test-render-deploy-sheet.sh: pins the #2225 fix — a match early
+      #     in a >64 KB diff or file list must still be found. A piped
+      #     `grep -q` under `pipefail` read it as no match.
+      #   - test-phpstan-on-edit.sh: needs `vendor/bin/phpstan` for its
+      #     "new error" assertion. This job installs no PHP toolchain (it
+      #     would only serve this one assertion in this one test), so the
+      #     hook it tests takes its own documented no-vendor fallback (exits
+      #     0 without analysing) and the test reports that assertion as
+      #     skipped rather than failed. Its other assertions (non-PHP file,
+      #     upstream file, clean project file) still run and still gate.
+      #   - test-check-known-broken-tests.sh: puts a stub `gh` first on PATH
+      #     before any scenario runs, so its `gh issue view` calls never
+      #     reach the real GitHub API. Hermetic — runs with no gh credentials
+      #     and no outbound network access.
+      #   - test-commit-push-pr.sh: clones this repo into a throwaway
+      #     directory and repoints the clone's "origin" at a throwaway bare
+      #     repo (not this checkout), with a stub `gh` first on PATH. Hermetic
+      #     — a scenario that runs the script for real, including one that
+      #     exercises a push, cannot reach this checkout or GitHub.
+      - name: Run all git-hooks regression tests
+        run: |
+          fail=0
+          for test_file in tests/hooks/test-*.sh; do
+            echo "::group::$test_file"
+            if bash "$test_file"; then
+              echo "PASS: $test_file"
+            else
+              echo "FAIL: $test_file"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$fail"

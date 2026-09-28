@@ -124,7 +124,11 @@ else
 
   # poll_status == 1: genuinely no comment yet.
   if [ "$CHECK_SKIP_TAG" -eq 1 ]; then
-    TITLE=$(gh pr view "$PR_NUM" --repo "$REPO" --json title -q .title 2>/dev/null) || true
+    TITLE=""
+    if ! TITLE=$(gh pr view "$PR_NUM" --repo "$REPO" --json title -q .title 2>&1); then
+      echo "verify-ci-review.sh: warning: could not read the PR title ('$TITLE'); skipping the [skip-review] check." >&2
+      TITLE=""
+    fi
     case "$TITLE" in
       *"[skip-review]"*)
         echo "PR title carries [skip-review] — no comment is the correct, by-design outcome."
@@ -156,9 +160,19 @@ else
       echo "PR diff touches claude-code-review.yml itself — the action's own workflow-file-must-match-main guard blocks a pre-merge re-run from clearing this. Recovery skipped; this requires a merge to main first." >&2
       exit 4
     fi
-    gh workflow run claude-code-review.yml --ref main --field "pr_number=${PR_NUM}" --repo "$REPO"
+    if ! RECOVERY_ERR=$(gh workflow run claude-code-review.yml --ref main --field "pr_number=${PR_NUM}" --repo "$REPO" 2>&1); then
+      echo "verify-ci-review.sh: could not verify: recovery trigger failed:" >&2
+      echo "  gh workflow run claude-code-review.yml --ref main --field pr_number=${PR_NUM} --repo ${REPO}" >&2
+      echo "  $RECOVERY_ERR" >&2
+      exit 1
+    fi
   else
-    gh pr edit "$PR_NUM" --add-label "deep-review" --repo "$REPO"
+    if ! RECOVERY_ERR=$(gh pr edit "$PR_NUM" --add-label "deep-review" --repo "$REPO" 2>&1); then
+      echo "verify-ci-review.sh: could not verify: recovery trigger failed:" >&2
+      echo "  gh pr edit ${PR_NUM} --add-label deep-review --repo ${REPO}" >&2
+      echo "  $RECOVERY_ERR" >&2
+      exit 1
+    fi
   fi
 
   echo "Recovery trigger sent (--trigger=${TRIGGER}); re-polling once."
