@@ -3,8 +3,7 @@
 ########################################
 .vscode/
 .cursor/
-Elanegistry.sublime-project
-Registry.code-workspace
+*.code-workspace
 *.swp
 *~
 
