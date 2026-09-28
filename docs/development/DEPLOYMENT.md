@@ -649,7 +649,7 @@ the real client address and cannot be spoofed with a header.
 
 | Environment | Trigger | Interval | `cron_ip` | Evidence |
 | --- | --- | --- | --- | --- |
-| dev (Docker) | the `cron` Compose service, started with `docker compose --profile cron up -d`, see [ENVIRONMENT.md](ENVIRONMENT.md#development-setup) | 10 min | `off`. The service shares the `app` container's network namespace, so `cron.php` sees the request's `REMOTE_ADDR` as `127.0.0.1`, which `off` admits. `off` denies every other caller, including a Cloudflare tunnel | `docker compose logs cron`, `er_verification_settings.last_cron_request_at` (DB Explainer or Admin → Verification tab) |
+| dev (Docker) | the `cron` Compose service, started with `docker compose --profile cron up -d`, see [ENVIRONMENT.md](ENVIRONMENT.md#development-setup) | 10 min | `off`. The service shares the `app` container's network namespace, so `cron.php` sees the request's `REMOTE_ADDR` as `127.0.0.1`, which `off` admits. It sends `Host: localhost:$APP_HOST_PORT`, so emailed links use the browser's address. `off` denies every other caller, including a Cloudflare tunnel | `docker compose logs cron`, `er_verification_settings.last_cron_request_at` (DB Explainer or Admin → Verification tab) |
 | test.elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | the server's public outbound IP, as shown in a `Cron request DENIED from <ip>.` entry if misconfigured | `er_verification_settings.last_cron_request_at`, Cron Manager job log |
 | elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | same policy, checked independently | same |
 

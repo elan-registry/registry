@@ -159,6 +159,113 @@ class ServerGlobalsTest extends TestCase
     }
 
     /**
+     * Docker maps host port 8001 to Apache: the non-default port must survive
+     * into $current_origin and $current_url while $host stays port-less
+     * (#2228).
+     */
+    #[Group('requires-upstream-install')]
+    public function testNonDefaultPortIsAppendedToOrigin(): void
+    {
+        $globals = $this->runServerGlobals([
+            'REQUEST_SCHEME' => 'http',
+            'HTTP_HOST' => 'localhost:8001',
+            'SERVER_PORT' => '8001',
+            'REQUEST_URI' => '/app/owner/cars/details.php?id=1',
+        ]);
+
+        $this->assertSame('localhost', $globals['host']);
+        $this->assertSame('http://localhost:8001', $globals['current_origin']);
+        $this->assertSame(
+            'http://localhost:8001/app/owner/cars/details.php?id=1',
+            $globals['current_url']
+        );
+    }
+
+    /**
+     * The default port depends on the scheme: 8443 is not https's default,
+     * so it is kept when no proxy header is present (#2228).
+     */
+    #[Group('requires-upstream-install')]
+    public function testNonDefaultHttpsPortIsAppendedToOrigin(): void
+    {
+        $globals = $this->runServerGlobals([
+            'REQUEST_SCHEME' => 'https',
+            'HTTP_HOST' => 'localhost:8443',
+            'SERVER_PORT' => '8443',
+        ]);
+
+        $this->assertSame('https://localhost:8443', $globals['current_origin']);
+    }
+
+    /**
+     * No port is appended for the scheme's default port, behind a TLS proxy
+     * (Apache's port is not the client's port), or when SERVER_PORT is
+     * missing or invalid (#2228).
+     *
+     * @param array<string, string> $serverFixture
+     */
+    #[DataProvider('portOmittedProvider')]
+    #[Group('requires-upstream-install')]
+    public function testPortIsOmittedFromOrigin(array $serverFixture, string $expectedOrigin): void
+    {
+        $globals = $this->runServerGlobals($serverFixture);
+
+        $this->assertSame($expectedOrigin, $globals['current_origin']);
+        $this->assertSame($expectedOrigin . '/', $globals['current_url']);
+    }
+
+    /**
+     * @return array<string, array{array<string, string>, string}>
+     */
+    public static function portOmittedProvider(): array
+    {
+        return [
+            'http on 80' => [
+                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'test.elanregistry.org', 'SERVER_PORT' => '80'],
+                'http://test.elanregistry.org',
+            ],
+            'https on 443' => [
+                ['REQUEST_SCHEME' => 'https', 'HTTP_HOST' => 'elanregistry.org', 'SERVER_PORT' => '443'],
+                'https://elanregistry.org',
+            ],
+            'X-Forwarded-Proto https with Apache on 80' => [
+                [
+                    'REQUEST_SCHEME' => 'http',
+                    'HTTP_X_FORWARDED_PROTO' => 'https',
+                    'HTTP_HOST' => 'abc.trycloudflare.com',
+                    'SERVER_PORT' => '80',
+                ],
+                'https://abc.trycloudflare.com',
+            ],
+            'X-Forwarded-Proto http with Apache on 8001' => [
+                [
+                    'REQUEST_SCHEME' => 'http',
+                    'HTTP_X_FORWARDED_PROTO' => 'http',
+                    'HTTP_HOST' => 'localhost:8001',
+                    'SERVER_PORT' => '8001',
+                ],
+                'http://localhost',
+            ],
+            'SERVER_PORT 0' => [
+                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'localhost', 'SERVER_PORT' => '0'],
+                'http://localhost',
+            ],
+            'SERVER_PORT not numeric' => [
+                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'localhost', 'SERVER_PORT' => 'abc'],
+                'http://localhost',
+            ],
+            'SERVER_PORT out of range' => [
+                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'localhost', 'SERVER_PORT' => '70000'],
+                'http://localhost',
+            ],
+            'cron request to 127.0.0.1 on 80' => [
+                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => '127.0.0.1', 'SERVER_PORT' => '80'],
+                'http://127.0.0.1',
+            ],
+        ];
+    }
+
+    /**
      * Missing $_SERVER keys must fall back to the safe defaults documented in
      * server_globals.php: http scheme, GET method, '/' for URI/script path,
      * and empty strings for host/referer/user_agent/remote_addr.

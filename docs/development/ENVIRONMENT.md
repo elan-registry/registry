@@ -584,6 +584,10 @@ for each new checkout.
      run every cron job again.
    - Because the request shares `app`'s network namespace, `cron.php` sees
      the request's `REMOTE_ADDR` as `127.0.0.1`.
+   - The request sends `Host: localhost:$APP_HOST_PORT` (default 8001), the
+     same Host header as the browser. Apache then reports that port, so
+     links in emails that a job sends, for example the verification batch,
+     point at `http://localhost:$APP_HOST_PORT`, not `http://127.0.0.1`.
    - Until Apache answers, the service prints
      `<ISO-8601 timestamp> waiting for app at http://127.0.0.1/` about once
      a minute.

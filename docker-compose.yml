@@ -209,6 +209,10 @@ services:
     # stopped. Run `docker compose --profile cron up -d` again. size= is the
     # response size. A denied request also gives 0, so size alone does not
     # prove that a job ran.
+    #
+    # The cron request sends the Host header the browser sends (#2228).
+    # Apache then reports the published port, so links in emails that a job
+    # sends point at http://localhost:$APP_HOST_PORT, not http://127.0.0.1.
     image: curlimages/curl:8.11.1
     restart: "no"
     profiles: [cron]
@@ -225,7 +229,7 @@ services:
         done;
         fails=0;
         while :; do
-        line=$$(curl -s -o /dev/null -m 590 -w 'status=%{http_code} exit=%{exitcode} size=%{size_download} %{errormsg}' http://127.0.0.1/users/cron/cron.php);
+        line=$$(curl -s -o /dev/null -m 590 -w 'status=%{http_code} exit=%{exitcode} size=%{size_download} %{errormsg}' -H 'Host: localhost:${APP_HOST_PORT:-8001}' http://127.0.0.1/users/cron/cron.php);
         echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) $$line";
         case "$$line" in *" exit=0 "*) fails=0 ;; *) fails=$$((fails + 1)) ;; esac;
         if [ "$$fails" -ge 3 ]; then echo "3 failed requests in a row, stopping. Run: docker compose --profile cron up -d"; exit 1; fi;

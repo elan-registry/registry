@@ -54,3 +54,7 @@ local check's result; MAMP is no longer needed.
 - [#2222](https://github.com/elan-registry/registry/issues/2222) — The review-gate scripts no longer
   report a clean review as blocked, and `verify-ci-review.sh` reports "could not verify" as that, not
   as a finding.
+- [#2228](https://github.com/elan-registry/registry/issues/2228) — Local URLs use the address the
+  browser opens (`http://localhost:8001`). The local `cron` service sends that Host header, so emailed
+  links no longer point at `http://127.0.0.1`. Canonical, `og:url` and sitemap links keep the port.
+  Behind a TLS proxy such as `cloudflared`, `getBaseUrl()` no longer adds `:80`.
