@@ -210,7 +210,8 @@ dev config, holds SMTP credentials), and `phinxlog`/`fix_script_runs`/`updates`/
 preserving user id 1. The masking `UPDATE`s run inside the same transaction as
 the inserts, so real addresses are never the committed state. A verification
 pass then re-checks all five email columns; if any unmasked address survives,
-the script exits non-zero and leaves the database untouched for inspection.
+the script exits non-zero. The import has already run, and it is not rolled
+back, so the rows stay for inspection.
 Restore manually from `db-backups/`:
 
 ```bash

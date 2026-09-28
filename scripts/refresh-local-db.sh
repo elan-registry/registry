@@ -173,15 +173,15 @@ require_docker_db() {
 
 # ── Target settings ───────────────────────────────────────────────────────────
 # Prints KEY's value from an env file. It accepts an `export ` prefix and
-# removes a CR, an end-of-line comment, trailing spaces and one pair of
-# surrounding quotes: the forms phpdotenv and Compose accept for DB_NAME and
-# DB_HOST.
+# removes a CR, an end-of-line comment, leading and trailing spaces and one
+# pair of surrounding quotes: the forms phpdotenv and Compose accept for
+# DB_NAME and DB_HOST.
 # `|| true`: under pipefail a missing line would exit here with no message.
 # Let the caller's checks report it instead. It can also hide a grep read
 # error, which is why load_env checks -f and -r first.
 env_value() {
     grep -E "^(export[[:space:]]+)?$1=" "$2" | head -1 | cut -d= -f2- | tr -d '\r' \
-        | sed -E "s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/" || true
+        | sed -E "s/[[:space:]]+#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/" || true
 }
 
 load_env() {
