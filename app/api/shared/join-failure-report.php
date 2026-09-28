@@ -13,9 +13,24 @@ use ElanRegistry\LogCategories;
  * where the POST to join.php never happens and would otherwise leave
  * zero server-side trace.
  *
+ * Anonymous and deliberately CSRF-free. The beacon used to carry the join
+ * page's render-time CSRF token. In production that token went stale in a
+ * session that went on to reset a password and log in, and the endpoint
+ * answered 403, dropping the very reports it exists to collect (#2227). The
+ * cause of the staleness is unexplained (see ADR-019, Notes).
+ *
+ * Because the endpoint reads no session state, checks no identity and
+ * appends one fixed-shape log row with user_id 0, a forged cross-site
+ * request can do nothing an attacker's own direct request could not — the
+ * token bought no protection. Abuse is bounded instead by this endpoint's
+ * own enforced 'join_failure_beacon' rate limit, under ADR-019's
+ * anonymous-diagnostic-log exception.
+ *
  * @package ElanRegistry
  * @since v2.29.2
  * @link https://github.com/elan-registry/registry/issues/1690
+ * @link https://github.com/elan-registry/registry/issues/2227
+ * @link https://github.com/elan-registry/registry/blob/main/docs/development/adr/ADR-019-no-csrf-on-public-read-only-endpoints.md
  */
 
 require_once '../../../users/init.php';
@@ -23,15 +38,6 @@ require_once '../../../users/init.php';
 // Only allow POST requests
 if ($method !== 'POST') {
     ApiResponse::error('Method not allowed', 405)->send();
-}
-
-// Reuses the join page's existing session-bound CSRF token — same token
-// rendered in the join form's hidden csrf input. No anonymous-write CSRF
-// exception is introduced.
-if (!Token::check(Input::get('csrf'))) {
-    ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in join-failure-report beacon')
-        ->send();
 }
 
 // Uses its own dedicated rate limit ('join_failure_beacon'), deliberately
@@ -47,6 +53,14 @@ if (!Token::check(Input::get('csrf'))) {
 // fails open around. This endpoint's whole purpose is to never lose a
 // server-side trace of a failed join attempt, so a DB hiccup here must not
 // turn into an uncaught fatal; fail open (treat as allowed) and log instead.
+//
+// Every admitted request must also be recorded: RateLimit::check() counts
+// us_rate_limits rows, and only record() writes them, so a check-without-record
+// endpoint can never trip its own limit (this one never did until #2227 made
+// the limit the only abuse control). Recording successes only — as the ADR-019
+// endpoints do — makes total_max (per IP) the operative cap; ip_max counts
+// failures, of which there are none here. See the comment above cars_list in
+// usersc/includes/rate_limits.php.
 try {
     $rateLimitAllowed = checkRateLimit('join_failure_beacon');
 } catch (\Throwable $e) {
@@ -55,6 +69,15 @@ try {
 }
 if (!$rateLimitAllowed) {
     ApiResponse::error(getRateLimitErrorMessage('join_failure_beacon'), 429)->send();
+}
+
+// Separate from the check's try so a failed write is logged as what it is:
+// the request is still admitted, but it is not counted, and repeated
+// failures here stop the limit from tripping.
+try {
+    recordRateLimit('join_failure_beacon', true);
+} catch (\Throwable $e) {
+    logger(0, LogCategories::LOG_CATEGORY_REGISTRATION_FAILED, 'join-failure-report: rate limit record failed, request not counted toward the limit: ' . $e->getMessage());
 }
 
 // Client sends a short enum reason, not free-text, to keep log payloads

@@ -6,11 +6,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests proving the four ADR-019 public-read-endpoint rate
- * limits (car_history, cars_list, factory_list, statistics_request) actually
- * enforce, not just that they're configured with the right numbers.
+ * Integration tests proving the five ADR-019 public-endpoint rate limits
+ * (car_history, cars_list, factory_list, statistics_request,
+ * join_failure_beacon) actually enforce, not just that they're configured
+ * with the right numbers.
  *
- * These four keys replaced CSRF as the sole abuse control on
+ * The first four keys replaced CSRF as the sole abuse control on
  * app/api/cars/{history,list,factory-list}.php and
  * app/api/shared/statistics.php (#1913/#1951, ADR-019). Before this suite,
  * tests/unit/system/RateLimitConfigTest.php only pinned the configured
@@ -25,7 +26,23 @@ use PHPUnit\Framework\Attributes\Group;
  * statistics_request under-sizing bug survived a full milestone: its three
  * sibling keys had this kind of dedicated coverage and it did not.)
  *
- * total_max, not ip_max/user_max, is the operative limit for all four keys:
+ * join_failure_beacon joined this suite under a different route: ADR-019's
+ * new "anonymous diagnostic log writes" exception (#2227). The beacon
+ * (app/api/shared/join-failure-report.php) writes one fixed-shape logs row
+ * with user_id 0, so it fails criterion 1 and does not qualify the way the
+ * other four read-only endpoints do. Its CSRF check was removed under the
+ * exception, which requires its rate limit to be *enforced*, not merely
+ * checked. Before #2227, the endpoint called checkRateLimit() but no
+ * code path ever called recordRateLimit(), so the count stayed at 0 forever
+ * and the limit never tripped. This suite seeds us_rate_limits rows directly
+ * and proves the CONFIGURED limit blocks once reached; it says nothing about
+ * whether the endpoint itself ever records an attempt — that is pinned
+ * separately by JoinFailureReportEndpointTest (source-text assertion that
+ * recordRateLimit('join_failure_beacon', true) is called after an admitted
+ * checkRateLimit() and before logger()). The two tests are complementary:
+ * this one proves the config enforces, that one proves the endpoint feeds it.
+ *
+ * total_max, not ip_max/user_max, is the operative limit for all five keys:
  * each endpoint calls recordRateLimit($action, true, ...) on every admitted
  * request and never records a failure, so ip_max/user_max (which only count
  * failed attempts) can never trip. Bypassing checkRateLimit()/recordRateLimit()
@@ -72,10 +89,11 @@ final class AdrNineteenRateLimitEnforcementTest extends IntegrationTestCase
     public static function adrNineteenActionsProvider(): array
     {
         return [
-            'car_history'        => ['car_history', 5000],
-            'cars_list'          => ['cars_list', 10000],
-            'factory_list'       => ['factory_list', 10000],
-            'statistics_request' => ['statistics_request', 5000],
+            'car_history'         => ['car_history', 5000],
+            'cars_list'           => ['cars_list', 10000],
+            'factory_list'        => ['factory_list', 10000],
+            'statistics_request'  => ['statistics_request', 5000],
+            'join_failure_beacon' => ['join_failure_beacon', 100],
         ];
     }
 
