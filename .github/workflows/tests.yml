@@ -77,6 +77,9 @@ jobs:
               - ".githooks/**"
               - "tests/hooks/**"
               - "scripts/provision-schema.sh"
+              - "scripts/render-deploy-sheet.sh"
+              - "scripts/check-blocking-findings.sh"
+              - "scripts/verify-ci-review.sh"
 
   git-hooks:
     name: Git Hooks Regression Tests
@@ -122,3 +125,11 @@ jobs:
       # can resolve `db` to another machine and DROP a database there.
       - name: Run provision-schema guard tests
         run: bash tests/hooks/test-provision-schema-guard.sh
+
+      # Pins the #2225 fix: a match early in a >64 KB diff or file list must
+      # still be found. A piped `grep -q` under `pipefail` read it as no match.
+      - name: Run render-deploy-sheet tests
+        run: bash tests/hooks/test-render-deploy-sheet.sh
+
+      - name: Run check-blocking-findings and verify-ci-review tests
+        run: bash tests/hooks/test-check-blocking-findings.sh
