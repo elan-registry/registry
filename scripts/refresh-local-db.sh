@@ -14,13 +14,11 @@
 #                   Reads DB credentials from the prod docroot .env on the
 #                   remote host, so nothing is stored locally.
 #   --db NAME       Import into NAME instead of the DB_NAME from the env file.
-#   --env-file P    Read the TARGET database credentials from P instead of
-#                   .env. Use --env-file .env.test.local to rehearse a refresh
+#   --env-file P    Read the TARGET DB_NAME and DB_HOST from P instead of .env.
+#                   Use --env-file .env.test.local to rehearse a refresh
 #                   against the scratch test schema before touching your
-#                   working dev database. Connection details come from that
-#                   file too: the client connects over TCP when DB_PORT is set
-#                   or DB_HOST carries a `host:port` value, and otherwise
-#                   falls back to the MAMP socket.
+#                   working dev database. That file's DB_HOST must be `db`
+#                   (the Docker Compose service this script always targets).
 #   --skip-images   Skip image rsync (DB refresh only)
 #   --images-only   Skip DB refresh, only rsync images
 #   -h, --help      Show this help and exit
@@ -31,6 +29,12 @@
 #                   ~/Downloads/unibrain_registry.sql and would otherwise
 #                   overwrite the file named here.
 #                   (default: ~/Downloads/unibrain_registry.sql)
+#
+# Requirements:
+#   The DB refresh runs mysql/mysqldump inside this checkout's Docker `db`
+#   service. Start the stack first with: docker compose up -d --wait
+#   The env file read for DB_NAME must also have DB_HOST=db.
+#   --images-only does not need Docker.
 #
 # Tables upserted (new rows added, existing rows updated by primary key):
 #   cars, cars_hist, car_models, car_transfer_requests, elan_factory_info,
@@ -66,9 +70,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-MYSQL_BIN="/Applications/MAMP/Library/bin/mysql57/bin/mysql"
-MYSQLDUMP_BIN="/Applications/MAMP/Library/bin/mysql57/bin/mysqldump"
-MYSQL_SOCK="/Applications/MAMP/tmp/mysql/mysql.sock"
+# Runs a MySQL client ($1: mysql or mysqldump) in this checkout's db
+# container as the container's own user. MYSQL_PWD keeps the password off
+# every command line, on the host and in the container.
+db_client() {
+    # shellcheck disable=SC2016 # $MYSQL_PASSWORD/$MYSQL_USER expand inside the container, not here
+    docker compose --project-directory "$PROJECT_ROOT" exec -T db \
+        sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec "$0" -u"$MYSQL_USER" "$@"' "$@"
+}
+
+# `exec -T` forwards the script's stdin to the container, so a query that
+# feeds no input closes it. Only the import passes stdin through.
+db_exec()       { db_client "$@" < /dev/null; }
+db_exec_stdin() { db_client "$@"; }
 
 SSH_ALIAS="a2hosting"
 REMOTE_DOCROOT="/home/unibrain/elanregistry.org"
@@ -104,7 +118,9 @@ DUMP_FILE="$HOME/Downloads/unibrain_registry.sql"
 DUMP_FILE_ARG=""
 
 usage() {
-    grep '^#' "$0" | grep -v '^#!/' | sed 's/^# \{0,1\}//'
+    # Header block only: stop at the first non-comment line, so function
+    # comments further down do not leak into the help text.
+    awk 'NR == 1 { next } !/^#/ { exit } { sub(/^# ?/, ""); print }' "$0"
     exit 0
 }
 
@@ -120,6 +136,29 @@ while [[ $# -gt 0 ]]; do
         *)             DUMP_FILE_ARG="$1"; shift ;;
     esac
 done
+
+# Confirms this checkout's Docker `db` container is running, so every
+# mysql/mysqldump call below has somewhere to connect to.
+require_docker_db() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "Error: 'docker' is not on PATH." >&2
+        exit 1
+    fi
+
+    # A failing `compose ps` (daemon down, no compose plugin) prints docker's
+    # own error above this one, so it is not misdiagnosed as a stopped stack.
+    local running
+    if ! running="$(docker compose --project-directory "$PROJECT_ROOT" ps --status running -q db)"; then
+        echo "Error: could not query this checkout's Docker stack ('docker compose ps' failed)." >&2
+        exit 1
+    fi
+
+    if [[ -z "$running" ]]; then
+        echo "Error: this checkout's Docker stack is not running (no 'db' container)." >&2
+        echo "       Start it with: docker compose up -d --wait" >&2
+        exit 1
+    fi
+}
 
 # ── Validation ────────────────────────────────────────────────────────────────
 if [[ "$IMAGES_ONLY" == true ]] && [[ "$SKIP_IMAGES" == true ]]; then
@@ -153,61 +192,40 @@ if [[ "$IMAGES_ONLY" == false ]]; then
         exit 1
     fi
 
-    if [[ ! -x "$MYSQL_BIN" ]]; then
-        echo "Error: MySQL binary not found at $MYSQL_BIN" >&2
-        exit 1
-    fi
-
-    if [[ ! -x "$MYSQLDUMP_BIN" ]]; then
-        echo "Error: mysqldump binary not found at $MYSQLDUMP_BIN" >&2
-        exit 1
-    fi
+    require_docker_db
 fi
 
-# ── DB credentials ────────────────────────────────────────────────────────────
+# ── Target settings ───────────────────────────────────────────────────────────
 load_env() {
     local env_file="${ENV_FILE_OVERRIDE:-$PROJECT_ROOT/.env}"
     [[ -f "$env_file" ]] || { echo "Error: env file not found at $env_file" >&2; exit 1; }
-    echo "==> Reading target credentials from $(basename "$env_file")"
-    DB_USER=$(grep -E '^DB_USER=' "$env_file" | cut -d= -f2-)
-    DB_PASS=$(grep -E '^DB_PASS=' "$env_file" | cut -d= -f2-)
-    DB_NAME=$(grep -E '^DB_NAME=' "$env_file" | cut -d= -f2-)
-    DB_HOST=$(grep -E '^DB_HOST=' "$env_file" | cut -d= -f2-)
-    DB_PORT=$(grep -E '^DB_PORT=' "$env_file" | cut -d= -f2-)
-
-    # DB_HOST may carry the port as "host:port" rather than using DB_PORT.
-    # Either shape works: a combined value is split here, and a separate
-    # DB_PORT is read directly. Both end up selecting the TCP branch in
-    # setup_mysql_cnf.
-    if [[ "$DB_HOST" == *:* ]]; then
-        DB_PORT="${DB_PORT:-${DB_HOST##*:}}"
-        DB_HOST="${DB_HOST%%:*}"
-    fi
+    [[ -r "$env_file" ]] || { echo "Error: env file $env_file is not readable" >&2; exit 1; }
+    echo "==> Reading target settings from $(basename "$env_file")"
+    # `|| true`: under pipefail a missing line would exit here with no
+    # message. Let the checks below report it instead.
+    DB_NAME=$(grep -E '^DB_NAME=' "$env_file" | head -1 | cut -d= -f2- || true)
+    DB_HOST=$(grep -E '^DB_HOST=' "$env_file" | head -1 | cut -d= -f2- || true)
 
     if [[ -n "$DB_NAME_OVERRIDE" ]]; then
         DB_NAME="$DB_NAME_OVERRIDE"
     fi
-    echo "==> Target database: $DB_NAME"
-}
 
-# Write credentials to a temp file so the password never appears in the process list
-setup_mysql_cnf() {
-    MYSQL_CNF=$(mktemp /tmp/elan_mysql_XXXXXX)
-    chmod 600 "$MYSQL_CNF"
-    {
-        echo "[client]"
-        # A non-localhost host or an explicit port means TCP; otherwise use
-        # MAMP's Unix socket, which "localhost" alone would not resolve to.
-        if [[ -n "$DB_PORT" ]] || [[ -n "$DB_HOST" && "$DB_HOST" != "localhost" ]]; then
-            echo "host=${DB_HOST:-127.0.0.1}"
-            echo "port=${DB_PORT:-3306}"
-            echo "protocol=TCP"
-        else
-            echo "socket=$MYSQL_SOCK"
-        fi
-        echo "user=$DB_USER"
-        echo "password=$DB_PASS"
-    } > "$MYSQL_CNF"
+    if [[ -z "$DB_NAME" ]]; then
+        echo "Error: $(basename "$env_file") has no DB_NAME value. Set DB_NAME or pass --db NAME." >&2
+        exit 1
+    fi
+
+    # This script only ever loads into the Docker db service's own database
+    # server, never a host or remote one, so DB_HOST must name that service.
+    # A port suffix ("db:3306") is ignored: the client runs inside the
+    # container and never uses it.
+    if [[ "${DB_HOST%%:*}" != "db" ]]; then
+        echo "Error: $(basename "$env_file") has DB_HOST=${DB_HOST:-<unset>}. This script loads into the Docker 'db' service only." >&2
+        echo "       Set DB_HOST=db in that file." >&2
+        exit 1
+    fi
+
+    echo "==> Target database: $DB_NAME"
 }
 
 # ── Production dump fetch ─────────────────────────────────────────────────────
@@ -231,8 +249,7 @@ env_file="$REMOTE_DOCROOT/.env"
 # in the Monitoring project's fetch.sh, which reads this same file).
 # `|| true` matters: DB_PORT is absent from the production .env, and under
 # `set -e` a failing grep inside a command substitution aborts this script
-# silently (grep prints nothing on no-match). Quote stripping matches the
-# handling in the Monitoring project's fetch.sh, which reads this same file.
+# silently (grep prints nothing on no-match).
 get() { grep -E "^$1=" "$env_file" | head -1 | cut -d= -f2- | sed "s/['\"]//g" || true ; }
 
 db_host=$(get DB_HOST); db_user=$(get DB_USER)
@@ -311,7 +328,7 @@ target_columns_csv() {
     # group_concat_max_len defaults to 1024 bytes; a wide table would silently
     # truncate its column list here and cause real columns to be dropped from
     # the import.
-    "$MYSQL_BIN" --defaults-file="$MYSQL_CNF" -N -B "$DB_NAME" -e "
+    db_exec mysql -N -B "$DB_NAME" -e "
         SET SESSION group_concat_max_len = 1000000;
         SELECT CONCAT(TABLE_NAME, ':', GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION))
           FROM information_schema.COLUMNS
@@ -632,10 +649,13 @@ PYEOF
 backup_local_db() {
     local backup_dir="$PROJECT_ROOT/db-backups"
     mkdir -p "$backup_dir"
-    local backup_file="$backup_dir/${DB_NAME}_$(date +%Y%m%d_%H%M%S).sql.gz"
+    local backup_file
+    backup_file="$backup_dir/${DB_NAME}_$(date +%Y%m%d_%H%M%S).sql.gz"
     echo "==> Backing up $DB_NAME to $(basename "$backup_file") ..."
-    "$MYSQLDUMP_BIN" --defaults-file="$MYSQL_CNF" \
-        --single-transaction --routines --triggers \
+    # --no-tablespaces: the container user has no PROCESS privilege, and
+    # without this flag mysqldump errors out on every run trying to dump
+    # tablespaces.
+    db_exec mysqldump --single-transaction --routines --triggers --no-tablespaces \
         "$DB_NAME" | gzip > "$backup_file"
     echo "    Backup saved: $backup_file"
 }
@@ -671,7 +691,7 @@ SELECT 'car_transfer_requests.submitted_email', COUNT(*) FROM \`car_transfer_req
 "
 
     local results
-    results=$("$MYSQL_BIN" --defaults-file="$MYSQL_CNF" -N -B "$DB_NAME" -e "$sql")
+    results=$(db_exec mysql -N -B "$DB_NAME" -e "$sql")
 
     local failed=false
     while IFS=$'\t' read -r column count; do
@@ -688,7 +708,7 @@ SELECT 'car_transfer_requests.submitted_email', COUNT(*) FROM \`car_transfer_req
         echo "" >&2
         echo "Error: unmasked email addresses remain after import." >&2
         echo "       The database has NOT been rolled back — inspect the rows above." >&2
-        echo "       To restore: gunzip < db-backups/<newest>.sql.gz | mysql $DB_NAME" >&2
+        echo "       To restore: gunzip < \"$PROJECT_ROOT/db-backups/<newest>.sql.gz\" | docker compose --project-directory \"$PROJECT_ROOT\" exec -T db sh -c 'MYSQL_PWD=\"\$MYSQL_PASSWORD\" mysql -u\"\$MYSQL_USER\" \"$DB_NAME\"'" >&2
         exit 1
     fi
 
@@ -698,9 +718,8 @@ SELECT 'car_transfer_requests.submitted_email', COUNT(*) FROM \`car_transfer_req
 # ── Main ──────────────────────────────────────────────────────────────────────
 if [[ "$IMAGES_ONLY" == false ]]; then
     load_env
-    setup_mysql_cnf
     EXTRACT_SQL=""
-    trap 'rm -f "$MYSQL_CNF" ${EXTRACT_SQL:+"$EXTRACT_SQL"}' EXIT
+    trap 'rm -f ${EXTRACT_SQL:+"$EXTRACT_SQL"}' EXIT
 
     backup_local_db
 
@@ -715,7 +734,7 @@ if [[ "$IMAGES_ONLY" == false ]]; then
 
     line_count=$(wc -l < "$EXTRACT_SQL" | xargs)
     echo "==> Upserting $line_count lines into $DB_NAME (emails masked in-transaction) ..."
-    "$MYSQL_BIN" --defaults-file="$MYSQL_CNF" "$DB_NAME" < "$EXTRACT_SQL"
+    db_exec_stdin mysql "$DB_NAME" < "$EXTRACT_SQL"
 
     verify_masking
 

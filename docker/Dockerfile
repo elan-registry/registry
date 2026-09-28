@@ -36,10 +36,11 @@ ARG APP_GID=20
 # X11 tail that a headless PHP container has no use for.
 #
 # default-mysql-client is not a build header — it's the actual `mysql` CLI
-# binary, needed at runtime by scripts/provision-schema.sh and
-# scripts/refresh-local-db.sh (both shell out to `mysql`/`mysqldump` rather
-# than using PHP's PDO), and by developers who want an interactive shell into
-# the `db` service without leaving the container.
+# binary, needed at runtime by scripts/provision-schema.sh (which shells out
+# to `mysql` rather than using PHP's PDO), and by developers who
+# want an interactive shell into the `db` service without leaving the
+# container. scripts/refresh-local-db.sh runs on the host and uses the `db`
+# container's own client instead.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libjpeg62-turbo-dev \
       libpng-dev \
