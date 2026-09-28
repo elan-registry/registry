@@ -156,6 +156,14 @@ Refreshes the local development database from production: fetches a dump over
 SSH, upserts the registry tables, masks every email address, and syncs car
 images into a persistent local cache.
 
+**Requirements:** this checkout's Docker stack must be running
+(`docker compose up -d --wait`). The target env file must set `DB_HOST=db`. The
+script runs `mysql` and `mysqldump` inside the `db` container, using that
+container's own credentials, so no local MySQL client is needed. The env file
+supplies only `DB_NAME` and `DB_HOST`. `--db NAME` must match `elanregi_*`, the
+container user's grant scope, and `DB_HOST` is still checked.
+`--images-only` needs no Docker.
+
 ```bash
 # Full refresh: fetch a fresh production dump, import, sync images
 ./scripts/refresh-local-db.sh --fetch
@@ -172,6 +180,15 @@ images into a persistent local cache.
 # Rehearse against the scratch test schema before touching your dev DB
 ./scripts/refresh-local-db.sh --fetch --env-file .env.test.local
 ```
+
+A rehearsal fills the integration-test schema (the `DB_NAME` in
+`.env.test.local`, for example `elanregi_dev_test`) with registry data. Each
+run also adds `cars_hist` rows through the `cars` triggers. The integration
+suite then fails (it runs out of memory in `BackupCriticalTablesTest`).
+Afterwards, restore the backup that the rehearsal's first run made
+(`db-backups/<that DB_NAME>_<timestamp>.sql.gz`), with the restore command
+below. It is the only backup taken before any import. A later run backs up
+the schema that an earlier run already filled.
 
 Default dump path: `~/Downloads/unibrain_registry.sql`.
 
@@ -193,10 +210,16 @@ dev config, holds SMTP credentials), and `phinxlog`/`fix_script_runs`/`updates`/
 preserving user id 1. The masking `UPDATE`s run inside the same transaction as
 the inserts, so real addresses are never the committed state. A verification
 pass then re-checks all five email columns; if any unmasked address survives,
-the script exits non-zero and leaves the database untouched for inspection
-(restore manually from `db-backups/`). City and IP columns are intentionally
-left intact — they are coarse-grained and needed to exercise location and map
-features.
+the script exits non-zero. The import has already run, and it is not rolled
+back, so the rows stay for inspection.
+Restore manually from `db-backups/`:
+
+```bash
+gunzip < <checkout>/db-backups/<file>.sql.gz | docker compose --project-directory <checkout> exec -T db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" <DB_NAME>'
+```
+
+City and IP columns are intentionally left intact — they are coarse-grained and
+needed to exercise location and map features.
 
 **Safety:** the local database is dumped to `db-backups/` before any import.
 `--env-file` and `--db` retarget the import, so a refresh can be rehearsed

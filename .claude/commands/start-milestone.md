@@ -311,7 +311,8 @@ When it is warranted, state the reason and ask:
 
 If the user declines, continue to Step 5 — do not re-ask.
 
-If the user agrees, run:
+If the user agrees, run it with this checkout's Docker stack up
+(`docker compose up -d --wait`):
 
 ```bash
 ./scripts/refresh-local-db.sh --fetch

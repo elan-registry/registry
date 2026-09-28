@@ -36,8 +36,8 @@ local check's result; MAMP is no longer needed.
   calls live geocoding services during the pre-push gate.
 - [#2171](https://github.com/elan-registry/registry/issues/2171) — The pre-push gate runs the
   integration suite inside the Docker app container when the checkout uses Docker.
-- WIP: [#2172](https://github.com/elan-registry/registry/issues/2172) —
-  `scripts/refresh-local-db.sh` loads production data into the Docker database.
+- [#2172](https://github.com/elan-registry/registry/issues/2172) — `scripts/refresh-local-db.sh`
+  loads production data into the Docker database.
 - [#2173](https://github.com/elan-registry/registry/issues/2173) — Each checkout runs its own Docker
   stack on its own ports, with a landing page linking the site, phpMyAdmin and the mock Brevo inbox.
 - [#2175](https://github.com/elan-registry/registry/issues/2175) — Documented which tool reads each
