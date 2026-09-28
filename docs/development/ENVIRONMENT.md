@@ -12,20 +12,21 @@ Registry application.
 
 ## Database Access
 
-### Local Development (MAMP MySQL 8.0)
+### Local Development (Docker)
 
-Access the development database using MAMP's MySQL 8.0:
+Use phpMyAdmin at `http://localhost:<PMA_HOST_PORT>/` (`8081` for `Registry/`
+by default). See the "Docker Dev Environment" section below. The `db`
+service has no host port, so a host-side MySQL client cannot reach it.
+
+To run a query from the command line, use the client inside the `app`
+container:
 
 ```bash
-# MySQL CLI access (credentials from .env)
-/Applications/MAMP/Library/bin/mysql80/bin/mysql -h 127.0.0.1 -P 8889 \
-  -u [DB_USER from .env] -p \
+docker compose exec -u www-data app mysql \
+  -h db -u [DB_USER from .env] -p \
   -D [DB_NAME from .env]
 # Enter DB_PASS from .env when prompted
 ```
-
-Under Docker, use phpMyAdmin on the checkout's `PMA_HOST_PORT`. See the
-"Docker Dev Environment" section below. The `db` service has no host port.
 
 ### Remote Database Access (Test/Production)
 
@@ -53,16 +54,21 @@ from plaintext `.env` files. Set file permissions to `chmod 600`.
 ### Which Tools Read Each File
 
 A local checkout can have up to three environment files. Different tools read
-each file. Each tool gets its settings from one file only. One tool reads two
-files as a safety measure. `scripts/provision-schema.sh` reads `.env.test.local`
-to set up the test database. It also reads `DB_NAME` from `.env` to protect the
-application database from deletion. Put each variable in the file that its
-reader uses. Do not copy it to another file because other tools ignore the
-copy.
+each file. Most tools get their settings from one file only. Two tools read a
+second file for one narrow purpose each. `scripts/provision-schema.sh` reads
+`.env.test.local` to set up the test database. It also reads `DB_NAME` from
+`.env` to protect the application database from deletion.
+Playwright also reads two keys from `.env` as fallbacks:
+`tests/playwright/resolve-base-url.js` reads `APP_HOST_PORT`, and
+`tests/playwright/global-setup.js` reads `LANDING_HOST_PORT` for its error
+message. Each parses one key from the file and never copies it into
+`process.env`. The Playwright configs load `.env.local` into `process.env`
+first, so a `PLAYWRIGHT_BASE_URL` or `APP_HOST_PORT` in `.env.local` wins. Put each variable in the file that its reader uses. Do not copy
+it to another file because other tools ignore the copy.
 
 | File | Read by | Holds | Template |
 | --- | --- | --- | --- |
-| `.env` | The PHP app (`users/init.php`), Phinx (`phinx.php`), `scripts/log-deployment.php`, Docker Compose (variable interpolation only) | Everything the app needs at runtime: `DB_*`, Turnstile, admin emails, webhook token — plus local-only switches (`US_ENVIRONMENT`, `BREVO_API_HOST`, session names, Docker host ports) | `.env.example` |
+| `.env` | The PHP app (`users/init.php`), Phinx (`phinx.php`), `scripts/log-deployment.php`, Docker Compose (variable interpolation only), Playwright's `resolve-base-url.js` (`APP_HOST_PORT` only) and `global-setup.js` (`LANDING_HOST_PORT` only), both as fallbacks | Everything the app needs at runtime: `DB_*`, Turnstile, admin emails, webhook token — plus local-only switches (`US_ENVIRONMENT`, `BREVO_API_HOST`, session names, Docker host ports) | `.env.example` |
 | `.env.local` | Playwright (`playwright.config*.js`) and `scripts/playwright-auth-setup.js` — nothing else | Browser-test settings: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD` | the `.env.local` block of `.env.example` |
 | `.env.test.local` | `tests/bootstrap-integration.php` only | The five `DB_*` keys of the disposable integration-test schema | `.env.test.local.sample` |
 
@@ -182,7 +188,7 @@ without CAPTCHA validation. Use this when Turnstile behaviour is not under test.
 #### Option B — Cloudflare Tunnel (test the full widget)
 
 `cloudflared` creates a temporary public HTTPS URL that proxies to your local
-MAMP server. Cloudflare Tunnel ends TLS upstream and forwards HTTP internally.
+Docker site. Cloudflare Tunnel ends TLS upstream and forwards HTTP internally.
 It sets the `X-Forwarded-Proto: https` header, so `$is_https` is `true` and
 Turnstile enables.
 
@@ -192,14 +198,14 @@ Turnstile enables.
    brew install cloudflare/cloudflare/cloudflared
    ```
 
-2. **Start the tunnel** (while MAMP is running):
+2. **Start the tunnel** (while the Docker stack is running):
 
    ```bash
-   cloudflared tunnel --url http://localhost:9999
+   cloudflared tunnel --url http://localhost:$APP_HOST_PORT
    ```
 
    The command prints a temporary `https://*.trycloudflare.com` URL — open
-   that in your browser instead of `http://localhost:9999`.
+   that in your browser instead of `http://localhost:$APP_HOST_PORT`.
 
 3. **Choose test keys** based on what you are testing:
 
@@ -226,14 +232,36 @@ Turnstile enables.
 **Usage**: `playwright.config.js` and `playwright.config.dev.js` use this setting.
 The prod and test configs use their deployed environment URLs.
 
-- `PLAYWRIGHT_BASE_URL` — overrides the default local Playwright `baseURL`
-  (`http://localhost:9999/ElanRegistry/Registry/`) for developers whose MAMP
-  document root serves the site from a different path. Include a trailing
-  slash, as in the default value. Without it, `page.goto('')` collapses the
-  path. When unset, the setting behaves as it did before.
+Both configs load `.env.local` into the process environment before
+`tests/playwright/base-url.js` runs. `base-url.js` calls
+`resolve-base-url.js`, which resolves the local `baseURL` in this order:
 
-  Do not add this setting to the prod or test configs. This prevents a
-  destructive test run from using the wrong live site.
+1. `PLAYWRIGHT_BASE_URL`, if set — from `.env.local` or the process
+   environment.
+2. `APP_HOST_PORT`, if set — from `.env.local` or the process environment.
+   Because `.env.local` loads first, a value there wins over `.env`.
+3. `APP_HOST_PORT` read directly from the `.env` file (the Docker checkout's
+   own port — see "Docker Dev Environment" below). This step reads the file
+   itself, not the process environment, and it reads only this one key.
+4. `8001`, the compose default.
+
+An empty value at any step counts as not set. `APP_HOST_PORT` must be an
+integer from 1 to 65535 — any other value makes `resolve-base-url.js` throw a
+`RangeError`. `PLAYWRIGHT_BASE_URL` must be an absolute URL with an `http:` or
+`https:` scheme, or `resolve-base-url.js` throws a `TypeError`.
+
+Steps 2 to 4 always produce `http://localhost:<port>/`, with a trailing
+slash. A missing slash makes `page.goto('')` collapse the path.
+`PLAYWRIGHT_BASE_URL` does not have to include a trailing slash —
+`resolve-base-url.js` adds one if it is missing.
+
+- `PLAYWRIGHT_BASE_URL` — set this only to point at a URL that does not
+  come from `APP_HOST_PORT`, such as a Cloudflare tunnel. Do not add this
+  setting to the prod or test configs — that would let a destructive test
+  run reach the wrong live site.
+- Do not set `APP_HOST_PORT` in `.env.local`. If you must, keep it equal to
+  the value in `.env`, so Playwright targets the same port as the running
+  Docker stack.
 
 ### Playwright Test Credentials (Local/Dev)
 
@@ -257,7 +285,7 @@ and `logged-in-non-admin` projects through `auth-dev.setup.js` and
 - All four live in `.env.local` (gitignored) and must never be committed. See
   `.env.example` for the placeholder entries.
 - These accounts are for local and dev environments. They use plain HTTP on
-  MAMP and do not use Turnstile. Issue #2059 renamed the variables to match
+  the Docker site and do not use Turnstile. Issue #2059 renamed the variables to match
   the `E2E_<TIER>_<ROLE>_*` pattern used for test and production. The old
   names were `TEST_USERNAME`, `TEST_PASSWORD`, `TEST_USERNAME2`, and
   `TEST_PASSWORD2`.
@@ -297,7 +325,7 @@ storage state file, but no non-admin spec targets it yet.
 - `SESSION_NAME` / `TOKEN_NAME` / `REMEMBER_COOKIE_NAME` — These variables
   override UserSpice's `$_SESSION` keys (`user`, `token`) and its hardcoded
   remember-me cookie name. See `users/init.php`. Use them only when you run
-  more than one local clone on the same MAMP host and port, such as `Registry/`
+  more than one local clone on the same host and port, such as `Registry/`
   and `Registry2/`. This setup supports work on two milestones at the same
   time. See the top-level `Web/ElanRegistry/CLAUDE.md` file.
 
@@ -323,52 +351,28 @@ storage state file, but no non-admin spec targets it yet.
 
 ## Setup & Configuration
 
-### PHP Version
+### Docker Dev Environment
 
-- **Local development, CI, test, and production**: These environments use
-  PHP 8.4.x. Production uses PHP 8.4.25. Issue #1968 tracked an earlier hold
-  on PHP 8.2 for test and production. That hold ended when production moved to
-  PHP 8.4.25. This statement does not say whether anyone should close #1968.
-- **`phpstan.neon` value `phpVersion: 80229`**: This setting pins static
-  analysis to the compatibility floor. The floor is lower than the deployed
-  version. This choice keeps first-party code from using syntax that PHP 8.3
-  or 8.4 introduced, such as property hooks and asymmetric visibility. It does
-  not mean that any environment uses PHP 8.2. `composer.json` also sets the
-  compatibility floor with `>=8.2.29`. Neither value describes the deployed
-  version. Changing either value requires a separate decision.
-- **MAMP Apache PHP version**: MAMP's Apache does not use the
-  `/Applications/MAMP/bin/php/php` symlink. It uses the wrapper script at
-  `/Applications/MAMP/fcgi-bin/php.fcgi`. MAMP.app rewrites this script each
-  time Apache restarts. It uses the PHP version selected in Preferences → PHP.
-  To change versions, use the MAMP.app preferences. Do not edit the wrapper.
-  MAMP.app overwrites it. To check the version that serves the site, restart
-  MAMP and load a `phpinfo()` page. Do not check a symlink.
-- **CLI PHP (Homebrew)**: The shell finds `php` and `composer` through PATH.
-  These commands use Homebrew's linked PHP. MAMP's Apache uses a separate PHP
-  version. Keep both on the same version with `brew install php@8.4`, then
-  `brew link php@8.4 --force --overwrite` and `hash -r`. The shell runs
-  `composer test:integration` and other command-line tools with Homebrew's
-  linked PHP, not MAMP's PHP.
-
-### Docker Dev Environment (optional, experimental)
-
-The repository provides an optional Docker Compose stack for each checkout.
-The stack runs a PHP 8.4 app container, MySQL 8.0, phpMyAdmin, a mock Brevo
-API, and a landing page. It bind-mounts the checkout as the web root. Issue
-2116 introduced the stack for `Registry2/`. Both `Registry2/` and `Registry/`
-run the full toolchain with this stack: `composer install`,
-`composer test:full`, `npm run build`, and Playwright.
+The repository provides a Docker Compose stack for each checkout. The stack
+is the only supported local environment for the Registry (#2180). It needs
+Docker Compose v2.0.0 or later. The stack runs a PHP 8.4 app container,
+MySQL 8.0, phpMyAdmin, a mock Brevo API, and a landing page. It bind-mounts
+the checkout as the web root. Issue 2116 introduced the stack for
+`Registry2/`. Both `Registry2/` and `Registry/` run the full toolchain with
+this stack: `composer install`, `composer test:full`, `npm run build`, and
+Playwright.
 
 **One compose file, per-checkout ports in `.env`.** Every checkout on the
 branch shares `docker-compose.yml`. Do not edit it for one checkout. Each
-checkout sets host ports in its own gitignored `.env`. The defaults match
-`Registry2/`, so that checkout needs no port entries.
+checkout sets host ports in its own gitignored `.env`. The compose file's
+own defaults (`docker-compose.yml`'s `${APP_HOST_PORT:-8001}` and so on)
+match `Registry/`, so that checkout needs no port entries.
 
 | Checkout | `APP_HOST_PORT` | `PMA_HOST_PORT` | `MOCK_BREVO_HOST_PORT` | `LANDING_HOST_PORT` |
 | --- | --- | --- | --- | --- |
-| `Registry/` | 8001 | 8081 | 8091 | 8101 |
-| `Registry2/` (defaults) | 8002 | 8082 | 8090 | 8102 |
-| next checkout | 8003 | 8083 | 8092 | 8103 |
+| `Registry/` (compose defaults) | 8001 | 8081 | 8091 | 8101 |
+| `Registry2/` | 8002 | 8082 | 8092 | 8102 |
+| next checkout | 8003 | 8083 | 8093 | 8103 |
 
 Also set `CHECKOUT_NAME` (the landing page's label). The network and
 volume need no per-checkout change: Compose prefixes both with the project
@@ -409,10 +413,14 @@ docker compose exec -u www-data app composer install
 docker compose exec -u www-data app composer test:full
 ```
 
-The stack has five services. `app` runs PHP 8.4. `db` runs MySQL 8.0 and has
-no host port. `phpmyadmin` provides database inspection. `mock-brevo` runs the
-local mock of Brevo's transactional email API
-(`ghcr.io/c0boleis/mock-brevo:1.0.0`) and provides a web inbox. `landing`
+To run local cron as well, start the stack with `--profile cron`. See
+[Development Setup](#development-setup), step 6.
+
+The stack has five services, plus the opt-in `cron` service (see step 6 of
+[Development Setup](#development-setup)). `app` runs PHP 8.4. `db` runs
+MySQL 8.0 and has no host port. `phpmyadmin` provides database inspection.
+`mock-brevo` runs the local mock of Brevo's transactional email API
+(`ghcr.io/unibrain1/mock-brevo:latest`) and provides a web inbox. `landing`
 serves the landing page. Use the port table above. The `app` container reaches
 `mock-brevo` at `http://mock-brevo:8080/v3` on the `elan` network. See the
 "Local Development" section in `docs/development/EMAIL_SYSTEM.md` for the
@@ -426,43 +434,45 @@ bind mount. See the `docker-compose.yml` header comment for the full
 rationale, the port table, and the one per-checkout setting outside `.env`
 (`APP_UID`/`APP_GID`, if a different host user works on the checkout).
 
-**MAMP and Docker will coexist. The project has no plan to retire MAMP.**
-This decision applies to every checkout that uses Docker (#2120). The two
-stacks share ports, but they do not share database access. MAMP and Docker
-read the same `.env` file. The `DB_HOST` value selects the stack that can
-reach the database.
+**MAMP is retired (#2180 supersedes #2120).** Docker is the only supported
+local environment for the Registry. #2120 had planned for MAMP and Docker to
+coexist; #2180 changed that decision. A developer on an older checkout that
+still has a MAMP `.env` must switch `DB_HOST` to `db` and `DB_PORT` to
+`3306`, the values Docker Compose reads.
 
-The Docker value `DB_HOST=db` does not work from MAMP's PHP process. MAMP pages
-cannot access the database while `.env` uses this value. To use MAMP again,
-set `DB_HOST` and `DB_PORT` to `127.0.0.1` and `8889`. Developers often keep a
-backup of the MAMP `.env` file beside it as `.env.mamp.bak`. Git ignores this
-backup file.
-
-When `.env` uses Docker values, run `scripts/provision-schema.sh` and other
-scripts that read `.env` inside the container. Use
-`docker compose exec -u www-data app scripts/provision-schema.sh ...`. Do not
-run these scripts from the host shell.
+Run `scripts/provision-schema.sh` and other scripts that read `.env` inside
+the container. Use `docker compose exec -u www-data app
+scripts/provision-schema.sh ...`. Do not run these scripts from the host
+shell.
 
 **The Docker database user needs `SYSTEM_VARIABLES_ADMIN`.** The standard
 `GRANT ALL` on `elanregi_*` schemas does not grant this permission. Some
-integration tests run `SET GLOBAL`. The Docker image's non-root user cannot
-run that command without the additional permission. The MAMP database user
-appears to have it. See the comment in
-`docker/mysql-init/01-grant-all-elanregi-schemas.sql` for the test, mechanism,
-and failure mode. Add the same permission to the grant file for each new
-checkout.
+integration tests run `SET GLOBAL`, which needs this permission. See the
+comment in `docker/mysql-init/01-grant-all-elanregi-schemas.sql` for the
+test, mechanism, and failure mode. Add the same permission to the grant file
+for each new checkout.
 
-**Optional Traefik routing**: `docker-compose.traefik.yml` defines Docker-label
-routing. It joins the external `traefik_proxy` network and sets a `Host()` rule
-for each checkout. The project does not apply this file automatically because
-it does not own or deploy the HomeLab Traefik configuration.
+### PHP Version
 
-To create a dev-domain route, merge the files manually with
-`docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d`.
-See the header in `docker-compose.traefik.yml` for the pattern used in
-`HomeLab/services/user_services/elan-registry-monitoring-viewer/docker-compose.yml`.
-Docker labels provide the active route. Traefik's static configuration has no
-route for an ElanRegistry dev domain.
+- **Local development, CI, test, and production**: These environments use
+  PHP 8.4.x. Production uses PHP 8.4.25. Issue #1968 tracked an earlier hold
+  on PHP 8.2 for test and production. That hold ended when production moved to
+  PHP 8.4.25. This statement does not say whether anyone should close #1968.
+- **`phpstan.neon` value `phpVersion: 80229`**: This setting pins static
+  analysis to the compatibility floor. The floor is lower than the deployed
+  version. This choice keeps first-party code from using syntax that PHP 8.3
+  or 8.4 introduced, such as property hooks and asymmetric visibility. It does
+  not mean that any environment uses PHP 8.2. `composer.json` also sets the
+  compatibility floor with `>=8.2.29`. Neither value describes the deployed
+  version. Changing either value requires a separate decision.
+- **CLI PHP (Homebrew)**: The shell finds `php` and `composer` through PATH.
+  These commands use Homebrew's linked PHP. Keep it on the same version as
+  the Docker app container with `brew install php@8.4`, then
+  `brew link php@8.4 --force --overwrite` and `hash -r`. The shell runs unit
+  tests (`composer test:quick`, `test:unit`) and static analysis
+  (`composer check:php`, PHPStan) with Homebrew's linked PHP. Integration
+  tests need the database, so run them in the container instead — see step 4
+  below.
 
 ### Development Setup
 
@@ -482,11 +492,19 @@ route for an ElanRegistry dev domain.
 
    # Edit with your local credentials
    # Example contents:
-   # DB_HOST=127.0.0.1
-   # DB_USER=root
+   # DB_HOST=db
+   # DB_PORT=3306
+   # DB_USER=elanregi_spice
    # DB_PASS=password
    # DB_NAME=elanregi_spice
    ```
+
+   `DB_HOST=db` and `DB_PORT=3306` point the app at the Docker stack's `db`
+   service. Keep `DB_USER=elanregi_spice`: Compose passes it to MySQL as
+   `MYSQL_USER`, which cannot be `root`, and
+   `docker/mysql-init/01-grant-all-elanregi-schemas.sql` grants only that
+   user. See "Docker Dev Environment" above for the full `.env` port
+   settings.
 
 3. **Set Secure Permissions**:
 
@@ -495,11 +513,14 @@ route for an ElanRegistry dev domain.
    chmod 600 .env
    ```
 
-4. **Set Up Integration Test Database**:
+4. **Start the Stack and Set Up the Integration Test Database**:
 
    Integration tests run against a dedicated test schema to avoid damaging the dev database.
 
    ```bash
+   # Start the Docker stack (see "Docker Dev Environment" above)
+   docker compose up -d
+
    # Copy the test database template
    cp .env.test.local.sample .env.test.local
 
@@ -510,10 +531,11 @@ route for an ElanRegistry dev domain.
    chmod 600 .env.test.local
 
    # Provision the test schema (stock UserSpice base + migrations + seeds)
-   ./scripts/provision-schema.sh
+   # Run inside the container — do not run this script from the host shell
+   docker compose exec -u www-data app scripts/provision-schema.sh
 
-   # Run integration tests
-   composer test:integration
+   # Run integration tests inside the container
+   docker compose exec -u www-data app composer test:integration
    ```
 
 5. **Set Up Claude Code Local Overrides (optional)**:
@@ -530,40 +552,58 @@ route for an ElanRegistry dev domain.
 6. **Local Cron Trigger (optional)**:
 
    UserSpice's Cron Manager does nothing until something requests
-   `users/cron/cron.php` on a schedule. On macOS the development machine uses a
-   user launchd agent rather than `crontab`:
-
-   - Label `org.elanregistry.local-cron`, plist in `~/Library/LaunchAgents/`
-     (machine-local, not committed)
-   - `StartInterval` 600 — every 10 minutes, matching test and prod
-   - Runs `curl -s -o /dev/null -w '%{http_code}'` against
-     `http://localhost:9999/ElanRegistry/Registry/users/cron/cron.php` and
-     appends `<timestamp> status=<code>` to
-     `~/Library/Logs/ElanRegistry/local-cron.log`
+   `users/cron/cron.php` on a schedule. The `cron` service in
+   `docker-compose.yml` does this. It is behind the Compose profile `cron`,
+   because `cron.php` runs real scheduled jobs, such as the verification
+   batch send. A plain `docker compose up -d` does not start it.
 
    ```bash
-   launchctl load ~/Library/LaunchAgents/org.elanregistry.local-cron.plist
-   tail -3 ~/Library/Logs/ElanRegistry/local-cron.log   # expect status=200 lines
+   docker compose --profile cron up -d     # start the stack with cron
+   docker compose logs -f cron             # one line per request
+   docker compose --profile cron down      # stop everything, cron included
    ```
 
-   `cron.php` logs a request only when `cron_ip` has a value and the request
-   comes from a different IP address. The allowlist always permits
-   `127.0.0.1`. When `cron_ip` is empty, the default, the allowlist check does
-   not run and the app writes no log entry. Issue #1974 also stopped
-   `cron.php` from logging each accepted request. The launchd log at
-   `~/Library/Logs/ElanRegistry/local-cron.log` records only an HTTP status
-   such as `200` or `4xx`. It does not record the source IP.
+   - The `cron` service shares the `app` container's network namespace
+     (`network_mode: "service:app"`). It requests
+     `http://127.0.0.1/users/cron/cron.php` when Apache answers, then 600
+     seconds after each request ends. This is close to test and production
+     (every 10 minutes). The request has no retry, because each retry would
+     run every cron job again.
+   - Because the request shares `app`'s network namespace, `cron.php` sees
+     the request's `REMOTE_ADDR` as `127.0.0.1`.
+   - Each request prints one line:
+     `<ISO-8601 timestamp> status=<code> exit=<curl exit code> <curl error message>`.
+     `status=000` with a nonzero exit means curl got no HTTP response at
+     all; the error message says why (for example connection refused or a
+     timeout).
+   - Use `--profile cron` with `down` too. A plain `docker compose down`
+     does not stop `cron`.
+   - If `app` is recreated or restarted alone (for example
+     `docker compose restart app`, or `docker compose up -d` without the
+     profile after an image change), `cron` loses its network and logs
+     `status=000 exit=7`. Run `docker compose --profile cron up -d` again.
 
-   To find the IP address that `curl` uses, set `cron_ip` to an incorrect
-   value. Run the curl command above by hand. Then read the
-   `Cron request DENIED from <ip>.` entry in Admin → Logs. You can also run
-   `SELECT ip FROM logs ORDER BY id DESC LIMIT 1`. The entry shows the source
-   IP even when `cron_ip` has the wrong value. On standard macOS systems,
-   `/etc/hosts` makes curl connect to `localhost` over IPv6. The address is
-   usually `::1`. Since `cron.php` always allows only `127.0.0.1`, add `::1`
-   to `cron_ip` explicitly. After you set the correct value,
-   `er_verification_settings.last_cron_request_at` in Admin → Verification
-   shows that the app accepts requests.
+   **`status=200` does not prove that a job ran.** `cron.php` returns HTTP
+   200 also when the `cron_ip` allowlist denies the request. An accepted
+   request updates `er_verification_settings.last_cron_request_at`
+   (Admin → Verification). A denied request adds a `CronRequest` row to the
+   `logs` table: `Cron request DENIED from <ip>.`
+
+   **Set `cron_ip` to `off` for local development.** `off` is UserSpice's
+   sentinel for "allow `127.0.0.1` only" — see
+   [DEPLOYMENT.md's `cron_ip` semantics table](DEPLOYMENT.md#cron-transport-userspice-cron-manager).
+   Because the `cron` service's request arrives as `127.0.0.1`, `off` admits
+   it. `off` also denies every other caller, including a Cloudflare tunnel
+   set up for Turnstile testing (see "Cloudflare Turnstile CAPTCHA" above) —
+   a request through the published port instead arrives as the Docker
+   bridge IP (for example `172.20.0.1`) and is denied.
+
+   A local database from before Docker can still hold an old value, for
+   example an empty string or `::1`, which does not match this setup.
+   `scripts/refresh-local-db.sh` does not copy the `settings` table, so the
+   old value stays until you clear it: in Admin → Settings, or with
+   `docker compose exec db mysql -u [DB_USER] -p -D [DB_NAME] -e
+   "UPDATE settings SET cron_ip='off'"`.
 
    See [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager)
    for the interval rules, allowlist table, and cron job requirements.
@@ -598,8 +638,9 @@ dedicated test schema to protect the development database:
   changes, such as after a new migration. Each run drops and recreates only
   the target schema. It then loads `database/vendor/userspice-6.1.4-base.sql`,
   runs `composer migrate`, and loads the Phinx seeds. The script needs a
-  `mysql` client on `$PATH` or a `MYSQL_BIN` value that points to one. MAMP's
-  client is not on `$PATH` by default.
+  `mysql` client on `$PATH` or a `MYSQL_BIN` value that points to one. Under
+  Docker, run the script inside the `app` container (see "Docker Dev
+  Environment" above), which has the client on `$PATH`.
 
 After setup, you can run tests against the test schema as often as needed.
 These runs do not affect the development database.
@@ -729,7 +770,8 @@ mod_php to another SAPI, such as PHP-FPM. Apache skips unknown `IfModule`
 blocks without an error. If the error logs stop after a server or PHP change,
 check that the server still uses mod_php.
 
-Local MAMP development continues to use PHP's default error log location.
+Local Docker development uses PHP's default error log location inside the
+`app` container.
 
 ## Troubleshooting
 

@@ -198,3 +198,6 @@ jobs:
 
       - name: Run local ESLint rule tests
         run: npm run test:eslint-rules
+
+      - name: Run JavaScript unit tests
+        run: npm run test:js-unit

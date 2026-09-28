@@ -48,9 +48,10 @@
 // profile; this test's job is narrower and complementary: proving the real
 // HTTP endpoint actually runs that code at all.
 //
-// Runs against Local/Dev only (MAMP, default http://localhost:9999/ElanRegistry/Registry/
-// — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md;
-// requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in .env.local).
+// Runs against Local/Dev only: the local Docker site, default
+// http://localhost:$APP_HOST_PORT/ (see tests/playwright/base-url.js).
+// Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md.
+// Requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in .env.local.
 //
 // NOT enrolled on Test or Production (see playwright.config.test.js /
 // playwright.config.prod.js testMatch, which excludes this file). Enrollment

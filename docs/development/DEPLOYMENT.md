@@ -499,7 +499,7 @@ per environment outside the codebase. Installed on test and prod on 2026-09-03
 > - `crons_logs` gets one row per job per hit regardless of whether the job did
 >   anything, so it cannot tell you how often real work happened. Log real work
 >   under the job's own `LogCategories` constant.
-> - The interval is a cPanel/launchd setting, not code, and can change. Treat
+> - The interval is a cPanel or Compose setting, not code, and can change. Treat
 >   10 minutes as the *maximum latency* before a due job is picked up, not as a
 >   schedule a job may rely on. This section is the operational record of what
 >   the transport is actually configured to; `CRON_TRANSPORT_INTERVAL_MINUTES`
@@ -649,7 +649,7 @@ the real client address and cannot be spoofed with a header.
 
 | Environment | Trigger | Interval | `cron_ip` | Evidence |
 | --- | --- | --- | --- | --- |
-| dev (MAMP, macOS) | launchd job, see [ENVIRONMENT.md](ENVIRONMENT.md#development-setup) | 10 min | `::1` on this machine (`/etc/hosts` lists both loopbacks and curl prefers IPv6; only `127.0.0.1` is hard-coded, so use whichever address a `Cron request DENIED from <ip>.` log line shows if a hit is unexpectedly rejected) | `~/Library/Logs/ElanRegistry/local-cron.log`, `er_verification_settings.last_cron_request_at` (DB Explainer or Admin → Verification tab) |
+| dev (Docker) | the `cron` Compose service, started with `docker compose --profile cron up -d`, see [ENVIRONMENT.md](ENVIRONMENT.md#development-setup) | 10 min | `off`. The service shares the `app` container's network namespace, so `cron.php` sees the request's `REMOTE_ADDR` as `127.0.0.1`, which `off` admits. `off` denies every other caller, including a Cloudflare tunnel | `docker compose logs cron`, `er_verification_settings.last_cron_request_at` (DB Explainer or Admin → Verification tab) |
 | test.elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | the server's public outbound IP, as shown in a `Cron request DENIED from <ip>.` entry if misconfigured | `er_verification_settings.last_cron_request_at`, Cron Manager job log |
 | elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | same policy, checked independently | same |
 

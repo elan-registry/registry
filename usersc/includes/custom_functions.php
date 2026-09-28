@@ -92,7 +92,7 @@ function isRegistryAdmin(int|string|null $userId = null): bool {
  * Falls back to the email.verify_url database setting when server globals are
  * not populated (e.g., CLI scripts).
  *
- * @return string Base URL without trailing slash (e.g., 'https://elanregistry.org' or 'http://localhost:9999/elan-registry')
+ * @return string Base URL without trailing slash (e.g., 'https://elanregistry.org' or 'http://localhost:8001')
  */
 function getBaseUrl(): string {
     global $scheme, $host, $us_url_root;

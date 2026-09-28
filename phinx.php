@@ -20,8 +20,8 @@ foreach (['DB_NAME', 'DB_USER', 'DB_PASS'] as $var) {
 
 $dbHost = $_ENV['DB_HOST'] ?? getenv('DB_HOST') ?: 'localhost';
 
-// 'localhost' on macOS resolves to a Unix socket path that differs between CLI PHP
-// and MAMP, causing connection failures. Force TCP by using 127.0.0.1 instead.
+// A host MySQL client treats 'localhost' as a Unix socket, and the socket path
+// may not match the server. Force TCP with 127.0.0.1 instead.
 if ($dbHost === 'localhost') {
     $dbHost = '127.0.0.1';
 }

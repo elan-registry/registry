@@ -29,9 +29,8 @@
 -- documented one-year default. Without this privilege the SET GLOBAL call
 -- itself throws ("Access denied; you need ... SUPER or
 -- SYSTEM_VARIABLES_ADMIN"), uncaught by the test, so it hangs to its outer
--- 10s curl timeout instead of failing fast with a clear error. MAMP's app
--- DB user apparently already has this (or SUPER) by default; the Docker
--- image starts every non-root user with neither.
+-- 10s curl timeout instead of failing fast with a clear error. The Docker
+-- image starts every non-root user without this privilege or SUPER.
 --
 -- Grant is global-scope only (not *.* ALL), since this is a
 -- system-variable privilege, not a schema/table one — it grants no

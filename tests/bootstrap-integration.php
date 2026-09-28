@@ -76,9 +76,10 @@ try {
 }
 
 // Defense-in-depth: refuse to proceed if the test environment points at the dev database.
-// Case-folded and trimmed because MAMP's MySQL runs with lower_case_table_names=2 on
-// macOS's case-insensitive filesystem, so ELANREGI_SPICE and elanregi_spice are the same
-// physical database — a naive === comparison would miss a typo'd-case DB_NAME.
+// Case-folded and trimmed because a MySQL server on macOS runs with
+// lower_case_table_names=2 on the case-insensitive filesystem, so ELANREGI_SPICE
+// and elanregi_spice are the same physical database — a naive === comparison
+// would miss a typo'd-case DB_NAME.
 $configuredDbName = strtolower(trim($_ENV['DB_NAME'] ?? ''));
 if ($configuredDbName === 'elanregi_spice') {
     fwrite(STDERR, "ERROR: .env.test.local is pointed at the development database (elanregi_spice).\n");
@@ -123,7 +124,8 @@ try {
         "ERROR: Could not connect to the test database at {$probeHost}"
             . " (database: {$probeName}).",
         "PDO error: {$e->getMessage()}",
-        "Check that MAMP/MySQL is running and .env.test.local's DB_HOST/DB_USER/",
+        "Check that the Docker `db` service is running (docker compose ps) and",
+        ".env.test.local's DB_HOST/DB_USER/",
         "DB_PASS/DB_NAME are correct. Aborting rather than letting the connection",
         "attempt fall through to users/classes/DB.php's die(), which would exit 0",
         "with no output and look like a passing test run."
@@ -302,15 +304,15 @@ try {
         //
         // MySQL's SET time_zone accepts a named zone only when the
         // mysql.time_zone_name tables are populated (`mysql_tzinfo_to_sql`),
-        // which a fresh MAMP/Docker MySQL install typically has not run —
-        // asserting a bare named zone here would silently fail on exactly
-        // the environments most likely to need this fix. Falling back to the
+        // which a fresh MySQL install (including the Docker `db` service)
+        // typically has not run — asserting a bare named zone here would
+        // silently fail on exactly the environments most likely to need this
+        // fix. Falling back to the
         // zone's current UTC offset (computed by PHP, which already resolved
         // the named zone above) sidesteps that dependency entirely and is
         // still correct for "right now" — the only thing any test in this
         // suite's lifetime cares about. A session-scoped SET here (not a
-        // server-wide my.cnf change, which only one developer could apply
-        // and which a MAMP PRO regeneration would silently discard anyway)
+        // server-wide my.cnf change, which only one developer could apply)
         // fixes the mismatch for whoever runs this suite, wherever they are,
         // with no machine-level setup required.
         $phpTimezone = new \DateTimeZone(date_default_timezone_get());

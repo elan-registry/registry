@@ -22,11 +22,11 @@ require_once __DIR__ . '/../../../database/migrations/20260905172137_convert_car
  * the documented remedy is restoring from backup.
  *
  * The guard must compare the two CLOCKS, not `@@session.time_zone` against
- * `@@global.time_zone`. On the project's local MAMP environment both of those
- * read `SYSTEM` while PHP — with `date.timezone` unset, falling back to UTC —
- * sits seven hours from MySQL: the naive comparison passes while every value
- * would shift. That measured case is pinned below so a future "simplification"
- * back to the timezone-variable comparison fails loudly.
+ * `@@global.time_zone`. On the local environment measured for #1953 both of
+ * those read `SYSTEM` while PHP — with `date.timezone` unset, falling back to
+ * UTC — sits seven hours from MySQL: the naive comparison passes while every
+ * value would shift. That measured case is pinned below so a future
+ * "simplification" back to the timezone-variable comparison fails loudly.
  *
  * @issue 1953
  * @link https://github.com/elan-registry/registry/issues/1953
@@ -110,7 +110,7 @@ final class Issue1953ClockGuardRegressionTest extends TestCase
     }
 
     /**
-     * The exact skew measured on the project's local MAMP environment: MySQL on
+     * The exact skew measured on the local environment for #1953: MySQL on
      * US/Pacific, PHP fallen back to UTC. This is the case the guard exists for,
      * and precisely the case a `@@session` vs `@@global` comparison misses.
      */

@@ -170,8 +170,8 @@ async function navigateAndWait(page, path) {
 /**
  * Test backward compatibility redirect.
  * If the redirect fires, verifies the URL changed to the new path.
- * If not (e.g. .htaccess redirects inactive on local MAMP), falls back to
- * verifying the destination path is itself accessible.
+ * When the redirect does not fire, falls back to verifying the destination
+ * path is itself accessible.
  * @param {import('@playwright/test').Page} page - Playwright page object
  * @param {string} oldPath - Old path that should redirect
  * @param {string} expectedNewPath - Expected new path in URL

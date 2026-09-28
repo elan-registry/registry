@@ -4,7 +4,7 @@
  * the first match wins, so more-specific entries (Add Car) precede broader
  * prefixes (List Cars). Trailing '/' marks a prefix; bare paths are exact.
  * $php_self is normalized against $us_url_root so subfolder installs (e.g.
- * MAMP at /elan-registry/) match the same patterns as production at /.
+ * a local site at /elan-registry/) match the same patterns as production at /.
  *
  * Generic viewer pages (pdf-viewer.php) and the static guide pages can't be
  * classified by path alone — they set $nav_section before this template

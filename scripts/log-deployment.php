@@ -42,7 +42,7 @@ try {
         }
     }
 
-    // DB_HOST may carry an embedded port (e.g. local MAMP: "127.0.0.1:8889")
+    // DB_HOST may carry an embedded port (e.g. "127.0.0.1:3307")
     // in addition to — or instead of — a separate DB_PORT. Split it out so
     // both the plain-host (production/dev) and host:port (local) .env forms
     // connect correctly.
@@ -54,8 +54,8 @@ try {
     } else {
         $dbHost = $dbHostRaw;
     }
-    // 'localhost' resolves to a Unix socket path on macOS that differs between
-    // CLI PHP and MAMP, causing connection failures. Force TCP instead.
+    // A host MySQL client treats 'localhost' as a Unix socket, and the socket
+    // path may not match the server. Force TCP instead.
     if ($dbHost === 'localhost') {
         $dbHost = '127.0.0.1';
     }
