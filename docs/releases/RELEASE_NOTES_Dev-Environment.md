@@ -42,8 +42,10 @@ local check's result; MAMP is no longer needed.
   stack on its own ports, with a landing page linking the site, phpMyAdmin and the mock Brevo inbox.
 - [#2175](https://github.com/elan-registry/registry/issues/2175) — Documented which tool reads each
   env file and fixed a provisioning guard that checked the wrong one.
-- WIP: [#2178](https://github.com/elan-registry/registry/issues/2178) — mock-brevo switches to the
-  maintained fork with an English admin UI.
+- [#2178](https://github.com/elan-registry/registry/issues/2178) — mock-brevo is pinned to the
+  maintained fork `ghcr.io/unibrain1/mock-brevo:1.2.0` (English UI; event report, block list,
+  Brevo-style webhooks; mock webhooks send `BREVO_WEBHOOK_TOKEN`). `EMAIL_SYSTEM.md` now states that the
+  app's send path does not use `BREVO_API_HOST` until [#2184](https://github.com/elan-registry/registry/issues/2184).
 - [#2180](https://github.com/elan-registry/registry/issues/2180) — MAMP is retired for the
   Registry. Docker is now the only supported local environment. Local cron is an opt-in `cron`
   Compose service (`docker compose --profile cron up -d`) that runs with `cron_ip` set to `off`.
