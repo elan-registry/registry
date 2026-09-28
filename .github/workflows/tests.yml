@@ -80,6 +80,7 @@ jobs:
               - "scripts/render-deploy-sheet.sh"
               - "scripts/check-blocking-findings.sh"
               - "scripts/verify-ci-review.sh"
+              - ".github/workflows/claude-code-review.yml"
 
   git-hooks:
     name: Git Hooks Regression Tests

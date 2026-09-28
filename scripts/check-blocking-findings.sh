@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Detects unresolved Blocking (and optionally Important) findings in a PR's
-# posted review comments, using the exact same heading regex and
-# recap-exclusion logic as claude-code-review.yml's own merge gate
-# (both pr-to-milestone-review and milestone-review jobs) — so a command-line
-# check and CI's gate can never silently disagree about the same comment.
+# posted review comments. CI's gate in claude-code-review.yml (both the
+# pr-to-milestone-review and milestone-review jobs) uses the same
+# HEADING_PATTERN (the Blocking part) and EXCLUSION_PATTERN, and the same
+# per-grep `|| [ $? -eq 1 ]` guard, so a command-line check and CI's gate can
+# never silently disagree about the same comment.
+# tests/hooks/test-check-blocking-findings.sh (Part C) fails if the workflow
+# and this script drift apart, and it also runs the workflow's gate block
+# itself to check the logic, not just the patterns.
 #
 # Why not just eyeball the raw comment bodies: a plain read can mistake a
 # recap heading ("### Blocking finding from the previous round: resolved")

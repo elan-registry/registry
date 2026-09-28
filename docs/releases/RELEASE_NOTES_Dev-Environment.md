@@ -54,6 +54,10 @@ local check's result; MAMP is no longer needed.
 - [#2222](https://github.com/elan-registry/registry/issues/2222) — The review-gate scripts no longer
   report a clean review as blocked, and `verify-ci-review.sh` reports "could not verify" as that, not
   as a finding.
+- [#2223](https://github.com/elan-registry/registry/issues/2223) — The CI review gate in
+  `claude-code-review.yml` now fails on a heading such as `### Blocking issues, unresolved`, and a
+  grep error fails the step instead of passing it. Both jobs now use the same heading and recap
+  patterns as `check-blocking-findings.sh`, and a hook test fails if the patterns drift apart.
 - [#2225](https://github.com/elan-registry/registry/issues/2225) — `verify-ci-review.sh` no longer misses
   a change to its own workflow file on a large PR. It reads the PR's file list from the files API,
   because `gh pr diff` returns HTTP 406 for a diff over 20,000 lines, and a failure to read the list now

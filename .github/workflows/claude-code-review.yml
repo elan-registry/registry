@@ -466,25 +466,52 @@ jobs:
           # recap/resolution language rather than by narrowing the heading
           # match itself.
           #
-          # Count every non-excluded match across the WHOLE body rather than
+          # Check every non-excluded match across the WHOLE body rather than
           # inspecting only the first (`head -1`) — a comment can contain a
           # resolved-recap heading earlier and a genuine new Blocking section
           # later; taking only the first match would silently pass on the
           # excluded recap line and never see the real section below it.
           #
-          # `|| true` guards the pipeline itself: this job's default shell
-          # runs with `-e -o pipefail` (no explicit `shell:` override), so
-          # the common case — no Blocking heading anywhere, both greps exit
-          # 1 for "no match" — would otherwise abort the step before
-          # BLOCKING_COUNT is ever assigned, failing the check by shell
-          # accident rather than by finding anything.
-          BLOCKING_COUNT=$(echo "$REVIEW_BODY" \
-            | grep -E '^#{1,6}[[:space:]]+Blocking([[:space:]]|$)|^\*\*Blocking\*\*([[:space:]]|$)' \
-            | grep -cviE 'resolved|previous round|prior round|earlier round' || true)
-          if [ "$BLOCKING_COUNT" -gt 0 ]; then
-            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+          # The exclusion is narrow — it only matches actual recap phrasing
+          # ("previous/prior/earlier round", or the heading ending in
+          # "resolved") — not a bare `resolved` substring. A bare substring
+          # would also match "unresolved" and silently drop a live, forward-
+          # looking heading like "### Blocking issues, unresolved".
+          #
+          # Each grep below needs its own `|| [ $? -eq 1 ]` guard. This job's
+          # default shell runs with `-e -o pipefail` (no explicit `shell:`
+          # override), and each grep can legitimately match nothing and exit
+          # 1: the first when the review has no Blocking heading at all, the
+          # second when every heading it receives is an excluded recap.
+          # Exit 1 (no match) is fine and must not fail the step. A real grep
+          # error (exit 2) makes the guard fail, so the `if !` below reports
+          # it as "cannot verify" and fails the step — a grep error must
+          # never silently pass the gate (#2223).
+          #
+          # HEADING_PATTERN and EXCLUSION_PATTERN must stay byte-identical to
+          # scripts/check-blocking-findings.sh. tests/hooks/test-check-blocking-findings.sh
+          # (Part C) fails if the two drift apart, and it also runs this gate
+          # block itself to check the logic, not just the patterns. Part C
+          # extracts the block by finding this `HEADING_PATTERN=` line and
+          # the `echo` below that prints "no Blocking section found." — keep
+          # both exact, and keep this step on GitHub's default bash shell
+          # (no `shell:` override), because Part C runs the extracted block
+          # under `bash -eo pipefail`.
+          HEADING_PATTERN='#{1,6}[[:space:]]+Blocking([[:space:]]|$)|\*\*Blocking\*\*([[:space:]]|$)'
+          EXCLUSION_PATTERN='(previous|prior|earlier)[[:space:]]+round|:[[:space:]]*resolved[[:space:]]*$|\(resolved\)'
+          if ! MATCHES=$(printf '%s\n' "$REVIEW_BODY" \
+            | { grep -E "^(${HEADING_PATTERN})" || [ $? -eq 1 ]; } \
+            | { grep -viE "$EXCLUSION_PATTERN" || [ $? -eq 1 ]; }); then
+            echo "::error::grep failed while scanning the review. Cannot verify Blocking status. Investigate before merging."
             exit 1
           fi
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+            printf '%s\n' "$MATCHES"
+            exit 1
+          fi
+          # Part C's extraction ends at this echo's exact text — see the
+          # note above HEADING_PATTERN.
           echo "✓ Review posted, no Blocking section found."
 
 
@@ -791,23 +818,50 @@ jobs:
           # recap/resolution language rather than by narrowing the heading
           # match itself.
           #
-          # Count every non-excluded match across the WHOLE body rather than
+          # Check every non-excluded match across the WHOLE body rather than
           # inspecting only the first (`head -1`) — a comment can contain a
           # resolved-recap heading earlier and a genuine new Blocking section
           # later; taking only the first match would silently pass on the
           # excluded recap line and never see the real section below it.
           #
-          # `|| true` guards the pipeline itself: this job's default shell
-          # runs with `-e -o pipefail` (no explicit `shell:` override), so
-          # the common case — no Blocking heading anywhere, both greps exit
-          # 1 for "no match" — would otherwise abort the step before
-          # BLOCKING_COUNT is ever assigned, failing the check by shell
-          # accident rather than by finding anything.
-          BLOCKING_COUNT=$(echo "$REVIEW_BODY" \
-            | grep -E '^#{1,6}[[:space:]]+Blocking([[:space:]]|$)|^\*\*Blocking\*\*([[:space:]]|$)' \
-            | grep -cviE 'resolved|previous round|prior round|earlier round' || true)
-          if [ "$BLOCKING_COUNT" -gt 0 ]; then
-            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+          # The exclusion is narrow — it only matches actual recap phrasing
+          # ("previous/prior/earlier round", or the heading ending in
+          # "resolved") — not a bare `resolved` substring. A bare substring
+          # would also match "unresolved" and silently drop a live, forward-
+          # looking heading like "### Blocking issues, unresolved".
+          #
+          # Each grep below needs its own `|| [ $? -eq 1 ]` guard. This job's
+          # default shell runs with `-e -o pipefail` (no explicit `shell:`
+          # override), and each grep can legitimately match nothing and exit
+          # 1: the first when the review has no Blocking heading at all, the
+          # second when every heading it receives is an excluded recap.
+          # Exit 1 (no match) is fine and must not fail the step. A real grep
+          # error (exit 2) makes the guard fail, so the `if !` below reports
+          # it as "cannot verify" and fails the step — a grep error must
+          # never silently pass the gate (#2223).
+          #
+          # HEADING_PATTERN and EXCLUSION_PATTERN must stay byte-identical to
+          # scripts/check-blocking-findings.sh. tests/hooks/test-check-blocking-findings.sh
+          # (Part C) fails if the two drift apart, and it also runs this gate
+          # block itself to check the logic, not just the patterns. Part C
+          # extracts the block by finding this `HEADING_PATTERN=` line and
+          # the `echo` below that prints "no Blocking section found." — keep
+          # both exact, and keep this step on GitHub's default bash shell
+          # (no `shell:` override), because Part C runs the extracted block
+          # under `bash -eo pipefail`.
+          HEADING_PATTERN='#{1,6}[[:space:]]+Blocking([[:space:]]|$)|\*\*Blocking\*\*([[:space:]]|$)'
+          EXCLUSION_PATTERN='(previous|prior|earlier)[[:space:]]+round|:[[:space:]]*resolved[[:space:]]*$|\(resolved\)'
+          if ! MATCHES=$(printf '%s\n' "$REVIEW_BODY" \
+            | { grep -E "^(${HEADING_PATTERN})" || [ $? -eq 1 ]; } \
+            | { grep -viE "$EXCLUSION_PATTERN" || [ $? -eq 1 ]; }); then
+            echo "::error::grep failed while scanning the review. Cannot verify Blocking status. Investigate before merging."
             exit 1
           fi
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+            printf '%s\n' "$MATCHES"
+            exit 1
+          fi
+          # Part C's extraction ends at this echo's exact text — see the
+          # note above HEADING_PATTERN.
           echo "✓ Review posted, no Blocking section found."
