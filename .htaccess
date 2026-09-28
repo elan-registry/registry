@@ -80,6 +80,13 @@ RewriteRule ^FIX/(?!index\.php$|[0-9]+-.*\.php$|[A-Za-z]+-.*\.php$) - [F,L]
 RewriteRule ^vendor/ - [F,L]
 RewriteRule ^backups/ - [F,L]
 
+# Origin-level block for .git/ (#2066). Deploy deletes any .git directory
+# from the docroot, so this should never match in normal operation — it
+# exists as defense-in-depth in case a deploy step ever skips that removal,
+# independent of whatever edge/host-level rule (Cloudflare, LiteSpeed) is
+# also blocking this path.
+RewriteRule (^|/)\.git(/|$) - [F,L]
+
 # PHP error log destination per environment (#1768)
 # Resolved at request-time via HTTP_HOST since .htaccess is deployed
 # identically to every environment (no deploy-time templating exists).
