@@ -14,11 +14,15 @@
 #                   Reads DB credentials from the prod docroot .env on the
 #                   remote host, so nothing is stored locally.
 #   --db NAME       Import into NAME instead of the DB_NAME from the env file.
+#                   NAME must match elanregi_* (the container user's grants).
+#                   The env file's DB_HOST is still checked.
 #   --env-file P    Read the TARGET DB_NAME and DB_HOST from P instead of .env.
 #                   Use --env-file .env.test.local to rehearse a refresh
 #                   against the scratch test schema before touching your
-#                   working dev database. That file's DB_HOST must be `db`
-#                   (the Docker Compose service this script always targets).
+#                   working dev database. That fills the integration-test
+#                   schema, so restore it afterwards (see scripts/README.md).
+#                   That file's DB_HOST must be `db` (the Docker Compose
+#                   service this script always targets).
 #   --skip-images   Skip image rsync (DB refresh only)
 #   --images-only   Skip DB refresh, only rsync images
 #   -h, --help      Show this help and exit
@@ -33,7 +37,8 @@
 # Requirements:
 #   The DB refresh runs mysql/mysqldump inside this checkout's Docker `db`
 #   service. Start the stack first with: docker compose up -d --wait
-#   The env file read for DB_NAME must also have DB_HOST=db.
+#   The env file read for DB_NAME must also have DB_HOST=db. The MySQL user
+#   and password always come from the db container, never from the env file.
 #   --images-only does not need Docker.
 #
 # Tables upserted (new rows added, existing rows updated by primary key):
@@ -124,11 +129,16 @@ usage() {
     exit 0
 }
 
+# Under `set -e`, `shift 2` with only one argument left exits with no message.
+need_value() {
+    [[ $# -ge 2 && -n "$2" ]] || { echo "Error: $1 needs a value" >&2; exit 1; }
+}
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --fetch)       FETCH_DUMP=true; shift ;;
-        --db)          DB_NAME_OVERRIDE="${2:-}"; shift 2 ;;
-        --env-file)    ENV_FILE_OVERRIDE="${2:-}"; shift 2 ;;
+        --db)          need_value "$@"; DB_NAME_OVERRIDE="$2"; shift 2 ;;
+        --env-file)    need_value "$@"; ENV_FILE_OVERRIDE="$2"; shift 2 ;;
         --skip-images) SKIP_IMAGES=true; shift ;;
         --images-only) IMAGES_ONLY=true; shift ;;
         -h|--help)     usage ;;
@@ -158,6 +168,55 @@ require_docker_db() {
         echo "       Start it with: docker compose up -d --wait" >&2
         exit 1
     fi
+}
+
+# ── Target settings ───────────────────────────────────────────────────────────
+# Prints KEY's value from an env file. It removes a CR, an end-of-line
+# comment, trailing spaces and one pair of surrounding quotes, which covers
+# the forms phpdotenv and Compose accept for DB_NAME and DB_HOST.
+# `|| true`: under pipefail a missing line would exit here with no message.
+# Let the caller's checks report it instead.
+env_value() {
+    grep -E "^$1=" "$2" | head -1 | cut -d= -f2- | tr -d '\r' \
+        | sed -E "s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/" || true
+}
+
+load_env() {
+    local env_file="${ENV_FILE_OVERRIDE:-$PROJECT_ROOT/.env}"
+    [[ -f "$env_file" ]] || { echo "Error: env file not found at $env_file" >&2; exit 1; }
+    [[ -r "$env_file" ]] || { echo "Error: env file $env_file is not readable" >&2; exit 1; }
+    echo "==> Reading target settings from $(basename "$env_file")"
+    DB_NAME=$(env_value DB_NAME "$env_file")
+    DB_HOST=$(env_value DB_HOST "$env_file")
+
+    if [[ -n "$DB_NAME_OVERRIDE" ]]; then
+        DB_NAME="$DB_NAME_OVERRIDE"
+    fi
+
+    if [[ -z "$DB_NAME" ]]; then
+        echo "Error: $(basename "$env_file") has no DB_NAME value. Set DB_NAME or pass --db NAME." >&2
+        exit 1
+    fi
+
+    # The container user's grants cover elanregi_* only. Any other name fails
+    # inside the backup and leaves an empty .gz in db-backups/, and a name
+    # that starts with "-" would reach mysqldump as an option.
+    if [[ ! "$DB_NAME" =~ ^elanregi_[A-Za-z0-9_]+$ ]]; then
+        echo "Error: target database '$DB_NAME' must match elanregi_* (the db container user's grants)." >&2
+        exit 1
+    fi
+
+    # This script only ever loads into the Docker db service's own database
+    # server, never a host or remote one, so DB_HOST must name that service.
+    # A port suffix ("db:3306") is ignored: the client runs inside the
+    # container and never uses it.
+    if [[ "${DB_HOST%%:*}" != "db" ]]; then
+        echo "Error: $(basename "$env_file") has DB_HOST=${DB_HOST:-<unset>}. This script loads into the Docker 'db' service only." >&2
+        echo "       Set DB_HOST=db in that file." >&2
+        exit 1
+    fi
+
+    echo "==> Target database: $DB_NAME"
 }
 
 # ── Validation ────────────────────────────────────────────────────────────────
@@ -192,41 +251,9 @@ if [[ "$IMAGES_ONLY" == false ]]; then
         exit 1
     fi
 
+    load_env
     require_docker_db
 fi
-
-# ── Target settings ───────────────────────────────────────────────────────────
-load_env() {
-    local env_file="${ENV_FILE_OVERRIDE:-$PROJECT_ROOT/.env}"
-    [[ -f "$env_file" ]] || { echo "Error: env file not found at $env_file" >&2; exit 1; }
-    [[ -r "$env_file" ]] || { echo "Error: env file $env_file is not readable" >&2; exit 1; }
-    echo "==> Reading target settings from $(basename "$env_file")"
-    # `|| true`: under pipefail a missing line would exit here with no
-    # message. Let the checks below report it instead.
-    DB_NAME=$(grep -E '^DB_NAME=' "$env_file" | head -1 | cut -d= -f2- || true)
-    DB_HOST=$(grep -E '^DB_HOST=' "$env_file" | head -1 | cut -d= -f2- || true)
-
-    if [[ -n "$DB_NAME_OVERRIDE" ]]; then
-        DB_NAME="$DB_NAME_OVERRIDE"
-    fi
-
-    if [[ -z "$DB_NAME" ]]; then
-        echo "Error: $(basename "$env_file") has no DB_NAME value. Set DB_NAME or pass --db NAME." >&2
-        exit 1
-    fi
-
-    # This script only ever loads into the Docker db service's own database
-    # server, never a host or remote one, so DB_HOST must name that service.
-    # A port suffix ("db:3306") is ignored: the client runs inside the
-    # container and never uses it.
-    if [[ "${DB_HOST%%:*}" != "db" ]]; then
-        echo "Error: $(basename "$env_file") has DB_HOST=${DB_HOST:-<unset>}. This script loads into the Docker 'db' service only." >&2
-        echo "       Set DB_HOST=db in that file." >&2
-        exit 1
-    fi
-
-    echo "==> Target database: $DB_NAME"
-}
 
 # ── Production dump fetch ─────────────────────────────────────────────────────
 # Dump production over SSH. Credentials are read from the prod docroot .env on
@@ -653,8 +680,8 @@ backup_local_db() {
     backup_file="$backup_dir/${DB_NAME}_$(date +%Y%m%d_%H%M%S).sql.gz"
     echo "==> Backing up $DB_NAME to $(basename "$backup_file") ..."
     # --no-tablespaces: the container user has no PROCESS privilege, and
-    # without this flag mysqldump errors out on every run trying to dump
-    # tablespaces.
+    # without this flag mysqldump prints an access-denied error on every run
+    # (the dump still completes, so the error is noise).
     db_exec mysqldump --single-transaction --routines --triggers --no-tablespaces \
         "$DB_NAME" | gzip > "$backup_file"
     echo "    Backup saved: $backup_file"
@@ -717,7 +744,6 @@ SELECT 'car_transfer_requests.submitted_email', COUNT(*) FROM \`car_transfer_req
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 if [[ "$IMAGES_ONLY" == false ]]; then
-    load_env
     EXTRACT_SQL=""
     trap 'rm -f ${EXTRACT_SQL:+"$EXTRACT_SQL"}' EXIT
 
