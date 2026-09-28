@@ -64,3 +64,12 @@ local check's result; MAMP is no longer needed.
 
 - Remove an old MAMP `PLAYWRIGHT_BASE_URL` (for example `http://localhost:9999/...`) from
   `.env.local` (#2180).
+
+## Retrospective
+
+- **Shipped but not needed:** nothing.
+- **What we learned about the audience:** gates must fail closed. The review and test gates did
+  most of the work for the agents, and each silent pass (#2222, #2223, #2225) cost more than a
+  noisy failure would have.
+- **Signal we ignored:** #2157 asked for integration tests in CI. We merged it into the #2044
+  spike, which was right, because the earlier try (#1746) failed.
