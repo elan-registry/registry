@@ -164,7 +164,7 @@ function usage(): void
     Options:
       --create             Register a new transactional webhook and exit
       --url=<url>          Webhook URL (required for --create); must start with https://test.
-      --token=<token>      Bearer token for the webhook's Token auth (required for --create; never printed)
+      --token=<token>      Bearer token for the webhook's bearer auth (required for --create; never printed)
       --description=<text> Webhook description (default: "1888 — test env")
       --list-webhooks      List the account's transactional webhooks and exit
       --delete             Delete a webhook (requires --id) and exit
@@ -440,7 +440,7 @@ function createWebhook(array $config, string $url, string $token, string $descri
         'url' => $url,
         'type' => 'transactional',
         'events' => CREATE_EVENTS,
-        'auth' => ['type' => 'token', 'token' => $token],
+        'auth' => ['type' => 'bearer', 'token' => $token],
         'description' => $description,
     ]);
 
