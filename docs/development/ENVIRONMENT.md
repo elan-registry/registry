@@ -190,7 +190,10 @@ without CAPTCHA validation. Use this when Turnstile behaviour is not under test.
 `cloudflared` creates a temporary public HTTPS URL that proxies to your local
 Docker site. Cloudflare Tunnel ends TLS upstream and forwards HTTP internally.
 It sets the `X-Forwarded-Proto: https` header, so `$is_https` is `true` and
-Turnstile enables.
+Turnstile enables. With `X-Forwarded-Proto` set, `$current_origin` and
+`getBaseUrl()` never add a port, because `SERVER_PORT` then describes the
+proxy-to-Apache hop. Any other local proxy that sends the header gets the same
+result.
 
 1. **Install `cloudflared`**:
 

@@ -115,7 +115,9 @@ function getBaseUrl(): string {
         try {
             $db = DB::getInstance();
             $result = $db->query("SELECT verify_url FROM email")->first();
-            $baseUrl = $result->verify_url ?? null;
+            // The column is NOT NULL, so an unset value is '' rather than null.
+            $verifyUrl = trim((string) ($result->verify_url ?? ''));
+            $baseUrl = $verifyUrl !== '' ? $verifyUrl : null;
         } catch (\PDOException $e) {
             $baseUrl = null;
             $dbError = true;

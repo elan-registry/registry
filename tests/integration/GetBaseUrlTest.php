@@ -171,9 +171,34 @@ final class GetBaseUrlTest extends IntegrationTestCase
         $GLOBALS['current_origin'] = '';
         $GLOBALS['us_url_root']    = '';
 
-        $result = getBaseUrl();
+        $this->assertValidFallbackUrl(getBaseUrl());
+    }
 
-        $this->assertIsString($result);
+    /**
+     * In the CLI, server_globals.php still runs: $host is '' but
+     * $current_origin is 'http://', which is not empty. The $host check must
+     * send this to the fallback, not return 'http:' (#2228).
+     *
+     * @return void
+     */
+    #[Group('integration')]
+    public function testGetBaseUrlFallsBackForCliServerGlobals(): void
+    {
+        $this->applyServerGlobals([]);
+
+        $this->assertSame('http://', $GLOBALS['current_origin']);
+        $this->assertValidFallbackUrl(getBaseUrl());
+    }
+
+    /**
+     * Assert the properties every fallback URL has, whether or not the
+     * function-level static cache was already populated in this process.
+     *
+     * @param string $result getBaseUrl() output
+     * @return void
+     */
+    private function assertValidFallbackUrl(string $result): void
+    {
         $this->assertNotEmpty($result);
         // Must be a syntactically valid absolute URL (http or https)
         $this->assertNotFalse(
