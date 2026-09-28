@@ -55,10 +55,12 @@ local check's result; MAMP is no longer needed.
   report a clean review as blocked, and `verify-ci-review.sh` reports "could not verify" as that, not
   as a finding.
 - [#2225](https://github.com/elan-registry/registry/issues/2225) — `verify-ci-review.sh` no longer misses
-  a change to its own workflow file on a large PR, and a `gh pr diff` failure now reports "could not
-  verify" (exit 1). `render-deploy-sheet.sh` no longer drops the trigger-migration step on a large
-  release diff, and it exits 2 if it cannot read the full diff. Both read `grep -q` input from a here-string, because a pipe returned 141 under
-  `pipefail` when `grep -q` stopped at an early match.
+  a change to its own workflow file on a large PR. It reads the PR's file list from the files API,
+  because `gh pr diff` returns HTTP 406 for a diff over 20,000 lines, and a failure to read the list now
+  reports "could not verify" (exit 1). `render-deploy-sheet.sh` no longer drops the trigger-migration
+  step on a large release diff, and it exits 2 if it cannot read the full diff. Both scripts read
+  `grep -q` input from a here-string, because a pipe returned 141 under `pipefail` when `grep -q`
+  stopped at an early match.
 - [#2228](https://github.com/elan-registry/registry/issues/2228) — Local URLs use the address the
   browser opens (`http://localhost:8001`). The local `cron` service sends that Host header, so emailed
   links no longer point at `http://127.0.0.1`. Canonical, `og:url` and sitemap links keep the port.

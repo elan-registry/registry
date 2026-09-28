@@ -142,14 +142,17 @@ else
   # re-running the workflow cannot clear a skip caused by the workflow file
   # itself not yet being the one merged to main.
   if [ "$TRIGGER" = "workflow" ]; then
-    if ! DIFF_FILES=$(gh pr diff "$PR_NUM" --name-only --repo "$REPO"); then
-      echo "verify-ci-review.sh: could not verify: gh pr diff failed, so the workflow-file guard cannot be checked." >&2
+    # The files API, not `gh pr diff`: the diff endpoint returns HTTP 406 for
+    # a diff over 20,000 lines, which a large PR easily has (#2225). The files
+    # API lists at most 3,000 files; a PR larger than that is not checked fully.
+    if ! PR_FILES=$(gh api "repos/${REPO}/pulls/${PR_NUM}/files" --paginate --jq '.[].filename'); then
+      echo "verify-ci-review.sh: could not verify: the PR's file list could not be read, so the workflow-file guard cannot be checked." >&2
       exit 1
     fi
     # A here-string, not a piped `grep -q`: grep -q can exit at its first
     # match while gh still has output queued, SIGPIPEing gh, and pipefail
     # then turns that early exit into rc 141 — read as "no match" (#2225).
-    if grep -Fxq '.github/workflows/claude-code-review.yml' <<< "$DIFF_FILES"; then
+    if grep -Fxq '.github/workflows/claude-code-review.yml' <<< "$PR_FILES"; then
       echo "PR diff touches claude-code-review.yml itself — the action's own workflow-file-must-match-main guard blocks a pre-merge re-run from clearing this. Recovery skipped; this requires a merge to main first." >&2
       exit 4
     fi

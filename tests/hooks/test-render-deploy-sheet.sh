@@ -71,12 +71,19 @@ pad padding.txt
 git add database/migrations/20990101000000_test.php padding.txt
 git commit -q -m "add trigger migration + padding"
 
-OUT1="$(bash "$SCRIPT" vtest 2>/dev/null)"
-if printf '%s\n' "$OUT1" | grep -q '^migration: TRUE$' \
-    && printf '%s\n' "$OUT1" | grep -q '^trigger-migration: TRUE$'; then
-    pass "Case 1: CREATE TRIGGER early in a >64KB diff is detected"
+DIFF_BYTES="$(git diff "main...milestone/vtest" | wc -c | tr -d ' ')"
+if [ "$DIFF_BYTES" -le 70000 ]; then
+    fail "Case 1: full-diff fixture too small to exercise the bug" \
+        "diff bytes: $DIFF_BYTES (want > 70000)"
 else
-    fail "Case 1: CREATE TRIGGER early in a >64KB diff is detected" "output: [$OUT1]"
+    OUT1="$(bash "$SCRIPT" vtest 2>/dev/null)"
+    if printf '%s\n' "$OUT1" | grep -q '^migration: TRUE$' \
+        && printf '%s\n' "$OUT1" | grep -q '^trigger-migration: TRUE$'; then
+        pass "Case 1: CREATE TRIGGER early in a >64KB diff is detected"
+    else
+        fail "Case 1: CREATE TRIGGER early in a >64KB diff is detected" \
+            "diff bytes: $DIFF_BYTES" "output: [$OUT1]"
+    fi
 fi
 
 # --- Case 2: control — large migration WITHOUT CREATE TRIGGER -------------

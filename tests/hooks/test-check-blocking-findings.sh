@@ -6,9 +6,9 @@
 # anything, and a caller's `if ! poll; then poll_status=$?` pattern must not
 # silently store the negated (always-0) exit status.
 #
-# Also covers #2225: the workflow-file guard in verify-ci-review.sh reads
-# `gh pr diff` output through a here-string, not a piped `grep -q`, so a
-# large diff can't SIGPIPE `gh` and get misread as "no match" (rc 141).
+# Also covers #2225: the workflow-file guard in verify-ci-review.sh reads the
+# PR's file list (`gh api …/pulls/N/files`) through a here-string, not a
+# piped `grep -q`, so a large list can't SIGPIPE `gh` and read as "no match".
 #
 # HERMETIC: Part A stubs `gh` (and, for case 16, `grep`) first on PATH. Part B
 # runs a copy of verify-ci-review.sh from a directory that also holds stub
@@ -393,19 +393,19 @@ exit "${STUB_CHECK_EXIT:-0}"
 STUB
 chmod +x "$VSCRIPTS/check-blocking-findings.sh"
 
-# Stub `gh` for the recovery path: logs its arguments, exits 0. `gh pr diff`
-# behaviour depends on STUB_GH_DIFF_MODE:
+# Stub `gh` for the recovery path: logs its arguments, exits 0. The PR file
+# list call (`gh api repos/…/pulls/N/files`) depends on STUB_GH_DIFF_MODE:
 #   unset/empty  : prints nothing (self-referential-workflow-file check never
 #                  matches) — existing cases 10-22 rely on this default.
 #   large-match  : prints the matching workflow file first, then 50000 more
 #                  path lines from a pre-built file — big enough to fill the
 #                  pipe buffer (#2225).
-#   fail         : `gh pr diff` itself fails (simulated `gh` error).
+#   fail         : the file list call itself fails (simulated `gh` error).
 # `gh workflow run` and `gh pr edit` just succeed in every mode.
 cat > "$STUBDIR/gh" <<'STUB'
 #!/bin/bash
 printf '%s\n' "gh $*" >> "${STUB_GH_LOG:?STUB_GH_LOG not set}"
-if [ "$1" = "pr" ] && [ "$2" = "diff" ]; then
+if [ "$1" = "api" ] && case "$2" in repos/*/pulls/*/files) true ;; *) false ;; esac; then
     case "${STUB_GH_DIFF_MODE:-}" in
         large-match)
             # `exec` so the stub exits with cat's SIGPIPE 141; the stub's own
@@ -413,7 +413,7 @@ if [ "$1" = "pr" ] && [ "$2" = "diff" ]; then
             exec cat "${STUB_GH_DIFF_MATCH_FILE:?STUB_GH_DIFF_MATCH_FILE not set}"
             ;;
         fail)
-            echo "gh: simulated pr diff failure (stub)" >&2
+            echo "gh: simulated PR file list failure (stub)" >&2
             exit 1
             ;;
         *)
@@ -532,9 +532,9 @@ else
         "exit: $STATUS22 (want 0)" "polls: $POLLS22 (want 2)" "output: [$OUT22]"
 fi
 
-# --- Case 23: large gh pr diff output with an early match (#2225) ---------
+# --- Case 23: large PR file list with an early match (#2225) --------------
 # STUB_POLL_EXIT=1 forces the recovery path so verify-ci-review.sh reaches
-# the workflow-file guard's `gh pr diff` call. large-match makes the stub
+# the workflow-file guard's file list call. large-match makes the stub
 # print a match first, then 50000 more lines — enough to fill the pipe
 # buffer. A piped `grep -q` would SIGPIPE `gh` here and (under pipefail) read
 # that as "no match"; the here-string fix must still detect the match, skip
@@ -546,20 +546,20 @@ STATUS23=$?
 POLLS23="$(cat "$POLL_COUNT_FILE" 2>/dev/null || echo '?')"
 if [ "$STATUS23" -eq 4 ] && [ "$POLLS23" = "1" ] \
     && ! grep -q 'workflow run' "$GH_LOG"; then
-    pass "Case 23: large gh pr diff output with an early match -> exit 4, no recovery workflow run, one poll"
+    pass "Case 23: large PR file list with an early match -> exit 4, no recovery workflow run, one poll"
 else
-    fail "Case 23: large gh pr diff output with an early match -> exit 4, no recovery workflow run, one poll" \
+    fail "Case 23: large PR file list with an early match -> exit 4, no recovery workflow run, one poll" \
         "exit: $STATUS23 (want 4)" "polls: $POLLS23 (want 1)" "output: [$OUT23]"
 fi
 
-# --- Case 24: gh pr diff itself fails -> 1 ---------------------------------
+# --- Case 24: the PR file list call fails -> 1 -----------------------------
 OUT24="$(STUB_POLL_EXIT=1 STUB_CHECK_EXIT=0 STUB_GH_DIFF_MODE=fail run_verify 2>&1)"
 STATUS24=$?
-if [ "$STATUS24" -eq 1 ] && printf '%s' "$OUT24" | grep -q 'gh pr diff failed' \
+if [ "$STATUS24" -eq 1 ] && printf '%s' "$OUT24" | grep -q 'file list could not be read' \
     && ! grep -q 'workflow run' "$GH_LOG"; then
-    pass "Case 24: gh pr diff fails -> exit 1, message mentions the failure, no recovery workflow run"
+    pass "Case 24: PR file list call fails -> exit 1, message mentions the failure, no recovery workflow run"
 else
-    fail "Case 24: gh pr diff fails -> exit 1, message mentions the failure, no recovery workflow run" \
+    fail "Case 24: PR file list call fails -> exit 1, message mentions the failure, no recovery workflow run" \
         "exit: $STATUS24 (want 1)" "output: [$OUT24]"
 fi
 
