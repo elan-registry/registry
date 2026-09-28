@@ -59,6 +59,9 @@ local check's result; MAMP is no longer needed.
 - [#2228](https://github.com/elan-registry/registry/issues/2228) — Local URLs keep the browser's host
   and port (`http://localhost:8001`), also in cron emails, and `getBaseUrl()` no longer adds `:80`
   behind a TLS proxy such as `cloudflared`.
+- [#2245](https://github.com/elan-registry/registry/issues/2245) — The workflow scripts no longer
+  report a failed git or gh step as success, `run-verification-suite.sh` runs integration tests in
+  the Docker app container, and CI now runs every hook test.
 
 ## Developer Actions
 
