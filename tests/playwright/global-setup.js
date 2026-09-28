@@ -5,9 +5,51 @@
 // real cause (server not running, wrong PLAYWRIGHT_BASE_URL) under dozens of
 // per-test failures.
 
+const { readEnvFileKey, resolveBaseUrlWithSource, REPO_ENV_PATH } = require('./resolve-base-url.js');
+
 // Shared with playwright.config.js/playwright.config.dev.js's `use.baseURL`
 // — see base-url.js for why this can't just read the resolved config back.
 const BASE_URL = require('./base-url.js');
+
+// The Playwright configs load only .env.local into process.env, but
+// .env.example tells developers to set LANDING_HOST_PORT in .env. Read both.
+// This runs while the "Cannot reach" error is built. A .env read error here
+// must not replace that error, so it falls back to the default port.
+function landingPort() {
+  let port = process.env.LANDING_HOST_PORT;
+  if (!port) {
+    try {
+      port = readEnvFileKey(REPO_ENV_PATH, 'LANDING_HOST_PORT');
+    } catch {
+      // Keep the default. See the comment above.
+    }
+  }
+  // Matches the docker-compose.yml fallback `${LANDING_HOST_PORT:-8101}`.
+  return port || '8101';
+}
+
+// Returns a sentence that names the setting that chose BASE_URL, so a
+// developer knows what to change.
+// The Playwright configs load .env.local into process.env before base-url.js
+// runs, so process.env here holds the same values that base-url.js used.
+// A throw here must not replace the "Cannot reach" error. base-url.js
+// resolved the same inputs without an error, so a throw is not expected.
+function baseUrlSource() {
+  let source;
+  try {
+    source = resolveBaseUrlWithSource(process.env, REPO_ENV_PATH).source;
+  } catch {
+    return 'The source of this URL is not known.';
+  }
+  if (source === 'PLAYWRIGHT_BASE_URL') {
+    // An old MAMP value in .env.local is the usual cause.
+    return (
+      'This URL comes from PLAYWRIGHT_BASE_URL, which can come from .env.local. ' +
+      'Remove it from .env.local to make Playwright use APP_HOST_PORT.'
+    );
+  }
+  return `This URL comes from ${source}.`;
+}
 
 module.exports = async function globalSetup() {
   try {
@@ -16,9 +58,16 @@ module.exports = async function globalSetup() {
     // thrown exception (connection refused, DNS failure, timeout) means the
     // target isn't reachable at all.
     await fetch(BASE_URL, { signal: AbortSignal.timeout(5000) });
-  } catch (_error) {
+  } catch (error) {
+    // fetch() puts the network error code (for example ECONNREFUSED) in
+    // error.cause. A timeout has no cause, so fall back to the error name.
+    const reason = error.cause?.code ?? error.cause?.message ?? error.name;
     throw new Error(
-      `Cannot reach ${BASE_URL} — is MAMP running and is PLAYWRIGHT_BASE_URL (if set) correct? See docs/development/ENVIRONMENT.md.`
+      `Cannot reach ${BASE_URL} (${reason}). ${baseUrlSource()} Start the Docker stack with \`docker compose up -d\`, ` +
+        `then open the landing page at http://localhost:${landingPort()}/ to see this checkout's site URL. ` +
+        `If the site is on a different port, set APP_HOST_PORT or PLAYWRIGHT_BASE_URL. ` +
+        `See docs/development/ENVIRONMENT.md.`,
+      { cause: error }
     );
   }
 };

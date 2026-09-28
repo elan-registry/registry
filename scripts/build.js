@@ -79,7 +79,7 @@ Promise.all([
     minify: true,
     outfile: 'usersc/js/maplibre-gl.min.js',
   });
-  // .js (not .mjs) — some servers (e.g. MAMP/Apache with no .mjs MIME
+  // .js (not .mjs) — some servers (e.g. Apache with no .mjs MIME
   // mapping, or serving .mjs with X-Content-Type-Options: nosniff and no
   // Content-Type) silently hang Chrome's `type: 'module'` Worker constructor
   // forever (map never renders, no console error). MapLibre's worker bundle
@@ -100,7 +100,7 @@ Promise.all([
       `maplibre-gl-worker.mjs references sibling chunk(s) [${referencedChunks.join(', ')}], ` +
       `expected [${expectedChunks.join(', ')}] — MapLibre likely changed its worker chunk ` +
       'layout; update scripts/build.js to vendor the new chunk(s) under .js names (see git ' +
-      'history for why .mjs breaks on MAMP/Apache).'
+      'history for why .mjs breaks on some Apache servers).'
     );
   }
   const rewrittenWorkerSrc = workerSrc

@@ -375,10 +375,10 @@ declarations, missing PHPDoc on public methods, SQL string concatenation.
 ```bash
 # Confirm .env.test.local exists and points at a reachable, provisioned schema
 cat .env.test.local
-./scripts/provision-schema.sh   # (re)builds the schema if missing/stale
+docker compose exec -u www-data app scripts/provision-schema.sh   # (re)builds the schema if missing/stale
 
-# Reproduce the failure directly
-composer test:integration
+# Reproduce the failure directly, in the app container
+docker compose exec -u www-data app composer test:integration
 ```
 
 See `docs/development/ENVIRONMENT.md` — "Test Database Isolation" for setup.

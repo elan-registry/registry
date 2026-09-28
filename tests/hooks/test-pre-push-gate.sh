@@ -437,8 +437,9 @@ assert_eq "Case 10c: key is '<tree> <DB_NAME> <runner>' with quotes stripped" \
     "$(_integration_cache_key "$HEAD_SHA")"
 
 # --- Case 10d: same tree + DB_NAME, different runner -> different key -----
-# A host (MAMP) pass must not satisfy the first in-container push of the
-# same tree: the migration guide keeps DB_NAME when DB_HOST becomes `db`.
+# A host pass (any non-`db` DB_HOST) must not satisfy the first
+# in-container push of the same tree: the migration guide keeps DB_NAME
+# when DB_HOST becomes `db`.
 KEY_HOST="$(_integration_cache_key "$HEAD_SHA")"
 printf 'DB_HOST=db\nDB_NAME="elan_test"\n' > "$REPO/.env.test.local"
 KEY_DOCKER="$(_integration_cache_key "$HEAD_SHA")"
@@ -827,7 +828,7 @@ assert_eq "Case D5: INTEGRATION_GATE_RUNNER=host runs on the host even with DB_H
 # --- Case D6: DB_HOST=localhost -> host run, docker never called ------------
 set_test_db_host "localhost"; clear_pass; : > "$DOCKER_LOG"
 OUTD6="$(STUB_DOCKER_RUNNING=1 STUB_EXIT=0 run_hook "$DK_LINE")"
-assert_eq "Case D6: a MAMP-style DB_HOST runs on the host and never calls docker" \
+assert_eq "Case D6: a non-db DB_HOST (localhost) runs on the host and never calls docker" \
     "0 1 0" "$(hook_exit) $(composer_calls) $(wc -l < "$DOCKER_LOG" | tr -d ' ')"
 
 # --- Case D7: DB_HOST=db but no docker binary -> blocked --------------------

@@ -15,9 +15,9 @@
 //     the sentinel (i.e., existing LOCAL images were not re-processed)
 //   - The form submit completes successfully (mocked 200 response)
 //
-// All server calls are intercepted with page.route() so no MAMP DB row is needed.
+// All server calls are intercepted with page.route() so no local DB row is needed.
 //
-// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
+// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
@@ -108,7 +108,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
     test.beforeEach(async ({ page }) => {
         // Every test here needs an authenticated session against the local
-        // MAMP DB. Without credentials the login helper falls back to a
+        // Docker DB. Without credentials the login helper falls back to a
         // placeholder account that cannot exist, so skip on the real cause
         // rather than letting each test guard on "did we land on login.php".
         test.skip(
@@ -881,11 +881,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 // Verifies that the v2.23.0 encode-at-output reform cannot silently regress.
 // Three scenarios:
 //   1. Form submission sends plain text (not entity-encoded) in the POST body
-//   2. Details page renders special chars as readable text (requires MAMP DB)
-//   3. Edit form textarea pre-fills with plain text on next load (requires MAMP DB)
+//   2. Details page renders special chars as readable text (requires the local DB)
+//   3. Edit form textarea pre-fills with plain text on next load (requires the local DB)
 //
 // Test 1 mocks edit.php and passes anywhere; tests 2 and 3 require a
-// MAMP database with car_id=650 having special chars in the comments field
+// local database with car_id=650 having special chars in the comments field
 // (after the migration script has been run).
 
 test.describe('encode-at-output regression — special chars in car text fields (#844)', () => {
@@ -972,7 +972,7 @@ test.describe('encode-at-output regression — special chars in car text fields 
         const bodyText = await page.locator('body').textContent();
         expect(
             bodyText,
-            `Car ${CAR_ID_WITH_SPECIAL_CHARS} must exist in the MAMP DB with migrated special-character text — see fixtures.js`
+            `Car ${CAR_ID_WITH_SPECIAL_CHARS} must exist in the local DB with migrated special-character text — see fixtures.js`
         ).not.toMatch(/not found|does not exist/i);
 
         // Assert no visible HTML entity strings in any text content

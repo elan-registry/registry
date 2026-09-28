@@ -11,7 +11,7 @@
 //   - #chassis_check_error clears when a subsequent check succeeds
 //
 // The chassis blur handler calls validateChassis.php then (if valid) check-chassis.php.
-// Both endpoints are intercepted with page.route() so no MAMP DB row is needed.
+// Both endpoints are intercepted with page.route() so no local DB row is needed.
 // Because checkChassisAvailability() lives inside a jQuery closure, we can't call
 // it directly. The year field is driven via jQuery in page.evaluate(); the model
 // select and chassis field are driven via real Playwright locator interactions
@@ -19,7 +19,7 @@
 // through genuine browser events rather than synthetic jQuery triggers — see
 // triggerChassisBlur() below for why that distinction matters (#2071).
 //
-// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
+// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

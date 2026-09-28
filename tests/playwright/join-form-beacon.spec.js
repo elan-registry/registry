@@ -16,7 +16,7 @@
 //   - A page-level JS exception scoped to the join form POSTs to the beacon
 //     with reason=js_exception
 //
-// Requires local MAMP — see playwright.config.js's baseURL
+// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js
 
 const { test, expect } = require('@playwright/test');
 

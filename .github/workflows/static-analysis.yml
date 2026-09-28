@@ -58,6 +58,8 @@ jobs:
               - "**.cjs"
               - "eslint.config.mjs"
               - "eslint-rules/**"
+              - "docker-compose.yml"
+              - "package-lock.json"
             docs:
               - "**.md"
               - "scripts/check-docs.php"
@@ -198,3 +200,6 @@ jobs:
 
       - name: Run local ESLint rule tests
         run: npm run test:eslint-rules
+
+      - name: Run JavaScript unit tests
+        run: npm run test:js-unit

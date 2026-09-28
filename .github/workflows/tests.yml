@@ -76,6 +76,7 @@ jobs:
             hooks:
               - ".githooks/**"
               - "tests/hooks/**"
+              - "scripts/provision-schema.sh"
 
   git-hooks:
     name: Git Hooks Regression Tests
@@ -116,3 +117,8 @@ jobs:
       # checkout's refs, so it needs no fetch-depth or fixture setup.
       - name: Run pre-push integration-gate tests
         run: bash tests/hooks/test-pre-push-gate.sh
+
+      # Pins the DB_HOST=db guard in scripts/provision-schema.sh. A host run
+      # can resolve `db` to another machine and DROP a database there.
+      - name: Run provision-schema guard tests
+        run: bash tests/hooks/test-provision-schema-guard.sh

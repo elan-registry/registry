@@ -44,8 +44,11 @@ local check's result; MAMP is no longer needed.
   env file and fixed a provisioning guard that checked the wrong one.
 - WIP: [#2178](https://github.com/elan-registry/registry/issues/2178) — mock-brevo switches to the
   maintained fork with an English admin UI.
-- WIP: [#2180](https://github.com/elan-registry/registry/issues/2180) — MAMP is retired for the
-  Registry, leaving Docker as the only supported local environment.
+- [#2180](https://github.com/elan-registry/registry/issues/2180) — MAMP is retired for the
+  Registry. Docker is now the only supported local environment. Local cron is an opt-in `cron`
+  Compose service (`docker compose --profile cron up -d`) that runs with `cron_ip` set to `off`.
+  Also lifted the `.htaccess`-skip gate on Playwright's `not-logged-in` suite.
+  Remove an old MAMP `PLAYWRIGHT_BASE_URL` (for example `http://localhost:9999/...`) from `.env.local`.
 - [#2222](https://github.com/elan-registry/registry/issues/2222) — The review-gate scripts no longer
   report a clean review as blocked, and `verify-ci-review.sh` reports "could not verify" as that, not
   as a finding.

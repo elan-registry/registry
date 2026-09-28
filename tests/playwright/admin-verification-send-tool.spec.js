@@ -14,7 +14,7 @@
 //   - one SUPPRESSED car (otherwise eligible, email_suppressed = 1)
 //
 // KNOWN LOCAL-ENVIRONMENT LIMITATION, discovered while writing this suite:
-// this machine's local MAMP database already has ~1500 pre-existing rows
+// this machine's local database already has ~1500 pre-existing rows
 // that independently satisfy findVerificationEligible()'s predicate (likely
 // accumulated across many prior local test runs), all with lower `id`s than
 // anything freshly seeded here. The preview table is capped by
@@ -43,31 +43,31 @@
 //
 // Placed at the top level of tests/playwright/ (not under e2e/), matching
 // admin-owner-mgmt.spec.js's and admin-user-view-verification.spec.js's
-// established convention for admin-page specs that need local MAMP + a live
-// admin session obtained via ensureLoggedIn() (auth-helper.js) rather than
+// established convention for admin-page specs that need the local Docker
+// site + a live admin session obtained via ensureLoggedIn() (auth-helper.js) rather than
 // the `admin` project's storageState. This file's name is therefore NOT added
 // to playwright.config.js's/playwright.config.dev.js's `admin` project
 // testMatch regex — it runs under the plain `chromium` project, exactly like
 // its two precedents.
 //
-// Requires local MAMP with E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD (an
-// admin account) set in .env.local. Default base URL:
-// http://localhost:9999/ElanRegistry/Registry/ — override with
-// PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md. Also requires
-// US_ENVIRONMENT=development locally — the fixture refuses to run against a
-// deployed environment.
+// Requires the local Docker site with E2E_DEV_ADMIN_USERNAME/
+// E2E_DEV_ADMIN_PASSWORD (an admin account) set in .env.local. Default base
+// URL: http://localhost:$APP_HOST_PORT/ (see tests/playwright/base-url.js).
+// Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md.
+// Also requires US_ENVIRONMENT=development locally — the fixture refuses to
+// run against a deployed environment.
 //
 // HARD CONSTRAINT — no real email send. This suite never submits the
 // "Send batch" form in a state where the send could actually proceed.
 // Investigation (see PR/session notes) found that on this
-// local MAMP environment usersc/plugins/sendinblue/override.php does NOT
+// local environment usersc/plugins/sendinblue/override.php does NOT
 // exist (only the template usersc/plugins/sendinblue/override.RENAME.php is
 // present), so the `email()` function is UNDEFINED at runtime here — no core
 // UserSpice email() exists either. Calling email() would therefore trigger a
 // PHP fatal error (uncatchable — a fatal "Call to undefined function" is not
 // a \Throwable a try/catch can intercept), not a safe no-op and not a real
-// send. Submitting the batch form against local MAMP would currently crash
-// the request rather than deliver mail, which is exactly the kind of side
+// send. Submitting the batch form against the local environment would
+// currently crash the request rather than deliver mail, which is exactly the kind of side
 // effect this suite must not cause. The happy-path "Sent" report assertion
 // (AC13-adjacent) is therefore marked as a documented gap below, not
 // exercised here.
@@ -722,12 +722,12 @@ test.describe('Admin Verification non-admin access (#1885 commands)', () => {
 // 1. "Send batch" happy path (AC1 send-side, AC9, AC12, AC13 sent-section
 //    rendering). BLOCKED: see the file header's email() investigation.
 //    usersc/plugins/sendinblue/override.php does not exist on this local
-//    MAMP checkout (only the un-renamed override.RENAME.php template is
+//    local checkout (only the un-renamed override.RENAME.php template is
 //    present), so email() is an undefined function at runtime here — calling
 //    it inside CarVerificationSendService::sendOne() would fatal the PHP
 //    process, not send real mail and not safely no-op. This cannot be
-//    exercised via a real browser-driven Playwright run against local MAMP
-//    without either (a) renaming override.php into place with a real Brevo
+//    exercised via a real browser-driven Playwright run against the local
+//    environment without either (a) renaming override.php into place with a real Brevo
 //    key, which WOULD send a real email to the seeded owner's example.invalid
 //    address (undeliverable, but still a real outbound Brevo API call and
 //    exactly the side effect this suite must avoid), or (b) some other
@@ -759,7 +759,7 @@ test.describe('Admin Verification non-admin access (#1885 commands)', () => {
 //    escaping requirement). The fixture deliberately seeds an eligible car
 //    with a `<script>xss</script>`-bearing chassis specifically to drive
 //    this check, but it could not be exercised: see the file header's
-//    "KNOWN LOCAL-ENVIRONMENT LIMITATION" note — this local MAMP database
+//    "KNOWN LOCAL-ENVIRONMENT LIMITATION" note — this local database
 //    has ~1500 pre-existing rows that independently satisfy
 //    findVerificationEligible(), all with lower ids than the freshly seeded
 //    row, and VerificationSettings::batchSize() is capped at 255 (an

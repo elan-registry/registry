@@ -3,30 +3,17 @@ const { CAR_ID_STANDARD, CAR_ID_REDIRECT_TEST } = require('../fixtures.js');
 const { assertPageTitle } = require('../auth-helper.js');
 const { assertValidTier } = require('./auth-staleness-tier.js');
 
-// True when running against Local/Dev MAMP rather than a deployed Test/Prod
-// environment. E2E_AUTH_TIER is set to 'test'/'prod' only by
-// playwright.config.test.js/.prod.js — unset under Local/Dev's
-// playwright.config.js/.dev.js. Local MAMP does not reliably apply
-// .htaccess Redirect/RedirectMatch/RewriteRule directives (confirmed
-// directly: even a bare root-path request that should 301 instead 404s) —
-// tests asserting that behavior only run against the real deployed
-// environment (#2055). A second, narrower environment gap (case-insensitive
-// local filesystem) is documented separately at its one call site below.
+// True when running against the local Docker stack rather than a deployed
+// Test/Prod environment. Only playwright.config.test.js/.prod.js set
+// E2E_AUTH_TIER to 'test'/'prod'. The local configs leave it unset. One
+// test uses this to skip a check that needs a case-sensitive filesystem
+// (see its call site below).
 //
-// Validated via the shared assertValidTier() (auth-staleness-tier.js), not
-// just checked for presence: E2E_AUTH_TIER is a plain env var, so anything
-// unrelated exporting it in a developer's shell (however unlikely given the
-// distinctive name) must not silently flip this the wrong way. Any value
-// other than exactly 'test'/'prod'/unset is a misconfiguration and fails
-// loudly rather than guessing a tier.
+// assertValidTier() rejects any value other than 'test', 'prod', or unset.
+// E2E_AUTH_TIER is a plain env var, so a stray export in a developer's shell
+// must fail loudly instead of silently picking the wrong tier.
 assertValidTier(process.env.E2E_AUTH_TIER, { allowUnset: true }, 'not-logged-in.spec.js');
 const IS_LOCAL_DEV_TIER = process.env.E2E_AUTH_TIER === undefined;
-const HTACCESS_SKIP_REASON = '.htaccess rules are not reliably applied on Local/Dev MAMP (#2055)';
-
-// Helper: skip test if running on Local/Dev (for .htaccess-dependent tests)
-const skipOnLocalDev = (condition = IS_LOCAL_DEV_TIER, reason = HTACCESS_SKIP_REASON) => {
-  test.skip(condition, reason);
-};
 
 // Helper: strip leading slash from a path before resolving against baseURL
 // (new URL() joining a leading-slash path against baseURL discards
@@ -587,8 +574,6 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
-    // Entire block asserts .htaccess Redirect/RedirectMatch behavior — Test/Prod only (#2055)
-    skipOnLocalDev();
   });
 
   const redirects = [
@@ -672,12 +657,6 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
   });
 });
 
-// This block mixes .htaccess-dependent tests (each calls skipOnLocalDev()
-// individually, since not every test here needs it) with plain
-// static-file/direct-hit tests that don't. A new test added below that
-// asserts real .htaccess Redirect/RedirectMatch/ErrorDocument behavior must
-// call skipOnLocalDev() itself — nothing here enforces that structurally
-// (#2055).
 test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
@@ -713,8 +692,6 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
 
   redirects.forEach(({ from, to, label }) => {
     test(`301: ${label}`, async ({ request, baseURL }) => {
-      // .htaccess RedirectMatch behavior — Test/Prod only (#2055)
-      skipOnLocalDev();
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
       const location = response.headers()['location'] ?? '';
@@ -742,8 +719,6 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 
   test('regression guard: /app/reports/statistics.php redirects in a single hop, not a 301->301 chain', async ({ request }) => {
-    // .htaccess redirect-chain behavior — Test/Prod only (#2055)
-    skipOnLocalDev();
     // Before this fix, the bare-directory rule for /app/reports/ could catch
     // this specific-file path first depending on rule order, chaining through
     // /app/owner/reports/ (itself now a 403->redirect) before finally landing
@@ -757,8 +732,6 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 
   test('GET /app/ bare directory renders the branded error/500.php handler, not a raw server 403', async ({ request }) => {
-    // .htaccess ErrorDocument 403 routing — Test/Prod only (#2055)
-    skipOnLocalDev();
     // Options -Indexes with no index.php in app/ produces a genuine 403, but
     // .htaccess's ErrorDocument 403 (line 5) already routes that to the
     // branded handler — this is existing behavior, locked in as a regression
@@ -777,8 +750,6 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 
   test('GET /docs/assets/document-content.css (old path) redirects to docs/reference/assets/, which 404s — the file was moved, not copied', async ({ request, baseURL }) => {
-    // .htaccess Redirect 301 behavior — Test/Prod only (#2055)
-    skipOnLocalDev();
     // document-content.css was relocated to app/assets/css/, not copied. The
     // pre-existing blanket rule (Redirect 301 /docs/assets/ /docs/reference/assets/,
     // #1369) still fires for this now-nonexistent old path, since the rule
@@ -806,8 +777,6 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 });
 
-// Same mixed-block caveat as #1539 above: new .htaccess-dependent tests must
-// call skipOnLocalDev() themselves (#2055).
 test.describe('GSC 404 cleanup redirects (#1409)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
@@ -860,8 +829,6 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
 
   redirects.forEach(({ from, to, label }) => {
     test(`301: ${label}`, async ({ request }) => {
-      // .htaccess redirect behavior — Test/Prod only (#2055)
-      skipOnLocalDev();
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
       const location = response.headers()['location'] ?? '';
@@ -878,8 +845,6 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
   });
 
   test('embed.php?doc=... regression: lands on a working pdf-viewer.php page, not "Invalid document path."', async ({ page }) => {
-    // Relies on the embed.php .htaccess soft-404 rewrite — Test/Prod only (#2055)
-    skipOnLocalDev();
     const response = await page.goto(`embed.php?doc=elan_s1_s2_coupe_masterpartslist.pdf`);
 
     expect(response.status()).toBeLessThan(400);
@@ -910,9 +875,8 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
   });
 });
 
-// Same mixed-block caveat as #1539/#1409 above. This block's forEach also
-// supports a per-entry `caseSensitiveFsOnly: true` flag for redirects that
-// depend on filesystem case-sensitivity rather than .htaccess (#2055).
+// A per-entry `caseSensitiveFsOnly: true` flag marks redirects that depend on
+// a case-sensitive filesystem, which the local stack does not have.
 test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
@@ -946,12 +910,11 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
       from: 'docs/pdf-viewer.php?subdir=reference&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
       label: 'pdf-viewer.php #1594 correct subdir but wrong filename case',
-      // Local MAMP's default macOS filesystem is case-insensitive, so this
-      // exact-case-mismatch file resolves directly (200) without ever
-      // reaching the case-normalization redirect branch. Test/Prod run on a
-      // case-sensitive filesystem where the mismatch, and therefore the
-      // redirect, is real. Unrelated to #2055; pre-existing (confirmed via
-      // git stash against pre-fix code).
+      // The local Docker stack serves the repo from a macOS bind mount, which
+      // stays case-insensitive inside the container. The mismatched filename
+      // resolves directly (200) and never reaches the case-normalization
+      // redirect. Test/Prod use a case-sensitive filesystem, so the redirect
+      // is real there.
       caseSensitiveFsOnly: true,
     },
     {
@@ -963,10 +926,9 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
 
   redirects.forEach(({ from, to, label, caseSensitiveFsOnly }) => {
     test(`301: ${label}`, async ({ request, baseURL }) => {
-      // Local/Dev MAMP runs on a case-insensitive filesystem — Test/Prod only (#2055)
       test.skip(
         IS_LOCAL_DEV_TIER && caseSensitiveFsOnly,
-        'filename case mismatches only redirect on a case-sensitive filesystem'
+        'macOS bind mount is case-insensitive, so filename case mismatches do not redirect locally'
       );
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
@@ -1134,8 +1096,6 @@ test.describe('Sitemap endpoint (#1373)', () => {
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
-    // /sitemap.xml is served via an .htaccess RewriteRule — Test/Prod only (#2055)
-    skipOnLocalDev();
   });
 
   test('GET /sitemap.xml returns a valid sitemap with at least one car entry', async ({ page }) => {
@@ -1281,10 +1241,9 @@ test.describe('Location picker city disambiguation (#1400)', () => {
     }
   });
 
-  // Live Nominatim/Photon results are required for this test, so it only runs
-  // against deployed environments (npm run test:e2e / test:e2e:test) — this
-  // file only executes via playwright.config.prod.js / playwright.config.test.js,
-  // never locally against MAMP (see playwright.config.js's testIgnore: '**/e2e/**').
+  // This test needs live Nominatim/Photon results. It runs only under the e2e
+  // configs (playwright.config.dev.js, .test.js, .prod.js), because
+  // playwright.config.js ignores '**/e2e/**'.
   //
   // This is an integration smoke check, not the primary regression guard for
   // the dedupe-key fix itself — see tests/playwright/location-picker-dedupe.spec.js

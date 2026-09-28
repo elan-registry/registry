@@ -1,13 +1,13 @@
 # Playwright E2E Testing Guide
 
-Four-tier Playwright testing strategy spanning local development, staging, and production environments (two tiers, Local and Dev, target local MAMP — see below).
+Four-tier Playwright testing strategy spanning local development, staging, and production environments. Local and Dev both target the local Docker site — see below.
 
 ## Four-Tier Architecture
 
 | Tier | Location | Environment | When to Run |
 | ------ | ---------- | ------------- | ------------- |
-| **Local** | `tests/playwright/` | `localhost:9999/ElanRegistry/Registry`[^1] | During development |
-| **Dev** | `tests/playwright/e2e/` | `localhost:9999/ElanRegistry/Registry` | During development (logged-in E2E flows) |
+| **Local** | `tests/playwright/` | `localhost:8001`[^1] | During development |
+| **Dev** | `tests/playwright/e2e/` | `localhost:8001` | During development (logged-in E2E flows) |
 | **Test** | `tests/playwright/e2e/` | `test.elanregistry.org` | Before releases |
 | **Production** | `tests/playwright/e2e/` | `elanregistry.org` | Post-deployment |
 
@@ -18,8 +18,8 @@ Four-tier Playwright testing strategy spanning local development, staging, and p
 mostly-unauthenticated browser checks plus one `admin` project.
 `playwright.config.dev.js` (Dev) scopes to `tests/playwright/e2e/` only —
 the same `not-logged-in`/`admin` specs that run against Test/Production
-in CI — so a developer can validate that exact suite against local MAMP
-first. Dev also provisions a `logged-in-non-admin` project — a second local
+in CI — so a developer can validate that exact suite against the local
+Docker site first. Dev also provisions a `logged-in-non-admin` project — a second local
 test account distinct from `admin`'s admin account — covering
 `ajax-endpoints-non-admin.spec.js` (#2068), non-admin coverage of
 `requireAdminAjax()`'s `isRegistryAdmin()` branch.
@@ -76,7 +76,7 @@ npm run test:e2e:report
 ### Dev Environment
 
 ```bash
-npm run test:e2e:dev               # All E2E against local MAMP
+npm run test:e2e:dev               # All E2E against the local Docker site
 npm run test:e2e:dev:headed        # With browser
 npm run test:e2e:dev:ui            # UI mode
 npm run test:e2e:dev:not-logged-in # Public pages only

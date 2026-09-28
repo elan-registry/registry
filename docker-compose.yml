@@ -27,10 +27,12 @@
 # is worked on by a different host user.
 #
 #   docker compose up -d
+#   docker compose --profile cron up -d   # also run local cron (see `cron`)
 #   docker compose exec -u www-data app composer install
 #   docker compose exec -u www-data app composer test:full
 #   docker compose down        # keep DB volume
 #   docker compose down -v     # wipe DB volume too
+#   docker compose --profile cron down   # a plain `down` leaves `cron` up
 #
 # ALWAYS pass `-u www-data` to `exec`. `docker compose exec` has no
 # compose-file setting for its default user — it runs as the image's build
@@ -172,6 +174,58 @@ services:
     ports:
       - "127.0.0.1:${LANDING_HOST_PORT:-8101}:80"
     networks: [elan]
+
+  cron:
+    # Local stand-in for the host cron that calls users/cron/cron.php every
+    # 10 minutes on test and production (#2180). It is behind the `cron`
+    # profile because cron.php runs real scheduled jobs, such as the
+    # verification batch send. A plain `docker compose up -d` does not start
+    # it. Start it with `docker compose --profile cron up -d`.
+    #
+    # It shares the app container's network namespace, so the request
+    # reaches Apache from 127.0.0.1. CronRequestGate always admits
+    # 127.0.0.1, so a local settings.cron_ip of `off` admits this service
+    # and denies every other caller, for example a Cloudflare tunnel.
+    # cron.php returns 200 for a denied request too, so a status=200 line
+    # does not prove that the jobs ran. See docs/development/ENVIRONMENT.md,
+    # "Development Setup", step 6 "Local Cron Trigger".
+    #
+    # The first loop waits until Apache answers, so the first request does
+    # not fail while `app` starts. The cron request itself has no --retry.
+    # With --retry, curl resends on a timeout or a 5xx while the first
+    # cron.php run can still be going. Production's curl has no limit, and
+    # a job can run for minutes. With -m 590 the gap between two requests is
+    # at most 600 + 590 s, under the 1200 s after which the admin dashboard
+    # reports cron as stalled.
+    #
+    # The request uses app's network namespace. If `app` is recreated or
+    # restarted alone, this container loses its network. After 3 failed
+    # requests in a row it exits, so `docker compose ps` shows it as
+    # stopped. Run `docker compose --profile cron up -d` again. size= is the
+    # response size. A denied request also gives 0, so size alone does not
+    # prove that a job ran.
+    image: curlimages/curl:8.11.1
+    restart: "no"
+    profiles: [cron]
+    depends_on: [app]
+    network_mode: "service:app"
+    # `$$` escapes `$` from Compose interpolation.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        n=0;
+        until curl -s -o /dev/null -m 10 http://127.0.0.1/; do
+        [ $$((n % 30)) -eq 0 ] && echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) waiting for app at http://127.0.0.1/";
+        n=$$((n + 1)); sleep 2;
+        done;
+        fails=0;
+        while :; do
+        line=$$(curl -s -o /dev/null -m 590 -w 'status=%{http_code} exit=%{exitcode} size=%{size_download} %{errormsg}' http://127.0.0.1/users/cron/cron.php);
+        echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) $$line";
+        case "$$line" in *" exit=0 "*) fails=0 ;; *) fails=$$((fails + 1)) ;; esac;
+        if [ "$$fails" -ge 3 ]; then echo "3 failed requests in a row, stopping. Run: docker compose --profile cron up -d"; exit 1; fi;
+        sleep 600;
+        done
 
 networks:
   elan:

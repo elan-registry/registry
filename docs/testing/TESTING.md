@@ -49,6 +49,9 @@ npm run test:navigation   # Navigation tests
 npm run test:functionality # Core functionality
 npm run test:ui           # UI consistency
 npm run test:debug        # Debug mode
+
+# Node unit tests for the Playwright helpers and docker-compose.yml (CI runs them in the eslint job)
+npm run test:js-unit
 ```
 
 ## Test Organization
@@ -72,7 +75,7 @@ npm run test:debug        # Debug mode
 
 - **e2e/**: factory-registry-link.spec.js (Registry Link UI workflow)
 - Security, navigation, functionality, UI consistency
-- Requires: Local dev server, default `http://localhost:9999/ElanRegistry/Registry` — override with `PLAYWRIGHT_BASE_URL`, see [ENVIRONMENT.md](../development/ENVIRONMENT.md)
+- Requires: The local Docker stack running, default `http://localhost:8001/` — override with `PLAYWRIGHT_BASE_URL`, see [ENVIRONMENT.md](../development/ENVIRONMENT.md)
 
 ## Writing Tests
 
@@ -124,7 +127,7 @@ and the `noowner` system account) to be populated.
 ### Provisioning
 
 ```bash
-./scripts/provision-schema.sh
+docker compose exec -u www-data app scripts/provision-schema.sh
 ```
 
 Applies the vendored stock UserSpice structure, runs `composer migrate`
@@ -156,7 +159,7 @@ real `car_models` row and is proven only in the integration tier above.
   missing rather than falling back to `.env` or `.env.local`. A key missing
   *from* it is backfilled from `.env` by `users/init.php`, and the bootstrap
   aborts only if that lands on the dev database — so set all five keys. See
-  `docs/development/ENVIRONMENT.md`'s "Which File Is Read by What"
+  `docs/development/ENVIRONMENT.md`'s "Which Tools Read Each File"
 
 ### PHPUnit Config Files
 
@@ -173,11 +176,12 @@ real `car_models` row and is proven only in the integration tier above.
 ### Integration Tests
 
 - **DB connection failed**: Check `.env.test.local` credentials
-- **MAMP socket**: Verify `/Applications/MAMP/tmp/mysql/mysql.sock`
+- **Docker `db` service down**: Run `docker compose ps db` to check its
+  status. Check its logs with `docker compose logs db`
 - **Missing data**: Tests must create their own fixtures via
   `IntegrationTestCase::createTestUser()`/`createTestCar()` — the isolated test
   schema starts empty, so no ambient user/car ID is guaranteed to exist
-- **Empty car_models**: Run `./scripts/provision-schema.sh` (bare `composer seed:run`
+- **Empty car_models**: Run `docker compose exec -u www-data app scripts/provision-schema.sh` (bare `composer seed:run`
   targets `.env`'s database, not the test schema in `.env.test.local`)
 
 ### Debugging
