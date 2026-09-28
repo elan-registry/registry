@@ -420,13 +420,24 @@ The stack has five services, plus the opt-in `cron` service (see step 6 of
 [Development Setup](#development-setup)). `app` runs PHP 8.4. `db` runs
 MySQL 8.0 and has no host port. `phpmyadmin` provides database inspection.
 `mock-brevo` runs the local mock of Brevo's transactional email API
-(`ghcr.io/unibrain1/mock-brevo:latest`) and provides a web inbox. `landing`
+(`ghcr.io/unibrain1/mock-brevo:1.2.0`) and provides a web inbox. `landing`
 serves the landing page. Use the port table above. The `app` container reaches
-`mock-brevo` at `http://mock-brevo:8080/v3` on the `elan` network. See the
-"Local Development" section in `docs/development/EMAIL_SYSTEM.md` for the
-`BREVO_API_HOST` variable, the `US_ENVIRONMENT=development` check, and the
-Brevo plugin override. This document covers the Docker setup. The email guide
-covers application configuration.
+`mock-brevo` at `http://mock-brevo:8080/v3` on the `elan` network.
+
+The image is a maintained fork
+([`unibrain1/mock-brevo`](https://github.com/unibrain1/mock-brevo)), not the
+upstream project. The fork has an English UI, and it adds the event report,
+the block list, and Brevo-style webhooks. Registry's reconciliation cron,
+suppression-sync cron, and webhook endpoint need those features to work
+against the mock. `docker-compose.yml` pins an exact tag, never `latest`, so
+every checkout runs the same mock. To pick up a new release: change the tag
+in `docker-compose.yml`, then run `docker compose pull mock-brevo && docker
+compose up -d mock-brevo`.
+
+See the "Local Development" section in `docs/development/EMAIL_SYSTEM.md` for
+the `BREVO_API_HOST` variable, the `US_ENVIRONMENT=development` check, and
+the Brevo plugin override. This document covers the Docker setup. The email
+guide covers application configuration.
 
 **Always pass `-u www-data` to `exec`** — it has no compose-file default
 and otherwise runs as root, which would root-own anything written into the

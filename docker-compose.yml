@@ -124,16 +124,19 @@ services:
     networks: [elan]
 
   mock-brevo:
-    # Local stand-in for the real Brevo transactional email API Reachable from the `app` container as
-    # http://mock-brevo:8080/v3 over the elan network, and from the
-    # host at http://localhost:$MOCK_BREVO_HOST_PORT (its web inbox) for
-    # manual inspection. N
-    image: ghcr.io/unibrain1/mock-brevo:latest
+    # Local stand-in for Brevo's transactional email API. The app reaches
+    # it at http://mock-brevo:8080/v3 on the elan network. The host reaches
+    # its web inbox at http://localhost:$MOCK_BREVO_HOST_PORT.
+    # The maintained fork, pinned to an exact version so every checkout runs
+    # the same mock. Why the fork, and how to upgrade: ENVIRONMENT.md.
+    image: ghcr.io/unibrain1/mock-brevo:1.2.0
     restart: "no"
     environment:
       MOCK_BREVO_DB_PATH: /app/data/brevo
       MOCK_STATUS_REVEAL_KEYS: "true"
       MOCK_DEFAULT_WEBHOOK_URL: "${MOCK_DEFAULT_WEBHOOK_URL:-}"
+      # Bearer token the mock sends on simulated webhooks. Empty sends none.
+      MOCK_WEBHOOK_TOKEN: "${MOCK_WEBHOOK_TOKEN:-}"
       MOCK_AUTO_FIRE_DELIVERED: "${MOCK_AUTO_FIRE_DELIVERED:-false}"
       # SMTP forward: relay POST /v3/smtp/email to a real SMTP catcher
       # for visual inspection (Mailpit/Mailcatcher/etc.)
