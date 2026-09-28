@@ -118,7 +118,7 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
         // (`if (checkRateLimit(...))`) would reject every legitimate request while a
         // presence-only assertion still passed.
         $this->assertStringContainsString(
-            "if (!checkRateLimit('car_history', \$rateUserId))",
+            "if (!checkRateLimit('car_history', \$userId))",
             $content,
             'Rate-limit check must reject (not accept) a request over the car_history limit'
         );

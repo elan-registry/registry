@@ -429,8 +429,9 @@ test.describe('Issue #2144 — car history requires login (member regression cov
   test('a 401 from history.php shows the "session has ended" message', async ({ page }) => {
     test.skip(!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
 
-    // DataTables appends a `?_=<timestamp>` cache-buster, so a plain glob on
-    // the path never matches; the regex allows the query string.
+    // DataTables' ajax sets `cache: false`, so jQuery appends `?_=<timestamp>`
+    // even to this POST. A plain glob on the path never matches; the regex
+    // allows the query string.
     await page.route(/\/app\/api\/cars\/history\.php(\?|$)/, (route) => route.fulfill({
       status: 401,
       contentType: 'application/json',

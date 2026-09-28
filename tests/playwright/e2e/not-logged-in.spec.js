@@ -1144,8 +1144,8 @@ test.describe('Issue #2144 — anonymous visitor sees a login prompt, not car hi
   // table, no summary — and must not load the history-only assets
   // (DataTables, highlightDifferences.min.js, car_details.min.js).
   //
-  // These tests must FAIL on production until v2.30.1.1 is deployed — this
-  // file also runs against production via `npm run test:e2e`.
+  // This file also runs against production via `npm run test:e2e`, so these
+  // tests are the production guard that history stays members-only.
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip();

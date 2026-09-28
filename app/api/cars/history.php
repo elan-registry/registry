@@ -55,13 +55,12 @@ if (!$user->isLoggedIn()) {
 // Always a logged-in member's ID: the check above sends a 401 otherwise.
 $userId = (int) $user->data()->id;
 
-$rateUserId = $userId;
-if (!checkRateLimit('car_history', $rateUserId)) {
+if (!checkRateLimit('car_history', $userId)) {
     ApiResponse::error('Too many requests. Please slow down.', 429)
         ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, 'Rate limit exceeded for car history endpoint')
         ->send();
 }
-recordRateLimit('car_history', true, $rateUserId);
+recordRateLimit('car_history', true, $userId);
 
 $draw = (int)Input::get('draw');
 $carID = (int)Input::get('car_id');
@@ -74,7 +73,7 @@ if (empty($carID)) {
             'recordsFiltered' => 0,
             'history' => []
         ])
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car history requested without car ID')
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car history requested without car ID')
         ->send();
 }
 
@@ -88,7 +87,7 @@ try {
                 'recordsFiltered' => 0,
                 'history' => []
             ])
-            ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Car history requested for non-existent car ID: $carID")
+            ->withLogging($userId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Car history requested for non-existent car ID: $carID")
             ->send();
     }
 
@@ -111,7 +110,7 @@ try {
             'recordsFiltered' => 0,
             'history' => []
         ])
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to load car history for car ID $carID: " . $e->getMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to load car history for car ID $carID: " . $e->getMessage())
         ->send();
 } catch (\Throwable $e) {
     ApiResponse::serverError('Failed to load car history')
@@ -121,6 +120,6 @@ try {
             'recordsFiltered' => 0,
             'history' => []
         ])
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Unexpected error loading car history for car ID $carID [" . get_class($e) . "]: " . $e->getMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Unexpected error loading car history for car ID $carID [" . get_class($e) . "]: " . $e->getMessage())
         ->send();
 }
