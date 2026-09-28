@@ -17,6 +17,7 @@ Elanegistry.sublime-project
 .claude/*
 !.claude/commands/
 !.claude/agents/
+!.claude/skills/
 !.claude/settings.json
 .claude.local.md
 

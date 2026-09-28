@@ -263,6 +263,28 @@ Pre-existing baseline errors are tracked debt — clear them for files you touch
 `reportUnmatchedIgnoredErrors: true` ensures CI rejects stale entries once fixed.
 See `docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene.
 
+### PR Scope
+
+Split a PR when it bundles genuinely separate concern areas — especially
+when one area triggers a different review gate than the other (e.g., a
+`.github/workflows/` change that requires human review vs. a
+`.claude/commands/*.md` frontmatter tweak that doesn't). Ask before bundling
+if it's unclear whether the reviewer would want them separate.
+
+### Claude Session Practices
+
+- Batch related, already-agreed-upon changes into one commit rather than
+  committing after each sub-decision — especially on files that trigger CI.
+- Before proposing a fix based on a systems-internals claim (caching,
+  timing, concurrency), trace it through the actual code path first; don't
+  present a plausible-sounding mechanism as fact.
+- Treat a subagent-reported CLI flag, enum value, or API detail as a lead to
+  verify against primary docs, not as usable fact.
+- When a change can't be validated before merge (an untested config value,
+  an unverified assumption), pair the "untested" flag with a concrete
+  follow-up offer — check the first live results and report back — rather
+  than leaving it as a static comment.
+
 ### Playwright Test Maintenance
 
 When adding, moving, removing, or renaming any page, update tests **in the same PR**:
