@@ -159,6 +159,32 @@ else
         "exit: $STATUS5 (want 0)" "output: [$OUT5]"
 fi
 
+# --- Cases 5b-5d: each other recap phrasing on its own -> 0 --------------
+# Case 5 uses "previous round", so it cannot show that the other parts of
+# EXCLUSION_PATTERN still work. Losing one of them would report a clean
+# review as blocked, the same symptom as #2222. 5d has no "round" in it, so
+# it tests the ": resolved" part alone.
+for recap in \
+    "5b|### Blocking finding from the prior round" \
+    "5c|### Blocking (resolved)" \
+    "5d|### Blocking finding: resolved"; do
+    id="${recap%%|*}"
+    heading="${recap#*|}"
+    BODY5X="### Strengths
+Fine.
+
+$heading
+Fixed in the latest commit."
+    OUT5X="$(run_check "$BODY5X" 1 2>&1)"
+    STATUS5X=$?
+    if [ "$STATUS5X" -eq 0 ]; then
+        pass "Case $id: recap heading '$heading' is excluded -> exit 0"
+    else
+        fail "Case $id: recap heading '$heading' is excluded -> exit 0" \
+            "exit: $STATUS5X (want 0)" "output: [$OUT5X]"
+    fi
+done
+
 # --- Case 6: "### Important" section, flag on/off -------------------------
 BODY6="### Strengths
 Fine.

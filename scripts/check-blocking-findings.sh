@@ -33,7 +33,8 @@
 #   0 = clean (no unresolved findings)
 #   1 = at least one unresolved Blocking (or Important, if requested) finding
 #   2 = can't verify — no review comment found, the gh API call itself
-#       failed (auth/network/rate-limit/404), or the arguments were invalid.
+#       failed (auth/network/rate-limit/404), a grep failed while it scanned
+#       the review, or the arguments were invalid.
 #       Never treat exit 2 as "clean" — it means the check did not run.
 
 set -euo pipefail

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Verifies a CI code review actually posted on a PR, recovering once if it
-# didn't, then optionally checks the posted review for unresolved findings.
+# didn't, then checks the posted review for unresolved Blocking findings
+# (and Important findings too, with --include-important).
 #
 # WHY THIS SCRIPT EXISTS: a "successful" claude-code-review.yml run is not
 # proof a review was posted. Three independent failure modes can each leave
@@ -38,8 +39,8 @@
 #                        exit 3, not a failure
 #
 # Exit codes:
-#   0 = comment confirmed, and (if --include-important given) no unresolved
-#       Blocking/Important finding
+#   0 = comment confirmed, and no unresolved Blocking finding (nor, with
+#       --include-important, an unresolved Important finding)
 #   1 = could not verify at all — a `gh` call failed (auth, network, rate
 #       limit) or arguments were invalid. NOT the same as "no review posted."
 #   2 = comment confirmed, but an unresolved Blocking (or, with

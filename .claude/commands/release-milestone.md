@@ -58,8 +58,9 @@ scripts/check-blocking-findings.sh <number> --include-important
   `/finish-milestone` (or a fix-and-push cycle plus a fresh review) — the PR
   is still open and reviewable there. This command's next steps are
   irreversible merge/tag/publish actions.
-- **Exit 2** — no posted review comment found. Treat as "can't verify," not
-  "clean." Stop and investigate.
+- **Exit 2** — can't verify: no posted review comment was found, the `gh`
+  call failed, or a grep failed while it scanned the review. Treat as "can't
+  verify," not "clean." Stop and investigate.
 
 This is a second, independent check on the same requirement
 `/review-milestone` Step 5 already enforces — it exists so a PR that sat open
