@@ -5,7 +5,7 @@
 // real cause (server not running, wrong PLAYWRIGHT_BASE_URL) under dozens of
 // per-test failures.
 
-const { readEnvFileKey, REPO_ENV_PATH } = require('./resolve-base-url.js');
+const { readEnvFileKey, resolveBaseUrlWithSource, REPO_ENV_PATH } = require('./resolve-base-url.js');
 
 // Shared with playwright.config.js/playwright.config.dev.js's `use.baseURL`
 // — see base-url.js for why this can't just read the resolved config back.
@@ -28,6 +28,29 @@ function landingPort() {
   return port || '8101';
 }
 
+// Returns a sentence that names the setting that chose BASE_URL, so a
+// developer knows what to change.
+// The Playwright configs load .env.local into process.env before base-url.js
+// runs, so process.env here holds the same values that base-url.js used.
+// A throw here must not replace the "Cannot reach" error. base-url.js
+// resolved the same inputs without an error, so a throw is not expected.
+function baseUrlSource() {
+  let source;
+  try {
+    source = resolveBaseUrlWithSource(process.env, REPO_ENV_PATH).source;
+  } catch {
+    return 'The source of this URL is not known.';
+  }
+  if (source === 'PLAYWRIGHT_BASE_URL') {
+    // An old MAMP value in .env.local is the usual cause.
+    return (
+      'This URL comes from PLAYWRIGHT_BASE_URL, which can come from .env.local. ' +
+      'Remove it from .env.local to make Playwright use APP_HOST_PORT.'
+    );
+  }
+  return `This URL comes from ${source}.`;
+}
+
 module.exports = async function globalSetup() {
   try {
     // Any HTTP response — even a 404 or 500 — proves the server is up and
@@ -40,7 +63,7 @@ module.exports = async function globalSetup() {
     // error.cause. A timeout has no cause, so fall back to the error name.
     const reason = error.cause?.code ?? error.cause?.message ?? error.name;
     throw new Error(
-      `Cannot reach ${BASE_URL} (${reason}). Start the Docker stack with \`docker compose up -d\`, ` +
+      `Cannot reach ${BASE_URL} (${reason}). ${baseUrlSource()} Start the Docker stack with \`docker compose up -d\`, ` +
         `then open the landing page at http://localhost:${landingPort()}/ to see this checkout's site URL. ` +
         `If the site is on a different port, set APP_HOST_PORT or PLAYWRIGHT_BASE_URL. ` +
         `See docs/development/ENVIRONMENT.md.`,

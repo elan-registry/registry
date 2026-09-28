@@ -571,17 +571,24 @@ for each new checkout.
      run every cron job again.
    - Because the request shares `app`'s network namespace, `cron.php` sees
      the request's `REMOTE_ADDR` as `127.0.0.1`.
+   - Until Apache answers, the service prints
+     `<ISO-8601 timestamp> waiting for app at http://127.0.0.1/` about once
+     a minute.
    - Each request prints one line:
-     `<ISO-8601 timestamp> status=<code> exit=<curl exit code> <curl error message>`.
+     `<ISO-8601 timestamp> status=<code> exit=<curl exit code> size=<bytes> <curl error message>`.
      `status=000` with a nonzero exit means curl got no HTTP response at
-     all; the error message says why (for example connection refused or a
+     all. The error message says why (for example connection refused or a
      timeout).
+   - After 3 requests in a row with a nonzero curl exit, the service prints
+     a stop message and exits, so `docker compose ps` no longer shows it as
+     running.
    - Use `--profile cron` with `down` too. A plain `docker compose down`
      does not stop `cron`.
    - If `app` is recreated or restarted alone (for example
      `docker compose restart app`, or `docker compose up -d` without the
-     profile after an image change), `cron` loses its network and logs
-     `status=000 exit=7`. Run `docker compose --profile cron up -d` again.
+     profile after an image change), `cron` loses its network, logs
+     `status=000 exit=7`, and stops after 3 requests. Run
+     `docker compose --profile cron up -d` again.
 
    **`status=200` does not prove that a job ran.** `cron.php` returns HTTP
    200 also when the `cron_ip` allowlist denies the request. An accepted
@@ -598,8 +605,10 @@ for each new checkout.
    a request through the published port instead arrives as the Docker
    bridge IP (for example `172.20.0.1`) and is denied.
 
-   A local database from before Docker can still hold an old value, for
-   example an empty string or `::1`, which does not match this setup.
+   A local database from before Docker can still hold an old value. An
+   empty string admits every caller, the tunnel included. `::1` acts like
+   `off`, because the gate always admits `127.0.0.1`, but set `off` so the
+   value states the intent.
    `scripts/refresh-local-db.sh` does not copy the `settings` table, so the
    old value stays until you clear it: in Admin → Settings, or with
    `docker compose exec db mysql -u [DB_USER] -p -D [DB_NAME] -e
@@ -629,6 +638,10 @@ dedicated test schema to protect the development database:
   if the target name matches `DB_NAME` in the app's `.env` file. Use
   `--force` to override either check. The script also creates new development
   and CI databases.
+- Both `tests/bootstrap-integration.php` and `scripts/provision-schema.sh`
+  stop when `DB_HOST` is `db` and `/.dockerenv` is absent, that is, on the
+  host. On the host, `db` can resolve to another machine through the DNS
+  search domain. `--force` does not override this check.
 
 **Files involved:**
 

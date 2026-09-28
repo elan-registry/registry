@@ -49,6 +49,9 @@ npm run test:navigation   # Navigation tests
 npm run test:functionality # Core functionality
 npm run test:ui           # UI consistency
 npm run test:debug        # Debug mode
+
+# Node unit tests for the Playwright helpers and docker-compose.yml (CI runs them in the eslint job)
+npm run test:js-unit
 ```
 
 ## Test Organization
@@ -124,7 +127,7 @@ and the `noowner` system account) to be populated.
 ### Provisioning
 
 ```bash
-./scripts/provision-schema.sh
+docker compose exec -u www-data app scripts/provision-schema.sh
 ```
 
 Applies the vendored stock UserSpice structure, runs `composer migrate`
@@ -178,7 +181,7 @@ real `car_models` row and is proven only in the integration tier above.
 - **Missing data**: Tests must create their own fixtures via
   `IntegrationTestCase::createTestUser()`/`createTestCar()` — the isolated test
   schema starts empty, so no ambient user/car ID is guaranteed to exist
-- **Empty car_models**: Run `./scripts/provision-schema.sh` (bare `composer seed:run`
+- **Empty car_models**: Run `docker compose exec -u www-data app scripts/provision-schema.sh` (bare `composer seed:run`
   targets `.env`'s database, not the test schema in `.env.test.local`)
 
 ### Debugging

@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * Unit tests for resolveBaseUrl and readEnvFileKey in
- * tests/playwright/resolve-base-url.js, and for the value base-url.js exports.
+ * Unit tests for resolveBaseUrl, resolveBaseUrlWithSource, and readEnvFileKey
+ * in tests/playwright/resolve-base-url.js, for the value base-url.js exports,
+ * and for the "Cannot reach" error from global-setup.js.
  * Each test calls the function with a fake env object and a temp .env
  * file, so no test depends on the developer's real .env or .env.local.
  *
@@ -11,11 +12,12 @@
 
 const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { execFileSync } = require('node:child_process');
+const { execFile, execFileSync } = require('node:child_process');
+const net = require('node:net');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { resolveBaseUrl, readEnvFileKey } = require('./playwright/resolve-base-url.js');
+const { resolveBaseUrl, resolveBaseUrlWithSource, readEnvFileKey } = require('./playwright/resolve-base-url.js');
 
 const repoRoot = path.join(__dirname, '..');
 
@@ -165,6 +167,56 @@ describe('resolveBaseUrl', () => {
     });
 });
 
+describe('resolveBaseUrlWithSource', () => {
+    before(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-base-url-source-'));
+    });
+
+    after(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    test('names PLAYWRIGHT_BASE_URL when it is set', () => {
+        const envFile = writeEnvFile('override.env', 'APP_HOST_PORT=8003\n');
+        const env = { PLAYWRIGHT_BASE_URL: 'http://localhost:9999/', APP_HOST_PORT: '8002' };
+        assert.deepEqual(resolveBaseUrlWithSource(env, envFile), {
+            url: 'http://localhost:9999/',
+            source: 'PLAYWRIGHT_BASE_URL',
+        });
+    });
+
+    test('names APP_HOST_PORT in the environment', () => {
+        const envFile = writeEnvFile('env-port.env', 'APP_HOST_PORT=8003\n');
+        assert.deepEqual(resolveBaseUrlWithSource({ APP_HOST_PORT: '8002' }, envFile), {
+            url: 'http://localhost:8002/',
+            source: 'APP_HOST_PORT in the environment',
+        });
+    });
+
+    test('names APP_HOST_PORT in .env', () => {
+        const envFile = writeEnvFile('file-port.env', 'APP_HOST_PORT=8003\n');
+        assert.deepEqual(resolveBaseUrlWithSource({}, envFile), {
+            url: 'http://localhost:8003/',
+            source: 'APP_HOST_PORT in .env',
+        });
+    });
+
+    test('names the default port when nothing is set', () => {
+        assert.deepEqual(resolveBaseUrlWithSource({}, path.join(tmpDir, 'none.env')), {
+            url: 'http://localhost:8001/',
+            source: 'the default port',
+        });
+    });
+
+    test('an invalid APP_HOST_PORT in .env still names the file path in the error', () => {
+        const envFile = writeEnvFile('bad-port.env', 'APP_HOST_PORT=eighty\n');
+        assert.throws(
+            () => resolveBaseUrlWithSource({}, envFile),
+            (error) => error instanceof RangeError && error.message.includes(`APP_HOST_PORT in ${envFile}`)
+        );
+    });
+});
+
 describe('readEnvFileKey', () => {
     before(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'read-env-file-key-'));
@@ -245,5 +297,100 @@ describe('base-url.js', () => {
         } finally {
             fs.rmSync(tree, { recursive: true, force: true });
         }
+    });
+});
+
+// Returns a port that nothing listens on. The OS gives a free port, and the
+// server closes it again before the test uses it.
+function closedPort() {
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+            const { port } = server.address();
+            server.close(() => resolve(port));
+        });
+    });
+}
+
+// Runs global-setup.js from a temp copy in a child process, so the module
+// reads the temp .env and not the developer's real one. Resolves with the
+// rejection message and whether the error has a cause.
+function runGlobalSetup(tree, env) {
+    const script = `
+        require('./tests/playwright/global-setup.js')().then(
+            () => process.stdout.write(JSON.stringify({ resolved: true })),
+            (error) => process.stdout.write(JSON.stringify({ message: error.message, hasCause: error.cause !== undefined }))
+        );
+    `;
+    const childEnv = { ...process.env, NODE_PATH: path.join(repoRoot, 'node_modules'), ...env };
+    for (const key of ['PLAYWRIGHT_BASE_URL', 'APP_HOST_PORT', 'LANDING_HOST_PORT']) {
+        if (!(key in env)) {
+            delete childEnv[key];
+        }
+    }
+    return new Promise((resolve, reject) => {
+        execFile(process.execPath, ['-e', script], { cwd: tree, env: childEnv, encoding: 'utf8' }, (error, stdout) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve(JSON.parse(stdout));
+        });
+    });
+}
+
+describe('global-setup.js', () => {
+    let tree;
+
+    before(() => {
+        tree = fs.mkdtempSync(path.join(os.tmpdir(), 'global-setup-tree-'));
+        const dir = path.join(tree, 'tests', 'playwright');
+        fs.mkdirSync(dir, { recursive: true });
+        for (const name of ['base-url.js', 'resolve-base-url.js', 'global-setup.js']) {
+            fs.copyFileSync(path.join(repoRoot, 'tests', 'playwright', name), path.join(dir, name));
+        }
+    });
+
+    after(() => {
+        fs.rmSync(tree, { recursive: true, force: true });
+    });
+
+    test('the error names the reason, the URL source, and the landing port from .env', async () => {
+        const envPath = path.join(tree, '.env');
+        fs.rmSync(envPath, { recursive: true, force: true });
+        fs.writeFileSync(envPath, 'LANDING_HOST_PORT=8123\n');
+        const port = await closedPort();
+
+        const result = await runGlobalSetup(tree, { APP_HOST_PORT: String(port) });
+
+        assert.match(result.message, new RegExp(`^Cannot reach http://localhost:${port}/ \\(ECONNREFUSED\\)`));
+        assert.match(result.message, /This URL comes from APP_HOST_PORT in the environment\./);
+        assert.match(result.message, /landing page at http:\/\/localhost:8123\//);
+        assert.equal(result.hasCause, true);
+    });
+
+    test('a PLAYWRIGHT_BASE_URL source tells the developer to check .env.local', async () => {
+        const port = await closedPort();
+
+        const result = await runGlobalSetup(tree, { PLAYWRIGHT_BASE_URL: `http://localhost:${port}/` });
+
+        assert.match(result.message, /This URL comes from PLAYWRIGHT_BASE_URL, which can come from \.env\.local\./);
+        assert.match(result.message, /Remove it from \.env\.local to make Playwright use APP_HOST_PORT\./);
+    });
+
+    test('a .env read error falls back to landing port 8101 and keeps the original error', async () => {
+        // A directory at .env makes readFileSync fail with EISDIR. APP_HOST_PORT
+        // is in the environment, so base-url.js does not read the file.
+        const envPath = path.join(tree, '.env');
+        fs.rmSync(envPath, { recursive: true, force: true });
+        fs.mkdirSync(envPath);
+        const port = await closedPort();
+
+        const result = await runGlobalSetup(tree, { APP_HOST_PORT: String(port) });
+
+        assert.match(result.message, new RegExp(`^Cannot reach http://localhost:${port}/ \\(ECONNREFUSED\\)`));
+        assert.match(result.message, /landing page at http:\/\/localhost:8101\//);
+        assert.equal(result.hasCause, true);
     });
 });

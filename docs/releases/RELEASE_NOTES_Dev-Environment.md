@@ -48,6 +48,7 @@ local check's result; MAMP is no longer needed.
   Registry. Docker is now the only supported local environment. Local cron is an opt-in `cron`
   Compose service (`docker compose --profile cron up -d`) that runs with `cron_ip` set to `off`.
   Also lifted the `.htaccess`-skip gate on Playwright's `not-logged-in` suite.
+  Remove an old MAMP `PLAYWRIGHT_BASE_URL` (for example `http://localhost:9999/...`) from `.env.local`.
 - [#2222](https://github.com/elan-registry/registry/issues/2222) — The review-gate scripts no longer
   report a clean review as blocked, and `verify-ci-review.sh` reports "could not verify" as that, not
   as a finding.

@@ -192,13 +192,18 @@ services:
     #
     # The first loop waits until Apache answers, so the first request does
     # not fail while `app` starts. The cron request itself has no --retry.
-    # curl retries timeouts and 5xx responses, and each retry would run
-    # every cron job again. -m 590 stays below the 600 s sleep. Production's
-    # curl has no limit, and a job can run for minutes.
+    # With --retry, curl resends on a timeout or a 5xx while the first
+    # cron.php run can still be going. Production's curl has no limit, and
+    # a job can run for minutes. With -m 590 the gap between two requests is
+    # at most 600 + 590 s, under the 1200 s after which the admin dashboard
+    # reports cron as stalled.
     #
     # The request uses app's network namespace. If `app` is recreated or
-    # restarted alone, this container loses its network and logs
-    # status=000. Run `docker compose --profile cron up -d` again.
+    # restarted alone, this container loses its network. After 3 failed
+    # requests in a row it exits, so `docker compose ps` shows it as
+    # stopped. Run `docker compose --profile cron up -d` again. size= is the
+    # response size. A denied request also gives 0, so size alone does not
+    # prove that a job ran.
     image: curlimages/curl:8.11.1
     restart: "no"
     profiles: [cron]
@@ -208,9 +213,17 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        until curl -s -o /dev/null http://127.0.0.1/; do sleep 2; done;
+        n=0;
+        until curl -s -o /dev/null -m 10 http://127.0.0.1/; do
+        [ $$((n % 30)) -eq 0 ] && echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) waiting for app at http://127.0.0.1/";
+        n=$$((n + 1)); sleep 2;
+        done;
+        fails=0;
         while :; do
-        echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) $$(curl -s -o /dev/null -m 590 -w 'status=%{http_code} exit=%{exitcode} %{errormsg}' http://127.0.0.1/users/cron/cron.php)";
+        line=$$(curl -s -o /dev/null -m 590 -w 'status=%{http_code} exit=%{exitcode} size=%{size_download} %{errormsg}' http://127.0.0.1/users/cron/cron.php);
+        echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) $$line";
+        case "$$line" in *" exit=0 "*) fails=0 ;; *) fails=$$((fails + 1)) ;; esac;
+        if [ "$$fails" -ge 3 ]; then echo "3 failed requests in a row, stopping. Run: docker compose --profile cron up -d"; exit 1; fi;
         sleep 600;
         done
 

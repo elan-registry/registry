@@ -54,7 +54,7 @@ function readEnvFileKey(envFilePath, key) {
 }
 
 /**
- * Resolve the base URL for local Playwright runs.
+ * Resolve the base URL for local Playwright runs and name the step that set it.
  *
  * Resolution order:
  *   1. `env.PLAYWRIGHT_BASE_URL`, if it is set.
@@ -86,12 +86,15 @@ function readEnvFileKey(envFilePath, key) {
  *
  * @param {Record<string, string | undefined>} env - The environment to read, usually `process.env`. It is not changed.
  * @param {string} envFilePath - Absolute path of the repo `.env` file.
- * @returns {string} The base URL. It always ends with `/`.
+ * @returns {{url: string, source: string}} `url` is the base URL. It always
+ *   ends with `/`. `source` names the step that set it: 'PLAYWRIGHT_BASE_URL',
+ *   'APP_HOST_PORT in the environment', 'APP_HOST_PORT in .env', or
+ *   'the default port'. global-setup.js puts it in the "Cannot reach" error.
  * @throws {TypeError} For a wrong-typed argument, a non-string env value, or an invalid `PLAYWRIGHT_BASE_URL`.
  * @throws {RangeError} If `APP_HOST_PORT` is set to a value that is not a valid port.
  * @throws {Error} A read error other than ENOENT for `envFilePath`.
  */
-function resolveBaseUrl(env, envFilePath) {
+function resolveBaseUrlWithSource(env, envFilePath) {
     if (env === null || typeof env !== 'object' || Array.isArray(env)) {
         throw new TypeError('resolveBaseUrl: env must be a non-null, non-array object');
     }
@@ -101,20 +104,38 @@ function resolveBaseUrl(env, envFilePath) {
 
     const baseUrl = readEnvValue(env, 'PLAYWRIGHT_BASE_URL');
     if (baseUrl !== undefined) {
-        return validatedUrl(baseUrl);
+        return { url: validatedUrl(baseUrl), source: 'PLAYWRIGHT_BASE_URL' };
     }
 
     const envPort = readEnvValue(env, 'APP_HOST_PORT');
     if (envPort !== undefined) {
-        return portUrl(envPort, 'APP_HOST_PORT in the environment');
+        const source = 'APP_HOST_PORT in the environment';
+        return { url: portUrl(envPort, source), source };
     }
 
     const filePort = readEnvFileKey(envFilePath, 'APP_HOST_PORT');
     if (filePort !== undefined && filePort !== '') {
-        return portUrl(filePort, `APP_HOST_PORT in ${envFilePath}`);
+        // The error names the full path, but the source stays short for the
+        // "Cannot reach" message.
+        return { url: portUrl(filePort, `APP_HOST_PORT in ${envFilePath}`), source: 'APP_HOST_PORT in .env' };
     }
 
-    return portUrl(DEFAULT_PORT, 'the default port');
+    const source = 'the default port';
+    return { url: portUrl(DEFAULT_PORT, source), source };
+}
+
+/**
+ * Resolve the base URL for local Playwright runs.
+ *
+ * Same rules, failure modes, and errors as resolveBaseUrlWithSource. The
+ * error messages keep the `resolveBaseUrl:` prefix.
+ *
+ * @param {Record<string, string | undefined>} env - The environment to read, usually `process.env`. It is not changed.
+ * @param {string} envFilePath - Absolute path of the repo `.env` file.
+ * @returns {string} The base URL. It always ends with `/`.
+ */
+function resolveBaseUrl(env, envFilePath) {
+    return resolveBaseUrlWithSource(env, envFilePath).url;
 }
 
 // A wrong-typed value is a caller bug, so it throws instead of falling back
@@ -158,4 +179,4 @@ function portUrl(port, source) {
     return `http://localhost:${number}/`;
 }
 
-module.exports = { resolveBaseUrl, readEnvFileKey, REPO_ENV_PATH };
+module.exports = { resolveBaseUrl, resolveBaseUrlWithSource, readEnvFileKey, REPO_ENV_PATH };

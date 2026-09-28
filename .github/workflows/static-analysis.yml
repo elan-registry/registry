@@ -58,6 +58,8 @@ jobs:
               - "**.cjs"
               - "eslint.config.mjs"
               - "eslint-rules/**"
+              - "docker-compose.yml"
+              - "package-lock.json"
             docs:
               - "**.md"
               - "scripts/check-docs.php"
