@@ -232,12 +232,20 @@ one immediately, in this session rather than deferring to a separate `/found`
 invocation — the containment call (in scope / out of scope) and the
 fix-in-PR-vs-defer decision are the same ones `/found` makes, so use its
 current matrix, not a copy: fold in only when the fix is needed for this
-issue's acceptance criteria, defer otherwise regardless of how small it
-looks, and route a genuine out-of-scope emergency to the hotfix track rather
-than into this milestone.
+issue's acceptance criteria, send a cleanup find (no wrong result a user or
+operator can see) to the cleanup ledger, defer a defect as a new issue
+regardless of how small it looks, and route a genuine out-of-scope emergency
+to the hotfix track rather than into this milestone.
 
 Wait for the user's confirmation on the classification, then act — create the
-issue or note it in the plan — before continuing.
+issue, add the ledger item, or note it in the plan — before continuing.
+
+**Pull ledger items for files in scope.** Read the open `cleanup-ledger`
+issue (`/found`, "Ledger"). For each file this plan will edit, copy that
+file's open items into the plan under **Ledger items**. The plan gate then
+approves or removes them with the rest of the plan. `/finish-issue` Step 6.5
+ticks the done items on the ledger after the merge. Do not pull items for
+files the plan does not already edit.
 
 ### Step 6: Interview Mode - Issue Refinement and Questions
 

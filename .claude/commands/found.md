@@ -1,5 +1,5 @@
 ---
-description: Capture a pre-existing issue found during development and classify it for immediate fix or deferral
+description: Capture a pre-existing issue found during development and classify it for immediate fix, deferral, or the cleanup ledger
 model: haiku
 ---
 
@@ -57,14 +57,35 @@ For an **out-of-scope** find, ask:
 
 Wait for the answer.
 
+### Step 3b: Classify — Defect or cleanup (defer paths only)
+
+Do this step only when Step 3 gave "Not needed" (in scope) or "No" (out of
+scope). Ask:
+
+> "Can a user or an operator see a wrong result from this — a wrong value,
+> lost data, a failed request, a missing email, a misleading message?"
+
+- **Yes** — a **defect**
+- **No** — **cleanup**: dead code, duplicated code, naming, comments, type
+  annotations, lint noise, stale rows that have no runtime effect, or a
+  consistency fix with no change in behavior
+
+Wait for the answer.
+
+For cleanup, also ask yourself: what gets better when this is fixed? If you
+cannot name one thing, record nothing. Report `Dropped: <one-line reason>`
+and resume.
+
 ### Step 4: Apply the decision matrix and act
 
 | Containment | Classification | Action |
 | --- | --- | --- |
 | In scope | Needed for the acceptance criteria | **Fix in current PR** |
-| In scope | Not needed for the acceptance criteria | **Defer** — new issue, however small the fix looks |
+| In scope | Not needed, defect | **Defer** — new issue, however small the fix looks |
+| In scope | Not needed, cleanup | **Ledger** — one item on the cleanup ledger, no new issue |
 | Out of scope | Production broken / data at risk / security exposure | **Hotfix track** — branch from `main`, patch release outside the milestone |
-| Out of scope | Anything else | **Defer** — new issue with `triage` label, no milestone |
+| Out of scope | Anything else, defect | **Defer** — new issue with `triage` label, no milestone |
+| Out of scope | Anything else, cleanup | **Ledger** — one item on the cleanup ledger, no new issue |
 
 **Why "it's only 30 minutes" is no longer a cell in this matrix.** The rule
 this replaces let any in-scope low-severity find be folded in if it looked
@@ -78,6 +99,13 @@ sealed milestone is what makes the release predictable. Genuine emergencies
 don't wait for the next planning session, but they ship as a patch release
 from `main`, leaving the current milestone's scope untouched. Everything else
 queues.
+
+**Why cleanup goes to a ledger, not a new issue.** Each cleanup find used to
+become its own issue. Most of them said "not broken" in their own body, and
+they grew the backlog faster than it drained. A cleanup item costs the least
+when a change already has the file open. The ledger keeps these items in one
+place, grouped by file, and `/start-issue` pulls a file's items into a plan
+when that plan touches the file.
 
 #### Fix in current PR
 
@@ -125,9 +153,32 @@ gh issue create \
 
 > "Created issue #NNN with the `triage` label for later review."
 
+#### Ledger
+
+The cleanup ledger is the one open issue with the `cleanup-ledger` label.
+Find it:
+
+```bash
+gh issue list --repo elan-registry/registry --label cleanup-ledger \
+  --state open --json number --jq '.[0].number'
+```
+
+If the command returns nothing, stop. Tell the user that no open ledger issue
+exists. Do not create a ledger issue and do not create a separate issue.
+
+Add one comment. Use the file path as the heading, one checkbox per item, and
+the current issue as the source:
+
+```bash
+gh issue comment LEDGER_NUMBER --repo elan-registry/registry --body "### \`path/to/file.php\`
+- [ ] ONE_LINE_ITEM (found while working on #CURRENT_ISSUE)"
+```
+
+> "Added to cleanup ledger #LEDGER_NUMBER under `path/to/file.php`."
+
 ### Step 5: Resume — or hand off, for the hotfix track
 
-For Fix in current PR and Defer: state what action was taken in one sentence,
+For Fix in current PR, Defer, Ledger and Dropped: state what action was taken in one sentence,
 then immediately return to the current task. Do not interrupt the flow further.
 
 For the **Hotfix track**, do not resume. This is the one finding that
@@ -143,6 +194,9 @@ released.
 | Example found issue | Containment | Classification | Action |
 | --- | --- | --- | --- |
 | Missing null check on a path this issue's criteria depend on | In scope | Needed | Fix in current PR |
-| Dead code in a file you're already editing | In scope | Not needed | Defer |
+| Dead code in a file you're already editing | In scope | Not needed, cleanup | Ledger |
+| Wrong total on an admin report, in a file you're already editing | In scope | Not needed, defect | Defer |
 | SQL query without prepared statement in a different module | Out of scope | Security exposure | Hotfix track |
-| Unused variable in an unrelated helper | Out of scope | Anything else | Defer |
+| Save reports success when the DB write failed, in another module | Out of scope | Anything else, defect | Defer |
+| Unused variable in an unrelated helper | Out of scope | Anything else, cleanup | Ledger |
+| A comment that repeats the code below it | Out of scope | Cleanup, nothing gets better | Dropped |

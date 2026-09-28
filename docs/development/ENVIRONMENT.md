@@ -407,6 +407,13 @@ the mock Brevo inbox. The container renders the page at startup from
 `docker/landing/index.html.template` and the same port variables. The links
 therefore match the checkout.
 
+**Use `localhost`, not `127.0.0.1`.** Open the site at
+`http://localhost:<APP_HOST_PORT>/`. At `http://127.0.0.1:<APP_HOST_PORT>/`,
+every URL that the app builds is wrong (`http://[127.0.0.1:8001]:8001/`). This
+includes canonical links, the sitemap, and email links. The cause is
+`Server::sanitize_host()` in upstream `users/classes/Server.php`. It reads
+`127.0.0.1:8001` as a bare IPv6 address. Do not edit that file (#2231).
+
 Worktrees under `Registry-worktrees/` get the same treatment: give the
 worktree's `.env` the next row of ports.
 
