@@ -84,26 +84,25 @@ function isRegistryAdmin(int|string|null $userId = null): bool {
 /**
  * Get the base URL for the application using UserSpice server globals.
  *
- * Derives the URL from $current_origin (scheme + host) and $us_url_root
- * (the install path set by UserSpice from the actual filesystem location).
- * This is environment-aware without relying on a manually configured database
- * setting that can diverge from the real install path.
+ * Derives the URL from $current_origin (scheme + host + non-default port, see
+ * server_globals.php) and $us_url_root (the install path set by UserSpice from
+ * the actual filesystem location). This is environment-aware without relying
+ * on a manually configured database setting that can diverge from the real
+ * install path.
  *
- * Falls back to the email.verify_url database setting when server globals are
- * not populated (e.g., CLI scripts).
+ * Falls back to the email.verify_url database setting, then to
+ * https://elanregistry.org, when server globals are not populated (e.g., CLI
+ * scripts).
  *
  * @return string Base URL without trailing slash (e.g., 'https://elanregistry.org' or 'http://localhost:8001')
  */
 function getBaseUrl(): string {
-    global $scheme, $host, $us_url_root;
+    global $current_origin, $host, $us_url_root;
 
-    if (!empty($scheme) && !empty($host) && !empty($us_url_root)) {
-        // $host has the port stripped (Server::get uses stripPort=true).
-        // Re-add non-standard ports so email URLs are correct on local dev.
-        $port = Server::get('SERVER_PORT', 0);
-        $defaultPort = ($scheme === 'https') ? 443 : 80;
-        $portStr = ($port && $port !== $defaultPort) ? ':' . $port : '';
-        return rtrim($scheme . '://' . $host . $portStr . $us_url_root, '/');
+    // $current_origin is 'http://' when there is no host, so $host is the real
+    // test for a request context.
+    if (!empty($current_origin) && !empty($host) && !empty($us_url_root)) {
+        return rtrim($current_origin . $us_url_root, '/');
     }
 
     // Fallback for CLI or early-boot contexts where server globals are not set
@@ -116,7 +115,9 @@ function getBaseUrl(): string {
         try {
             $db = DB::getInstance();
             $result = $db->query("SELECT verify_url FROM email")->first();
-            $baseUrl = $result->verify_url ?? null;
+            // The column is NOT NULL, so an unset value is '' rather than null.
+            $verifyUrl = trim((string) ($result->verify_url ?? ''));
+            $baseUrl = $verifyUrl !== '' ? $verifyUrl : null;
         } catch (\PDOException $e) {
             $baseUrl = null;
             $dbError = true;

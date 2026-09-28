@@ -22,8 +22,12 @@ declare(strict_types=1);
  * - $host          Domain name (validated, no port)
  * - $method        HTTP request method (GET, POST, etc.)
  * - $request_uri   Request URI (sanitized)
- * - $current_url   Full URL (scheme://host/path?query)
- * - $current_origin Origin only (scheme://host)
+ * - $current_url   Full URL (scheme://host[:port]/path?query)
+ * - $current_origin Origin only (scheme://host[:port]). The port is added only
+ *                   when it is not the scheme default and the request has no
+ *                   X-Forwarded-Proto of http or https (Server::get() keeps
+ *                   the first token, lowercased, and turns any other value
+ *                   into '')
  * - $referer       HTTP referer (sanitized, optional)
  * - $user_agent    User agent string (sanitized, max 512 chars)
  * - $php_self      Current script path (for securePage)
@@ -45,7 +49,8 @@ declare(strict_types=1);
 // Also checks X-Forwarded-Proto for reverse proxy / Cloudflare Tunnel setups
 // where SSL is terminated upstream and the backend sees plain HTTP internally.
 $scheme = Server::get('REQUEST_SCHEME', 'http');
-if (Server::get('HTTP_X_FORWARDED_PROTO', '') === 'https') {
+$forwarded_proto = Server::get('HTTP_X_FORWARDED_PROTO', '');
+if ($forwarded_proto === 'https') {
     $scheme = 'https';
 }
 $is_https = ($scheme === 'https');
@@ -55,8 +60,23 @@ $is_https = ($scheme === 'https');
 // This gives us just the domain/hostname without port information
 $host = Server::get('HTTP_HOST', '');
 
-// Construct origin (scheme://host) - used in redirects and CORS headers
+// Construct origin (scheme://host[:port]) - used in canonical/og:url tags, the
+// sitemap and emailed links, via getBaseUrl() and directly
 $current_origin = $is_https ? "https://{$host}" : "http://{$host}";
+
+// $host has no port, so re-add a non-default one (e.g. Docker's localhost:8001).
+// Apache takes SERVER_PORT from the Host header's port, else its own port. Behind
+// a proxy (X-Forwarded-Proto set), that describes the proxy-to-Apache hop, not
+// the port the client used (cloudflared sends no port, so Apache reports 80), so
+// the port is never added there.
+$server_port = Server::get('SERVER_PORT', 0);
+if ($server_port !== 0
+    && $server_port !== ($is_https ? 443 : 80)
+    && $forwarded_proto === ''
+) {
+    $current_origin .= ':' . $server_port;
+}
+unset($server_port, $forwarded_proto);
 
 // Request Details
 // REQUEST_METHOD is normalized to uppercase (GET, POST, PUT, DELETE, etc.)
