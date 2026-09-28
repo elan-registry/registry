@@ -30,4 +30,4 @@ release, merge the fixes forward into `main` and the open milestone branches.
 ## Issues Resolved
 
 - WIP: [#2144](https://github.com/elan-registry/registry/issues/2144) — security: require login for car history — history.php has no auth/CSRF/rate-limit, reverses #1305's "public by design"
-- WIP: [#2227](https://github.com/elan-registry/registry/issues/2227) — fix: join-form failure beacon is refused 403 when the session's CSRF token turns over
+- [#2227](https://github.com/elan-registry/registry/issues/2227) — fix: join-form failure beacon is refused 403 when the session's CSRF token turns over
