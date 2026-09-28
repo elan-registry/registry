@@ -471,6 +471,38 @@ fi
 
 git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
 
+# --- Scenario 8: several changed files stay separate paths -----------------
+# `git status -z` separates records with NUL bytes. Bash command substitution
+# drops NUL bytes, so a version that stored the status output in a variable
+# merged every changed path into one bogus path (PR #2249 review). That
+# breaks both the forbidden-path check and `git add`. Scenarios 3b and 7 run
+# with a clean tree, so they cannot catch it. This scenario creates three
+# untracked files, one with a space in its name, and checks that the dry-run
+# `git add` receives each path as its own argument.
+
+S8_FILES=("s8-a.txt" "s8 b.txt" "s8-c.txt")
+for f in "${S8_FILES[@]}"; do
+    printf 'scenario 8\n' > "$f"
+done
+
+TESTS_RUN=$((TESTS_RUN + 1))
+OUTPUT_S8="$(bash "$SCRIPT" --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --branch __test_scratch_multi 2>&1)"
+# The dry-run prints each argument with printf %q, so a space shows as "\ ".
+# Match only the three scenario paths on the `git add` line: the overlaid
+# copy of the script can also show as changed when it has uncommitted edits.
+# shellcheck disable=SC1003 # a literal backslash in the expected %q output
+S8_EXPECTED='s8\ b.txt s8-a.txt s8-c.txt'
+if printf '%s\n' "$OUTPUT_S8" | grep -F -- 'git add -A -- ' | grep -qF -- " $S8_EXPECTED"; then
+    echo "PASS: Scenario 8: each changed file is staged as its own path"
+else
+    echo "FAIL: Scenario 8: each changed file is staged as its own path"
+    echo "      expected output to contain: $S8_EXPECTED"
+    echo "      output:"
+    printf '        %s\n' "${OUTPUT_S8//$'\n'/$'\n'        }"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+rm -f -- "${S8_FILES[@]}"
+
 # --- Report ---------------------------------------------------
 
 echo ""

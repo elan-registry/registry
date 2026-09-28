@@ -179,7 +179,12 @@ parse_porcelain_z() {
     done
 }
 
-if ! STATUS_OUTPUT="$(git status --porcelain=v1 -z --untracked-files=all)"; then
+# The -z output goes to a temp file, not a variable: bash command
+# substitution drops NUL bytes, which would merge every record into one.
+# A file also keeps git's exit status, which a process substitution loses.
+STATUS_FILE="$(mktemp)" || { echo "mktemp failed" >&2; exit 2; }
+if ! git status --porcelain=v1 -z --untracked-files=all > "$STATUS_FILE"; then
+    rm -f "$STATUS_FILE"
     echo "git status failed" >&2
     exit 2
 fi
@@ -187,7 +192,8 @@ fi
 CHANGED_FILES=()
 while IFS= read -r f; do
     CHANGED_FILES+=("$f")
-done < <(printf '%s' "$STATUS_OUTPUT" | parse_porcelain_z)
+done < <(parse_porcelain_z < "$STATUS_FILE")
+rm -f "$STATUS_FILE"
 
 FORBIDDEN=()
 for f in "${CHANGED_FILES[@]:-}"; do
