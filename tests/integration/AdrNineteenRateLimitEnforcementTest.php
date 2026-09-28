@@ -6,11 +6,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests proving the four ADR-019 public-read-endpoint rate
- * limits (car_history, cars_list, factory_list, statistics_request) actually
- * enforce, not just that they're configured with the right numbers.
+ * Integration tests proving the five ADR-019 public-endpoint rate limits
+ * (car_history, cars_list, factory_list, statistics_request,
+ * join_failure_beacon) actually enforce, not just that they're configured
+ * with the right numbers.
  *
- * These four keys replaced CSRF as the sole abuse control on
+ * The first four keys replaced CSRF as the sole abuse control on
  * app/api/cars/{history,list,factory-list}.php and
  * app/api/shared/statistics.php (#1913/#1951, ADR-019). Before this suite,
  * tests/unit/system/RateLimitConfigTest.php only pinned the configured
@@ -25,7 +26,13 @@ use PHPUnit\Framework\Attributes\Group;
  * statistics_request under-sizing bug survived a full milestone: its three
  * sibling keys had this kind of dedicated coverage and it did not.)
  *
- * total_max, not ip_max/user_max, is the operative limit for all four keys:
+ * join_failure_beacon joined under ADR-019's "anonymous diagnostic log
+ * writes" exception (#2227), not the read-only criteria. This suite proves
+ * its configured limit trips; it cannot prove the endpoint ever records an
+ * attempt, because it seeds rows directly. JoinFailureReportEndpointTest
+ * pins that half.
+ *
+ * total_max, not ip_max/user_max, is the operative limit for all five keys:
  * each endpoint calls recordRateLimit($action, true, ...) on every admitted
  * request and never records a failure, so ip_max/user_max (which only count
  * failed attempts) can never trip. Bypassing checkRateLimit()/recordRateLimit()
@@ -72,10 +79,11 @@ final class AdrNineteenRateLimitEnforcementTest extends IntegrationTestCase
     public static function adrNineteenActionsProvider(): array
     {
         return [
-            'car_history'        => ['car_history', 5000],
-            'cars_list'          => ['cars_list', 10000],
-            'factory_list'       => ['factory_list', 10000],
-            'statistics_request' => ['statistics_request', 5000],
+            'car_history'         => ['car_history', 5000],
+            'cars_list'           => ['cars_list', 10000],
+            'factory_list'        => ['factory_list', 10000],
+            'statistics_request'  => ['statistics_request', 5000],
+            'join_failure_beacon' => ['join_failure_beacon', 100],
         ];
     }
 

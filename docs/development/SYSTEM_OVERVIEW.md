@@ -107,6 +107,11 @@ researching a chassis number.
 - **Sitemap** (`app/api/shared/sitemap.php`) — XML for crawlers. A documented
   exception to the API conventions: no auth, no CSRF, no rate limit, because it
   must stay freely crawlable.
+- **Join-failure beacon** (`app/api/shared/join-failure-report.php`) — records a
+  join attempt that failed in the browser before it reached the server. Also
+  carries no CSRF token, under ADR-019's exception for anonymous diagnostic log
+  writes: a render-time token went stale and dropped the reports (#2227), and
+  its own rate limit bounds abuse instead.
 
 Note that these pages still call `securePage()`. In UserSpice that registers the
 page for permission lookup; it does not by itself require a login. Public versus

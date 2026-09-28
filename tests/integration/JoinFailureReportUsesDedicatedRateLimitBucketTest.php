@@ -14,8 +14,8 @@ use PHPUnit\Framework\TestCase;
  * (File renamed from JoinFailureReportSharesRateLimitBucketTest.php to
  * match — see git history for the original name/rationale.)
  *
- * Why separate buckets: 'registration_attempt' is tight (ip_max=5/hr) and
- * IP-scoped, so beacon traffic (Turnstile retries, GPS failures, JS
+ * Why separate buckets: 'registration_attempt' is tight (see
+ * usersc/includes/rate_limits.php) and IP-scoped, so beacon traffic (Turnstile retries, GPS failures, JS
  * exceptions — none of them a real registration attempt) sharing it could
  * exhaust the cap for every visitor behind a shared/NAT IP before any of
  * them could actually submit the form — a lockout vector the original
@@ -52,7 +52,7 @@ final class JoinFailureReportUsesDedicatedRateLimitBucketTest extends TestCase
             "checkRateLimit('join_failure_beacon')",
             $beaconSource,
             'The beacon must check its own join_failure_beacon rate limit, not registration_attempt — '
-                . 'sharing the tight registration_attempt bucket (ip_max=5/hr) would let beacon traffic '
+                . 'sharing the tight registration_attempt bucket would let beacon traffic '
                 . 'exhaust it for every visitor behind a shared/NAT IP'
         );
 

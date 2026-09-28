@@ -793,3 +793,61 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
     expect(jsonResponse).toHaveProperty('success', true);
   });
 });
+
+test.describe('Issue #2227 — join-failure beacon survives a lost/stale CSRF token', () => {
+  // join-failure-report.php used to carry the join page's render-time CSRF
+  // token and answered 403 when that token went stale — dropping the very
+  // failure reports it exists to collect (#2227). The cause of the staleness
+  // is unexplained (ADR-019, Notes).
+  // The fix removed the CSRF check entirely; abuse is now bounded by the
+  // endpoint's own enforced 'join_failure_beacon' rate limit (ADR-019's
+  // anonymous-diagnostic-log exception). These tests must FAIL (403) against
+  // the pre-#2227 endpoint and PASS after the fix, regardless of what caused
+  // the token to go stale.
+  //
+  // Playwright cannot read the logs table, so these tests do not assert that
+  // a row was written. logger() runs on the only code path that reaches
+  // ApiResponse::success('Reported') — tests/unit/api/JoinFailureReportEndpointTest.php
+  // ::testLoggingHappensBeforeSuccessResponse pins that ordering in the
+  // source. A 200 with message 'Reported' therefore means a row was written.
+  //
+  // The two requests below use 2 of the 100 per-IP attempts allowed every
+  // 300 s (join_failure_beacon's total_max) — not enough to affect any other
+  // test.
+
+  // Deliberately OUTSIDE the authenticated describe above, mirroring the
+  // #1913 block: clearing cookies models a visitor whose session is gone,
+  // which is the actual production failure mode.
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+  });
+
+  test('join-failure-report.php with no csrf field at all returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/shared/join-failure-report.php', {
+      form: {
+        reason: 'js_exception',
+        detail: 'playwright #2227 no-token'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
+    expect(jsonResponse).toHaveProperty('message', 'Reported');
+  });
+
+  test('join-failure-report.php with a garbage/expired csrf token returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/shared/join-failure-report.php', {
+      form: {
+        csrf: 'this-is-not-a-valid-token',
+        reason: 'js_exception',
+        detail: 'playwright #2227 stale-token'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
+    expect(jsonResponse).toHaveProperty('message', 'Reported');
+  });
+});

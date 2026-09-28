@@ -16,10 +16,9 @@
     'use strict';
 
     function reportJoinFailure(reason, detail) {
-        var csrfInput = document.querySelector('#join-form input[name="csrf"]');
-        if (!csrfInput) return;
+        // No CSRF token: the endpoint is anonymous and rate-limited, and a
+        // token fixed at page render can go stale before this fires (#2227).
         var body = new URLSearchParams({
-            csrf: csrfInput.value,
             reason: reason,
             detail: (detail || '').toString().slice(0, 300)
         });
