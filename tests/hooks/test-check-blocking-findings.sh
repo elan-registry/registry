@@ -6,6 +6,10 @@
 # anything, and a caller's `if ! poll; then poll_status=$?` pattern must not
 # silently store the negated (always-0) exit status.
 #
+# Also covers #2225: the workflow-file guard in verify-ci-review.sh reads
+# `gh pr diff` output through a here-string, not a piped `grep -q`, so a
+# large diff can't SIGPIPE `gh` and get misread as "no match" (rc 141).
+#
 # HERMETIC: Part A stubs `gh` (and, for case 16, `grep`) first on PATH. Part B
 # runs a copy of verify-ci-review.sh from a directory that also holds stub
 # poll-review-posted.sh and check-blocking-findings.sh siblings, which the
@@ -351,6 +355,14 @@ GH_LOG="$TMPROOT/gh.log"
 CHECK_ARGS_LOG="$TMPROOT/check-args.log"
 export CHECK_ARGS_LOG
 
+# Built once: the matching path, then 50000 more (~540 KB, far past a pipe
+# buffer; the bug reproduced every time from 10000 lines up).
+STUB_GH_DIFF_MATCH_FILE="$TMPROOT/gh-diff-match.txt"
+{
+    printf '%s\n' '.github/workflows/claude-code-review.yml'
+    seq 1 50000 | sed 's|^|app/f|'
+} > "$STUB_GH_DIFF_MATCH_FILE"
+
 # Stub poll-review-posted.sh: first call exits STUB_POLL_EXIT; if
 # STUB_POLL2_EXIT is set, the second call uses that code instead. Calls are
 # tracked with a counter file so the stub itself doesn't need any state
@@ -382,11 +394,33 @@ STUB
 chmod +x "$VSCRIPTS/check-blocking-findings.sh"
 
 # Stub `gh` for the recovery path: logs its arguments, exits 0. `gh pr diff`
-# prints nothing so the self-referential-workflow-file check never matches;
-# `gh workflow run` and `gh pr edit` just succeed.
+# behaviour depends on STUB_GH_DIFF_MODE:
+#   unset/empty  : prints nothing (self-referential-workflow-file check never
+#                  matches) — existing cases 10-22 rely on this default.
+#   large-match  : prints the matching workflow file first, then 50000 more
+#                  path lines from a pre-built file — big enough to fill the
+#                  pipe buffer (#2225).
+#   fail         : `gh pr diff` itself fails (simulated `gh` error).
+# `gh workflow run` and `gh pr edit` just succeed in every mode.
 cat > "$STUBDIR/gh" <<'STUB'
 #!/bin/bash
 printf '%s\n' "gh $*" >> "${STUB_GH_LOG:?STUB_GH_LOG not set}"
+if [ "$1" = "pr" ] && [ "$2" = "diff" ]; then
+    case "${STUB_GH_DIFF_MODE:-}" in
+        large-match)
+            # `exec` so the stub exits with cat's SIGPIPE 141; the stub's own
+            # `exit 0` would hide it, and the old code would pass this case.
+            exec cat "${STUB_GH_DIFF_MATCH_FILE:?STUB_GH_DIFF_MATCH_FILE not set}"
+            ;;
+        fail)
+            echo "gh: simulated pr diff failure (stub)" >&2
+            exit 1
+            ;;
+        *)
+            exit 0
+            ;;
+    esac
+fi
 exit 0
 STUB
 chmod +x "$STUBDIR/gh"
@@ -396,6 +430,8 @@ run_verify() {
     : > "$GH_LOG"
     : > "$CHECK_ARGS_LOG"
     STUB_POLL_COUNT_FILE="$POLL_COUNT_FILE" STUB_GH_LOG="$GH_LOG" \
+        STUB_GH_DIFF_MODE="${STUB_GH_DIFF_MODE:-}" \
+        STUB_GH_DIFF_MATCH_FILE="$STUB_GH_DIFF_MATCH_FILE" \
         PATH="$STUBDIR:$PATH" \
         bash "$VSCRIPTS/verify-ci-review.sh" 1 1 1 --trigger=workflow "$@"
 }
@@ -494,6 +530,37 @@ if [ "$STATUS22" -eq 0 ] && [ "$POLLS22" = "2" ]; then
 else
     fail "Case 22: first poll fails, second poll succeeds (recovery) -> exit 0" \
         "exit: $STATUS22 (want 0)" "polls: $POLLS22 (want 2)" "output: [$OUT22]"
+fi
+
+# --- Case 23: large gh pr diff output with an early match (#2225) ---------
+# STUB_POLL_EXIT=1 forces the recovery path so verify-ci-review.sh reaches
+# the workflow-file guard's `gh pr diff` call. large-match makes the stub
+# print a match first, then 50000 more lines — enough to fill the pipe
+# buffer. A piped `grep -q` would SIGPIPE `gh` here and (under pipefail) read
+# that as "no match"; the here-string fix must still detect the match, skip
+# recovery, and exit 4 after exactly one poll. The old code also ends with
+# exit 4 here (its second poll fails too), so the poll count and the absent
+# `workflow run` line are the checks that catch the bug. Keep them.
+OUT23="$(STUB_POLL_EXIT=1 STUB_CHECK_EXIT=0 STUB_GH_DIFF_MODE=large-match run_verify 2>&1)"
+STATUS23=$?
+POLLS23="$(cat "$POLL_COUNT_FILE" 2>/dev/null || echo '?')"
+if [ "$STATUS23" -eq 4 ] && [ "$POLLS23" = "1" ] \
+    && ! grep -q 'workflow run' "$GH_LOG"; then
+    pass "Case 23: large gh pr diff output with an early match -> exit 4, no recovery workflow run, one poll"
+else
+    fail "Case 23: large gh pr diff output with an early match -> exit 4, no recovery workflow run, one poll" \
+        "exit: $STATUS23 (want 4)" "polls: $POLLS23 (want 1)" "output: [$OUT23]"
+fi
+
+# --- Case 24: gh pr diff itself fails -> 1 ---------------------------------
+OUT24="$(STUB_POLL_EXIT=1 STUB_CHECK_EXIT=0 STUB_GH_DIFF_MODE=fail run_verify 2>&1)"
+STATUS24=$?
+if [ "$STATUS24" -eq 1 ] && printf '%s' "$OUT24" | grep -q 'gh pr diff failed' \
+    && ! grep -q 'workflow run' "$GH_LOG"; then
+    pass "Case 24: gh pr diff fails -> exit 1, message mentions the failure, no recovery workflow run"
+else
+    fail "Case 24: gh pr diff fails -> exit 1, message mentions the failure, no recovery workflow run" \
+        "exit: $STATUS24 (want 1)" "output: [$OUT24]"
 fi
 
 # --- Report ------------------------------------------------------------

@@ -33,18 +33,25 @@ if ! DIFF_FILES="$(git diff --name-only "main...${BRANCH}" 2>&1)"; then
   exit 2
 fi
 
-FULL_DIFF="$(git diff "main...${BRANCH}")"
+# A failed diff here would read as "no CREATE TRIGGER", so fail loudly instead.
+if ! FULL_DIFF="$(git diff "main...${BRANCH}")"; then
+  echo "Could not read the full diff main...${BRANCH}." >&2
+  exit 2
+fi
 
-if printf '%s\n' "$DIFF_FILES" | grep -q '^database/migrations/'; then
+# Quiet checks on DIFF_FILES/FULL_DIFF use a here-string: a piped `grep -q`
+# that stops at an early match SIGPIPEs the writer, and pipefail reads that 141
+# as "no match" (#2225). The per-file pipe in the new-pages loop is one line.
+if grep -q '^database/migrations/' <<<"$DIFF_FILES"; then
   NEW_MIGRATIONS="$(printf '%s\n' "$DIFF_FILES" | grep '^database/migrations/')"
   echo "migration: TRUE"
   printf '%s\n' "$NEW_MIGRATIONS" | sed 's/^/  - /'
-  if printf '%s\n' "$FULL_DIFF" | grep -q 'CREATE TRIGGER'; then
+  if grep -q 'CREATE TRIGGER' <<<"$FULL_DIFF"; then
     echo "trigger-migration: TRUE"
   fi
 fi
 
-if printf '%s\n' "$DIFF_FILES" | grep -qx 'scripts/server-hooks/post-receive'; then
+if grep -qx 'scripts/server-hooks/post-receive' <<<"$DIFF_FILES"; then
   echo "hook-changed: TRUE (scripts/server-hooks/post-receive)"
 fi
 
@@ -61,12 +68,12 @@ if [ -n "$NEW_SECURE_PAGES" ]; then
   printf '%b' "$NEW_SECURE_PAGES" | sed 's/^/  - /'
 fi
 
-if printf '%s\n' "$DIFF_FILES" | grep -qE '^app/admin/scripts/(fix|maintenance)/'; then
+if grep -qE '^app/admin/scripts/(fix|maintenance)/' <<<"$DIFF_FILES"; then
   echo "admin-scripts: TRUE"
   printf '%s\n' "$DIFF_FILES" | grep -E '^app/admin/scripts/(fix|maintenance)/' | sed 's/^/  - /'
 fi
 
-if printf '%s\n' "$DIFF_FILES" | grep -qx '.env.example'; then
+if grep -qx '.env.example' <<<"$DIFF_FILES"; then
   echo "env-vars: TRUE"
   git diff "main...${BRANCH}" -- .env.example | grep '^+' | grep -v '^+++' | sed 's/^/  /'
 fi
