@@ -426,13 +426,15 @@ serves the landing page. Use the port table above. The `app` container reaches
 
 The image is a maintained fork
 ([`unibrain1/mock-brevo`](https://github.com/unibrain1/mock-brevo)), not the
-upstream project. The fork has an English UI, and it adds the event report,
-the block list, and Brevo-style webhooks. Registry's reconciliation cron,
-suppression-sync cron, and webhook endpoint need those features to work
-against the mock. `docker-compose.yml` pins an exact tag, never `latest`, so
-every checkout runs the same mock. To pick up a new release: change the tag
-in `docker-compose.yml`, then run `docker compose pull mock-brevo && docker
-compose up -d mock-brevo`.
+upstream project. The fork has an English UI and adds the event report and the
+block list. Its simulated webhooks also send a bearer token and the message
+tags, as Brevo does. `docker-compose.yml` gives the mock the app's
+`BREVO_WEBHOOK_TOKEN`, so the webhook endpoint accepts them. Registry's
+reconciliation cron, suppression-sync cron, and webhook endpoint need those
+features to work against the mock. `docker-compose.yml` pins an exact tag,
+never `latest`, so every checkout runs the same mock. To pick up a new
+release: change the tag in `docker-compose.yml`, then run `docker compose pull
+mock-brevo && docker compose up -d mock-brevo`.
 
 See the "Local Development" section in `docs/development/EMAIL_SYSTEM.md` for
 the `BREVO_API_HOST` variable, the `US_ENVIRONMENT=development` check, and

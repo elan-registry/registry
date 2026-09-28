@@ -164,7 +164,7 @@ full Docker setup.
 To send a test email straight to mock-brevo, bypassing the app's send path:
 
 ```bash
-docker compose exec app curl -s -X POST http://mock-brevo:8080/v3/smtp/email \
+docker compose exec -T -u www-data app curl -s -X POST http://mock-brevo:8080/v3/smtp/email \
   -H 'api-key: local-test' \
   -H 'Content-Type: application/json' \
   -d '{"sender":{"email":"test@example.com"},"to":[{"email":"owner@example.com"}],"subject":"mock-brevo test","htmlContent":"<p>hello</p>"}'

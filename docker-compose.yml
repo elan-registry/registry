@@ -135,8 +135,10 @@ services:
       MOCK_BREVO_DB_PATH: /app/data/brevo
       MOCK_STATUS_REVEAL_KEYS: "true"
       MOCK_DEFAULT_WEBHOOK_URL: "${MOCK_DEFAULT_WEBHOOK_URL:-}"
-      # Bearer token the mock sends on simulated webhooks. Empty sends none.
-      MOCK_WEBHOOK_TOKEN: "${MOCK_WEBHOOK_TOKEN:-}"
+      # The mock sends the app's own webhook token, so the two cannot
+      # differ and app/api/webhooks/brevo.php accepts simulated webhooks.
+      # Empty sends none, and the endpoint then rejects them.
+      MOCK_WEBHOOK_TOKEN: "${BREVO_WEBHOOK_TOKEN:-}"
       MOCK_AUTO_FIRE_DELIVERED: "${MOCK_AUTO_FIRE_DELIVERED:-false}"
       # SMTP forward: relay POST /v3/smtp/email to a real SMTP catcher
       # for visual inspection (Mailpit/Mailcatcher/etc.)
