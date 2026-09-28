@@ -185,9 +185,10 @@ A rehearsal fills the integration-test schema (the `DB_NAME` in
 `.env.test.local`, for example `elanregi_dev_test`) with registry data. Each
 run also adds `cars_hist` rows through the `cars` triggers. The integration
 suite then fails (it runs out of memory in `BackupCriticalTablesTest`).
-Afterwards, restore the backup that the rehearsal's first run made, before it
-imported anything (the oldest `db-backups/<that DB_NAME>_*.sql.gz` from that
-session), with the restore command below.
+Afterwards, restore the backup that the rehearsal's first run made
+(`db-backups/<that DB_NAME>_<timestamp>.sql.gz`), with the restore command
+below. It is the only backup taken before any import. A later run backs up
+the schema that an earlier run already filled.
 
 Default dump path: `~/Downloads/unibrain_registry.sql`.
 

@@ -129,7 +129,8 @@ usage() {
     exit 0
 }
 
-# Under `set -e`, `shift 2` with only one argument left exits with no message.
+# Guards the `shift 2` below. Under `set -e`, a bare `shift 2` with only one
+# argument left would stop the script with no message.
 need_value() {
     [[ $# -ge 2 && -n "$2" ]] || { echo "Error: $1 needs a value" >&2; exit 1; }
 }
@@ -171,13 +172,15 @@ require_docker_db() {
 }
 
 # ── Target settings ───────────────────────────────────────────────────────────
-# Prints KEY's value from an env file. It removes a CR, an end-of-line
-# comment, trailing spaces and one pair of surrounding quotes, which covers
-# the forms phpdotenv and Compose accept for DB_NAME and DB_HOST.
+# Prints KEY's value from an env file. It accepts an `export ` prefix and
+# removes a CR, an end-of-line comment, trailing spaces and one pair of
+# surrounding quotes: the forms phpdotenv and Compose accept for DB_NAME and
+# DB_HOST.
 # `|| true`: under pipefail a missing line would exit here with no message.
-# Let the caller's checks report it instead.
+# Let the caller's checks report it instead. It can also hide a grep read
+# error, which is why load_env checks -f and -r first.
 env_value() {
-    grep -E "^$1=" "$2" | head -1 | cut -d= -f2- | tr -d '\r' \
+    grep -E "^(export[[:space:]]+)?$1=" "$2" | head -1 | cut -d= -f2- | tr -d '\r' \
         | sed -E "s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/" || true
 }
 
@@ -198,7 +201,8 @@ load_env() {
         exit 1
     fi
 
-    # The container user's grants cover elanregi_* only. Any other name fails
+    # The container user's grants cover elanregi_* only (set in
+    # docker/mysql-init/01-grant-all-elanregi-schemas.sql). Any other name fails
     # inside the backup and leaves an empty .gz in db-backups/, and a name
     # that starts with "-" would reach mysqldump as an option.
     if [[ ! "$DB_NAME" =~ ^elanregi_[A-Za-z0-9_]+$ ]]; then
@@ -227,6 +231,11 @@ fi
 
 if [[ "$IMAGES_ONLY" == true ]] && [[ "$FETCH_DUMP" == true ]]; then
     echo "Error: --images-only and --fetch are mutually exclusive" >&2
+    exit 1
+fi
+
+if [[ "$IMAGES_ONLY" == true ]] && [[ -n "$DB_NAME_OVERRIDE$ENV_FILE_OVERRIDE$DUMP_FILE_ARG" ]]; then
+    echo "Error: --images-only does not take --db, --env-file or a DUMP_FILE" >&2
     exit 1
 fi
 
