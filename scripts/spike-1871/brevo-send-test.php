@@ -23,9 +23,9 @@ namespace ElanRegistry\Spike1871;
  *   php scripts/spike-1871/brevo-send-test.php --list-blocked
  *   php scripts/spike-1871/brevo-send-test.php --env=/home/<cpanel-account>/test.elanregistry.org
  *
- * On MAMP, pass --host=127.0.0.1: PDO treats a DB_HOST of "localhost" as a
- * Unix socket and ignores DB_PORT, so it reaches the system MySQL rather than
- * MAMP's instance on 8889 and fails with "Access denied".
+ * Run this script inside the app container, where `.env`'s DB_HOST already
+ * points at the `db` service:
+ *   docker compose exec -u www-data app php scripts/spike-1871/brevo-send-test.php --to=you@example.com
  *
  * Requirements: PHP with ext-curl, and this file must stay two levels below a
  * directory containing `vendor/autoload.php` (for Dotenv); `.env` is read from
@@ -155,7 +155,7 @@ function usage(): void
       --list-webhooks    List the account's transactional webhooks and exit
       --list-blocked     List Brevo's transactional blocked-contacts (suppression list) and exit
       --env=<dir>        Directory containing the .env file (default: repo root)
-      --host=<host>      Override DB_HOST (use 127.0.0.1 on MAMP)
+      --host=<host>      Override DB_HOST (run this script in the app container instead: see file docblock)
       --help             Show this message
 
     TXT);

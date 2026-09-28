@@ -60,11 +60,13 @@ use ElanRegistry\LogCategories;
  * SDK that isn't even on the unit suite's autoloader). Subclassing outside of
  * test doubles is not intended.
  *
- * Routes through {@see \ElanRegistry\Email\BrevoDevOverride} the same way
- * the sendinblue plugin's send path does (#2127) — in local dev
+ * Routes through {@see \ElanRegistry\Email\BrevoDevOverride} — in local dev
  * (`US_ENVIRONMENT=development` with `BREVO_API_HOST` set), this polls
  * mock-brevo instead of the real Brevo API, so a suppression sync triggered
- * locally cannot make a live outbound call.
+ * locally cannot make a live outbound call. The sendinblue plugin's own send
+ * path does not route this way yet: see
+ * `docs/development/EMAIL_SYSTEM.md`, "What routes to mock-brevo today", and
+ * [Issue #2184](https://github.com/elan-registry/registry/issues/2184).
  *
  * @package ElanRegistry\Cron
  * @since v2.30.2

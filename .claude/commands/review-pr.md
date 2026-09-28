@@ -32,17 +32,18 @@ the review before spending agent tokens on a branch that is already broken.
 scripts/run-verification-suite.sh
 ```
 
-This runs `composer test:full` (unit + all integration), `composer
-check:docs`, and `vendor/bin/phpstan analyse`, and parses PHPUnit's summary
-line instead of trusting the exit code — see the script's header for why
-(an unreachable DB, or an individually skipped test, each exit 0 having
-verified nothing).
+This runs `composer test:unit` on the host, `composer test:integration`
+inside this checkout's Docker `app` container, `composer check:docs`, and
+`vendor/bin/phpstan analyse` — always all four, never short-circuited — and
+parses PHPUnit's summary line instead of trusting the exit code — see the
+script's header for why (an unreachable DB, or an individually skipped
+test, each exit 0 having verified nothing).
 
 | Exit | Meaning |
 | --- | --- |
-| 0 | All three components passed — both PHPUnit suites reported a clean, non-zero `OK` line, docs check passed, PHPStan reported no new errors |
-| 1 | At least one component failed, was empty, skipped, or warned — see the script's `RESULT` lines for which. Blocking. |
-| 2 | A component could not run at all (missing `composer`, missing `vendor/bin/phpstan`) — not the same as "failed"; fix the environment and re-run |
+| 0 | All four components passed — both PHPUnit suites reported a clean, non-zero `OK` line, docs check passed, PHPStan reported no new errors |
+| 1 | At least one component FAILED — a missing/unclean summary line, or a non-zero exit that was not the integration pre-flight case below. Wins over exit 2. Blocking. |
+| 2 | No component FAILED, but the integration suite COULD NOT RUN — a pre-flight problem (missing `docker`, `docker compose ps` failing, a stopped stack), or `composer`/`vendor/bin/phpstan` missing; not the same as "failed" — fix the environment and re-run |
 
 **A clean PHPStan result does NOT mean no baseline debt on touched files.**
 `phpstan.neon` includes `phpstan-baseline.neon`, so the run silently

@@ -15,10 +15,20 @@
 #      requireDatabase() calls markTestSkipped(), and neither
 #      phpunit-unit.xml nor phpunit-integration.xml sets failOnSkipped,
 #      failOnWarning, or failOnRisky.
-#   3. `test:full` is two separate PHPUnit invocations (unit, then
-#      integration) — there is no combined total line, so both summaries
-#      must be checked independently. Checking only the first hides a dead
-#      second suite.
+#   3. The unit and integration suites are two separate PHPUnit invocations
+#      — there is no combined total line, so both summaries must be checked
+#      independently. Checking only one hides a dead other suite.
+#   4. Docker is the only supported dev environment (MAMP retired, #2180).
+#      .env.test.local sets DB_HOST=db, which resolves only inside the
+#      Docker Compose network, so the integration suite cannot run on the
+#      host in the normal case — see scripts/lib/integration-runner.sh
+#      (shared with .githooks/pre-push, #2245). Only that library's own
+#      pre-flight checks (stopped stack, no docker on PATH, `docker compose
+#      ps` failing) return $INTEGRATION_PREFLIGHT_FAIL and are read as
+#      "could not run". Any other non-zero exit from inside the container —
+#      a PHP fatal error, an out-of-memory kill, a container dying mid-run —
+#      is a real FAIL, not an environment problem, even with no PHPUnit
+#      summary line to parse.
 #
 # This script is the parsing logic every command (`review-pr`,
 # `finish-milestone`, `execute-plan`, `finish-issue`) used to re-derive
@@ -27,57 +37,103 @@
 # Usage: scripts/run-verification-suite.sh
 #   (run from the repo root; no arguments)
 #
-# Exit codes:
-#   0 = both PHPUnit suites reported a clean, non-empty OK line, docs check
-#       passed, and PHPStan reported no errors
-#   1 = at least one component failed, was empty, skipped, warned, or
-#       otherwise did not cleanly pass — see stdout for which
-#   2 = a component could not run at all (missing composer, missing
-#       vendor/bin/phpstan, etc.) — this is NOT the same as "failed", it
-#       means the check itself never executed
+# Exit codes (a FAIL always wins over a COULD NOT RUN):
+#   0 = every component (unit, integration, docs, PHPStan) passed
+#   1 = at least one component FAILED — a clean summary line was missing or
+#       unclean, or the component exited non-zero for a reason other than
+#       the integration pre-flight below. Every component still runs; see
+#       the RESULT lines for which one(s) failed.
+#   2 = no component FAILED, but the integration suite COULD NOT RUN — a
+#       pre-flight problem in scripts/lib/integration-runner.sh (missing
+#       `docker`, `docker compose ps` failing, or a stopped stack), not a
+#       test result. `composer` missing or `vendor/bin/phpstan` missing is
+#       also reported this way, before any component runs.
 set -uo pipefail
 
 FAIL=0
+COULD_NOT_RUN=0
 
 strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
 
-echo "== composer test:full =="
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/integration-runner.sh
+source "${SCRIPT_DIR}/lib/integration-runner.sh"
+
 if ! command -v composer >/dev/null 2>&1; then
   echo "composer not found on PATH — cannot run the suite." >&2
   exit 2
 fi
 
-TEST_OUTPUT="$(composer test:full 2>&1)"
-TEST_EXIT=$?
-SUMMARY_LINES="$(printf '%s\n' "$TEST_OUTPUT" | strip_ansi | grep -E '^(OK|OK, but|FAILURES|ERRORS|WARNINGS|Tests:|No tests executed)')"
+# Parses one PHPUnit run's captured output against the summary-line
+# contract shared with test:full's old combined check. Sets FAIL=1 on
+# anything that isn't a clean, non-empty, non-zero OK line. Args: $1 label
+# (for the RESULT line), $2 captured combined stdout+stderr, $3 exit code.
+_check_phpunit_summary() {
+  local label="$1" output="$2" exit_code="$3" summary_lines ok_count zero_count_hit
 
-echo "$SUMMARY_LINES"
+  summary_lines="$(printf '%s\n' "$output" | strip_ansi | grep -E '^(OK|OK, but|FAILURES|ERRORS|WARNINGS|Tests:|No tests executed)')"
+  echo "$summary_lines"
 
-OK_COUNT="$(printf '%s\n' "$SUMMARY_LINES" | grep -c '^OK (')"
-ZERO_COUNT_HIT="$(printf '%s\n' "$SUMMARY_LINES" | grep -cE '^OK \(0 tests')"
+  ok_count="$(printf '%s\n' "$summary_lines" | grep -c '^OK (')"
+  zero_count_hit="$(printf '%s\n' "$summary_lines" | grep -cE '^OK \(0 tests')"
 
-if [ "$TEST_EXIT" -ne 0 ]; then
-  echo "RESULT test:full = FAIL (non-zero exit $TEST_EXIT)"
-  FAIL=1
-elif [ -z "$SUMMARY_LINES" ]; then
-  echo "RESULT test:full = FAIL (no summary line — bootstrap likely died before PHPUnit reported)"
-  FAIL=1
-elif [ "$OK_COUNT" -ne 2 ]; then
-  echo "RESULT test:full = FAIL (expected 2 clean 'OK (N tests, M assertions)' lines — unit + integration — got $OK_COUNT)"
-  FAIL=1
-elif [ "$ZERO_COUNT_HIT" -gt 0 ]; then
-  echo "RESULT test:full = FAIL (a suite reported OK with 0 tests — it ran nothing)"
-  FAIL=1
+  if [ "$exit_code" -ne 0 ]; then
+    echo "RESULT $label = FAIL (non-zero exit $exit_code)"
+    FAIL=1
+  elif [ -z "$summary_lines" ]; then
+    echo "RESULT $label = FAIL (no summary line — bootstrap likely died before PHPUnit reported)"
+    FAIL=1
+  elif [ "$ok_count" -ne 1 ]; then
+    echo "RESULT $label = FAIL (expected 1 clean 'OK (N tests, M assertions)' line, got $ok_count)"
+    FAIL=1
+  elif [ "$zero_count_hit" -gt 0 ]; then
+    echo "RESULT $label = FAIL (suite reported OK with 0 tests — it ran nothing)"
+    FAIL=1
+  else
+    echo "RESULT $label = PASS"
+  fi
+}
+
+echo "== composer test:unit =="
+UNIT_OUTPUT="$(composer test:unit 2>&1)"
+UNIT_EXIT=$?
+_check_phpunit_summary "test:unit" "$UNIT_OUTPUT" "$UNIT_EXIT"
+
+echo
+echo "== composer test:integration =="
+if [ "$(_integration_runner)" = "docker" ]; then
+  echo "  (Docker checkout — .env.test.local has DB_HOST=db; running via scripts/lib/integration-runner.sh)"
+fi
+INTEGRATION_OUTPUT="$(_run_integration_suite 2>&1)"
+INTEGRATION_EXIT=$?
+if [ "$INTEGRATION_EXIT" -eq "$INTEGRATION_PREFLIGHT_FAIL" ]; then
+  # The runner itself could not start PHPUnit at all (stopped stack, no
+  # docker on PATH, `docker compose ps` failing) — no summary line exists to
+  # parse, and this is not a test result. Its own message already explains
+  # why: print it and record "could not run". Every other component still
+  # runs below — an environment problem here must not hide a FAIL already
+  # recorded for test:unit, or skip check:docs and PHPStan.
+  echo "$INTEGRATION_OUTPUT"
+  echo "RESULT test:integration = COULD NOT RUN (see message above)"
+  COULD_NOT_RUN=1
 else
-  echo "RESULT test:full = PASS ($OK_COUNT suites, both non-zero)"
+  # Any other non-zero exit — a PHP fatal error, an out-of-memory kill, or a
+  # container that died mid-run — is a real FAIL, not an environment
+  # problem, whether or not PHPUnit reached its summary line. Print the
+  # last ~20 lines so the failure itself is visible without deciding
+  # PHPStan/docs shouldn't run.
+  if [ "$INTEGRATION_EXIT" -ne 0 ] \
+    && ! printf '%s\n' "$INTEGRATION_OUTPUT" | strip_ansi | grep -qE '^(OK|OK, but|FAILURES|ERRORS|WARNINGS|Tests:|No tests executed)'; then
+    echo "$INTEGRATION_OUTPUT" | tail -20
+    echo "RESULT test:integration = FAIL (non-zero exit $INTEGRATION_EXIT, no PHPUnit summary line — see output above)"
+    FAIL=1
+  else
+    _check_phpunit_summary "test:integration" "$INTEGRATION_OUTPUT" "$INTEGRATION_EXIT"
+  fi
 fi
 
 echo
 echo "== composer check:docs =="
-if ! command -v composer >/dev/null 2>&1; then
-  echo "composer not found on PATH — cannot run the docs check." >&2
-  exit 2
-fi
 DOCS_OUTPUT="$(composer check:docs 2>&1)"
 DOCS_EXIT=$?
 echo "$DOCS_OUTPUT" | tail -5
@@ -105,10 +161,13 @@ else
 fi
 
 echo
-if [ "$FAIL" -eq 0 ]; then
-  echo "VERIFICATION SUITE: PASS"
-  exit 0
-else
+if [ "$FAIL" -eq 1 ]; then
   echo "VERIFICATION SUITE: FAIL — see RESULT lines above"
   exit 1
+elif [ "$COULD_NOT_RUN" -eq 1 ]; then
+  echo "VERIFICATION SUITE: COULD NOT RUN — see RESULT lines above"
+  exit 2
+else
+  echo "VERIFICATION SUITE: PASS"
+  exit 0
 fi

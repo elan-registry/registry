@@ -129,10 +129,16 @@ if is_refused_branch "$CURRENT_BRANCH"; then
         echo "Refused: --branch '$NEW_BRANCH' is itself main, master, or milestone/*." >&2
         exit 1
     fi
-    run git checkout -b "$NEW_BRANCH"
+    if ! run git checkout -b "$NEW_BRANCH"; then
+        echo "git checkout -b '$NEW_BRANCH' failed (branch may already exist)." >&2
+        exit 2
+    fi
     CURRENT_BRANCH="$NEW_BRANCH"
 elif [ -n "$NEW_BRANCH" ] && [ "$NEW_BRANCH" != "$CURRENT_BRANCH" ]; then
-    run git checkout -b "$NEW_BRANCH"
+    if ! run git checkout -b "$NEW_BRANCH"; then
+        echo "git checkout -b '$NEW_BRANCH' failed (branch may already exist)." >&2
+        exit 2
+    fi
     CURRENT_BRANCH="$NEW_BRANCH"
 fi
 
@@ -173,10 +179,15 @@ parse_porcelain_z() {
     done
 }
 
+if ! STATUS_OUTPUT="$(git status --porcelain=v1 -z --untracked-files=all)"; then
+    echo "git status failed" >&2
+    exit 2
+fi
+
 CHANGED_FILES=()
 while IFS= read -r f; do
     CHANGED_FILES+=("$f")
-done < <(git status --porcelain=v1 -z --untracked-files=all | parse_porcelain_z)
+done < <(printf '%s' "$STATUS_OUTPUT" | parse_porcelain_z)
 
 FORBIDDEN=()
 for f in "${CHANGED_FILES[@]:-}"; do

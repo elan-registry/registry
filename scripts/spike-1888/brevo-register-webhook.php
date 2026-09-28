@@ -30,14 +30,17 @@ namespace ElanRegistry\Spike1888;
  *
  * --host overrides DB_HOST so this script can reach test's plg_sendinblue
  * row from elsewhere (e.g. an SSH tunnel to test's DB) without editing
- * --env's .env file. It is NOT a way to run this against MAMP's own local
- * config: --create still calls Brevo's live production API with whichever
- * account plg_sendinblue.key points at, so pairing --host with a local MAMP
- * database would register a real webhook against test's Brevo account using
- * local dev's (usually absent or unrelated) Brevo credentials — not a safe
- * local rehearsal. On MAMP specifically, PDO also treats a DB_HOST of
- * "localhost" as a Unix socket and ignores DB_PORT, so --host=127.0.0.1 is
- * needed just to reach MAMP's instance on 8889 rather than system MySQL.
+ * --env's .env file. It is NOT a way to rehearse this against local dev's own
+ * database: --create still calls Brevo's live production API with whichever
+ * account plg_sendinblue.key points at, so pairing --host with the local
+ * Docker database would register a real webhook against test's Brevo account
+ * using local dev's (usually absent or unrelated) Brevo credentials — not a
+ * safe local rehearsal.
+ *
+ * To run this script locally against the Docker dev environment (for
+ * --list-webhooks or --delete, not --create — see above), run it inside the
+ * app container, where `.env`'s DB_HOST already points at the `db` service:
+ *   docker compose exec -u www-data app php scripts/spike-1888/brevo-register-webhook.php --list-webhooks
  *
  * Requirements: PHP with ext-curl, and this file must stay two levels below a
  * directory containing `vendor/autoload.php` (for Dotenv); `.env` is read from
@@ -171,8 +174,8 @@ function usage(): void
       --id=<id>            Webhook id to delete
       --env=<dir>          Directory containing the .env file (default: repo root)
       --host=<host>        Override DB_HOST (e.g. reaching test's DB over an
-                            SSH tunnel). NOT a MAMP rehearsal mode — --create
-                            always calls Brevo's live API; see file docblock.
+                            SSH tunnel). NOT a local Docker rehearsal mode —
+                            --create always calls Brevo's live API; see file docblock.
       --help               Show this message
 
     Examples:

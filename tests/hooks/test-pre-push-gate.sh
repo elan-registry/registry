@@ -126,7 +126,7 @@ FN_FILE="$TMPROOT/fns.sh"
     grep -E '^(integration_gate_paths|zero_sha)=' "$HOOK_SRC"
     for fn in _diff_names _gate_base_for_ref _gated_files_for_ref \
         _integration_cache_key _integration_cache_file \
-        _integration_cache_hit _integration_cache_record _integration_runner; do
+        _integration_cache_hit _integration_cache_record; do
         body="$(extract_fn "$fn")"
         if [ -z "$body" ]; then
             echo "FATAL: could not extract $fn() from $HOOK_SRC" >&2
@@ -142,6 +142,11 @@ source "$FN_FILE"
 # the throwaway repo above for the hook-under-test to find at run time).
 # shellcheck source=/dev/null
 source "$REAL_REPO/scripts/lib/pick-closest-base.sh"
+# _integration_runner() (and _run_integration_suite(), not under test here)
+# likewise now live in scripts/lib/integration-runner.sh, shared with
+# scripts/run-verification-suite.sh — source it the same way.
+# shellcheck source=/dev/null
+source "$REAL_REPO/scripts/lib/integration-runner.sh"
 if [ -z "${integration_gate_paths:-}" ] || [ -z "${zero_sha:-}" ]; then
     echo "FATAL: could not extract integration_gate_paths/zero_sha from $HOOK_SRC" >&2
     exit 1
@@ -214,6 +219,7 @@ chmod +x "$HOOK"
 # match, not under $REPO itself.
 mkdir -p "$TMPROOT/scripts/lib"
 cp "$REAL_REPO/scripts/lib/pick-closest-base.sh" "$TMPROOT/scripts/lib/pick-closest-base.sh"
+cp "$REAL_REPO/scripts/lib/integration-runner.sh" "$TMPROOT/scripts/lib/integration-runner.sh"
 
 CACHE_FILE="$(git rev-parse --git-path integration-passed)"
 
