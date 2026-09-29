@@ -1119,20 +1119,38 @@ class CarRepository
      *                                  stored (CAS guard); null matches a NULL
      *                                  column, which is the state of a car that
      *                                  has never had an image
+     * @param string|null $ownerLastUpdated When set, the same UPDATE also writes
+     *                                  this value to owner_last_updated (an
+     *                                  owner removed a photo). It is one UPDATE,
+     *                                  not two, so the cars_update trigger writes
+     *                                  one cars_hist row and the CAS guard also
+     *                                  protects the timestamp. Null leaves
+     *                                  owner_last_updated unchanged.
      * @return bool True if the row was updated, false on concurrent modification
      * @throws CarDatabaseException If the query itself fails
      */
-    public function updateImage(int $carId, string $newJson, ?string $expectedJson): bool
-    {
+    public function updateImage(
+        int $carId,
+        string $newJson,
+        ?string $expectedJson,
+        ?string $ownerLastUpdated = null
+    ): bool {
         // `<=>` is MySQL's null-safe equality. Plain `=` is never true against a
         // NULL column, and cars.image is nullable with no default, so a car that
         // has never had an image cannot be matched by `image = ''` — the CAS
         // would reject every such update. `<=>` matches NULL to NULL and behaves
         // identically to `=` for non-NULL values.
-        $this->db->query(
-            'UPDATE cars SET image = ? WHERE id = ? AND image <=> ?',
-            [$newJson, $carId, $expectedJson]
-        );
+        if ($ownerLastUpdated === null) {
+            $this->db->query(
+                'UPDATE cars SET image = ? WHERE id = ? AND image <=> ?',
+                [$newJson, $carId, $expectedJson]
+            );
+        } else {
+            $this->db->query(
+                'UPDATE cars SET image = ?, owner_last_updated = ? WHERE id = ? AND image <=> ?',
+                [$newJson, $ownerLastUpdated, $carId, $expectedJson]
+            );
+        }
         if ($this->db->error()) {
             throw new CarDatabaseException('Image update query failed');
         }

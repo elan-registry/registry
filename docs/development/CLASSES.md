@@ -26,7 +26,7 @@ Use this table to choose the right class for your task:
 | Verification codes, verification timestamps, email-bounce tracking | CarVerificationManager | Business-logic layer over CarRepository; validates and throws rather than returning falsy on failure | `(new CarVerificationManager($repo))->generateVerificationCode()` |
 | Create database backups | BackupManager | SQL dump creation, verification, and retention cleanup | `$backup = new BackupManager(...)` |
 | Decode car images | CarImageProcessor | Decodes the `cars.image` JSON array into usable entries | `$processor->decodeAndProcessImages($car->image, ...)` |
-| Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification | `$car->removeImage($filename)` |
+| Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification. Pass `true` when the owner removes it, to reset `owner_last_updated` | `$car->removeImage($filename, $isOwnerInitiated)` |
 | Remove multiple images from a car | Car / CarImageProcessor | CAS-guarded bulk removal; returns `['updated' => bool, 'casConflict' => bool]` instead of throwing, for callers (e.g. `mvTmpImages()`'s move-failure cleanup) that already have their own error-reporting path | `$car->removeImages($filenames)` |
 | Query car models by year/series | CarModel | Reference data for model filtering | `$models = (new CarModel())->getAvailableInYear(1970)` |
 
@@ -668,7 +668,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `updateSoldDate(int $carId, string $soldDate): bool` - **Deprecated** (#2107), no
   production callers — `CarVerificationManager::markSold()` writes `solddate` via
   `updateCar()` directly to set `owner_last_updated` atomically alongside it
-- `updateImage(int $carId, string $newJson, string $expectedJson): bool` - Compare-and-swap update of the image JSON column; returns `false` on concurrent modification
+- `updateImage(int $carId, string $newJson, ?string $expectedJson, ?string $ownerLastUpdated = null): bool` -
+  Compare-and-swap update of the image JSON column; returns `false` on
+  concurrent modification. A non-null `$ownerLastUpdated` also writes that
+  column (see the method's PHPDoc and "What resets `owner_last_updated`" below)
 - `findByChassisKey(string $year, string $type, string $chassis): ?object` -
   Find a car by its composite chassis key (year, type, chassis); used by
   `chassis-availability.php` and `transfer-request.php` to check chassis
@@ -693,6 +696,37 @@ to provide a focused, testable data access layer wrapping the `cars`,
 
 - `CarDatabaseException` - Query failure
 - `CarNotFoundException` - `deleteCar()` when no row matched
+
+**What resets `owner_last_updated`** (#1929):
+
+`owner_last_updated` records the last *owner action*: something the car's
+owner does to their own car that shows the record is being kept current.
+`freshnessSql()`, `stalenessSql()` and `isFresh()` read it, so every
+freshness badge, the statistics vector and the verification-eligibility
+query depend on this list. "Owner" means the current user's ID equals the
+car's `user_id` (`app/api/cars/save.php`). An admin or editor acting on
+another owner's car is never an owner action.
+
+| Action | Code path | Resets | Test |
+| --- | --- | --- | --- |
+| Owner edit, including image upload and reorder | `Car::update($fields, true)` | Yes | `CarEditOwnerColumnRefreshTest::testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot`, `CarImageOwnerFreshnessTest::testOwnerEditThatChangesImagesResetsOwnerLastUpdated` |
+| Owner removes a photo | `Car::removeImage($file, true)` → `CarRepository::updateImage(..., $ownerLastUpdated)` | Yes | `CarImageOwnerFreshnessTest::testOwnerRemovalResetsOwnerLastUpdatedAndWritesOneHistoryRow` |
+| Verify link | `CarVerificationManager::markVerified()` | Yes | `CarVerificationTest::testMarkVerifiedResetsOwnerLastUpdatedWithOneHistoryRow` |
+| Sold link | `CarVerificationManager::markSold()` | Yes | `CarVerificationTest::testMarkSoldResetsOwnerLastUpdatedWithOneHistoryRow` |
+| Car creation | column default (`NOT NULL`, `CURRENT_TIMESTAMP`), set by migration `20260905172137` | Set, not reset | Not an owner action, so no reset test. `OwnerSyncOwnerFieldsToCarsTest::testNullOwnerLastUpdatedNoLongerReachableAfterSchemaChange` checks that the column is `NOT NULL` |
+| Opt-out link | `CarVerificationManager::setSuppressedForOwner()` | No: opting out confirms nothing | `CarVerificationManagerSuppressForOwnerTest::testOptOutDoesNotChangeOwnerLastUpdated` |
+| Owner email or profile change, synced to cars | `Owner::syncOwnerFieldsToCars()` | No: it would mark every car fresh | `OwnerSyncOwnerFieldsToCarsTest::testOwnerLastUpdatedUnchangedAndCarStaysVerificationEligible` |
+| Ownership transfer | `CarAdministrationService::transfer()` | No: a transfer is not a re-attestation (#1878) | `CarTransferTest::testTransferDoesNotChangeOwnerLastUpdated` |
+| Admin or editor edits another owner's car | `Car::update($fields, false)` | No | `CarEditOwnerColumnRefreshTest::testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` |
+| Admin or editor removes a photo on another owner's car | `Car::removeImage($file, false)` | No | `CarImageOwnerFreshnessTest::testNonOwnerRemovalDoesNotResetOwnerLastUpdated` |
+| Clean-up after a failed upload | `Car::removeImages()` | No | `CarImageOwnerFreshnessTest::testRemoveImagesCleanupDoesNotResetOwnerLastUpdated` |
+| Car merge | `CarAdministrationService::merge()` | No | `CarMergeTest::testMergeDoesNotChangeOwnerLastUpdatedOnSurvivingCar` |
+| Reconcile owner fields (maintenance script 26) | `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` | No | `ReconcileOwnerFieldsExecuteTest::testOwnerLastUpdatedNeverTouched` |
+
+A new action that resets the date must write `owner_last_updated` in the
+same UPDATE as its other columns (`Car::update()`'s `$isOwnerInitiated`, or
+`updateImage()`'s `$ownerLastUpdated`), so the change makes one `cars_hist`
+row. Add a row and a test here when you add one.
 
 **Used By**:
 

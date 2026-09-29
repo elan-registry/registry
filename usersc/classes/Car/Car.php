@@ -7,6 +7,7 @@ namespace ElanRegistry\Car;
 use Exception;
 use ElanRegistry\AppConstants;
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarCreationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
@@ -421,16 +422,20 @@ class Car
      * Remove an image from the car's image list
      *
      * @param string $filename Image filename to remove
+     * @param bool $isOwnerInitiated True when the car's owner removes the photo. See CarImageProcessor::removeImage().
      * @return bool True if image was removed successfully, false otherwise
-     * @throws Exception If validation fails or database operation fails
+     * @throws CarNotFoundException If the car does not exist
+     * @throws ImageProcessingException If the filename is empty or JSON encoding fails
+     * @throws CarConcurrentModificationException If the image list changed concurrently
+     * @throws CarDatabaseException If the database update query fails
      */
-    public function removeImage(string $filename): bool
+    public function removeImage(string $filename, bool $isOwnerInitiated = false): bool
     {
         if (!$this->exists()) {
             throw new CarNotFoundException('The requested car could not be found or may have already been removed.');
         }
 
-        $result = $this->getImageProcessor()->removeImage($this->_data, $filename);
+        $result = $this->getImageProcessor()->removeImage($this->_data, $filename, $isOwnerInitiated);
 
         if ($result) {
             // Clear cached images to force reload

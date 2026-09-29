@@ -119,13 +119,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         return (int) $result->first()->cnt;
     }
 
-    private function getOwnerLastUpdated(int $carId): string
-    {
-        $row = $this->db->query('SELECT owner_last_updated FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertNotNull($row, "car {$carId} must exist");
-        return (string) $row->owner_last_updated;
-    }
-
     /**
      * Reproduces the Execute step's owner loop and totals accumulation exactly
      * as the script does it.
