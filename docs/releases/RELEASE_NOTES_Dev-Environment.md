@@ -25,14 +25,14 @@ local check's result; MAMP is no longer needed.
   Playwright test no longer fails every September on "Sept".
 - [#2160](https://github.com/elan-registry/registry/issues/2160) — The blocking pre-push integration
   gate runs in about 20 seconds instead of five minutes, skips live-network tests, and catches gated
-  files that were renamed away.
+  files that were renamed away. Shipped through #2163 on `main`.
 - [#2161](https://github.com/elan-registry/registry/issues/2161) — Cleaned up `tests/integration/`,
   moving, merging or deleting low-signal tests and adding a `PassThroughDatabase` test double.
 - [#2166](https://github.com/elan-registry/registry/issues/2166) — Integration tests no longer leak
   `php -S` servers, and the next run cleans up a crashed run's leftover servers and Brevo
-  `override.php` stub.
+  `override.php` stub. Fixed in #2200.
 - [#2168](https://github.com/elan-registry/registry/issues/2168) — The integration suite no longer
-  calls live geocoding services during the pre-push gate.
+  calls live geocoding services during the pre-push gate. Shipped through #2163 on `main`.
 - [#2171](https://github.com/elan-registry/registry/issues/2171) — The pre-push gate runs the
   integration suite inside the Docker app container when the checkout uses Docker.
 - [#2172](https://github.com/elan-registry/registry/issues/2172) — `scripts/refresh-local-db.sh`
@@ -72,9 +72,26 @@ The next versioned release must list these and check them on test and prod.
   `getBaseUrl()` add a port only when the request uses a non-default port and has no
   X-Forwarded-Proto of `http` or `https`. Behind Cloudflare, canonical, `og:url`, sitemap and emailed links have no `:80` or `:443`.
 - [#2212](https://github.com/elan-registry/registry/pull/2212) — `.htaccess` blocks `/.git/` at the
-  origin with a 403.
+  origin with a 403 (#2066).
 - [#2121](https://github.com/elan-registry/registry/pull/2121) — `.htaccess` also denies
-  `docker-compose*.yml` files.
+  `docker-compose*.yml` files, and `index.php` no longer starts with two spaces before `<?php`, so
+  the home page sends no stray bytes before its headers.
+- [#2123](https://github.com/elan-registry/registry/pull/2123) and
+  [#2229](https://github.com/elan-registry/registry/pull/2229) — `.deployignore` keeps `docker/`
+  and `docker-compose.yml` out of the server checkout.
+- [#2130](https://github.com/elan-registry/registry/pull/2130) — Both Brevo cron clients call
+  `BrevoDevOverride::hostOverride()`. It changes the API host only when `US_ENVIRONMENT` is
+  `development` and `BREVO_API_HOST` is set, so test and prod `.env` must set neither.
+- [#2232](https://github.com/elan-registry/registry/pull/2232) — With no request (CLI or early boot)
+  and an empty `email.verify_url` setting, `getBaseUrl()` now returns `https://elanregistry.org`,
+  not an empty string.
+
+## Accepted risk
+
+- A request that bypasses Cloudflare and has a non-default port in its Host header gets that port
+  in canonical, sitemap and emailed links (#2228). The host itself cannot change, and traffic
+  through Cloudflare always carries X-Forwarded-Proto, so no port is added there. Accepted during
+  `/finish-milestone` Step 9.5.
 
 ## Tooling
 
@@ -85,11 +102,14 @@ The next versioned release must list these and check them on test and prod.
 - [#2170](https://github.com/elan-registry/registry/pull/2170) — MAMP-to-Docker migration guide.
 - [#2213](https://github.com/elan-registry/registry/pull/2213) — The Brevo webhook spike script
   registers webhooks with bearer auth.
+- [#2229](https://github.com/elan-registry/registry/pull/2229) — `npm run test:js-unit` runs the
+  Playwright helper unit tests, and CI runs it in the static-analysis workflow.
 
 ## Developer Actions
 
 - Set `DB_HOST=db` and `DB_PORT=3306` in `.env` and in `.env.test.local` (see `.env.example` and
-  `.env.test.local.sample`).
+  `.env.test.local.sample`). Phinx and the test and provisioning scripts read `DB_PORT`. The app
+  itself connects on MySQL's default port.
 - Start the stack (`docker compose up -d`) before a push that runs the pre-push integration gate.
   The gate blocks the push when the app container is not running.
 - In a second checkout, set its own host ports in its `.env` (`ENVIRONMENT.md`, "Docker Dev
