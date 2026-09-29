@@ -21,7 +21,7 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 
 ## Issues Resolved
 
-- WIP: [#1929](https://github.com/elan-registry/registry/issues/1929) — `CLASSES.md` lists which owner actions reset `owner_last_updated` (a car's freshness date), each with a covering test.
+- [#1929](https://github.com/elan-registry/registry/issues/1929) — `CLASSES.md` lists which owner actions reset `owner_last_updated` (a car's freshness date), each with a covering test.
 - WIP: [#2189](https://github.com/elan-registry/registry/issues/2189) — Failed-login log no longer stores the submitted username verbatim (a password was stored in plain text)
 - WIP: [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified status row (and admin-only Email on file row) on the car details page
 - WIP: [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page, cars list, and car details page
