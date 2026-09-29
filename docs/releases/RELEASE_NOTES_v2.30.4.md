@@ -30,7 +30,7 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - WIP: [#1894](https://github.com/elan-registry/registry/issues/1894) — Verification email photo thumbnail at 300px with descriptive alt text, and a highlighted fallback when a car has no photo (includes the remaining gap from #1892)
 - WIP: [#2147](https://github.com/elan-registry/registry/issues/2147) — Stop displaying Brevo's rewritten tracking URL in the four auth email templates
 - WIP: [#2150](https://github.com/elan-registry/registry/issues/2150) — Close three test-coverage gaps in the verification send pipeline
-- WIP: [#2250](https://github.com/elan-registry/registry/issues/2250) — `render-deploy-sheet.sh` no longer reports false migration, trigger and new-page conditions
+- WIP: [#2250](https://github.com/elan-registry/registry/issues/2250) — `render-deploy-sheet.sh` no longer reports false migration, trigger, new-page and admin-script conditions. It counts only added files for these conditions. It diffs against `origin/main` after a fetch and prints the base it used. It reports an edited migration as `migration-modified: CHECK` (developer workflow only, no site change)
 
 ## Carried from the Dev Environment milestone
 
