@@ -217,6 +217,53 @@ Remove the "in progress" label if present:
 gh issue edit $ARGUMENTS --remove-label "in progress"
 ```
 
+### Step 6.5: Tick cleanup ledger items and report open ones
+
+The cleanup ledger is the open issue with the `cleanup-ledger` label (see
+`/found`, "Ledger"). Do this step before Step 8, because Step 8 deletes the
+plan file.
+
+1. Find the ledger issue and the files that the merged PR changed:
+
+   ```bash
+   LEDGER=$(gh issue list --repo elan-registry/registry --label cleanup-ledger \
+     --state open --json number --jq '.[0].number')
+   gh pr view <pr-number> --repo elan-registry/registry --json files \
+     --jq '.files[].path'
+   ```
+
+   If `LEDGER` is empty, skip this step and write "Ledger: none open" in the
+   report.
+
+2. Get the ledger comments that have a heading for one of those files:
+
+   ```bash
+   gh api "repos/elan-registry/registry/issues/$LEDGER/comments" --paginate \
+     --jq '.[] | {id, body}'
+   ```
+
+   A file heading has the form ``### `path/to/file` ``. The ledger issue body
+   also has file groups. Treat the body as one more source, with the same
+   heading form.
+
+3. Find the plan file with `scripts/check-plan-state.sh $ARGUMENTS`. Read its
+   **Ledger items** section. For each item there that the PR did, change
+   `- [ ]` to `- [x]` on the matching line. Change only those lines. Keep
+   all other text the same. Write the changed body back:
+
+   ```bash
+   gh api -X PATCH "repos/elan-registry/registry/issues/comments/<comment-id>" \
+     -f body="$NEW_BODY"
+   # For the issue body:
+   gh issue edit "$LEDGER" --repo elan-registry/registry --body-file <file>
+   ```
+
+   If the plan has no **Ledger items** section, or no plan file exists, tick
+   nothing.
+
+4. Count the items that are still `- [ ]` under a heading for a file that the
+   PR changed. Do not block on them. Put them in the report.
+
 ### Step 7: Return to the milestone branch
 
 Do this **before** any local commit below (Step 8) — `gh pr merge` in Step 5
@@ -315,6 +362,9 @@ Output a summary:
 - Documentation — `composer check:docs` result, and any doc updated in this PR
   (or "no doc impact"). Note any **wiki** page needing a separate
   `/publish-wiki` run.
+- Ledger (from Step 6.5) — "ticked N items on #LEDGER" and, when some
+  remain, "N open items in files this PR edited:" followed by one line for
+  each file. Otherwise "no ledger items for these files".
 - Branch `<issue-branch>` — deleted
 - Release notes updated at `docs/releases/RELEASE_NOTES_<version>.md`
 - Now on `<milestone-branch>`

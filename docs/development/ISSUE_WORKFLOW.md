@@ -238,12 +238,22 @@ before merge.
 
 ### Discoveries mid-issue
 
-Anything found while working an issue becomes a **new issue** labelled
+A **defect** found while working an issue — anything that gives a user or an
+operator a wrong result — becomes a **new issue** labelled
 `signal:discovered`, with the context that made it visible. It is fixed inline
 **only** if the current issue's acceptance criteria cannot be met without it.
 Otherwise it queues for the next planning session and passes the same gate as
 everything else. No exceptions — this is the second-biggest source of scope
 growth after edge cases.
+
+A **cleanup** find — dead code, duplication, naming, comments, type
+annotations, or anything else with no change in behavior — does not get its
+own issue. `/found` adds it to the one open issue labelled `cleanup-ledger`,
+under a heading for its file. `/start-issue` copies a file's ledger items into
+a plan when that plan already edits the file, so the plan gate approves them.
+After the merge, `/finish-issue` ticks the done items and reports any open
+items left in the files the PR edited.
+A cleanup find with no named benefit is dropped, not recorded.
 
 ### Test tier rules
 

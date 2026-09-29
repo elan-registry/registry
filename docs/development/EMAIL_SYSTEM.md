@@ -725,6 +725,19 @@ real Gmail-hosted inbox. Result: **both links were rewritten** to Brevo's click-
 this account/plan. Confirms the exclusion is not achievable via this route either; do not attempt it again without a
 new reason to expect different behavior (e.g. a plan/setting change on Brevo's side).
 
+**If per-message tracking-off becomes a hard requirement.** Research from #2151 (prices as of 2026-09-23, volume
+about 150–250 emails a month). Revisit only if a security reviewer objects to #2147's plain-text links, Brevo
+becomes unsuitable for another reason, or a feature needs clickable security-sensitive links.
+
+| Provider | Tracking-off | Cost at our volume | Migration size |
+| --- | --- | --- | --- |
+| Postmark | `TrackLinks: "None"` per message | About $15/month (no free tier) | Small. Flat JSON API and flat webhooks like Brevo's. `Metadata` replaces Brevo tags. |
+| Amazon SES | Off by default | About $0.03/month | Large. AWS SDK dependency, SNS for events, sandbox exit, rewrite of `BrevoSuppressionSyncJob` and `BrevoEventReconciliationJob`, new DKIM and SPF records. |
+| SendGrid, Mailgun | Per message | No useful free tier | Ruled out. No cost advantage over Postmark or SES. |
+
+A switch touches `usersc/plugins/sendinblue/functions.php` (or its #2186 replacement), `BrevoWebhookEventProcessor`,
+`BrevoSuppressionSyncJob` and `BrevoEventReconciliationJob`.
+
 ---
 
 ## Verifying Email Delivery
