@@ -3,7 +3,7 @@
 Guidance for Claude Code in this repository. Topic rules that apply only to
 some files are in `.claude/rules/`. Claude Code loads each one when it reads a
 matching file: upstream UserSpice files, frontend, car images, pages and
-cron, Playwright tests, PHPStan, and `docs/plans/`.
+cron, Playwright tests, PHPStan, CI workflows, and `docs/plans/`.
 
 ## Documentation Reference
 
