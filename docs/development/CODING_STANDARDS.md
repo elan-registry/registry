@@ -1,6 +1,6 @@
 # Coding Standards for Elan Registry
 
-**Updated:** September 7, 2025 | **Target:** PHP 8.2+
+**Updated:** September 27, 2026 | **Runtime:** PHP 8.4 | **Minimum:** PHP 8.2.29
 
 ---
 
@@ -42,7 +42,9 @@ $adminId = currentUserId();            // throws RuntimeException if not logged 
 
 Defined in `usersc/includes/custom_functions.php`. Use `dbInt()` for PDO result objects; use `(int)` for simple scalars.
 
-**Why**: PDO returns INT columns as strings on PHP 8.2/test but as int on PHP 8.4/dev. With strict types, `string ≠ int` — always cast explicitly.
+PDO can return integer columns as strings or integers, depending on the driver
+and fetch configuration. Convert values at the database boundary. Use `dbInt()`
+for database result values and `(int)` for simple scalar values.
 
 **See also:** `/docs/development/STRICT_TYPE_HANDLING.md` for comprehensive strategy.
 
@@ -258,5 +260,5 @@ can correctly carry a `bug` label, and a `fix:`-preambled issue rarely needs
 ## References
 
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) — ApiResponse, exception hierarchy, ElanRegistryAPI
-- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — 140+ standardized log category constants
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — standardized log category constants
 - [STRICT_TYPE_HANDLING.md](STRICT_TYPE_HANDLING.md) — DB value casting strategy

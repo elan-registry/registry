@@ -33,6 +33,8 @@ use ElanRegistry\DatabaseInterface;
  * returns the instance rather than a separate result object, and `query()` returns
  * the instance for chaining without ever throwing.
  *
+ * For integration tests that need a real connection, see PassThroughDatabase.
+ *
  * @package Tests\Support
  * @since v2.29.1
  * @see https://github.com/elan-registry/registry/issues/1585

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Detects unresolved Blocking (and optionally Important) findings in a PR's
-# posted review comments, using the exact same heading regex and
-# recap-exclusion logic as claude-code-review.yml's own merge gate
-# (both pr-to-milestone-review and milestone-review jobs) — so a command-line
-# check and CI's gate can never silently disagree about the same comment.
+# posted review comments. CI's gate in claude-code-review.yml (both the
+# pr-to-milestone-review and milestone-review jobs) uses the same
+# HEADING_PATTERN (the Blocking part) and EXCLUSION_PATTERN, and the same
+# per-grep `|| [ $? -eq 1 ]` guard, so a command-line check and CI's gate can
+# never silently disagree about the same comment.
+# tests/hooks/test-check-blocking-findings.sh (Part C) fails if the workflow
+# and this script drift apart, and it also runs the workflow's gate block
+# itself to check the logic, not just the patterns.
 #
 # Why not just eyeball the raw comment bodies: a plain read can mistake a
 # recap heading ("### Blocking finding from the previous round: resolved")
@@ -33,7 +37,8 @@
 #   0 = clean (no unresolved findings)
 #   1 = at least one unresolved Blocking (or Important, if requested) finding
 #   2 = can't verify — no review comment found, the gh API call itself
-#       failed (auth/network/rate-limit/404), or the arguments were invalid.
+#       failed (auth/network/rate-limit/404), a grep failed while it scanned
+#       the review, or the arguments were invalid.
 #       Never treat exit 2 as "clean" — it means the check did not run.
 
 set -euo pipefail
@@ -97,9 +102,21 @@ fi
 
 EXCLUSION_PATTERN='(previous|prior|earlier)[[:space:]]+round|:[[:space:]]*resolved[[:space:]]*$|\(resolved\)'
 
-MATCHES=$(printf '%s\n' "$REVIEW_BODY" \
-  | grep -E "^(${HEADING_PATTERN})" \
-  | { grep -viE "$EXCLUSION_PATTERN" || [ $? -eq 1 ]; })
+# Both greps need the `|| [ $? -eq 1 ]` guard, because either one can
+# legitimately match nothing and exit 1. The first does so on a clean review
+# with no Blocking heading at all. The second does so when every heading it
+# receives is an excluded recap. Without the guard, `pipefail` fails the
+# assignment and `set -e` stops the script with exit 1 ("finding found")
+# before it prints anything (#2222).
+# The guard accepts only exit 1 (no match). A real grep error (exit 2) makes
+# the guard fail, and the `if !` below reports it as exit 2 ("cannot
+# verify"), never as a finding and never as clean.
+if ! MATCHES=$(printf '%s\n' "$REVIEW_BODY" \
+  | { grep -E "^(${HEADING_PATTERN})" || [ $? -eq 1 ]; } \
+  | { grep -viE "$EXCLUSION_PATTERN" || [ $? -eq 1 ]; }); then
+  echo "grep failed while scanning the review on PR #${PR_NUM} — cannot verify Blocking/Important status (NOT evidence of a clean PR)." >&2
+  exit 2
+fi
 
 if [ -n "$MATCHES" ]; then
   echo "Unresolved finding heading(s):"

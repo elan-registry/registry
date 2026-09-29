@@ -1,0 +1,3 @@
+# Deny all HTTP access to this directory.
+# Local-dev container build files must not be web accessible.
+Require all denied

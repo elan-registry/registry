@@ -1,6 +1,6 @@
 ---
 description: Open the milestone PR, verify CI review posted, and confirm CI is fully green
-model: claude-fable-5-1
+model: sonnet
 ---
 
 # Review Milestone
@@ -29,9 +29,9 @@ TaskCreate:
 1. Locate the milestone branch and re-verify it's review-ready
 2. Re-derive merged-PR list, diff, and known-broken-test status
 3. Create the PR targeting main
-4. Verify CI milestone review posted a comment; re-trigger if missing
-5. Fix findings and confirm CI is fully green
-6. Output summary
+4. Verify CI milestone review posted with zero unresolved findings; recover
+   and fix as needed; confirm CI is fully green
+5. Output summary
 
 Set each task to `in_progress` when you begin it and `completed` on success.
 
@@ -52,11 +52,13 @@ repo state rather than assume the handoff was clean (same principle
 - Release notes have no remaining `WIP:` markers:
 
   ```bash
-  grep -n "WIP:" docs/releases/RELEASE_NOTES_$ARGUMENTS.md
+  scripts/check-wip-markers.sh $ARGUMENTS
   ```
 
-  If any remain, stop. Tell the user `/finish-milestone` Step 6 hasn't
-  actually finished — re-run `/finish-milestone $ARGUMENTS` before continuing.
+  Exit 1 means one or more markers remain (see stdout). Stop. Tell the user
+  `/finish-milestone` Step 6 hasn't actually finished — re-run
+  `/finish-milestone $ARGUMENTS` before continuing. Exit 2 means the
+  release notes file is missing entirely — same stop, same instruction.
 
 - The deploy sheet exists:
 
@@ -102,18 +104,20 @@ git diff --stat main..milestone/$ARGUMENTS
 Re-check for any remaining known-broken test tags:
 
 ```bash
-grep -rn "Group('known-broken')" tests/ || echo "None found"
+scripts/check-known-broken-tests.sh
 ```
 
-**If none found**, proceed to Step 3.
+**If exit 0 (none found)**, proceed to Step 3.
 
-**If any are found**, this is either a tag `/finish-milestone` Step 3.5
-already surfaced and the user accepted, or one that appeared since. Don't
-assume which — re-run the same decision live: present the list (test name,
-file, cited issue, that issue's current state) and ask the user to (a)
-resolve first, (b) proceed with this explicitly accepted (record it for
-Step 3's PR body), or (c) stop here. Do not proceed without an explicit
-answer.
+**If exit 1 or 2 (one or more found — see stdout for file, line, cited
+issue, and that issue's current state)**, this is either a tag
+`/finish-milestone` Step 3.5 already surfaced and the user accepted, or one
+that appeared since. Don't assume which — re-run the same decision live:
+present the list and ask the user to (a) resolve first, (b) proceed with
+this explicitly accepted (record it for Step 3's PR body), or (c) stop
+here. Do not proceed without an explicit answer. On exit 2, a row reading
+`(lookup-failed)` means the issue's state couldn't be confirmed — resolve
+that before treating the row as accepted or not.
 
 ### Step 3: Create the PR targeting main
 
@@ -171,166 +175,55 @@ main triggers auto-closure.
 
 Fill in actual data from Step 2.
 
-### Step 4: Verify CI milestone review posted a comment (backstop + audit trail)
+### Step 4: Verify CI milestone review posted, with zero unresolved findings
 
-Once the PR is open, the `claude-code-review.yml` workflow is *expected* to
-run the same milestone-level analysis (Fable) against `main` that
-`/finish-milestone` Step 9.8 already ran locally, and post the result as a
-visible PR comment. **Do not assume this happened — verify it.**
-
-PR-open events are not guaranteed to trigger Actions runs at all: GitHub's
-abuse/rate throttle can silently suppress webhook-triggered runs (this
-happened on PR #1718 — see #1724). And even when a run *is* triggered, a job
-`conclusion: success` does not prove a review was posted: the
-`claude-code-action@v1` step can complete without ever calling `gh pr
-comment` — most commonly because the action's own workflow-file-must-match-
-default-branch validation silently skips execution on PRs that modify
-`claude-code-review.yml` itself (documented in that file's header comment
-block — this is intentional security behavior, not a bug, but it still means
-no review posted). A "successful" job is not evidence of a posted review;
-only the comment itself is.
-
-**Verify by checking for the comment, not the job status:**
+`claude-code-review.yml` is *expected* to run the same milestone-level
+analysis `/finish-milestone` Step 9.8 already ran locally, against `main`,
+and post it as a PR comment — but a job `conclusion: success` is never
+proof that happened (webhook throttle, the action's own workflow-file-match
+guard, or turn exhaustion can each complete a job while posting nothing —
+see #1724). Verify the comment itself, and its content, in one call:
 
 ```bash
-scripts/poll-review-posted.sh <pr-number> 30 300
+scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=label \
+  --include-important --check-skip-tag
 ```
 
-30s interval, 5min timeout (Fable milestone reviews run longer than the
-lightweight Sonnet per-push reviews). Same underlying `check-review-posted.sh`
-check `/address-pr-comments`, `/finish-issue`, and `/execute-plan` use — see
-its header for why this, not job status, is the ground truth, and note it
-also mirrors (but can't literally share code with) the "Strengths"-heading
-check inlined in `claude-code-review.yml`'s own gate steps.
+(30s/5min: Fable milestone reviews run longer than per-push Sonnet reviews.)
 
-**Exit 0** — a matching comment appeared, the review ran successfully. Note
-this in the Step 6 summary and move on.
+- **Exit 0** — comment confirmed, zero unresolved Blocking/Important
+  findings. Note "posted normally" in the Step 5 summary and proceed.
+- **Exit 1** — could not verify (`gh` auth/network/rate-limit). Report the
+  error and resolve it before re-running; do not treat as "no review."
+- **Exit 2** — comment confirmed, but an unresolved Blocking or Important
+  finding remains (see stdout for the heading(s)). This is the case that
+  burned v2.29.4: a review posted, 3 Important findings went unfixed, and
+  they surfaced later mid-`/release-milestone`, forcing a second review
+  round there — strictly worse than fixing them here. Fix each finding as a
+  commit on the milestone branch, push (re-triggers `pr-to-milestone-review`
+  or needs a fresh `deep-review` label), and re-run this script until it
+  exits 0. If a finding needs user judgment or access only they have (e.g. a
+  prod-host check), use AskUserQuestion — "defer to a tracked follow-up" is
+  acceptable, but must be an explicit recorded choice, never a silent skip.
+- **Exit 3** — PR title carries `[skip-review]`; no comment is the correct,
+  by-design outcome. Report "review intentionally skipped per title tag"
+  and proceed to Step 5.
+- **Exit 4** — no comment even after the script's one recovery attempt (or
+  recovery couldn't apply — see its stderr). Report to the user; do not
+  proceed to Step 5 without an explicit reason recovery doesn't apply here.
 
-**Exit 2** — the script itself couldn't verify (a `gh` call failed: auth,
-network, or rate-limit). This is not the same as "no review posted" —
-report the actual error to the user and resolve that before re-polling.
-Do not proceed to the recovery steps below on an exit 2; they're for a
-genuine "nothing showed up" outcome, not a query failure.
+Also confirm all CI checks are green at this point, not just the review:
+`gh pr checks <pr-number>` (skipped-by-design checks are fine; an actual
+failure or pending required check is not).
 
-**Exit 1 (genuinely no matching comment after the poll window)**, first check
-whether the PR opted out of review — `milestone-review` deliberately skips on
-titles containing `[skip-review]` (see `claude-code-review.yml`'s `if:`
-condition, which applies even to the label-triggered event):
+**The bar for calling this command complete:** the milestone branch, as it
+sits on `main`'s target commit right now, needs zero further code changes
+before `/release-milestone` runs — that command merges, tags, and publishes;
+it is not a place to discover or fix problems. If a fix here changed deploy
+inputs (new migration, admin script, env var), tell the user to re-run
+`/finish-milestone` Step 6.6 to refresh the deploy sheet first.
 
-```bash
-gh pr view "$PR_NUM" --json title -q .title --repo elan-registry/registry
-```
-
-If the title contains `[skip-review]`, no comment is the **correct**,
-by-design outcome, not a failure — report "review intentionally skipped per
-title tag" and proceed to Step 6. (Applying the `deep-review` label in this
-case is harmless — the job's `if:` still blocks on the title tag even for
-the labeled event, so it would silently no-op rather than force a review —
-but doing so anyway just wastes a poll cycle for no benefit; skip straight to
-reporting instead.)
-
-If the title carries neither tag, determine which failure mode this is
-before recovering:
-
-```bash
-HEAD_SHA=$(gh pr view "$PR_NUM" --json headRefOid -q .headRefOid --repo elan-registry/registry)
-gh run list --workflow=claude-code-review.yml --repo elan-registry/registry \
-  --json databaseId,headSha,status,conclusion,event \
-  --jq --arg sha "$HEAD_SHA" '[.[] | select(.headSha == $sha)]'
-```
-
-- **No matching run at all** — never triggered. This is the #1724 throttle
-  case. Recover:
-
-  ```bash
-  gh pr edit "$PR_NUM" --add-label "deep-review" --repo elan-registry/registry
-  ```
-
-  Then re-poll for the comment the same way as above.
-
-- **A run exists but produced no comment** — check whether this PR's diff
-  touches `.github/workflows/claude-code-review.yml`:
-
-  ```bash
-  gh pr diff "$PR_NUM" --name-only --repo elan-registry/registry | grep -Fx '.github/workflows/claude-code-review.yml'
-  ```
-
-  If it does, this is the documented self-referential workflow-file skip —
-  the `deep-review` label will **not** fix it; the workflow file only takes
-  effect once merged to `main`. Report this to the user distinctly (do not
-  silently re-trigger). If the diff does not touch that file, treat it the
-  same as "never triggered" above (apply the `deep-review` label, re-poll)
-  since `claude-code-review.yml` already has a fallback-post step for
-  turn-exhaustion (it posts Claude's last result text directly — see the
-  workflow's own comment referencing PR #1529), so a run that completed with
-  zero comment and an untouched workflow file more likely means that
-  fallback step itself failed to post (e.g. a `gh pr comment` / API error,
-  or an empty execution file) than plain turn-exhaustion. Either way the
-  recovery action is the same — re-trigger and re-poll.
-
-**Never report this step as complete without a confirmed comment or an
-explicit, reported reason recovery isn't applicable.** This verify-then-
-recover loop replaces the previous assumption that PR-open automatically
-produces a review — that assumption is exactly what failed on PR #1718.
-
-### Step 5: Fix findings and confirm CI is fully green before handoff
-
-Finding a comment exists (Step 4) is not the same as the milestone being
-ready to release. Read the comment's actual content and check for any
-`Blocking` or `Important` heading — not just whether the comment exists.
-
-**This step exists because of a real incident**: on v2.29.4, the prior
-verify step confirmed a review posted and stopped there. The posted review
-had 3 `Important` findings (a two-push deploy-window gap, an unverified prod
-host, and `node_modules` persisting in the deployed docroot). None were fixed
-before handoff — they were only discovered and fixed later, *during*
-`/release-milestone`, forcing a second review round and a live
-merge-in-progress fix cycle. `/release-milestone` is the point of no return;
-finding and fixing problems there is strictly worse than finding them here.
-
-**Procedure:**
-
-1. Check for unresolved findings using the same hardened detection CI's own
-   merge gate uses (not a raw eyeball over comment text — a recap of an
-   already-resolved finding must not be mistaken for a live one, #1843):
-
-   ```bash
-   scripts/check-blocking-findings.sh <pr-number> --include-important
-   ```
-
-   Exit 0 = clean. Exit 1 = an unresolved finding exists (see its output for
-   which heading). Exit 2 = no posted review comment found — treat as
-   "can't verify," not "clean."
-2. **If any Blocking or Important finding exists:** fix it the same way
-   `/finish-milestone` Step 9.8 requires — apply the fix as a commit on the
-   milestone branch, push it (this updates the still-open PR), then
-   **re-verify CI is green and re-check for a fresh review comment** (a push
-   may trigger `pr-to-milestone-review`, or you may need to re-apply the
-   `deep-review` label to get a fresh `milestone-review` pass against the
-   fixed diff). Repeat until a review comment shows zero unresolved
-   Blocking/Important items.
-3. **Also verify all CI checks are green at this point** — not just that a
-   review comment exists. `gh pr checks <pr-number>` must show every check
-   passed (skipped checks that are correctly gated off, per this workflow's
-   own design, are fine — an actual failure or a still-pending required
-   check is not).
-4. Do not proceed to Step 6 until both (2) and (3) are satisfied. If a fix
-   turns out to require user input or a judgment call (e.g. the prod-host
-   verification advisory from the incident above, which needs live SSH
-   access only the user has), present it via AskUserQuestion and get an
-   explicit decision — "defer to a tracked follow-up" is an acceptable
-   resolution, but it must be an explicit choice recorded in the PR, not a
-   silent skip.
-
-**The bar for calling `/review-milestone` complete:** the milestone branch,
-as it exists on `main`'s target commit right this moment, should need zero
-further code changes before `/release-milestone` runs. `/release-milestone`
-merges, tags, and publishes — it is not a place to discover or fix problems.
-If a fix here changed the deploy inputs (a new migration, a new admin
-script, a new env var), tell the user to re-run `/finish-milestone`'s Step
-6.6 to refresh the deploy sheet before releasing.
-
-### Step 6: Output summary
+### Step 5: Output summary
 
 - The PR number and URL
 - List of merged issue PRs included

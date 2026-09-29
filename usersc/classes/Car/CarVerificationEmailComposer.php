@@ -12,7 +12,7 @@ use ElanRegistry\EmailTemplate;
  * Composes the subject line and full branded HTML body for the verification
  * email an owner receives at most twice per twelve months, asking them to
  * confirm their car record is still accurate. The rendered layout matches the
- * approved mockup (docs/plans/car-owner-verification/images/exhibit-a-email.png):
+ * approved mockup (docs/plans/features/car-owner-verification/images/exhibit-a-email.png):
  * greeting, Verify/Sold buttons, Owner Information, Car Information (with the
  * conditional chassis-override badge and highlighted rows for any blank
  * optional field — Color, Variant, Purchase Date, Website), the conditional

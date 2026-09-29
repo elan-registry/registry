@@ -87,9 +87,22 @@ quality checks. Run once per developer after cloning the repo.
    - **At most once per push.** The suite tests the working tree (`HEAD`),
      so a multi-branch push reuses one result, and pushing a branch that
      isn't `HEAD` prints a warning.
+   - **Where it runs (#2171, #2245).** In this checkout's Docker `app`
+     container by default, since Docker is the only supported dev
+     environment (MAMP retired, #2180) and `.env.test.local` has
+     `DB_HOST=db`, which resolves only on the Compose network:
+     `docker compose exec -T -u www-data app composer test:integration`. The
+     host is a fallback, used only when `.env.test.local` does not point at
+     the Docker `db` service. If the stack isn't running, the push is
+     blocked with `docker compose up -d` as the fix; it never falls back to
+     the host or skips. `INTEGRATION_GATE_RUNNER=host|docker` overrides the
+     detection. The detection and run logic (`_integration_runner`,
+     `_run_integration_suite`) live in `scripts/lib/integration-runner.sh`,
+     shared with `scripts/run-verification-suite.sh` below.
    - **Cache.** `$(git rev-parse --git-path integration-passed)` holds a
-     single key — tree plus test database name — for the most recent pass,
-     so it only skips a re-push of an identical tree. It is written only when
+     single key — tree, test database name and runner (host or Docker) — for
+     the most recent pass, so it only skips a re-push of an identical tree to
+     the same environment. It is written only when
      the pushed commit is `HEAD` and `git status --porcelain` is empty (no
      modified or untracked, non-ignored files). Force a
      rerun with `rm "$(git rev-parse --git-path integration-passed)"`.
@@ -147,6 +160,14 @@ Refreshes the local development database from production: fetches a dump over
 SSH, upserts the registry tables, masks every email address, and syncs car
 images into a persistent local cache.
 
+**Requirements:** this checkout's Docker stack must be running
+(`docker compose up -d --wait`). The target env file must set `DB_HOST=db`. The
+script runs `mysql` and `mysqldump` inside the `db` container, using that
+container's own credentials, so no local MySQL client is needed. The env file
+supplies only `DB_NAME` and `DB_HOST`. `--db NAME` must match `elanregi_*`, the
+container user's grant scope, and `DB_HOST` is still checked.
+`--images-only` needs no Docker.
+
 ```bash
 # Full refresh: fetch a fresh production dump, import, sync images
 ./scripts/refresh-local-db.sh --fetch
@@ -163,6 +184,15 @@ images into a persistent local cache.
 # Rehearse against the scratch test schema before touching your dev DB
 ./scripts/refresh-local-db.sh --fetch --env-file .env.test.local
 ```
+
+A rehearsal fills the integration-test schema (the `DB_NAME` in
+`.env.test.local`, for example `elanregi_dev_test`) with registry data. Each
+run also adds `cars_hist` rows through the `cars` triggers. The integration
+suite then fails (it runs out of memory in `BackupCriticalTablesTest`).
+Afterwards, restore the backup that the rehearsal's first run made
+(`db-backups/<that DB_NAME>_<timestamp>.sql.gz`), with the restore command
+below. It is the only backup taken before any import. A later run backs up
+the schema that an earlier run already filled.
 
 Default dump path: `~/Downloads/unibrain_registry.sql`.
 
@@ -184,10 +214,16 @@ dev config, holds SMTP credentials), and `phinxlog`/`fix_script_runs`/`updates`/
 preserving user id 1. The masking `UPDATE`s run inside the same transaction as
 the inserts, so real addresses are never the committed state. A verification
 pass then re-checks all five email columns; if any unmasked address survives,
-the script exits non-zero and leaves the database untouched for inspection
-(restore manually from `db-backups/`). City and IP columns are intentionally
-left intact — they are coarse-grained and needed to exercise location and map
-features.
+the script exits non-zero. The import has already run, and it is not rolled
+back, so the rows stay for inspection.
+Restore manually from `db-backups/`:
+
+```bash
+gunzip < <checkout>/db-backups/<file>.sql.gz | docker compose --project-directory <checkout> exec -T db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" <DB_NAME>'
+```
+
+City and IP columns are intentionally left intact — they are coarse-grained and
+needed to exercise location and map features.
 
 **Safety:** the local database is dumped to `db-backups/` before any import.
 `--env-file` and `--db` retarget the import, so a refresh can be rehearsed
@@ -343,10 +379,10 @@ declarations, missing PHPDoc on public methods, SQL string concatenation.
 ```bash
 # Confirm .env.test.local exists and points at a reachable, provisioned schema
 cat .env.test.local
-./scripts/provision-schema.sh   # (re)builds the schema if missing/stale
+docker compose exec -u www-data app scripts/provision-schema.sh   # (re)builds the schema if missing/stale
 
-# Reproduce the failure directly
-composer test:integration
+# Reproduce the failure directly, in the app container
+docker compose exec -u www-data app composer test:integration
 ```
 
 See `docs/development/ENVIRONMENT.md` — "Test Database Isolation" for setup.

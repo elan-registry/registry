@@ -35,7 +35,7 @@ module.exports = defineConfig({
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     /* Trailing slash is required — goto('') resolves to baseURL; without it the path collapses. */
-    /* If PLAYWRIGHT_BASE_URL is set, it must also include a trailing slash for the same reason. */
+    /* If PLAYWRIGHT_BASE_URL is set, resolve-base-url.js adds a trailing slash if it is missing. */
     baseURL: require('./tests/playwright/base-url.js'),
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */

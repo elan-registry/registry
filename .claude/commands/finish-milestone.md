@@ -20,8 +20,7 @@ it opens the PR, verifies CI review posted, and confirms CI is green.
 
 ### Step 0: Initialize TaskList
 
-Before any other action, create one tracking task per workflow step using
-TaskCreate. Suggested task subjects:
+Before any other action, create one TaskCreate task per step below:
 
 1. Verify the milestone branch exists
 2. Check for open issues still in the milestone
@@ -50,7 +49,8 @@ Set each task to `in_progress` when you begin it and `completed` on success.
 
 ### Step 2: Check for open issues still in the milestone
 
-Use the direct API (`gh issue list --milestone` can silently return empty results — the milestone number is already recorded from Step 1):
+Use the direct API, not `gh issue list --milestone` (see CLAUDE.md's `gh` CLI
+gotchas). The milestone number is already recorded from Step 1:
 
 ```bash
 gh api "repos/elan-registry/registry/issues?milestone=<MILESTONE_NUM>&state=open&per_page=20" \
@@ -75,44 +75,48 @@ Test Runs" section). This tag exists so a pre-existing, unrelated, already-track
 blocks landing an otherwise-unrelated PR — but it's meant to be temporary. A milestone should
 not finish with tests still silently excluded from its own "all CI gates pass" bar.
 
-Search for any remaining tags:
+Run the script:
 
 ```bash
-grep -rn "Group('known-broken')" tests/ || echo "None found"
+scripts/check-known-broken-tests.sh
 ```
 
-**If none found**, proceed to Step 4.
+It prints one tab-separated line per remaining tag (file, line, cited issue
+number, that issue's current state) and looks up each issue's state itself.
 
-**If any are found:**
+- **Exit 0** — no tags found. Proceed to Step 4.
+- **Exit 1** — one or more tags found (see stdout for the list). Continue
+  below.
+- **Exit 2** — one or more tags found, but a `gh issue view` lookup failed
+  for at least one (its state column reads `(lookup-failed)`, not
+  `(unknown)` — do not treat that as "closed"). Retry the lookup before
+  presenting the list.
 
-1. For each match, extract the cited issue number from the inline comment (e.g.
-   `// #1470 — fails on Linux CI, root cause under investigation`).
-2. Check whether each cited issue is still open:
+**If any tags were found (exit 1 or 2):**
 
-   ```bash
-   gh issue view <NUMBER> --repo elan-registry/registry --json state,title
-   ```
-
-3. Present the full list to the user — test name, file, cited issue, and that issue's current
-   state (open/closed) — and **ask for explicit confirmation** before proceeding:
+1. Present the full list to the user — test name, file, cited issue, and
+   that issue's current state — and **ask for explicit confirmation**
+   before proceeding:
 
    > "N test(s) are still excluded from CI via `#[Group('known-broken')]`, tracked by
    > [issue list]. Finishing this milestone means it ships without full test coverage on
    > these paths. Do you want to (a) resolve them first, (b) proceed anyway with this
    > explicitly accepted, or (c) stop here?"
 
-4. **Do not proceed past this step without an explicit answer.** If the user chooses to
+2. **Do not proceed past this step without an explicit answer.** If the user chooses to
    proceed anyway, record that decision — `/review-milestone` includes it in the
    milestone PR body under a
    "Known Test Exclusions" note, so it's auditable later — matching Step 9.8's pattern for
    explicitly-accepted risk.
-5. If a cited issue is already closed but the tag is still present in code, that's likely a
-   forgotten cleanup step, not an accepted risk — flag this distinctly and recommend removing
-   the tag now (quick fix) rather than treating it as a risk-acceptance decision.
+3. If a cited issue's state comes back closed but the tag is still present in code, that's
+   likely a forgotten cleanup step, not an accepted risk — flag this distinctly and recommend
+   removing the tag now (quick fix) rather than treating it as a risk-acceptance decision.
+4. A row with `(none)` in the issue column means the tag has no issue number in its
+   inline comment at all — flag this distinctly too; it can't be risk-assessed without one.
 
 ### Step 3.6: Check for leftover plan files
 
-Each issue's `/finish-issue` run deletes its `docs/plans/issue-NNN-*.md` file
+Each issue's `/finish-issue` run deletes its `docs/plans/issues/issue-NNN-*.md` file
 as part of closing out that issue (see `/finish-issue`'s Step 8). A file
 still present here means that step was skipped — most likely an issue whose
 PR was merged some other way (bypassing `/finish-issue`), or an interrupted
@@ -123,7 +127,7 @@ accumulate silently on disk, and nothing else is positioned to catch them.
 List them directly:
 
 ```bash
-ls docs/plans/issue-*.md 2>/dev/null
+ls docs/plans/issues/issue-*.md docs/plans/issue-*.md 2>/dev/null
 ```
 
 **If any files are found:** present them to the user and ask whether to
@@ -256,10 +260,14 @@ since they touch different files.
 - Check for any remaining `WIP:` prefixes in the "Issues Resolved" section:
 
   ```bash
-  grep -n "WIP:" docs/releases/RELEASE_NOTES_$ARGUMENTS.md
+  scripts/check-wip-markers.sh $ARGUMENTS
   ```
 
-  Each one means an issue's `/finish-issue` run never stripped it — either
+  Exit 0 means none remain. Exit 1 prints each remaining marker (see
+  stdout). Exit 2 means the release notes file itself is missing — fix that
+  first.
+
+  Each remaining marker means an issue's `/finish-issue` run never stripped it — either
   that issue's PR never actually merged (contradicts Step 2's "no open
   issues remain" check, so investigate that discrepancy first) or its
   `/finish-issue` run skipped Step 8 for some other reason. Do not strip a
@@ -309,27 +317,22 @@ Deployment" section; they now live in a standalone deploy sheet, generated
 here — early, while the milestone branch is still under review — rather than
 first at `/release-milestone` time.
 
-1. Gather the inputs from the diff:
+1. Gather the mechanical inputs:
 
    ```bash
-   git diff --name-only main...milestone/$ARGUMENTS
+   scripts/render-deploy-sheet.sh $ARGUMENTS
    ```
 
-   Specifically determine:
-   - New files under `database/migrations/`, and whether any contains
-     `CREATE TRIGGER` (grep the diff for it, not just new files — an existing
-     migration file is never edited, but check anyway defensively)
-   - Whether `scripts/server-hooks/post-receive` changed
-   - New files calling `securePage(` — these are new pages needing
-     `21-Fix-Page-Permissions.php` registration
-   - New files under `app/admin/scripts/fix/` or `app/admin/scripts/maintenance/`
-   - Whether `.env.example` changed — list the new keys and their purpose
-     (read the surrounding comment in the diff)
-   - Any manual verification procedure a merged PR's own description
-     documents (e.g. a webhook registration/capture-script dance, a spike
-     script that needs deploying and then deleting) — these come from reading
-     the individual issue PRs' bodies (Step 4's list), not from the release
-     notes
+   This detects the diff-derived conditions (new migrations and whether any
+   contains `CREATE TRIGGER`, a changed `scripts/server-hooks/post-receive`,
+   new `securePage(`-calling pages needing `21-Fix-Page-Permissions.php`
+   registration, new `app/admin/scripts/fix/` or `maintenance/` files, and
+   `.env.example` additions). Exit 2 means it could not diff — fix the
+   branch reference and re-run. It cannot detect the `release-actions`
+   condition: read each merged issue PR's own body (Step 4's list) for a
+   documented manual verification procedure (e.g. a webhook registration/
+   capture-script dance, a spike script to deploy then delete) — this never
+   comes from the release notes.
 
 2. Read `.claude.local.md` § "Deployment hosts" for the ssh alias and
    docroots; if the section is missing, stop and ask the user to add it
@@ -463,7 +466,7 @@ Determine which agents apply based on `git diff --name-only main...milestone/$AR
 | Test files changed | pr-test-analyzer |
 | Docs/comments changed | comment-analyzer + independent fact-check (see `/review-pr` Step 4.5 — fresh, context-free agent re-derives each factual claim from source rather than trusting the diff) |
 
-Launch only the applicable agents in parallel. Skip agents for file types not present in the diff.
+Launch only the applicable agents in parallel, skipping any type not present in the diff.
 
 Focus areas at milestone level:
 
@@ -498,17 +501,15 @@ git diff main...milestone/$ARGUMENTS
 ```
 
 Launch a single agent via the Agent tool with `subagent_type: "senior-architect"`
-and `model: "fable"` (matching the CI job's tier — this is an infrequent,
-once-per-milestone deep analysis, not a per-push check). Provide it with:
+and `model: "fable"` (matching the CI job's tier — once per milestone, not
+per push). Provide it with:
 
 - The merged PR list (from the command above)
 - The full diff `main...milestone/$ARGUMENTS`
 - The finalized release notes at `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`
-- Step 9.7's resolved-findings list (or "none" if it was clean) — tell the
-  agent these were already found and fixed at the file level, so it should
-  not re-report the same issue as a new finding here. This step's value is
-  catching what per-file review *can't* see (cross-PR interactions,
-  aggregate surface) — items 9.7 already closed are not that.
+- Step 9.7's resolved-findings list (or "none"), with the instruction not to
+  re-report those as new findings — this step catches only what per-file
+  review can't (cross-PR interactions, aggregate surface)
 
 Ask it to perform the same five checks the CI job does:
 
@@ -525,36 +526,21 @@ Ask it to perform the same five checks the CI job does:
    pre-deploy steps missing from the release notes?
 
 **This step blocks on any finding, not just Critical/High.** Present every
-finding to the user, regardless of severity, and do not proceed to Step 9.9
-until each one is explicitly resolved or the user explicitly accepts it as
-non-blocking. Do not silently wave through Medium/Low items — noting them and
-proceeding without the user's say is exactly what defeats the point of
-running this before the PR exists.
-
-For each finding:
-
-- **Fix it** — apply the fix, then re-run this step's agent on the corrected
-  diff to confirm it's clean.
-- **User explicitly accepts the risk** — record the acceptance decision in
-  the plan/PR description so it's auditable later; only then proceed.
-
-Do not rely on the CI job as a substitute for resolving these — it runs after
-the PR is already open, which is a worse place to discover them, and it is a
-backstop/audit trail (`/review-milestone` Step 4), not a decision point.
-
-Once every finding is resolved or explicitly accepted, proceed to Step 9.9.
+finding to the user regardless of severity. For each one: **fix it** (apply
+the fix, re-run this step's agent on the corrected diff), or **user
+explicitly accepts the risk** (record the decision in the plan/PR
+description so it is auditable). Do not proceed to Step 9.9 until every
+finding is resolved or explicitly accepted — the CI job (`/review-milestone`
+Step 4) is a backstop/audit trail, not a substitute decision point.
 
 ### Step 9.9: Fresh-checkout smoke test (only when build/install steps changed)
 
 Every review above — Step 9.7, Step 9.8, CI's own diff-based reviews — reads
-diffs and file contents. None of them *execute* anything against a truly
-clean checkout. That gap let a real bug ship undetected on v2.29.4:
-`scripts/build.js` never created `usersc/js`/`usersc/css` before writing into
-them, so a fresh clone's first build threw `ENOENT` and silently produced no
-vendored frontend assets — invisible to every diff review because every
-existing local checkout already had those directories on disk from before the
-change. It surfaced only by accident, well into `/release-milestone`, when a
-live page happened to be checked in a browser.
+diffs and file contents; none *executes* anything against a truly clean
+checkout. That gap shipped a real bug undetected on v2.29.4 (`scripts/build.js`
+crashed on a fresh clone with no vendored frontend assets, invisible to every
+diff review because existing checkouts already had the output directories on
+disk) — found only by accident, well into `/release-milestone`.
 
 **Run this step whenever the milestone touched**: `scripts/build.js` (or any
 build/install tooling), `package.json`/`composer.json` dependency tiers,
@@ -566,26 +552,20 @@ smoke test.
 **Procedure:**
 
 ```bash
-# Use a scratch worktree, not your working checkout — the goal is to
-# reproduce what a genuinely fresh clone/deploy sees, with nothing left
-# over from prior local state.
+# Scratch worktree, not your working checkout — must reproduce what a
+# genuinely fresh clone/deploy sees, with nothing left over on disk.
 git worktree add /tmp/milestone-smoke-$ARGUMENTS milestone/$ARGUMENTS
 cd /tmp/milestone-smoke-$ARGUMENTS
 
-composer install --no-dev --optimize-autoloader   # mirrors deploy's actual install flags
-npm ci --omit=dev                                  # mirrors deploy's actual install flags (adjust flags to match this milestone's build.js/post-receive invocation)
+composer install --no-dev --optimize-autoloader   # mirrors deploy's install flags
+npm ci --omit=dev                                  # mirrors deploy's install flags (adjust to this milestone's build.js/post-receive invocation)
 npm run build                                      # or whatever the deploy hook actually runs
-
-# Confirm the build's expected output actually exists on disk — don't just
-# check the exit code, since a partial-then-crash run can exit non-zero
-# after already producing some files (masking that other expected files
-# are missing).
 ```
 
-Check the exit code AND the actual file listing of whatever the build is
-supposed to produce (e.g. `ls usersc/js usersc/css` for this milestone's
-vendored-asset build). A clean exit with missing expected output is exactly
-the bug this step exists to catch.
+Check the exit code AND the actual file listing of the build's expected
+output (e.g. `ls usersc/js usersc/css`) — a partial-then-crash run can exit
+non-zero after already producing some files, and a clean exit with missing
+output is exactly the bug this step exists to catch.
 
 If anything fails or produces incomplete output, fix it on the milestone
 branch (same fix-then-re-verify loop as Step 9.8), then re-run this step

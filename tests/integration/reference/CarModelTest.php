@@ -13,10 +13,15 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * CarModelTest - Unit Tests for CarModel Reference Data Class
+ * CarModelTest - Integration Tests for CarModel Reference Data Class
  *
  * Tests the read-only query interface for car model reference data.
  * These tests verify correct data retrieval and filtering from the car_models table.
+ *
+ * Integration tier, not unit: `new CarModel()` with no injected database
+ * falls back to dbi(), so every test here queries the real, seeded
+ * car_models table. The stub-only DB-failure cases live in
+ * tests/unit/CarModelFailureTest.php.
  */
 #[Group('integration')]
 #[Group('reference-data')]
@@ -32,15 +37,6 @@ class CarModelTest extends TestCase
     {
         parent::setUp();
         $this->carModel = new CarModel();
-    }
-
-    /**
-     * @test
-     * Verify CarModel instantiation and database connection
-     */
-    public function testCarModelInstantiation(): void
-    {
-        $this->assertInstanceOf(CarModel::class, $this->carModel);
     }
 
     /**

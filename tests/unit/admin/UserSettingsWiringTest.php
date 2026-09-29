@@ -26,7 +26,7 @@ use PHPUnit\Framework\TestCase;
  * The throw condition itself — a DB/query failure surfacing as
  * OwnerDatabaseException from Owner::getCarsOwned()/syncOwnerFieldsToCars() — is
  * already exercised against a stubbed DatabaseInterface in
- * tests/integration/OwnerReadMethodsDatabaseFailureTest.php; this test covers
+ * tests/unit/OwnerReadMethodsDatabaseFailureTest.php; this test covers
  * only user_settings.php's handling of that exception once thrown.
  *
  * @author Elan Registry Development Team
@@ -203,9 +203,9 @@ final class UserSettingsWiringTest extends TestCase
      * through hashVericode() rather than storing a plaintext value that
      * users/verify.php's hash-only comparison can never match.
      *
-     * A round-trip integration test (tests/integration/UserSettingsVericodeTest.php)
-     * pins the hashVericode()/hash_equals() contract itself, but does not
-     * execute these source files, so it cannot fail if one of these lines is
+     * The hashVericode()/hash_equals() contract itself is pinned by real-DB
+     * round-trip tests in tests/integration/CarVerificationTest.php, which do
+     * not execute these source files, so they cannot fail if one of these lines is
      * ever reverted back to plaintext. This source-inspection test is what
      * actually goes red on a regression, following the same pattern as this
      * file's other tests.

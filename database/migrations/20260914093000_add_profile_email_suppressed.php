@@ -32,7 +32,7 @@ use Phinx\Migration\AbstractMigration;
  *   which is not part of #1883's scope and is tracked as a follow-up.
  *
  * This is the original design in
- * docs/plans/car-owner-verification/car-owner-verification-frd.md, whose
+ * docs/plans/features/car-owner-verification/car-owner-verification-frd.md, whose
  * acceptance criteria state the opt-out "sets profiles.email_suppressed = 1
  * on the owner and syncs email_suppressed = 1 to every car they have".
  *

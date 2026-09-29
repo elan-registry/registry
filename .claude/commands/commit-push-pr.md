@@ -1,7 +1,7 @@
 ---
-allowed-tools: Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(mktemp:*), Write, Bash(scripts/commit-push-pr.sh:*)
 description: Commit, push, and open a draft PR
-model: claude-haiku-4-5
+model: haiku
 ---
 
 # Commit, Push, and Open a Draft PR
@@ -14,16 +14,42 @@ model: claude-haiku-4-5
 
 ## Your task
 
-Based on the above changes:
+`scripts/commit-push-pr.sh` does the git and `gh` work. Your job is to write
+the commit message and the PR title and body — the script does not write
+prose.
 
-1. Create a new branch if on main
-2. Create a single commit with an appropriate message
-3. Push the branch to origin
-4. Create a **draft** pull request using `gh pr create --draft` — PRs in this
-   project are opened as draft so review/fix cycles (`/address-pr-comments`)
-   don't spam watchers with notifications; `/finish-issue` marks the PR ready
-   for review once it's clean and about to merge.
-5. You have the capability to call multiple tools in a single response. You
-   MUST do all of the above in a single message. Do not use any other tools
-   or do anything else. Do not send any other text or messages besides
-   these tool calls.
+1. Write the commit message to a temp file (for example, one from
+   `mktemp`).
+2. Write the PR body to a second temp file.
+3. Run:
+
+   ```bash
+   scripts/commit-push-pr.sh \
+     --message-file <commit-message-file> \
+     --title "<pr title>" \
+     --body-file <pr-body-file>
+   ```
+
+   Pass `--branch <name>` only if the script refuses with exit code 1
+   because the current branch is `main`, `master`, or `milestone/*` — read
+   its stderr message, choose a short descriptive branch name, and re-run
+   with `--branch`.
+
+4. Read the script's exit code:
+   - `0` — done. Print the PR URL from its stdout.
+   - `1` — refused (bad branch or a forbidden path in `docs/plans/` or
+     `_noupload/`). Stop and report the reason to the user; do not retry
+     with `--branch` unless the reason was the branch check.
+   - `2` — a `git` or `gh` command failed. Stop and report the script's
+     stderr to the user.
+   - `3` — the base branch could not be resolved. Stop and ask the user
+     which branch to use, then re-run with `--base <ref>`.
+
+Do not run `git add`, `git commit`, `git push`, or `gh pr create` directly —
+the script owns those steps, including which files it stages, so it can
+refuse to stage anything under `docs/plans/` or `_noupload/`.
+
+PRs in this project open as draft so review/fix cycles
+(`/address-pr-comments`) do not spam watchers with notifications;
+`/finish-issue` marks the PR ready for review once it is clean and about to
+merge.

@@ -989,7 +989,8 @@ final class VerificationSettingsTest extends TestCase
      * TypeError before the method body ever runs, so there is no runtime
      * shape violation for this class's own API to test. The wrong-typed-value
      * coverage this project's convention calls for lives instead at the HTTP
-     * boundary in VerificationToggleEndpointTest, where request input really
+     * boundary in VerificationToggleEndpointBehaviorTest (integration tier),
+     * where request input really
      * does arrive untyped from the wire.
      */
     public function testWrongTypedValueNotApplicableToThisClassDocumented(): void

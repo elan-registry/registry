@@ -63,7 +63,7 @@ final class CarVerificationTest extends IntegrationTestCase
         $this->assertEquals($verificationCode, $car->data()->vericode);
 
         // Verify the raw DB row stores the HMAC-SHA256 hash, never the
-        // plaintext code — mirrors UserSettingsVericodeTest's pattern.
+        // plaintext code.
         $row = $this->db->query('SELECT vericode FROM cars WHERE id = ?', [$this->testCarId])->first();
         $this->assertNotNull($row, 'Expected to find the test car row after update');
         $storedVericode = (string) $row->vericode;
@@ -239,8 +239,7 @@ final class CarVerificationTest extends IntegrationTestCase
     }
 
     /**
-     * Regression guard mirroring UserSettingsVericodeTest's
-     * testWrongOrStaleVericodeFailsHashEqualsLookup(): a wrong/stale code
+     * Regression guard: a wrong/stale code
      * must fail against a populated row, and the raw stored hash itself must
      * never work as a direct lookup key. This proves there is no
      * plaintext-fallback or hash-as-plaintext-match regression path — a
@@ -379,7 +378,7 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * markSold() must NOT clear vericode. Per the verification-system FRD
-     * (docs/plans/car-owner-verification/car-owner-verification-frd.md,
+     * (docs/plans/features/car-owner-verification/car-owner-verification-frd.md,
      * "Enforce the 60-day expiry"): the vericode stays live between actions
      * within the 60-day window measured from vericode_sent_at, so an owner
      * who marks a car sold today can still use the same link for a

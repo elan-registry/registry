@@ -113,8 +113,10 @@ test.describe('Maps and Charts', () => {
     // Label format is `en-GB` day/short-month (e.g. "25 Aug" — en-GB orders
     // day before month); match the pattern rather than requiring an exact
     // locale string so the assertion doesn't depend on the test runner and
-    // server agreeing on timezone/locale.
-    expect(chartState.lastLabel).toMatch(/^\d{1,2} [A-Za-z]{3}$/);
+    // server agreeing on timezone/locale. 3-4 letters: en-GB abbreviates
+    // September as "Sept", the only month of the twelve that isn't 3 letters
+    // (#2159 — this asserted {3} and so failed every September).
+    expect(chartState.lastLabel).toMatch(/^\d{1,2} [A-Za-z]{3,4}$/);
   });
 
   test('car details page map renders with MapLibre GL JS', async ({ page }) => {

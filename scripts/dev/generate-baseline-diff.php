@@ -110,8 +110,8 @@ function setting(array $opts, string $flag, array $envVars, string $fallback): s
 
 function connect(string $host, string $port, string $db, string $user, string $pass, string $label): PDO
 {
-    // 'localhost' resolves to a Unix socket that differs between CLI PHP and
-    // MAMP — same reason phinx.php forces TCP.
+    // A host MySQL client treats 'localhost' as a Unix socket. Force TCP for
+    // the same reason phinx.php does.
     if ($host === 'localhost') {
         $host = '127.0.0.1';
     }
@@ -453,7 +453,7 @@ if (isset($opts['help'])) {
 $sharedHost = setting($opts, 'host', ['DB_HOST'], '127.0.0.1');
 $sharedPort = setting($opts, 'port', ['DB_PORT'], '3306');
 
-// DB_HOST may carry a port ("127.0.0.1:8889"); strip it so -h gets a bare host.
+// DB_HOST may carry a port ("127.0.0.1:3307"); strip it so -h gets a bare host.
 if (str_contains($sharedHost, ':')) {
     [$sharedHost, $hostPort] = explode(':', $sharedHost, 2);
     if ($sharedPort === '3306' && $hostPort !== '') {

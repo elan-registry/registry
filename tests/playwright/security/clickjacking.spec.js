@@ -45,7 +45,7 @@ test.describe('Anti-clickjacking Security Headers', () => {
   });
 
   /**
-   * Local MAMP may omit the CSP header while still setting X-Frame-Options;
+   * A local environment may omit the CSP header while still setting X-Frame-Options;
    * accept either form so the test passes locally and on deployed environments.
    */
   test('404 error page should have CSP frame-ancestors directive', async ({ page }) => {

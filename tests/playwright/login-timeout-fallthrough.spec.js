@@ -22,7 +22,7 @@
 // a toast). So this spec fulfills the same request with a synthetic page
 // served by page.route() — a form that satisfies login()'s selectors but whose
 // submit button deliberately does nothing at all. The route intercept means no
-// local HTTP server and no dependence on MAMP serving usersc/login.php.
+// local HTTP server and no dependence on the local site serving usersc/login.php.
 //
 // The URL is still .../usersc/login.php so that login()'s
 // `waitForURL(url => !url.includes('login.php'))` predicate stays unsatisfiable,

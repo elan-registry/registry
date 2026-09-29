@@ -83,8 +83,8 @@ async function setupAuth() {
   try {
     console.log(`📝 Navigating to ${tier} login page...`);
     // usersc/login.php is the customized login page (adds security
-    // validation over UserSpice's own users/login.php) — see CLAUDE.md's
-    // Template Customization Rules.
+    // validation over UserSpice's own users/login.php) — see
+    // .claude/rules/upstream-userspice.md.
     await page.goto(`${host}/usersc/login.php`);
 
     // waitForLoadState('networkidle') can hang indefinitely on this page

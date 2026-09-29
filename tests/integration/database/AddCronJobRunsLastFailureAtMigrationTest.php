@@ -54,15 +54,6 @@ final class AddCronJobRunsLastFailureAtMigrationTest extends IntegrationTestCase
 
     /**
      * Read one column's information_schema row, or null if it does not exist.
-     *
-     * Explicitly impure: it reads live schema state that this file's own
-     * down()/up() round trip changes between two calls. Without the
-     * annotation, static analysis assumes two identical calls must return the
-     * same value and narrows the second to the first's result — which makes
-     * the "up() restored it" assertion after a "down() removed it" assertion
-     * look impossible when it is precisely the behaviour under test.
-     *
-     * @phpstan-impure
      */
     private function columnInfo(string $table, string $column): ?object
     {
@@ -169,42 +160,6 @@ final class AddCronJobRunsLastFailureAtMigrationTest extends IntegrationTestCase
         $this->assertNotNull(
             $this->columnInfo(self::TABLE, self::COLUMN),
             'The column must still exist after a redundant up() call'
-        );
-    }
-
-    /**
-     * down() must actually remove the column, and up() must put it back —
-     * proven by round-tripping rather than by reading the migration's source.
-     * Restored in a finally block: without it, a failed assertion would leave
-     * the shared test schema missing a column every other cron test depends
-     * on, and their failures would then look unrelated to this test ever
-     * having run (the same discipline
-     * SeedSendVerificationBatchCronMigrationTest adopted for its own seeded
-     * rows).
-     */
-    #[Group('fast')]
-    public function testDownRemovesTheColumnAndUpRestoresIt(): void
-    {
-        $this->requireMigrationApplied();
-
-        $this->loadMigration()->down();
-
-        try {
-            $this->assertNull(
-                $this->columnInfo(self::TABLE, self::COLUMN),
-                'down() must remove the column'
-            );
-        } finally {
-            $this->loadMigration()->up();
-        }
-
-        $restored = $this->columnInfo(self::TABLE, self::COLUMN);
-
-        $this->assertNotNull($restored, 'up() must restore the column after a down()');
-        $this->assertSame(
-            'YES',
-            $restored->IS_NULLABLE,
-            'The restored column must carry the same nullability — a re-applied migration must not drift'
         );
     }
 

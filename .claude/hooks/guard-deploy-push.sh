@@ -27,7 +27,7 @@ if ! cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/n
   # Fail closed: if the hook can't even parse its own input, deny rather
   # than silently fall through to the unconditional exit 0 below. A guard
   # hook that fails open on malformed input is worse than no hook at all.
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"guard-deploy-push.sh could not parse hook input (jq failure) — denying by default rather than risking a silent bypass."}}'
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"guard-deploy-push.sh could not parse hook input. jq may be missing — install it (see ENVIRONMENT.md, Docker Dev Environment prerequisites). Denying by default rather than risking a silent bypass."}}'
   exit 0
 fi
 

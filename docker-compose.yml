@@ -1,0 +1,244 @@
+# Docker dev environment
+#
+# LOCAL DEVELOPMENT ONLY. See docs/development/ENVIRONMENT.md's "Docker Dev
+# Environment" section. Per-checkout host ports:
+#
+#   checkout    site   phpMyAdmin   mock-brevo   landing page
+#   Registry    8001   8081         8091         8101 (default)
+#   Registry2   8002   8082         8092         8102
+#   next        8003   8083         8093         8103
+#
+# Running this stack in another checkout? This file is shared by every
+# checkout on the branch, so do NOT edit it per checkout. Set the host ports
+# in that checkout's own (gitignored) .env instead; the defaults below are
+# Registry's:
+#
+#   CHECKOUT_NAME=Registry        # label on the landing page
+#   APP_HOST_PORT=8001            # site         
+#   PMA_HOST_PORT=8081            # phpMyAdmin    
+#   MOCK_BREVO_HOST_PORT=8091     # mock-brevo UI 
+#   LANDING_HOST_PORT=8101        # landing page 
+#
+# Two stacks with the same port fail loudly ("port is already allocated").
+# The network and volume need no per-checkout change: Compose prefixes both
+# with the project name (the checkout's directory), so Registry/ gets
+# registry_elan and registry_db_data, separate from
+# Registry2's. `APP_UID`/`APP_GID` below still need changing if the checkout
+# is worked on by a different host user.
+#
+#   docker compose up -d
+#   docker compose --profile cron up -d   # also run local cron (see `cron`)
+#   docker compose exec -u www-data app composer install
+#   docker compose exec -u www-data app composer test:full
+#   docker compose down        # keep DB volume
+#   docker compose down -v     # wipe DB volume too
+#   docker compose --profile cron down   # a plain `down` leaves `cron` up
+#
+# ALWAYS pass `-u www-data` to `exec`. `docker compose exec` has no
+# compose-file setting for its default user — it runs as the image's build
+# default, which for this Dockerfile is root (see docker/Dockerfile's UID/GID
+# comment: the request-serving Apache workers drop to www-data via
+# apache2.conf, but a bare `exec` bypasses that entirely and gets root).
+# Found via a leaked root-owned `php -S` process spawned by
+# tests/integration/BrevoWebhookEndpointTest.php during `composer test:full`
+# run without -u — harmless on this Mac (Docker Desktop's VirtioFS maps
+# container writes back to the host user regardless of in-container UID) but
+# would root-own bind-mounted files on a Linux host, defeating the whole
+# UID-matching point of this image.
+
+services:
+  app:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+      args:
+        APP_UID: "501"
+        APP_GID: "20"
+    restart: "no"
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-8001}:80"
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [elan]
+
+  db:
+    image: mysql:8.0
+    restart: "no"
+    # Binary logging is on by default in the official image and blocks
+    # CREATE TRIGGER (schema migrations use them for the car audit trail)
+    # unless the connecting user has SUPER, or log_bin_trust_function_creators
+    # is set — neither of which our app-scoped DB_USER has/can set. Not
+    # needed for a single-node local dev DB with no replication, so it's
+    # simplest to turn it off outright rather than grant SUPER to work
+    # around it.
+    #
+    # default-time-zone: one historical migration
+    # (20260905172137_convert_car_timestamps_to_datetime.php) hardcodes
+    # 'America/Los_Angeles' as APPLICATION_TIMEZONE and refuses to run
+    # unless MySQL's NOW() is within a few seconds of PHP time evaluated in
+    # that zone — a one-time guard against corrupting production data that
+    # was originally written under LA wall-clock time. The container's
+    # default (UTC) fails that check even against a brand-new, empty
+    # database, so `composer migrate`/`provision-schema.sh` cannot get past
+    # this migration without it. Undocumented anywhere else in the repo —
+    # found only by running provision-schema.sh from scratch.
+    command: --disable-log-bin --default-time-zone=America/Los_Angeles
+    environment:
+      # :? fails fast with a clear message if .env is missing or incomplete,
+      # instead of Compose silently substituting an empty string and MySQL's
+      # entrypoint failing in a way that reads as a container problem rather
+      # than a config one.
+      MYSQL_DATABASE: ${DB_NAME:?DB_NAME must be set in .env}
+      MYSQL_USER: ${DB_USER:?DB_USER must be set in .env}
+      MYSQL_PASSWORD: ${DB_PASS:?DB_PASS must be set in .env}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    # Not exposed on a host port: the app container reaches this service by
+    # name (`db`) over the compose network. Nothing outside the stack needs
+    # a direct connection — phpMyAdmin, below, is the intended DB-inspection
+    # path, matching the issue's "no CLI mysql client required" goal.
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [elan]
+
+  phpmyadmin:
+    # image: phpmyadmin/phpmyadmin
+    image: phpmyadmin
+    restart: "no"
+    environment:
+      PMA_HOST: db
+    ports:
+      - "127.0.0.1:${PMA_HOST_PORT:-8081}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [elan]
+
+  mock-brevo:
+    # Local stand-in for Brevo's transactional email API. The app reaches
+    # it at http://mock-brevo:8080/v3 on the elan network. The host reaches
+    # its web inbox at http://localhost:$MOCK_BREVO_HOST_PORT.
+    # The maintained fork, pinned to an exact version so every checkout runs
+    # the same mock. Why the fork, and how to upgrade: ENVIRONMENT.md.
+    image: ghcr.io/unibrain1/mock-brevo:1.2.0
+    restart: "no"
+    environment:
+      MOCK_BREVO_DB_PATH: /app/data/brevo
+      MOCK_STATUS_REVEAL_KEYS: "true"
+      MOCK_DEFAULT_WEBHOOK_URL: "${MOCK_DEFAULT_WEBHOOK_URL:-}"
+      # The mock sends the app's own webhook token, so the two cannot
+      # differ and app/api/webhooks/brevo.php accepts simulated webhooks.
+      # Empty sends none, and the endpoint then rejects them.
+      MOCK_WEBHOOK_TOKEN: "${BREVO_WEBHOOK_TOKEN:-}"
+      MOCK_AUTO_FIRE_DELIVERED: "${MOCK_AUTO_FIRE_DELIVERED:-false}"
+      # SMTP forward: relay POST /v3/smtp/email to a real SMTP catcher
+      # for visual inspection (Mailpit/Mailcatcher/etc.)
+      MOCK_SMTP_ENABLED: "${MOCK_SMTP_ENABLED:-false}"
+      MOCK_SMTP_HOST: "${MOCK_SMTP_HOST:-mailcatcher}"
+      MOCK_SMTP_PORT: "${MOCK_SMTP_PORT:-1025}"
+      MOCK_SMTP_USERNAME: "${MOCK_SMTP_USERNAME:-}"
+      MOCK_SMTP_PASSWORD: "${MOCK_SMTP_PASSWORD:-}"
+      MOCK_SMTP_STARTTLS: "${MOCK_SMTP_STARTTLS:-false}"
+    ports:
+      - "127.0.0.1:${MOCK_BREVO_HOST_PORT:-8091}:8080"
+    volumes:
+      - brevo-data:/app/data
+    networks: [elan]
+
+  landing:
+    # Local index page linking this checkout's site, phpMyAdmin and the
+    # mock-brevo inbox. The HTML is rendered once at startup from
+    # docker/landing/index.html.template, substituting the same host-port
+    # variables the services above publish on, so the links always match
+    # this checkout's ports. The link targets are the host's published ports,
+    # so this needs no network access to the other services.
+    image: nginx:1.27-alpine
+    restart: "no"
+    environment:
+      CHECKOUT_NAME: ${CHECKOUT_NAME:-Registry}
+      APP_HOST_PORT: ${APP_HOST_PORT:-8001}
+      PMA_HOST_PORT: ${PMA_HOST_PORT:-8081}
+      MOCK_BREVO_HOST_PORT: ${MOCK_BREVO_HOST_PORT:-8091}
+    volumes:
+      - ./docker/landing/index.html.template:/landing/index.html.template:ro
+    # envsubst is limited to the four names above so any other `$` in the
+    # template is left alone. `$$` escapes `$` from Compose interpolation.
+    command: >-
+      sh -c "envsubst '$$CHECKOUT_NAME $$APP_HOST_PORT $$PMA_HOST_PORT $$MOCK_BREVO_HOST_PORT'
+      < /landing/index.html.template > /usr/share/nginx/html/index.html
+      && exec nginx -g 'daemon off;'"
+    ports:
+      - "127.0.0.1:${LANDING_HOST_PORT:-8101}:80"
+    networks: [elan]
+
+  cron:
+    # Local stand-in for the host cron that calls users/cron/cron.php every
+    # 10 minutes on test and production (#2180). It is behind the `cron`
+    # profile because cron.php runs real scheduled jobs, such as the
+    # verification batch send. A plain `docker compose up -d` does not start
+    # it. Start it with `docker compose --profile cron up -d`.
+    #
+    # It shares the app container's network namespace, so the request
+    # reaches Apache from 127.0.0.1. CronRequestGate always admits
+    # 127.0.0.1, so a local settings.cron_ip of `off` admits this service
+    # and denies every other caller, for example a Cloudflare tunnel.
+    # cron.php returns 200 for a denied request too, so a status=200 line
+    # does not prove that the jobs ran. See docs/development/ENVIRONMENT.md,
+    # "Development Setup", step 6 "Local Cron Trigger".
+    #
+    # The first loop waits until Apache answers, so the first request does
+    # not fail while `app` starts. The cron request itself has no --retry.
+    # With --retry, curl resends on a timeout or a 5xx while the first
+    # cron.php run can still be going. Production's curl has no limit, and
+    # a job can run for minutes. With -m 590 the gap between two requests is
+    # at most 600 + 590 s, under the 1200 s after which the admin dashboard
+    # reports cron as stalled.
+    #
+    # The request uses app's network namespace. If `app` is recreated or
+    # restarted alone, this container loses its network. After 3 failed
+    # requests in a row it exits, so `docker compose ps` shows it as
+    # stopped. Run `docker compose --profile cron up -d` again. size= is the
+    # response size. A denied request also gives 0, so size alone does not
+    # prove that a job ran.
+    #
+    # The cron request sends the Host header the browser sends (#2228).
+    # Apache then reports the published port, so links in emails that a job
+    # sends point at http://localhost:$APP_HOST_PORT, not http://127.0.0.1.
+    image: curlimages/curl:8.11.1
+    restart: "no"
+    profiles: [cron]
+    depends_on: [app]
+    network_mode: "service:app"
+    # `$$` escapes `$` from Compose interpolation.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        n=0;
+        until curl -s -o /dev/null -m 10 http://127.0.0.1/; do
+        [ $$((n % 30)) -eq 0 ] && echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) waiting for app at http://127.0.0.1/";
+        n=$$((n + 1)); sleep 2;
+        done;
+        fails=0;
+        while :; do
+        line=$$(curl -s -o /dev/null -m 590 -w 'status=%{http_code} exit=%{exitcode} size=%{size_download} %{errormsg}' -H 'Host: localhost:${APP_HOST_PORT:-8001}' http://127.0.0.1/users/cron/cron.php);
+        echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) $$line";
+        case "$$line" in *" exit=0 "*) fails=0 ;; *) fails=$$((fails + 1)) ;; esac;
+        if [ "$$fails" -ge 3 ]; then echo "3 failed requests in a row, stopping. Run: docker compose --profile cron up -d"; exit 1; fi;
+        sleep 600;
+        done
+
+networks:
+  elan:
+
+volumes:
+  db_data:
+  brevo-data:

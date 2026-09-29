@@ -1,7 +1,8 @@
 ---
 name: code-reviewer
-description: "Use this agent to review code against Elan Registry project guidelines in CLAUDE.md and docs/development/CODING_STANDARDS.md. Launch after writing or modifying code, before committing, or before opening a PR. The agent needs to know which files to focus on — default is git diff HEAD (all local changes, staged and unstaged); specify a different scope if needed.\n\n<example>\nContext: The assistant has finished a feature that touches app/api/cars/*.php.\nassistant: \"Now I'll use the code-reviewer agent to check these changes against CLAUDE.md standards.\"\n<commentary>\nProactively review new code against project guidelines before moving on.\n</commentary>\n</example>\n\n<example>\nContext: Before opening a PR.\nuser: \"Ready to open the PR.\"\nassistant: \"Let me run the code-reviewer agent first to ensure the changes meet our standards.\"\n<commentary>\nRun a code review before PR creation to avoid iteration on review comments.\n</commentary>\n</example>"
+description: "Review code against the rules in CLAUDE.md and docs/development/CODING_STANDARDS.md. Use this agent after code changes, before a commit, and before a PR. Tell it which files to check. The default scope is git diff HEAD (all local changes, staged and unstaged)."
 model: opus
+tools: Read, Grep, Glob, Bash
 color: blue
 ---
 
@@ -24,8 +25,15 @@ Draw the rules from these authoritative sources:
   `declare(strict_types=1)`, naming, organization, PHPDoc
 - `docs/development/ERROR_HANDLING.md` — typed exceptions, ApiResponse,
   LogCategories, Pattern A AJAX response format
-- `docs/development/USERSPICE_FUNCTIONS.md` — prefer UserSpice helpers over
-  custom reimplementations
+
+## UserSpice Prompts
+
+Before UserSpice work, read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`.
+Then read the ElanRegistry overrides in `usersc/plugins/ai_prompts/custom_prompts/`:
+`elanregistry_overrides`, `elanregistry_classes`, `elanregistry_directories`, and
+`elanregistry_database`. Where a rule conflicts, the overrides win. One fixed rule:
+use `ElanRegistry\Input::raw()` for values bound for the database. Never use
+`\Input::get()` for those values — it pre-encodes the value and causes double encoding.
 
 Focus on:
 
@@ -34,7 +42,7 @@ Focus on:
 - `declare(strict_types=1)` in new PHP files
 - PHPDoc on public methods (`@param`, `@return`, `@throws`)
 - Typed exceptions instead of generic `Exception`
-- `ElanRegistryAPI` client with Pattern A responses for new AJAX endpoints
+- `ElanRegistryAPI` client for new AJAX endpoints
 - Validated server globals (`$scheme`, `$is_https`, `$host`, etc.) instead of
   raw `$_SERVER`
 - `securePage($php_self)` check on protected pages
@@ -43,7 +51,6 @@ Focus on:
   action handlers without `securePage()` (e.g. `app/api/cars/`, `app/api/shared/`) are
   intentionally omitted
 - Use `(new Owner($userId))->data()` for combined user+profile data access
-  (`getUserWithProfile()` was removed in v2.26.2)
 
 **Bug Detection**
 Logic errors, null handling, race conditions, resource leaks, wrong SQL

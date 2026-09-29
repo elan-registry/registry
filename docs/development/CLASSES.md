@@ -24,7 +24,7 @@ Use this table to choose the right class for your task:
 | Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('26/0001')` |
 | Direct DB queries on cars/history/factory data | CarRepository | Testable data-access layer, used by Car and API endpoints | `(new CarRepository($db))->findByChassisKey($year, $type, $chassis)` |
 | Verification codes, verification timestamps, email-bounce tracking | CarVerificationManager | Business-logic layer over CarRepository; validates and throws rather than returning falsy on failure | `(new CarVerificationManager($repo))->generateVerificationCode()` |
-| Create database backups | BackupManager | Backup/restore operations, database dumping | `$backup = new BackupManager(...)` |
+| Create database backups | BackupManager | SQL dump creation, verification, and retention cleanup | `$backup = new BackupManager(...)` |
 | Decode car images | CarImageProcessor | Decodes the `cars.image` JSON array into usable entries | `$processor->decodeAndProcessImages($car->image, ...)` |
 | Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification | `$car->removeImage($filename)` |
 | Remove multiple images from a car | Car / CarImageProcessor | CAS-guarded bulk removal; returns `['updated' => bool, 'casConflict' => bool]` instead of throwing, for callers (e.g. `mvTmpImages()`'s move-failure cleanup) that already have their own error-reporting path | `$car->removeImages($filenames)` |
@@ -2478,12 +2478,12 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 - Issue #298-1: Factory Colors migration (series filtering)
 - Issue #298-4: Color suggestion API (model-based color filtering)
 - Issue #298-7: Bulk cleanup script (model validation)
-- Phase 2: form.php dynamic dropdowns (replacing cardefinition.js)
+- The car form in `app/owner/cars/edit.php` uses dynamic model dropdowns.
 
 **See Also**:
 
 - [Issue #577](https://github.com/elan-registry/registry/issues/577) - car_models table creation
-- `/usersc/classes/ElanRegistry/README.md` - Namespace pattern documentation
+- `composer.json` - PSR-4 namespace mappings for application classes
 
 ## See Also
 

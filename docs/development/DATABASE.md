@@ -290,7 +290,9 @@ owner should keep the merged bounce/suppression signal.
 - `idx_series_normalized` (series_normalized) - Filtering by normalized series
 - `idx_type_code` (type_code) - Filtering by Lotus type code
 
-**Populated By**: Fix script `app/admin/scripts/fix/26-Load-Car-Models.php`
+**Populated By**: Phinx seed `database/seeds/CarModelsSeed.php`, which loads
+`database/seeds/data/car_models.csv`. Run it with
+`vendor/bin/phinx seed:run -s CarModelsSeed`.
 
 **Accessed Via**: `ElanRegistry\Reference\CarModel` class
 
@@ -419,7 +421,9 @@ statement about car-adjacent tables generally).
 
 ### Data Access Patterns
 
-**Note**: This database no longer uses views. All data access is performed through direct queries or the application layer. For combined user and profile data, use `(new Owner($userId))->data()` — `getUserWithProfile()` was removed in v2.26.2 (#1148).
+**Note**: This database no longer uses views. All data access is performed
+through direct queries or the application layer. For combined user and profile
+data, use `(new Owner($userId))->data()`.
 
 ## System Features
 

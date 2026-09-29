@@ -17,7 +17,7 @@ const path = require('node:path');
  * viewport and stack vertically once the viewport crosses the
  * `@media (max-width: 600px)` breakpoint.
  *
- * No live app/MAMP dependency: the full HTML document is generated once via a
+ * No live app dependency: the full HTML document is generated once via a
  * standalone PHP fixture script (fixtures/generate-button-row.php) and loaded
  * directly into an isolated page via page.setContent().
  *

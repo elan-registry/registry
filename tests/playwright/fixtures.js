@@ -4,7 +4,7 @@
 
 // CAR_ID_STANDARD is overridable via the CAR_ID_STANDARD env var (set in
 // .env.local, same convention as E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in
-// auth-helper.js) for local MAMP snapshots where the default id (1) doesn't
+// auth-helper.js) for local database snapshots where the default id (1) doesn't
 // exist — e.g. a stripped/anonymized snapshot whose car ids start higher.
 // A misspelled env var name (or any non-numeric/unset value) fails SILENTLY
 // to the `1` fallback — double-check spelling if overriding this and it

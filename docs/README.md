@@ -51,8 +51,8 @@ New to the project? Four documents, in this order:
 3. **[CLAUDE.md](../CLAUDE.md)** — conventions, commands, development workflow
 4. **[CODING_STANDARDS.md](development/CODING_STANDARDS.md)** — how to write code here
 
-`CLAUDE.md` is the canonical entry point; this index and the wiki both defer to
-its ordering.
+`CLAUDE.md` is the canonical entry point. This index and the wiki follow its
+order.
 
 #### 📚 CORE DOCUMENTATION
 
@@ -63,7 +63,7 @@ its ordering.
 - **[CODING_STANDARDS.md](development/CODING_STANDARDS.md)** - Code quality requirements, project conventions, and static analysis (PHPStan, phpcs, ESLint)
 - **[UI_STANDARDS.md](development/UI_STANDARDS.md)** - **Read before any UI change** — color tokens, card hierarchy, component patterns
 - **[STRICT_TYPE_HANDLING.md](development/STRICT_TYPE_HANDLING.md)** - PHP strict type handling patterns
-- **[USERSPICE_FUNCTIONS.md](development/USERSPICE_FUNCTIONS.md)** - UserSpice framework function reference — check before building custom solutions
+- **[UserSpice framework guidance](../usersc/plugins/ai_prompts/prompts/00_start_here.md.php)** - Read this before you build a custom solution.
 
 #### 🔧 SPECIALIZED TOPICS
 
@@ -79,7 +79,7 @@ its ordering.
 - **[LOG_CATEGORIES.md](development/LOG_CATEGORIES.md)** - Audit logging constants for `logger()` calls
 - **[RELEASE_NOTES_TEMPLATE.md](development/RELEASE_NOTES_TEMPLATE.md)** - Template for creating release notes
 - **[RELEASE_INSTRUCTIONS_TEMPLATE.md](development/RELEASE_INSTRUCTIONS_TEMPLATE.md)** - Deploy sheet rendered by `/finish-milestone`
-- **[adr/](development/adr/)** - Architecture Decision Records — why significant technical choices were made
+- **[adr/](development/adr/)** - Architecture Decision Records — why developers made significant technical choices
 
 ### `/testing/` - Testing Documentation
 
@@ -100,9 +100,9 @@ its ordering.
 
 ### Guide Pages (`/guides/`)
 
-Guide content is pre-compiled to static HTML and inlined as PHP heredocs in
-individual pages. To update a guide, edit the `$htmlContent` heredoc directly
-in the relevant PHP file. No build step required.
+The site serves guide content as static HTML. Each page stores the content in a
+PHP heredoc. To update a guide, edit `$htmlContent` in the relevant PHP file.
+You do not need to run a build step.
 
 ### File Organization
 

@@ -17,7 +17,7 @@
 // names — IS reliably exercised: it always runs on page load and this
 // spec's Data Health/report-count assertions would fail if it broke.
 //
-// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
+// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 // See: app/admin/index.php?tab=owner-mgmt
 
 const { test, expect } = require('@playwright/test');

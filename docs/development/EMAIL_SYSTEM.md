@@ -1,12 +1,21 @@
 # Email System
 
+> **Maintainer:** Registry maintainer.
+> **Repository review:** 2026-09-27.
+> **Review triggers:** Email plugin, API, webhook, DNS, or account changes.
+> **Claim scope:** Plugin behavior is a repository fact. Brevo plan, tenant,
+> sender, DNS, and webhook settings are live settings. No live vendor check is
+> recorded here. Record the date and evidence when you check those settings.
+
 The Lotus Elan Registry uses Brevo (formerly Sendinblue) as its transactional email service
 for production and staging environments. This document covers account setup, configuration,
 troubleshooting, and the developer API.
 
 ## Overview
 
-Brevo provides reliable email delivery via HTTP API. We chose Brevo because A2 Hosting blocks outbound SMTP ports; Brevo uses port 443 (HTTPS) which is always open.
+Brevo provides reliable email delivery via HTTP API. We chose Brevo because
+A2 Hosting blocks outbound SMTP ports; Brevo uses port 443 (HTTPS) which is
+always open.
 
 **Plugin location:** `usersc/plugins/sendinblue/`
 
@@ -83,7 +92,11 @@ Both `elanregistry.org` and `test.elanregistry.org` use the same Brevo account a
 
 ### Local Development
 
-Use Mailtrap to capture all email for debugging and development:
+Two options are available, depending on your development need:
+
+#### Option A: Mailtrap (Simpler—Recommended for Most Work)
+
+Use Mailtrap to capture all email without touching the Brevo code path:
 
 1. Create a Mailtrap account at [mailtrap.io](https://mailtrap.io)
 2. Get your Mailtrap SMTP credentials from the project inbox settings
@@ -92,7 +105,98 @@ Use Mailtrap to capture all email for debugging and development:
 5. Go to Admin → Settings → Email and update the SMTP settings with your Mailtrap credentials
 6. All emails sent locally will be captured in Mailtrap's inbox for inspection
 
-To switch back to Brevo for production testing: re-enter the Brevo API key in the plugin configuration and reactivate the override.
+**What this tests:** UserSpice's native PHPMailer email path (the code path
+when the Brevo plugin is deactivated). This is sufficient for most UI
+development and general testing, but it does not exercise the actual Brevo
+HTTP API code in `usersc/plugins/sendinblue/override.php` and
+`functions.php`.
+
+To switch back to Brevo: re-enter the Brevo API key in the plugin configuration and reactivate the override.
+
+#### Option B: mock-brevo (Advanced—When Testing the Brevo Integration Itself)
+
+Use mock-brevo (a local Docker Compose service) when you need to test code
+that calls the real Brevo HTTP API. It mirrors production behavior locally,
+without calls to the real Brevo API. See
+`docs/development/ENVIRONMENT.md`'s "Docker Dev Environment" section for the
+image and version it runs, and for how to pick up a new release.
+
+**What routes to mock-brevo today:**
+
+Only two clients honor `BREVO_API_HOST` and route to mock-brevo:
+
+- `usersc/classes/Cron/BrevoEventReconciliationClient.php`
+- `usersc/classes/Cron/BrevoSuppressionSyncClient.php`
+
+Both call `BrevoDevOverride::hostOverride()` before they build their API
+client, and both need `US_ENVIRONMENT=development` in `.env` for the
+override to apply.
+
+**The app's send path does not route to mock-brevo yet.** `email()` ignores
+`BREVO_API_HOST`. Without the plugin's `override.php` (the local default),
+`email()` is UserSpice's core function, which uses the SMTP settings. With
+`override.php` active, it calls the real Brevo API, so do not turn it on
+locally to test with mock-brevo. In both cases a send from the app (Test
+Email, password reset, and so on) does not reach mock-brevo. [Issue #2184](https://github.com/elan-registry/registry/issues/2184)
+changes the send path to honor `BREVO_API_HOST`.
+
+Git does not track the plugin (`usersc/plugins/*` is in `.gitignore`), so
+this repository cannot show its code. The statement above is true of the
+installed plugin checked on 2026-09-28. To check your install, run
+`grep -n BrevoDevOverride usersc/plugins/sendinblue/functions.php`. No
+output means the send path ignores `BREVO_API_HOST`.
+
+**Prerequisites:**
+
+1. `US_ENVIRONMENT=development` must be set in `.env`. This is already the
+   default for local dev, and it is what the reconciliation and
+   suppression-sync clients check before they apply `BREVO_API_HOST`.
+2. `BREVO_API_HOST=http://mock-brevo:8080/v3` must be set in `.env`.
+
+**Setup:**
+
+The mock-brevo service is always included in the Docker Compose stack
+(`docker-compose.yml`). When you run `docker compose up`, it starts
+automatically alongside the `app`, `db`, `phpmyadmin` and `landing` services. See
+`docs/development/ENVIRONMENT.md`'s "Docker Dev Environment" section for the
+full Docker setup.
+
+To send a test email straight to mock-brevo, bypassing the app's send path:
+
+```bash
+docker compose exec -T -u www-data app curl -s -X POST http://mock-brevo:8080/v3/smtp/email \
+  -H 'api-key: local-test' \
+  -H 'Content-Type: application/json' \
+  -d '{"sender":{"email":"test@example.com"},"to":[{"email":"owner@example.com"}],"subject":"mock-brevo test","htmlContent":"<p>hello</p>"}'
+```
+
+A response with a `messageId` means mock-brevo accepted the message. It then
+shows in the web inbox.
+
+To check what the reconciliation or suppression-sync clients sent or
+received, read the logs:
+
+- Via logs: `docker compose logs mock-brevo` (shows all HTTP requests and responses)
+- Via web UI: open the checkout's `MOCK_BREVO_HOST_PORT` to browse
+  received emails. The port table and the landing page link are in
+  `ENVIRONMENT.md`'s "Docker Dev Environment" section.
+
+**Important:** mock-brevo is for development only. Its database
+(`MOCK_BREVO_DB_PATH`) is on the named volume `brevo-data`, so test emails
+stay after `docker compose restart`, `stop`, `down` and `up`. To clear it,
+remove the container and the volume. The volume name has the Compose
+project name in front of it (`registry_brevo-data` for `Registry/`):
+
+```bash
+docker compose rm -s -f mock-brevo
+docker volume rm registry_brevo-data
+docker compose up -d mock-brevo
+```
+
+Do not use `docker compose down -v` for this. It also removes `db_data`,
+the local database. Production and staging behavior are completely unaffected by
+the `BREVO_API_HOST` override; that environment variable only takes effect
+when `US_ENVIRONMENT=development`.
 
 ## Verification System Feature Switch
 
@@ -147,7 +251,9 @@ always reflect current state.
 **Brevo Readiness:**
 
 - `brevoReady()` checks only that the plugin's configuration exists and the override file is active
-- It does **not** validate the API key by calling Brevo, since that would add latency to every status check and introduce a hard dependency on external availability
+- It does **not** validate the API key by calling Brevo, since that would
+  add latency to every status check and introduce a hard dependency on
+  external availability
 - The first actual API call (a verification send) will fail and log if the key is stale or invalid; those failures are the true signal
 
 **Cron Readiness:**
@@ -518,7 +624,9 @@ the same shape to the reconciliation job via `ReconciliationSummary`.
 ### Feature Switch Related Documentation
 
 - [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager) — the 10-minute interval constant referenced by `cronReady()`
-- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` for logging failures, `LOG_CATEGORY_EMAIL_WEBHOOK` for webhook event processing
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) —
+  `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` for logging failures,
+  `LOG_CATEGORY_EMAIL_WEBHOOK` for webhook event processing
 - [CLASSES.md](CLASSES.md) — `VerificationSettings` and `VerificationConfigException` class reference
 
 ## Composing and Sending Verification Emails (#1882, #1883)
@@ -1001,7 +1109,9 @@ sendinblue($to, $subject, $body, $to_name = "", $options = []): bool
 
 ### $options Array Keys
 
-These keys apply when calling `sendinblue()` directly. See [Calling via email()](#calling-via-email) below for the different key names used through the override.
+These keys apply when calling `sendinblue()` directly. See [Calling via
+email()](#calling-via-email) below for the different key names used through
+the override.
 
 | Key | Type | Description |
 | --- | --- | --- |

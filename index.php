@@ -1,4 +1,4 @@
-  <?php
+<?php
 /**
  * Lotus Elan Registry - Homepage
  *

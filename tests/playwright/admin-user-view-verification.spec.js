@@ -16,7 +16,7 @@
 //     — proving the block doesn't just always render the warning state.
 //
 // This is genuinely new test infrastructure: no existing Playwright spec in
-// this repo seeds rows directly into the local MAMP database from within the
+// this repo seeds rows directly into the local Docker database from within the
 // spec itself (the closest precedent, local/email-button-row-responsive.spec.js,
 // only shells out to a fixture that generates static HTML — it never touches
 // a database). Flagged here, and in the PR description, so a reviewer isn't
@@ -25,12 +25,13 @@
 // Deviation from the plan's literal file path: the plan names
 // tests/playwright/admin-user-view-verification.spec.js (not under local/).
 // This file is placed at that exact path deliberately — despite living next
-// to other top-level specs that require local MAMP + an authenticated admin
-// session (e.g. admin-owner-mgmt.spec.js, admin-maintenance-smoke.spec.js),
-// which is the established convention for admin-page specs in this repo.
-// tests/playwright/local/ is not a distinct "requires MAMP" bucket (it is
-// also matched by the plain `chromium` project in playwright.config.js —
-// see local/email-button-row-responsive.spec.js, which runs under the same
+// to other top-level specs that require the local Docker site + an
+// authenticated admin session (e.g. admin-owner-mgmt.spec.js,
+// admin-maintenance-smoke.spec.js), which is the established convention for
+// admin-page specs in this repo.
+// tests/playwright/local/ is not a distinct "requires the local site" bucket
+// (it is also matched by the plain `chromium` project in playwright.config.js
+// — see local/email-button-row-responsive.spec.js, which runs under the same
 // project as this file); it is only where PHP CLI *fixture scripts* live.
 // The `logged-in` project's narrow testMatch allowlist does NOT need to be
 // touched for this file: like admin-owner-mgmt.spec.js and
@@ -38,8 +39,9 @@
 // ensureLoggedIn() (auth-helper.js) inside the plain `chromium` project,
 // rather than depending on the `logged-in` project's storageState.
 //
-// Requires local MAMP with TEST_USERNAME/TEST_PASSWORD (an admin account) set
-// in .env.local. Default base URL: http://localhost:9999/ElanRegistry/Registry/
+// Requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD (an admin account;
+// read by auth-helper.js) set in .env.local. Default base URL:
+// http://localhost:$APP_HOST_PORT/ (see tests/playwright/base-url.js)
 // — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md.
 // Also requires US_ENVIRONMENT=development locally (see the seed fixture's
 // own guard) — the fixture refuses to run against a deployed environment.

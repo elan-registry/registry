@@ -349,6 +349,6 @@ When introducing a new component, token, or pattern:
 ## See Also
 
 - [`docs/development/CODING_STANDARDS.md`](CODING_STANDARDS.md) — PHP coding standards
-- [`docs/development/CSS_AND_ASSETS.md`](CSS_AND_ASSETS.md) — asset pipeline, build process, ADR-015
+- [`docs/development/CSS_AND_ASSETS.md`](CSS_AND_ASSETS.md) — asset pipeline and build process
 - [`app/admin/design-system.php`](../../app/admin/design-system.php) — live token and component reference
 - [`usersc/templates/customizer.css`](../../usersc/templates/customizer.css) — token definitions and global CSS

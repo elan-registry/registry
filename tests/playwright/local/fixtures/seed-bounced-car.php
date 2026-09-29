@@ -63,7 +63,7 @@ require_once $projectRoot . '/vendor/autoload.php';
 if (($_ENV['US_ENVIRONMENT'] ?? getenv('US_ENVIRONMENT') ?: '') !== 'development') {
     fwrite(STDERR, "ERROR: seed-bounced-car.php refused to run — US_ENVIRONMENT is not 'development'.\n");
     fwrite(STDERR, "This fixture writes directly to the configured database and must only run against\n");
-    fwrite(STDERR, "a local dev database (MAMP), never test.elanregistry.org or elanregistry.org.\n");
+    fwrite(STDERR, "the local Docker dev database, never test.elanregistry.org or elanregistry.org.\n");
     fwrite(STDERR, "Set US_ENVIRONMENT=development in your local .env/.env.local — see docs/development/ENVIRONMENT.md.\n");
     exit(1);
 }

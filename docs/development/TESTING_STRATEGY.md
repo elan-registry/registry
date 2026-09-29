@@ -36,8 +36,13 @@ Three tiers, each with a distinct purpose and a hard boundary:
   (per the convention in `tests/unit/cars/services/CarRepositoryTest.php`'s
   `makeDbMock()`), or a concrete `tests/Support/FakeDatabase.php` subclass
   when a test needs mutable tracked state (hand-tracked call counts, etc.) —
-  see `tests/unit/admin/ArchiveAccountsTest.php` for that pattern. There is no
-  shared global `DB` mock shell — a regression guardrail
+  see `tests/unit/admin/ArchiveAccountsTest.php` for that pattern. Integration
+  tests that need a real connection but must sabotage one call extend
+  `tests/Support/PassThroughDatabase.php` as an anonymous class, overriding
+  only that method (returning `simulateFailure()` to report a database error
+  without reaching MySQL) — see
+  `tests/integration/OwnerSyncOwnerFieldsToCarsTest.php`'s `db*()` factories.
+  There is no shared global `DB` mock shell — a regression guardrail
   (`tests/unit/regression/DatabaseInterfaceUsageRegressionTest.php`) fails CI
   if one, or a concrete `\DB` type-hint in production code, or a call to a
   `\DB` method that isn't on `DatabaseInterface`, ever reappears (#1585).
@@ -183,7 +188,7 @@ overloading these two.
 
 UserSpice ships no test suite and no testing conventions of its own — the
 following is derived directly from reading `users/classes/DB.php` (upstream,
-do not modify — see `CLAUDE.md`'s Template Customization Rules), not from
+do not modify — see `.claude/rules/upstream-userspice.md`), not from
 UserSpice documentation. This is the source of truth for how to write
 assertions against it.
 
@@ -220,6 +225,16 @@ migration + `composer migrate` + `composer seed:run`
 See `tests/README.md`'s "Provisioning a Test Schema" and "Database Fixtures"
 sections for the full walkthrough, seed class list, and what
 `tests/bootstrap-integration.php` verifies vs. seeds itself.
+
+## HTTP Integration Tests (`PhpBuiltinServer`)
+
+Some integration tests need a real HTTP layer: genuine `php://input`, real `$_SERVER` values,
+response headers, and status codes. **Never hand-roll `proc_open('php -S …')` in a test.** Use
+`PhpBuiltinServer`. Separately, the integration bootstrap uses `BrevoOverrideStub` to remove a Brevo
+`override.php` stub leaked by a crashed run. See
+[`tests/README.md`'s "Test Support Helpers"
+section](../../tests/README.md#test-support-helpers-testssupport)
+for usage and leak recovery of both.
 
 ## Related Work
 

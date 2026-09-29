@@ -3,18 +3,22 @@
 ## Problem Statement
 
 When using `declare(strict_types=1)`, PHP enforces strict type checking.
-However, PDO/mysqli can return database INTEGER columns as strings
+However, PDO can return database INTEGER columns as strings or integers,
 depending on:
 
-- PHP version (8.1+ changed default behavior)
 - PDO driver configuration
-- MySQL driver (mysqlnd vs libmysqlclient)
+- MySQL driver and fetch configuration
 
 This causes `TypeError` when passing database values to strict-typed function parameters.
 
 ## Current Status
 
-**Files affected:** 30 files use `declare(strict_types=1)`
+The number of files that use `declare(strict_types=1)` changes over time. To
+count them, run:
+
+```bash
+rg -l 'declare\s*\(\s*strict_types\s*=\s*1\s*\)' --glob '*.php' | wc -l
+```
 
 **Known issues fixed:**
 

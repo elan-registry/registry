@@ -28,6 +28,16 @@ define('TESTING_ROOT', $projectRoot);
 // Load Composer autoloader for project classes FIRST (before UserSpice)
 require_once $projectRoot . '/vendor/autoload.php';
 
+// Register the leaked-`php -S`-server shutdown hook as early as possible.
+// PHPUnit's own ShutdownHandler (vendor/phpunit/phpunit/src/Runner/ShutdownHandler.php)
+// registers lazily, from TestCase::run() and TestCase::startErrorLogCapture()
+// (called from TestCase::runTest()) on the first test that calls
+// ShutdownHandler::setMessage(), not at bootstrap time — but its handler can
+// call exit(2), and a shutdown function that exits prevents every
+// later-registered shutdown function from running. Registering here, before
+// any test runs, guarantees we come first regardless.
+\Tests\Support\PhpBuiltinServer::registerShutdownHook();
+
 // Load UserSpice framework for real database testing and authentication
 $initPath = $projectRoot . '/users/init.php';
 if (!file_exists($initPath)) {
@@ -66,9 +76,11 @@ try {
 }
 
 // Defense-in-depth: refuse to proceed if the test environment points at the dev database.
-// Case-folded and trimmed because MAMP's MySQL runs with lower_case_table_names=2 on
-// macOS's case-insensitive filesystem, so ELANREGI_SPICE and elanregi_spice are the same
-// physical database — a naive === comparison would miss a typo'd-case DB_NAME.
+// Case-folded and trimmed because a MySQL server with lower_case_table_names
+// set to 1 or 2 (the macOS and Windows defaults) treats ELANREGI_SPICE and
+// elanregi_spice as the same database, so a naive === comparison would miss a
+// typo'd-case DB_NAME. The Docker `db` service runs on Linux with 0, where the
+// names differ, but the fold costs nothing and covers a host MySQL too.
 $configuredDbName = strtolower(trim($_ENV['DB_NAME'] ?? ''));
 if ($configuredDbName === 'elanregi_spice') {
     fwrite(STDERR, "ERROR: .env.test.local is pointed at the development database (elanregi_spice).\n");
@@ -99,6 +111,17 @@ if ($configuredDbName === 'elanregi_spice') {
 // safeLoad() only fills in keys $_ENV doesn't already have, so this cannot override
 // anything .env.test.local already set above.
 \Dotenv\Dotenv::createImmutable($projectRoot)->safeLoad();
+
+// Refuse a host run against DB_HOST=db. Outside the Compose network the name
+// can resolve through the DNS search domain to a different machine, and the
+// suite would then write to that server.
+$dbHostName = strtolower(explode(':', trim($_ENV['DB_HOST'] ?? ''), 2)[0]);
+if ($dbHostName === 'db' && !file_exists('/.dockerenv')) {
+    fwrite(STDERR, "ERROR: DB_HOST=db resolves only inside the Docker Compose network.\n");
+    fwrite(STDERR, "Run the suite in the app container: docker compose exec -u www-data app composer test:integration\n");
+    exit(1);
+}
+
 $probeHost = $_ENV['DB_HOST'] ?? '(not set)';
 $probeName = $_ENV['DB_NAME'] ?? '(not set)';
 try {
@@ -113,7 +136,8 @@ try {
         "ERROR: Could not connect to the test database at {$probeHost}"
             . " (database: {$probeName}).",
         "PDO error: {$e->getMessage()}",
-        "Check that MAMP/MySQL is running and .env.test.local's DB_HOST/DB_USER/",
+        "Check that the Docker `db` service is running (docker compose ps) and",
+        ".env.test.local's DB_HOST/DB_USER/",
         "DB_PASS/DB_NAME are correct. Aborting rather than letting the connection",
         "attempt fall through to users/classes/DB.php's die(), which would exit 0",
         "with no output and look like a passing test run."
@@ -292,15 +316,15 @@ try {
         //
         // MySQL's SET time_zone accepts a named zone only when the
         // mysql.time_zone_name tables are populated (`mysql_tzinfo_to_sql`),
-        // which a fresh MAMP/Docker MySQL install typically has not run —
-        // asserting a bare named zone here would silently fail on exactly
-        // the environments most likely to need this fix. Falling back to the
+        // which a fresh MySQL install (including the Docker `db` service)
+        // typically has not run — asserting a bare named zone here would
+        // silently fail on exactly the environments most likely to need this
+        // fix. Falling back to the
         // zone's current UTC offset (computed by PHP, which already resolved
         // the named zone above) sidesteps that dependency entirely and is
         // still correct for "right now" — the only thing any test in this
         // suite's lifetime cares about. A session-scoped SET here (not a
-        // server-wide my.cnf change, which only one developer could apply
-        // and which a MAMP PRO regeneration would silently discard anyway)
+        // server-wide my.cnf change, which only one developer could apply)
         // fixes the mismatch for whoever runs this suite, wherever they are,
         // with no machine-level setup required.
         $phpTimezone = new \DateTimeZone(date_default_timezone_get());
@@ -428,6 +452,30 @@ try {
     }
 } catch (Throwable $e) {
     fwrite(STDERR, "ERROR: Could not purge stale 'sib-test-key' rows from plg_sendinblue: {$e->getMessage()}\n");
+}
+
+// ============================================================
+// Sweep Leaked Brevo Override Stub (once per suite run)
+// ============================================================
+// usersc/plugins/sendinblue/override.php is gitignored and shared with the
+// dev app running on the same checkout — a run that dies mid-test before
+// restoring it leaves the 6-byte stub in place. brevoReady() needs only a key
+// row plus the file's existence, so a dev DB with a real key then sees Brevo
+// as "ready" with an empty override — a test artifact changing dev email
+// routing, invisible to `git status`. #2160's purge above
+// only covered the DB half of this same leak; this covers the file half.
+// Touches no DB, so it runs outside that block's try: a DB failure inside the
+// purge block above doesn't skip this, and an unreachable DB or a failed
+// DB-identity check earlier in this file already exits loudly via exit(1)
+// before execution ever reaches here — so the next good run is what sweeps it.
+$brevoOverridePath = $projectRoot . '/usersc/plugins/sendinblue/override.php';
+if (\Tests\Support\BrevoOverrideStub::sweep($brevoOverridePath)) {
+    fwrite(STDERR, "NOTE: Removed leaked Brevo override stub usersc/plugins/sendinblue/override.php "
+        . "(6-byte test artifact) — leftover from an interrupted run\n");
+} elseif (\Tests\Support\BrevoOverrideStub::matches($brevoOverridePath)) {
+    fwrite(STDERR, "WARNING: Leaked Brevo override stub usersc/plugins/sendinblue/override.php "
+        . "could not be removed (check permissions) — the dev site will see Brevo as "
+        . "\"ready\" with an empty override\n");
 }
 
 /**

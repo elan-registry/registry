@@ -60,6 +60,14 @@ use ElanRegistry\LogCategories;
  * SDK that isn't even on the unit suite's autoloader). Subclassing outside of
  * test doubles is not intended.
  *
+ * Routes through {@see \ElanRegistry\Email\BrevoDevOverride} — in local dev
+ * (`US_ENVIRONMENT=development` with `BREVO_API_HOST` set), this polls
+ * mock-brevo instead of the real Brevo API, so a suppression sync triggered
+ * locally cannot make a live outbound call. The sendinblue plugin's own send
+ * path does not route this way yet: see
+ * `docs/development/EMAIL_SYSTEM.md`, "What routes to mock-brevo today", and
+ * [Issue #2184](https://github.com/elan-registry/registry/issues/2184).
+ *
  * @package ElanRegistry\Cron
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1923
@@ -133,6 +141,9 @@ class BrevoSuppressionSyncClient
         try {
             $credentials = \Brevo\Client\Configuration::getDefaultConfiguration()
                 ->setApiKey('api-key', $apiKey);
+            if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {
+                $credentials->setHost($hostOverride);
+            }
 
             $apiInstance = new \Brevo\Client\Api\TransactionalEmailsApi(
                 new \GuzzleHttp\Client([
