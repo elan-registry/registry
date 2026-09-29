@@ -327,7 +327,10 @@ first at `/release-milestone` time.
    contains `CREATE TRIGGER`, a changed `scripts/server-hooks/post-receive`,
    new `securePage(`-calling pages needing `21-Fix-Page-Permissions.php`
    registration, new `app/admin/scripts/fix/` or `maintenance/` files, and
-   `.env.example` additions). Exit 2 means it could not diff — fix the
+   `.env.example` additions). It also prints `migration-modified: CHECK`
+   when the milestone edits an existing migration. Confirm that the edit
+   changes no schema (see `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md`).
+   Exit 2 means it could not diff — fix the
    branch reference and re-run. It cannot detect the `release-actions`
    condition: read each merged issue PR's own body (Step 4's list) for a
    documented manual verification procedure (e.g. a webhook registration/
