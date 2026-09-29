@@ -22,6 +22,16 @@ building.
   milestone doesn't exist yet on GitHub, create it first:
   `gh api repos/elan-registry/registry/milestones -f title="$ARGUMENTS"`
 
+## Context check
+
+Do this before Step 0. If this conversation already holds work on an earlier
+milestone or issue, ask via AskUserQuestion: "This conversation holds earlier
+work. Clear the context first?" Options: `Clear first` (recommended),
+`Continue here`. For `Clear first`, tell the user to run `/clear` and then
+type `/plan-milestone $ARGUMENTS` again, and stop. The reason is in
+CLAUDE.md, "Hand-offs between commands". If the conversation holds no
+earlier work, do not ask.
+
 ## Step 0: Initialize TaskList
 
 Create one tracking task per step below (signal review, theme, gate,

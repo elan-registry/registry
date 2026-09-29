@@ -1,7 +1,7 @@
 ---
 name: senior-architect
 description: "Get architecture guidance, refactoring advice, and GDPR compliance checks for the Elan Registry PHP/UserSpice application. Use this agent to design a new feature, review a change for maintainability and security, simplify complex code, or judge whether a design that handles personal data meets GDPR rules."
-model: opus
+model: sonnet
 tools: Read, Grep, Glob, Bash
 color: blue
 ---

@@ -612,14 +612,11 @@ Then summarize:
 - Remind: if wiki pages were updated, confirm they were published via
   `/publish-wiki` in the wiki clone — this repo's PR does not carry them
 
-Use AskUserQuestion for the next step:
-
-- Question: "Milestone gated and documented. Run `/review-milestone $ARGUMENTS` now?"
-- Options: `Run /review-milestone $ARGUMENTS` (recommended — opens the PR,
-  verifies CI review posted, confirms green), `Ask more questions first`
-- If the user picks `/review-milestone`, invoke it immediately via the
-  Skill tool. If they pick the discuss option, drop into normal
-  conversation and don't re-offer until they ask what's next.
+End by telling the user to type `/review-milestone $ARGUMENTS` (it opens
+the PR, verifies that the CI review posted, and confirms green). Do not start
+it through the Skill tool: it declares `model: sonnet`, and a Skill-tool
+start runs it on this command's model (CLAUDE.md, "Hand-offs between
+commands").
 
 ## Important
 

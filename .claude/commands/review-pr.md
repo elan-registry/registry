@@ -144,6 +144,22 @@ If `$ARGUMENTS` is empty or `all`, run all applicable agents based on the change
 file types (skip test analyzer if no test files changed; skip comment analyzer if
 no comments/docs added).
 
+**Skip lanes that already ran clean on this diff.** Run
+`scripts/review-fingerprint.sh "origin/$BASE"` and read the plan file
+(`scripts/check-plan-state.sh` gives its path). If the plan file has a
+`Review fingerprint:` line with the same hash, skip each lane that the line
+names. The names map to aspects: `code-reviewer` → `code`,
+`silent-failure-hunter` → `errors`, `pr-test-analyzer` → `tests`. Do not skip
+a lane in these cases:
+
+- The hashes differ, or the plan file has no `Review fingerprint:` line.
+- `$ARGUMENTS` names the aspect.
+- The lane is `comments`, `spec` or `simplify`. `/execute-plan` does not run
+  them.
+
+In the Step 5 triage output, list each skipped lane as "skipped — clean in
+/execute-plan at fingerprint `<first 12 characters>`". Step 1 always runs.
+
 The `tests` agent *reads* test files and reasons about coverage; Step 1 is what
 *executes* them. Neither substitutes for the other — a clean test-analyzer
 report says nothing about whether the suite passes. Step 1 runs regardless of
@@ -346,7 +362,10 @@ start, or skipped.
 
 - Report: "Local review clean — no blocking issues, no open recommendations."
   Include the Suites executed table so the claim is backed by real counts.
-- Proceed to `/commit-push-pr` or `/commit`. Compacting context first is also
+- Proceed to `/commit-push-pr` or `/commit`. Tell the user to type
+  `/commit-push-pr`. Do not start it through the Skill tool: it declares
+  `model: haiku`, and a Skill-tool start runs it on this command's model
+  (CLAUDE.md, "Hand-offs between commands"). Compacting context first is also
   reasonable before that step — the review is already recorded in this
   report, so nothing is lost. `/compact` is a client-level operation the user
   runs themselves, not something this command can trigger via a tool.

@@ -393,15 +393,12 @@ Determine the recommended next issue:
   sequence:** the recommended next issue is just the next open one from the
   API list above, if any.
 
-Ask via AskUserQuestion, not a plain-text menu — "Issue #$ARGUMENTS closed.
-What next?" Options: `Run /start-issue <next-issue>` (only if one was
-identified; label it "next in sprint plan sequence" when that's why),
-`Run /finish-milestone $ARGUMENTS` (only if no open issues remain),
-`Compact context first` (state is already saved, safe to compact),
-`Ask more questions / discuss first`. Invoke a chosen command immediately
-via the Skill tool. If the user picks compacting, tell them to run
-`/compact` themselves — this command can't trigger it. For the discuss
-option, drop into normal conversation and don't re-offer until asked.
+End with the next command as plain text, not a question: `/start-issue
+<next-issue>` (say "next in sprint plan sequence" when that is the reason),
+or `/finish-milestone <version>` when no open issues remain. Tell the user
+to run `/clear` first and then type the command. Do not start it through
+the Skill tool. This is an issue boundary, and both commands declare a
+different model from this one (CLAUDE.md, "Hand-offs between commands").
 
 ## Important
 
