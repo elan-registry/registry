@@ -135,9 +135,9 @@ if [ -n "$NEW_SECURE_PAGES" ]; then
   printf '%s' "$NEW_SECURE_PAGES" | sed 's/^/  - /'
 fi
 
-if grep -qE '^app/admin/scripts/(fix|maintenance)/' <<<"$DIFF_FILES"; then
+if grep -qE '^app/admin/scripts/(fix|maintenance)/' <<<"$ADDED_FILES"; then
   echo "admin-scripts: TRUE"
-  printf '%s\n' "$DIFF_FILES" | grep -E '^app/admin/scripts/(fix|maintenance)/' | sed 's/^/  - /'
+  printf '%s\n' "$ADDED_FILES" | grep -E '^app/admin/scripts/(fix|maintenance)/' | sed 's/^/  - /'
 fi
 
 if grep -qx '.env.example' <<<"$DIFF_FILES"; then

@@ -23,7 +23,9 @@ Placeholders, filled from `.claude.local.md` § "Deployment hosts" and the relea
 Conditional blocks are marked `<!-- IF: condition -->` … `<!-- END IF -->`.
 Include a block only when its condition holds for **this** release, and drop
 the markers; never print a block with an unmet condition. Conditions are
-derived from `git diff --name-only <last-tag>...<version>` and, for
+derived from `scripts/render-deploy-sheet.sh <version>`, which diffs
+`origin/main...milestone/<version>` (local `main` if `origin/main` does not
+resolve) and prints the base it used to stderr, and, for
 `release-actions`, from reading the individual merged issue PRs' own bodies
 (deployment procedures do not live in `docs/releases/RELEASE_NOTES_<version>.md`
 — that file is a one-sentence-per-issue index; a PR's own description is

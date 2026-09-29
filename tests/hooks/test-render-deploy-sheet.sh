@@ -8,7 +8,9 @@
 # as `migration: TRUE`; `trigger-migration` must key off an added
 # migration's own content, not the whole diff; `new-pages` must only count
 # added PHP files outside tests/, database/, scripts/, vendor/ and users/
-# whose branch content has `securePage(`;
+# whose branch content has `securePage(`; `admin-scripts` must only count
+# added files under app/admin/scripts/fix/ or maintenance/; a non-ASCII
+# path must be listed unquoted; a failed read of a branch file must exit 2;
 # and the base ref must prefer `origin/main` over a possibly-stale local
 # `main`.
 #
@@ -363,7 +365,10 @@ REPO2="$TMPROOT/repo2"
 REPO2B="$TMPROOT/repo2b"
 ORIGIN2="$TMPROOT/origin2.git"
 mkdir -p "$REPO2"
-git init -q --bare "$ORIGIN2"
+# -b main: a clone of a bare repo whose HEAD names another branch (git's
+# default is master on CI) checks out nothing, and the push of main fails.
+git init -q --bare -b main "$ORIGIN2" 2>/dev/null \
+    || { git init -q --bare "$ORIGIN2"; git -C "$ORIGIN2" symbolic-ref HEAD refs/heads/main; }
 
 (
     cd "$REPO2" || exit 1
@@ -401,6 +406,7 @@ git clone -q "$ORIGIN2" "$REPO2B" 2>/dev/null
 # In REPO2, fetch only the milestone ref explicitly (never main), so
 # origin/main there stays stale until the script under test fetches it.
 (cd "$REPO2" && git fetch -q origin milestone/vorigin:milestone/vorigin)
+OUT9_OUT=""  # the Bonus check reads it under set -u, even on fixture failure
 STALE_ORIGIN_MAIN="$(cd "$REPO2" && git rev-parse origin/main)"
 FRESH_ORIGIN_MAIN="$(cd "$REPO2B" && git rev-parse origin/main)"
 if [ "$STALE_ORIGIN_MAIN" = "$FRESH_ORIGIN_MAIN" ]; then
@@ -574,6 +580,158 @@ fi
 
 git checkout -q main
 
+# --- Case 15: a failed read of a branch file exits 2 ------------------------
+# A `git` shim first on PATH fails every `git show` and passes all other
+# calls to the real git. The script must exit 2, not read the failure as
+# "no CREATE TRIGGER". migration: TRUE is already on stdout at that point,
+# because the script prints it before it reads the migration's content.
+REAL_GIT="$(command -v git)"
+REPO7="$TMPROOT/repo7"
+SHIM_DIR="$TMPROOT/shim"
+mkdir -p "$REPO7" "$SHIM_DIR"
+cat > "$SHIM_DIR/git" <<EOF
+#!/bin/bash
+if [ "\${1:-}" = "show" ]; then exit 1; fi
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$SHIM_DIR/git"
+(
+    cd "$REPO7" || exit 1
+    git init -q -b main 2>/dev/null || { git init -q; git checkout -q -b main 2>/dev/null || true; }
+    git config user.name "test-render-deploy-sheet"
+    git config user.email "test-render-deploy-sheet@localhost"
+    echo "base" > base.txt
+    git add base.txt
+    git commit -q -m "base commit on main"
+
+    git checkout -q -b milestone/vreadfail main
+    mkdir -p database/migrations
+    echo "<?php -- CREATE TRIGGER unread" > database/migrations/20990105000000_unread.php
+    git add database/migrations
+    git commit -q -m "add migration that the shim will not let the script read"
+)
+
+OUT15_OUT="$(cd "$REPO7" && PATH="$SHIM_DIR:$PATH" bash "$SCRIPT" vreadfail 2>"$TMPROOT/case15.err")"
+RC15=$?
+OUT15_ERR="$(cat "$TMPROOT/case15.err")"
+if [ "$RC15" -eq 2 ] \
+    && printf '%s\n' "$OUT15_ERR" | grep -q '^Could not read milestone/vreadfail:database/migrations/20990105000000_unread.php' \
+    && printf '%s\n' "$OUT15_OUT" | grep -q '^migration: TRUE$' \
+    && ! printf '%s\n' "$OUT15_OUT" | grep -q '^trigger-migration:'; then
+    pass "Case 15: a failed git show of a branch file -> exit 2 with a Could not read message"
+else
+    fail "Case 15: a failed git show of a branch file -> exit 2 with a Could not read message" \
+        "exit: $RC15" "stderr: [$OUT15_ERR]" "stdout: [$OUT15_OUT]"
+fi
+
+# --- Case 16: a non-ASCII page path is listed unquoted ----------------------
+# Without -c core.quotePath=false, git prints the path as "app/caf\303\251.php"
+# in quotes, which fails the .php match, and new-pages drops the page.
+REPO8="$TMPROOT/repo8"
+mkdir -p "$REPO8"
+(
+    cd "$REPO8" || exit 1
+    git init -q -b main 2>/dev/null || { git init -q; git checkout -q -b main 2>/dev/null || true; }
+    git config user.name "test-render-deploy-sheet"
+    git config user.email "test-render-deploy-sheet@localhost"
+    echo "base" > base.txt
+    git add base.txt
+    git commit -q -m "base commit on main"
+
+    git checkout -q -b milestone/vnonascii main
+    mkdir -p app
+    echo "<?php securePage(\$php_self);" > "app/café.php"
+    git add app
+    git commit -q -m "add guarded page with a non-ASCII name"
+)
+
+OUT16="$(cd "$REPO8" && bash "$SCRIPT" vnonascii 2>/dev/null)"
+RC16=$?
+if [ "$RC16" -eq 0 ] \
+    && printf '%s\n' "$OUT16" | grep -q '^new-pages: TRUE$' \
+    && printf '%s\n' "$OUT16" | grep -qx '  - app/café.php'; then
+    pass "Case 16: a non-ASCII page path is listed unquoted under new-pages"
+else
+    fail "Case 16: a non-ASCII page path is listed unquoted under new-pages" \
+        "exit: $RC16" "output: [$OUT16]"
+fi
+
+# --- Case 17: every excluded directory, plus one control page --------------
+# Each excluded directory gets a guarded .php file. Only the control page
+# under app/ may appear under new-pages.
+REPO9="$TMPROOT/repo9"
+mkdir -p "$REPO9"
+(
+    cd "$REPO9" || exit 1
+    git init -q -b main 2>/dev/null || { git init -q; git checkout -q -b main 2>/dev/null || true; }
+    git config user.name "test-render-deploy-sheet"
+    git config user.email "test-render-deploy-sheet@localhost"
+    echo "base" > base.txt
+    git add base.txt
+    git commit -q -m "base commit on main"
+
+    git checkout -q -b milestone/vexcluded main
+    mkdir -p scripts vendor/a users tests database app
+    echo "<?php securePage(\$php_self);" > scripts/x.php
+    echo "<?php securePage(\$php_self);" > vendor/a/b.php
+    echo "<?php securePage(\$php_self);" > users/z.php
+    echo "<?php securePage(\$php_self);" > tests/t.php
+    echo "<?php securePage(\$php_self);" > database/d.php
+    echo "<?php securePage(\$php_self);" > app/ok.php
+    git add scripts vendor users tests database app
+    git commit -q -m "add guarded php files in every excluded dir, plus one control page"
+)
+
+OUT17="$(cd "$REPO9" && bash "$SCRIPT" vexcluded 2>/dev/null)"
+RC17=$?
+OUT17_PAGES="$(printf '%s\n' "$OUT17" | grep '^  - ')"
+if [ "$RC17" -eq 0 ] \
+    && printf '%s\n' "$OUT17" | grep -q '^new-pages: TRUE$' \
+    && [ "$OUT17_PAGES" = "  - app/ok.php" ]; then
+    pass "Case 17: new-pages skips scripts/, vendor/, users/, tests/ and database/, lists only the control page"
+else
+    fail "Case 17: new-pages skips scripts/, vendor/, users/, tests/ and database/, lists only the control page" \
+        "exit: $RC17" "output: [$OUT17]"
+fi
+
+# --- Case 18: admin-scripts counts only added files in its scope ----------
+# main has maintenance/old.php. The branch adds fix/new.php, edits old.php
+# and adds other/x.php. Only fix/new.php is a new admin script. An edited
+# script needs no new deploy action, and other/ is outside the scope.
+REPO10="$TMPROOT/repo10"
+mkdir -p "$REPO10"
+(
+    cd "$REPO10" || exit 1
+    git init -q -b main 2>/dev/null || { git init -q; git checkout -q -b main 2>/dev/null || true; }
+    git config user.name "test-render-deploy-sheet"
+    git config user.email "test-render-deploy-sheet@localhost"
+    mkdir -p app/admin/scripts/maintenance
+    echo "<?php // original" > app/admin/scripts/maintenance/old.php
+    git add app
+    git commit -q -m "base commit on main with an existing maintenance script"
+
+    git checkout -q -b milestone/vadminscripts main
+    mkdir -p app/admin/scripts/fix app/admin/scripts/other
+    echo "<?php // new fix" > app/admin/scripts/fix/new.php
+    echo "<?php // edited" > app/admin/scripts/maintenance/old.php
+    echo "<?php // out of scope" > app/admin/scripts/other/x.php
+    git add app
+    git commit -q -m "add a fix script, edit a maintenance script, add an out-of-scope script"
+)
+
+OUT18="$(cd "$REPO10" && bash "$SCRIPT" vadminscripts 2>/dev/null)"
+RC18=$?
+if [ "$RC18" -eq 0 ] \
+    && printf '%s\n' "$OUT18" | grep -q '^admin-scripts: TRUE$' \
+    && printf '%s\n' "$OUT18" | grep -qx '  - app/admin/scripts/fix/new.php' \
+    && ! printf '%s\n' "$OUT18" | grep -q 'app/admin/scripts/maintenance/old.php' \
+    && ! printf '%s\n' "$OUT18" | grep -q 'app/admin/scripts/other/x.php'; then
+    pass "Case 18: admin-scripts lists an added fix script, not an edited maintenance script or an out-of-scope one"
+else
+    fail "Case 18: admin-scripts lists an added fix script, not an edited maintenance script or an out-of-scope one" \
+        "exit: $RC18" "output: [$OUT18]"
+fi
+
 # --- Bonus: stdout contract — never carries base: or Warning ---------------
 ALL_STDOUT="$OUT1
 $OUT2
@@ -590,7 +748,11 @@ $OUT10_OUT
 $OUT11_OUT
 $OUT12_OUT
 $OUT13_OUT
-$OUT14"
+$OUT14
+$OUT15_OUT
+$OUT16
+$OUT17
+$OUT18"
 if ! printf '%s\n' "$ALL_STDOUT" | grep -qi 'base:\|warning'; then
     pass "Bonus: stdout never contains base: or Warning across all cases"
 else
