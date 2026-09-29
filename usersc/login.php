@@ -232,8 +232,13 @@ if (!empty($_POST)) {
                 // Check rate limit for login attempts
                 $userRecord = $db->query("SELECT id FROM users WHERE username = ? OR email = ?", [$username, $username])->first();
                 $userId = $userRecord ? $userRecord->id : null;
+                // An unmatched identifier is untrusted free text, possibly a password typed
+                // in the wrong box (#2189). RateLimit stores an email identifier as an
+                // unsalted SHA-256, so pass it only when it matched a real account. The IP
+                // limit still applies to unmatched attempts.
+                $knownIdentifier = (int) ($userId ?? 0) > 0 ? $username : null;
 
-                if (!checkRateLimit('login_attempt', $userId, $username)) {
+                if (!checkRateLimit('login_attempt', $userId, $knownIdentifier)) {
                     $errors[] = getRateLimitErrorMessage('login_attempt');
                 } else { // ER END
                     // Attempt to login with credentials
@@ -336,8 +341,10 @@ if (!empty($_POST)) {
                         }
                     } else {
                         // Record failed login attempt
-                        handleAuthFailure('login_attempt', $userId, $username, [], [ // ER: auth event
-                            'username_attempted' => $username,
+                        // ER: $knownIdentifier is null when nothing matched (#2189), so no part
+                        // of an unmatched identifier reaches us_rate_limits.
+                        handleAuthFailure('login_attempt', $userId, $knownIdentifier, [], [ // ER: auth event
+                            'username_attempted' => $knownIdentifier ?? '(unrecognised)',
                             'user_agent' => $user_agent ?? ''
                         ]);
                         
