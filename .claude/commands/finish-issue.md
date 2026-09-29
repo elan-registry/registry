@@ -228,7 +228,8 @@ plan file.
    ```bash
    LEDGER=$(gh issue list --repo elan-registry/registry --label cleanup-ledger \
      --state open --json number --jq '.[0].number')
-   gh pr view <pr-number> --json files --jq '.files[].path'
+   gh pr view <pr-number> --repo elan-registry/registry --json files \
+     --jq '.files[].path'
    ```
 
    If `LEDGER` is empty, skip this step and write "Ledger: none open" in the

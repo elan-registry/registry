@@ -59,8 +59,9 @@ Wait for the answer.
 
 ### Step 3b: Classify — Defect or cleanup (defer paths only)
 
-Do this step only when Step 3 gave "Not needed" (in scope) or "No" (out of
-scope). Ask:
+Do this step only when Step 3 answered **Yes** for an in-scope find (the
+current issue is complete without the fix) or **No** for an out-of-scope find
+(not an emergency). Ask:
 
 > "Can a user or an operator see a wrong result from this — a wrong value,
 > lost data, a failed request, a missing email, a misleading message?"
@@ -166,13 +167,40 @@ gh issue list --repo elan-registry/registry --label cleanup-ledger \
 If the command returns nothing, stop. Tell the user that no open ledger issue
 exists. Do not create a ledger issue and do not create a separate issue.
 
-Add one comment. Use the file path as the heading, one checkbox per item, and
-the current issue as the source:
+Keep one group per file. A group is a heading line that starts with
+``### `path/to/file.php` `` (some headings name more than one file), and the
+checkbox lines under it, up to the next `###` heading. Groups sit in the
+ledger issue body and in its comments, often several to a comment, after some
+intro text. Look for a heading line for this file:
 
 ```bash
-gh issue comment LEDGER_NUMBER --repo elan-registry/registry --body "### \`path/to/file.php\`
-- [ ] ONE_LINE_ITEM (found while working on #CURRENT_ISSUE)"
+F='path/to/file.php'
+gh api "repos/elan-registry/registry/issues/LEDGER_NUMBER/comments" --paginate \
+  | jq -r --arg h "### \`$F\`" \
+    '.[] | select(.body | split("\n") | any(startswith($h))) | .id' | head -1
+gh issue view LEDGER_NUMBER --repo elan-registry/registry --json body \
+  --jq '.body' | grep -n "^### \`$F\`"
 ```
+
+- **A heading is found** — insert the new item as the last checkbox line of
+  that file's group (before the next `###` heading, or at the end). Change
+  nothing else. Write the whole body back:
+
+  ```bash
+  # comment:
+  gh api -X PATCH "repos/elan-registry/registry/issues/comments/COMMENT_ID" \
+    -f body="$NEW_BODY"
+  # issue body:
+  gh issue edit LEDGER_NUMBER --repo elan-registry/registry --body-file <file>
+  ```
+
+- **No heading is found** — add one comment with the file path as the
+  heading:
+
+  ```bash
+  gh issue comment LEDGER_NUMBER --repo elan-registry/registry --body "### \`path/to/file.php\`
+  - [ ] ONE_LINE_ITEM (found while working on #CURRENT_ISSUE)"
+  ```
 
 > "Added to cleanup ledger #LEDGER_NUMBER under `path/to/file.php`."
 
