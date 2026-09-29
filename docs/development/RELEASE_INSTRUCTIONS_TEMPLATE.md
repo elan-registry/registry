@@ -34,10 +34,16 @@ where a manual verification runbook, if one exists, is documented):
 | `migration` | any file added under `database/migrations/` |
 | `trigger-migration` | a new migration contains `CREATE TRIGGER` |
 | `hook-changed` | `scripts/server-hooks/post-receive` in the diff |
-| `new-pages` | any new file that calls `securePage(` |
+| `new-pages` | any new `.php` file that calls `securePage(`, except under `tests/`, `database/`, `scripts/`, `vendor/` and `users/` |
 | `admin-scripts` | any new file under `app/admin/scripts/fix/` or `maintenance/` |
 | `env-vars` | `.env.example` in the diff |
 | `release-actions` | any merged issue PR documents a manual deployment/verification procedure beyond the conditions above |
+
+`scripts/render-deploy-sheet.sh` can also print `migration-modified: CHECK`.
+This is not a template condition. It means the milestone edits a migration
+that already exists. Deploy does not run an applied migration again, so
+confirm that the edit changes no schema (for example, a comment only). If it
+does, the change needs a new migration.
 
 Steps are numbered continuously across sections. Items marked **(you — admin
 UI)** are done in the browser, not the shell. Everything else is a command to

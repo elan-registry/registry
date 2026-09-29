@@ -127,7 +127,9 @@ jobs:
       #     another machine and DROP a database there.
       #   - test-render-deploy-sheet.sh: pins the #2225 fix — a match early
       #     in a >64 KB diff or file list must still be found. A piped
-      #     `grep -q` under `pipefail` read it as no match.
+      #     `grep -q` under `pipefail` read it as no match. Also pins #2250:
+      #     each condition flags only added files in its scope, and the
+      #     base is origin/main when that ref exists.
       #   - test-phpstan-on-edit.sh: needs `vendor/bin/phpstan` for its
       #     "new error" assertion. This job installs no PHP toolchain (it
       #     would only serve this one assertion in this one test), so the
