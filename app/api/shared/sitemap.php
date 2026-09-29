@@ -18,7 +18,10 @@ require_once '../../../users/init.php';
 
 try {
     $service = new SitemapService(new CarRepository(dbi()));
-    $xml = $service->buildXml($current_origin);
+    // getBaseUrl(), not $current_origin: it includes $us_url_root, and it falls
+    // back to the email.verify_url setting when the request's host is not one
+    // this application serves.
+    $xml = $service->buildXml(getBaseUrl());
 
     header('Content-Type: application/xml; charset=UTF-8');
     // No auth, no rate limit (see class docblock above) — cache-control lets

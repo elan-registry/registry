@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -38,7 +39,7 @@ final class GetBaseUrlTest extends IntegrationTestCase
     {
         parent::setUp();
         if (class_exists('Server')) {
-            $reflection = new \ReflectionClass('Server');
+            $reflection = new \ReflectionClass(\Server::class);
             if ($reflection->hasProperty('cache')) {
                 $cacheProp = $reflection->getProperty('cache');
                 $cacheProp->setValue(null, []);
@@ -86,6 +87,65 @@ final class GetBaseUrlTest extends IntegrationTestCase
                 $_SERVER['SERVER_PORT'] = $originalPort;
             }
         }
+    }
+
+    /**
+     * getBaseUrl() re-adds a non-standard port for localhost and 127.0.0.1
+     * only.
+     *
+     * SERVER_PORT can come from the client's Host header. For a public host,
+     * re-adding it would let a request point password-reset and verification
+     * links at another port on this application's own domain. Local
+     * development still needs the port, because each checkout runs on its own.
+     *
+     * @return void
+     */
+    #[DataProvider('portHandlingProvider')]
+    #[Group('integration')]
+    public function testGetBaseUrlReAddsPortOnlyForLocalHosts(
+        string $testScheme,
+        string $testHost,
+        int $testPort,
+        string $expected
+    ): void {
+        global $scheme, $host, $us_url_root;
+
+        $originalScheme    = $scheme    ?? null;
+        $originalHost      = $host      ?? null;
+        $originalUsUrlRoot = $us_url_root ?? null;
+        $originalPort      = $_SERVER['SERVER_PORT'] ?? null;
+
+        try {
+            $scheme                 = $testScheme;
+            $host                   = $testHost;
+            $us_url_root            = '/';
+            $_SERVER['SERVER_PORT'] = $testPort;
+
+            $this->assertSame($expected, getBaseUrl());
+        } finally {
+            $scheme      = $originalScheme;
+            $host        = $originalHost;
+            $us_url_root = $originalUsUrlRoot;
+            if ($originalPort === null) {
+                unset($_SERVER['SERVER_PORT']);
+            } else {
+                $_SERVER['SERVER_PORT'] = $originalPort;
+            }
+        }
+    }
+
+    /**
+     * @return array<string, array{string, string, int, string}>
+     */
+    public static function portHandlingProvider(): array
+    {
+        return [
+            'public host, non-standard https port' => ['https', 'elanregistry.org', 2083, 'https://elanregistry.org'],
+            'test host, non-standard https port'   => ['https', 'test.elanregistry.org', 8443, 'https://test.elanregistry.org'],
+            'localhost, docker port'               => ['http', 'localhost', 8002, 'http://localhost:8002'],
+            'loopback, mamp port'                  => ['http', '127.0.0.1', 9999, 'http://127.0.0.1:9999'],
+            'localhost, default port'              => ['http', 'localhost', 80, 'http://localhost'],
+        ];
     }
 
     /**

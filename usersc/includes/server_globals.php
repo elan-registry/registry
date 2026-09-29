@@ -19,7 +19,8 @@ declare(strict_types=1);
  * Available Globals:
  * - $scheme        HTTP scheme ('http' or 'https')
  * - $is_https      Boolean for quick HTTPS detection
- * - $host          Domain name (validated, no port)
+ * - $host          Domain name (no port). Only hosts this application serves
+ *                  are kept; a missing or untrusted host is ''
  * - $method        HTTP request method (GET, POST, etc.)
  * - $request_uri   Request URI (sanitized)
  * - $current_url   Full URL (scheme://host/path?query)
@@ -34,6 +35,8 @@ declare(strict_types=1);
  * - Control character stripping (\x00-\x1F, \x7F)
  * - CRLF injection prevention on URIs
  * - Hostname validation (DNS label rules)
+ * - Host allowlist on $host only: use $host, not Server::get('HTTP_HOST'),
+ *   which still returns the raw value
  * - Safe defaults for missing values
  *
  * @package ElanRegistry
@@ -54,6 +57,23 @@ $is_https = ($scheme === 'https');
 // HTTP_HOST is validated via Server::get() with stripPort=true
 // This gives us just the domain/hostname without port information
 $host = Server::get('HTTP_HOST', '');
+
+// The host builds absolute URLs, including the links in password-reset and
+// verification emails (getBaseUrl()). Server::get() checks only that the value
+// is a well-formed hostname, so the Host header alone must not decide where
+// those links point. Only hosts this application serves are trusted. Any other
+// host becomes '', the same as a cron or CLI request, so getBaseUrl() falls
+// back to the email.verify_url setting. Server::get() has already removed the
+// port and lowercased the value, so every local port arrives as 'localhost'.
+if ($host !== '' && !in_array($host, [
+    'elanregistry.org',
+    'www.elanregistry.org',
+    'test.elanregistry.org',
+    'localhost',
+    '127.0.0.1',
+], true)) {
+    $host = '';
+}
 
 // Construct origin (scheme://host) - used in redirects and CORS headers
 $current_origin = $is_https ? "https://{$host}" : "http://{$host}";
