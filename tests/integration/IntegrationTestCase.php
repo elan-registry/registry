@@ -372,6 +372,13 @@ abstract class IntegrationTestCase extends TestCase
     {
         $result = $this->db->query('UPDATE cars SET owner_last_updated = ? WHERE id = ?', [$when, $carId]);
         $this->assertFalse($result->error(), 'Test setup: seeding owner_last_updated must succeed: ' . $result->errorString());
+        // Read back, so a seed that wrote nothing cannot leave the creation-time
+        // default ("now") in place and let a reset test pass without a reset.
+        $this->assertSame(
+            $when,
+            $this->getOwnerLastUpdated($carId),
+            'Test setup: owner_last_updated must read back as seeded (pass a Y-m-d H:i:s value)'
+        );
     }
 
     /**

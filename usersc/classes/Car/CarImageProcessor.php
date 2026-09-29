@@ -329,10 +329,10 @@ class CarImageProcessor
      *
      * @param object $carData Car data object (must have ->image and ->id properties)
      * @param string $filename Image filename to remove
-     * @param bool $isOwnerInitiated True when the car's owner removes the photo.
-     *                               The same write then resets owner_last_updated.
-     *                               An admin or editor on another owner's car
-     *                               passes false, which leaves it unchanged.
+     * @param bool $isOwnerInitiated True when the caller decides this removal is an
+     *                               owner action. The same write then resets
+     *                               owner_last_updated. The caller owns that
+     *                               decision (see app/api/cars/save.php).
      * @return bool True if image was removed successfully, false if not found
      * @throws ImageProcessingException If filename is empty or encoding fails
      * @throws CarDatabaseException If database update fails

@@ -670,9 +670,8 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `updateCar()` directly to set `owner_last_updated` atomically alongside it
 - `updateImage(int $carId, string $newJson, ?string $expectedJson, ?string $ownerLastUpdated = null): bool` -
   Compare-and-swap update of the image JSON column; returns `false` on
-  concurrent modification. When `$ownerLastUpdated` is set, the same UPDATE
-  also writes `owner_last_updated`, so the change makes one `cars_hist` row
-  (#1929)
+  concurrent modification. A non-null `$ownerLastUpdated` also writes that
+  column (see the method's PHPDoc and "What resets `owner_last_updated`" below)
 - `findByChassisKey(string $year, string $type, string $chassis): ?object` -
   Find a car by its composite chassis key (year, type, chassis); used by
   `chassis-availability.php` and `transfer-request.php` to check chassis
