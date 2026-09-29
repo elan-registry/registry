@@ -93,6 +93,28 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
         );
     }
 
+    /**
+     * #1929: opting out confirms nothing about the car, so the opt-out
+     * fan-out must leave owner_last_updated exactly as it was.
+     */
+    #[Group('fast')]
+    public function testOptOutDoesNotChangeOwnerLastUpdated(): void
+    {
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createTestCar($ownerId, ['email' => 'optout-fresh@example.com', 'email_suppressed' => 0]);
+
+        $old = date('Y-m-d H:i:s', strtotime('-2 years'));
+        $this->seedOwnerLastUpdated($carId, $old);
+        $before = $this->getOwnerLastUpdated($carId);
+        $this->assertSame($old, $before, 'Precondition: the seeded value must be stored as written');
+
+        $this->manager->setSuppressedForOwner($ownerId);
+
+        $this->assertSame(1, $this->emailSuppressed($carId), 'Precondition: the opt-out must have suppressed the car');
+        $after = $this->getOwnerLastUpdated($carId);
+        $this->assertSame($before, $after, 'setSuppressedForOwner() must not change owner_last_updated');
+    }
+
     #[Group('fast')]
     public function testDifferentOwnersCarIsUntouched(): void
     {

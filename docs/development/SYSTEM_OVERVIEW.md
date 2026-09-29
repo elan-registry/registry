@@ -189,6 +189,8 @@ shipped in v2.30.3 — a real, working, unattended cron send exists — but the
 job ships paused (`er_cron_job_runs.enabled = 0`) and the site-wide feature
 switch defaults off; an admin must explicitly turn both on before any real
 verification email goes out. See [§6](#6-what-is-deliberately-not-built).
+Which owner actions count toward a car's freshness is listed in
+[CLASSES.md § CarRepository, "What resets `owner_last_updated`"](CLASSES.md#carrepository).
 
 ### 3.4. System — runs without a person
 

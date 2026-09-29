@@ -150,6 +150,53 @@ final class CarVerificationTest extends IntegrationTestCase
     }
 
     /**
+     * Put a clearly old owner_last_updated on the test car, so that a reset
+     * to "now" is visible in the assertions.
+     */
+    private function seedOldOwnerLastUpdated(): string
+    {
+        $old = date('Y-m-d H:i:s', strtotime('-2 years'));
+        $this->seedOwnerLastUpdated($this->testCarId, $old);
+        return $old;
+    }
+
+    /**
+     * #1929: the Verify link is an owner action, so markVerified() resets
+     * owner_last_updated to now, in one UPDATE (one cars_hist row).
+     */
+    #[Group('fast')]
+    public function testMarkVerifiedResetsOwnerLastUpdatedWithOneHistoryRow(): void
+    {
+        $old = $this->seedOldOwnerLastUpdated();
+        $histBefore = $this->countCarsHistRows($this->testCarId);
+
+        $this->assertTrue((new Car($this->testCarId))->markVerified());
+
+        $after = $this->getOwnerLastUpdated($this->testCarId);
+        $this->assertNotSame($old, $after, 'markVerified() must reset owner_last_updated');
+        $this->assertEqualsWithDelta(time(), strtotime($after), 60, 'owner_last_updated must be set to now');
+        $this->assertSame($histBefore + 1, $this->countCarsHistRows($this->testCarId), 'markVerified() must write exactly one cars_hist row');
+    }
+
+    /**
+     * #1929: the Sold link is an owner action, so markSold() resets
+     * owner_last_updated to now, in one UPDATE (one cars_hist row).
+     */
+    #[Group('fast')]
+    public function testMarkSoldResetsOwnerLastUpdatedWithOneHistoryRow(): void
+    {
+        $old = $this->seedOldOwnerLastUpdated();
+        $histBefore = $this->countCarsHistRows($this->testCarId);
+
+        $this->assertTrue((new Car($this->testCarId))->markSold('2023-06-15'));
+
+        $after = $this->getOwnerLastUpdated($this->testCarId);
+        $this->assertNotSame($old, $after, 'markSold() must reset owner_last_updated');
+        $this->assertEqualsWithDelta(time(), strtotime($after), 60, 'owner_last_updated must be set to now, not to the sold date');
+        $this->assertSame($histBefore + 1, $this->countCarsHistRows($this->testCarId), 'markSold() must write exactly one cars_hist row');
+    }
+
+    /**
      * Test mark sold with custom date
      */
     #[Group('fast')]

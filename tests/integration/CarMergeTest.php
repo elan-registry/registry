@@ -487,6 +487,50 @@ final class CarMergeTest extends IntegrationTestCase
     }
 
     /**
+     * #1929: a merge is an admin action, so it must leave owner_last_updated
+     * on the surviving car exactly as it was. Uses the image path so that
+     * merge() writes cars.image on the surviving car (updateImage()), which
+     * is the one UPDATE merge() makes to that row.
+     */
+    #[Group('fast')]
+    public function testMergeDoesNotChangeOwnerLastUpdatedOnSurvivingCar(): void
+    {
+        $sourceDir = $this->imageDirFor($this->testMergeCarId);
+        mkdir($sourceDir, 0700, true);
+        $filename = $this->uploadOneTestImage($sourceDir);
+
+        $this->seedEmptyImageBaseline($this->testCarId);
+        $this->seedEmptyImageBaseline($this->testMergeCarId);
+
+        $repo = new CarRepository($this->db);
+        $sourceJson = (new CarImageProcessor($repo))->encodeImages([$filename]);
+        $this->assertTrue($repo->updateImage($this->testMergeCarId, $sourceJson, ''));
+
+        $targetOld = date('Y-m-d H:i:s', strtotime('-2 years'));
+        $this->seedOwnerLastUpdated($this->testCarId, $targetOld);
+
+        $before = $this->getOwnerLastUpdated($this->testCarId);
+        $this->assertSame($targetOld, $before, 'Precondition: the seeded value must be stored as written');
+
+        $targetCarData = $repo->findById($this->testCarId);
+        $this->assertIsObject($targetCarData);
+
+        $this->administrationServiceWithTempRelocator()->merge(
+            $targetCarData,
+            $this->testMergeCarId,
+            'Merge freshness test',
+            $this->testUserId,
+            $repo
+        );
+        $this->untrackCarId($this->testMergeCarId);
+
+        $after = $this->db->query('SELECT image, owner_last_updated FROM cars WHERE id = ?', [$this->testCarId])->first();
+        $this->assertIsObject($after);
+        $this->assertSame([$filename], json_decode((string) $after->image, true), 'Precondition: merge() must have written cars.image on the surviving car');
+        $this->assertSame($before, (string) $after->owner_last_updated, 'merge() must not change owner_last_updated on the surviving car');
+    }
+
+    /**
      * The crux case: both cars have images. The target's existing base
      * filenames must come first, then the source's — exact order, not set
      * equality, because the first entry renders as the surviving car's card

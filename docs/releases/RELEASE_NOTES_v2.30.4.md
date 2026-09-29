@@ -11,7 +11,7 @@ touches on the verification email itself.
 
 Changes visible to public registry visitors (car listings, owner pages, search, etc.). One sentence each.
 
-- To be filled in as issues complete.
+- Removing a photo from your own car now counts as keeping its record current, the same as editing it or uploading a photo. ([#1929](https://github.com/elan-registry/registry/issues/1929))
 
 ## Admin-Facing Changes
 
@@ -21,7 +21,7 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 
 ## Issues Resolved
 
-- WIP: [#1929](https://github.com/elan-registry/registry/issues/1929) — Define which owner actions reset `owner_last_updated` before freshness is surfaced
+- WIP: [#1929](https://github.com/elan-registry/registry/issues/1929) — `CLASSES.md` lists which owner actions reset `owner_last_updated` (a car's freshness date), each with a covering test.
 - WIP: [#2189](https://github.com/elan-registry/registry/issues/2189) — Failed-login log no longer stores the submitted username verbatim (a password was stored in plain text)
 - WIP: [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified status row (and admin-only Email on file row) on the car details page
 - WIP: [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page, cars list, and car details page

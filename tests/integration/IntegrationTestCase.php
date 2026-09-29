@@ -361,6 +361,51 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Seed a car's owner_last_updated to a known value, so a test can later
+     * assert whether an operation changed it. Pins the #1929 freshness
+     * contract's precondition.
+     *
+     * @param int $carId The car ID to update
+     * @param string $when The value to store (e.g. an old timestamp string)
+     */
+    protected function seedOwnerLastUpdated(int $carId, string $when): void
+    {
+        $result = $this->db->query('UPDATE cars SET owner_last_updated = ? WHERE id = ?', [$when, $carId]);
+        $this->assertFalse($result->error(), 'Test setup: seeding owner_last_updated must succeed: ' . $result->errorString());
+    }
+
+    /**
+     * Read a car's current owner_last_updated. Pins the #1929 freshness
+     * contract's read side.
+     *
+     * @param int $carId The car ID to read
+     * @return string The stored owner_last_updated value
+     */
+    protected function getOwnerLastUpdated(int $carId): string
+    {
+        $row = $this->db->query('SELECT owner_last_updated FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertIsObject($row, "Car {$carId} must exist");
+
+        return (string) $row->owner_last_updated;
+    }
+
+    /**
+     * Count a car's cars_hist audit rows, so a test can assert an operation
+     * wrote exactly one row. Pins the #1929 freshness contract's one-UPDATE
+     * guarantee (image and owner_last_updated change together).
+     *
+     * @param int $carId The car ID to count history rows for
+     * @return int The number of cars_hist rows for this car
+     */
+    protected function countCarsHistRows(int $carId): int
+    {
+        $row = $this->db->query('SELECT COUNT(*) AS cnt FROM cars_hist WHERE car_id = ?', [$carId])->first();
+        $this->assertIsObject($row, "Expected a cars_hist count row for car {$carId}");
+
+        return (int) $row->cnt;
+    }
+
+    /**
      * Delete a test user from database
      *
      * @param int $userId The user ID to delete

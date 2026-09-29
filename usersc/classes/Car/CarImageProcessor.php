@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
+use ElanRegistry\AppConstants;
 use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
@@ -328,12 +329,16 @@ class CarImageProcessor
      *
      * @param object $carData Car data object (must have ->image and ->id properties)
      * @param string $filename Image filename to remove
+     * @param bool $isOwnerInitiated True when the car's owner removes the photo.
+     *                               The same write then resets owner_last_updated.
+     *                               An admin or editor on another owner's car
+     *                               passes false, which leaves it unchanged.
      * @return bool True if image was removed successfully, false if not found
      * @throws ImageProcessingException If filename is empty or encoding fails
      * @throws CarDatabaseException If database update fails
      * @throws CarConcurrentModificationException If a concurrent request modified the image list
      */
-    public function removeImage(object $carData, string $filename): bool
+    public function removeImage(object $carData, string $filename, bool $isOwnerInitiated = false): bool
     {
         if (empty($filename)) {
             throw new ImageProcessingException('No image was specified for removal.');
@@ -362,13 +367,17 @@ class CarImageProcessor
             throw new ImageProcessingException('Unable to process car images. Please try again or contact support.');
         }
 
-        $cas = $this->repo->updateImage((int) $carData->id, $imageJson, $carData->image);
+        $ownerLastUpdated = $isOwnerInitiated ? date(AppConstants::DATETIME_FORMAT) : null;
+        $cas = $this->repo->updateImage((int) $carData->id, $imageJson, $carData->image, $ownerLastUpdated);
         if (!$cas) {
             throw new CarConcurrentModificationException(
                 "Image list changed concurrently for car {$carData->id}"
             );
         }
         $carData->image = $imageJson;
+        if ($ownerLastUpdated !== null) {
+            $carData->owner_last_updated = $ownerLastUpdated;
+        }
         return true;
     }
 

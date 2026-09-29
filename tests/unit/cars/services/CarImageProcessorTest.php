@@ -146,6 +146,69 @@ final class CarImageProcessorTest extends TestCase
         $processor->removeImage($carData, 'test.jpg');
     }
 
+    /**
+     * An owner removal passes a timestamp to updateImage() and, on success,
+     * copies it to the cached car row (issue #1929).
+     */
+    public function testRemoveImagePassesTimestampAndUpdatesCarDataWhenOwnerInitiated(): void
+    {
+        $captured = 'not-called';
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())
+            ->method('updateImage')
+            ->with(1, '["other.jpg"]', '["test.jpg","other.jpg"]', $this->anything())
+            ->willReturnCallback(function (int $id, string $new, ?string $old, ?string $ts) use (&$captured): bool {
+                $captured = $ts;
+                return true;
+            });
+        $processor = new CarImageProcessor($repo);
+
+        $carData = (object) ['id' => 1, 'image' => '["test.jpg","other.jpg"]', 'owner_last_updated' => '2024-01-01 00:00:00'];
+        $processor->removeImage($carData, 'test.jpg', true);
+
+        $this->assertIsString($captured);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $captured);
+        $this->assertSame($captured, $carData->owner_last_updated);
+    }
+
+    /**
+     * The default (admin, editor, or any non-owner caller) passes null, so
+     * the freshness clock and the cached row stay unchanged.
+     */
+    public function testRemoveImagePassesNullTimestampWhenNotOwnerInitiated(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())
+            ->method('updateImage')
+            ->with(1, '["other.jpg"]', '["test.jpg","other.jpg"]', null)
+            ->willReturn(true);
+        $processor = new CarImageProcessor($repo);
+
+        $carData = (object) ['id' => 1, 'image' => '["test.jpg","other.jpg"]', 'owner_last_updated' => '2024-01-01 00:00:00'];
+        $processor->removeImage($carData, 'test.jpg');
+
+        $this->assertSame('2024-01-01 00:00:00', $carData->owner_last_updated);
+    }
+
+    /**
+     * On a CAS conflict nothing was written, so the cached owner_last_updated
+     * must stay unchanged.
+     */
+    public function testRemoveImageLeavesOwnerLastUpdatedOnCasConflict(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('updateImage')->willReturn(false);
+        $processor = new CarImageProcessor($repo);
+
+        $carData = (object) ['id' => 1, 'image' => '["test.jpg"]', 'owner_last_updated' => '2024-01-01 00:00:00'];
+        try {
+            $processor->removeImage($carData, 'test.jpg', true);
+            $this->fail('Expected CarConcurrentModificationException');
+        } catch (CarConcurrentModificationException) {
+            $this->assertSame('2024-01-01 00:00:00', $carData->owner_last_updated);
+        }
+    }
+
     // ============================================================
     // removeImages (plural) tests
     // ============================================================
