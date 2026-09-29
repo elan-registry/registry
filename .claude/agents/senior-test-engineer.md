@@ -69,9 +69,12 @@ Before you report a test as done, revert the change that the test covers and
 run the test again. It must fail, unless it guards behavior that must not
 change (see the end of this section).
 
-1. Stash the non-test files that the change edits:
-   `git stash push -- <file> [<file> ...]`. For committed work, write the
-   base version instead: `git show <merge-base>:<file> > <file>`.
+1. Stash the non-test files that the change edits or adds:
+   `git stash push --include-untracked -- <file> [<file> ...]`. Without
+   `--include-untracked`, a new file in the list stops the stash with an
+   error, and no file is stashed. For committed work, write the base version
+   instead: `git show <merge-base>:<file> > <file>`, and delete each file
+   that the change added.
 2. Run the new tests. Record which fail and which pass.
 3. Restore the change: `git stash pop`, or `git checkout -- <file>`.
 4. Run the tests again. They must pass.
