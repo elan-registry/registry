@@ -212,6 +212,14 @@ defect. Both are cheap to catch here instead of two workflow stages later:
   strictly-typed private helper uncaught and throw a generic `\TypeError`
   instead of the method's documented exception, and only a test that
   supplies the wrong type (not just the absent key) will catch it.
+- **Every new test**: the senior-test-engineer must show that each new test
+  fails with the change reverted (its agent file, "Prove each new test can
+  fail"). A test that passes with the change reverted must guard behavior
+  that must not change, and the report must say so. In #2189 an integration
+  test looped over rows that the harness never wrote. It passed with and
+  without the fix, and only `/review-pr` found it. Do not mark a test item
+  `[x]` until the plan file records the result for each test, in the form
+  `fails without the change` or `passes without the change — <reason>`.
 
 Mark the corresponding checklist items `[x]` as each completes.
 
@@ -249,8 +257,8 @@ git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD \
 sequence, and not spread across the push:
 
 - **senior-architect** — the complete diff: architecture fit, code quality,
-  standards adherence, documentation completeness. Defaults to Opus; pass
-  `model: "sonnet"` for Small/Medium-tier plans.
+  standards adherence, documentation completeness. The agent default is
+  Sonnet. Pass `model: "opus"` for Large-tier plans only.
 - **security-reviewer** — if the plan's Database & Security Considerations
   section is non-empty, or any changed file touches forms, SQL, or auth.
 - **code-reviewer** — CLAUDE.md and CODING_STANDARDS.md conformance.
@@ -339,6 +347,23 @@ patch:
 
 Mark the corresponding checklist items `[x]` once the round is clean.
 
+**Record the review fingerprint.** When the round is clean and no file will
+change before hand-off, run
+`scripts/review-fingerprint.sh origin/<milestone-branch>` (the same base ref
+that `/review-pr` passes) and add one line to the plan file, below the
+Implementation Checklist:
+
+```text
+Review fingerprint: <hash> — clean lanes: code-reviewer, pr-test-analyzer
+```
+
+Name a lane only when its last review saw the diff at this fingerprint and
+reported no Blocking finding. A lane that ran only in round one does not
+qualify when round two changed files. `/review-pr` skips the named lanes when
+the branch still has the same fingerprint (its Step 3). Only
+`code-reviewer`, `silent-failure-hunter` and `pr-test-analyzer` are also
+`/review-pr` lanes, so name no other agent.
+
 ### Step 8: Confirm Plan Completeness
 
 Before moving to hand-off, re-scan the plan file: every checklist item should
@@ -413,6 +438,10 @@ re-offer one step at a time as each becomes the actual next action:
 5. `/address-pr-comments` (after CI runs on the pushed PR)
 6. `/finish-issue` (once `/address-pr-comments` reports clean)
 
+Steps 1–3 start through the Skill tool. They run on this command's model,
+which is correct for them. Steps 4–6 declare other models, so the user types
+them (CLAUDE.md, "Hand-offs between commands").
+
 **For bug-fix plans** (plan file has a Bug Escape Analysis section), remind
 the user to include the escape analysis in the PR description.
 
@@ -429,7 +458,7 @@ within this command — that happens later, at merge time, not here.
 | Agent | `subagent_type` | Model | Use When |
 | --- | --- | --- | --- |
 | Software Developer | `software-developer` | `sonnet` (Small), `opus` (Medium/Large) | **Primary coding agent** |
-| Senior Architect | `senior-architect` | `opus` | Post-implementation review |
+| Senior Architect | `senior-architect` | agent default (`sonnet`); `opus` for Large | Post-implementation review |
 | Senior Test Engineer | `senior-test-engineer` | `sonnet` | Writing/running tests from the plan |
 | Technical Documentation Writer | `technical-documentation-writer` | `haiku` | Docs updates from the plan |
 | Security Reviewer | `security-reviewer` | (per agent default) | `/security-review` |

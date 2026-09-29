@@ -132,11 +132,23 @@ targeting the milestone branch. Each command describes its own steps.
 
 ```text
 /plan-milestone → /start-milestone
-  per issue: /start-issue → /execute-plan → /simplify → /commit → /commit-push-pr
-             → /address-pr-comments → /finish-issue
+  per issue: /start-issue → /execute-plan → /simplify → /commit → /review-pr
+             → /commit-push-pr → /address-pr-comments → /finish-issue
 /finish-milestone → /review-pr → /review-milestone → /release-milestone
 Other: /new-issue, /found, /security-review, /sprint-status, /revise-claude-md, /clean_gone
 ```
+
+**Hand-offs between commands.** A command's `model:` frontmatter applies
+only when the user types the command. A command that another command starts
+through the Skill tool runs on the model of the command that started it. So:
+
+- Start the next command through the Skill tool only when both commands
+  declare the same `model:` (for example `/start-issue` → `/execute-plan`).
+- Otherwise, tell the user to type the next command.
+- At an issue or milestone boundary, recommend `/clear` first. Each turn
+  re-reads the full context, so earlier work multiplies the cost of every
+  turn. In v2.30.4, one session that held the earlier milestone read about
+  5 times more tokens per turn than a cleared session.
 
 For milestone planning, ask `senior-product-manager`, `senior-architect`, and
 `security-reviewer` to analyze the work in parallel. Deploying to test and

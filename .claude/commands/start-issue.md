@@ -20,6 +20,16 @@ model: opus
 > code, run `git add`/`git commit`/`git push`, or launch software-developer
 > agents for implementation from within this command.
 
+## Context check
+
+Do this before Step 0. If this conversation already holds work on a
+different issue or milestone, ask via AskUserQuestion: "This conversation
+holds earlier work. Clear the context first?" Options: `Clear first`
+(recommended), `Continue here`. For `Clear first`, tell the user to run
+`/clear` and then type `/start-issue $ARGUMENTS` again, and stop. The reason
+is in CLAUDE.md, "Hand-offs between commands". If the conversation holds no
+earlier work, do not ask.
+
 ---
 
 ## Step 0: Defer TaskList Until Tier Is Known
@@ -56,7 +66,7 @@ used here. See `/execute-plan`'s own agent table for those.
 | --- | --- | --- | --- |
 | Explore | `Explore` | `haiku` | Codebase research |
 | Plan | `Plan` | `sonnet` | Implementation strategy |
-| Senior Product Manager | `senior-product-manager` | `sonnet` | Issue refinement, scope, criteria |
+| Senior Product Manager | `senior-product-manager` | agent default (`sonnet`) — pass no `model` | Issue refinement, scope, criteria |
 | Senior Test Engineer | `senior-test-engineer` | `sonnet` | Test strategy for the plan's Test Plan section |
 | Technical Documentation Writer | `technical-documentation-writer` | `haiku` | Documentation-plan scoping |
 | General Purpose | `general-purpose` | `haiku` | Multi-step research |
