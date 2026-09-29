@@ -143,6 +143,9 @@ For milestone planning, ask `senior-product-manager`, `senior-architect`, and
 production is a separate manual step. Update release
 notes with a PR, from `docs/development/RELEASE_NOTES_TEMPLATE.md`.
 Planning documents live in the gitignored `docs/plans/` — never commit them.
+One named file, `docs/plans/releases/v2.30-deploy.md`, is a committed
+exception (see `.gitignore` and `.claude/rules/planning-docs.md`); it is not
+a general rule for `docs/plans/releases/`.
 
 ## Quick Deployment Reference
 

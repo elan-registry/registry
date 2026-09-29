@@ -14,7 +14,7 @@ set -uo pipefail
 input="$(cat)"
 
 if ! cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)"; then
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"guard-private-paths.sh could not parse hook input (jq failure) — denying by default."}}'
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"guard-private-paths.sh could not parse hook input. jq may be missing — install it (see ENVIRONMENT.md, Docker Dev Environment prerequisites). Denying by default."}}'
   exit 0
 fi
 

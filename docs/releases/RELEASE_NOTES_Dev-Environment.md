@@ -2,7 +2,7 @@
 
 **Release Date:** TBD
 **Type:** Developer environment. No tag and no deploy of its own: it merges to `main` and ships
-with the next versioned release. Two changes affect production (see below).
+with the next versioned release. Six changes affect production (see below).
 
 A developer does all Registry work in a Docker checkout and can trust every
 local check's result; MAMP is no longer needed.
@@ -70,7 +70,8 @@ The next versioned release must list these and check them on test and prod.
 
 - [#2228](https://github.com/elan-registry/registry/issues/2228) — `server_globals.php` and
   `getBaseUrl()` add a port only when the request uses a non-default port and has no
-  X-Forwarded-Proto of `http` or `https`. Behind Cloudflare, canonical, `og:url`, sitemap and emailed links have no `:80` or `:443`.
+  X-Forwarded-Proto of `http` or `https`. Behind Cloudflare, canonical, `og:url`, sitemap and
+  emailed links have no `:80` or `:443`.
 - [#2212](https://github.com/elan-registry/registry/pull/2212) — `.htaccess` blocks `/.git/` at the
   origin with a 403 (#2066).
 - [#2121](https://github.com/elan-registry/registry/pull/2121) — `.htaccess` also denies

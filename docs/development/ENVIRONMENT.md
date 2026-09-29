@@ -358,7 +358,13 @@ storage state file, but no non-admin spec targets it yet.
 
 The repository provides a Docker Compose stack for each checkout. The stack
 is the only supported local environment for the Registry (#2180). It needs
-Docker Compose v2.0.0 or later. The stack runs a PHP 8.4 app container,
+Docker Compose v2.0.0 or later, and `jq` on the host. Claude Code's
+`PreToolUse` hooks (`.claude/hooks/guard-private-paths.sh`,
+`guard-deploy-push.sh`, `guard-upstream-paths.sh`) parse every Bash and Edit
+tool call with `jq` and deny the call if it is missing, so a session without
+`jq` cannot run any of those tools. Install it with `brew install jq` (macOS)
+or your package manager before starting a Claude Code session in this repo.
+The stack runs a PHP 8.4 app container,
 MySQL 8.0, phpMyAdmin, a mock Brevo API, and a landing page. It bind-mounts
 the checkout as the web root. Issue 2116 introduced the stack for
 `Registry2/`. Both `Registry2/` and `Registry/` run the full toolchain with

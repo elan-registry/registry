@@ -7,7 +7,10 @@
 # Type26Archive/".
 #
 input="$(cat)"
-file="$(echo "$input" | jq -r '.tool_input.file_path // empty')"
+if ! file="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)"; then
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"guard-upstream-paths.sh could not parse hook input. jq may be missing — install it (see ENVIRONMENT.md, Docker Dev Environment prerequisites). Denying by default rather than silently skipping the upstream-path check."}}'
+  exit 0
+fi
 rel="${file#"$PWD"/}"
 
 case "$rel" in
