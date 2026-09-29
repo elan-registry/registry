@@ -9,14 +9,16 @@ release, merge the fixes forward into `main` and the open milestone branches.
 
 ## Required Actions After Deployment
 
-[To be completed as issues are implemented. Expected: run
-`21-Fix-Page-Permissions.php` only if a new page or admin script is added.]
+None. This release has no database migration, no new page or admin script,
+and no new configuration. Deploy the `v2.30.1.1` tag. Do not deploy `main`,
+which carries later, unreleased work.
 
-- #2227: none. After deploy, check that `logs` gets no new
+Checks after deploy:
+
+- #2227: check that `logs` gets no new
   `Invalid CSRF token in join-failure-report beacon` rows.
-- #2144: none. No page is added, so `21-Fix-Page-Permissions.php` does not
-  need to run. After deploy, open a car page while logged out and check that
-  the history card shows a login prompt, not the table.
+- #2144: open a car page while logged out, and check that the history card
+  shows a login prompt, not the table.
 
 ## User-Facing Changes
 
