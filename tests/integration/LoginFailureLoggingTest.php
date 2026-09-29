@@ -77,9 +77,8 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
         $this->cookieJar = $jar;
 
         // Earlier tests (or earlier runs of this file) may have left
-        // 'login_attempt' rows for 127.0.0.1 — the built-in server's own
-        // loopback address — that would otherwise trip the IP-scoped rate
-        // limit before a test's own POST runs.
+        // 'login_attempt' rows for the router's fixed REMOTE_ADDR that would
+        // otherwise trip the IP-scoped rate limit before a test's own POST runs.
         $this->db->query("DELETE FROM us_rate_limits WHERE action = 'login_attempt'");
     }
 
@@ -108,9 +107,13 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
     {
         $projectRoot = self::$projectRoot;
 
+        // RateLimit::getRealIP() rejects loopback (FILTER_FLAG_NO_RES_RANGE), so
+        // without a routable REMOTE_ADDR no 'ip' row is written and the
+        // us_rate_limits assertions check nothing. 203.0.113.0/24 is TEST-NET-3.
         return <<<PHP
         require '{$projectRoot}/vendor/autoload.php';
         \\Dotenv\\Dotenv::createMutable('{$projectRoot}', '.env.test.local')->load();
+        \$_SERVER['REMOTE_ADDR'] = '203.0.113.9';
         chdir('{$projectRoot}/usersc');
         require '{$projectRoot}/usersc/login.php';
         PHP;
@@ -284,9 +287,8 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
 
     /**
      * Before #2189, every row RateLimit::record() wrote for this request held the
-     * raw value in metadata.username_attempted. Any row written now must carry
-     * '(unrecognised)' and no part of the value. See assertNoRateLimitRowLeaks()
-     * for why this harness usually writes no row at all.
+     * raw value in metadata.username_attempted. Each row written now must carry
+     * '(unrecognised)' and no part of the value.
      */
     public function testUnmatchedPasswordShapedUsernameProducesRateLimitRowsWithFixedMetadataAndNoRawValue(): void
     {
@@ -300,17 +302,16 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
     }
 
     /**
-     * In production an 'ip' row is written for an unmatched attempt; this harness's
-     * loopback address fails getRealIP(), so usually no row exists here. Check any
-     * row that does exist rather than asserting the count, so the contract holds
-     * in either environment.
+     * An unmatched attempt still records the IP-scoped row, so an empty result
+     * means the harness wrote nothing and the checks below proved nothing.
      *
      * @param list<object> $rows
      */
     private function assertNoRateLimitRowLeaks(array $rows, string $submitted): void
     {
+        $this->assertNotEmpty($rows, 'An unmatched failed login must still record an IP-scoped us_rate_limits row');
         foreach ($rows as $row) {
-            $this->assertContains($this->usernameAttempted($row), ['(unrecognised)', null]);
+            $this->assertSame('(unrecognised)', $this->usernameAttempted($row));
             $this->assertStringNotContainsString($submitted, (string) $row->metadata);
             $this->assertStringNotContainsString(htmlspecialchars($submitted, ENT_QUOTES, 'UTF-8'), (string) $row->metadata);
         }
@@ -338,8 +339,7 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
         $newRows = $this->newRateLimitRowsSince($sinceId);
 
         // An email-shaped value survives RateLimit::sanitizeIdentifiers(), so before
-        // #2189 this request stored the key below. The query is not scoped to this
-        // request, so it holds even when the harness writes no row.
+        // #2189 this request stored the key below.
         $forbiddenKey = hash('sha256', 'email::' . strtolower($submitted));
         $leakedRow = $this->db->query(
             "SELECT id FROM us_rate_limits WHERE action = 'login_attempt' AND identifier_key = ?",
