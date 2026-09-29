@@ -1,7 +1,8 @@
 # Elan Registry Dev Environment Release Notes
 
 **Release Date:** TBD
-**Type:** Internal - Developer Environment (no user-facing changes; not tagged or versioned)
+**Type:** Developer environment. No tag and no deploy of its own: it merges to `main` and ships
+with the next versioned release. Two changes affect production (see below).
 
 A developer does all Registry work in a Docker checkout and can trust every
 local check's result; MAMP is no longer needed.
@@ -63,8 +64,34 @@ local check's result; MAMP is no longer needed.
   report a failed git or gh step as success, `run-verification-suite.sh` runs integration tests in
   the Docker app container, and CI now runs every hook test.
 
+## Production-affecting changes
+
+The next versioned release must list these and check them on test and prod.
+
+- [#2228](https://github.com/elan-registry/registry/issues/2228) — `server_globals.php` and
+  `getBaseUrl()` add a port only when the request has no X-Forwarded-Proto and uses a non-default
+  port. Behind Cloudflare, canonical, `og:url`, sitemap and emailed links have no `:80` or `:443`.
+- [#2212](https://github.com/elan-registry/registry/pull/2212) — `.htaccess` blocks `/.git/` at the
+  origin with a 403.
+
+## Tooling
+
+- [#2209](https://github.com/elan-registry/registry/pull/2209) — Slimmer workflow commands, new helper
+  scripts, hooks and path-scoped rules. `USERSPICE_FUNCTIONS.md` is replaced by the
+  `userspice-helper-lookup` skill.
+- [#2200](https://github.com/elan-registry/registry/pull/2200) — Docker stack updates.
+- [#2170](https://github.com/elan-registry/registry/pull/2170) — MAMP-to-Docker migration guide.
+- [#2213](https://github.com/elan-registry/registry/pull/2213) — The Brevo webhook spike script
+  registers webhooks with bearer auth.
+
 ## Developer Actions
 
+- Set `DB_HOST=db` and `DB_PORT=3306` in `.env` and in `.env.test.local` (see `.env.example` and
+  `.env.test.local.sample`).
+- Start the stack (`docker compose up -d`) before a push that runs the pre-push integration gate.
+  The gate blocks the push when the app container is not running.
+- In a second checkout, set its own host ports in its `.env` (`ENVIRONMENT.md`, "Docker Dev
+  Environment").
 - Remove an old MAMP `PLAYWRIGHT_BASE_URL` (for example `http://localhost:9999/...`) from
   `.env.local` (#2180).
 
