@@ -362,10 +362,9 @@ start, or skipped.
 
 - Report: "Local review clean — no blocking issues, no open recommendations."
   Include the Suites executed table so the claim is backed by real counts.
-- Proceed to `/commit-push-pr` or `/commit`. Tell the user to type
-  `/commit-push-pr`. Do not start it through the Skill tool: it declares
-  `model: haiku`, and a Skill-tool start runs it on this command's model
-  (CLAUDE.md, "Hand-offs between commands"). Compacting context first is also
+- Tell the user to type `/commit-push-pr`. Do not start it through the Skill
+  tool: it declares `model: haiku`, and a Skill-tool start runs it on this
+  command's model (CLAUDE.md, "Hand-offs between commands"). Compacting context first is also
   reasonable before that step — the review is already recorded in this
   report, so nothing is lost. `/compact` is a client-level operation the user
   runs themselves, not something this command can trigger via a tool.

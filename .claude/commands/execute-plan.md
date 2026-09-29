@@ -348,8 +348,10 @@ patch:
 Mark the corresponding checklist items `[x]` once the round is clean.
 
 **Record the review fingerprint.** When the round is clean and no file will
-change before hand-off, run `scripts/review-fingerprint.sh` and add one line
-to the plan file, below the Implementation Checklist:
+change before hand-off, run
+`scripts/review-fingerprint.sh origin/<milestone-branch>` (the same base ref
+that `/review-pr` passes) and add one line to the plan file, below the
+Implementation Checklist:
 
 ```text
 Review fingerprint: <hash> — clean lanes: code-reviewer, pr-test-analyzer
