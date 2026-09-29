@@ -186,7 +186,8 @@ class ServerGlobalsTest extends TestCase
      * the "control character stripping" and "CRLF injection prevention"
      * security feature server_globals.php's header documents. The sanitizer
      * strips control characters rather than rejecting the whole value
-     * outright, so the resulting host is the control-character-free remainder.
+     * outright. The remainder is not one of this application's hosts, so the
+     * host allowlist then drops it and the host ends up ''.
      */
     #[Group('requires-upstream-install')]
     public function testSpoofedHostStripsControlCharacters(): void
@@ -197,6 +198,7 @@ class ServerGlobalsTest extends TestCase
 
         $this->assertStringNotContainsString("\r", $globals['host']);
         $this->assertStringNotContainsString("\n", $globals['host']);
+        $this->assertSame('', $globals['host']);
     }
 
     /**
@@ -213,6 +215,82 @@ class ServerGlobalsTest extends TestCase
         ]);
 
         $this->assertSame('', $globals['host']);
+    }
+
+    /**
+     * A well-formed host that this application does not serve must be dropped.
+     *
+     * The host builds the links in password-reset and verification emails
+     * (getBaseUrl()), so an untrusted Host header must not reach them. It
+     * becomes '', the same as a cron or CLI request, and getBaseUrl() then
+     * falls back to the email.verify_url setting. The lookalikes pin that the
+     * check is an exact match, not a prefix, suffix or substring match.
+     */
+    #[DataProvider('untrustedHostProvider')]
+    #[Group('requires-upstream-install')]
+    public function testUntrustedHostIsDropped(string $httpHost): void
+    {
+        $globals = $this->runServerGlobals([
+            'HTTPS'          => 'on',
+            'REQUEST_SCHEME' => 'https',
+            'HTTP_HOST'      => $httpHost,
+            'REQUEST_URI'    => '/users/forgot_password.php',
+        ]);
+
+        $this->assertSame('', $globals['host'], "Untrusted host {$httpHost} must not be kept");
+        $this->assertSame('https://', $globals['current_origin']);
+        $this->assertStringNotContainsString('attacker', $globals['current_url']);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function untrustedHostProvider(): array
+    {
+        return [
+            'unrelated domain'        => ['attacker.example'],
+            'trusted host as prefix'  => ['elanregistry.org.attacker.example'],
+            'trusted host as suffix'  => ['attacker-elanregistry.org'],
+            'subdomain of trusted'    => ['attacker.elanregistry.org'],
+        ];
+    }
+
+    /**
+     * Every host this application serves must be kept, including after the
+     * port is removed and the value is lowercased. Losing one of these would
+     * send that environment's emails to email.verify_url instead of the host
+     * the visitor used.
+     */
+    #[DataProvider('trustedHostProvider')]
+    #[Group('requires-upstream-install')]
+    public function testTrustedHostIsKept(string $httpHost, string $expectedHost): void
+    {
+        $globals = $this->runServerGlobals([
+            'HTTPS'          => 'on',
+            'REQUEST_SCHEME' => 'https',
+            'HTTP_HOST'      => $httpHost,
+            'REQUEST_URI'    => '/',
+        ]);
+
+        $this->assertSame($expectedHost, $globals['host']);
+        $this->assertSame('https://' . $expectedHost, $globals['current_origin']);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function trustedHostProvider(): array
+    {
+        return [
+            'production'          => ['elanregistry.org', 'elanregistry.org'],
+            'production www'      => ['www.elanregistry.org', 'www.elanregistry.org'],
+            'test'                => ['test.elanregistry.org', 'test.elanregistry.org'],
+            'localhost'           => ['localhost', 'localhost'],
+            'loopback address'    => ['127.0.0.1', '127.0.0.1'],
+            'localhost with port' => ['localhost:8002', 'localhost'],
+            'production with port'=> ['elanregistry.org:443', 'elanregistry.org'],
+            'mixed case'          => ['ElanRegistry.ORG', 'elanregistry.org'],
+        ];
     }
 
     /**

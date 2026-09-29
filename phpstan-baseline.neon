@@ -127,12 +127,6 @@ parameters:
 			path: app/views/email/_member_to_owner.php
 
 		-
-			message: '#^Parameter \#1 \$objectOrClass of class ReflectionClass constructor expects class\-string\<Server\>\|Server, string given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/integration/GetBaseUrlTest.php
-
-		-
 			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
 			identifier: notIdentical.alwaysTrue
 			count: 1

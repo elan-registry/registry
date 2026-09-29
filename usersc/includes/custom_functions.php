@@ -99,10 +99,13 @@ function getBaseUrl(): string {
 
     if (!empty($scheme) && !empty($host) && !empty($us_url_root)) {
         // $host has the port stripped (Server::get uses stripPort=true).
-        // Re-add non-standard ports so email URLs are correct on local dev.
+        // Re-add a non-standard port for local development only. SERVER_PORT
+        // can come from the client's Host header, so for a public host a
+        // request could otherwise point email links at another port.
         $port = Server::get('SERVER_PORT', 0);
         $defaultPort = ($scheme === 'https') ? 443 : 80;
-        $portStr = ($port && $port !== $defaultPort) ? ':' . $port : '';
+        $isLocalHost = in_array($host, ['localhost', '127.0.0.1'], true);
+        $portStr = ($isLocalHost && $port && $port !== $defaultPort) ? ':' . $port : '';
         return rtrim($scheme . '://' . $host . $portStr . $us_url_root, '/');
     }
 

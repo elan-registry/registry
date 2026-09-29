@@ -218,7 +218,7 @@ users/init.php
             └─ Provides validated global variables:
                 ├─ $scheme - HTTP scheme ('http' or 'https')
                 ├─ $is_https - Boolean for HTTPS detection
-                ├─ $host - Domain name (validated via Server::get)
+                ├─ $host - Domain name (validated via Server::get, then allowlisted; '' if untrusted)
                 ├─ $method - HTTP request method (GET, POST, etc.)
                 ├─ $request_uri - Request URI (sanitized)
                 ├─ $current_url - Full URL (scheme://host/path?query)
@@ -532,7 +532,7 @@ the application:
 | `$config`         | `array`    | Database and system config            | Phase 1.4      |
 | `$scheme`         | `string`   | HTTP scheme ('http' or 'https')       | Phase 1.11.12  |
 | `$is_https`       | `bool`     | Whether request is HTTPS              | Phase 1.11.12  |
-| `$host`           | `string`   | Validated hostname (no port)          | Phase 1.11.12  |
+| `$host`           | `string`   | Allowlisted hostname (no port) or ''  | Phase 1.11.12  |
 | `$method`         | `string`   | HTTP request method (GET, POST, etc.) | Phase 1.11.12  |
 | `$request_uri`    | `string`   | Sanitized request URI (path + query)  | Phase 1.11.12  |
 | `$current_url`    | `string`   | Full URL (scheme://host/path?query)   | Phase 1.11.12  |
@@ -541,6 +541,10 @@ the application:
 | `$remote_addr`    | `string`   | Client IP address                     | Phase 1.11.12  |
 | `$referer`        | `string`   | HTTP referer (user-controlled)        | Phase 1.11.12  |
 | `$user_agent`     | `string`   | User agent string (max 512 chars)     | Phase 1.11.12  |
+
+`$host` keeps only `elanregistry.org`, `www.elanregistry.org`, `test.elanregistry.org`,
+`localhost` and `127.0.0.1`, compared after the port is removed. Any other host becomes
+`''`, the same as a CLI or cron request, so `getBaseUrl()` falls back to `email.verify_url`.
 
 ### Server Globals Usage Examples
 
@@ -557,8 +561,10 @@ if ($method === 'POST') {
     // process form
 }
 
-// Build redirect URL
-$redirect = $current_origin . '/app/owner/cars/details.php?id=' . $carId;
+// Build an absolute URL (email links, redirects, sitemap). Use getBaseUrl(),
+// not $current_origin: getBaseUrl() includes $us_url_root and falls back to
+// the email.verify_url setting when $host is empty.
+$url = getBaseUrl() . '/app/owner/cars/details.php?car_id=' . $carId;
 
 // Log with IP
 logger($userId, LogCategories::LOG_CATEGORY_LOGIN, "Login from $remote_addr");
