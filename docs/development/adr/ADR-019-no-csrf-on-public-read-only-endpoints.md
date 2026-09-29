@@ -124,6 +124,7 @@ Applied to the current codebase:
 | --- | --- | --- |
 | `app/api/cars/list.php` | removed | `cars_list` |
 | `app/api/cars/factory-list.php` | removed | `factory_list` |
+| `app/api/cars/history.php` | removed; login required since #2144 (see Notes) | `car_history` |
 | `app/api/shared/statistics.php` | removed | `statistics_request` (existing) |
 | `app/api/shared/join-failure-report.php` | removed (diagnostic-log exception) | `join_failure_beacon` |
 

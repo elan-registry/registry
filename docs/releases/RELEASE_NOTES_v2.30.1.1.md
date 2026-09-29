@@ -19,6 +19,11 @@ Checks after deploy:
   `Invalid CSRF token in join-failure-report beacon` rows.
 - #2144: open a car page while logged out, and check that the history card
   shows a login prompt, not the table.
+- #2144: in Cloudflare, check that no Cache Rule matching
+  `app/owner/cars/details.php*` or `app/api/*` overrides the headers the server
+  sends. `details.php` now sends `Cache-Control: private, no-store`.
+- Run `npm run test:e2e` after the deploy, not before. The new #2144 tests in
+  `not-logged-in.spec.js` pass only once this release is live.
 
 ## User-Facing Changes
 
