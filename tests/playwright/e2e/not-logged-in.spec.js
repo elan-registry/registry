@@ -1299,8 +1299,17 @@ test.describe('Issue #2144 — anonymous visitor sees a login prompt, not car hi
     // (tiles.versatiles.org) in a test environment. That happens for every
     // visitor, logged in or not, and has nothing to do with history. Only
     // errors from that one host are ignored; any other console error,
-    // including a 404 for one of this site's own assets, still fails.
-    const unexpectedErrors = consoleErrors.filter((e) => !e.url.includes('tiles.versatiles.org'));
+    // including a 404 for one of this site's own assets, still fails. The
+    // check compares the parsed hostname, so a URL that only contains the
+    // name elsewhere (path, query, another host) is not ignored.
+    const isVersatilesHost = (url) => {
+      try {
+        return new URL(url).hostname === 'tiles.versatiles.org';
+      } catch {
+        return false;
+      }
+    };
+    const unexpectedErrors = consoleErrors.filter((e) => !isVersatilesHost(e.url));
     expect(unexpectedErrors, `console errors: ${unexpectedErrors.map((e) => `${e.text} (${e.url})`).join('; ')}`).toEqual([]);
   });
 
