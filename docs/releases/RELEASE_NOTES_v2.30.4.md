@@ -45,6 +45,10 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   migration, trigger, new-page and admin-script conditions. It counts only added files for these conditions. It diffs
   against `origin/main` after a fetch and prints the base it used. It reports an edited migration as
   `migration-modified: CHECK` (developer workflow only, no site change)
+- [#2271](https://github.com/elan-registry/registry/issues/2271) — Cleanup-ledger items are checked before the PR is
+  pushed. `/review-pr` reports open items the plan does not list. `/commit-push-pr` asks which items the PR completes
+  and records them in the PR body. `/finish-issue` ticks those items with the new `scripts/ledger-tick-items.sh`. The
+  plugin's `commit-commands:commit-push-pr` skill is denied (developer workflow only, no site change)
 
 ## Carried from the Dev Environment milestone
 

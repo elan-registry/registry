@@ -152,6 +152,108 @@ crontab -e
 Requires `gh` CLI authenticated (`gh auth status`). Creates at most one open
 `plugin-update` issue at a time to avoid duplicates.
 
+## Cleanup ledger
+
+The cleanup ledger is the one open GitHub issue with the `cleanup-ledger`
+label. It holds small cleanup finds, grouped under a level-3 (`###`) heading for each
+file. See `docs/development/ISSUE_WORKFLOW.md` for the workflow. These scripts
+read and tick ledger items. Both need the `gh` CLI, signed in (`gh auth status`).
+
+Both scripts source `scripts/lib/ledger.sh`. That library finds the ledger
+issue, fetches its body and comments, and parses the items.
+
+**Comment authors.** The scripts read only the comments whose
+`author_association` is `OWNER`, `MEMBER` or `COLLABORATOR`. Other comments
+are ignored. The ledger issue is public, so an outside comment could otherwise
+add items that the scripts list and tick.
+
+**Truncated `gh` output.** Each record that `gh` returns ends with a space
+and an `END` marker. When a record has no marker, or has text after it, the
+script stops with exit code 2 and changes nothing. macOS `base64 -d` exits 0 on short
+input, so this check, not the decoder, stops a truncated body from being
+written back.
+
+**Empty input.** When stdin has no paths (or no requests after `none` and
+blank lines are removed), the script makes no `gh` call, exits 0, and writes
+one note to stderr, for example
+`ledger-items-for-files.sh: no input paths, no query made`.
+
+**Control characters.** Both scripts remove control characters (other than
+TAB) from the text that they print. The text that they match and write back
+keeps every byte.
+
+**Heading match rule.** The scripts take each backticked token in a level-3
+(`###`) heading. A token that ends in `/` matches every path under that directory. Any
+other token matches only the exact path. Text after the tokens, such as
+`(est. −960)`, is ignored. A section ends at the next level-2 (`##`) or
+level-3 heading. An item is a line at column 0 that starts with `- [ ]` (open)
+or `- [x]` (ticked), then a space.
+
+**Exit codes (both scripts).**
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The query ran. Empty output means no match. |
+| 1 | Usage error. |
+| 2 | A `gh` call failed, `gh` output was truncated, or there is not exactly one open `cleanup-ledger` issue. |
+
+### ledger-items-for-files.sh
+
+Lists the open ledger items for a set of files. Input on stdin is one
+repo-relative path per line. Blank lines are ignored. The script takes no
+arguments. Output on stdout is one `path: item text` line for each open item
+under a matching heading. An item prints once.
+
+```bash
+# Open items for every file this branch changes
+git diff --name-only "$(git merge-base HEAD origin/main)"..HEAD | scripts/ledger-items-for-files.sh
+
+# Open items for one file
+echo "usersc/join.php" | scripts/ledger-items-for-files.sh
+```
+
+The `/review-pr` and `/commit-push-pr` commands run this script. `/finish-issue`
+runs it to report the items that remain.
+
+### ledger-tick-items.sh
+
+Ticks ledger items. Input on stdin is `path: item text` lines, the same form
+that `ledger-items-for-files.sh` prints. A leading `-` bullet marker is allowed, so a bullet
+list from a PR body works as-is. `none` lines and blank lines are ignored.
+
+For each line, the script ticks the first open item with exactly that text
+under a heading that matches the path. It changes `[ ]` to `[x]` on that line
+only. It writes each changed ledger source (body or comment) back with one
+`PATCH`. A failed `PATCH` exits with code 2.
+
+- No match: a warning on stderr, and nothing is ticked.
+- Duplicate text under one heading: the first open item is ticked, with a
+  warning on stderr.
+- stdout: one `ticked: path: item text` line for each ticked item.
+- Failed `PATCH`: one `not ticked: path: item text` line on stderr for each
+  item of that source. The other sources are still sent.
+
+The tick reads the whole body and comments, then writes each changed one back
+in full. An edit that someone makes to the same body or comment between the
+read and the `PATCH` is lost. This is an accepted risk: one maintainer edits
+the ledger, and the window is a few seconds.
+
+```bash
+# Tick one item
+echo "usersc/join.php: remove the unused \$legacy variable" | scripts/ledger-tick-items.sh
+
+# Tick the items listed in a PR body (/finish-issue does this after the merge)
+body_file="$(mktemp)"
+gh pr view 2275 --repo elan-registry/registry --json body --jq .body > "$body_file"
+set -o pipefail
+awk '{ sub(/\r$/, "") }
+     /^## / { s = ($0 == "## Ledger items"); next }
+     s && /^- /' "$body_file" | scripts/ledger-tick-items.sh
+```
+
+The hermetic tests are `tests/hooks/test-ledger-items-for-files.sh` and
+`tests/hooks/test-ledger-tick-items.sh`. They use a stub `gh`.
+
 ## Database
 
 ### refresh-local-db.sh

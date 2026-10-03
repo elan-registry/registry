@@ -251,9 +251,23 @@ annotations, or anything else with no change in behavior — does not get its
 own issue. `/found` adds it to the one open issue labelled `cleanup-ledger`,
 under a heading for its file. `/start-issue` copies a file's ledger items into
 a plan when that plan already edits the file, so the plan gate approves them.
-After the merge, `/finish-issue` ticks the done items and reports any open
-items left in the files the PR edited.
 A cleanup find with no named benefit is dropped, not recorded.
+
+Three commands check the ledger before and after the PR:
+
+- `/review-pr` reports each open item for a changed file that the plan does
+  not list. Each one is a Recommendation.
+- `/commit-push-pr` asks you which items the PR completes. It records them in
+  a `## Ledger items` section of the PR body. It never decides by itself that
+  an item is done.
+- After the merge, `/finish-issue` ticks those items from the PR body with
+  `scripts/ledger-tick-items.sh`. It then reports any open items left in the
+  files the PR edited. A PR body with no `## Ledger items` section ticks
+  nothing.
+
+`.claude/settings.json` denies the plugin skill
+`commit-commands:commit-push-pr`, so the plugin skill cannot replace the
+project `/commit-push-pr` and its ledger step for issue PRs. See "Cleanup ledger" in `scripts/README.md` for the scripts.
 
 ### Test tier rules
 
