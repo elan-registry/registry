@@ -36,9 +36,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     private static ?PhpBuiltinServer $server = null;
     private static string $projectRoot = '';
 
-    /** @var array<int> Car ids created by this test's own raw inserts, cleaned up in tearDown() in addition to trackCarId()-tracked ones. */
-    private array $extraCarIds = [];
-
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
@@ -68,12 +65,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        foreach ($this->extraCarIds as $carId) {
-            $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
-            $this->deleteTestCar($carId);
-        }
-        $this->extraCarIds = [];
-
         if ($this->databaseConnected) {
             $this->cleanUpBrevoReadyFixture();
             $this->db->query('UPDATE er_verification_settings SET enabled = 0, unmatched_recipient_count = 0 WHERE id = 1');
@@ -268,11 +259,13 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         return (int) $row->cnt;
     }
 
-    private function createFixtureCarWithEmail(string $email): int
+    /**
+     * @param array<string, mixed> $extraColumns Extra cars columns, merged over the email default
+     */
+    private function createFixtureCarWithEmail(string $email, array $extraColumns = []): int
     {
         $userId = $this->createTestUser();
-        $carId = $this->createTestCar($userId, ['email' => $email]);
-        return $carId;
+        return $this->createTestCar($userId, array_merge(['email' => $email], $extraColumns));
     }
 
     private function taggedPayload(array $overrides = []): string
@@ -479,6 +472,46 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $carRow = $this->db->query('SELECT email_bounced, email_bounced_address FROM cars WHERE id = ?', [$carId])->first();
         $this->assertSame(1, (int) $carRow->email_bounced, 'cars.email_bounced must be set');
         $this->assertSame($email, $carRow->email_bounced_address, 'cars.email_bounced_address must equal the event email');
+    }
+
+    /**
+     * Bounce journey: a verification-eligible car is excluded from
+     * CarRepository::findVerificationEligible() once the real webhook endpoint
+     * records a hard_bounce for its address. The car starts with a stale
+     * owner_last_updated and last_verified NULL, so the inclusion assertion
+     * proves eligibility before the bounce, not by default.
+     */
+    public function testHardBounceWebhookExcludesCarFromVerificationEligibleSet(): void
+    {
+        $email = 'bouncejourney-' . uniqid() . '@example.com';
+        $staleDate = date('Y-m-d H:i:s', strtotime('-3 years'));
+        $carId = $this->createFixtureCarWithEmail($email, [
+            'owner_last_updated' => $staleDate,
+            'last_verified' => null,
+        ]);
+
+        $this->assertContains(
+            $carId,
+            $this->allVerificationEligibleCarIds(),
+            'Precondition: the stale, un-bounced fixture car must be verification-eligible before the bounce'
+        );
+
+        $result = $this->postAuthorized($this->taggedPayload([
+            'email' => $email,
+            'event' => 'hard_bounce',
+            'reason' => 'Mailbox does not exist',
+        ]));
+        $this->assertGreaterThanOrEqual(200, $result['status']);
+        $this->assertLessThan(300, $result['status'], 'Matched hard_bounce must respond 2xx');
+
+        $carRow = $this->db->query('SELECT email_bounced FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertSame(1, (int) $carRow->email_bounced, 'cars.email_bounced must be set by the webhook');
+
+        $this->assertNotContains(
+            $carId,
+            $this->allVerificationEligibleCarIds(),
+            'A car flagged email_bounced = 1 must no longer be verification-eligible'
+        );
     }
 
     public function testCorrectTokenWithSpamMatchingCarSetsEmailSuppressed(): void

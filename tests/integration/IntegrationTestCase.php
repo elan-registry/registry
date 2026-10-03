@@ -413,6 +413,20 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Ids of every car findVerificationEligible() returns, in one unbounded call.
+     * A fixed window is not enough: a new fixture car sorts with the
+     * never-verified cars, so on a large test schema it can fall outside the window.
+     *
+     * @return list<int>
+     */
+    protected function allVerificationEligibleCarIds(): array
+    {
+        $rows = (new \ElanRegistry\Car\CarRepository($this->db))->findVerificationEligible(PHP_INT_MAX, 0);
+
+        return array_map(static fn (object $row): int => (int) $row->id, $rows);
+    }
+
+    /**
      * Delete a test user from database
      *
      * @param int $userId The user ID to delete
@@ -467,19 +481,21 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Delete a car's `cars` and `cars_hist` rows, in the order required to avoid
      * orphaning the cars_delete trigger's own history row (#1503, #1551): cars
-     * must go first, then cars_hist.
+     * must go first, then cars_hist. er_email_events has no foreign key to cars,
+     * so its rows are deleted first, as CarAdministrationService does.
      *
      * @param int $carId The car ID to delete
      */
     private function deleteCarRows(int $carId): void
     {
+        $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
         $this->db->delete('cars', ['id', '=', $carId]);
         $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
     }
 
     /**
-     * Delete a car's `cars` and `cars_hist` rows (see deleteCarRows()) and self-verify
-     * both are actually gone afterward. DB::query() never throws on an execute-time
+     * Delete a car's `er_email_events`, `cars` and `cars_hist` rows (see deleteCarRows())
+     * and self-verify the `cars` and `cars_hist` rows are actually gone afterward. DB::query() never throws on an execute-time
      * failure (see countMatchingLogs() below), so the verification queries check
      * error() explicitly — otherwise a failed verification SELECT would return zero
      * rows and the assertion would pass vacuously, "confirming" a deletion that may
