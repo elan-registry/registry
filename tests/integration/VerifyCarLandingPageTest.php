@@ -29,11 +29,12 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     /** @var list<string> */
     private const DB_ENV_VARS = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS'];
 
-    // Composer URL <-> landing-page contract (#2150): one marker per confirm view.
+    // Composer URL <-> landing-page contract: one marker per confirm view.
     private const MARKER_VERIFY = 'Yes, this is still accurate';
     private const MARKER_SOLD = 'When was the car sold?';
     private const MARKER_OPTOUT = 'Stop verification emails';
     private const CONFIRM_MARKERS = [self::MARKER_VERIFY, self::MARKER_SOLD, self::MARKER_OPTOUT];
+    private const MARKER_LANDING = 'registry entry still correct?';
 
     private static ?PhpBuiltinServer $server = null;
     private static string $projectRoot = '';
@@ -1306,7 +1307,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     // ------------------------------------------------------------------
-    // Composer URL <-> landing-page parser contract (#2150)
+    // Composer URL <-> landing-page parser contract
     // ------------------------------------------------------------------
 
     /**
@@ -1353,6 +1354,10 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         }
     }
 
+    /**
+     * Control for the marker test: the markers must belong to the confirm views
+     * only, so the plain landing page must show none of them.
+     */
     public function testLandingPageWithNoActionRendersNoConfirmView(): void
     {
         $code = $this->issueVericode();
@@ -1360,6 +1365,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $result = $this->get('vericode=' . $code);
 
         $this->assertSame(200, $result['status']);
+        // Without this, an error page would also pass the absence checks below.
+        $this->assertStringContainsString(self::MARKER_LANDING, $result['body'], 'Plain vericode URL must render the landing view');
         foreach (self::CONFIRM_MARKERS as $marker) {
             $this->assertStringNotContainsString($marker, $result['body'], "Plain landing page must not render a confirm view ({$marker})");
         }

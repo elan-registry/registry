@@ -11,7 +11,8 @@ touches on the verification email itself.
 
 Changes visible to public registry visitors (car listings, owner pages, search, etc.). One sentence each.
 
-- Removing a photo from your own car now counts as keeping its record current, the same as editing it or uploading a photo. ([#1929](https://github.com/elan-registry/registry/issues/1929))
+- Removing a photo from your own car now counts as keeping its record current, the same as editing it or uploading a
+  photo. ([#1929](https://github.com/elan-registry/registry/issues/1929))
 
 ## Admin-Facing Changes
 
@@ -21,16 +22,25 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 
 ## Issues Resolved
 
-- [#1929](https://github.com/elan-registry/registry/issues/1929) — `CLASSES.md` lists which owner actions reset `owner_last_updated` (a car's freshness date), each with a covering test.
-- [#2189](https://github.com/elan-registry/registry/issues/2189) — Failed-login log no longer stores the submitted username verbatim (a password was stored in plain text)
-- [#2259](https://github.com/elan-registry/registry/issues/2259) — Workflow commands and agents use the model each step needs, and repeated review work is removed (developer workflow only, no site change)
+- [#1929](https://github.com/elan-registry/registry/issues/1929) — `CLASSES.md` lists which owner actions reset
+  `owner_last_updated` (a car's freshness date), each with a covering test.
+- [#2189](https://github.com/elan-registry/registry/issues/2189) — Failed-login log no longer stores the submitted
+  username verbatim (a password was stored in plain text)
+- [#2259](https://github.com/elan-registry/registry/issues/2259) — Workflow commands and agents use the model each step
+  needs, and repeated review work is removed (developer workflow only, no site change)
 - WIP: [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified status row (and admin-only Email on file row) on the car details page
 - WIP: [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page, cars list, and car details page
 - WIP: [#1898](https://github.com/elan-registry/registry/issues/1898) — Verified vector on the statistics page's data-completeness radar chart
-- WIP: [#1894](https://github.com/elan-registry/registry/issues/1894) — Verification email photo thumbnail at 300px with descriptive alt text, and a highlighted fallback when a car has no photo (includes the remaining gap from #1892)
+- WIP: [#1894](https://github.com/elan-registry/registry/issues/1894) — Verification email photo thumbnail at 300px with
+  descriptive alt text, and a highlighted fallback when a car has no photo (includes the remaining gap from #1892)
 - WIP: [#2147](https://github.com/elan-registry/registry/issues/2147) — Stop displaying Brevo's rewritten tracking URL in the four auth email templates
-- [#2150](https://github.com/elan-registry/registry/issues/2150) — Integration tests connect the verification email links to the landing page, so a renamed `verify`, `sold` or `optout` action fails a test. Two journey tests show that a hard bounce and an opt-out each remove the car from the next verification batch. The `SendVerificationBatchJob::run()` test was dropped, because generic cron-job tests already cover it (tests only, no site change)
-- [#2250](https://github.com/elan-registry/registry/issues/2250) — `render-deploy-sheet.sh` no longer reports false migration, trigger, new-page and admin-script conditions. It counts only added files for these conditions. It diffs against `origin/main` after a fetch and prints the base it used. It reports an edited migration as `migration-modified: CHECK` (developer workflow only, no site change)
+- [#2150](https://github.com/elan-registry/registry/issues/2150) — Integration tests now connect the verification email
+  links to the landing page and show that a hard bounce or an opt-out removes the car from the next verification batch
+  (tests only, no site change)
+- [#2250](https://github.com/elan-registry/registry/issues/2250) — `render-deploy-sheet.sh` no longer reports false
+  migration, trigger, new-page and admin-script conditions. It counts only added files for these conditions. It diffs
+  against `origin/main` after a fetch and prints the base it used. It reports an edited migration as
+  `migration-modified: CHECK` (developer workflow only, no site change)
 
 ## Carried from the Dev Environment milestone
 

@@ -36,9 +36,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     private static ?PhpBuiltinServer $server = null;
     private static string $projectRoot = '';
 
-    /** @var array<int> Car ids created by this test's own raw inserts, cleaned up in tearDown() in addition to trackCarId()-tracked ones. */
-    private array $extraCarIds = [];
-
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
@@ -68,12 +65,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        foreach ($this->extraCarIds as $carId) {
-            $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
-            $this->deleteTestCar($carId);
-        }
-        $this->extraCarIds = [];
-
         if ($this->databaseConnected) {
             $this->cleanUpBrevoReadyFixture();
             $this->db->query('UPDATE er_verification_settings SET enabled = 0, unmatched_recipient_count = 0 WHERE id = 1');
@@ -484,7 +475,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     }
 
     /**
-     * #2150 bounce journey: a verification-eligible car is excluded from
+     * Bounce journey: a verification-eligible car is excluded from
      * CarRepository::findVerificationEligible() once the real webhook endpoint
      * records a hard_bounce for its address. The car starts with a stale
      * owner_last_updated and last_verified NULL, so the inclusion assertion
