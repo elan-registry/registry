@@ -769,10 +769,28 @@ See [ENVIRONMENT.md](ENVIRONMENT.md) for `.env` setup steps.
 
 If deployment fails:
 
-1. **Immediate rollback**: `git push prod previous-working-tag`
+1. **Immediate rollback**: `git push prod 'vPREVIOUS^{commit}:main' --force`
+   (for example `'v2.30.1^{commit}:main'`). The post-receive hook skips tag
+   refs, so a push of a tag alone does not redeploy. The hook writes `VERSION`
+   from the newest tag that reaches the deployed commit.
 2. **Verify rollback**: Check version display and core functionality
 3. **Investigate issue**: Review error logs and deployment differences
 4. **Fix and redeploy**: Address issues and follow deployment process again
+
+If the hook stops after the checkout (for example `npm run build failed —
+deployment halted`), the new code is already live, but the steps after the
+failure did not run: the hook self-update, the deployment log and the
+`.deployignore` cleanup. On a shared host, `npm run build` can fail once from
+a resource limit (an esbuild runtime crash) and pass on the next run. To finish
+the deploy without a new commit, run the hook again on the server for the same
+commit:
+
+```bash
+ssh <host> 'cd ~/git/elanregistry.git && echo "<old-sha> $(git rev-parse main) refs/heads/main" \
+  | GIT_DIR=$HOME/git/elanregistry.git hooks/post-receive'
+```
+
+The hook is idempotent. Use `~/git/test.elanregistry.git` for test.
 
 ### Emergency Contacts
 

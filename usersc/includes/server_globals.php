@@ -19,13 +19,15 @@ declare(strict_types=1);
  * Available Globals:
  * - $scheme        HTTP scheme ('http' or 'https')
  * - $is_https      Boolean for quick HTTPS detection
- * - $host          Domain name (validated, no port)
+ * - $host          Domain name (no port). Only hosts this application serves
+ *                  are kept; a missing or untrusted host is ''
  * - $method        HTTP request method (GET, POST, etc.)
  * - $request_uri   Request URI (sanitized)
  * - $current_url   Full URL (scheme://host[:port]/path?query)
  * - $current_origin Origin only (scheme://host[:port]). The port is added only
- *                   when it is not the scheme default and the request has no
- *                   X-Forwarded-Proto of http or https (Server::get() keeps
+ *                   for localhost and 127.0.0.1, when it is not the scheme
+ *                   default and the request has no X-Forwarded-Proto of http
+ *                   or https (Server::get() keeps
  *                   the first token, lowercased, and turns any other value
  *                   into '')
  * - $referer       HTTP referer (sanitized, optional)
@@ -38,6 +40,8 @@ declare(strict_types=1);
  * - Control character stripping (\x00-\x1F, \x7F)
  * - CRLF injection prevention on URIs
  * - Hostname validation (DNS label rules)
+ * - Host allowlist on $host only: use $host, not Server::get('HTTP_HOST'),
+ *   which still returns the raw value
  * - Safe defaults for missing values
  *
  * @package ElanRegistry
@@ -60,6 +64,23 @@ $is_https = ($scheme === 'https');
 // This gives us just the domain/hostname without port information
 $host = Server::get('HTTP_HOST', '');
 
+// The host builds absolute URLs, including the links in password-reset and
+// verification emails (getBaseUrl()). Server::get() checks only that the value
+// is a well-formed hostname, so the Host header alone must not decide where
+// those links point. Only hosts this application serves are trusted. Any other
+// host becomes '', the same as a cron or CLI request, so getBaseUrl() falls
+// back to the email.verify_url setting. Server::get() has already removed the
+// port and lowercased the value, so every local port arrives as 'localhost'.
+if ($host !== '' && !in_array($host, [
+    'elanregistry.org',
+    'www.elanregistry.org',
+    'test.elanregistry.org',
+    'localhost',
+    '127.0.0.1',
+], true)) {
+    $host = '';
+}
+
 // Construct origin (scheme://host[:port]) - used in canonical/og:url tags, the
 // sitemap and emailed links, via getBaseUrl() and directly
 $current_origin = $is_https ? "https://{$host}" : "http://{$host}";
@@ -69,10 +90,14 @@ $current_origin = $is_https ? "https://{$host}" : "http://{$host}";
 // a proxy (X-Forwarded-Proto set), that describes the proxy-to-Apache hop, not
 // the port the client used (cloudflared sends no port, so Apache reports 80), so
 // the port is never added there.
+// SERVER_PORT also follows the client's Host header, so the port is added only
+// for the local development hosts. On a public host a forged port would
+// otherwise reach emailed links (GHSA-4g69-gm5q-rx93).
 $server_port = Server::get('SERVER_PORT', 0);
 if ($server_port !== 0
     && $server_port !== ($is_https ? 443 : 80)
     && $forwarded_proto === ''
+    && in_array($host, ['localhost', '127.0.0.1'], true)
 ) {
     $current_origin .= ':' . $server_port;
 }
