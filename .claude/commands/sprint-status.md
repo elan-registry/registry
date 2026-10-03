@@ -1,6 +1,6 @@
 ---
 description: Render the current milestone's derived state — theme, issue status, blocked items
-model: claude-haiku-4-5
+model: haiku
 ---
 
 # Sprint Status
@@ -16,78 +16,37 @@ board to keep in sync. Read-only — this command makes no changes.
 - `$ARGUMENTS` — optional milestone version (e.g., `v2.17.0`). If omitted,
   find the currently open milestone automatically.
 
-## Step 1: Identify the milestone
+## Step 1: Run the script
 
 ```bash
-gh api repos/elan-registry/registry/milestones --jq '.[] | select(.state == "open") | {number, title, description}'
+scripts/sprint-status.sh $ARGUMENTS
 ```
 
-If `$ARGUMENTS` was given, match against it. If omitted and exactly one
-milestone is open, use it. If more than one is open, list them and ask the
-user which to report on.
+This prints the full report: theme, and issue counts by Done, In review, In
+progress, Ready, Blocked, and Needs attention.
 
-## Step 2: Pull all issues in the milestone, all states
+- **Exit 0** — report printed. Show it to the user, then continue to Step 2.
+- **Exit 1** — a `gh` call failed (auth, network, or rate limit). Report the
+  error. This is not the same as "milestone has no issues."
+- **Exit 2** — usage error.
+- **Exit 3** — more than one milestone is open and no version was given. The
+  script prints the open milestone titles. Ask the user which one to report
+  on, then re-run with that version.
+- **Exit 4** — no milestone matched the given version, or no milestone is
+  open at all.
 
-```bash
-gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=all&per_page=100" \
-  --jq '.[] | {number, title, state, labels: [.labels[].name]}'
-```
+## Step 2: Judge the theme sentence
 
-## Step 3: Derive state for each issue
-
-For each open issue, determine derived state in this priority order:
-
-1. **Blocked** — has `status:blocked` label (the only hand-set state).
-2. **In review** — has an open PR. Check:
-
-   ```bash
-   gh pr list --repo elan-registry/registry --search "linked:NNN is:open" --json number,title,url
-   ```
-
-3. **In progress** — a branch exists for the issue but no open PR yet:
-
-   ```bash
-   git ls-remote --heads origin "issue/NNN-*"
-   ```
-
-4. **Ready** — has `status:ready` label, no branch found.
-5. **Unlabelled/other** — flag distinctly; this means it entered the
-   milestone without going through `/plan-milestone`'s sealing step.
-
-Closed issues are **Done**.
-
-## Step 4: Render the report
+Add one line the script cannot derive:
 
 ```text
-## Sprint Status — <milestone title>
-
-Theme: "<milestone description>"
-
-### Done (N)
-- #NNN Title
-
-### In review (N)
-- #NNN Title — PR #NN
-
-### In progress (N)
-- #NNN Title — branch issue/NNN-slug
-
-### Ready (N)
-- #NNN Title
-
-### Blocked (N)
-- #NNN Title — <reason, from the status:blocked comment/context if findable>
-
-### Needs attention
-- #NNN Title — no status label, entered milestone outside /plan-milestone
-
 Theme sentence true yet? <yes/no/partial — one line of reasoning>
 ```
 
-For "theme sentence true yet", judge based on what's Done vs. what remains —
-per the doc, the milestone ships when the theme is true, not when the issue
-list is empty. If most theme issues are done and what's left is
-housekeeping or a low-value straggler, say so.
+Judge based on what's Done vs. what remains — per the doc, the milestone
+ships when the theme is true, not when the issue list is empty. If most
+theme issues are done and what's left is housekeeping or a low-value
+straggler, say so.
 
 ## Important
 

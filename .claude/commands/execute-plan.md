@@ -1,6 +1,6 @@
 ---
 description: Execute an approved plan file from /start-issue — implementation, tests, and reviews
-model: claude-opus-5
+model: opus
 ---
 
 # Execute Plan
@@ -40,7 +40,7 @@ execute before checking the item off.
 
 - `$ARGUMENTS` — (optional) an issue number or a path to a plan file. If
   omitted, auto-detect from the current branch name (e.g.,
-  `issue/423-car-data-export` → `docs/plans/issue-423-car-data-export.md`),
+  `issue/423-car-data-export` → `docs/plans/issues/issue-423-car-data-export.md`),
   the same inference `/finish-issue` uses.
 
 ## Step 0: Initialize TaskList
@@ -56,22 +56,38 @@ you progress.
 
 ### Step 1: Locate the Plan File
 
-If `$ARGUMENTS` is a path ending in `.md`, use it directly. If it's an issue
-number, look for `docs/plans/issue-<NUMBER>-*.md`. If omitted, extract the
-issue number from the current branch (`git branch --show-current`) the same
-way `/finish-issue` does, then locate the matching plan file.
+If `$ARGUMENTS` is a path ending in `.md`, use it directly and read its
+`**Status:**` line yourself (skip to Step 2's branching logic). Otherwise run:
 
-If no matching file exists, stop and tell the user: "No plan file found for
-this issue. Run `/start-issue <NUMBER>` first."
+```bash
+scripts/check-plan-state.sh $ARGUMENTS   # $ARGUMENTS may be empty
+```
 
-If multiple files match (e.g. a stale plan from an earlier, differently-named
-attempt), list them and ask the user which to use.
+This derives the issue number from the branch name when `$ARGUMENTS` is
+empty (the same way `/finish-issue` does), locates
+`docs/plans/issues/issue-<NUMBER>-*.md` (or the older
+`docs/plans/issue-<NUMBER>-*.md`), and reports its path, approval state, and
+checklist progress.
+
+- **Exit 0** — plan found and approved. Proceed to Step 3 (Step 2 is already
+  satisfied).
+- **Exit 1** — no plan file found. Stop and tell the user: "No plan file
+  found for this issue. Run `/start-issue <NUMBER>` first."
+- **Exit 2** — plan file found but not approved. Proceed to Step 2 to report
+  the actual status line and stop there.
+- **Exit 3** — could not derive an issue number (no `$ARGUMENTS`, and the
+  current branch name doesn't match `issue/`, `bug/`, or `feature/`). Ask the
+  user for the issue number or plan file path.
+
+If the `path:` line lists more than one file (comma-separated — a stale plan
+from an earlier, differently-named attempt), list them and ask the user
+which to use.
 
 ### Step 2: Validate Approval Status
 
-Read the plan file's `**Status:**` line.
+On exit 2 from Step 1, the plan file's `**Status:**` line is not
+`Approved — ready for /execute-plan`. Read it directly to see what it is:
 
-- **`Approved — ready for /execute-plan`**: proceed to Step 3.
 - **`Draft — pending approval`**: stop. Tell the user: "This plan hasn't been
   approved yet. Return to `/start-issue` to finish the approval step before
   running `/execute-plan`."
@@ -201,65 +217,31 @@ Mark the corresponding checklist items `[x]` as each completes.
 
 ### Step 6.5: PHPStan Baseline Hygiene
 
-Per CLAUDE.md's fix-when-you-touch-it policy (see CODING_STANDARDS.md —
-PHPStan Baseline Hygiene): any project-owned PHP file this plan touched must
-not carry `phpstan-baseline.neon` entries — reported errors on touched files
-must be fixed, not grandfathered. This is the same check `/finish-issue`
-Step 4.5 runs, moved earlier so it's caught right after implementation
-instead of at merge time, while the context of what changed is still fresh.
-
-**Why a plain `vendor/bin/phpstan analyse <file>` run does not catch this:**
-`phpstan.neon` includes `phpstan-baseline.neon`, so a normal run — scoped to
-one file or the whole project — silently suppresses every pre-existing
-baseline entry for that file. It only ever reports *new* errors. Checking
-the baseline file directly is the only way to see whether an already-touched
-file still carries old debt:
+Per the fix-when-you-touch-it policy
+(`docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene), run the
+same check `/finish-issue` Step 4.5 and `/review-pr` Step 1 use, moved here
+so it's caught right after implementation, while context is fresh:
 
 ```bash
-CHANGED_FILES=$(git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD)
-
-for f in $CHANGED_FILES; do
-  case "$f" in
-    *.php)
-      if grep -qF "path: $f" phpstan-baseline.neon 2>/dev/null; then
-        echo "BASELINE OVERRIDE: $f"
-      fi
-      ;;
-  esac
-done
+git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD \
+  | scripts/check-baseline-hygiene.sh
 ```
 
-(If the branch has no commits yet — e.g. this step runs before `/commit` —
-use `git diff --name-only` with no ref, or `git status --short`, to get the
-working-tree changed-file list instead.)
+(No commits yet? Pipe `git diff --name-only` with no ref, or `git status
+--short` reduced to paths, instead.)
 
-**If any file appears:** read the matching baseline entries
-(`grep -B3 -A8 "path: <file>" phpstan-baseline.neon`) to see the exact
-errors. Then:
-
-- **If the flagged lines were touched by this plan's work:** fix them now —
-  this is exactly the debt fix-when-you-touch-it exists to catch.
-- **If the flagged lines are elsewhere in the file, untouched by this
-  plan:** use AskUserQuestion rather than deciding unilaterally — do not
-  silently carry the debt forward and do not silently fix unrelated code
-  without confirming scope:
-  - Question: "`<file>` has N pre-existing PHPStan baseline entries on lines
-    this plan didn't touch. How should I proceed?"
-  - Options: `Carry over, not touched by this plan` (recommended — avoids
-    scope creep into unrelated debt), `Fix them now anyway` (if the file is
-    already open and the fix is small)
-
-After any fix, regenerate the baseline to drop resolved entries:
-
-```bash
-composer phpstan:baseline
-```
-
-Re-run the affected test suite and PHPStan on the file to confirm clean,
-then re-check the `CHANGED_FILES` loop above returns nothing for it.
-
-**If no changed file appears in the baseline:** proceed to Step 7 with
-nothing to do here.
+- **Exit 0, no output** — clean. Proceed to Step 7.
+- **Exit 0, `BASELINE OVERRIDE: <file>` lines** — read the matching entries
+  (`grep -B3 -A8 "path: <file>" phpstan-baseline.neon`). If the flagged lines
+  were touched by this plan's work, fix them now. If they're elsewhere in
+  the file, untouched by this plan, ask via AskUserQuestion: "`<file>` has N
+  pre-existing baseline entries on lines this plan didn't touch. How should
+  I proceed?" — `Carry over, not touched by this plan` (recommended) or
+  `Fix them now anyway`. After any fix, run `composer phpstan:baseline`,
+  re-run PHPStan on the file, and re-check the loop above returns nothing
+  for it.
+- **Exit 2** — could not run at all (baseline file not found, usually a
+  wrong working directory) — treat as "can't verify," not "clean."
 
 ### Step 7: The single review round — all reviewers, in parallel, before the push
 
@@ -281,9 +263,33 @@ sequence, and not spread across the push:
   strictly-typed private helper as an uncaught `\TypeError` instead of the
   method's documented exception. Skip when neither condition applies — it is
   not a blanket addition to every plan.
+- **type-design-analyzer** — if the diff introduces a new class, value
+  object, or DTO (new file under `usersc/classes/`, or a new class defined
+  anywhere else in the diff) — not for changes confined to existing classes'
+  method bodies.
+- **senior-ux-designer** — if the diff adds a new screen or page section,
+  extracts or restructures a shared UI partial (`/app/views/`), or changes
+  button hierarchy/placement/visibility rules — not for copy-only or
+  styling-only tweaks to an existing, unchanged layout.
 
 These are the same agents `/review-pr` runs. They run **here**, before the
 push — not after it.
+
+**Do not hand reviewers the plan file's own rationale as if it were
+established fact.** The plan file, commit messages, and any in-code comments
+written during this session all encode *this session's* belief about why the
+implementation is correct — the same belief that produced the code in the
+first place. A reviewer agent is launched fresh (no memory of this
+conversation), but if its prompt includes "the plan says X should work
+because Y," it is reasoning from an assertion, not verifying one, and a wrong
+Y will look consistent with the code that was written to satisfy it. Give
+each reviewer the diff, the full file contents, and the acceptance
+criteria/checklist items as *claims to check*, not as background truth —
+phrase the prompt so a query's correctness, a security control's presence, or
+a documented failure mode is something the reviewer confirms against the
+running code/DB/framework, not something it takes on the plan's word. This is
+the same principle `/review-pr` Step 4.5 applies to comment fact-checking;
+apply it here to every reviewer, not only the ones checking comments.
 
 **Why parallel and why before the push.** Serial reviewers each see a
 different artifact, which guarantees that round N+1 finds something round N
@@ -305,6 +311,21 @@ Fix all Blocking findings in **one** commit, then re-check **only that
 commit's diff**, with only the reviewers whose findings it addressed. That is
 round two, it is cheap, and it is exactly where the two self-inflicted
 regressions above would have been caught.
+
+**Round two's findings are triaged by a fresh agent, not by this session.**
+The reviewer agents that produce round two's findings are already launched
+independently, but the *triage* — deciding whether a given finding is
+Blocking, Advisory, or a non-issue — is a judgment call, and this session
+already has a stake in round one's fix being correct (it just wrote it). Left
+to this session, an ambiguous round-two finding is exactly the kind of thing
+that gets resolved in favor of "good enough, move on" without anyone
+independent weighing in. Launch a fresh `general-purpose` agent (not a fork —
+same reasoning as `/review-pr` Step 4.5: a fork inherits this session's belief
+that the fix worked, which is precisely what triage needs to not assume) with
+round two's raw findings, the corrected diff, and the triage table above; ask
+it to return the Blocking/Advisory/Note classification for each finding. Use
+its classification, not this session's own read of the findings, to decide
+whether round two is clean.
 
 **The two-round ceiling.** If a third round is needed, stop. Three rounds of
 fixes on one issue means the plan was wrong, not that the reviewers are
@@ -345,7 +366,7 @@ milestone branch directly (its own Step 3) before ever branching off it.
 Get the milestone version from the plan file's `**Milestone:**` field first:
 
 ```bash
-grep -oP '(?<=\*\*Milestone:\*\* `)[^`]+' docs/plans/issue-<NUMBER>-<slug>.md
+grep -oP '(?<=\*\*Milestone:\*\* `)[^`]+' docs/plans/issues/issue-<NUMBER>-<slug>.md
 ```
 
 **If that field is missing** (an older plan file predating this field, or one
@@ -366,28 +387,21 @@ the `technical-documentation-writer` agent for non-trivial entries.
 ### Step 10: Hand Off
 
 **Do NOT commit, push, or create PRs.** State plainly that implementation is
-complete and the plan file at `docs/plans/issue-<NUMBER>-<slug>.md` shows
-every item verified complete. Then use AskUserQuestion instead of a
-plain-text menu — and only ever offer the actual next runnable step, not the
-full remaining sequence at once:
-
-- Question: "Implementation complete. What next?"
-- Options: `/simplify` (recommended — clean up the code before committing),
-  `/commit` (skip straight to committing), `Compact context first`
-  (recommended before a long next step — the plan file already has every
-  item verified complete, so compacting here is safe and won't lose it),
-  `Ask more questions / discuss first`
-- If the user picks a command, invoke it immediately via the Skill tool
-  rather than telling them to type it.
-- If the user picks `Compact context first`, tell them to run `/compact`
-  themselves — it's a client-level operation, not something this command can
-  trigger via a tool.
+complete and the plan file at `docs/plans/issues/issue-<NUMBER>-<slug>.md`
+shows every item verified complete. Then ask via AskUserQuestion, offering
+only the actual next step, not the full sequence — "Implementation
+complete. What next?" Options: `/simplify` (recommended — the built-in
+Claude Code skill, not a project command), `/commit`,
+`Compact context first` (state is already saved, safe to compact), `Ask
+more questions / discuss first`. Invoke a chosen command immediately via
+the Skill tool. For `Compact context first`, tell the user to run
+`/compact` themselves — this command can't trigger it.
 
 The full remaining sequence, each step handed off the same way once the
 prior one completes — do not present this whole list to the user at once,
 re-offer one step at a time as each becomes the actual next action:
 
-1. `/simplify` (optional)
+1. `/simplify` (optional; built-in Claude Code skill)
 2. `/commit`
 3. `/review-pr` — **must run after `/commit`, not before.** It diffs
    committed history (`merge-base..HEAD`) against the milestone branch, per

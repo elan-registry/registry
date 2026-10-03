@@ -1,13 +1,13 @@
 ---
 description: Full-branch PR review that matches CI scope — diff + complete file content, with user confirmation on recommendations
-model: claude-opus-5
+model: opus
 argument-hint: "[aspects: code|errors|comments|tests|simplify|all]"
 ---
 
 # PR Review (Full Branch)
 
-Think hard when verifying findings and judging false positives — a wrong
-triage call either ships a bug or burns a CI round-trip.
+A wrong triage call on a finding either ships a bug or burns a CI
+round-trip.
 
 Keep output brief — terse status lines, no preamble, no restating of steps.
 
@@ -16,10 +16,10 @@ same view the CI `pr-to-milestone-review` check uses. This catches cross-commit
 issues (dead code, broken call interactions, unreachable paths) that per-file or
 working-tree-only reviews miss.
 
-Use this instead of `/pr-review-toolkit:review-pr` before pushing or creating a PR.
+Run this before pushing or creating a PR.
 
 **Review aspects (optional):** `$ARGUMENTS`  
-Available: `code` | `errors` | `comments` | `tests` | `simplify` | `all` (default)
+Available: `code` | `errors` | `comments` | `tests` | `spec` | `simplify` | `all` (default)
 
 ---
 
@@ -29,27 +29,45 @@ Run this **first**, before launching any agent — a failing suite short-circuit
 the review before spending agent tokens on a branch that is already broken.
 
 ```bash
-composer test:full          # unit + ALL integration (~70s)
-composer check:docs         # under a second
-vendor/bin/phpstan analyse --no-progress --memory-limit=512M   # ~1s cached
+scripts/run-verification-suite.sh
 ```
 
-**A clean `phpstan analyse` run here does NOT mean no baseline debt on
-touched files.** `phpstan.neon` includes `phpstan-baseline.neon`, so this
-run silently suppresses every pre-existing baseline entry — it only ever
-reports *new* errors. Any file this branch modified that still carries old
-baseline entries needs the same explicit check `/finish-issue` Step 4.5 and
-`/execute-plan` Step 6.5 run:
+This runs `composer test:unit` on the host, `composer test:integration`
+inside this checkout's Docker `app` container, `composer check:docs`, and
+`vendor/bin/phpstan analyse` — always all four, never short-circuited — and
+parses PHPUnit's summary line instead of trusting the exit code — see the
+script's header for why (an unreachable DB, or an individually skipped
+test, each exit 0 having verified nothing).
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | All four components passed — both PHPUnit suites reported a clean, non-zero `OK` line, docs check passed, PHPStan reported no new errors |
+| 1 | At least one component FAILED — a missing/unclean summary line, or a non-zero exit that was not the integration pre-flight case below. Wins over exit 2. Blocking. |
+| 2 | No component FAILED, but the integration suite COULD NOT RUN — a pre-flight problem (missing `docker`, `docker compose ps` failing, a stopped stack), or `composer`/`vendor/bin/phpstan` missing; not the same as "failed" — fix the environment and re-run |
+
+**A clean PHPStan result does NOT mean no baseline debt on touched files.**
+`phpstan.neon` includes `phpstan-baseline.neon`, so the run silently
+suppresses every pre-existing baseline entry — it only ever reports *new*
+errors. Any file this branch modified that still carries old baseline
+entries needs the same explicit check `/finish-issue` Step 4.5 and
+`/execute-plan` Step 6.5 run. This step runs before Step 2 computes
+`$MERGE_BASE` for the rest of the review, so derive it here too rather than
+assume it already exists:
 
 ```bash
-for f in $(git diff --name-only $MERGE_BASE..HEAD); do
-  case "$f" in
-    *.php)
-      grep -qF "path: $f" phpstan-baseline.neon 2>/dev/null && echo "BASELINE OVERRIDE: $f"
-      ;;
-  esac
-done
+BASE=$(gh pr list --head "$(git branch --show-current)" --state open \
+  --json baseRefName --jq '.[0].baseRefName // empty' \
+  --repo elan-registry/registry 2>/dev/null)
+[ -z "$BASE" ] && BASE=$(scripts/resolve-base-branch.sh | sed 's|^origin/||')
+BASE=${BASE:-main}
+MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
+
+git diff --name-only $MERGE_BASE..HEAD | scripts/check-baseline-hygiene.sh
 ```
+
+Exit 2 means the check couldn't run at all (baseline file not found —
+usually a wrong working directory), not that the branch is clean; fix the
+cwd and re-run rather than proceeding.
 
 If this branch went through `/execute-plan`, its Step 6.5 should have
 already caught and resolved this — treat any hit here as that step being
@@ -57,87 +75,17 @@ skipped or a change made outside the plan-file workflow, and handle it the
 same way: fix if the flagged lines were touched, or confirm with the user
 before carrying pre-existing debt forward.
 
-`test:full` runs unconditionally. There is no path-based escalation and no
+The suite runs unconditionally. There is no path-based escalation and no
 opt-in: `tests/integration/` — real-database behavior (triggers, audit-trail
 writes, migrations, backups, geocoding, admin endpoints) — is run by no other
 automated step, not the pre-commit hook and not CI. If this command does not
 run it, nothing does.
 
-### Do not trust the exit code — parse the summary line
-
-Two separate mechanisms make a green exit code meaningless here, both verified
-against this repo:
-
-1. **An unreachable database exits 0 with no tests run at all.** UserSpice's
-   connection failure calls an uncatchable `die()` in `users/classes/DB.php`
-   (gitignored upstream, so grep for it rather than trusting a line number)
-   during bootstrap, so the process ends before PHPUnit prints any summary.
-   Observed output is two lines — `NOTE: Loaded test environment from .env.test.local`
-   and `Could not connect to database.  Please check your configuration.` —
-   and `$?` is **0**. Not one test executed, and the exit code says success.
-2. **Individually skipped tests also exit 0.**
-   `IntegrationTestCase::requireDatabase()` calls `markTestSkipped()`, and
-   neither `phpunit-unit.xml` nor `phpunit-integration.xml` sets
-   `failOnSkipped`, `failOnWarning`, or `failOnRisky`.
-
-A green exit code therefore does not mean the suite ran. Counting summary
-lines is the only reliable check.
-
-Judge the run on its parsed summary line instead. The line is ANSI-colored, so
-strip escapes before matching:
-
-```bash
-composer test:full 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^(OK|OK, but|FAILURES|ERRORS|WARNINGS|Tests:)'
-```
-
-`test:full` is two PHPUnit invocations, so it prints **two** summary lines —
-one per suite. There is no combined total; expect output like:
-
-```text
-OK (N tests, M assertions)     <- unit
-OK (N tests, M assertions)     <- integration
-```
-
-Both suites contain test files, so a healthy run reports two `OK` lines each
-with a **non-zero** test count. Treat that as a property to re-check, not an
-axiom — nothing in the tooling enforces it. Anything else is Blocking:
-
-| Summary | Verdict |
-| --- | --- |
-| Two `OK (N tests, M assertions)` lines, both `N > 0` | Pass — record both counts |
-| Either `OK` line with `N` of 0 | **Blocking** for the whole run, not just that suite — it reported success having run nothing |
-| `No tests executed!` | **Blocking** — exits 0 if the suite is empty, 1 if a filter matched nothing; either way nothing ran |
-| Only one `OK` line | **Blocking** — a suite died before reporting |
-| No summary line at all | **Blocking** — bootstrap `die()`d before PHPUnit reported |
-| `OK, but there were issues!` | **Blocking** |
-| Any `Skipped:`, `Incomplete:`, `Risky:`, or `Warnings:` count | **Blocking** |
-| `FAILURES!` / `ERRORS!` / non-zero exit | **Blocking** |
-
-Unexpected skips and warnings are treated exactly as errors are. A skipped
-suite reported as a pass is the specific failure this step exists to prevent.
-
-Counting the `OK` lines is what catches an integration suite that never ran:
-if the DB is unreachable the unit line still prints `OK`, and reading only the
-first line would look identical to a clean run. Checking that each `N` is
-non-zero is what catches the other shape of the same problem — a suite that
-reported success having executed nothing.
-
-### A suite that cannot start is a Blocking finding, not an excuse
-
-`tests/bootstrap-integration.php` has a number of preconditions that abort with
-`exit(1)` and an actionable message. Some examples, not a complete list — a
-missing framework, a missing or unparseable `.env.test.local`, a connection
-that turns out to be the dev database, missing reference data (via
-`abortBootstrap()` / `abortMissingSeed()`). All are self-announcing: treat any
-such abort as Blocking, whether or not it appears above.
-
-The dangerous case is the one that is not: an unreachable or nonexistent
-schema produces `Could not connect to database.` and **exits 0**. Only the
-missing summary line reveals it.
-
-Report whichever message appeared **verbatim** as Blocking. Do not reinterpret
-it as an environment gap and do not proceed. "The DB wasn't up" is a reason
-the review could not be completed, not a reason to call it clean.
+A suite that cannot start (see `run-verification-suite.sh`'s header and
+`tests/bootstrap-integration.php`'s own preconditions) is Blocking, not an
+excuse — report the script's message verbatim and do not proceed. "The DB
+wasn't up" is a reason the review could not be completed, not a reason to
+call it clean.
 
 ---
 
@@ -151,9 +99,9 @@ BASE=$(gh pr list --head "$(git branch --show-current)" --state open \
   --json baseRefName --jq '.[0].baseRefName // empty' \
   --repo elan-registry/registry 2>/dev/null)
 
-# Fall back to the single milestone/* branch if no PR yet
+# Fall back to scripts/resolve-base-branch.sh's derivation if no PR yet
 if [ -z "$BASE" ]; then
-  BASE=$(git branch --list 'milestone/*' | head -1 | tr -d ' *')
+  BASE=$(scripts/resolve-base-branch.sh | sed 's|^origin/||')
 fi
 
 # Last resort
@@ -179,13 +127,18 @@ file looks like now in its entirety.
 
 Based on `$ARGUMENTS` (default: all applicable):
 
-| Aspect     | Agent                                                                    | When to run                                        |
-|------------|--------------------------------------------------------------------------|----------------------------------------------------|
-| `code`     | `pr-review-toolkit:code-reviewer`                                        | Always                                             |
-| `errors`   | `pr-review-toolkit:silent-failure-hunter`                                | If catch blocks, fallbacks, or error paths changed |
-| `comments` | `pr-review-toolkit:comment-analyzer` + independent fact-check (Step 4.5) | If PHPDoc, inline comments, or docstrings changed  |
-| `tests`    | `pr-review-toolkit:pr-test-analyzer`                                     | If test files changed or new features added        |
-| `simplify` | `pr-review-toolkit:code-simplifier`                                      | After all other agents pass; final polish only     |
+| Aspect | Agent | When to run |
+| --- | --- | --- |
+| `code` | `code-reviewer` | Always |
+| `errors` | `silent-failure-hunter` | If catch blocks, fallbacks, or error paths changed |
+| `comments` | `comment-analyzer` + independent fact-check (Step 4.5) | If PHPDoc, inline comments, or docstrings changed |
+| `tests` | `pr-test-analyzer` | If test files changed or new features added |
+| `simplify` | `code-simplifier` | After all other agents pass; final polish only |
+| `spec` | fresh `general-purpose` agent (Step 4.6) | Always, when the branch maps to an issue |
+
+These are the project agents in `.claude/agents/` (the same ones
+`/execute-plan` Step 7 and `/finish-milestone` Step 9.7 use). They carry the
+CLAUDE.md and CODING_STANDARDS.md conventions natively.
 
 If `$ARGUMENTS` is empty or `all`, run all applicable agents based on the changed
 file types (skip test analyzer if no test files changed; skip comment analyzer if
@@ -226,7 +179,15 @@ Provide **each agent** with:
 > diverge exactly when a function's real behavior differs from its common-sense
 > reading (e.g. a locale- or engine-specific character class matching more
 > or less than expected). If you cannot verify a claim this way, say so
-> explicitly rather than passing the code as correct on inspection alone."
+> explicitly rather than passing the code as correct on inspection alone.
+>
+> Do not treat the PR description, commit messages, or inline comments as
+> established fact about why this change is correct — they encode the
+> implementer's belief, which is exactly what needs checking, not evidence
+> that stands on its own. Where a message asserts something checkable ('this
+> fixes the race because X', 'Y is the only caller', 'this query returns Z'),
+> re-derive it from the code/DB/framework yourself before treating it as
+> true, and say so explicitly if you instead relied on the assertion."
 
 Run all applicable agents **in parallel** for speed. `simplify` always runs last,
 after other agents complete.
@@ -234,6 +195,13 @@ after other agents complete.
 ---
 
 ## Step 4.5: Independent fact-check of comments (if `comments` applies)
+
+This step is the comments-specific case of the general instruction appended
+to every reviewer in Step 4 (don't take the diff's own rationale as fact) —
+comments get a dedicated, *fully* context-free agent rather than just an
+instruction, because a comment's claim is usually the most durable and most
+citable artifact in the diff, and the most likely to be copied into docs or
+the wiki later.
 
 `comment-analyzer` reviews comment *quality* (clarity, redundancy, rot risk) —
 it does not independently verify that a comment's factual claims are true.
@@ -276,6 +244,33 @@ new information, since they simply confirm what the diff already claimed.
 
 ---
 
+## Step 4.6: Spec check (if `spec` applies)
+
+The agents above check the code against the project's standards. None of
+them checks that the diff does what the issue asked for. Code can follow
+every standard and still implement the wrong thing, and the reverse is also
+true. So this check runs as a separate lane, and its findings stay separate.
+
+1. Find the spec. Run `scripts/check-plan-state.sh`. It derives the issue
+   number from the branch and finds the plan file. Then read the issue with
+   `gh issue view <N> -R elan-registry/registry --json title,body` and read
+   the plan file's Implementation Checklist and acceptance criteria. If no
+   issue maps to the branch, skip this step and write "Spec: no issue found"
+   in Step 5.
+2. Launch one fresh agent (`subagent_type: "general-purpose"`, not `fork`,
+   in parallel with Step 4) with the diff command, the commit list, the issue
+   text, and the plan file path. Give it this brief:
+
+> "Compare this diff with the issue and its plan. Report: (a) each
+> requirement or acceptance criterion that is missing or partly done;
+> (b) each change in the diff that the issue did not ask for (scope creep);
+> (c) each requirement that looks done but where the implementation looks
+> wrong. Quote the issue or plan line for each finding. Do not review code
+> style — other reviewers do that. Report findings only. Do not list
+> requirements that are met."
+
+---
+
 ## Step 5: Aggregate and triage findings
 
 Collect all agent findings and categorize them:
@@ -295,15 +290,20 @@ Output a triage table:
 ### Suites executed
 | Suite | Command | Result |
 |-------|---------|--------|
-| Unit | composer test:full | OK (N tests, M assertions) |
-| Integration | composer test:full | OK (N tests, M assertions) |
-| Docs | composer check:docs | Documentation checks passed. |
-| Static analysis | vendor/bin/phpstan analyse | No errors |
+| Unit | scripts/run-verification-suite.sh | OK (N tests, M assertions) |
+| Integration | scripts/run-verification-suite.sh | OK (N tests, M assertions) |
+| Docs | scripts/run-verification-suite.sh | Documentation checks passed. |
+| Static analysis | scripts/run-verification-suite.sh | No errors |
 | Baseline hygiene | grep touched files vs phpstan-baseline.neon | Clean / N pre-existing entries found (see Blocking) |
 
 State actual counts, never "passed" alone. If a suite did not run, say so
 here and why — this table is how the reviewer tells what was and was not
 executed.
+
+### Spec (Step 4.6 — reported separately, not merged into the tiers below)
+
+<missing or partial requirements, unrequested changes, wrong implementations,
+each with the quoted issue/plan line — or "Spec: no issue found">
 
 ### Blocking (must fix)
 | Agent | File:Line | Issue |
@@ -325,7 +325,7 @@ executed.
 
 - Fix each one (launch `software-developer` agent per file for non-trivial fixes,
   or edit directly for simple ones)
-- After fixing, re-run the `pr-review-toolkit:code-reviewer` agent on the full
+- After fixing, re-run the `code-reviewer` agent on the full
   branch diff + changed files to confirm clean
 - Do NOT proceed until blocking items are resolved
 
@@ -366,17 +366,23 @@ start, or skipped.
   including whatever belief produced the comment in the first place — which
   defeats the point. Only an agent with no memory of this session can
   meaningfully falsify a claim instead of recognizing and confirming it.
-- **A green PHPUnit exit code does not mean the suite ran.** An unreachable
-  database exits 0 having run zero tests (UserSpice `die()`s in bootstrap
-  before PHPUnit reports), and skips, warnings, incomplete, and risky tests
-  all exit 0 under the current configs. Step 1 counts summary lines for this
-  reason; keep it that way if the step is ever refactored.
-- Step 1 is the only automated step anywhere that runs `tests/integration/`.
-  The pre-commit hook (`.githooks/pre-commit`) runs
+- **Every reviewer agent, not only the comment fact-check, is instructed
+  (Step 4) to verify the diff's own stated rationale rather than trust it.**
+  A cold subagent still shares the risk if its prompt hands it the PR
+  description or a commit message as background truth — it just re-confirms
+  the implementer's belief instead of forming an independent one. Keep this
+  instruction in the shared reviewer prompt if it's ever edited; it's the
+  difference between a reviewer that checks the diff and one that checks the
+  diff *and* the story told about the diff.
+- **A green PHPUnit exit code does not mean the suite ran** — see
+  `scripts/run-verification-suite.sh`'s header for why. Step 1 uses that
+  script for this reason; do not replace it with a bare exit-code check.
+- Nothing runs `tests/integration/` in CI. It runs locally in two places:
+  Step 1 here, and the blocking integration-test gate in `.githooks/pre-push`
+  (#1439; trigger rules in `scripts/README.md`). The pre-commit hook
+  (`.githooks/pre-commit`) runs
   `vendor/bin/phpunit --testsuite=Unit --exclude-group known-broken` and a
   full-project PHPStan, but each only when the commit stages matching files —
-  a docs-only commit runs neither. `.githooks/pre-push` runs no tests at all.
-  CI's `tests.yml` runs `test:quick:ci` + `test:regression:ci` (unit only, no
-  MySQL service). Whether CI should also run integration tests is a separate
-  open question — it does not today.
+  a docs-only commit runs neither. CI's `tests.yml` runs `test:quick:ci` +
+  `test:regression:ci` (unit only, no MySQL service).
 - `$ARGUMENTS` selects which review *agents* run. It never skips Step 1.

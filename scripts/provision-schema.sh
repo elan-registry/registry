@@ -31,13 +31,15 @@
 #
 # Environment overrides:
 #   MYSQL_BIN          Path to the `mysql` client. Defaults to `mysql` resolved
-#                      on $PATH. MAMP's client is not on $PATH by default, e.g.
-#                      MYSQL_BIN=/Applications/MAMP/Library/bin/mysql80/bin/mysql
+#                      on $PATH. The app container has one at /usr/bin/mysql.
+#                      Run this script there (docker compose exec -u www-data
+#                      app scripts/provision-schema.sh): the `db` service has
+#                      no host port, so a host client cannot reach it.
 #   PROVISION_ENV_FILE Same as --env-file (the flag wins if both are given).
 #
 # Examples:
 #   scripts/provision-schema.sh                    # test schema
-#   scripts/provision-schema.sh --env-file .env.local --full --force
+#   scripts/provision-schema.sh --env-file .env --full --force
 #                                                  # fresh dev/prod-shaped install
 #                                                  # (--force: name isn't a test schema)
 #
@@ -117,8 +119,8 @@ fi
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
 if ! command -v "${MYSQL_BIN}" >/dev/null 2>&1; then
     echo "ERROR: mysql client not found: '${MYSQL_BIN}'" >&2
-    echo "       Install the MySQL client, or point MYSQL_BIN at it, e.g.:" >&2
-    echo "       MYSQL_BIN=/Applications/MAMP/Library/bin/mysql80/bin/mysql $0" >&2
+    echo "       Run this script in the app container, which has the client:" >&2
+    echo "       docker compose exec -u www-data app scripts/provision-schema.sh" >&2
     exit 1
 fi
 
@@ -174,7 +176,7 @@ DB_PASS="$(read_env "${TARGET_ENV}" DB_PASS)"
 DB_HOST="$(read_env_default "${TARGET_ENV}" DB_HOST 127.0.0.1)"
 DB_PORT="$(read_env_default "${TARGET_ENV}" DB_PORT 3306)"
 
-# DB_HOST may carry an embedded port ("127.0.0.1:8889") — the application's own
+# DB_HOST may carry an embedded port ("127.0.0.1:3307") — the application's own
 # DB class (users/classes/DB.php) has no separate port parameter, so its env
 # files write the port into DB_HOST directly. The mysql CLI's -h flag doesn't
 # accept that combined form (unlike PDO, which does), so strip it here; DB_PORT
@@ -193,18 +195,23 @@ DB_HOST="${DB_HOST%%:*}"
 # non-"test" name is the correct answer):
 #
 #   1. Refuse a target name that doesn't look like a test schema. Names are
-#      case-folded — MAMP's MySQL runs with lower_case_table_names=2 on macOS's
-#      case-insensitive filesystem, so a typo'd-case name would otherwise slip
-#      past a naive comparison.
+#      case-folded — a MySQL server with lower_case_table_names 1 or 2 (the
+#      macOS and Windows defaults) treats names that differ only in case as one
+#      database, so a typo'd-case name would otherwise slip past a naive
+#      comparison. The Docker `db` service uses 0, but the fold costs nothing.
 #   2. Refuse the database this checkout's application is configured to use
-#      (DB_NAME in .env.local, else .env), which is the specific accident the
-#      old guard existed to prevent.
+#      (DB_NAME in .env), which is the specific accident the old guard existed
+#      to prevent. Only .env counts: it is the file the app (users/init.php)
+#      loads. .env.local is read by Playwright alone, so a DB_NAME there can
+#      be stale; trusting it would protect the wrong database (#2175).
+#   3. Refuse DB_HOST=db outside a container. Only the Compose network
+#      resolves that name correctly. On the host the DNS search domain can
+#      resolve it to a different machine, and the DROP would run there.
+#      --force does not override this guard because no host run is valid.
 DB_NAME_LOWER="$(tr '[:upper:]' '[:lower:]' <<< "${DB_NAME}")"
 
 APP_ENV_FILE=""
-if [[ -f "${REPO_ROOT}/.env.local" ]]; then
-    APP_ENV_FILE="${REPO_ROOT}/.env.local"
-elif [[ -f "${REPO_ROOT}/.env" ]]; then
+if [[ -f "${REPO_ROOT}/.env" ]]; then
     APP_ENV_FILE="${REPO_ROOT}/.env"
 fi
 
@@ -225,6 +232,14 @@ if [[ "${DB_NAME_LOWER}" != *test* && ${FORCE} -eq 0 ]]; then
     echo "ERROR: target schema '${DB_NAME}' does not look like a test schema (no 'test' in the name)." >&2
     echo "       This script DROPs the target. Pass --force to provision a non-test schema" >&2
     echo "       (fresh dev or CI database), after confirming the name is correct." >&2
+    exit 1
+fi
+
+DB_HOST_LOWER="$(tr '[:upper:]' '[:lower:]' <<< "${DB_HOST%$'\r'}")"
+if [[ "${DB_HOST_LOWER}" == "db" && ! -f /.dockerenv ]]; then
+    echo "ERROR: DB_HOST=db resolves only inside the Docker Compose network." >&2
+    echo "       Run this script in the app container:" >&2
+    echo "       docker compose exec -u www-data app scripts/provision-schema.sh" >&2
     exit 1
 fi
 

@@ -10,8 +10,10 @@ on:
       - "phpstan.neon"
       - "phpstan-baseline.neon"
       - "**.js"
+      - "**.cjs"
       - "**.css"
       - "eslint.config.mjs"
+      - "eslint-rules/**"
   workflow_dispatch:
 
 jobs:
@@ -53,7 +55,11 @@ jobs:
               - "composer.lock"
             js:
               - "**.js"
+              - "**.cjs"
               - "eslint.config.mjs"
+              - "eslint-rules/**"
+              - "docker-compose.yml"
+              - "package-lock.json"
             docs:
               - "**.md"
               - "scripts/check-docs.php"
@@ -71,7 +77,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.3"
+          php-version: "8.4"
           coverage: none
 
       # No composer install needed — the checker uses only PHP core.
@@ -91,7 +97,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.3"
+          php-version: "8.4"
           extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql
           coverage: none
           tools: composer:v2
@@ -139,7 +145,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
+          php-version: "8.4"
           coverage: none
 
       # Only check PHP files changed in this PR (or push).
@@ -191,3 +197,9 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint
+
+      - name: Run local ESLint rule tests
+        run: npm run test:eslint-rules
+
+      - name: Run JavaScript unit tests
+        run: npm run test:js-unit

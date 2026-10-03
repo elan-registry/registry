@@ -74,7 +74,7 @@ fi
 # Check if pre-push hook exists and is executable
 if [ -f ".githooks/pre-push" ]; then
     if [ -x ".githooks/pre-push" ]; then
-        echo "✅ Pre-push hook is executable (blocking integration-test gate + /review-pr reminder)"
+        echo "✅ Pre-push hook is executable (~20s blocking integration gate + /review-pr reminder)"
     else
         echo "⚠️  Warning: Pre-push hook not executable, fixing..."
         if chmod +x .githooks/pre-push; then

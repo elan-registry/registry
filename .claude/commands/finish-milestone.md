@@ -1,5 +1,5 @@
 ---
-description: Create a PR to merge a completed milestone branch into main, finalize docs and release notes
+description: Gate a milestone branch — verify it, review it, and bring documentation up to date before /review-milestone opens a PR
 model: claude-fable-5-1
 ---
 
@@ -7,8 +7,10 @@ model: claude-fable-5-1
 
 Keep output brief — terse status lines, no preamble, no restating of steps.
 
-Create a PR to merge a completed milestone branch into main, finalize release
-notes, update wiki documentation, and prepare for release.
+Verify a milestone branch is complete, run every review pass, and bring
+release notes/wiki/CLAUDE.md up to date. This command ends when the branch
+is fully vetted — no PR exists yet. `/review-milestone` picks up from here:
+it opens the PR, verifies CI review posted, and confirms CI is green.
 
 ## Arguments
 
@@ -18,8 +20,7 @@ notes, update wiki documentation, and prepare for release.
 
 ### Step 0: Initialize TaskList
 
-Before any other action, create one tracking task per workflow step using
-TaskCreate. Suggested task subjects:
+Before any other action, create one TaskCreate task per step below:
 
 1. Verify the milestone branch exists
 2. Check for open issues still in the milestone
@@ -30,13 +31,14 @@ TaskCreate. Suggested task subjects:
 5. Get the full diff against main
 5.5. Verify milestone scope vs. release notes
 6. Finalize release notes
+6.5. Release retrospective — three questions
+6.6. Render the deploy sheet for review
 7. Update wiki documentation (or skip)
 8. Update CLAUDE.md if needed
 9. Security review (Step 9.5) + local multi-agent review (Step 9.7)
 9.8. Local milestone-level deep review (Fable) — mirrors CI, runs pre-PR
-10. Create the PR targeting main
-11. Verify CI milestone review posted a comment; re-trigger if missing
-12. Output summary
+9.9. Fresh-checkout smoke test (if build/install steps changed)
+10. Output summary and hand off to /review-milestone
 
 Set each task to `in_progress` when you begin it and `completed` on success.
 
@@ -47,7 +49,8 @@ Set each task to `in_progress` when you begin it and `completed` on success.
 
 ### Step 2: Check for open issues still in the milestone
 
-Use the direct API (`gh issue list --milestone` can silently return empty results — the milestone number is already recorded from Step 1):
+Use the direct API, not `gh issue list --milestone` (see CLAUDE.md's `gh` CLI
+gotchas). The milestone number is already recorded from Step 1:
 
 ```bash
 gh api "repos/elan-registry/registry/issues?milestone=<MILESTONE_NUM>&state=open&per_page=20" \
@@ -72,43 +75,48 @@ Test Runs" section). This tag exists so a pre-existing, unrelated, already-track
 blocks landing an otherwise-unrelated PR — but it's meant to be temporary. A milestone should
 not finish with tests still silently excluded from its own "all CI gates pass" bar.
 
-Search for any remaining tags:
+Run the script:
 
 ```bash
-grep -rn "Group('known-broken')" tests/ || echo "None found"
+scripts/check-known-broken-tests.sh
 ```
 
-**If none found**, proceed to Step 4.
+It prints one tab-separated line per remaining tag (file, line, cited issue
+number, that issue's current state) and looks up each issue's state itself.
 
-**If any are found:**
+- **Exit 0** — no tags found. Proceed to Step 4.
+- **Exit 1** — one or more tags found (see stdout for the list). Continue
+  below.
+- **Exit 2** — one or more tags found, but a `gh issue view` lookup failed
+  for at least one (its state column reads `(lookup-failed)`, not
+  `(unknown)` — do not treat that as "closed"). Retry the lookup before
+  presenting the list.
 
-1. For each match, extract the cited issue number from the inline comment (e.g.
-   `// #1470 — fails on Linux CI, root cause under investigation`).
-2. Check whether each cited issue is still open:
+**If any tags were found (exit 1 or 2):**
 
-   ```bash
-   gh issue view <NUMBER> --repo elan-registry/registry --json state,title
-   ```
-
-3. Present the full list to the user — test name, file, cited issue, and that issue's current
-   state (open/closed) — and **ask for explicit confirmation** before proceeding:
+1. Present the full list to the user — test name, file, cited issue, and
+   that issue's current state — and **ask for explicit confirmation**
+   before proceeding:
 
    > "N test(s) are still excluded from CI via `#[Group('known-broken')]`, tracked by
    > [issue list]. Finishing this milestone means it ships without full test coverage on
    > these paths. Do you want to (a) resolve them first, (b) proceed anyway with this
    > explicitly accepted, or (c) stop here?"
 
-4. **Do not proceed past this step without an explicit answer.** If the user chooses to
-   proceed anyway, record that decision in the milestone PR body (Step 10) under a
+2. **Do not proceed past this step without an explicit answer.** If the user chooses to
+   proceed anyway, record that decision — `/review-milestone` includes it in the
+   milestone PR body under a
    "Known Test Exclusions" note, so it's auditable later — matching Step 9.8's pattern for
    explicitly-accepted risk.
-5. If a cited issue is already closed but the tag is still present in code, that's likely a
-   forgotten cleanup step, not an accepted risk — flag this distinctly and recommend removing
-   the tag now (quick fix) rather than treating it as a risk-acceptance decision.
+3. If a cited issue's state comes back closed but the tag is still present in code, that's
+   likely a forgotten cleanup step, not an accepted risk — flag this distinctly and recommend
+   removing the tag now (quick fix) rather than treating it as a risk-acceptance decision.
+4. A row with `(none)` in the issue column means the tag has no issue number in its
+   inline comment at all — flag this distinctly too; it can't be risk-assessed without one.
 
 ### Step 3.6: Check for leftover plan files
 
-Each issue's `/finish-issue` run deletes its `docs/plans/issue-NNN-*.md` file
+Each issue's `/finish-issue` run deletes its `docs/plans/issues/issue-NNN-*.md` file
 as part of closing out that issue (see `/finish-issue`'s Step 8). A file
 still present here means that step was skipped — most likely an issue whose
 PR was merged some other way (bypassing `/finish-issue`), or an interrupted
@@ -119,7 +127,7 @@ accumulate silently on disk, and nothing else is positioned to catch them.
 List them directly:
 
 ```bash
-ls docs/plans/issue-*.md 2>/dev/null
+ls docs/plans/issues/issue-*.md docs/plans/issue-*.md 2>/dev/null
 ```
 
 **If any files are found:** present them to the user and ask whether to
@@ -252,10 +260,14 @@ since they touch different files.
 - Check for any remaining `WIP:` prefixes in the "Issues Resolved" section:
 
   ```bash
-  grep -n "WIP:" docs/releases/RELEASE_NOTES_$ARGUMENTS.md
+  scripts/check-wip-markers.sh $ARGUMENTS
   ```
 
-  Each one means an issue's `/finish-issue` run never stripped it — either
+  Exit 0 means none remain. Exit 1 prints each remaining marker (see
+  stdout). Exit 2 means the release notes file itself is missing — fix that
+  first.
+
+  Each remaining marker means an issue's `/finish-issue` run never stripped it — either
   that issue's PR never actually merged (contradicts Step 2's "no open
   issues remain" check, so investigate that discrepancy first) or its
   `/finish-issue` run skipped Step 8 for some other reason. Do not strip a
@@ -265,27 +277,29 @@ since they touch different files.
   "planned" from "actually shipped" in this document.
 - Use the `technical-documentation-writer` agent to finalize:
   - Fill in any remaining template placeholders
-  - Ensure deployment instructions, verification steps are complete
-  - Ensure "Required Actions After Deployment" is accurate
+  - Keep entries in "Issues Resolved", "User-Facing Changes", and
+    "Admin-Facing Changes" to **one sentence each** — full detail lives in
+    the issue/PR itself; the release notes are a pointer, not a changelog
+    essay
   - Scope accuracy (issue membership vs. milestone) was already verified in
     Step 5.5 — this pass is about content completeness/wording, not re-doing
     that cross-check
+  - Deployment steps (migrations, new env vars, admin-script/permission
+    registration, manual verification procedures) do **not** belong in this
+    file — they go in the deploy sheet, rendered in Step 6.6 below
 - Commit the finalized release notes if changes were made (or amend the
   Step 5.5 commit if it hasn't been pushed yet, to keep history clean)
 
 ### Step 6.5: Release retrospective — three questions
 
 Five minutes, appended to the release notes under a `## Retrospective`
-heading. One line each is enough; the value is entirely in answering the first
-one honestly.
+heading. One line each is enough.
 
 Ask the user, one at a time:
 
 1. > "What did we ship in this release that nobody needed?"
 
-   Be specific — name the issue. This is the only feedback loop that improves
-   the planning gate, and a few honest answers will do more to stop make-work
-   than any rule in the workflow.
+   Be specific — name the issue.
 
 2. > "What did we learn about this theme's audience?"
 
@@ -295,6 +309,63 @@ Ask the user, one at a time:
 Record the answers in the release notes and carry question 1's answer into the
 next `/start-milestone` Step 4.4, so the theme is chosen knowing what the last
 one over-built.
+
+### Step 6.6: Render the deploy sheet for review
+
+Deployment steps live in a standalone deploy sheet, not in the release
+notes. Generate it here, while the milestone branch is still under review,
+not at `/release-milestone` time.
+
+1. Gather the mechanical inputs:
+
+   ```bash
+   scripts/render-deploy-sheet.sh $ARGUMENTS
+   ```
+
+   This detects the diff-derived conditions (new migrations and whether any
+   contains `CREATE TRIGGER`, a changed `scripts/server-hooks/post-receive`,
+   new `securePage(`-calling pages needing `21-Fix-Page-Permissions.php`
+   registration, new `app/admin/scripts/fix/` or `maintenance/` files, and
+   `.env.example` additions). Exit 2 means it could not diff — fix the
+   branch reference and re-run. It cannot detect the `release-actions`
+   condition: read each merged issue PR's own body (Step 4's list) for a
+   documented manual verification procedure (e.g. a webhook registration/
+   capture-script dance, a spike script to deploy then delete) — this never
+   comes from the release notes.
+
+2. Read `.claude.local.md` § "Deployment hosts" for the ssh alias and
+   docroots; if the section is missing, stop and ask the user to add it
+   (copy the block from `.claude.local.md.example`).
+
+3. Render `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md` for this
+   release, following its "Rendering rules" exactly (fill placeholders,
+   include only `<!-- IF -->` blocks whose condition holds, drop the markers,
+   keep step numbering continuous). Write the rendered result to
+   `docs/plans/releases/$ARGUMENTS-deploy.md` — that directory is gitignored,
+   so this file is never committed, the same as an issue's plan file.
+
+   Also write a sidecar stamp recording the commit this was rendered
+   against, so `/release-milestone` and `/review-milestone` can mechanically
+   detect staleness instead of eyeballing `git log` output:
+
+   ```bash
+   git rev-parse "milestone/$ARGUMENTS" > "docs/plans/releases/$ARGUMENTS-deploy.md.sha"
+   ```
+
+4. If the file already exists (e.g. this step is being re-run after fixing a
+   Step 9.8 finding that changes the deploy inputs), overwrite both it and
+   its `.sha` stamp — it always reflects the milestone branch's current
+   state, not a stale earlier draft.
+
+5. Tell the user the deploy sheet is ready for review at that path. Do not
+   print its full contents into the conversation (it names ssh hosts and
+   docroots) — the user reads the file directly, or imports it into Apple
+   Notes per the template's own formatting rules.
+
+`/release-milestone` reuses this same file at actual release time rather than
+generating its own — if anything changed on the milestone branch between now
+and then (e.g. a fix from Step 9.8 or 11.5), re-run this step to refresh it,
+don't hand-edit the deploy sheet directly.
 
 ### Step 7: Update wiki documentation
 
@@ -389,12 +460,12 @@ Determine which agents apply based on `git diff --name-only main...milestone/$AR
 | Changed file types | Agents to run |
 | --- | --- |
 | `.php` files | code-reviewer, silent-failure-hunter |
-| `.php` with forms/SQL | + security-reviewer |
+| `.php` with forms/SQL | + security-reviewer (file-level review only — Step 9.5 already covered cross-PR interaction effects; don't re-derive those here) |
 | New PHP classes/types | + type-design-analyzer |
 | Test files changed | pr-test-analyzer |
 | Docs/comments changed | comment-analyzer + independent fact-check (see `/review-pr` Step 4.5 — fresh, context-free agent re-derives each factual claim from source rather than trusting the diff) |
 
-Launch only the applicable agents in parallel. Skip agents for file types not present in the diff.
+Launch only the applicable agents in parallel, skipping any type not present in the diff.
 
 Focus areas at milestone level:
 
@@ -404,15 +475,19 @@ Focus areas at milestone level:
 
 If Critical or Important issues surface, **stop and fix them before creating the PR**.
 
-Once the local review is clean, proceed to Step 9.8.
+Once the local review is clean, record a short list of what Step 9.7 found
+and fixed (file:line + one-line description per item, or "none" if the
+review was clean on the first pass) — Step 9.8 needs this to avoid
+re-flagging the same issues as new findings.
+
+Proceed to Step 9.8.
 
 ### Step 9.8: Local milestone-level deep review (mirrors CI, runs before the PR exists)
 
 Step 9.7 reviews individual files by type. This step instead runs the same
 **aggregate, milestone-level** analysis that the CI `milestone-review` job
 (`claude-code-review.yml`) performs — but locally, before the PR is even
-created, so problems surface at the earliest possible point rather than after
-the milestone branch is already public and under review.
+created.
 
 Build the inputs (the merged PR list from Step 4 and the diff from Step 5 are
 already available):
@@ -425,12 +500,15 @@ git diff main...milestone/$ARGUMENTS
 ```
 
 Launch a single agent via the Agent tool with `subagent_type: "senior-architect"`
-and `model: "fable"` (matching the CI job's tier — this is an infrequent,
-once-per-milestone deep analysis, not a per-push check). Provide it with:
+and `model: "fable"` (matching the CI job's tier — once per milestone, not
+per push). Provide it with:
 
 - The merged PR list (from the command above)
 - The full diff `main...milestone/$ARGUMENTS`
 - The finalized release notes at `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`
+- Step 9.7's resolved-findings list (or "none"), with the instruction not to
+  re-report those as new findings — this step catches only what per-file
+  review can't (cross-PR interactions, aggregate surface)
 
 Ask it to perform the same five checks the CI job does:
 
@@ -447,40 +525,21 @@ Ask it to perform the same five checks the CI job does:
    pre-deploy steps missing from the release notes?
 
 **This step blocks on any finding, not just Critical/High.** Present every
-finding to the user, regardless of severity, and do not proceed to Step 10
-until each one is explicitly resolved or the user explicitly accepts it as
-non-blocking. Do not silently wave through Medium/Low items — noting them and
-proceeding without the user's say is exactly what defeats the point of
-running this before the PR exists.
-
-For each finding:
-
-- **Fix it** — apply the fix, then re-run this step's agent on the corrected
-  diff to confirm it's clean.
-- **User explicitly accepts the risk** — record the acceptance decision in
-  the plan/PR description so it's auditable later; only then proceed.
-
-Do not rely on the CI job as a substitute for resolving these — it runs after
-the PR is already open, which is a worse place to discover them, and it is a
-backstop/audit trail (Step 11), not a decision point.
-
-This step duplicates the CI job's analysis by design. It runs once per
-milestone, so the extra cost is worth catching problems before the milestone
-branch is exposed as a PR rather than after.
-
-Once every finding is resolved or explicitly accepted, proceed to Step 9.9.
+finding to the user regardless of severity. For each one: **fix it** (apply
+the fix, re-run this step's agent on the corrected diff), or **user
+explicitly accepts the risk** (record the decision in the plan/PR
+description so it is auditable). Do not proceed to Step 9.9 until every
+finding is resolved or explicitly accepted — the CI job (`/review-milestone`
+Step 4) is a backstop/audit trail, not a substitute decision point.
 
 ### Step 9.9: Fresh-checkout smoke test (only when build/install steps changed)
 
 Every review above — Step 9.7, Step 9.8, CI's own diff-based reviews — reads
-diffs and file contents. None of them *execute* anything against a truly
-clean checkout. That gap let a real bug ship undetected on v2.29.4:
-`scripts/build.js` never created `usersc/js`/`usersc/css` before writing into
-them, so a fresh clone's first build threw `ENOENT` and silently produced no
-vendored frontend assets — invisible to every diff review because every
-existing local checkout already had those directories on disk from before the
-change. It surfaced only by accident, well into `/release-milestone`, when a
-live page happened to be checked in a browser.
+diffs and file contents; none *executes* anything against a truly clean
+checkout. That gap shipped a real bug undetected on v2.29.4 (`scripts/build.js`
+crashed on a fresh clone with no vendored frontend assets, invisible to every
+diff review because existing checkouts already had the output directories on
+disk) — found only by accident, well into `/release-milestone`.
 
 **Run this step whenever the milestone touched**: `scripts/build.js` (or any
 build/install tooling), `package.json`/`composer.json` dependency tiers,
@@ -492,26 +551,20 @@ smoke test.
 **Procedure:**
 
 ```bash
-# Use a scratch worktree, not your working checkout — the goal is to
-# reproduce what a genuinely fresh clone/deploy sees, with nothing left
-# over from prior local state.
+# Scratch worktree, not your working checkout — must reproduce what a
+# genuinely fresh clone/deploy sees, with nothing left over on disk.
 git worktree add /tmp/milestone-smoke-$ARGUMENTS milestone/$ARGUMENTS
 cd /tmp/milestone-smoke-$ARGUMENTS
 
-composer install --no-dev --optimize-autoloader   # mirrors deploy's actual install flags
-npm ci --omit=dev                                  # mirrors deploy's actual install flags (adjust flags to match this milestone's build.js/post-receive invocation)
+composer install --no-dev --optimize-autoloader   # mirrors deploy's install flags
+npm ci --omit=dev                                  # mirrors deploy's install flags (adjust to this milestone's build.js/post-receive invocation)
 npm run build                                      # or whatever the deploy hook actually runs
-
-# Confirm the build's expected output actually exists on disk — don't just
-# check the exit code, since a partial-then-crash run can exit non-zero
-# after already producing some files (masking that other expected files
-# are missing).
 ```
 
-Check the exit code AND the actual file listing of whatever the build is
-supposed to produce (e.g. `ls usersc/js usersc/css` for this milestone's
-vendored-asset build). A clean exit with missing expected output is exactly
-the bug this step exists to catch.
+Check the exit code AND the actual file listing of the build's expected
+output (e.g. `ls usersc/js usersc/css`) — a partial-then-crash run can exit
+non-zero after already producing some files, and a clean exit with missing
+output is exactly the bug this step exists to catch.
 
 If anything fails or produces incomplete output, fix it on the milestone
 branch (same fix-then-re-verify loop as Step 9.8), then re-run this step
@@ -524,244 +577,62 @@ git worktree remove /tmp/milestone-smoke-$ARGUMENTS
 
 Once clean, proceed to Step 10.
 
-### Step 10: Create the PR targeting main
+### Step 10: Output summary and hand off to `/review-milestone`
+
+Write a completion marker before summarizing — `/review-milestone` Step 1
+checks for this rather than trusting that this command actually reached
+Step 10 (a crashed/interrupted/cancelled run could otherwise leave the
+deploy sheet and clean release notes in place with zero review having
+happened, since those are written earlier, in Steps 6/6.6, before 9.5-9.9
+run):
 
 ```bash
-gh pr create \
-  --base main \
-  --head milestone/$ARGUMENTS \
-  --title "$ARGUMENTS — <milestone name>" \
-  --body "$(cat <<'EOF'
-## Summary
-
-<1-2 sentence description of the milestone's purpose>
-
-## Issues Resolved
-
-<List each merged PR with closing keywords>
-
-Closes #NNN — Issue title (PR #NN)
-Closes #NNN — Issue title (PR #NN)
-
-## Release Notes
-
-See `docs/releases/RELEASE_NOTES_$ARGUMENTS.md` for complete release notes.
-
-<!-- Include this section ONLY if Step 3.5 found known-broken-tagged tests and the user
-     chose to proceed with them explicitly accepted (option (b) in that step). Omit entirely
-     if Step 3.5 found nothing, or everything was resolved/removed before this PR. -->
-
-## Known Test Exclusions
-
-The following tests are excluded from the CI-blocking run via `#[Group('known-broken')]` and
-were explicitly accepted as a known gap for this release (see Step 3.5):
-
-- `<test name>` (`<file path>`) — tracked by #`<issue number>` (`<open/closed>`)
-
-## Test Plan
-
-- [ ] All issue PRs were reviewed and merged into milestone branch
-- [ ] Pre-commit hooks pass on all changed files
-- [ ] Unit tests pass (`composer test:quick`)
-- [ ] Integration tests pass (`composer test:medium`)
-- [ ] Browser tests pass where applicable (`npm run playwright:test`)
-- [ ] Manual verification of key user flows
-- [ ] Security review completed (run before this PR was created)
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+cat > docs/plans/releases/$ARGUMENTS-review.done <<EOF
+9.5: <clean|findings-fixed>
+9.7: <clean|findings-fixed>
+9.8: <clean|findings-fixed>
+9.9: <ran-clean|not-applicable>
 EOF
-)"
 ```
 
-**CRITICAL**: The PR body MUST include `Closes #NNN` for every issue in the
-milestone. Individual issue PRs target the milestone branch (not main), so
-their closing keywords won't auto-close issues. Only this final PR merged into
-main triggers auto-closure.
+Use `not-applicable` for 9.9 only when Step 9.9's own trigger conditions
+didn't apply to this milestone (no build/install/deploy tooling changed) —
+not as a stand-in for skipping it when it should have run.
 
-Fill in actual data from steps 4 and 5.
+Then summarize:
 
-### Step 11: Verify CI milestone review posted a comment (backstop + audit trail)
-
-Once the PR is open, the `claude-code-review.yml` workflow is *expected* to
-run the same milestone-level analysis (Fable) against `main` that Step 9.8
-already ran locally, and post the result as a visible PR comment. **Do not
-assume this happened — verify it.**
-
-PR-open events are not guaranteed to trigger Actions runs at all: GitHub's
-abuse/rate throttle can silently suppress webhook-triggered runs (this
-happened on PR #1718 — see #1724). And even when a run *is* triggered, a job
-`conclusion: success` does not prove a review was posted: the
-`claude-code-action@v1` step can complete without ever calling `gh pr
-comment` — most commonly because the action's own workflow-file-must-match-
-default-branch validation silently skips execution on PRs that modify
-`claude-code-review.yml` itself (documented in that file's header comment
-block — this is intentional security behavior, not a bug, but it still means
-no review posted). A "successful" job is not evidence of a posted review;
-only the comment itself is.
-
-**Verify by checking for the comment, not the job status:**
-
-```bash
-PR_NUM=<pr-number>
-gh api "repos/elan-registry/registry/issues/${PR_NUM}/comments" \
-  --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length'
-```
-
-This is the same "Strengths"-heading pattern `claude-code-review.yml`'s own
-gate step uses to detect a real posted review (both the `pr-to-milestone-
-review` and `milestone-review` jobs' final steps check for it) — reuse it as
-the ground truth here rather than inventing a separate signal.
-
-Poll every ~30s for up to ~5 minutes (Fable milestone reviews run longer than
-the lightweight Sonnet per-push reviews). If a matching comment appears,
-**the review ran successfully** — note this in the Step 12 summary and move
-on.
-
-**If no matching comment appears after the poll window**, first check
-whether the PR opted out of review — `milestone-review` deliberately skips on
-titles containing `[skip-review]` (see `claude-code-review.yml`'s `if:`
-condition, which applies even to the label-triggered event):
-
-```bash
-gh pr view "$PR_NUM" --json title -q .title --repo elan-registry/registry
-```
-
-If the title contains `[skip-review]`, no comment is the **correct**,
-by-design outcome, not a failure — report "review intentionally skipped per
-title tag" and proceed to Step 12. (Applying the `deep-review` label in this
-case is harmless — the job's `if:` still blocks on the title tag even for
-the labeled event, so it would silently no-op rather than force a review —
-but doing so anyway just wastes a poll cycle for no benefit; skip straight to
-reporting instead.)
-
-If the title carries neither tag, determine which failure mode this is
-before recovering:
-
-```bash
-HEAD_SHA=$(gh pr view "$PR_NUM" --json headRefOid -q .headRefOid --repo elan-registry/registry)
-gh run list --workflow=claude-code-review.yml --repo elan-registry/registry \
-  --json databaseId,headSha,status,conclusion,event \
-  --jq --arg sha "$HEAD_SHA" '[.[] | select(.headSha == $sha)]'
-```
-
-- **No matching run at all** — never triggered. This is the #1724 throttle
-  case. Recover:
-
-  ```bash
-  gh pr edit "$PR_NUM" --add-label "deep-review" --repo elan-registry/registry
-  ```
-
-  Then re-poll for the comment the same way as above.
-
-- **A run exists but produced no comment** — check whether this PR's diff
-  touches `.github/workflows/claude-code-review.yml`:
-
-  ```bash
-  gh pr diff "$PR_NUM" --name-only --repo elan-registry/registry | grep -Fx '.github/workflows/claude-code-review.yml'
-  ```
-
-  If it does, this is the documented self-referential workflow-file skip —
-  the `deep-review` label will **not** fix it; the workflow file only takes
-  effect once merged to `main`. Report this to the user distinctly (do not
-  silently re-trigger). If the diff does not touch that file, treat it the
-  same as "never triggered" above (apply the `deep-review` label, re-poll)
-  since `claude-code-review.yml` already has a fallback-post step for
-  turn-exhaustion (it posts Claude's last result text directly — see the
-  workflow's own comment referencing PR #1529), so a run that completed with
-  zero comment and an untouched workflow file more likely means that
-  fallback step itself failed to post (e.g. a `gh pr comment` / API error,
-  or an empty execution file) than plain turn-exhaustion. Either way the
-  recovery action is the same — re-trigger and re-poll.
-
-**Never report this step as complete without a confirmed comment or an
-explicit, reported reason recovery isn't applicable.** This verify-then-
-recover loop replaces the previous assumption that PR-open automatically
-produces a review — that assumption is exactly what failed on PR #1718.
-
-### Step 11.5: Fix findings and confirm CI is fully green before handoff
-
-Finding a comment exists (Step 11) is not the same as the milestone being
-ready to release. Read the comment's actual content and check for any
-`Blocking` or `Important` heading — not just whether the comment exists.
-
-**This step exists because of a real incident**: on v2.29.4, Step 11 verified
-a review posted and stopped there. The posted review had 3 `Important`
-findings (a two-push deploy-window gap, an unverified prod host, and
-`node_modules` persisting in the deployed docroot). None were fixed before
-`/finish-milestone` handed off — they were only discovered and fixed later,
-*during* `/release-milestone`, forcing a second review round and a live
-merge-in-progress fix cycle. `/release-milestone` is the point of no return;
-finding and fixing problems there is strictly worse than finding them here.
-
-**Procedure:**
-
-1. Fetch the posted comment(s) and check for `## Blocking` or `## Important`
-   headings with actual content (not just an empty section or "none found").
-2. **If any Blocking or Important finding exists:** fix it the same way
-   Step 9.8 requires — apply the fix as a commit on the milestone branch,
-   push it (this updates the still-open PR), then **re-verify CI is green
-   and re-check for a fresh review comment** (a push may trigger
-   `pr-to-milestone-review`, or you may need to re-apply the `deep-review`
-   label to get a fresh `milestone-review` pass against the fixed diff).
-   Repeat until a review comment shows zero unresolved Blocking/Important
-   items.
-3. **Also verify all CI checks are green at this point** — not just that a
-   review comment exists. `gh pr checks <pr-number>` must show every check
-   passed (skipped checks that are correctly gated off, per this workflow's
-   own design, are fine — an actual failure or a still-pending required
-   check is not).
-4. Do not proceed to Step 12 until both (2) and (3) are satisfied. If a fix
-   turns out to require user input or a judgment call (e.g. the prod-host
-   verification advisory from the incident above, which needs live SSH
-   access only the user has), present it via AskUserQuestion and get an
-   explicit decision — "defer to a tracked follow-up" is an acceptable
-   resolution, but it must be an explicit choice recorded in the PR, not a
-   silent skip.
-
-**The bar for calling `/finish-milestone` complete:** the milestone branch,
-as it exists on `main`'s target commit right this moment, should need zero
-further code changes before `/release-milestone` runs. `/release-milestone`
-merges, tags, and publishes — it is not a place to discover or fix problems.
-
-### Step 12: Output summary
-
-- The PR number and URL
-- List of merged issue PRs included
 - Known-broken test exclusions status (none found, or resolved, or explicitly accepted with issue references)
 - Milestone-scope corrections from Step 5.5 (none found, or list issues added/removed/reassigned and why)
 - Release notes status (finalized or needs attention)
+- Deploy sheet status (rendered at `docs/plans/releases/$ARGUMENTS-deploy.md`, ready for review)
 - Wiki updates status (updated, committed, or skipped)
 - CLAUDE.md update status (updated or skipped)
-- CI milestone review status (from Step 11): "posted normally" / "no run was
-  triggered — re-triggered via deep-review label, now posted" / "ran but
-  posted nothing — self-referential workflow-file change, requires merge to
-  main first" / etc. — never omit this line
+- Review results (Steps 9.5, 9.7, 9.8, 9.9): clean, or list what was found and fixed
 - Remind: if wiki pages were updated, confirm they were published via
   `/publish-wiki` in the wiki clone — this repo's PR does not carry them
-- Note as plain text (informational, not a runnable choice): "To re-run the
-  deep review later, label the PR `deep-review` or comment `@claude
-  deep-review`" and "Release notes are at
-  `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`"
-- Use AskUserQuestion for the actual next step, since `/release-milestone`
-  is runnable right now — it merges the PR itself (that's its Step 8), it
-  does not wait for a human to merge on GitHub first:
-  - Question: "Milestone PR ready. What next?"
-  - Options: `Run /release-milestone $ARGUMENTS` (recommended — merges the
-    PR, tags, and publishes the release), `Ask more questions / review the
-    PR myself first`
-  - If the user picks `/release-milestone`, invoke it immediately via the
-    Skill tool. If they pick the discuss option, drop into normal
-    conversation and don't re-offer until they ask what's next.
+
+Use AskUserQuestion for the next step:
+
+- Question: "Milestone gated and documented. Run `/review-milestone $ARGUMENTS` now?"
+- Options: `Run /review-milestone $ARGUMENTS` (recommended — opens the PR,
+  verifies CI review posted, confirms green), `Ask more questions first`
+- If the user picks `/review-milestone`, invoke it immediately via the
+  Skill tool. If they pick the discuss option, drop into normal
+  conversation and don't re-offer until they ask what's next.
 
 ## Important
 
-- **Closing keywords are critical** — without them in the PR body, issues
-  won't auto-close on merge
-- The PR MUST target `main`, not any other branch
 - Wiki updates are made directly in the separate wiki git repo's permanent
   local clone (path in `.claude.local.md`), on `master-upload`, and published
   via that repo's `/publish-wiki` command — never staged or committed in
   this repo
-- Do not push to any remote — this command only creates the PR on GitHub
+- Do not push to any remote, and do not create a PR — that's `/review-milestone`'s job
 - If release notes still have WIP markers, flag this prominently before
-  creating the PR
+  handing off
+- The deploy sheet lives at `docs/plans/releases/<version>-deploy.md` —
+  gitignored, same as an issue's plan file, and never committed or printed in
+  full to the conversation (it names ssh hosts and docroots)
+- Deployment procedure content (migrations, new env vars, admin-script/
+  permission registration, manual verification runbooks) belongs in the
+  deploy sheet, not in `docs/releases/RELEASE_NOTES_<version>.md` — that file
+  is user-/admin-facing changelog plus a one-sentence-per-issue index

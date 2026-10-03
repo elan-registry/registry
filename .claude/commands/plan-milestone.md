@@ -1,6 +1,6 @@
 ---
 description: Signal review, theme selection, and gate — seal a milestone's issue list before branching
-model: claude-opus-5
+model: opus
 ---
 
 # Plan Milestone
@@ -71,6 +71,14 @@ Record the answer. It becomes the yardstick for Step 3, the milestone
 description, and the ship criterion.
 
 ## Step 3: Gate every candidate
+
+This is the fuller gate — `/start-milestone` Step 4.5 is its lighter-weight
+fallback for a milestone that reaches that command without having been
+sealed here first, expanded with milestone-specific categories (make-work,
+trivial tests, superseded, duplicate scope) that don't apply to a
+backlog-wide, pre-implementation gate. If this gate's criteria change, check
+whether `/start-milestone` Step 4.5 needs the same change — the two describe
+one decision, not two.
 
 Pull candidate issues from the backlog that could serve the theme (not just
 those already loosely related — scan broadly, the theme is the filter):

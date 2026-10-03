@@ -1,16 +1,20 @@
 ---
 description: Run a security review of recent code changes (OWASP, CSRF, SQL injection, XSS)
-model: claude-haiku-4-5
+model: haiku
 ---
 
 # Security Review
 
-Think hard about attack vectors and exploit paths before drawing
-conclusions — reason through how each input reaches each sink.
-
 Keep output brief — terse status lines, no preamble, no restating of steps.
 
 Perform a comprehensive security audit of recent code changes in this project.
+
+For plan-driven work, `/execute-plan` Step 7 already launches `security-reviewer`
+against the full diff whenever the plan's Database & Security Considerations
+section is non-empty or a changed file touches forms/SQL/auth — this command
+is largely superseded for that path. Use it directly for ad-hoc work with no
+plan file, or to re-run a security pass in isolation without repeating the
+rest of `/execute-plan`'s review round.
 
 ## Steps
 
@@ -19,20 +23,7 @@ Perform a comprehensive security audit of recent code changes in this project.
    the current branch against its **actual base branch** — not always `main`:
 
    ```bash
-   BRANCH=$(git branch --show-current)
-   case "$BRANCH" in
-     issue/*|bug/*|feature/*|fix/*)
-       # Issue branches base off the current milestone branch.
-       BASE=$(git branch -a --list 'origin/milestone/*' | sort -V | tail -1 | sed 's|.*origin/||')
-       [ -z "$BASE" ] && BASE="origin/main"
-       ;;
-     milestone/*)
-       BASE="origin/main"
-       ;;
-     *)
-       BASE="origin/main"
-       ;;
-   esac
+   BASE=$(scripts/resolve-base-branch.sh) || BASE="origin/main"
    git diff --name-only "$BASE...HEAD"
    ```
 

@@ -1,6 +1,6 @@
 ---
 description: Start work on a GitHub issue within a milestone workflow
-model: claude-opus-5
+model: opus
 ---
 
 # GitHub Issue Workflow Command
@@ -118,36 +118,58 @@ This command requires a milestone workflow. The user must already be on a
 2. **If on a `milestone/*` branch**, use it as the base. Extract the version
    from the branch name (e.g., `milestone/v2.17.0` -> `v2.17.0`).
 
-3. **If NOT on a `milestone/*` branch**, check if exactly one exists:
+3. **If NOT on a `milestone/*` branch**, check if exactly one exists locally:
 
    ```bash
    git branch --list 'milestone/*'
    ```
 
-   - **If exactly one exists**, switch to it:
+   - **If exactly one exists locally**, switch to it:
 
      ```bash
      git checkout milestone/vX.Y.Z
      git pull origin milestone/vX.Y.Z
      ```
 
-   - **If zero exist**, stop and tell the user:
-     "No milestone branch found. Please run `/start-milestone` first to create
-     one, then re-run `/start-issue ISSUE_NUMBER`."
-   - **If multiple exist**, stop and tell the user:
-     "Multiple milestone branches found: [list them]. Please checkout the one
-     you want to work on and re-run `/start-issue ISSUE_NUMBER`."
+   - **If zero or multiple exist locally**, resolve which one applies with
+     `scripts/find-milestone-branch.sh <version>` — it also checks `origin`
+     directly (see its own header for why: a local-only check can miss a
+     branch that exists on `origin`, in multi-clone setups sharing one
+     `origin`, e.g. `Registry/` and `Registry2/`). If you don't yet know
+     `<version>`, ask the user which milestone this issue belongs to first.
+
+     ```bash
+     scripts/find-milestone-branch.sh vX.Y.Z
+     ```
+
+     - **Exit 0** — printed `milestone/vX.Y.Z` exists (locally, on `origin`,
+       or both). If it's not checked out locally yet, fetch and check it out
+       (do not create a `git worktree` pointing at another local clone —
+       pull from `origin`):
+
+       ```bash
+       git fetch origin milestone/vX.Y.Z
+       git checkout -b milestone/vX.Y.Z origin/milestone/vX.Y.Z
+       ```
+
+     - **Exit 1** — not found locally or on `origin`. Stop and tell the
+       user: "No milestone branch found. Please run `/start-milestone`
+       first to create one, then re-run `/start-issue ISSUE_NUMBER`."
+     - **Exit 2** — usage error (no version given). Ask the user which
+       milestone this issue belongs to, then retry.
+   - **If multiple exist locally for different versions**, stop and tell the
+     user: "Multiple milestone branches found: [list them]. Please checkout
+     the one you want to work on and re-run `/start-issue ISSUE_NUMBER`."
 
 4. **Branch naming**: Use the issue labels to determine the branch prefix:
    - `bug` label -> `bug/ISSUE_NUMBER-short-description`
    - `enhancement` or `feature` label -> `feature/ISSUE_NUMBER-short-description`
    - All other labels (including `tech-debt`) -> `issue/ISSUE_NUMBER-short-description`
 
-   Present the proposed branch name and ask: "I'll create a branch named
-   `PREFIX/ISSUE_NUMBER-short-description` from `milestone/vX.Y.Z`. Does this
-   work, or would you prefer a different name?"
-
-Wait for the answer before proceeding.
+   Use the derived name without asking for confirmation — state it, don't
+   propose it: "Creating branch `PREFIX/ISSUE_NUMBER-short-description` from
+   `milestone/vX.Y.Z`." The user always takes the default; only stop and ask
+   if the derived name collides with an existing local or remote branch.
 
 ### Step 4: Create Issue Branch
 
@@ -186,7 +208,7 @@ Before asking questions, launch Explore agents to understand the codebase contex
 - **Medium:** 1-2 Explore agents — one per distinct subsystem touched.
 - **Large:** 2-3 Explore agents in parallel — one per subsystem, one for patterns/conventions, one for tests.
 
-Each Explore agent should check the relevant docs (USERSPICE_FUNCTIONS.md, CLASSES.md,
+Each Explore agent should check the relevant docs (the UserSpice AI prompts in `usersc/plugins/ai_prompts/`, CLASSES.md,
 CODING_STANDARDS.md, ERROR_HANDLING.md, DATABASE.md) only when those areas are plausibly
 affected — don't blanket-read all docs for every issue.
 
@@ -205,22 +227,26 @@ Explore agents regularly surface pre-existing issues — missing validation,
 security gaps, dead code, inconsistencies — that are unrelated to the current
 issue. **Do not silently note them as "pre-existing" and move on.**
 
-For each one found, apply the containment + severity matrix immediately:
+Apply `/found`'s containment + classification matrix (Step 4 there) to each
+one immediately, in this session rather than deferring to a separate `/found`
+invocation — the containment call (in scope / out of scope) and the
+fix-in-PR-vs-defer decision are the same ones `/found` makes, so use its
+current matrix, not a copy: fold in only when the fix is needed for this
+issue's acceptance criteria, send a cleanup find (no wrong result a user or
+operator can see) to the cleanup ledger, defer a defect as a new issue
+regardless of how small it looks, and route a genuine out-of-scope emergency
+to the hotfix track rather than into this milestone.
 
-| Containment | Severity | Action |
-| --- | --- | --- |
-| In files already in scope for this PR | High | Fold into current PR — note in plan and PR description |
-| In files already in scope for this PR | Low | Fix in current PR if < ~30 min; otherwise defer |
-| Outside current PR scope | High | New issue in current milestone (`bug` + `triage` labels) |
-| Outside current PR scope | Low | New issue with `triage` label only; no milestone |
+Wait for the user's confirmation on the classification, then act — create the
+issue, add the ledger item, or note it in the plan — before continuing.
 
-For each found issue, state it explicitly to the user:
-
-> "While exploring, I found [description]. This is [in scope / out of scope]
-> and [high / low] severity, so I recommend [action]. Does that seem right?"
-
-Wait for confirmation, then act — create the issue or note it in the plan —
-before continuing. Use `/found` for the same classification outside this workflow.
+**Pull ledger items for files in scope.** Read the open `cleanup-ledger`
+issue (`/found`, "Ledger"). For each file this plan will edit, copy that
+file's open items into the plan under **Ledger items** (Step 9 template), and
+add each one to the Implementation Checklist so `/execute-plan` does it. The
+plan gate then approves or removes them with the rest of the plan. `/finish-issue` Step 6.5
+ticks the done items on the ledger after the merge. Do not pull items for
+files the plan does not already edit.
 
 ### Step 6: Interview Mode - Issue Refinement and Questions
 
@@ -235,9 +261,32 @@ When you do launch the PM agent, provide: issue details, Explore results, and sp
 concerns. Ask it to evaluate: completeness, acceptance criteria gaps, decomposition needs,
 and questions to ask the user.
 
-After any PM input, interview the user using AskUserQuestion. Ask only non-obvious
-questions — scope clarity, approach decisions, edge case handling. When providing options,
-note best practice or industry standard.
+After any PM input, interview the user with the **round method** below. Step 7
+uses the same method.
+
+#### The round method
+
+- **Facts are your job. Decisions are the user's.** Never ask the user for a
+  fact you can find: file contents, callers, schema, current behavior, git
+  history. Look it up, or send an Explore agent. Ask only for decisions:
+  scope, approach, trade-offs, edge-case policy.
+- **Ask the frontier, one round at a time.** The frontier is every open
+  decision whose prerequisites are already settled. Ask all of it in one
+  AskUserQuestion call (up to 4 questions; if more are ready, ask the rest
+  in the next round). Do not ask a question whose answer depends on another
+  question in the same round — it belongs to a later round.
+- **Recommend an answer for each question.** Put your recommended option
+  first with "(Recommended)" in its label. Say in its description why, and
+  name the best practice or industry standard where one exists.
+- **Recompute after each round.** Each answer settles decisions and opens
+  new ones. If an Explore agent is still running, hold back only the
+  questions that depend on its result. Ask the rest now.
+- **Stop when the frontier is empty.** Every open decision is either answered
+  or written down as a stated assumption. Before you write the plan (Step 9),
+  list any assumptions in one line each so the user can correct them.
+- **Small issues:** usually one round of one or two questions, or none.
+
+(Adapted from mattpocock/skills `grilling`, MIT.)
 
 **If the PM agent recommends issue decomposition**, discuss with the user before proceeding.
 
@@ -253,37 +302,26 @@ and your answers. I'll ask clarifying questions as I refine the approach."
 1. **Deepen research as needed**: Launch additional Explore or general-purpose
    agents for specific questions that arise during planning.
 
-2. **Ask clarifying questions ONE AT A TIME as you discover them**:
+2. **Keep interviewing in rounds** (the round method, Step 6): planning
+   opens new decisions — two workable approaches, an unclear scope edge, two
+   existing patterns to choose from, a dependency on another component (fix
+   it here, or file a separate issue?). Add each one to the frontier. Settle
+   the facts yourself first, then ask the next round.
 
-   - When you find multiple approaches: "I found that we could implement this
-     using [Approach A] or [Approach B]. Which would you prefer?"
-   - When scope is unclear: "Should this feature also handle [related scenario]?"
-   - When you need preferences: "I see we use [Pattern X] in some places and
-     [Pattern Y] in others. Which should I follow for this issue?"
-   - When dependencies are involved: "This change will affect [Component X].
-     Should I update it as part of this issue or create a separate issue?"
-   - When requirements need clarification: "The issue mentions [Feature]. Should
-     this include [specific behavior]?"
-   - When providing options, tell me what is the best known practice or the
-     industry standard.
+3. **Continue research after each round**: use the answers to direct the next
+   Explore or general-purpose agent.
 
-3. **Continue research after each answer**: Use their responses to guide your
-   exploration and planning.
-
-4. **Ask follow-up questions as needed**: Don't batch questions - ask them
-   naturally as you work through the planning process.
-
-5. **Verify UserSpice Integration** (Step 7.1): Before finalizing the approach,
+4. **Verify UserSpice Integration** (Step 7.1): Before finalizing the approach,
    check if the solution duplicates existing UserSpice functionality:
 
-   - Review USERSPICE_FUNCTIONS.md for relevant framework functions
+   - Read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php` and the ElanRegistry overrides in `custom_prompts/` for relevant framework functions
    - Ask: "Does UserSpice provide this functionality already?"
    - If yes: Leverage UserSpice instead of custom implementation
    - If no: Verify the custom approach doesn't conflict with UserSpice patterns
 
    Document the UserSpice integration decision in your plan.
 
-6. **Assess Database and Security Impacts** (Step 7.2): For issues that may
+5. **Assess Database and Security Impacts** (Step 7.2): For issues that may
    affect the database, security, or sensitive operations, ask these questions:
 
    - Does this change affect database schema, triggers, or audit trails?
@@ -319,7 +357,7 @@ and your answers. I'll ask clarifying questions as I refine the approach."
    This analysis will be included in the implementation plan and highlighted in
    the PR description.
 
-7. **Consult specialized agents** (Step 7.3 — Medium/Large only):
+6. **Consult specialized agents** (Step 7.3 — Medium/Large only):
 
    **Skip this step for Small issues.** The architect reviews code after implementation, not plans.
 
@@ -344,7 +382,7 @@ and your answers. I'll ask clarifying questions as I refine the approach."
    post-implementation, inside `/execute-plan`, when there is actual code to
    review — never against a plan.
 
-8. **Incorporate agent feedback into the plan** (Step 7.4): Merge feedback
+7. **Incorporate agent feedback into the plan** (Step 7.4): Merge feedback
    into a single comprehensive plan. Include sections only for agents that
    were consulted:
    - **Bug Escape Analysis** (from Step 7.2.5, if bug issue)
@@ -370,9 +408,9 @@ write the plan to disk (Step 9), which is what the user actually reviews.
 
 ### Step 9: Write the Plan File and Present for Approval
 
-Write the plan to `docs/plans/issue-<ISSUE_NUMBER>-<slug>.md`, where `<slug>`
+Write the plan to `docs/plans/issues/issue-<ISSUE_NUMBER>-<slug>.md`, where `<slug>`
 is the same short kebab-case description used for the branch name (Step 3).
-Create the `docs/plans/` directory if it does not exist yet. The
+Create the `docs/plans/issues/` directory if it does not exist yet. The
 `**Milestone:**` field is the `milestone/*` branch Step 3 already determined
 — record it here so `/execute-plan` (which runs on the issue branch, with no
 milestone version in its own branch name) doesn't have to re-derive it.
@@ -414,6 +452,14 @@ agent can re-check completion against actual repo state.
 - [ ] Run `/security-review` (if forms/SQL/auth touched), address Critical/High
 - [ ] Run `senior-architect` review of the diff, address findings
 
+## Ledger items
+<!-- from the cleanup ledger (Step 5.5); omit when no file this plan edits has open items -->
+
+Copy each open ledger item for a file this plan edits, word for word, as
+`- [ ] <item> — `path/to/file`` (ledger #NNNN). Add each approved item to the
+Implementation Checklist too, so `/execute-plan` does it. `/finish-issue`
+Step 6.5 ticks the ledger lines that this section lists.
+
 ## Test Plan
 <!-- from senior-test-engineer, if consulted -->
 
@@ -436,7 +482,7 @@ risks two agents corrupting the same file.
 After writing the file, present it for approval:
 
 "I've written the implementation plan for issue #ISSUE_NUMBER to
-`docs/plans/issue-<NUMBER>-<slug>.md`. Please review and let me know if
+`docs/plans/issues/issue-<NUMBER>-<slug>.md`. Please review and let me know if
 you'd like any changes before I mark it approved."
 
 **STOP. Do not mark the plan approved, and do not end this command's turn
@@ -458,25 +504,14 @@ this command.
 
 This command's work is done once the plan file is approved (Step 9). State
 plainly that the plan is approved and saved at
-`docs/plans/issue-<NUMBER>-<slug>.md`, then use AskUserQuestion to offer the
-next step rather than a plain-text menu:
-
-- Question: "Plan approved. What next?"
-- Options: `Run /execute-plan now` (recommended — this is the only real next
-  step in the workflow), `Compact context first` (recommended before a long
-  next step — the plan is already persisted to `docs/plans/`, so compacting
-  here is safe and won't lose it), `Ask more questions / discuss the plan
-  first`
-- If the user picks `/execute-plan`, invoke it immediately via the Skill
-  tool (`Skill({skill: "execute-plan"})`) rather than telling the user to
-  type it themselves.
-- If the user picks `Compact context first`, tell them to run `/compact`
-  themselves — it's a client-level operation, not something this command can
-  trigger via a tool.
-- If the user picks the discuss option, drop back into normal conversation —
-  do not re-offer the same question on every reply; only re-present it once
-  the discussion reaches a natural stopping point or the user asks "what's
-  next."
+`docs/plans/issues/issue-<NUMBER>-<slug>.md`. Then ask via AskUserQuestion —
+"Plan approved. What next?" Options: `Run /execute-plan now` (recommended),
+`Compact context first` (plan is already persisted, safe to compact), `Ask
+more questions / discuss the plan first`. Invoke `/execute-plan` immediately
+via the Skill tool if chosen. For `Compact context first`, tell the user to
+run `/compact` themselves — this command can't trigger it. For the discuss
+option, drop into normal conversation; don't re-offer until the discussion
+reaches a stopping point or the user asks what's next.
 
 Do not implement anything, and do not update the issue or release notes from
 this command — `/execute-plan` does that once there is actual work done to
@@ -484,12 +519,9 @@ describe.
 
 ## Critical Rules
 
-- **PLAN APPROVAL IS A HARD GATE** — do not mark the plan file approved until
-  the user explicitly approves it at Step 9. Partial feedback, silence, or a
-  change of subject is NOT approval. Ask again if unclear.
-- **THIS COMMAND NEVER WRITES APPLICATION CODE OR TOUCHES GIT** — no
-  `git add`/`git commit`/`git push`, no software-developer agents, no
-  implementation of any kind. That is entirely `/execute-plan`'s job.
+See Hard Constraints at top for the approval gate and the no-code/no-git
+rule — both apply throughout, not only at Step 9.
+
 - **The plan file is the artifact of record** — if the user requests changes
   during approval, edit the file directly and re-present it. Do not describe
   revisions only in chat.
@@ -500,7 +532,8 @@ describe.
   verify yourself. When it's a judgment call, a preference, or genuinely
   ambiguous scope, use AskUserQuestion — don't silently pick an answer either
   way. Never present something as settled without having done one of the two.
-- **Ask questions ONE AT A TIME** - wait for each answer before asking the next
+- **Ask in rounds** (Step 6's round method) - ask every ready decision at once,
+  each with a recommended answer, then wait for the answers before the next round
 - **Continue asking questions WHILE IN PLAN MODE** - don't wait until
   after plan mode
 - **Use AskUserQuestion tool** for every clarifying question, hand-off choice,
@@ -522,9 +555,3 @@ describe.
   per action a repo-state check could confirm, not one item per broad phase
 - **Mark parallel-safety conservatively** — only mark `(parallel-safe)` when
   file sets truly don't overlap and there's no ordering dependency
-
-## Examples
-
-See `.claude/commands/start-issue-examples.md` for worked example flows
-(reference only — not loaded at runtime; some describe the pre-plan-file
-flow and may not reflect the current Step 9/10 split).

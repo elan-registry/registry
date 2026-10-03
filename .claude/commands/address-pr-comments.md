@@ -1,12 +1,12 @@
 ---
 description: Fetch PR review comments and CI findings, triage blocking vs advisory, fix blocking items, and re-verify
-model: claude-opus-5
+model: opus
 ---
 
 # Address PR Comments
 
-Think hard when triaging blocking vs. advisory findings — a wrong call
-either ships a real issue or wastes a fix/re-verify cycle.
+A wrong blocking-vs-advisory call either ships a real issue or wastes a
+fix/re-verify cycle.
 
 Keep output brief — terse status lines, no preamble, no restating of steps.
 
@@ -45,21 +45,20 @@ draft state — so a review should already be in flight for the current HEAD.
 GitHub's abuse/rate throttle, and even a "successful" job run does not
 guarantee a comment was posted (workflow-file-match guard, turn exhaustion).
 
-Check for a review comment matching the current HEAD SHA:
-
 ```bash
-HEAD_SHA=$(gh pr view <pr-number> --repo elan-registry/registry --json headRefOid --jq .headRefOid)
-gh api "repos/elan-registry/registry/issues/<pr-number>/comments" \
-  --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length'
+scripts/poll-review-posted.sh <pr-number> 15 120
 ```
 
-Poll every ~15s for up to ~2 minutes (`pr-to-milestone-review` is the
-lightweight Sonnet job).
+15s interval, 2min timeout (`pr-to-milestone-review` is the lightweight
+Sonnet job — faster than the Fable milestone-level review).
 
-**If a matching comment is found:** proceed to Step 2 — its findings feed
-into Step 4's triage same as any other comment.
+| Exit | Meaning | Action |
+| --- | --- | --- |
+| 0 | Comment found | Proceed to Step 2 — its findings feed into Step 4's triage same as any other comment |
+| 1 | No comment after the poll window — see recovery steps below | See below |
+| 2 | Could not verify (`gh` failed — auth/network/rate-limit) | Stop, report the actual `gh` error. Do NOT treat this as "no review posted" |
 
-**If none appears after the poll window:**
+**On exit 1, recover:**
 
 1. Check whether the PR opted out of review via `[skip-review]`/`[WIP]` in
    the title:
@@ -90,37 +89,19 @@ into Step 4's triage same as any other comment.
    silently proceed without a confirmed comment or an explicit, reported
    reason recovery isn't applicable.
 
-## Step 2: Fetch Review Comments
+## Step 2-3: Fetch Review Comments and CI Findings
 
 ```bash
-gh pr view <pr-number> --repo elan-registry/registry \
-  --json reviews,comments
+scripts/fetch-pr-findings.sh <pr-number>
 ```
 
-Also fetch inline code review comments:
+Prints one JSON object with `reviews_and_comments`, `inline_comments`, and
+`failed_checks` (each failed check's annotations included). See the script's
+header for the exact shape.
 
-```bash
-gh api "repos/elan-registry/registry/pulls/<pr-number>/comments" \
-  --jq '.[] | {path, line, body, user: .user.login}'
-```
-
-## Step 3: Fetch CI Check Annotations
-
-Get the PR's head SHA and all check runs:
-
-```bash
-HEAD_SHA=$(gh pr view <pr-number> --repo elan-registry/registry \
-  --json headRefOid --jq .headRefOid)
-gh api "repos/elan-registry/registry/commits/${HEAD_SHA}/check-runs" \
-  --jq '.check_runs[] | {name, conclusion, id, output: .output.summary}'
-```
-
-For any failed check runs, fetch their annotations:
-
-```bash
-gh api "repos/elan-registry/registry/check-runs/<run-id>/annotations" \
-  --jq '.[] | {path, start_line, message, annotation_level}'
-```
+Exit 0 means the fetch ran (an empty result is a valid clean PR). Exit 1
+means `gh` could not be queried at all (auth/network/rate-limit/bad PR
+number) — stop and report the error; do not treat this as "no findings."
 
 ## Step 4: Triage All Findings
 
@@ -195,7 +176,8 @@ branch diff — the same view CI uses — since this catches cross-commit issues
 git diff $(git merge-base HEAD origin/$BASE)..HEAD
 ```
 
-Launch `pr-review-toolkit:code-reviewer` with:
+Launch the project `code-reviewer` agent (the same agent `/review-pr`,
+`/execute-plan`, and `/finish-milestone` use) with:
 
 - The full branch diff (output of the command above)
 - The **full file content** of every changed file (read each file in full, not
