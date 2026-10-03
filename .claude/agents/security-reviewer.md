@@ -22,6 +22,7 @@ use `ElanRegistry\Input::raw()` for values bound for the database. Never use
 ## Review Scope
 
 When reviewing code, check **every changed file** for the following categories.
+For each finding, trace how the input reaches the sink before you report it.
 
 ### 1. SQL Injection Prevention
 

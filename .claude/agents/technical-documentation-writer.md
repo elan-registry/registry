@@ -62,7 +62,7 @@ This dual audience shapes your approach: you write with enough context for human
 - Test or verify code examples when possible
 
 ### AI-Assistant Optimization
-- Include explicit behavioral instructions ("MUST", "NEVER", "ALWAYS" for critical requirements)
+- State each hard requirement once, in plain words, with its reason beside it
 - Provide decision frameworks and when-to-use guidance
 - Document patterns with enough context for pattern matching
 - Include cross-references to related documentation

@@ -575,15 +575,9 @@ jobs:
 
             Instead, focus on cross-issue and release-level concerns.
 
-            **Work through the tasks below directly and sequentially, yourself.**
-            Only `Bash`, `Read`, `Grep`, and `Glob` tools are available in this
-            environment — there is no agent-delegation or sub-investigation
-            mechanism here, and nothing else will report back to you. If you
-            find yourself about to say something like "the other investigations
-            are running" or "I'll compile this once the agents report back" —
-            stop: that means you've started planning a workflow this environment
-            can't run. Investigate and answer each numbered task directly instead,
-            then move on to posting the comment.
+            Work through the tasks below yourself. Only `Bash`, `Read`, `Grep`,
+            and `Glob` are available here. There is no agent delegation, and
+            nothing else will report back to you.
 
             ## First: read the conversation so far
 
