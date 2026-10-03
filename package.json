@@ -79,7 +79,7 @@
     "@playwright/test": "^1.63.0",
     "dotenv": "^17.4.2",
     "eslint": "^10.11.0",
-    "markdownlint-cli2": "^0.23.2"
+    "markdownlint-cli2": "^0.23.3"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
