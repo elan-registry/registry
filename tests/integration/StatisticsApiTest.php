@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\StatisticsDataService;
 
 /**
@@ -132,9 +133,67 @@ class StatisticsApiTest extends IntegrationTestCase
         $completeness = $service->getDataCompleteness();
 
         $this->assertNotNull($completeness);
-        foreach (['total_cars', 'has_chassis', 'has_color', 'has_engine', 'has_location'] as $field) {
+        foreach (['total_cars', 'has_chassis', 'has_color', 'has_engine', 'has_location', 'verified_cars'] as $field) {
             $this->assertObjectHasProperty($field, $completeness, "getDataCompleteness() must return '$field'");
         }
         $this->assertGreaterThan(0, (int) $completeness->total_cars, 'Registry must have at least one car');
+    }
+
+    /**
+     * verified_cars (fresh) and the stale count partition the registry: every car
+     * is one or the other, so the two add up to total_cars.
+     *
+     * The stale count comes from CarRepository::stalenessSql(), the negation of
+     * the rule getDataCompleteness() uses, not from a copy of that SQL.
+     */
+    public function testGetDataCompletenessFreshPlusStaleEqualsTotal(): void
+    {
+        $completeness = (new StatisticsDataService($this->db))->getDataCompleteness();
+        $this->assertNotNull($completeness);
+
+        $stale = $this->db->query(
+            'SELECT COALESCE(SUM(CASE WHEN ' . CarRepository::stalenessSql() . ' THEN 1 ELSE 0 END), 0) AS stale FROM cars'
+        )->first();
+        $this->assertFalse($this->db->error(), 'Stale count query must succeed: ' . $this->db->errorString());
+
+        $this->assertSame(
+            (int) $completeness->total_cars,
+            (int) $completeness->verified_cars + (int) $stale->stale,
+            'verified_cars + stale cars must equal total_cars'
+        );
+    }
+
+    /**
+     * Adding one fresh car and one stale car raises verified_cars by exactly 1
+     * and total_cars by exactly 2.
+     *
+     * The stale car has last_verified and owner_last_updated both two years old.
+     * Under COUNT(last_verified) this car would count, so it pins the old defect.
+     */
+    public function testGetDataCompletenessCountsOnlyFreshCars(): void
+    {
+        $service  = new StatisticsDataService($this->db);
+        $baseline = $service->getDataCompleteness();
+        $this->assertNotNull($baseline);
+
+        $this->createTestCar($this->testUserId, ['last_verified' => date('Y-m-d H:i:s')]);
+
+        $staleStamp = date('Y-m-d H:i:s', strtotime('-2 years'));
+        $staleCarId = $this->createTestCar($this->testUserId, ['last_verified' => $staleStamp]);
+        $this->seedOwnerLastUpdated($staleCarId, $staleStamp);
+
+        $stored = $this->db->query(
+            'SELECT last_verified, owner_last_updated FROM cars WHERE id = ?',
+            [$staleCarId]
+        )->first();
+        $this->assertSame($staleStamp, (string) $stored->owner_last_updated, 'Stale fixture: owner_last_updated must be 2 years old');
+        $this->assertNotNull($stored->last_verified, 'Stale fixture: last_verified must be set but old');
+        $this->assertLessThan(strtotime('-1 year'), strtotime((string) $stored->last_verified));
+
+        $after = $service->getDataCompleteness();
+        $this->assertNotNull($after);
+
+        $this->assertSame(1, (int) $after->verified_cars - (int) $baseline->verified_cars, 'Only the fresh car adds to verified_cars');
+        $this->assertSame(2, (int) $after->total_cars - (int) $baseline->total_cars, 'Both cars add to total_cars');
     }
 }

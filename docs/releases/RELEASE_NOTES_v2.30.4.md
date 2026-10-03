@@ -13,6 +13,8 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 
 - Removing a photo from your own car now counts as keeping its record current, the same as editing it or uploading a
   photo. ([#1929](https://github.com/elan-registry/registry/issues/1929))
+- The statistics page's Data Completeness chart and Quality Metrics list show a "Verified (12 mo)" figure: the share of
+  cars verified or updated by their owner in the last 12 months. ([#1898](https://github.com/elan-registry/registry/issues/1898))
 
 ## Admin-Facing Changes
 
@@ -30,7 +32,9 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   needs, and repeated review work is removed (developer workflow only, no site change)
 - WIP: [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified status row (and admin-only Email on file row) on the car details page
 - WIP: [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page, cars list, and car details page
-- WIP: [#1898](https://github.com/elan-registry/registry/issues/1898) — Verified vector on the statistics page's data-completeness radar chart
+- [#1898](https://github.com/elan-registry/registry/issues/1898) — Verified vector on the statistics page's
+  data-completeness radar chart. `verified_cars` now uses the shared freshness rule, not a count of non-null
+  `last_verified`. The chart no longer shows `NaN` when the registry has no cars.
 - WIP: [#1894](https://github.com/elan-registry/registry/issues/1894) — Verification email photo thumbnail at 300px with
   descriptive alt text, and a highlighted fallback when a car has no photo (includes the remaining gap from #1892)
 - WIP: [#2147](https://github.com/elan-registry/registry/issues/2147) — Stop displaying Brevo's rewritten tracking URL in the four auth email templates

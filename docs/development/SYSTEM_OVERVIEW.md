@@ -368,14 +368,10 @@ Verified against code. Each of these is a real gap, not a documentation error.
   `TODO: Move to database table`.
 - **`CLAUDE.md`'s `userimages/orphan/` claim looks stale** — no live code path
   writing there was found; the only reference is in an archived README.
-- **The Data Quality dashboard computes a "% verified" figure and throws it
+- **The Data Quality dashboard computes `has_sold_date` and throws it
   away.** `StatisticsDataService::getDataCompleteness()` selects
-  `COUNT(last_verified) AS verified_cars` (and `has_sold_date`) on every
-  request and ships both to the browser; the frontend reads a hard-coded
-  allowlist of six fields that excludes them. Nothing in
-  `app/assets/js/statistics.js` references `verified_cars`. The registry
-  measures how much of its data has been verified, on every page load, and
-  never shows the answer — which is consistent with the answer being ~zero.
+  `COUNT(solddate) AS has_sold_date` on every request and ships it to the
+  browser, but nothing in `app/assets/js/statistics.js` reads it.
 
 ## 8. Where to read more
 
