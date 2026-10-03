@@ -286,10 +286,8 @@ test.describe('Maps and Charts', () => {
     expect(labels).toHaveLength(7);
     expect(labels[6]).toBe('Verified (12 mo)');
     expect(values).toHaveLength(7);
-    expect(values.every((v) => Number.isFinite(v))).toBe(true);
-    expect(values[6]).toBe(0);
-    // Guard against a vacuous pass: the other fields are not all zero.
-    expect(values[0]).toBe(80);
+    // Every value is checked, so a swapped prop in COMPLETENESS_FIELDS fails the test.
+    expect(values).toEqual([80, 70, 60, 50, 40, 30, 0]);
 
     await expect(page.locator('[data-metric="verified"]')).toHaveText('0%');
   });

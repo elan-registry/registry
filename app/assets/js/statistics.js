@@ -474,8 +474,8 @@ function renderColorsTab(container, data) {
   createColorBySeriesChart(data.colorBySeries);
 }
 
-// One list drives both the Quality Metrics rows and the radar chart, so a field
-// that the API returns cannot be shown in one place and left out of the other.
+// One list builds both the Quality Metrics rows and the radar chart, so a field
+// cannot be shown in one place and left out of the other.
 const COMPLETENESS_FIELDS = [
   { key: 'chassis',       prop: 'has_chassis',       label: 'Chassis Numbers' },
   { key: 'color',         prop: 'has_color',         label: 'Color Info' },
@@ -499,7 +499,7 @@ function renderQualityTab(container, data) {
   const totalCars = completeness.total_cars;
 
   const wrapper = document.createElement('div');
-  // No ${...} interpolation — numeric values are set via textContent using data-metric selectors below.
+  // No ${...} interpolation. The rows and values below are built with DOM APIs and textContent.
   wrapper.innerHTML = `
         <div class="row">
             <div class="col-lg-8 mb-4">
@@ -523,36 +523,7 @@ function renderQualityTab(container, data) {
                             <h3 class="mb-0 text-primary" data-metric="total"></h3>
                         </div>
                         <hr>
-                        <div class="small">
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Chassis Numbers:</span>
-                                <span class="fw-bold" data-metric="chassis"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Color Information:</span>
-                                <span class="fw-bold" data-metric="color"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Engine Details:</span>
-                                <span class="fw-bold" data-metric="engine"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Purchase Dates:</span>
-                                <span class="fw-bold" data-metric="purchase_date"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Photos:</span>
-                                <span class="fw-bold" data-metric="image"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Location Data:</span>
-                                <span class="fw-bold" data-metric="location"></span>
-                            </div>
-                            <div class="d-flex justify-content-between">
-                                <span>Verified (12 mo):</span>
-                                <span class="fw-bold" data-metric="verified"></span>
-                            </div>
-                        </div>
+                        <div class="small" data-metric-rows></div>
                     </div>
                 </div>
             </div>
@@ -560,8 +531,18 @@ function renderQualityTab(container, data) {
     `;
 
   wrapper.querySelector('[data-metric="total"]').textContent = totalCars.toLocaleString();
-  COMPLETENESS_FIELDS.forEach(({ key, prop }) => {
-    wrapper.querySelector(`[data-metric="${key}"]`).textContent = completenessPct(completeness[prop], totalCars) + '%';
+  const rows = wrapper.querySelector('[data-metric-rows]');
+  COMPLETENESS_FIELDS.forEach(({ key, prop, label }, i) => {
+    const row = document.createElement('div');
+    row.className = 'd-flex justify-content-between' + (i < COMPLETENESS_FIELDS.length - 1 ? ' mb-2' : '');
+    const name = document.createElement('span');
+    name.textContent = label + ':';
+    const value = document.createElement('span');
+    value.className = 'fw-bold';
+    value.dataset.metric = key;
+    value.textContent = completenessPct(completeness[prop], totalCars) + '%';
+    row.append(name, value);
+    rows.append(row);
   });
 
   container.empty().append(...Array.from(wrapper.childNodes));

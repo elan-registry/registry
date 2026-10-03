@@ -371,7 +371,10 @@ Verified against code. Each of these is a real gap, not a documentation error.
 - **The Data Quality dashboard computes `has_sold_date` and throws it
   away.** `StatisticsDataService::getDataCompleteness()` selects
   `COUNT(solddate) AS has_sold_date` on every request and ships it to the
-  browser, but nothing in `app/assets/js/statistics.js` reads it.
+  browser, but nothing in `app/assets/js/statistics.js` reads it. Its
+  `verified_cars` field is shown: it counts cars that are fresh by
+  `CarRepository::freshnessSql()` (verified or updated by the owner in the
+  last 12 months) and is the seventh vector on the radar chart.
 
 ## 8. Where to read more
 

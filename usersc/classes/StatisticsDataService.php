@@ -299,9 +299,10 @@ class StatisticsDataService {
      * @return object|null Data completeness metrics
      */
     public function getDataCompleteness(): object|null {
-        // verified_cars uses the shared freshness rule so the chart agrees with the Verified
-        // badges. It is SUM(CASE ...), not COUNT(CASE ... ELSE 0 END): COUNT counts non-NULL
-        // values, so it would count every row. COALESCE keeps an empty registry at 0, because
+        // verified_cars uses CarRepository::freshnessSql(), the SQL form of isFresh(), so the chart
+        // agrees with the Verified badge on the admin user view (user_form_hook.php). It is
+        // SUM(CASE ...), not COUNT(CASE ... ELSE 0 END): COUNT counts non-NULL values, so it
+        // would count every row. COALESCE keeps an empty registry at 0, because
         // SUM over zero rows returns NULL.
         return $this->executeQuery(
             "SELECT
