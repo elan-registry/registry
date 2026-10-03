@@ -88,22 +88,20 @@ and resume.
 | Out of scope | Anything else, defect | **Defer** — new issue with `triage` label, no milestone |
 | Out of scope | Anything else, cleanup | **Ledger** — one item on the cleanup ledger, no new issue |
 
-**Why "it's only 30 minutes" is no longer a cell in this matrix.** The rule
-this replaces let any in-scope low-severity find be folded in if it looked
-like under half an hour of work. That estimate is self-assessed, made at the
-moment of maximum enthusiasm, and it is the most common way a diff grows past
-its plan. The test is now whether the acceptance criteria can be met without
-the fix — not how long the fix looks.
+**Why fix size is not a cell in this matrix.** "It's only 30 minutes" is a
+self-assessed estimate, made at the moment of maximum enthusiasm, and it is
+the most common way a diff grows past its plan. The test is whether the
+acceptance criteria can be met without the fix — not how long the fix looks.
 
-**Why an out-of-scope emergency no longer joins the current milestone.** A
+**Why an out-of-scope emergency does not join the current milestone.** A
 sealed milestone is what makes the release predictable. Genuine emergencies
 don't wait for the next planning session, but they ship as a patch release
 from `main`, leaving the current milestone's scope untouched. Everything else
 queues.
 
-**Why cleanup goes to a ledger, not a new issue.** Each cleanup find used to
-become its own issue. Most of them said "not broken" in their own body, and
-they grew the backlog faster than it drained. A cleanup item costs the least
+**Why cleanup goes to a ledger, not a new issue.** A cleanup find usually
+says "not broken" in its own body, and one issue per find grows the backlog
+faster than it drains. A cleanup item costs the least
 when a change already has the file open. The ledger keeps these items in one
 place, grouped by file, and `/start-issue` pulls a file's items into a plan
 when that plan touches the file.

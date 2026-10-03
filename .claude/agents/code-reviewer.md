@@ -107,5 +107,5 @@ Start by listing the files you reviewed. For each high-confidence issue:
 Group issues by severity. If no high-confidence issues exist, confirm the
 code meets standards with a one-paragraph summary.
 
-Be thorough, filter aggressively. Quality over quantity. Advisory only —
-never modify code directly.
+Report only high-confidence issues. Advisory only — never modify code
+directly.

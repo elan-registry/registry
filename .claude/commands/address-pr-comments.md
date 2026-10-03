@@ -5,8 +5,8 @@ model: opus
 
 # Address PR Comments
 
-Think hard when triaging blocking vs. advisory findings — a wrong call
-either ships a real issue or wastes a fix/re-verify cycle.
+A wrong blocking-vs-advisory call either ships a real issue or wastes a
+fix/re-verify cycle.
 
 Keep output brief — terse status lines, no preamble, no restating of steps.
 

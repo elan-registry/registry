@@ -206,7 +206,7 @@ For each helper returned:
 
 Compact. No prose paragraphs. Multiple results = multiple blocks separated by blank lines. Path should be relative to `$INSTALL_ROOT` (e.g. `users/helpers/us_helpers.php:1941`), not absolute.
 
-If the looked-up helper appears in **Known Weak Helpers** below, ALWAYS include the warning in Notes — don't suppress it just because the user asked specifically for that helper.
+If the looked-up helper appears in **Known Weak Helpers** below, include the warning in Notes, also when the user asked for that helper by name.
 
 End with: "Need a worked example or another lookup? Ask away."
 
@@ -307,7 +307,7 @@ installed source the same way as any other lookup in this skill.
 
 ## Known Weak Helpers
 
-ALWAYS include the warning in Notes when these come up. The fix recommendation goes in the same Notes block.
+Put the fix recommendation in the same Notes block as the warning.
 
 | Helper | Weakness | Use instead |
 |--------|----------|-------------|

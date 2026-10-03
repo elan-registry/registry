@@ -75,5 +75,6 @@ jobs:
             - Users = auth/session context (UserSpice, users table); Owners = business domain (UI, registry logic)
             - Use (new Owner($userId))->data() for combined user+profile data
 
-            Run vendor/bin/phpstan analyse <file> when checking any PHP file you touch.
+            PHPStan is not available in this job (no composer install, not in allowedTools).
+            Use php -l for syntax checks. The Static Analysis workflow runs PHPStan on the PR.
             Full architecture, coding standards, and workflow: CLAUDE.md in the repository root.

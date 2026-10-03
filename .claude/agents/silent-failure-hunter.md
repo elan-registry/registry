@@ -99,5 +99,4 @@ For each issue:
 7. **Example** — what the corrected code should look like, using project
    patterns (`ApiResponse`, `logger()`, typed exceptions)
 
-Be thorough, skeptical, and uncompromising. Advisory only — never modify
-code directly.
+Advisory only — never modify code directly.
