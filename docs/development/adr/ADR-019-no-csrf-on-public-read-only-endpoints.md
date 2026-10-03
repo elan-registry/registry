@@ -60,7 +60,7 @@ This was already recorded in `docs/development/SYSTEM_OVERVIEW.md`:
 > independent access check of its own.
 
 The documentation had reached the correct conclusion; the code had not
-followed.
+followed. (Superseded by #2144 — see Notes.)
 
 ### The cost the control imposed
 
@@ -113,6 +113,8 @@ state by default.
    session mutation, no third-party side effect.
 2. **No privileged read.** It returns nothing an anonymous visitor could not
    already obtain from the public page — no PII, no per-viewer branching.
+   Check this against the endpoint's actual column list. Do not check it by
+   analogy with a similar endpoint (#2144).
 3. **No authority to borrow.** The endpoint performs no authentication or
    authorization check of its own, so a victim's session confers no capability
    an attacker lacks. Note this is a property of the *endpoint*: the host page
@@ -131,8 +133,9 @@ Applied to the current codebase:
 | --- | --- | --- |
 | `app/api/cars/list.php` | removed | removed (#2018) |
 | `app/api/cars/factory-list.php` | removed | removed (#2018) |
-| `app/api/cars/history.php` | removed | removed (#2018) |
+| `app/api/cars/history.php` | removed; login required since #2144 (see Notes) | removed (#2018) |
 | `app/api/shared/statistics.php` | removed | removed (#2018) |
+| `app/api/shared/join-failure-report.php` | removed (diagnostic-log exception) | `join_failure_beacon` |
 
 **Update, 2026-09-08:** Rate limiting was also removed from these four
 endpoints per issue #2018, in response to a production log-volume/performance
@@ -141,6 +144,54 @@ four endpoints with **no app-layer abuse control at all** — no CSRF, no rate
 limit. Issue #2015, a proposed cron job to clean up `us_rate_limits` (which
 would have addressed the underlying row-growth problem without removing the
 control), remains open and was not chosen.
+
+### Exception: anonymous diagnostic log writes
+
+An endpoint may fail criterion 1 for one narrow reason: it appends one row to
+`logs`. It still qualifies for this ADR if **all** of the following hold:
+
+1. `user_id` is `0`.
+2. Every stored field has a fixed shape — an enum, or a length cap.
+3. It reads no session state and checks no identity (criterion 3 above still
+   holds).
+4. It has its own rate-limit key, and that key is **enforced**: the endpoint
+   calls `recordRateLimit()` for each admitted request, not only
+   `checkRateLimit()`.
+5. Every free-text field it stores (a capped `detail`, a request header such
+   as the user agent) must be HTML-escaped wherever it is displayed,
+   including admin log views. A length cap limits size, not content. Check
+   every view that displays these rows before you add an endpoint to the
+   table, and again when you change one of those views.
+
+Point 4 needs its own warning. `RateLimit::check()` counts rows in
+`us_rate_limits`. Only `record()` writes those rows. A `checkRateLimit()` call
+with no matching `recordRateLimit()` call always counts zero attempts, so the
+limit never trips. This is how `join_failure_beacon` went unenforced until
+issue #2227 found it.
+
+The reasoning: any anonymous client can get a valid CSRF token by loading the
+page. A forged cross-site request can do nothing the attacker's own direct
+request cannot. The token adds fragility and gives no protection. The
+remaining risk is junk log rows. The rate limit bounds their volume, and
+point 5 bounds what their content can do.
+
+Known limits of the `join_failure_beacon` rate limit:
+
+- A refused request still writes one short `RateLimit` row to `logs`, because
+  `RateLimit::check()` logs each refusal. The large rows, with the capped
+  payload, stop at `total_max`. The short refusal rows do not.
+- `us_rate_limits` grows by up to `total_max` rows per window for each
+  bucket. No scheduled job removes old rows. Cleanup is the manual
+  maintenance script.
+- The bucket is keyed on `REMOTE_ADDR`, which behind Cloudflare is the edge
+  node (see "Rate limits get their own action key" below). One client can
+  use up the bucket for everyone behind the same edge node. For this
+  endpoint, the effect is lost diagnostic reports for up to one window.
+- Point 4 holds only while the database accepts writes. If
+  `recordRateLimit()` throws, the endpoint still lets the request through,
+  because losing the report is worse than one uncounted request, and logs a
+  `SystemError`. For as long as those writes keep failing, no request is
+  counted and the limit cannot trip.
 
 Explicitly **not** qualifying, and retaining their tokens:
 
@@ -153,7 +204,7 @@ Explicitly **not** qualifying, and retaining their tokens:
 - `app/api/cars/models.php`, `chassis-validate.php`, `chassis-availability.php`
   — serve the Add/Edit Car flow, whose own token-expiry handling is #1455
   finding 2.
-- Every write endpoint, without exception.
+- Every write endpoint, other than the diagnostic-log exception above.
 
 ### Rate limits get their own action key
 
@@ -167,7 +218,8 @@ Sizing, and why these numbers:
 no longer appear in `usersc/includes/rate_limits.php` at all — their entries,
 and this table's rows for the first three, are kept below only as
 historical/reference sizing for the general approach that #2018 removed;
-`brevo_webhook` (a different endpoint, unaffected by #2018) is current.
+`brevo_webhook` (a different endpoint, unaffected by #2018) and
+`join_failure_beacon` (added by #2227) are current.
 
 | Action key | `total_max` per 300s | Endpoint |
 | --- | --- | --- |
@@ -175,6 +227,7 @@ historical/reference sizing for the general approach that #2018 removed;
 | `factory_list` (removed, #2018) | 10000 | `app/api/cars/factory-list.php` |
 | `car_history` (removed, #2018) | 5000 | `app/api/cars/history.php` |
 | `brevo_webhook` | 2000 | `app/api/webhooks/brevo.php` |
+| `join_failure_beacon` | 150 | `app/api/shared/join-failure-report.php` (diagnostic-log exception, #2227) |
 
 `brevo_webhook` does not qualify under the four criteria above and is **not**
 a CSRF-token removal — it never carried one. It is included in this table
@@ -347,9 +400,60 @@ Rejected outright: the public car list is a deliberate product decision
 (#1305), and the registry's value depends on being browsable by anonymous
 visitors.
 
+## Notes
+
+### 2026-09-28 — #2227
+
+Issues #1913 and #2227 both quote a claim about the cause of a stale-token
+403: "every `Token::generate()` call overwrites the session token." That claim
+does not match UserSpice 6.1.4's `Token::generate()`
+(`users/classes/Token.php`). The method returns the stored token unless
+`$force` is `true` or the stored value is malformed, and no code in this
+project passes `$force`.
+
+`join.php` calls `Token::generate()` twice per render, and production
+recorded 33 beacon successes (HTTP 200). So production does not rotate the
+token per render either.
+
+The cause of the two production 403s that #2227 investigated (logs 100190,
+100194) stays unexplained.
+
+The fixes in this ADR do not depend on the per-render-rotation mechanism.
+Do not reuse that explanation to justify a future change without checking it
+against `Token.php` first.
+
+### 2026-09-28 — #2144
+
+`app/api/cars/history.php` now requires login. An anonymous caller gets
+HTTP 401. The endpoint has had no rate limit since #2018, so the login
+check is its only gate.
+
+The endpoint still carries no CSRF token. Two reasons hold this in place.
+First, the session cookie (`users/init.php`) and the remember-me cookie
+(`users/classes/Cookie.php`) are both `SameSite=Strict`. A cross-site
+request arrives with no cookie, so it gets the 401 like any other
+anonymous call. Second, the endpoint only reads. A cross-site page cannot
+read the response, because there is no CORS.
+
+This endpoint had failed criterion 2 all along.
+`CarRepository::getHistory()` returns each history row's past owner first
+name, join date, city, state, country and website. This ADR had approved
+`history.php` under criterion 2 by analogy with `list.php` and
+`factory-list.php`, whose SELECT lists #1501 had restricted.
+`getHistory()`'s own column list was never checked. Issue #1305 had
+earlier decided history was "public by design" and stripped only email
+and last name. #2144 reverses that decision: history rows go to logged-in
+members only.
+
+`app/owner/cars/details.php` still renders for anonymous visitors. Its
+history card now shows a login prompt instead of the table, toggle and
+summary.
+
 ## References
 
+- Issue #2144 — car history requires login; reverses #1305's "public by design" for that endpoint
 - Issue #1913 — cars-list DataTable never recovers from a stale/lost CSRF token
+- Issue #2227 — join-form failure beacon refused 403 on a stale/lost CSRF token; added the diagnostic-log exception
 - Issue #1852 / PR #1861 — earlier attempt, closed as a test bug
 - Issue #1305 — PII endpoints given login gates; public browse surface retained
 - Issue #1501 — owner PII removed from the DataTables SELECT list

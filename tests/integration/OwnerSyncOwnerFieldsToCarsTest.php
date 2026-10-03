@@ -465,9 +465,10 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
      * owner's name or location.
      *
      * app/api/cars/history.php returns cars_hist rows — including `comments`
-     * verbatim — to an unauthenticated caller (CSRF was dropped from that
-     * endpoint under ADR-019 in favor of rate limiting alone). Before
-     * cb6b1745, this comment was built as
+     * verbatim — to any logged-in member (since #2144; before that, to any
+     * caller, logged in or not). CSRF was dropped from that endpoint under
+     * ADR-019 in favor of rate limiting alone. Before cb6b1745, this comment
+     * was built as
      * "...Name: {fname} {lname}, City: {city}, State: {state}, Country:
      * {country}", so any anonymous request for a car's history could read
      * that owner's last name and location — contradicting this same
@@ -500,8 +501,8 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
         $this->assertSame(
             'Car owner contact details synchronized with owner profile update.',
             $histRow->comments,
-            'The OWNER_SYNC comment must be a fixed, non-identifying sentence — this endpoint '
-                . 'is served unauthenticated by app/api/cars/history.php'
+            'The OWNER_SYNC comment must be a fixed, non-identifying sentence — app/api/cars/history.php '
+                . 'still returns it to any logged-in member, so it must carry no owner-identifying data'
         );
         $this->assertStringNotContainsString('Surname', $histRow->comments);
         $this->assertStringNotContainsString('UnlikelyCityName', $histRow->comments);

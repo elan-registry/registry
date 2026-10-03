@@ -47,6 +47,22 @@ files when you need an exact execution order.
 | `usersc/templates/customizer/header.php` | Loads framework CSS/JavaScript and the active child-theme stylesheet |
 | `usersc/templates/customizer/footer.php` | Closes the content container and loads footer handling |
 
+## Host and generated URLs
+
+`server_globals.php` sets `$host` from the `Host` header, with the port
+removed. It keeps only `elanregistry.org`, `www.elanregistry.org`,
+`test.elanregistry.org`, `localhost` and `127.0.0.1`. Any other host becomes
+`''`, the same as a CLI or cron request. `$current_origin` adds a non-default
+port only for `localhost` and `127.0.0.1`, because `SERVER_PORT` also follows
+the client's `Host` header (GHSA-4g69-gm5q-rx93).
+
+Build absolute URLs (email links, the sitemap) with `getBaseUrl()`, not from
+`$host` or `Server::get('HTTP_HOST')`. When `$host` is `''`, `getBaseUrl()`
+falls back to the `email.verify_url` setting, so that setting must hold the
+site's own URL in each environment. A request through a Cloudflare quick
+tunnel (`*.trycloudflare.com`) is untrusted, so its emailed links use
+`email.verify_url`.
+
 ## Asset loading
 
 The Customizer template loads framework assets from the installed UserSpice
@@ -69,6 +85,8 @@ and the deployment hook rebuilds them. See
   registration, and `PagePermissionClassifier` for project API routes.
 - **Template or CSS is wrong:** check the active template setting,
   `elanregistry_prep.php`, and the Customizer revision file.
+- **An emailed link or the sitemap points at the wrong site:** check
+  `email.verify_url`, and see "Host and generated URLs" above.
 - **A generated JavaScript or CSS file is missing:** run `npm ci` and
   `npm run build` in the project root.
 

@@ -66,10 +66,16 @@ function initializeHistoryTable() {
                     if (tableContainer && !tableContainer.parentElement.querySelector('.alert')) {
                         const warning = document.createElement('div');
                         warning.className = 'alert alert-warning';
-                        // Reloading re-fires the request, so it is the wrong advice for a 429.
-                        warning.textContent = xhr.status === 429
-                            ? 'Too many requests. Please wait a few minutes before trying again.'
-                            : 'Car history could not be loaded. Please refresh the page to try again.';
+                        if (xhr.status === 401) {
+                            // history.php requires login (#2144): a 401 here means the member's
+                            // session ended while the page was open.
+                            warning.textContent = 'Your session has ended. Log in again to see this car\'s history.';
+                        } else if (xhr.status === 429) {
+                            // Reloading re-fires the request, so it is the wrong advice for a 429.
+                            warning.textContent = 'Too many requests. Please wait a few minutes before trying again.';
+                        } else {
+                            warning.textContent = 'Car history could not be loaded. Please refresh the page to try again.';
+                        }
                         tableContainer.insertAdjacentElement('beforebegin', warning);
                     }
                 }

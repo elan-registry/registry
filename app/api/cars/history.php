@@ -15,8 +15,21 @@ use ElanRegistry\LogCategories;
  * Returns DataTables-compatible JSON with the full audit trail
  * for a single car, keyed by car_id POST parameter.
  *
+ * Members only (#2144). Each history row carries a past owner's first name,
+ * location and website, so an anonymous caller must not receive it. This
+ * reverses #1305, which treated car history as public by design.
+ *
+ * No CSRF token: the session cookie and the remember-me cookie are both
+ * SameSite=Strict, so a cross-site request arrives with no session and gets the
+ * 401 below. The endpoint also only reads. It has no rate limit (removed in
+ * #2018); the login check is the only gate.
+ *
  * @author Elan Registry Team
  * @copyright 2025
+ *
+ * @link https://github.com/elan-registry/registry/issues/2144
+ * @link https://github.com/elan-registry/registry/issues/1305
+ * @link https://github.com/elan-registry/registry/blob/main/docs/development/adr/ADR-019-no-csrf-on-public-read-only-endpoints.md
  */
 
 require_once '../../../users/init.php';
@@ -29,6 +42,17 @@ if (!Input::existsPost()) {
     ApiResponse::error('No data received')->send();
 }
 
+// History rows carry past owners' first name, location and website, so only
+// members may read them (#2144).
+if (!$user->isLoggedIn()) {
+    ApiResponse::unauthorized('Login required')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthenticated request to car history endpoint')
+        ->send();
+}
+
+// Always a logged-in member's ID: the check above sends a 401 otherwise.
+$userId = (int) $user->data()->id;
+
 $draw = (int)Input::get('draw');
 $carID = (int)Input::get('car_id');
 
@@ -40,7 +64,7 @@ if (empty($carID)) {
             'recordsFiltered' => 0,
             'history' => []
         ])
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car history requested without car ID')
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car history requested without car ID')
         ->send();
 }
 
@@ -54,7 +78,7 @@ try {
                 'recordsFiltered' => 0,
                 'history' => []
             ])
-            ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Car history requested for non-existent car ID: $carID")
+            ->withLogging($userId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Car history requested for non-existent car ID: $carID")
             ->send();
     }
 
@@ -77,7 +101,7 @@ try {
             'recordsFiltered' => 0,
             'history' => []
         ])
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to load car history for car ID $carID: " . $e->getMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to load car history for car ID $carID: " . $e->getMessage())
         ->send();
 } catch (\Throwable $e) {
     ApiResponse::serverError('Failed to load car history')
@@ -87,6 +111,6 @@ try {
             'recordsFiltered' => 0,
             'history' => []
         ])
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Unexpected error loading car history for car ID $carID [" . get_class($e) . "]: " . $e->getMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Unexpected error loading car history for car ID $carID [" . get_class($e) . "]: " . $e->getMessage())
         ->send();
 }

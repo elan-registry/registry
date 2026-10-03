@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -141,11 +142,75 @@ final class GetBaseUrlTest extends IntegrationTestCase
         $this->applyServerGlobals([
             'REQUEST_SCHEME' => 'http',
             'HTTP_X_FORWARDED_PROTO' => 'https',
-            'HTTP_HOST' => 'abc.trycloudflare.com',
+            'HTTP_HOST' => 'elanregistry.org',
             'SERVER_PORT' => '80',
         ]);
 
-        $this->assertSame('https://abc.trycloudflare.com', getBaseUrl());
+        $this->assertSame('https://elanregistry.org', getBaseUrl());
+    }
+
+    /**
+     * SERVER_PORT follows the client's Host header, so a public host never
+     * gets a port, even a non-default one. Only localhost keeps its port
+     * (GHSA-4g69-gm5q-rx93).
+     *
+     * @param array<string, string> $server  $_SERVER keys to seed
+     * @param string                $expected getBaseUrl() result
+     * @return void
+     */
+    #[DataProvider('portHandlingProvider')]
+    #[Group('integration')]
+    public function testGetBaseUrlKeepsPortOnlyForLocalHosts(array $server, string $expected): void
+    {
+        $this->applyServerGlobals($server);
+
+        $this->assertSame($expected, getBaseUrl());
+    }
+
+    /**
+     * @return array<string, array{array<string, string>, string}>
+     */
+    public static function portHandlingProvider(): array
+    {
+        return [
+            'public host, forged https port' => [
+                ['REQUEST_SCHEME' => 'https', 'HTTP_HOST' => 'elanregistry.org:2083', 'SERVER_PORT' => '2083'],
+                'https://elanregistry.org',
+            ],
+            'test host, forged https port' => [
+                ['REQUEST_SCHEME' => 'https', 'HTTP_HOST' => 'test.elanregistry.org:8443', 'SERVER_PORT' => '8443'],
+                'https://test.elanregistry.org',
+            ],
+            'localhost, docker port' => [
+                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'localhost:8002', 'SERVER_PORT' => '8002'],
+                'http://localhost:8002',
+            ],
+            'localhost, default port' => [
+                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'localhost', 'SERVER_PORT' => '80'],
+                'http://localhost',
+            ],
+        ];
+    }
+
+    /**
+     * A Host header for another domain must not reach emailed links. The
+     * host is dropped, so getBaseUrl() uses its fallback (GHSA-4g69-gm5q-rx93).
+     *
+     * @return void
+     */
+    #[Group('integration')]
+    public function testGetBaseUrlIgnoresUntrustedHost(): void
+    {
+        $this->applyServerGlobals([
+            'REQUEST_SCHEME' => 'https',
+            'HTTP_HOST' => 'attacker.example',
+            'SERVER_PORT' => '443',
+        ]);
+
+        $this->assertSame('', $GLOBALS['host']);
+        $result = getBaseUrl();
+        $this->assertValidFallbackUrl($result);
+        $this->assertStringNotContainsString('attacker.example', $result);
     }
 
     /**

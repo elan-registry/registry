@@ -237,10 +237,11 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   });
 
   test('car history endpoint returns DataTables JSON structure', async ({ page }) => {
-    // app/api/cars/history.php is public and read-only (per ADR-019); it
-    // carries no CSRF gate and, as of #2018, no rate limit either — no
-    // app-layer abuse control. A deliberately bogus token is included here
-    // purely to prove it is ignored, not required.
+    // app/api/cars/history.php is members-only (#2144) — the beforeEach hook
+    // above already logs this test in, so this proves the success path for a
+    // real session. It carries no CSRF gate and, as of #2018, no rate limit.
+    // A deliberately bogus token is included here purely to prove it is
+    // ignored, not required.
     const response = await page.request.post('app/api/cars/history.php', {
       form: {
         car_id: String(CAR_ID_STANDARD),
@@ -658,14 +659,17 @@ test.describe('Issue #1913 — car list survives session loss (no auth, no CSRF 
 });
 
 test.describe('Issue #1913 — public read-only DataTables endpoints survive a lost/absent CSRF token', () => {
-  // These four endpoints (list.php, factory-list.php, history.php,
-  // statistics.php) are public and read-only per ADR-019: no state change,
-  // no login gate, no non-public data. They must succeed whether a CSRF
-  // field is entirely absent (models a lost session — the actual
-  // production failure mode observed in #1913) or present but
-  // garbage/expired (models a stale page-embedded token). As of #2018,
-  // these endpoints have no rate limit either — no app-layer abuse
-  // control — which is not asserted here.
+  // These three endpoints (list.php, factory-list.php, statistics.php) are
+  // public and read-only per ADR-019: no state change, no login gate, no
+  // non-public data. They must succeed whether a CSRF field is entirely
+  // absent (models a lost session — the actual production failure mode
+  // observed in #1913) or present but garbage/expired (models a stale
+  // page-embedded token). As of #2018, these endpoints have no rate limit
+  // either — no app-layer abuse control — which is not asserted here.
+  //
+  // history.php left this set in #2144: it now requires login, because each
+  // history row carries a past owner's first name, location and website. Its
+  // own anonymous-request coverage lives in the "Issue #2144" describe below.
 
   // Deliberately OUTSIDE the authenticated describe above. Nested inside it,
   // these ran only after ensureLoggedIn() — the one session state in which
@@ -740,39 +744,6 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
     expect(Array.isArray(jsonResponse.data)).toBe(true);
   });
 
-  test('history.php with no csrf field at all returns 200', async ({ page }) => {
-    const response = await page.request.post('app/api/cars/history.php', {
-      form: {
-        car_id: String(CAR_ID_STANDARD),
-        draw: '1',
-        start: '0',
-        length: '10'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', true);
-    expect(jsonResponse).toHaveProperty('history');
-    expect(Array.isArray(jsonResponse.history)).toBe(true);
-  });
-
-  test('history.php with a garbage/expired csrf token returns 200', async ({ page }) => {
-    const response = await page.request.post('app/api/cars/history.php', {
-      form: {
-        car_id: String(CAR_ID_STANDARD),
-        draw: '1',
-        start: '0',
-        length: '10',
-        csrf: 'this-is-not-a-valid-token'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', true);
-  });
-
   test('statistics.php with no csrf field at all returns 200', async ({ page }) => {
     const response = await page.request.post('app/api/shared/statistics.php', {
       form: {
@@ -823,5 +794,126 @@ test.describe('Admin AJAX Endpoints — Unauthenticated Access', () => {
     const jsonResponse = await response.json();
     expect(jsonResponse).toHaveProperty('success', false);
     expect(jsonResponse).toHaveProperty('message', 'Unauthorized access');
+  });
+});
+
+test.describe('Issue #2144 — car history requires login', () => {
+  // history.php used to be public and read-only (per ADR-019, #1913). #2144
+  // reverses that: CarRepository::getHistory() returns each past owner's
+  // first name, location and website per history row, so an anonymous caller
+  // must not receive it. The endpoint now sends a 401 to anyone not logged
+  // in.
+  //
+  // These tests must FAIL (200, with a `history` array and owner PII in the
+  // body) against the pre-#2144 endpoint and PASS after the fix.
+
+  // Deliberately OUTSIDE the authenticated describe above, mirroring the
+  // #1913 blocks: clearing cookies models a visitor whose session is gone or
+  // was never established.
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+  });
+
+  test('history.php with no csrf field at all returns 401 and no history', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/history.php', {
+      form: {
+        car_id: String(CAR_ID_STANDARD),
+        draw: '1',
+        start: '0',
+        length: '10'
+      }
+    });
+
+    expect(response.status()).toBe(401);
+    const rawBody = await response.text();
+    const jsonResponse = JSON.parse(rawBody);
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).not.toHaveProperty('history');
+
+    // History rows carry a past owner's first name and location — none of
+    // that PII may reach an anonymous caller's response body.
+    expect(rawBody).not.toContain('fname');
+    expect(rawBody).not.toContain('city');
+    expect(rawBody).not.toContain('country');
+  });
+
+  test('history.php with a garbage/expired csrf token returns 401 and no history', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/history.php', {
+      form: {
+        car_id: String(CAR_ID_STANDARD),
+        draw: '1',
+        start: '0',
+        length: '10',
+        csrf: 'this-is-not-a-valid-token'
+      }
+    });
+
+    expect(response.status()).toBe(401);
+    const rawBody = await response.text();
+    const jsonResponse = JSON.parse(rawBody);
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).not.toHaveProperty('history');
+
+    expect(rawBody).not.toContain('fname');
+    expect(rawBody).not.toContain('city');
+    expect(rawBody).not.toContain('country');
+  });
+});
+
+test.describe('Issue #2227 — join-failure beacon survives a lost/stale CSRF token', () => {
+  // join-failure-report.php used to carry the join page's render-time CSRF
+  // token and answered 403 when that token went stale — dropping the very
+  // failure reports it exists to collect (#2227). The cause of the staleness
+  // is unexplained (ADR-019, Notes).
+  // The fix removed the CSRF check entirely; abuse is now bounded by the
+  // endpoint's own enforced 'join_failure_beacon' rate limit (ADR-019's
+  // anonymous-diagnostic-log exception). These tests must FAIL (403) against
+  // the pre-#2227 endpoint and PASS after the fix, regardless of what caused
+  // the token to go stale.
+  //
+  // Playwright cannot read the logs table, so these tests do not assert that
+  // a row was written. logger() runs on the only code path that reaches
+  // ApiResponse::success('Reported') — tests/unit/api/JoinFailureReportEndpointTest.php
+  // ::testLoggingHappensBeforeSuccessResponse pins that ordering in the
+  // source. A 200 with message 'Reported' therefore means a row was written.
+  //
+  // The two requests below use 2 of the 100 per-IP attempts allowed every
+  // 300 s (join_failure_beacon's total_max) — not enough to affect any other
+  // test.
+
+  // Deliberately OUTSIDE the authenticated describe above, mirroring the
+  // #1913 block: clearing cookies models a visitor whose session is gone,
+  // which is the actual production failure mode.
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+  });
+
+  test('join-failure-report.php with no csrf field at all returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/shared/join-failure-report.php', {
+      form: {
+        reason: 'js_exception',
+        detail: 'playwright #2227 no-token'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
+    expect(jsonResponse).toHaveProperty('message', 'Reported');
+  });
+
+  test('join-failure-report.php with a garbage/expired csrf token returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/shared/join-failure-report.php', {
+      form: {
+        csrf: 'this-is-not-a-valid-token',
+        reason: 'js_exception',
+        detail: 'playwright #2227 stale-token'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
+    expect(jsonResponse).toHaveProperty('message', 'Reported');
   });
 });

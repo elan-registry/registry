@@ -153,7 +153,9 @@ if (!$car->exists()) {
         ->send();
 }
 $carRow = $car->data();
-$carUrl = $current_origin . $us_url_root . 'app/owner/cars/details.php?car_id=' . $carId;
+// getBaseUrl(), not $current_origin: it falls back to the email.verify_url
+// setting when the request's host is not one this application serves.
+$carUrl = getBaseUrl() . '/app/owner/cars/details.php?car_id=' . $carId;
 
 $template = array(
     'message'      => $message,

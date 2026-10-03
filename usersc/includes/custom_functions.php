@@ -84,8 +84,8 @@ function isRegistryAdmin(int|string|null $userId = null): bool {
 /**
  * Get the base URL for the application using UserSpice server globals.
  *
- * Derives the URL from $current_origin (scheme + host + non-default port, see
- * server_globals.php) and $us_url_root (the install path set by UserSpice from
+ * Derives the URL from $current_origin (scheme + trusted host, plus a
+ * non-default port for localhost and 127.0.0.1 only, see server_globals.php) and $us_url_root (the install path set by UserSpice from
  * the actual filesystem location). This is environment-aware without relying
  * on a manually configured database setting that can diverge from the real
  * install path.
