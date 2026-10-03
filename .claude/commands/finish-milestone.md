@@ -312,10 +312,9 @@ one over-built.
 
 ### Step 6.6: Render the deploy sheet for review
 
-Deployment steps used to live in the release notes' "Required Actions After
-Deployment" section; they now live in a standalone deploy sheet, generated
-here — early, while the milestone branch is still under review — rather than
-first at `/release-milestone` time.
+Deployment steps live in a standalone deploy sheet, not in the release
+notes. Generate it here, while the milestone branch is still under review,
+not at `/release-milestone` time.
 
 1. Gather the mechanical inputs:
 

@@ -6,8 +6,8 @@ argument-hint: "[aspects: code|errors|comments|tests|simplify|all]"
 
 # PR Review (Full Branch)
 
-Think hard when verifying findings and judging false positives — a wrong
-triage call either ships a bug or burns a CI round-trip.
+A wrong triage call on a finding either ships a bug or burns a CI
+round-trip.
 
 Keep output brief — terse status lines, no preamble, no restating of steps.
 
@@ -282,7 +282,8 @@ true. So this check runs as a separate lane, and its findings stay separate.
 > (b) each change in the diff that the issue did not ask for (scope creep);
 > (c) each requirement that looks done but where the implementation looks
 > wrong. Quote the issue or plan line for each finding. Do not review code
-> style — other reviewers do that. Under 400 words."
+> style — other reviewers do that. Report findings only. Do not list
+> requirements that are met."
 
 ---
 

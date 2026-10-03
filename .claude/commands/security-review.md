@@ -5,9 +5,6 @@ model: haiku
 
 # Security Review
 
-Think hard about attack vectors and exploit paths before drawing
-conclusions — reason through how each input reaches each sink.
-
 Keep output brief — terse status lines, no preamble, no restating of steps.
 
 Perform a comprehensive security audit of recent code changes in this project.
