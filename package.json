@@ -63,7 +63,7 @@
     "@versatiles/style": "^6.0.1",
     "chart.js": "4.5.1",
     "datatables.net-bs5": "3.1.2",
-    "datatables.net-fixedheader-bs5": "5.1.0",
+    "datatables.net-fixedheader-bs5": "5.1.1",
     "datatables.net-responsive-bs5": "4.1.1",
     "esbuild": "^0.28.2",
     "filepond": "^4.32.12",
