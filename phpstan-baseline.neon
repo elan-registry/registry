@@ -79,18 +79,6 @@ parameters:
 			path: app/views/cars/_factory_data_card.php
 
 		-
-			message: '#^Variable \$carData might not be defined\.$#'
-			identifier: variable.undefined
-			count: 8
-			path: app/views/cars/_vehicle_info_card.php
-
-		-
-			message: '#^Variable \$headingTag might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/views/cars/_vehicle_info_card.php
-
-		-
 			message: '#^Variable \$from might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
@@ -305,12 +293,6 @@ parameters:
 			identifier: if.alwaysTrue
 			count: 1
 			path: tests/unit/location/LocationServiceCacheTest.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>website" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: usersc/account.php
 
 		-
 			message: '#^File ends with a trailing whitespace\. This may cause problems when running the code in the web browser\. Remove the closing \?\> mark or remove the whitespace\.$#'

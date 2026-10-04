@@ -19,6 +19,7 @@ require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarBadges;
 use ElanRegistry\CarView;
 use ElanRegistry\LogCategories;
 use ElanRegistry\OwnerView;
@@ -51,7 +52,6 @@ if (!empty($_GET)) {
     
     // Pre-process common dates to avoid redundant DateTime creation
     $purchaseDate = null;
-    $soldDate = null;
     $buildDate = null;
     
     if (!empty($carData->purchasedate)) {
@@ -63,15 +63,8 @@ if (!empty($_GET)) {
         }
     }
     
-    if (!empty($carData->solddate)) {
-        try {
-            $soldDate = new DateTime($carData->solddate);
-        } catch (Exception $e) {
-            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid sold date format for car ID $carID: " . $carData->solddate);
-            $soldDate = null;
-        }
-    }
-    
+    $soldDate = CarBadges::soldDate($carData->solddate ?? null, (int) $carID);
+
     if ($factoryData && !empty($factoryData->builddate)) {
         try {
             $buildDate = new DateTime($factoryData->builddate);

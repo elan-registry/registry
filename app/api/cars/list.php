@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarBadges;
+use ElanRegistry\Car\CarShowcaseService;
 use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\ValidationException;
@@ -56,6 +58,11 @@ try {
 
     $car = new Car();
     $response = $car->getDataTablesData($request, 'cars');
+    // Badges replace is_fresh, so the response does not expose it.
+    $response['data'] = CarBadges::decorateRows(
+        $response['data'],
+        (new CarShowcaseService())->getNewCarIds()
+    );
 
     $json = json_encode($response, JSON_THROW_ON_ERROR);
     header('Content-Type: application/json');

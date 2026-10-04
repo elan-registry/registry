@@ -28,6 +28,7 @@ Use this table to choose the right class for your task:
 | Decode car images | CarImageProcessor | Decodes the `cars.image` JSON array into usable entries | `$processor->decodeAndProcessImages($car->image, ...)` |
 | Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification. Pass `true` when the owner removes it, to reset `owner_last_updated` | `$car->removeImage($filename, $isOwnerInitiated)` |
 | Remove multiple images from a car | Car / CarImageProcessor | CAS-guarded bulk removal; returns `['updated' => bool, 'casConflict' => bool]` instead of throwing, for callers (e.g. `mvTmpImages()`'s move-failure cleanup) that already have their own error-reporting path | `$car->removeImages($filenames)` |
+| Decide which status badges (Sold, Verified, New) a car shows | CarBadges | One definition of the badges and the rule that picks them, for the account page and the cars list | `CarBadges::forCar($car->data())` |
 | Query car models by year/series | CarModel | Reference data for model filtering | `$models = (new CarModel())->getAvailableInYear(1970)` |
 
 ---
@@ -914,6 +915,129 @@ on success.
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
 - [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`,
   `cars.vericode_sent_at`, `cars.email_bounced`, `cars.email_bounced_address`, `cars.email_suppressed`, `cars.solddate`
+
+---
+
+### CarBadges
+
+**Location**: `/usersc/classes/Car/CarBadges.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: One definition of the status badges a car can show (#1900). The
+account page hero and the cars list get badge keys from this class. The rule
+that picks the badges is in `resolve()` only. `html()` is the only badge renderer. Pages
+call it directly, and the cars list gets its output from `decorateRows()`.
+The class is final, has a private constructor, and has only static methods.
+
+The Vehicle Information card (`app/views/cars/_vehicle_info_card.php`) does
+not call `forCar()`. It draws only the Sold stamp in its Sold row, from
+`$soldDate` (from `soldDate()`), with the hard-coded keys `['sold']`. The
+card is on the account page, the car details page, and the public vericode
+landing page, so all three show that stamp.
+
+**Badges**:
+
+| Key | Label | Shows when |
+| --- | --- | --- |
+| `new` | New | The car is new (cars list only) |
+| `sold` | Sold | The car is sold |
+| `verified` | Verified (with a check mark icon) | The car is fresh, not sold, and not new |
+
+The display order is New, Sold, Verified. Each definition also has `tooltip`
+and `tone` (the CSS tone, `er-badge--<tone>`). The `new` tooltip gets its
+numbers (90 days, 5 newest) from `CarShowcaseService::NEW_DAYS` and
+`CarShowcaseService::NEW_FLOOR`, the same constants that
+`getNewCarIds()` uses.
+
+**Methods**:
+
+```php
+public static function resolve(bool $sold, bool $fresh, bool $isNew): array
+public static function forCar(object $car): array
+public static function decorateRows(array $rows, array $newIds): array
+public static function html(array $keys, string $style = 'flat'): string
+public static function isSold(mixed $solddate): bool
+public static function soldDate(mixed $solddate, int|string|null $carId = null): ?DateTimeImmutable
+```
+
+- `resolve()` is a pure function. It applies the "Shows when" rule in the
+  table above and returns the badge keys in display order.
+- `forCar()` takes a car record (for example `Car::data()`). Sold comes
+  from `isSold()`. Fresh comes from `CarRepository::isFresh()` with
+  `last_verified` and `owner_last_updated`. It never adds the `new` badge,
+  because New is for the cars list only (`decorateRows()`).
+- `decorateRows()` adds a `badges` key and a `badges_html` key to each cars
+  DataTables row. `badges_html` is the flat badges from `html()` in a
+  `<div class="er-badges ...">` row, or `''` when the car has no badges.
+  `car-list.js` puts it after the Details link. The method reads
+  `solddate`, the `is_fresh` column (from `CarRepository::freshnessSql()`),
+  and `id`. A row without `is_fresh` is not fresh, and the method writes one
+  log entry per call for those rows. It removes `is_fresh` from the row, so
+  the API response does not expose it. Rows are objects (the
+  `Database::results()` shape). Each row is cloned, so the input does not
+  change. `$newIds` comes from
+  `CarShowcaseService::getNewCarIds()`.
+- `html()` returns one `<span class="er-badge er-badge--<tone>">` per known
+  key, in the order of `$keys`. `$style` is `'flat'` (pill) or `'stamp'`
+  (adds `er-badge--stamp`). Each span has a Bootstrap tooltip and
+  `tabindex="0"`. The icon goes in an `aria-hidden="true"` span. Unknown keys
+  give nothing. An empty result is `''`. There is no wrapper, so the caller
+  owns the container. All values are escaped with `htmlspecialchars()`.
+- `isSold()` is the sold rule for all pages: a `solddate` that is not null
+  and not `''`. The save paths (`app/api/cars/save.php`, `CarValidator`)
+  accept only a real `Y-m-d` date, so `isSold()` does not check the value
+  again. `forCar()`, `decorateRows()`, and the vericode pages use it.
+- `soldDate()` returns the sold date at midnight for display, or null when
+  the car is not sold or the value is not a valid `Y-m-d` date. The account
+  page, the car details page, and the vericode landing page use it for the
+  Vehicle Information card. The vericode "already sold" notice also uses it.
+  A sold car with a bad value (for example a zero date or `2024-02-30`) logs
+  one entry to `LOG_CATEGORY_CAR_ERRORS`, with the car ID from `$carId` or
+  `unknown`. `isSold()` is still true for that car, so the account hero and
+  the cars list show Sold. The vericode landing page disables its sold button,
+  and the "already sold" notice leaves out the date. The Vehicle Information
+  card has no Sold row.
+
+**Behavior on bad date data**: `forCar()` does not throw. When
+`owner_last_updated` is missing or is not a string, `last_verified` is not
+a string or null, or `CarRepository::isFresh()` throws
+`CarValidationException`, the method writes one entry to the log
+(`LogCategories::LOG_CATEGORY_CAR_ERRORS`) and treats the car as not fresh.
+The Verified badge does not show. Sold still shows.
+
+**Usage**:
+
+```php
+use ElanRegistry\Car\CarBadges;
+
+// Account page hero (in the template: <?= ... ?>)
+echo CarBadges::html(CarBadges::forCar($carData), 'stamp');
+
+// Cars list API (app/api/cars/list.php)
+$response['data'] = CarBadges::decorateRows(
+    $response['data'],
+    (new CarShowcaseService())->getNewCarIds()
+);
+```
+
+**How to add a badge**:
+
+1. Add one entry to `CarBadges::BADGES`. Set `label`, `icon`, `tooltip`,
+   and `tone`.
+2. Add one line for the new key in `resolve()`, in display order, and a
+   parameter if the rule needs new input.
+3. Add a `--er-badge-<tone>` token and an `.er-badge--<tone>` rule in
+   `usersc/templates/customizer.css`.
+4. Add a case to `CarBadgesTest`, and add the badge to the Car status badges
+   section of `app/admin/design-system.php`.
+
+Do not add the new rules to a template or to `car-list.js`. `html()` draws
+any key in `BADGES`, and the cars list JS needs no change.
+
+**See Also**:
+
+- [UI_STANDARDS.md](UI_STANDARDS.md#car-status-badges) - Tokens, classes, and accessibility rules
 
 ---
 
