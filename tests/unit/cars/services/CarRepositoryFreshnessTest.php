@@ -10,12 +10,19 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit tests for CarRepository::freshnessSql(), stalenessSql(), and isFresh().
+ * Unit tests for the CarRepository freshness rule.
  *
- * No database — these exercise pure string-building and PHP-clock comparison
- * logic. See Issue #1953 Test Plan §1/§2 (docs/plans/issue-1953-verification-freshness.md,
- * gitignored, private working doc) for the design of this suite, in particular
- * the truth-table matrix in §2 and the non-short-circuit guarantee of isFresh().
+ * The suite tests these methods:
+ * - freshnessSql() and stalenessSql(): the exact SQL and the alias check.
+ * - isFresh(): the truth table, the inclusive cutoff, and the rule that it
+ *   parses both operands with no short-circuit.
+ * - isWithinFreshnessWindow(): one value against the window.
+ * - freshnessCutoff(): the start of the window.
+ * - parseTimestamp(), through isFresh() and isWithinFreshnessWindow(): it
+ *   rejects relative, empty, and calendar-invalid values.
+ *
+ * No database. The tests use only string building and the PHP clock.
+ * Issue #1953 has the design of the truth table.
  */
 #[Group('fast')]
 final class CarRepositoryFreshnessTest extends TestCase
@@ -267,6 +274,82 @@ final class CarRepositoryFreshnessTest extends TestCase
     public function testIsFreshAcceptsTheStoredDatetimeShape(): void
     {
         $this->assertTrue(CarRepository::isFresh(null, $this->at(-10)));
+    }
+
+    // ------------------------------------------------------------------
+    // isWithinFreshnessWindow() (#1897)
+    //
+    // Uses the real clock: 360 days is inside and 370 days is outside. The
+    // cutoff is "-1 year", which is 365 or 366 days, so a 365 or 366 day
+    // value can fall on either side of it. No test uses the exact cutoff second.
+    // ------------------------------------------------------------------
+
+    /** Datetime string at a whole-day offset before the real now. */
+    private static function daysAgo(int $days): string
+    {
+        return date('Y-m-d H:i:s', strtotime("-{$days} days"));
+    }
+
+    public function testIsWithinFreshnessWindow360DaysAgoIsInside(): void
+    {
+        $this->assertTrue(CarRepository::isWithinFreshnessWindow(self::daysAgo(360), 'last_verified'));
+    }
+
+    public function testIsWithinFreshnessWindow370DaysAgoIsOutside(): void
+    {
+        $this->assertFalse(CarRepository::isWithinFreshnessWindow(self::daysAgo(370), 'last_verified'));
+    }
+
+    public function testIsWithinFreshnessWindowAcceptsTSeparator(): void
+    {
+        $this->assertTrue(
+            CarRepository::isWithinFreshnessWindow(str_replace(' ', 'T', self::daysAgo(10)), 'last_verified')
+        );
+    }
+
+    public function testIsWithinFreshnessWindowRejectsEmptyString(): void
+    {
+        $this->expectException(CarValidationException::class);
+        CarRepository::isWithinFreshnessWindow('', 'last_verified');
+    }
+
+    public function testIsWithinFreshnessWindowRejectsGarbage(): void
+    {
+        $this->expectException(CarValidationException::class);
+        CarRepository::isWithinFreshnessWindow('garbage', 'last_verified');
+    }
+
+    /**
+     * The same permissive and calendar-invalid values that isFresh() rejects
+     * must throw here too, because both methods share one parser.
+     *
+     * @param string $value A string strtotime() accepts but the column cannot hold
+     */
+    #[DataProvider('strtotimeAcceptsButColumnCannotHoldProvider')]
+    public function testIsWithinFreshnessWindowRejectsRelativeAndInvalidDates(string $value): void
+    {
+        $this->expectException(CarValidationException::class);
+        CarRepository::isWithinFreshnessWindow($value, 'last_verified');
+    }
+
+    public function testIsWithinFreshnessWindowNamesTheColumnInTheException(): void
+    {
+        try {
+            CarRepository::isWithinFreshnessWindow('garbage', 'last_verified');
+            $this->fail('Expected CarValidationException');
+        } catch (CarValidationException $e) {
+            $this->assertStringContainsString('last_verified', $e->getMessage());
+        }
+    }
+
+    public function testFreshnessCutoffIsOneYearAgo(): void
+    {
+        $before = strtotime('-1 year');
+        $cutoff = CarRepository::freshnessCutoff();
+        $after  = strtotime('-1 year');
+
+        $this->assertGreaterThanOrEqual($before, $cutoff);
+        $this->assertLessThanOrEqual($after, $cutoff);
     }
 
     // ------------------------------------------------------------------

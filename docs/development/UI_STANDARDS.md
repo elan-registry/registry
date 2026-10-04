@@ -205,7 +205,7 @@ actions only.
 
 | Style | Where | Class |
 | --- | --- | --- |
-| Stamp | Account page hero, Sold row of the Vehicle Information card | `er-badge er-badge--<tone> er-badge--stamp` |
+| Stamp | Account page hero, Sold and Verified rows of the Vehicle Information card | `er-badge er-badge--<tone> er-badge--stamp` |
 | Flat | Cars list | `er-badge er-badge--<tone>` |
 
 Use `CarBadges::html($keys, $style)` to draw badges. Get `$keys` from
@@ -214,9 +214,17 @@ returns the badge spans with no wrapper, or `''` when there are no badges.
 
 The account page hero gets its keys from `CarBadges::forCar()`. The Vehicle
 Information card (`app/views/cars/_vehicle_info_card.php`) does not. It draws
-only the Sold stamp in its Sold row, from `$soldDate`, with the hard-coded
-keys `['sold']`. The card is on the account page, the car details page, and
-the public vericode landing page.
+the Sold stamp in its Sold row (from `CarBadges::isSold()` and `soldDate()`)
+and the Verified stamp in its Verified row (from `CarBadges::verifiedStatus()`)
+when the car is not sold. The card is on the account page, the car details
+page, and the public vericode landing page.
+
+The card also has an Email on file row. It shows "Bounced" and/or
+"Suppressed" when the car's `email_bounced` or `email_suppressed` flag is
+set. It shows only when the caller sets `$viewerIsRegistryAdmin` to `true`
+(strict). Only `app/owner/cars/details.php` sets it, from
+`isRegistryAdmin()`. The car's own owner does not see the row. The row never
+prints the email address.
 
 Inside the dark green hero (`.card-header-er-primary-text`), a stamp has a
 white edge. The sold red against the hero green is only 1.2:1, so the red
@@ -282,6 +290,32 @@ The numbers in the New tooltip below come from
 
 To see all badges, open the Car status badges section of the design system
 page (`app/admin/design-system.php`). It draws the badges with `CarBadges::html()`, the same renderer the pages use.
+
+### Help Buttons
+
+Use a help button to explain a field label or short help text in a tooltip.
+The button takes no space on the page. The tooltip shows on hover and on
+keyboard focus.
+
+```php
+<!-- ✅ Help button with all required attributes -->
+<dt class="col-sm-4 text-muted">
+    Verified <?= $_helpButton('What Verified means', "The owner confirmed, added, or updated this car's record in the last 12 months.") ?>
+</dt>
+```
+
+The `$_helpButton` helper is defined in
+[`app/views/cars/_vehicle_info_card.php`](../../app/views/cars/_vehicle_info_card.php).
+
+**Requirements:**
+
+- A real `<button type="button">`, so the button takes keyboard focus and does not submit a form
+- Class `btn btn-link p-0 align-baseline`: a link-style button with no padding, aligned to the text baseline
+- `data-bs-toggle="tooltip"` and `data-bs-title` for the Bootstrap tooltip
+- `aria-label` gives screen readers an accessible name
+- The icon is `<i class="fas fa-circle-question" aria-hidden="true"></i>`
+- All label and tooltip text is escaped with `htmlspecialchars($text, ENT_QUOTES, 'UTF-8')`
+- The footer script that starts Bootstrap tooltips on the page initializes the tooltip
 
 ### Alerts
 

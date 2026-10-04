@@ -10,19 +10,17 @@
 // each car shows) plus 8 sold filler cars, so a search for the chassis marker
 // gives 12 rows and a second page. The fixture needs the application database.
 // The local stack is Docker only (DB_HOST=db does not resolve on the host), so
-// the spec runs the fixture in the app container. If Docker is not available,
-// it falls back to the host `php`.
+// the spec runs the fixture in the app container. It uses the host `php` only
+// when the docker command is not installed.
 //
 // The list tests are public. The account test logs in as the seeded owner
 // with the random password that the fixture prints.
 
 const { test, expect } = require('@playwright/test');
-const { execFileSync } = require('node:child_process');
-const path = require('node:path');
 const { login, waitForDataTables } = require('./auth-helper.js');
+const { runPhpFixture } = require('./fixture-runner.js');
 
 const FIXTURE_REL = 'tests/playwright/local/fixtures/seed-car-badges.php';
-const REPO_ROOT = path.join(__dirname, '..', '..');
 const CHASSIS_MARKER = 'PWBDG';
 
 /**
@@ -31,19 +29,7 @@ const CHASSIS_MARKER = 'PWBDG';
  * @returns {string} The fixture stdout
  */
 function runFixture(args = []) {
-    const attempts = [
-        ['docker', ['compose', 'exec', '-T', '-u', 'www-data', 'app', 'php', FIXTURE_REL, ...args], { cwd: REPO_ROOT }],
-        ['php', [path.join(REPO_ROOT, FIXTURE_REL), ...args], { cwd: REPO_ROOT }],
-    ];
-    const errors = [];
-    for (const [cmd, cmdArgs, options] of attempts) {
-        try {
-            return execFileSync(cmd, cmdArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options });
-        } catch (error) {
-            errors.push(`${cmd}: ${error.stderr || error.message}`);
-        }
-    }
-    throw new Error(`Could not run ${FIXTURE_REL}:\n${errors.join('\n')}`);
+    return runPhpFixture(FIXTURE_REL, [...args]);
 }
 
 // The seed deletes and recreates the marker rows. Serial mode keeps one worker, so
@@ -196,7 +182,7 @@ test.describe('Status badges: cars list', () => {
         await badge.focus();
         const tooltip = page.locator('.tooltip.show');
         await expect(tooltip).toBeVisible();
-        await expect(tooltip).toContainText('confirmed this car');
+        await expect(tooltip).toHaveText("The owner confirmed, added, or updated this car's record in the last 12 months.");
     });
 });
 
@@ -244,7 +230,9 @@ test.describe('Status badges: car details page', () => {
 
     test('Sold row is absent for a car that is not sold', async ({ page }) => {
         await page.goto(`app/owner/cars/details.php?car_id=${seeded.cars.fresh}`, { waitUntil: 'networkidle' });
-        // Non-vacuous: the Ownership section that holds the Sold row did render.
+        // Non-vacuous: the Purchase Date row proves the Ownership section rendered, so a
+        // missing Sold row is the Sold logic and not a missing section. The section shows
+        // for any car that is not sold (Verified row), with or without this date.
         await expect(page.locator('dt', { hasText: /^Purchase Date$/ })).toBeVisible();
         await expect(page.locator('dt', { hasText: /^Sold$/ })).toHaveCount(0);
     });
