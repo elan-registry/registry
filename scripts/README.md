@@ -158,6 +158,7 @@ The cleanup ledger is the one open GitHub issue with the `cleanup-ledger`
 label. It holds small cleanup finds, grouped under a level-3 (`###`) heading for each
 file. See `docs/development/ISSUE_WORKFLOW.md` for the workflow. These scripts
 read and tick ledger items. Both need the `gh` CLI, signed in (`gh auth status`).
+`ledger-tick-items.sh` also needs `jq`.
 
 Both scripts source `scripts/lib/ledger.sh`. That library finds the ledger
 issue, fetches its body and comments, and parses the items.

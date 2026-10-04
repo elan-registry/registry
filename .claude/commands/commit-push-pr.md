@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git ls-files:*), Bash(set -o pipefail:*), Bash(mktemp:*), Write, Read, AskUserQuestion, Bash(scripts/commit-push-pr.sh:*), Bash(scripts/resolve-base-branch.sh:*), Bash(scripts/check-plan-state.sh:*), Bash(scripts/ledger-items-for-files.sh:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git ls-files:*), Bash(gh pr view:*), Bash(set -o pipefail:*), Bash(mktemp:*), Write, Read, AskUserQuestion, Bash(scripts/commit-push-pr.sh:*), Bash(scripts/resolve-base-branch.sh:*), Bash(scripts/check-plan-state.sh:*), Bash(scripts/ledger-items-for-files.sh:*)
 description: Commit, push, and open a draft PR
 model: haiku
 ---
@@ -21,7 +21,19 @@ prose.
 1. Write the commit message to a temp file (for example, one from
    `mktemp`).
 2. Find the open cleanup-ledger items for the branch files.
-   1. Find the base ref. Run:
+   1. Find out if a PR for this branch exists. Run:
+
+      ```bash
+      gh pr view --json url --jq .url
+      ```
+
+      If it prints a URL, the PR exists. The script does not change the body
+      of an existing PR, so a ledger selection here has no effect. Do not do
+      the rest of step 2 or step 3. In step 4, write a short body with no
+      **Ledger items** section. Tell the user: "The PR exists. Its
+      `## Ledger items` section did not change. To change the items, edit
+      the PR body." If it prints no URL, go to step 2.2.
+   2. Find the base ref. Run:
 
       ```bash
       scripts/resolve-base-branch.sh
@@ -29,7 +41,7 @@ prose.
 
       If the exit code is not `0`, use `- none (ledger query failed)` in
       step 4. Tell the user that the ledger query failed. Go to step 4.
-   2. Query the ledger. Put the printed ref in place of `<base-ref>`. Run:
+   3. Query the ledger. Put the printed ref in place of `<base-ref>`. Run:
 
       ```bash
       set -o pipefail; { git diff --name-only --merge-base <base-ref> && git ls-files --others --exclude-standard; } | scripts/ledger-items-for-files.sh
@@ -43,8 +55,11 @@ prose.
         Tell the user that the ledger query failed. Show the stderr. Go to
         step 4.
 3. Ask the user which items this PR completes:
-   - Run `scripts/check-plan-state.sh`. If the `path:` line is not
-     `(none)`, read the plan's **Ledger items** section.
+   - Run `scripts/check-plan-state.sh`. Exit codes `1` (no plan), `2` (plan
+     not approved) and `3` (no issue number) are normal here. Use only the
+     `path:` line. If there is no `path:` line, or it is `(none)`, use no
+     plan. Otherwise, read the plan's **Ledger items** section. If the line
+     lists more than one file, read the first one.
    - Match each plan item to a query output line by its item text. Put the
      matched items first. Put the other items after them.
    - Use AskUserQuestion with `multiSelect: true`. Use one option for each
@@ -55,7 +70,8 @@ prose.
      item, add the option `None of these`.
    - Do not decide that an item is done. Only the user decides.
    - If the user selects no item, use `- none` in step 4.
-4. Write the PR body to a second temp file. Add this section to the body:
+4. Write the PR body to a second temp file. If step 2.1 found a PR, add no
+   **Ledger items** section. Otherwise, add this section to the body:
 
    ```markdown
    ## Ledger items
