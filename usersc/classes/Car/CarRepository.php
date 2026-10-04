@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
+use DateTimeImmutable;
 use ElanRegistry\AppConstants;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -834,10 +835,8 @@ class CarRepository
      */
     public static function isFresh(?string $lastVerified, string $ownerLastUpdated): bool
     {
-        $cutoff = strtotime('-1 year');
-
-        // Both operands are validated BEFORE either comparison, deliberately not
-        // short-circuiting on a fresh owner_last_updated. A malformed value is a
+        // Both operands are always parsed before the method returns. It does not
+        // short-circuit on a fresh owner_last_updated. A malformed value is a
         // programming error or data corruption, and it must surface whichever
         // operand carries it — a caller whose last_verified is garbage would
         // otherwise get a silent `true` for as long as the owner timestamp happened
@@ -845,12 +844,45 @@ class CarRepository
         // one place the PHP form intentionally diverges from the SQL form's OR
         // short-circuit: SQL cannot raise on a malformed DATETIME because the
         // column type makes one unrepresentable.
-        $ownerTs      = self::parseTimestamp($ownerLastUpdated, 'owner_last_updated');
-        $verifiedTs   = $lastVerified === null
-            ? null
-            : self::parseTimestamp($lastVerified, 'last_verified');
+        $ownerFresh    = self::isWithinFreshnessWindow($ownerLastUpdated, 'owner_last_updated');
+        $verifiedFresh = $lastVerified !== null
+            && self::isWithinFreshnessWindow($lastVerified, 'last_verified');
 
-        return $ownerTs >= $cutoff || ($verifiedTs !== null && $verifiedTs >= $cutoff);
+        return $ownerFresh || $verifiedFresh;
+    }
+
+    /**
+     * Decide if one datetime string is inside the 1-year freshness window.
+     *
+     * This is the window that isFresh() applies to each operand.
+     *
+     * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
+     *
+     * @param string $timestamp Datetime string in `Y-m-d H:i:s` format (a `T` separator is also accepted)
+     * @param string $column    Column name for the exception message
+     * @return bool True when $timestamp is on or after the time one year ago
+     * @throws CarValidationException If $timestamp is empty, malformed, or not a real calendar date
+     */
+    public static function isWithinFreshnessWindow(string $timestamp, string $column = 'timestamp'): bool
+    {
+        return self::parseTimestamp($timestamp, $column)->getTimestamp() >= self::freshnessCutoff();
+    }
+
+    /**
+     * Get the start of the 1-year freshness window as a Unix timestamp.
+     *
+     * This is the one PHP definition of the window. A caller that must know
+     * which operand makes a car fresh (for example CarBadges::verifiedStatus())
+     * gets the cutoff once from this method and compares each value that
+     * parseTimestamp() returns, so all comparisons use the same second.
+     *
+     * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
+     *
+     * @return int Unix timestamp of the time one year ago
+     */
+    public static function freshnessCutoff(): int
+    {
+        return (int) strtotime('-1 year');
     }
 
     /**
@@ -870,23 +902,28 @@ class CarRepository
     }
 
     /**
-     * Parse a datetime string to a Unix timestamp, rejecting empty or malformed input.
+     * Parse a freshness datetime string, rejecting empty or malformed input.
      *
      * Validates the calendar, not merely the shape: a well-formed but
      * impossible date such as '2026-02-30 12:00:00' is rejected rather than
      * silently rolled over to 2026-03-02.
      *
-     * @param string $value  Datetime string to parse
+     * This is the one parser for `last_verified` and `owner_last_updated`.
+     * isFresh() and isWithinFreshnessWindow() use it. A caller that shows the
+     * date (for example CarBadges::verifiedStatus()) uses the returned object,
+     * so the shown date is the date that this method validated.
+     *
+     * @param string $value  Datetime string to parse (a `T` separator is also accepted)
      * @param string $column Column name, for the exception message
-     * @return int Unix timestamp
+     * @return DateTimeImmutable The parsed datetime
      * @throws CarValidationException If $value is empty, malformed, or not a
      *                                real calendar date
      */
-    private static function parseTimestamp(string $value, string $column): int
+    public static function parseTimestamp(string $value, string $column): DateTimeImmutable
     {
         if ($value === '') {
             throw new CarValidationException(
-                "CarRepository::isFresh received an empty {$column} value; "
+                "CarRepository freshness check received an empty {$column} value; "
                 . 'the column is NOT NULL by schema, so this indicates corrupt data or a caller bug.'
             );
         }
@@ -913,8 +950,8 @@ class CarRepository
         // reports rollovers through getLastErrors(), which is what makes the
         // calendar — not merely the shape — the thing being validated.
         $normalized = str_replace('T', ' ', $value);
-        $parsed     = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $normalized);
-        $errors     = \DateTimeImmutable::getLastErrors();
+        $parsed     = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $normalized);
+        $errors     = DateTimeImmutable::getLastErrors();
 
         if (
             $parsed === false
@@ -922,12 +959,12 @@ class CarRepository
                 && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0))
         ) {
             throw new CarValidationException(
-                "CarRepository::isFresh received a malformed {$column} value: '{$value}'. "
+                "CarRepository freshness check received a malformed {$column} value: '{$value}'. "
                 . 'Expected a valid Y-m-d H:i:s datetime as stored by the column.'
             );
         }
 
-        return $parsed->getTimestamp();
+        return $parsed;
     }
 
     /**

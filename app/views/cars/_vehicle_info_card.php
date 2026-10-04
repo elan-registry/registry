@@ -13,6 +13,14 @@ if (count(get_included_files()) == 1) { die(); }
  *                               stamp and the date.
  *   $headingTag   string        Card heading element, h1-h6 (default h3)
  *
+ * Caller may set:
+ *   $viewerIsRegistryAdmin bool  True only when the viewer is an admin or an
+ *                               editor (isRegistryAdmin()). Only true (strict)
+ *                               shows the Email on file row. Default false.
+ *
+ * The card computes the Verified row itself from CarBadges::verifiedStatus().
+ * A sold car has no Verified row.
+ *
  * The defaults below let PHPStan analyze this file alone. They also make a
  * caller that forgets a variable get no warning. When $carData is missing or
  * is not an object, the card draws nothing and logs one entry.
@@ -21,6 +29,7 @@ $carData ??= null;
 $purchaseDate ??= null;
 $soldDate ??= null;
 $headingTag ??= 'h3';
+$viewerIsRegistryAdmin ??= false;
 
 if (!is_object($carData)) {
     logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
@@ -32,6 +41,30 @@ $headingTag       = in_array($headingTag, ['h1','h2','h3','h4','h5','h6'], true)
 $_cardHeaderClass = $headingTag === 'h4' ? ' card-header-er-l2' : '';
 $_headingClass    = $headingTag === 'h4' ? 'mb-0 card-header-er-l2-text' : 'mb-0';
 $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text-muted mb-3';
+
+$_isSold          = \ElanRegistry\Car\CarBadges::isSold($carData->solddate ?? null);
+$_verifiedStatus  = \ElanRegistry\Car\CarBadges::verifiedStatus($carData);
+$_emailBounced    = !empty($carData->email_bounced);
+$_emailSuppressed = !empty($carData->email_suppressed);
+// The row names a delivery problem with the owner's address, so only admins
+// and editors get it. The car's own owner does not.
+$_showEmailRow    = $viewerIsRegistryAdmin === true && ($_emailBounced || $_emailSuppressed);
+// An unsold car always has a Verified row, so the section is never empty for it.
+$_showOwnershipSection = $purchaseDate || $soldDate || !$_isSold || $_showEmailRow;
+
+/**
+ * Get a focusable help button that shows $tooltip in a Bootstrap tooltip.
+ *
+ * @param string $ariaLabel Accessible name of the button
+ * @param string $tooltip   Tooltip text
+ * @return string Button HTML with all values escaped
+ */
+$_helpButton = static function (string $ariaLabel, string $tooltip): string {
+    return '<button type="button" class="btn btn-link p-0 align-baseline"'
+        . ' data-bs-toggle="tooltip" data-bs-title="' . htmlspecialchars($tooltip, ENT_QUOTES, 'UTF-8') . '"'
+        . ' aria-label="' . htmlspecialchars($ariaLabel, ENT_QUOTES, 'UTF-8') . '">'
+        . '<i class="fas fa-circle-question" aria-hidden="true"></i></button>';
+};
 ?>
 <div class="card registry-card mb-4">
     <div class="card-header<?= $_cardHeaderClass ?>">
@@ -95,7 +128,7 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
             </dd>
         </dl>
 
-        <?php if ($purchaseDate || $soldDate) { ?>
+        <?php if ($_showOwnershipSection) { ?>
         <hr>
 
         <!-- Ownership & History -->
@@ -113,6 +146,35 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
             <dd class="col-sm-8">
                 <?= \ElanRegistry\Car\CarBadges::html(['sold'], 'stamp') ?>
                 <span class="ms-2"><?= $soldDate->format('F j, Y') ?></span>
+            </dd>
+            <?php } ?>
+
+            <?php if (!$_isSold) { ?>
+            <dt class="col-sm-4 text-muted">
+                Verified <?= $_helpButton('What Verified means', "The owner confirmed, added, or updated this car's record in the last 12 months.") ?>
+            </dt>
+            <dd class="col-sm-8">
+                <?php if ($_verifiedStatus !== null) { ?>
+                <?= \ElanRegistry\Car\CarBadges::html(['verified'], 'stamp') ?>
+                <span class="ms-2"><?= ($_verifiedStatus['source'] === 'confirmed' ? 'Last confirmed ' : 'Current since ') . $_verifiedStatus['date']->format('F j, Y') ?></span>
+                <?php } else { ?>
+                <i class="far fa-square text-muted" aria-hidden="true"></i>
+                <em class="text-muted">Not specified</em>
+                <?php } ?>
+            </dd>
+            <?php } ?>
+
+            <?php if ($_showEmailRow) { ?>
+            <dt class="col-sm-4 text-muted">
+                Email on file <?= $_helpButton('What Email on file means', "Only admins and editors see this row. It shows why the registry does not send verification emails to this owner's address.") ?>
+            </dt>
+            <dd class="col-sm-8">
+                <?php if ($_emailBounced) { ?>
+                <span class="me-3">Bounced <?= $_helpButton('What Bounced means', 'Email to this owner bounced. Verification emails start again when the owner confirms a working address.') ?></span>
+                <?php } ?>
+                <?php if ($_emailSuppressed) { ?>
+                <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab.") ?></span>
+                <?php } ?>
             </dd>
             <?php } ?>
         </dl>

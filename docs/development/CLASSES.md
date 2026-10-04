@@ -648,6 +648,26 @@ to provide a focused, testable data access layer wrapping the `cars`,
   because a malformed value there is a programming error, not a data state.
   The hook catches this per-car and renders an isolated "Unknown" badge for
   that row rather than failing the whole panel.
+- `isWithinFreshnessWindow(string $timestamp, string $column = 'timestamp'): bool` -
+  Decide if one datetime string is inside the 1-year freshness window that
+  `isFresh()` applies to each operand separately. It compares the result of
+  `parseTimestamp()` with `freshnessCutoff()`. Throws `CarValidationException`
+  if $timestamp is empty, malformed, or not a real calendar date. The `$column`
+  parameter is for the exception message. The default `'timestamp'` is for a
+  caller with no column context. Uses PHP's clock (see the timezone note on
+  `isFresh()`).
+- `parseTimestamp(string $value, string $column): DateTimeImmutable` - The one
+  parser for `last_verified` and `owner_last_updated`. Accepts `Y-m-d H:i:s`
+  (a `T` separator is also accepted) and rejects an empty value, a relative
+  value such as `'now'`, and a date that is not real (`2026-02-30`,
+  `0000-00-00`) with `CarValidationException`. `isFresh()` and
+  `isWithinFreshnessWindow()` use it. A caller that shows the date (for
+  example `CarBadges::verifiedStatus()`) shows the returned object, so the
+  shown date is the validated date.
+- `freshnessCutoff(): int` - The one PHP definition of the window start: the
+  Unix timestamp of one year ago, from PHP's clock. A caller that compares
+  more than one value (for example `CarBadges::verifiedStatus()`) gets the
+  cutoff one time, so all comparisons use the same second.
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
   bounce/suppression state for every car a user owns (`id`, `model`, `series`,
   `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
@@ -931,10 +951,11 @@ call it directly, and the cars list gets its output from `decorateRows()`.
 The class is final, has a private constructor, and has only static methods.
 
 The Vehicle Information card (`app/views/cars/_vehicle_info_card.php`) does
-not call `forCar()`. It draws only the Sold stamp in its Sold row, from
-`$soldDate` (from `soldDate()`), with the hard-coded keys `['sold']`. The
-card is on the account page, the car details page, and the public vericode
-landing page, so all three show that stamp.
+not call `forCar()` or `resolve()`. It draws two stamps: a Sold stamp in its
+Sold row (from `isSold()` and `soldDate()`), and a Verified stamp in its
+Verified row (from `verifiedStatus()`). The card is on the account page, the
+car details page, and the public vericode landing page, so all three show
+these stamps.
 
 **Badges**:
 
@@ -945,7 +966,10 @@ landing page, so all three show that stamp.
 | `verified` | Verified (with a check mark icon) | The car is fresh, not sold, and not new |
 
 The display order is New, Sold, Verified. Each definition also has `tooltip`
-and `tone` (the CSS tone, `er-badge--<tone>`). The `new` tooltip gets its
+and `tone` (the CSS tone, `er-badge--<tone>`). The `verified` tooltip is
+"The owner confirmed, added, or updated this car's record in the last 12
+months." The Verified row help button on the Vehicle Information card uses
+the same sentence. The `new` tooltip gets its
 numbers (90 days, 5 newest) from `CarShowcaseService::NEW_DAYS` and
 `CarShowcaseService::NEW_FLOOR`, the same constants that
 `getNewCarIds()` uses.
@@ -959,6 +983,7 @@ public static function decorateRows(array $rows, array $newIds): array
 public static function html(array $keys, string $style = 'flat'): string
 public static function isSold(mixed $solddate): bool
 public static function soldDate(mixed $solddate, int|string|null $carId = null): ?DateTimeImmutable
+public static function verifiedStatus(object $car): ?array
 ```
 
 - `resolve()` is a pure function. It applies the "Shows when" rule in the
@@ -998,6 +1023,20 @@ public static function soldDate(mixed $solddate, int|string|null $carId = null):
   the cars list show Sold. The vericode landing page disables its sold button,
   and the "already sold" notice leaves out the date. The Vehicle Information
   card has no Sold row.
+- `verifiedStatus()` returns the Verified row status for one car record. Returns
+  an array with `source` and `date` keys when: the car is not sold, the car is
+  fresh (verified or updated by its owner within the last 12 months), and the
+  freshness dates are valid strings. Returns null otherwise (sold car, stale car,
+  or missing/malformed dates). On malformed dates it logs one entry to the car
+  errors category. It never reads `mtime`. It parses each date one time with
+  `CarRepository::parseTimestamp()` and compares with one
+  `CarRepository::freshnessCutoff()` value. The source is `'confirmed'` when
+  `last_verified` is inside the freshness window, or `'current'` when only
+  `owner_last_updated` is. The date is the parsed `DateTimeImmutable` of
+  whichever field made the car fresh, so it is the validated date. The return
+  shape is `array{source: 'confirmed'|'current', date: DateTimeImmutable}`.
+  Used by the Vehicle Information card for its Verified row on the account page, car details page, and public vericode
+  landing page.
 
 **Behavior on bad date data**: `forCar()` does not throw. When
 `owner_last_updated` is missing or is not a string, `last_verified` is not

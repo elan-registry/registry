@@ -19,12 +19,16 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 - Cars show Sold and Verified badges on your account page and the cars list. The car details page shows a Sold stamp
   in its Sold row. A car shows at most two badges. Sold hides Verified, and New hides Verified. Every badge has a
   tooltip that explains it. On the cars list, the New badge now sits below the Details button, not inside it. ([#1900](https://github.com/elan-registry/registry/issues/1900))
+- The Vehicle Information card on the car details page, your account page, and the vericode page has a Verified row.
+  It shows "Last confirmed" or "Current since" with a date, or "Not specified" when the record is more than 12 months
+  old. A help button explains what Verified means. ([#1897](https://github.com/elan-registry/registry/issues/1897))
 
 ## Admin-Facing Changes
 
 Changes visible only to administrators (admin dashboard, maintenance tools, settings, etc.). One sentence each.
 
-- To be filled in as issues complete.
+- On the car details page, admins and editors see an Email on file row when the owner's address is marked Bounced or
+  Suppressed. Each word has a tooltip that says what to do. ([#1897](https://github.com/elan-registry/registry/issues/1897))
 
 ## Issues Resolved
 
@@ -34,7 +38,12 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   username verbatim (a password was stored in plain text)
 - [#2259](https://github.com/elan-registry/registry/issues/2259) — Workflow commands and agents use the model each step
   needs, and repeated review work is removed (developer workflow only, no site change)
-- WIP: [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified status row (and admin-only Email on file row) on the car details page
+- [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified row and admin-only Email on file row in
+  the shared Vehicle Information card. New `CarBadges::verifiedStatus()`, and new
+  `CarRepository::isWithinFreshnessWindow()`, `parseTimestamp()` (now public) and `freshnessCutoff()`, so the
+  1-year window has one definition. The Verified stamp tooltip now reads "The owner confirmed, added, or updated this
+  car's record in the last 12 months." The Suppressed tooltip names Clear Suppression only. The owner's Resume control
+  is deferred to [#1895](https://github.com/elan-registry/registry/issues/1895)
 - [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page
   and cars list, and a Sold stamp in the Sold row of the car details page (the details-page Verified row is #1897). New
   class `CarBadges` owns which badges a car shows. The cars list API response has

@@ -18,8 +18,10 @@ use ElanRegistry\LogCategories;
  * add one entry to BADGES and one line to resolve().
  *
  * The Vehicle Information card (account, car details, and vericode pages)
- * does not use badge keys from this class. It draws a fixed Sold stamp when
- * soldDate() returns a date. isSold() is the sold rule for all pages.
+ * does not use resolve() or forCar(). It draws a fixed Sold stamp when
+ * soldDate() returns a date, and a fixed Verified stamp in its Verified row
+ * when verifiedStatus() returns a status. isSold() is the sold rule for all
+ * pages.
  *
  * Each badge has a label and an optional icon. The icon is decorative: the
  * renderer puts it in an `aria-hidden="true"` span before the label, so a
@@ -61,7 +63,7 @@ final class CarBadges
         'verified' => [
             'label'   => 'Verified',
             'icon'    => '✓',
-            'tooltip' => "The owner confirmed this car's details within the last year.",
+            'tooltip' => "The owner confirmed, added, or updated this car's record in the last 12 months.",
             'tone'    => 'verified',
         ],
     ];
@@ -111,6 +113,62 @@ final class CarBadges
     public static function forCar(object $car): array
     {
         return self::resolve(self::isSold($car->solddate ?? null), self::isCarFresh($car), false);
+    }
+
+    /**
+     * Get the Verified row status for one car record.
+     *
+     * The status says which date makes the car fresh:
+     * - `confirmed`: `last_verified` is inside the freshness window. The date
+     *   is `last_verified`.
+     * - `current`: only `owner_last_updated` is inside the window. The date is
+     *   `owner_last_updated`.
+     *
+     * The method returns null when the car is sold (isSold()), when the car is
+     * not fresh, or when the freshness dates are missing, have the wrong type,
+     * or do not parse. For bad dates, it logs one entry. It never reads
+     * `mtime`, because a sync of owner fields changes `mtime` but does not
+     * make the car fresh.
+     *
+     * @param object $car Car record (for example Car::data()) with `solddate`,
+     *                    `last_verified`, and `owner_last_updated`
+     * @return array{source: 'confirmed'|'current', date: DateTimeImmutable}|null The status, or null when the card must show no Verified stamp
+     */
+    public static function verifiedStatus(object $car): ?array
+    {
+        if (self::isSold($car->solddate ?? null)) {
+            return null;
+        }
+
+        $dates = self::freshnessStrings($car);
+        if ($dates === null) {
+            return null;
+        }
+        [$lastVerified, $ownerLastUpdated] = $dates;
+
+        // Parse each value one time with the parser that isFresh() uses, so the
+        // shown date is the validated date. Parse owner_last_updated first, so a
+        // value bad in both columns gives the same message as isFresh().
+        try {
+            $ownerDate = CarRepository::parseTimestamp($ownerLastUpdated, 'owner_last_updated');
+            $verifiedDate = $lastVerified === null
+                ? null
+                : CarRepository::parseTimestamp($lastVerified, 'last_verified');
+        } catch (CarValidationException $e) {
+            self::logBadDates($car->id ?? 'unknown', $e->getMessage());
+            return null;
+        }
+
+        // One cutoff for both comparisons, so they use the same second.
+        $cutoff = CarRepository::freshnessCutoff();
+        if ($verifiedDate !== null && $verifiedDate->getTimestamp() >= $cutoff) {
+            return ['source' => 'confirmed', 'date' => $verifiedDate];
+        }
+        if ($ownerDate->getTimestamp() >= $cutoff) {
+            return ['source' => 'current', 'date' => $ownerDate];
+        }
+
+        return null;
     }
 
     /**
@@ -290,25 +348,44 @@ final class CarBadges
      */
     private static function isCarFresh(object $car): bool
     {
+        $dates = self::freshnessStrings($car);
+        if ($dates === null) {
+            return false;
+        }
+
+        try {
+            return CarRepository::isFresh($dates[0], $dates[1]);
+        } catch (CarValidationException $e) {
+            self::logBadDates($car->id ?? 'unknown', $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get the freshness date strings of a car record, with a type check.
+     *
+     * When a value has the wrong type, the method logs one entry and returns
+     * null. It does not parse the values.
+     *
+     * @param object $car Car record
+     * @return array{0: ?string, 1: string}|null [last_verified, owner_last_updated], or null when a type is wrong
+     */
+    private static function freshnessStrings(object $car): ?array
+    {
         $carId = $car->id ?? 'unknown';
         $ownerLastUpdated = $car->owner_last_updated ?? null;
         $lastVerified = $car->last_verified ?? null;
 
         if (!is_string($ownerLastUpdated)) {
             self::logBadDates($carId, 'owner_last_updated is missing or is not a string (' . get_debug_type($ownerLastUpdated) . ')');
-            return false;
+            return null;
         }
         if ($lastVerified !== null && !is_string($lastVerified)) {
             self::logBadDates($carId, 'last_verified is not a string or null (' . get_debug_type($lastVerified) . ')');
-            return false;
+            return null;
         }
 
-        try {
-            return CarRepository::isFresh($lastVerified, $ownerLastUpdated);
-        } catch (CarValidationException $e) {
-            self::logBadDates($carId, $e->getMessage());
-            return false;
-        }
+        return [$lastVerified, $ownerLastUpdated];
     }
 
     /**

@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Rendered tests for the Sold row of app/views/cars/_vehicle_info_card.php
- * (issue #1900).
+ * Rendered tests for the Sold row (issue #1900) and the Verified and Email on
+ * file rows (issue #1897) of app/views/cars/_vehicle_info_card.php.
  *
  * Each test includes the card under ob_start() and parses the output with
  * DOMDocument/DOMXPath, so the assertions read the DOM and not the HTML text.
@@ -91,20 +92,46 @@ final class VehicleInfoCardTest extends TestCase
         return $nodes->length;
     }
 
-    /** @return object */
-    private static function carData(): object
+    /** Datetime string at a whole-day offset before now. */
+    private static function daysAgo(int $days): string
     {
-        return (object) [
+        return date('Y-m-d H:i:s', strtotime("-{$days} days"));
+    }
+
+    /**
+     * Build a car row. The default row is fresh through owner_last_updated, so
+     * the card finds valid freshness dates and does not log.
+     *
+     * @param array<string, mixed> $overrides
+     * @return object
+     */
+    private static function carData(array $overrides = []): object
+    {
+        return (object) array_merge([
             'year' => 1971, 'series' => 'S4', 'variant' => 'SE', 'type' => 'FHC',
             'chassis' => '7110123456', 'color' => 'Red', 'engine' => 'Twin Cam',
             'comments' => '', 'ctime' => '2020-01-02 03:04:05', 'mtime' => '2021-02-03 04:05:06',
-        ];
+            'solddate' => null, 'last_verified' => null,
+            'owner_last_updated' => self::daysAgo(10),
+        ], $overrides);
     }
+
+    /** Dates far in the future are always fresh, so a fixed literal never goes stale. */
+    private const FOREVER_FRESH = '2999-03-05 10:00:00';
+
+    /** Render the card for a car and return the parsed DOM. */
+    private static function card(object $car, array $vars = []): DOMXPath
+    {
+        return self::dom(self::render(self::CARD, array_merge(['carData' => $car], $vars)));
+    }
+
+    private const VERIFIED_DD = '//dt[starts-with(normalize-space(.),"Verified")]/following-sibling::dd[1]';
+    private const EMAIL_DD = '//dt[starts-with(normalize-space(.),"Email on file")]/following-sibling::dd[1]';
 
     public function test_vehicleInfoCard_withSoldDate_showsSoldStampAndLongDate(): void
     {
         $xp = self::dom(self::render(self::CARD, [
-            'carData'      => self::carData(),
+            'carData'      => self::carData(['solddate' => '2025-03-14']),
             'purchaseDate' => null,
             'soldDate'     => new DateTime('2025-03-14'),
         ]));
@@ -128,7 +155,7 @@ final class VehicleInfoCardTest extends TestCase
 
         $this->assertSame(1, $this->nodeCount($xp, '//dt[normalize-space(.)="Purchase Date"]'));
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Sold")]'));
-        $this->assertSame(0, $this->nodeCount($xp, '//*[contains(@class,"er-badge")]'));
+        $this->assertSame(0, $this->nodeCount($xp, '//*[contains(@class,"er-badge--sold")]'));
     }
 
     public function test_vehicleInfoCard_withNoDates_hasNoSoldRow(): void
@@ -136,7 +163,7 @@ final class VehicleInfoCardTest extends TestCase
         $xp = self::dom(self::render(self::CARD, ['carData' => self::carData()]));
 
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Sold")]'));
-        $this->assertSame(0, $this->nodeCount($xp, '//*[contains(@class,"er-badge")]'));
+        $this->assertSame(0, $this->nodeCount($xp, '//*[contains(@class,"er-badge--sold")]'));
         $this->assertSame(1, $this->nodeCount($xp, '//dt[normalize-space(.)="Chassis"]'));
     }
 
@@ -164,5 +191,297 @@ final class VehicleInfoCardTest extends TestCase
         self::render(self::CARD, ['carData' => self::carData(), 'soldDate' => new DateTime('2025-03-14')]);
 
         $this->assertSame([], self::logEntries());
+    }
+
+    // ------------------------------------------------------------------
+    // Verified row (#1897)
+    // ------------------------------------------------------------------
+
+    public function test_verifiedRow_freshConfirmed_showsStampAndLastConfirmedLiteralDate(): void
+    {
+        $xp = self::card(self::carData(['last_verified' => self::FOREVER_FRESH, 'owner_last_updated' => self::daysAgo(900)]));
+
+        $dd = $this->firstElement($xp, self::VERIFIED_DD);
+        $this->assertSame(1, $xp->query('.//span[contains(@class,"er-badge--verified") and contains(@class,"er-badge--stamp")]', $dd)?->length);
+        $this->assertStringContainsString('Last confirmed March 5, 2999', $dd->textContent);
+        $this->assertStringNotContainsString('Current since', $dd->textContent);
+        $this->assertSame([], self::logEntries());
+    }
+
+    public function test_verifiedRow_freshCurrent_showsStampAndCurrentSinceLiteralDate(): void
+    {
+        $xp = self::card(self::carData(['last_verified' => null, 'owner_last_updated' => self::FOREVER_FRESH]));
+
+        $dd = $this->firstElement($xp, self::VERIFIED_DD);
+        $this->assertSame(1, $xp->query('.//span[contains(@class,"er-badge--verified")]', $dd)?->length);
+        $this->assertStringContainsString('Current since March 5, 2999', $dd->textContent);
+        $this->assertStringNotContainsString('Last confirmed', $dd->textContent);
+    }
+
+    public function test_verifiedRow_stale_showsEmptySquareAndNotSpecifiedWithoutStamp(): void
+    {
+        $xp = self::card(self::carData(['owner_last_updated' => self::daysAgo(800)]));
+
+        $dd = $this->firstElement($xp, self::VERIFIED_DD);
+        $this->assertSame(1, $xp->query('.//i[contains(@class,"fa-square")]', $dd)?->length);
+        $em = $xp->query('.//em[contains(@class,"text-muted")]', $dd);
+        $this->assertNotFalse($em);
+        $this->assertSame(1, $em->length);
+        $this->assertSame('Not specified', trim((string) $em->item(0)?->textContent));
+        $this->assertSame(0, $xp->query('.//*[contains(@class,"er-badge")]', $dd)?->length);
+        $this->assertSame([], self::logEntries());
+    }
+
+    public function test_verifiedRow_360DaysInside_370DaysOutside(): void
+    {
+        $inside = self::card(self::carData(['owner_last_updated' => self::daysAgo(360)]));
+        $outside = self::card(self::carData(['owner_last_updated' => self::daysAgo(370)]));
+
+        $this->assertSame(1, $this->nodeCount($inside, '//*[contains(@class,"er-badge--verified")]'));
+        $this->assertSame(0, $this->nodeCount($outside, '//*[contains(@class,"er-badge--verified")]'));
+    }
+
+    public function test_verifiedRow_soldCar_hasNoVerifiedRowAndKeepsSoldRow(): void
+    {
+        $xp = self::card(
+            self::carData(['solddate' => '2025-03-14', 'owner_last_updated' => self::daysAgo(2)]),
+            ['soldDate' => new DateTime('2025-03-14')]
+        );
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Verified")]'));
+        $this->assertSame(0, $this->nodeCount($xp, '//*[contains(@class,"er-badge--verified")]'));
+        $this->assertSame(1, $this->nodeCount($xp, '//dt[normalize-space(.)="Sold"]'));
+        $this->assertStringContainsString(
+            'March 14, 2025',
+            $this->firstElement($xp, '//dt[normalize-space(.)="Sold"]/following-sibling::dd[1]')->textContent
+        );
+    }
+
+    public function test_verifiedRow_rendersWithNoPurchaseDateAndNoSoldDate(): void
+    {
+        $xp = self::card(self::carData(), ['purchaseDate' => null, 'soldDate' => null]);
+
+        $this->assertSame(1, $this->nodeCount($xp, '//dt[starts-with(normalize-space(.),"Verified")]'));
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Purchase Date")]'));
+        $this->assertSame(1, $this->nodeCount($xp, '//*[contains(normalize-space(.),"Ownership & History") and not(*[contains(normalize-space(.),"Ownership & History")])]'));
+    }
+
+    public function test_verifiedRow_sitsInDlRowWithColumnClasses(): void
+    {
+        $xp = self::card(self::carData());
+
+        $this->assertSame(1, $this->nodeCount($xp, '//dl[contains(@class,"row")]/dt[contains(@class,"col-sm-4") and starts-with(normalize-space(.),"Verified")]'));
+        $this->assertSame(1, $this->nodeCount($xp, '//dl[contains(@class,"row")]/dt[starts-with(normalize-space(.),"Verified")]/following-sibling::dd[1][contains(@class,"col-sm-8")]'));
+    }
+
+    public function test_verifiedRow_hasNoInputElement(): void
+    {
+        $xp = self::card(self::carData(), ['viewerIsRegistryAdmin' => true]);
+
+        $this->assertSame(0, $this->nodeCount($xp, '//input | //select | //textarea | //form'));
+    }
+
+    public function test_verifiedRow_helpButton_isAccessible(): void
+    {
+        $xp = self::card(self::carData());
+
+        $button = $this->firstElement($xp, '//dt[starts-with(normalize-space(.),"Verified")]/button[@type="button"]');
+        $this->assertSame('tooltip', $button->getAttribute('data-bs-toggle'));
+        $this->assertNotSame('', trim($button->getAttribute('data-bs-title')));
+        $this->assertNotSame('', trim($button->getAttribute('aria-label')));
+        $this->assertFalse($button->hasAttribute('aria-hidden'));
+        $this->assertNotSame('-1', $button->getAttribute('tabindex'));
+        $this->assertSame(
+            "The owner confirmed, added, or updated this car's record in the last 12 months.",
+            $button->getAttribute('data-bs-title')
+        );
+    }
+
+    public function test_verifiedRow_noSessionGlobals_stillRenders(): void
+    {
+        $hadSession = array_key_exists('_SESSION', $GLOBALS);
+        $hadUser = array_key_exists('user', $GLOBALS);
+        $savedSession = $GLOBALS['_SESSION'] ?? null;
+        $savedUser = $GLOBALS['user'] ?? null;
+        unset($GLOBALS['_SESSION'], $GLOBALS['user']);
+        try {
+            $xp = self::card(self::carData());
+        } finally {
+            if ($hadSession) {
+                $GLOBALS['_SESSION'] = $savedSession;
+            }
+            if ($hadUser) {
+                $GLOBALS['user'] = $savedUser;
+            }
+        }
+
+        $this->assertSame(1, $this->nodeCount($xp, '//*[contains(@class,"er-badge--verified")]'));
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function badFreshnessProvider(): array
+    {
+        return [
+            'owner int'          => [['owner_last_updated' => 5]],
+            'owner null'         => [['owner_last_updated' => null]],
+            'owner garbage'      => [['owner_last_updated' => 'garbage']],
+            'last_verified int'  => [['last_verified' => 1700000000]],
+            'last_verified junk' => [['last_verified' => 'garbage']],
+        ];
+    }
+
+    /** @param array<string, mixed> $override */
+    #[DataProvider('badFreshnessProvider')]
+    public function test_verifiedRow_badFreshnessData_showsStaleTreatmentAndLogsOnce(array $override): void
+    {
+        $xp = self::card(self::carData($override));
+
+        $dd = $this->firstElement($xp, self::VERIFIED_DD);
+        $this->assertSame(0, $xp->query('.//*[contains(@class,"er-badge")]', $dd)?->length);
+        $this->assertStringContainsString('Not specified', $dd->textContent);
+        $this->assertCount(1, self::logEntries());
+    }
+
+    // ------------------------------------------------------------------
+    // Email on file row (#1897)
+    // ------------------------------------------------------------------
+
+    private const SECRET_EMAIL = 'secret.owner@example.com';
+    private const SECRET_BOUNCE = 'bounced.address@example.org';
+
+    /** @return array<string, mixed> */
+    private static function flagged(bool $bounced, bool $suppressed): array
+    {
+        return [
+            'email' => self::SECRET_EMAIL,
+            'email_bounced_address' => self::SECRET_BOUNCE,
+            'email_bounced' => $bounced ? 1 : 0,
+            'email_suppressed' => $suppressed ? 1 : 0,
+        ];
+    }
+
+    /** @return array<string, array{array<string, mixed>}> */
+    public static function notStrictTrueProvider(): array
+    {
+        return [
+            'unset'      => [[]],
+            'false'      => [['viewerIsRegistryAdmin' => false]],
+            'int 1'      => [['viewerIsRegistryAdmin' => 1]],
+            'string "1"' => [['viewerIsRegistryAdmin' => '1']],
+            'null'       => [['viewerIsRegistryAdmin' => null]],
+        ];
+    }
+
+    /** @param array<string, mixed> $vars */
+    #[DataProvider('notStrictTrueProvider')]
+    public function test_emailRow_viewerNotStrictlyTrue_hasNoRow(array $vars): void
+    {
+        $html = self::render(self::CARD, array_merge(['carData' => self::carData(self::flagged(true, true))], $vars));
+        $xp = self::dom($html);
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
+        $this->assertStringNotContainsString('Bounced', $html);
+        $this->assertStringNotContainsString('Suppressed', $html);
+    }
+
+    public function test_emailRow_carsOwnOwnerWithFlag_hasNoRow(): void
+    {
+        $xp = self::card(
+            self::carData(array_merge(self::flagged(false, true), ['user_id' => 42])),
+            ['viewerIsRegistryAdmin' => false]
+        );
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
+    }
+
+    /** @return array<string, array{bool, bool, list<string>}> */
+    public static function adminFlagProvider(): array
+    {
+        return [
+            'bounced only'    => [true, false, ['Bounced']],
+            'suppressed only' => [false, true, ['Suppressed']],
+            'both'            => [true, true, ['Bounced', 'Suppressed']],
+        ];
+    }
+
+    /** @param list<string> $words */
+    #[DataProvider('adminFlagProvider')]
+    public function test_emailRow_admin_showsOnlyTheSetFlags(bool $bounced, bool $suppressed, array $words): void
+    {
+        $xp = self::card(self::carData(self::flagged($bounced, $suppressed)), ['viewerIsRegistryAdmin' => true]);
+
+        $dd = $this->firstElement($xp, self::EMAIL_DD);
+        $this->assertSame($bounced ? 1 : 0, substr_count($dd->textContent, 'Bounced'));
+        $this->assertSame($suppressed ? 1 : 0, substr_count($dd->textContent, 'Suppressed'));
+        $this->assertSame(count($words), $this->nodeCount($xp, self::EMAIL_DD . '//button[@aria-label]'));
+        $this->assertSame(1, $this->nodeCount($xp, '//dl[contains(@class,"row")]/dt[contains(@class,"col-sm-4") and starts-with(normalize-space(.),"Email on file")]'));
+    }
+
+    public function test_emailRow_adminNeitherFlag_hasNoRow(): void
+    {
+        $xp = self::card(self::carData(self::flagged(false, false)), ['viewerIsRegistryAdmin' => true]);
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
+    }
+
+    public function test_emailRow_tooltips_areDistinctAndSuppressedNamesClearSuppression(): void
+    {
+        $xp = self::card(self::carData(self::flagged(true, true)), ['viewerIsRegistryAdmin' => true]);
+
+        $bounced = $this->firstElement($xp, '//button[@aria-label="What Bounced means"]')->getAttribute('data-bs-title');
+        $suppressed = $this->firstElement($xp, '//button[@aria-label="What Suppressed means"]')->getAttribute('data-bs-title');
+        $label = $this->firstElement($xp, '//button[@aria-label="What Email on file means"]')->getAttribute('data-bs-title');
+
+        $this->assertNotSame('', $bounced);
+        $this->assertNotSame($bounced, $suppressed);
+        $this->assertNotSame($label, $bounced);
+        $this->assertNotSame($label, $suppressed);
+        $this->assertSame(
+            "Only admins and editors see this row. It shows why the registry does not send verification emails to this owner's address.",
+            $label
+        );
+        $this->assertSame(
+            "This owner's address is on the email suppression list, so no verification emails are sent. "
+            . 'An admin can use Clear Suppression on the Verification System tab.',
+            $suppressed
+        );
+        $this->assertStringContainsString('Clear Suppression', $suppressed);
+        $this->assertStringNotContainsString('Resume', $suppressed);
+        $this->assertStringNotContainsString('Resume', $bounced);
+        $this->assertSame(
+            'Email to this owner bounced. Verification emails start again when the owner confirms a working address.',
+            $bounced
+        );
+    }
+
+    public function test_emailRow_soldCarAsAdmin_withFlag_showsRowAndNoVerifiedRow(): void
+    {
+        $xp = self::card(
+            self::carData(array_merge(self::flagged(true, false), ['solddate' => '2025-03-14'])),
+            ['viewerIsRegistryAdmin' => true, 'soldDate' => new DateTime('2025-03-14')]
+        );
+
+        $this->assertSame(1, $this->nodeCount($xp, '//dt[starts-with(normalize-space(.),"Email on file")]'));
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Verified")]'));
+    }
+
+    /** @return array<string, array{bool}> */
+    public static function viewerProvider(): array
+    {
+        return ['admin' => [true], 'non-admin' => [false]];
+    }
+
+    #[DataProvider('viewerProvider')]
+    public function test_emailRow_neverOutputsEmailOrBouncedAddress(bool $admin): void
+    {
+        $html = self::render(self::CARD, [
+            'carData' => self::carData(self::flagged(true, true)),
+            'viewerIsRegistryAdmin' => $admin,
+        ]);
+
+        $this->assertStringNotContainsString(self::SECRET_EMAIL, $html);
+        $this->assertStringNotContainsString(self::SECRET_BOUNCE, $html);
+        $this->assertStringNotContainsString('secret.owner', $html);
+        $this->assertStringNotContainsString('bounced.address', $html);
     }
 }

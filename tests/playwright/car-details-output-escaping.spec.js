@@ -116,15 +116,22 @@ test.describe('Car details — output escaping (issue #840)', () => {
 
 test.describe('Car details — Ownership & History section visibility', () => {
     // Regression test for the empty-section bug fixed alongside issue #1963:
-    // app/views/cars/_vehicle_info_card.php guards the entire "Ownership &
-    // History" heading and its <dl> with `if ($purchaseDate || $soldDate)`.
-    // Before that guard existed, a car with neither date still rendered the
-    // heading with an empty body underneath it.
+    // the "Ownership & History" heading must never render over an empty <dl>.
+    // Issue #1897 added the Verified row, which every car that is not sold
+    // has. So a car with no purchase date and no sold date now shows the
+    // section, with the Verified row as its only content. The section is
+    // hidden only when it would be empty, and that case cannot happen on a
+    // real record: a car with no sold date is not sold, so it has a Verified row.
 
-    test('heading is not shown for a car with no purchase date and no sold date', async ({ page }) => {
+    test('heading is shown for a car with no purchase date and no sold date, with only the Verified row', async ({ page }) => {
         await page.goto(NO_DATES_DETAILS_URL, { waitUntil: 'networkidle' });
 
-        await expect(page.getByText('Ownership & History')).toHaveCount(0);
+        await expect(page.getByText('Ownership & History')).toHaveCount(1);
+        // The section is not empty: the Verified row is its content.
+        await expect(page.locator('dl.row > dt', { hasText: /^\s*Verified/ })).toHaveCount(1);
+        // The dates this car does not have do not draw rows.
+        await expect(page.locator('dl.row > dt', { hasText: /^Purchase Date$/ })).toHaveCount(0);
+        await expect(page.locator('dl.row > dt', { hasText: /^Sold$/ })).toHaveCount(0);
     });
 
     test('heading is shown for a car with a purchase or sold date', async ({ page }) => {

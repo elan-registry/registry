@@ -25,12 +25,33 @@ use ElanRegistry\Car\CarRepository;
  *              four cars above, a search for PWBDG gives 12 rows. The list has
  *              a minimum page length of 10, so the spec can open page 2.
  *
+ * With --verified-row the script seeds a second, separate set for
+ * tests/playwright/car-verified-row.spec.js (issue #1897). That set has its
+ * own owner, model marker, and chassis marker (PWVRF), so the two specs can
+ * seed and clean up in parallel without deleting each other's rows. All five
+ * cars are not sold and have an old ctime. Each has a purchase date, so the
+ * Ownership & History section does not depend on the Verified row:
+ *
+ *  - confirmed:  last_verified 30 days ago, owner_last_updated 2 years ago.
+ *                The row says "Last confirmed <date>". It also has a vericode,
+ *                for the vericode landing page.
+ *  - current:    last_verified NULL, owner_last_updated 45 days ago. The row
+ *                says "Current since <date>".
+ *  - stale:      both dates 2 years ago. The row says "Not specified".
+ *  - bounced:    fresh, email_bounced = 1 with a bounced address.
+ *  - suppressed: fresh, email_suppressed = 1. It also has a vericode.
+ *
  * Usage:
- *   php seed-car-badges.php            seed (deletes earlier marker rows first)
- *   php seed-car-badges.php --cleanup  delete the marker rows only
+ *   php seed-car-badges.php                         seed (deletes earlier marker rows first)
+ *   php seed-car-badges.php --cleanup               delete the marker rows only
+ *   php seed-car-badges.php --verified-row          seed the Verified row set
+ *   php seed-car-badges.php --verified-row --cleanup  delete the Verified row marker rows only
  *
  * Prints one JSON line to stdout (seed mode only):
  * {"userId", "username", "password", "cars": {"sold": id, "fresh": id, "new": id, "soldnew": id}, "fillerCount": 8}
+ * With --verified-row: {"userId", "username", "password", "cars": {confirmed, current, stale, bounced, suppressed},
+ * "dates": {"confirmed": "Y-m-d", "current": "Y-m-d"}, "vericodes": {"confirmed": code, "suppressed": code},
+ * "bouncedAddress": address}
  * The owner has a random password that exists only in this output, so the
  * spec can log in as the owner with login() from auth-helper.js.
  *
@@ -89,12 +110,20 @@ if (trim((string) $initOutput) !== '') {
 restore_error_handler();
 
 
-const SEED_USERNAME = '__playwright_seed_car_badges_owner__';
-const SEED_EMAIL = 'playwright-seed-car-badges-owner@example.invalid';
+$verifiedRowMode = in_array('--verified-row', $argv ?? [], true);
+
+// Each mode has its own owner and markers, so cleanup in one mode never
+// deletes rows of the other mode.
+define('SEED_USERNAME', $verifiedRowMode ? '__playwright_seed_verified_row_owner__' : '__playwright_seed_car_badges_owner__');
+define('SEED_EMAIL', $verifiedRowMode
+    ? 'playwright-seed-verified-row-owner@example.invalid'
+    : 'playwright-seed-car-badges-owner@example.invalid');
 
 /** `cars.model` is varchar(30). `cars.chassis` is varchar(15). Keep markers short. */
-const SEED_CAR_MODEL = '__PW_SEED_BADGES__';
-const SEED_CHASSIS_PREFIX = 'PWBDG';
+define('SEED_CAR_MODEL', $verifiedRowMode ? '__PW_SEED_VERIFIED_ROW__' : '__PW_SEED_BADGES__');
+define('SEED_CHASSIS_PREFIX', $verifiedRowMode ? 'PWVRF' : 'PWBDG');
+const FILLER_COUNT = 8;
+const SEED_BOUNCED_ADDRESS = 'pw-verified-row-bounced@example.invalid';
 
 $db = dbi();
 
@@ -154,38 +183,80 @@ $carRepository = new CarRepository($db);
 $now = date('Y-m-d H:i:s');
 $twoYearsAgo = date('Y-m-d H:i:s', strtotime('-2 years'));
 
-/** @var array<string, array<string, mixed>> $specs */
-$specs = [
-    'sold' => [
-        'year' => 1963, 'chassis' => SEED_CHASSIS_PREFIX . 'S',
-        'ctime' => $twoYearsAgo, 'owner_last_updated' => $twoYearsAgo,
-        'solddate' => date('Y-m-d', strtotime('-6 months')),
-    ],
-    'fresh' => [
-        'year' => 1964, 'chassis' => SEED_CHASSIS_PREFIX . 'F',
-        'ctime' => $twoYearsAgo, 'owner_last_updated' => $now,
-        // A purchase date makes the card render its Ownership section, so the
-        // "Sold row is absent" test checks the Sold logic, not a missing section.
-        'purchasedate' => '1990-05-01',
-    ],
-    'new' => [
-        'year' => 1965, 'chassis' => SEED_CHASSIS_PREFIX . 'N',
-        'ctime' => $now, 'owner_last_updated' => $now,
-    ],
-    'soldnew' => [
-        'year' => 1966, 'chassis' => SEED_CHASSIS_PREFIX . 'SN',
-        'ctime' => $now, 'owner_last_updated' => $now,
-        'solddate' => date('Y-m-d', strtotime('-1 month')),
-    ],
-];
+$verificationManager = new \ElanRegistry\Car\CarVerificationManager($carRepository);
+$vericodes = [];
 
-const FILLER_COUNT = 8;
-for ($i = 1; $i <= FILLER_COUNT; $i++) {
-    $specs['filler' . $i] = [
-        'year' => 1967, 'chassis' => SEED_CHASSIS_PREFIX . sprintf('%02d', $i),
-        'ctime' => $twoYearsAgo, 'owner_last_updated' => $twoYearsAgo,
-        'solddate' => date('Y-m-d', strtotime('-6 months')),
+if ($verifiedRowMode) {
+    // Midday times keep the calendar date stable across a PHP/DB timezone offset.
+    $thirtyDaysAgo = date('Y-m-d 12:00:00', strtotime('-30 days'));
+    $fortyFiveDaysAgo = date('Y-m-d 12:00:00', strtotime('-45 days'));
+    $vericodeSentAt = $now;
+
+    /** @var array<string, array<string, mixed>> $specs */
+    $specs = [
+        'confirmed' => [
+            'year' => 1970, 'chassis' => SEED_CHASSIS_PREFIX . 'C',
+            'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
+            'last_verified' => $thirtyDaysAgo, 'owner_last_updated' => $twoYearsAgo,
+        ],
+        'current' => [
+            'year' => 1971, 'chassis' => SEED_CHASSIS_PREFIX . 'U',
+            'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
+            'last_verified' => null, 'owner_last_updated' => $fortyFiveDaysAgo,
+        ],
+        'stale' => [
+            'year' => 1972, 'chassis' => SEED_CHASSIS_PREFIX . 'T',
+            'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
+            'last_verified' => $twoYearsAgo, 'owner_last_updated' => $twoYearsAgo,
+        ],
+        'bounced' => [
+            'year' => 1973, 'chassis' => SEED_CHASSIS_PREFIX . 'B',
+            'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
+            'owner_last_updated' => $now,
+            'email_bounced' => 1, 'email_bounced_address' => SEED_BOUNCED_ADDRESS,
+        ],
+        'suppressed' => [
+            'year' => 1974, 'chassis' => SEED_CHASSIS_PREFIX . 'P',
+            'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
+            'owner_last_updated' => $now,
+            'email_suppressed' => 1,
+        ],
     ];
+} else {
+    /** @var array<string, array<string, mixed>> $specs */
+    $specs = [
+        'sold' => [
+            'year' => 1963, 'chassis' => SEED_CHASSIS_PREFIX . 'S',
+            'ctime' => $twoYearsAgo, 'owner_last_updated' => $twoYearsAgo,
+            'solddate' => date('Y-m-d', strtotime('-6 months')),
+        ],
+        'fresh' => [
+            'year' => 1964, 'chassis' => SEED_CHASSIS_PREFIX . 'F',
+            'ctime' => $twoYearsAgo, 'owner_last_updated' => $now,
+            // The card shows its Ownership & History section for every car that is
+            // not sold, because of the Verified row. This purchase date is not what
+            // makes the section render. It gives the "Sold row is absent" test a
+            // Purchase Date row to assert, so the test does not rely on the Verified row.
+            'purchasedate' => '1990-05-01',
+        ],
+        'new' => [
+            'year' => 1965, 'chassis' => SEED_CHASSIS_PREFIX . 'N',
+            'ctime' => $now, 'owner_last_updated' => $now,
+        ],
+        'soldnew' => [
+            'year' => 1966, 'chassis' => SEED_CHASSIS_PREFIX . 'SN',
+            'ctime' => $now, 'owner_last_updated' => $now,
+            'solddate' => date('Y-m-d', strtotime('-1 month')),
+        ],
+    ];
+
+    for ($i = 1; $i <= FILLER_COUNT; $i++) {
+        $specs['filler' . $i] = [
+            'year' => 1967, 'chassis' => SEED_CHASSIS_PREFIX . sprintf('%02d', $i),
+            'ctime' => $twoYearsAgo, 'owner_last_updated' => $twoYearsAgo,
+            'solddate' => date('Y-m-d', strtotime('-6 months')),
+        ];
+    }
 }
 
 $carIds = [];
@@ -209,6 +280,33 @@ foreach ($specs as $name => $spec) {
         exit(1);
     }
     $carIds[$name] = $carId;
+
+    // The landing page finds a car by the hash of its vericode. The fixture
+    // keeps the plaintext so the spec can open the link.
+    if ($verifiedRowMode && in_array($name, ['confirmed', 'suppressed'], true)) {
+        $plainCode = $verificationManager->generateVerificationCode();
+        $carRepository->updateCar($carId, [
+            'vericode'         => hashVericode($plainCode),
+            'vericode_sent_at' => $vericodeSentAt,
+        ]);
+        $vericodes[$name] = $plainCode;
+    }
+}
+
+if ($verifiedRowMode) {
+    echo json_encode([
+        'userId'         => $userId,
+        'username'       => SEED_USERNAME,
+        'password'       => $password,
+        'cars'           => $carIds,
+        'dates'          => [
+            'confirmed' => substr($thirtyDaysAgo, 0, 10),
+            'current'   => substr($fortyFiveDaysAgo, 0, 10),
+        ],
+        'vericodes'      => $vericodes,
+        'bouncedAddress' => SEED_BOUNCED_ADDRESS,
+    ]) . "\n";
+    exit(0);
 }
 
 echo json_encode([

@@ -192,6 +192,7 @@ if ($carSchemaJson === false) {
                 <div class="col-lg-6 mb-4 order-last order-lg-first">
                     <?php
                     $headingTag = 'h3';
+                    $viewerIsRegistryAdmin = $user->isLoggedIn() && isRegistryAdmin($user->data()->id);
                     include $abs_us_root . $us_url_root . 'app/views/cars/_vehicle_info_card.php';
                     ?>
 

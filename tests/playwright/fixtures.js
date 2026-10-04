@@ -21,8 +21,9 @@ const CAR_ID_REDIRECT_TEST = 100;
 // "http://www.jaeparts.com". Re-verify if this ever starts failing.
 const CAR_ID_WITH_WEBSITE = 8;
 // Has neither a purchase date nor a sold date — used to assert the
-// "Ownership & History" section is hidden entirely (app/views/cars/_vehicle_info_card.php's
-// `if ($purchaseDate || $soldDate)` guard). Verified via `SELECT id FROM cars
+// "Ownership & History" section shows only the Verified row for it
+// (app/views/cars/_vehicle_info_card.php draws the section when the car is
+// not sold, even with no dates; issue #1897). Verified via `SELECT id FROM cars
 // WHERE purchasedate IS NULL AND solddate IS NULL LIMIT 5;` returning id 3
 // among others. Re-verify if this ever starts failing.
 const CAR_ID_WITHOUT_OWNERSHIP_DATES = 3;

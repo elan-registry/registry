@@ -270,6 +270,72 @@ final class CarRepositoryFreshnessTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // isWithinFreshnessWindow() (#1897)
+    //
+    // Uses the real clock: 360 days is inside and 370 days is outside. The
+    // cutoff is "-1 year", which is 365 or 366 days, so a 365 or 366 day
+    // value can fall on either side of it. No test uses the exact cutoff second.
+    // ------------------------------------------------------------------
+
+    /** Datetime string at a whole-day offset before the real now. */
+    private static function daysAgo(int $days): string
+    {
+        return date('Y-m-d H:i:s', strtotime("-{$days} days"));
+    }
+
+    public function testIsWithinFreshnessWindow360DaysAgoIsInside(): void
+    {
+        $this->assertTrue(CarRepository::isWithinFreshnessWindow(self::daysAgo(360), 'last_verified'));
+    }
+
+    public function testIsWithinFreshnessWindow370DaysAgoIsOutside(): void
+    {
+        $this->assertFalse(CarRepository::isWithinFreshnessWindow(self::daysAgo(370), 'last_verified'));
+    }
+
+    public function testIsWithinFreshnessWindowAcceptsTSeparator(): void
+    {
+        $this->assertTrue(
+            CarRepository::isWithinFreshnessWindow(str_replace(' ', 'T', self::daysAgo(10)))
+        );
+    }
+
+    public function testIsWithinFreshnessWindowRejectsEmptyString(): void
+    {
+        $this->expectException(CarValidationException::class);
+        CarRepository::isWithinFreshnessWindow('');
+    }
+
+    public function testIsWithinFreshnessWindowRejectsGarbage(): void
+    {
+        $this->expectException(CarValidationException::class);
+        CarRepository::isWithinFreshnessWindow('garbage');
+    }
+
+    /**
+     * The same permissive and calendar-invalid values that isFresh() rejects
+     * must throw here too, because both methods share one parser.
+     *
+     * @param string $value A string strtotime() accepts but the column cannot hold
+     */
+    #[DataProvider('strtotimeAcceptsButColumnCannotHoldProvider')]
+    public function testIsWithinFreshnessWindowRejectsRelativeAndInvalidDates(string $value): void
+    {
+        $this->expectException(CarValidationException::class);
+        CarRepository::isWithinFreshnessWindow($value);
+    }
+
+    public function testIsWithinFreshnessWindowNamesTheColumnInTheException(): void
+    {
+        try {
+            CarRepository::isWithinFreshnessWindow('garbage', 'last_verified');
+            $this->fail('Expected CarValidationException');
+        } catch (CarValidationException $e) {
+            $this->assertStringContainsString('last_verified', $e->getMessage());
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Alias rejection — freshnessSql() / stalenessSql()
     // ------------------------------------------------------------------
 
