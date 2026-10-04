@@ -1,9 +1,9 @@
 // tests/playwright/car-badges.spec.js
 //
 // Coverage for the status badges (Sold, Verified, New) from issue #1900.
-// CarBadges (PHP) picks the badge keys. The cars list draws them in JS
-// (car-list.js), and the account page and details page draw them in PHP
-// (_status_badges.php).
+// CarBadges (PHP) picks the badge keys and draws them with CarBadges::html().
+// The account page and details page call it directly. The cars list gets the
+// HTML in the badges_html field of each list.php row (car-list.js).
 //
 // Seeds one loginable owner with four cars through
 // tests/playwright/local/fixtures/seed-car-badges.php (see its header for what

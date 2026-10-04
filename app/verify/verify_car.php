@@ -470,10 +470,7 @@ function verifyHistoryFields(object $carData, string $operation, string $comment
 // --- 7. Dispatch ---------------------------------------------------------
 $action   = Input::raw('action') ?? '';
 $isPost   = $method === 'POST';
-// Same sold-date rule as the landing page (_verify_landing.php), so a zero or
-// invalid solddate is "not sold" here too and the sold action can record a real
-// date. No log: the landing page logs a bad value when it renders.
-$isSold   = CarBadges::parseSoldDate($verifyCar->solddate ?? null, $verifyCar->id ?? null, false) !== null;
+$isSold   = CarBadges::isSold($verifyCar->solddate ?? null);
 $verifier = new CarVerificationManager($repo);
 
 // Sold-date bounds. Enforced here on POST; the same values are handed to the

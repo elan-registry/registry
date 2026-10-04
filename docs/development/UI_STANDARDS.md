@@ -177,8 +177,7 @@ status badge is `er-badge er-badge--verified`.
 #### Car status badges
 
 Car status badges show Sold, Verified, and New. `CarBadges` decides which
-badges a car shows. See [CLASSES.md](CLASSES.md#carbadges). The page code
-only draws the keys it receives.
+badges a car shows and draws them. See [CLASSES.md](CLASSES.md#carbadges).
 
 **Tokens** (defined in `usersc/templates/customizer.css`):
 
@@ -209,10 +208,9 @@ actions only.
 | Stamp | Account page hero, Sold row of the Vehicle Information card | `er-badge er-badge--<tone> er-badge--stamp` |
 | Flat | Cars list | `er-badge er-badge--<tone>` |
 
-Use the partial `app/views/cars/_status_badges.php` in PHP. Set
-`$badgeKeys` (from `CarBadges::forCar()`) and `$badgeStyle` (`'stamp'` or
-`'flat'`) before each include. The partial unsets both variables when it
-ends, so an include without them draws nothing.
+Use `CarBadges::html($keys, $style)` to draw badges. Get `$keys` from
+`CarBadges::forCar()`. Set `$style` to `'stamp'` or `'flat'`. The method
+returns the badge spans with no wrapper, or `''` when there are no badges.
 
 The account page hero gets its keys from `CarBadges::forCar()`. The Vehicle
 Information card (`app/views/cars/_vehicle_info_card.php`) does not. It draws
@@ -222,20 +220,19 @@ the public vericode landing page.
 
 Inside the dark green hero (`.card-header-er-primary-text`), a stamp has a
 white edge. The sold red against the hero green is only 1.2:1, so the red
-edge does not show there. Stamps on white pages keep their tone color edge. The cars list draws the same markup in
-`renderBadges()` in `app/assets/js/car-list.js`, from
-`CarBadges::definitions()`.
+edge does not show there. Stamps on white pages keep their tone color edge.
+The cars list uses the same markup. `CarBadges::decorateRows()` puts it in
+the `badges_html` field of each `list.php` row, and
+`app/assets/js/car-list.js` adds it after the Details link.
 
-**Precedence.** Each badge definition has these fields:
+**Which badges show.** `CarBadges::resolve()` has the rule:
 
-| Field | Effect |
-| --- | --- |
-| `priority` | Sort order, highest first. New 100, Sold 90, Verified 50 |
-| `group` | In one group, only the badge with the highest priority shows. Sold and Verified share `lifecycle`, so Sold hides Verified |
-| `suppressedBy` | The badge hides when a listed key shows. New hides Verified |
-| `MAX_BADGES` | One car shows 2 badges at most |
+- New shows when the car is new (cars list only).
+- Sold shows when the car is sold.
+- Verified shows when the car is fresh, not sold, and not new.
 
-Do not code these rules in a template or in JS. Change `CarBadges::BADGES`.
+The display order is New, Sold, Verified. Do not code this rule in a
+template or in JS. Change `CarBadges::resolve()`.
 
 **Accessibility rules:**
 

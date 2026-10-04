@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
  * Covers:
  * - usersc/account.php (the try/catch around Owner construction/find())
  * - usersc/account.php, app/owner/cars/details.php, and
- *   app/views/cars/_verify_landing.php (solddate through CarBadges::parseSoldDate())
+ *   app/views/cars/_verify_landing.php (solddate through CarBadges::soldDate() and isSold())
  *
  * The page cannot be require()'d from PHPUnit for a full behavioral test:
  * it renders a complete HTML page inline (no isolated return path), and
@@ -145,14 +145,13 @@ final class AccountPageWiringTest extends TestCase
 
     /**
      * The account page cannot be required from PHPUnit (see class docblock), so
-     * the wiring is checked in the source text. The rendered output of the
-     * partial itself is covered by tests/unit/views/StatusBadgesPartialTest.php
-     * and the key logic by tests/unit/cars/CarBadgesTest.php.
+     * the wiring is checked in the source text. The badge markup and the key
+     * logic are covered by tests/unit/cars/CarBadgesTest.php.
      *
-     * The assertions are scoped to the hero heading, so a badge include moved
+     * The assertions are scoped to the hero heading, so a badge call moved
      * out of the <h3>, a changed key source, or a changed style fails here.
      */
-    public function testHeroHeadingIncludesStatusBadgesPartialWithStampStyle(): void
+    public function testHeroHeadingDrawsStatusBadgesWithStampStyle(): void
     {
         $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
 
@@ -167,34 +166,24 @@ final class AccountPageWiringTest extends TestCase
         $heading = $matches[1];
 
         $this->assertMatchesRegularExpression(
-            '/\$badgeKeys\s+=\s+CarBadges::forCar\(\$carData\);/',
+            "/<\\?=\\s*CarBadges::html\\(CarBadges::forCar\\(\\\$carData\\),\\s*'stamp'\\)\\s*\\?>/",
             $heading,
-            'The hero heading must take its badge keys from CarBadges::forCar($carData)'
-        );
-        $this->assertMatchesRegularExpression(
-            "/\\\$badgeStyle\\s+=\\s+'stamp';/",
-            $heading,
-            'The hero heading must use the stamp style'
-        );
-        $this->assertMatchesRegularExpression(
-            '/include\s+\$abs_us_root\s*\.\s*\$us_url_root\s*\.\s*\'app\/views\/cars\/_status_badges\.php\';/',
-            $heading,
-            'The hero heading must include the _status_badges.php partial'
+            "The hero heading must draw CarBadges::html(CarBadges::forCar(\$carData), 'stamp')"
         );
 
         // The call must not pass the NEW flag: NEW is a cars-list concept.
         $this->assertStringNotContainsString('forCar($carData, true)', $content);
     }
 
-    public function testStatusBadgesPartialIncludeAppearsOnlyInsideHeroHeading(): void
+    public function testStatusBadgesAppearOnlyInsideHeroHeading(): void
     {
         $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
 
         $this->assertSame(
             1,
-            substr_count($content, '_status_badges.php'),
-            'The account.php source must name the status badges partial once, in the hero <h3>. '
-            . 'The Vehicle Information card includes the partial again at render time for its Sold row.'
+            substr_count($content, 'CarBadges::html('),
+            'The account.php source must call CarBadges::html() once, in the hero <h3>. '
+            . 'The Vehicle Information card calls it again at render time for its Sold row.'
         );
     }
 
@@ -233,9 +222,8 @@ final class AccountPageWiringTest extends TestCase
 
     /**
      * Every page that sets $soldDate for the Vehicle Information card must
-     * use CarBadges::parseSoldDate(), the same rule as the Sold badge.
-     * `new DateTime()` accepts '0000-00-00' and rolls over '2025-02-30', so
-     * the card showed a Sold date that the hero did not.
+     * use CarBadges::soldDate(), so the card and the Sold badge share
+     * CarBadges::isSold().
      *
      * @return array<string, array{string, string}>
      */
@@ -249,54 +237,25 @@ final class AccountPageWiringTest extends TestCase
     }
 
     #[DataProvider('soldDateProducerProvider')]
-    public function testSoldDateUsesCarBadgesParseSoldDate(string $relativePath, string $carVar): void
+    public function testSoldDateUsesCarBadgesSoldDate(string $relativePath, string $carVar): void
     {
         $content = $this->readEndpointSource($relativePath);
 
         $this->assertMatchesRegularExpression(
-            '/\$soldDate\s*=\s*(?:ElanRegistry\\\\Car\\\\)?CarBadges::parseSoldDate\(\s*'
+            '/\$soldDate\s*=\s*(?:ElanRegistry\\\\Car\\\\)?CarBadges::soldDate\(\s*'
                 . preg_quote($carVar, '/') . '->solddate\b/',
             $content,
-            "{$relativePath} must set \$soldDate from CarBadges::parseSoldDate()"
-        );
-        $this->assertDoesNotMatchRegularExpression(
-            '/new\s+\\\\?DateTime(?:Immutable)?\(\s*' . preg_quote($carVar, '/') . '->solddate/',
-            $content,
-            "{$relativePath} must not parse solddate with new DateTime()"
+            "{$relativePath} must set \$soldDate from CarBadges::soldDate()"
         );
     }
 
-    public function testVerifyLandingAlreadySoldUsesParsedSoldDate(): void
+    public function testVerifyPagesUseCarBadgesIsSold(): void
     {
-        $content = $this->readEndpointSource('app/views/cars/_verify_landing.php');
+        // The landing page and the sold action must use the same rule.
+        $landing = $this->readEndpointSource('app/views/cars/_verify_landing.php');
+        $this->assertMatchesRegularExpression('/\$alreadySold\s*=\s*(?:ElanRegistry\\\\Car\\\\)?CarBadges::isSold\(/', $landing);
 
-        $this->assertMatchesRegularExpression('/\$alreadySold\s*=\s*\$soldDate\s*!==\s*null;/', $content);
-        $this->assertStringNotContainsString('!empty($verifyCar->solddate)', $content);
-    }
-
-    public function testVerifyDispatcherIsSoldUsesParseSoldDate(): void
-    {
-        $content = $this->readEndpointSource('app/verify/verify_car.php');
-
-        // The sold action must use the landing page's rule. Otherwise a zero
-        // solddate shows "I've sold this car" and then the already-sold notice.
-        // It passes false because the landing page logs a bad value.
-        $this->assertMatchesRegularExpression(
-            '/\$isSold\s*=\s*CarBadges::parseSoldDate\(\s*\$verifyCar->solddate\b[^;]*,\s*false\s*\)\s*!==\s*null;/',
-            $content
-        );
-        $this->assertStringNotContainsString('!empty($verifyCar->solddate)', $content);
-    }
-
-    public function testAccountLogsABadSoldDateOnlyThroughForCar(): void
-    {
-        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
-
-        // forCar() logs a bad solddate, so the card's parse must not log it again.
-        $this->assertMatchesRegularExpression(
-            '/\$soldDate\s*=\s*CarBadges::parseSoldDate\([^;]*,\s*false\s*\);/',
-            $content
-        );
-        $this->assertMatchesRegularExpression('/CarBadges::forCar\(\s*\$carData\s*\)/', $content);
+        $dispatcher = $this->readEndpointSource('app/verify/verify_car.php');
+        $this->assertMatchesRegularExpression('/\$isSold\s*=\s*CarBadges::isSold\(\s*\$verifyCar->solddate\b/', $dispatcher);
     }
 }

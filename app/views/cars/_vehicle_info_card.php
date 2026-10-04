@@ -8,7 +8,7 @@ if (count(get_included_files()) == 1) { die(); }
  * Caller must set:
  *   $carData      object        Car row (Car::data() or a plain `cars` row)
  *   $purchaseDate ?DateTime     Parsed purchasedate, or null
- *   $soldDate     ?DateTimeInterface From CarBadges::parseSoldDate(), or null.
+ *   $soldDate     ?DateTimeInterface From CarBadges::soldDate(), or null.
  *                               When set, the card shows the Sold row: the Sold
  *                               stamp and the date.
  *   $headingTag   string        Card heading element, h1-h6 (default h3)
@@ -111,11 +111,7 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
             <?php if ($soldDate) { ?>
             <dt class="col-sm-4 text-muted">Sold</dt>
             <dd class="col-sm-8">
-                <?php
-                $badgeKeys  = ['sold'];
-                $badgeStyle = 'stamp';
-                include __DIR__ . '/_status_badges.php';
-                ?>
+                <?= \ElanRegistry\Car\CarBadges::html(['sold'], 'stamp') ?>
                 <span class="ms-2"><?= $soldDate->format('F j, Y') ?></span>
             </dd>
             <?php } ?>

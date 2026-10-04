@@ -238,8 +238,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                         logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid purchase date format for car ID $carId: " . $carData->purchasedate);
                     }
                 }
-                // No log here: CarBadges::forCar() below parses the same value and logs a bad one.
-                $soldDate = CarBadges::parseSoldDate($carData->solddate ?? null, $carId, false);
+                $soldDate = CarBadges::soldDate($carData->solddate ?? null);
                 $buildDate = null;
                 if ($factoryData && !empty($factoryData->builddate)) {
                     try {
@@ -272,11 +271,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                             <div class="col-md-8">
                                 <h3 class="mb-2 card-header-er-primary-text">
                                     <i class="fas fa-car me-2" aria-hidden="true"></i><?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?> Lotus Elan <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?><?php if (!empty($carData->variant)): ?> <small class="fw-normal opacity-75">(<?= htmlspecialchars($carData->variant, ENT_QUOTES, 'UTF-8') ?>)</small><?php endif; ?>
-                                    <?php
-                                    $badgeKeys  = CarBadges::forCar($carData);
-                                    $badgeStyle = 'stamp';
-                                    include $abs_us_root . $us_url_root . 'app/views/cars/_status_badges.php';
-                                    ?>
+                                    <?= CarBadges::html(CarBadges::forCar($carData), 'stamp') ?>
                                 </h3>
                                 <div class="row g-2 mt-1">
                                     <div class="col-6 col-lg-3">

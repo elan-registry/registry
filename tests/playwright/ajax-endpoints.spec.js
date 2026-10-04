@@ -198,37 +198,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     expect([200, 401, 403]).toContain(response.status());
   });
 
-  test('carListConfig.badgeDefs on car list page has new, sold and verified definitions', async ({ page }) => {
-    // CarBadges::definitions() is embedded in the inline script block as
-    // window.carListConfig.badgeDefs. The cars list JS draws every badge from it.
-    //
-    // index.php is a fully public page (ADR-019: its `pages.private` row is 0,
-    // so securePage() admits anonymous visitors), so carListConfig and its
-    // badgeDefs key are always present whenever this page renders. A missing
-    // config or key is a real regression and must fail, not skip.
-    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
-
-    const config = await page.evaluate(() => window.carListConfig);
-
-    expect(config).toBeDefined();
-    expect(config.newCarIds).toBeUndefined();
-    expect(config.badgeDefs).toBeDefined();
-    expect(Object.keys(config.badgeDefs).sort()).toEqual(['new', 'sold', 'verified']);
-
-    for (const [key, def] of Object.entries(config.badgeDefs)) {
-      expect(typeof def.label, `${key} label`).toBe('string');
-      expect(def.label.trim(), `${key} label`).not.toBe('');
-      expect(typeof def.tooltip, `${key} tooltip`).toBe('string');
-      expect(def.tooltip.trim(), `${key} tooltip`).not.toBe('');
-      expect(typeof def.tone, `${key} tone`).toBe('string');
-      expect(def.tone.trim(), `${key} tone`).not.toBe('');
-      // Precedence fields stay on the server: only CarBadges::resolve() applies them.
-      expect(def).not.toHaveProperty('group');
-      expect(def).not.toHaveProperty('suppressedBy');
-    }
-  });
-
-  test('list.php rows carry a badges array and no freshness fields', async ({ page }) => {
+  test('list.php rows carry badges, badges_html, and no freshness fields', async ({ page }) => {
     await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
     // Newest cars first: the 5 newest cars are always NEW, so the first rows have badges.
@@ -256,6 +226,11 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
         expect(typeof key).toBe('string');
         expect(allowedKeys).toContain(key);
       }
+      // CarBadges::html() draws the badges on the server. The list JS only
+      // puts badges_html after the Details link.
+      expect(typeof row.badges_html, `badges_html on car ${row.id}`).toBe('string');
+      expect(row.badges_html === '', `badges_html empty iff no badges on car ${row.id}`)
+        .toBe(row.badges.length === 0);
       // CarBadges::decorateRows() replaces is_fresh. The response must not
       // expose the freshness inputs (the list is public).
       expect(row).not.toHaveProperty('is_fresh');

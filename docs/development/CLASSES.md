@@ -28,7 +28,7 @@ Use this table to choose the right class for your task:
 | Decode car images | CarImageProcessor | Decodes the `cars.image` JSON array into usable entries | `$processor->decodeAndProcessImages($car->image, ...)` |
 | Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification. Pass `true` when the owner removes it, to reset `owner_last_updated` | `$car->removeImage($filename, $isOwnerInitiated)` |
 | Remove multiple images from a car | Car / CarImageProcessor | CAS-guarded bulk removal; returns `['updated' => bool, 'casConflict' => bool]` instead of throwing, for callers (e.g. `mvTmpImages()`'s move-failure cleanup) that already have their own error-reporting path | `$car->removeImages($filenames)` |
-| Decide which status badges (Sold, Verified, New) a car shows | CarBadges | One definition of badges and precedence for the account page and the cars list | `CarBadges::forCar($car->data())` |
+| Decide which status badges (Sold, Verified, New) a car shows | CarBadges | One definition of the badges and the rule that picks them, for the account page and the cars list | `CarBadges::forCar($car->data())` |
 | Query car models by year/series | CarModel | Reference data for model filtering | `$models = (new CarModel())->getAvailableInYear(1970)` |
 
 ---
@@ -925,31 +925,27 @@ on success.
 **Namespace**: `ElanRegistry\Car`
 
 **Purpose**: One definition of the status badges a car can show (#1900). The
-account page hero and the cars list get badge keys from this class. The
-precedence rules exist only here. The PHP partial
-`app/views/cars/_status_badges.php` and the cars list JS only draw the keys
-they receive. The class is final, has a private constructor, and has only
-static methods.
+account page hero and the cars list get badge keys from this class. The rule
+that picks the badges is in `resolve()` only. `html()` is the only badge renderer. Pages
+call it directly, and the cars list gets its output from `decorateRows()`.
+The class is final, has a private constructor, and has only static methods.
 
 The Vehicle Information card (`app/views/cars/_vehicle_info_card.php`) does
 not call `forCar()`. It draws only the Sold stamp in its Sold row, from
-`$soldDate` (from `parseSoldDate()`), with the hard-coded keys `['sold']`. The card is on the account
-page, the car details page, and the public vericode landing page, so all
-three show that stamp.
+`$soldDate` (from `soldDate()`), with the hard-coded keys `['sold']`. The
+card is on the account page, the car details page, and the public vericode
+landing page, so all three show that stamp.
 
 **Badges**:
 
-| Key | Label | Priority | Group | Suppressed by |
-| --- | --- | --- | --- | --- |
-| `new` | New | 100 | none | none |
-| `sold` | Sold | 90 | `lifecycle` | none |
-| `verified` | Verified (with a check mark icon) | 50 | `lifecycle` | `new` |
+| Key | Label | Shows when |
+| --- | --- | --- |
+| `new` | New | The car is new (cars list only) |
+| `sold` | Sold | The car is sold |
+| `verified` | Verified (with a check mark icon) | The car is fresh, not sold, and not new |
 
-Each definition also has `tooltip` and `tone` (the CSS tone, `er-badge--<tone>`).
-
-**Constants**:
-
-- `MAX_BADGES` (`2`): the most badges one car shows
+The display order is New, Sold, Verified. Each definition also has `tooltip`
+and `tone` (the CSS tone, `er-badge--<tone>`).
 
 **Methods**:
 
@@ -957,32 +953,42 @@ Each definition also has `tooltip` and `tone` (the CSS tone, `er-badge--<tone>`)
 public static function resolve(bool $sold, bool $fresh, bool $isNew): array
 public static function forCar(object $car, bool $isNew = false): array
 public static function decorateRows(array $rows, array $newIds): array
-public static function definitions(): array
-public static function parseSoldDate(mixed $solddate, mixed $carId = null): ?DateTimeImmutable
+public static function html(array $keys, string $style = 'flat'): string
+public static function isSold(mixed $solddate): bool
+public static function soldDate(mixed $solddate): ?DateTimeImmutable
 ```
 
-- `resolve()` is a pure function. It returns badge keys, highest priority
-  first. In each group, only the highest-priority badge stays. Then each
-  badge hides if a key in its `suppressedBy` stays. Then it keeps at most
-  `MAX_BADGES` keys.
-- `forCar()` takes a car record (for example `Car::data()`). Sold means a
-  `solddate` that is a real `Y-m-d` date. Null and `''` mean not sold. Fresh comes from `CarRepository::isFresh()` with
+- `resolve()` is a pure function. It applies the "Shows when" rule in the
+  table above and returns the badge keys in display order.
+- `forCar()` takes a car record (for example `Car::data()`). Sold comes
+  from `isSold()`. Fresh comes from `CarRepository::isFresh()` with
   `last_verified` and `owner_last_updated`. `$isNew` is true only on the
   cars list.
-- `decorateRows()` adds a `badges` key to each cars DataTables row. It reads
+- `decorateRows()` adds a `badges` key and a `badges_html` key to each cars
+  DataTables row. `badges_html` is the flat badges from `html()` in a
+  `<div class="er-badges ...">` row, or `''` when the car has no badges.
+  `car-list.js` puts it after the Details link. The method reads
   `solddate`, the `is_fresh` column (from `CarRepository::freshnessSql()`),
   and `id`. A row without `is_fresh` is not fresh, and the method writes one
-  log entry per call for those rows. It removes `is_fresh` from the row, so the API response does not
-  expose it. Rows can be objects or arrays. Object rows are cloned, so the
-  input does not change. `$newIds` comes from
+  log entry per call for those rows. It removes `is_fresh` from the row, so
+  the API response does not expose it. Rows are objects (the
+  `Database::results()` shape). Each row is cloned, so the input does not
+  change. `$newIds` comes from
   `CarShowcaseService::getNewCarIds()`.
-- `definitions()` returns the display data (`label`, `icon`, `tooltip`,
-  `tone`) for each key. It does not return `priority`, `group`, or
-  `suppressedBy`. `app/owner/cars/index.php` sends it to the cars list JS as
-  `carListConfig.badgeDefs`.
-- `parseSoldDate()` returns the sold date when `$solddate` is a real `Y-m-d`
-  date, and null when it is not. Null and `''` return null and do not log.
-  `$carId` goes into the log entry for a bad value.
+- `html()` returns one `<span class="er-badge er-badge--<tone>">` per known
+  key, in the order of `$keys`. `$style` is `'flat'` (pill) or `'stamp'`
+  (adds `er-badge--stamp`). Each span has a Bootstrap tooltip and
+  `tabindex="0"`. The icon goes in an `aria-hidden="true"` span. Unknown keys
+  give nothing. An empty result is `''`. There is no wrapper, so the caller
+  owns the container. All values are escaped with `htmlspecialchars()`.
+- `isSold()` is the sold rule for all pages: a `solddate` that is not null
+  and not `''`. The save paths (`app/api/cars/save.php`, `CarValidator`)
+  accept only a real `Y-m-d` date, so `isSold()` does not check the value
+  again. `forCar()`, `decorateRows()`, and the vericode pages use it.
+- `soldDate()` returns the sold date at midnight for display, or null when
+  the car is not sold or the value is not a `Y-m-d` string. The account
+  page, the car details page, and the vericode landing page use it for the
+  Vehicle Information card.
 
 **Behavior on bad date data**: `forCar()` does not throw. When
 `owner_last_updated` is missing or is not a string, `last_verified` is not
@@ -991,26 +997,13 @@ a string or null, or `CarRepository::isFresh()` throws
 (`LogCategories::LOG_CATEGORY_CAR_ERRORS`) and treats the car as not fresh.
 The Verified badge does not show. Sold still shows.
 
-**Behavior on a bad `solddate`**: `CarBadges::parseSoldDate()` is the one
-sold-date rule for all pages. The account page, the car details page, and the
-vericode landing page use it for the Vehicle Information card, and
-`forCar()` and `decorateRows()` use it for badge keys. None of them throw. A
-`solddate` that is not null, not `''`, and not a real `Y-m-d` date (for
-example `0000-00-00`, `2025-02-30`, text, or a non-string) means not sold.
-`parseSoldDate()` and `forCar()` write one log entry
-(`LOG_CATEGORY_CAR_ERRORS`) for each such value. `decorateRows()` writes one
-log entry per call, with the count and the first 10 car IDs. The application
-connection runs with `sql_mode = ''`, so MySQL can store a zero date.
-
 **Usage**:
 
 ```php
 use ElanRegistry\Car\CarBadges;
 
-// Account page hero: PHP partial
-$badgeKeys  = CarBadges::forCar($car->data());
-$badgeStyle = 'stamp'; // or 'flat'
-include $abs_us_root . $us_url_root . 'app/views/cars/_status_badges.php';
+// Account page hero (in the template: <?= ... ?>)
+echo CarBadges::html(CarBadges::forCar($carData), 'stamp');
 
 // Cars list API (app/api/cars/list.php)
 $response['data'] = CarBadges::decorateRows(
@@ -1022,16 +1015,16 @@ $response['data'] = CarBadges::decorateRows(
 **How to add a badge**:
 
 1. Add one entry to `CarBadges::BADGES`. Set `label`, `icon`, `tooltip`,
-   `tone`, `priority`, `group`, and `suppressedBy`.
-2. Add one flag for the new key in `resolve()` (the `$flags` array), and a
-   parameter if the flag needs new input.
+   and `tone`.
+2. Add one line for the new key in `resolve()`, in display order, and a
+   parameter if the rule needs new input.
 3. Add a `--er-badge-<tone>` token and an `.er-badge--<tone>` rule in
    `usersc/templates/customizer.css`.
 4. Add a case to `CarBadgesTest`, and add the badge to the Car status badges
    section of `app/admin/design-system.php`.
 
-Do not add the new rules to a template or to `car-list.js`. The partial and
-the JS draw any key that `definitions()` returns.
+Do not add the new rules to a template or to `car-list.js`. `html()` draws
+any key in `BADGES`, and the cars list JS needs no change.
 
 **See Also**:
 

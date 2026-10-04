@@ -55,9 +55,8 @@ $verifyEditAttr = htmlspecialchars($verifyEditUrl, ENT_QUOTES, 'UTF-8');
 // _vehicle_info_card.php's contract: $carData (the car row itself — same
 // shape $verifyCar already is) plus $purchaseDate/$soldDate as date
 // objects or null. Mirrors app/owner/cars/details.php's own construction of
-// these. A bad purchase date degrades to null. The sold date uses
-// CarBadges::parseSoldDate(), the same rule as verify_car.php's $isSold, so a
-// zero or invalid solddate is "not sold" on this page and in the sold action.
+// these. A bad purchase date degrades to null. Sold uses CarBadges::isSold(),
+// the same rule as verify_car.php's $isSold.
 $carData = $verifyCar;
 
 $purchaseDate = null;
@@ -76,8 +75,8 @@ if (!empty($verifyCar->purchasedate)) {
 // docblock). verify_car.php's dispatch-time globals ($soldDateValue,
 // $soldDateMin, $soldDateMax, $soldDateError) are all distinct names, so
 // this doesn't collide with renderVerifyPage()'s `global` list.
-$soldDate    = ElanRegistry\Car\CarBadges::parseSoldDate($verifyCar->solddate ?? null, $verifyCar->id ?? null);
-$alreadySold = $soldDate !== null;
+$soldDate    = ElanRegistry\Car\CarBadges::soldDate($verifyCar->solddate ?? null);
+$alreadySold = ElanRegistry\Car\CarBadges::isSold($verifyCar->solddate ?? null);
 
 $verifyOwnerLocation = ElanRegistry\OwnerView::displayLocation($verifyCar);
 $verifyOwnerWebsite  = ElanRegistry\OwnerView::websiteUrl($verifyCar->website ?? '');

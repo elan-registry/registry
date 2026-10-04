@@ -14,7 +14,6 @@ $pageDescription = 'Search and browse every Lotus Elan and Elan Plus 2 currently
 require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
-use ElanRegistry\Car\CarBadges;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Documentation\DocumentPortalTemplate;
 
@@ -113,8 +112,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <?php include 'includes/elan-config-island.php'; ?>
 <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 window.carListConfig = {
-    urlRoot: <?= json_encode((string)$us_url_root, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-    badgeDefs: <?= json_encode(CarBadges::definitions(), JSON_HEX_TAG | JSON_HEX_AMP) ?>
+    urlRoot: <?= json_encode((string)$us_url_root, JSON_HEX_TAG | JSON_HEX_AMP) ?>
 };
 window.img_root = <?= json_encode((string)($us_url_root . ELAN_IMAGE_DIR), JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 </script>

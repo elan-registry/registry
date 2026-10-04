@@ -18,6 +18,19 @@ use PHPUnit\Framework\TestCase;
 #[Group('unit')]
 final class CarBadgesTest extends TestCase
 {
+    // Expected markup is literal. Tooltip wording is from the AC of issue #1900.
+    // htmlspecialchars(ENT_QUOTES) encodes the apostrophe as &#039; and leaves
+    // the em dash as UTF-8 text.
+    private const SOLD_FLAT = '<span class="er-badge er-badge--sold" data-bs-toggle="tooltip"'
+        . ' data-bs-title="Reported sold by the owner — the car and its history stay in the registry."'
+        . ' tabindex="0">Sold</span>' . "\n";
+    private const NEW_FLAT = '<span class="er-badge er-badge--new" data-bs-toggle="tooltip"'
+        . ' data-bs-title="Added to the registry in the last 90 days, or one of the 5 newest cars."'
+        . ' tabindex="0">New</span>' . "\n";
+    private const VERIFIED_FLAT = '<span class="er-badge er-badge--verified" data-bs-toggle="tooltip"'
+        . ' data-bs-title="The owner confirmed this car&#039;s details within the last year."'
+        . ' tabindex="0"><span aria-hidden="true">✓</span> Verified</span>' . "\n";
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -49,19 +62,6 @@ final class CarBadgesTest extends TestCase
     private static function asObject(object|array $row): object
     {
         self::assertIsObject($row);
-
-        return $row;
-    }
-
-    /**
-     * Narrow a decorated row to an array row.
-     *
-     * @param object|array<string, mixed> $row
-     * @return array<string, mixed>
-     */
-    private static function asArray(object|array $row): array
-    {
-        self::assertIsArray($row);
 
         return $row;
     }
@@ -107,109 +107,112 @@ final class CarBadgesTest extends TestCase
         $result = CarBadges::resolve($sold, $fresh, $isNew);
 
         $this->assertSame($expected, $result);
-        $this->assertLessThanOrEqual(2, count($result));
     }
 
     // ------------------------------------------------------------------
-    // BADGES structure
+    // html()
     // ------------------------------------------------------------------
 
-    public function test_badges_structuralInvariants(): void
+    /** @return array<string, array{string, string}> */
+    public static function flatBadgeProvider(): array
     {
-        $constant = new ReflectionClassConstant(CarBadges::class, 'BADGES');
-        $badges = $constant->getValue();
-        $this->assertIsArray($badges);
-        $keys = array_keys($badges);
-
-        $priorities = [];
-        foreach ($badges as $key => $badge) {
-            $this->assertIsArray($badge);
-            $this->assertIsArray($badge['suppressedBy'], "{$key} suppressedBy");
-            foreach ($badge['suppressedBy'] as $suppressor) {
-                $this->assertContains($suppressor, $keys, "{$key} is suppressed by an unknown key");
-                $this->assertNotSame($key, $suppressor, "{$key} suppresses itself");
-            }
-            $group = $badge['group'];
-            $this->assertTrue(
-                $group === null || (is_string($group) && $group !== ''),
-                "{$key} group must be null or a non-empty string"
-            );
-            $priorities[] = $badge['priority'];
-        }
-        $this->assertSame($priorities, array_unique($priorities), 'Badge priorities must be unique');
-
-        $union = [];
-        foreach ([false, true] as $sold) {
-            foreach ([false, true] as $fresh) {
-                foreach ([false, true] as $isNew) {
-                    $union = array_merge($union, CarBadges::resolve($sold, $fresh, $isNew));
-                }
-            }
-        }
-        $union = array_unique($union);
-        sort($union);
-        $sortedKeys = $keys;
-        sort($sortedKeys);
-        $this->assertSame($sortedKeys, $union, 'Every badge must be reachable through resolve()');
-
-        $this->assertGreaterThanOrEqual(1, CarBadges::MAX_BADGES);
+        return [
+            'new'      => ['new', self::NEW_FLAT],
+            'sold'     => ['sold', self::SOLD_FLAT],
+            'verified' => ['verified', self::VERIFIED_FLAT],
+        ];
     }
 
-    // ------------------------------------------------------------------
-    // definitions()
-    // ------------------------------------------------------------------
-
-    public function test_definitions_everyKeyHasLabelTooltipAndTone(): void
+    #[DataProvider('flatBadgeProvider')]
+    public function test_html_flat_returnsLiteralMarkup(string $key, string $expected): void
     {
-        $definitions = CarBadges::definitions();
-
-        $this->assertSame(['new', 'sold', 'verified'], array_keys($definitions));
-        foreach ($definitions as $key => $definition) {
-            $this->assertNotSame('', $definition['label'], "{$key} label");
-            $this->assertNotSame('', $definition['tooltip'], "{$key} tooltip");
-            $this->assertNotSame('', $definition['tone'], "{$key} tone");
-            $this->assertArrayHasKey('icon', $definition, "{$key} icon");
-        }
+        $this->assertSame($expected, CarBadges::html([$key], 'flat'));
     }
 
-    public function test_definitions_tooltipsMatchAcceptanceCriteriaWording(): void
+    public function test_html_defaultStyle_isFlat(): void
     {
-        $definitions = CarBadges::definitions();
+        $this->assertSame(self::SOLD_FLAT, CarBadges::html(['sold']));
+    }
 
-        // Wording from the AC of issue #1900. Do not read these from the class.
+    public function test_html_unknownStyle_isFlat(): void
+    {
+        $this->assertSame(self::SOLD_FLAT, CarBadges::html(['sold'], 'bogus'));
+    }
+
+    public function test_html_stamp_addsStampClassOnly(): void
+    {
+        $this->assertSame(
+            '<span class="er-badge er-badge--verified er-badge--stamp" data-bs-toggle="tooltip"'
+            . ' data-bs-title="The owner confirmed this car&#039;s details within the last year."'
+            . ' tabindex="0"><span aria-hidden="true">✓</span> Verified</span>' . "\n",
+            CarBadges::html(['verified'], 'stamp')
+        );
+        $this->assertSame(
+            str_replace('er-badge--sold"', 'er-badge--sold er-badge--stamp"', self::SOLD_FLAT),
+            CarBadges::html(['sold'], 'stamp')
+        );
+    }
+
+    public function test_html_keepsKeyOrderAndSkipsUnknownKeys(): void
+    {
+        $this->assertSame(
+            self::SOLD_FLAT . self::VERIFIED_FLAT,
+            CarBadges::html(['sold', 'bogus', 'verified'])
+        );
+        $this->assertSame(
+            self::VERIFIED_FLAT . self::NEW_FLAT,
+            CarBadges::html(['verified', 'new'])
+        );
+    }
+
+    /** @return array<string, array{list<string>}> */
+    public static function noKnownKeyProvider(): array
+    {
+        return [
+            'empty list'   => [[]],
+            'unknown keys' => [['bogus', 'SOLD', '']],
+        ];
+    }
+
+    /**
+     * @param list<string> $keys
+     */
+    #[DataProvider('noKnownKeyProvider')]
+    public function test_html_noKnownKey_returnsEmptyString(array $keys): void
+    {
+        $this->assertSame('', CarBadges::html($keys, 'stamp'));
+    }
+
+    public function test_html_onlyVerifiedHasAriaHiddenIcon(): void
+    {
+        $this->assertStringNotContainsString('aria-hidden', CarBadges::html(['new', 'sold']));
+        $this->assertSame(1, substr_count(CarBadges::html(['new', 'sold', 'verified']), 'aria-hidden="true"'));
+    }
+
+    public function test_html_parsedDom_roundTripsTooltipAndReadsLabelWithoutIcon(): void
+    {
+        $doc = new DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        $doc->loadHTML(
+            '<?xml encoding="UTF-8"><div id="root">' . CarBadges::html(['sold', 'verified'], 'stamp') . '</div>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+        );
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        $xp = new DOMXPath($doc);
+
+        $verified = $xp->query('//span[contains(@class,"er-badge--verified")]')?->item(0);
+        $this->assertInstanceOf(DOMElement::class, $verified);
         $this->assertSame(
             "The owner confirmed this car's details within the last year.",
-            $definitions['verified']['tooltip']
+            $verified->getAttribute('data-bs-title')
         );
+        // A screen reader reads the badge text without the aria-hidden icon.
         $this->assertSame(
-            'Reported sold by the owner — the car and its history stay in the registry.',
-            $definitions['sold']['tooltip']
+            'Verified',
+            $xp->evaluate('normalize-space(string(//span[contains(@class,"er-badge--verified")]/text()))')
         );
-        $this->assertSame(
-            'Added to the registry in the last 90 days, or one of the 5 newest cars.',
-            $definitions['new']['tooltip']
-        );
-    }
-
-    public function test_definitions_labelsAndIconsAreLiteral(): void
-    {
-        $definitions = CarBadges::definitions();
-
-        $this->assertSame('New', $definitions['new']['label']);
-        $this->assertSame('Sold', $definitions['sold']['label']);
-        $this->assertSame('Verified', $definitions['verified']['label']);
-        $this->assertNull($definitions['new']['icon']);
-        $this->assertNull($definitions['sold']['icon']);
-        $this->assertSame('✓', $definitions['verified']['icon']);
-    }
-
-    public function test_definitions_doesNotExposePrecedenceFields(): void
-    {
-        foreach (CarBadges::definitions() as $key => $definition) {
-            $this->assertArrayNotHasKey('priority', $definition, $key);
-            $this->assertArrayNotHasKey('group', $definition, $key);
-            $this->assertArrayNotHasKey('suppressedBy', $definition, $key);
-        }
+        $this->assertSame(0, $xp->query('//*[@title or @aria-label]')?->length);
     }
 
     // ------------------------------------------------------------------
@@ -447,27 +450,6 @@ final class CarBadgesTest extends TestCase
         $this->assertObjectNotHasProperty('badges', $rows[0]);
     }
 
-    public function test_decorateRows_arrayRows_setsBadgesListAndRemovesIsFresh(): void
-    {
-        $rows = [
-            ['id' => 1, 'solddate' => null, 'is_fresh' => 1],
-            ['id' => 2, 'solddate' => '2025-01-01', 'is_fresh' => 1],
-            ['id' => 3, 'solddate' => null, 'is_fresh' => 1],
-            ['id' => 4, 'solddate' => null, 'is_fresh' => 0],
-        ];
-
-        $result = CarBadges::decorateRows($rows, [3]);
-
-        $this->assertSame(['verified'], self::asArray($result[0])['badges']);
-        $this->assertSame(['sold'], self::asArray($result[1])['badges']);
-        $this->assertSame(['new'], self::asArray($result[2])['badges']);
-        $this->assertSame([], self::asArray($result[3])['badges']);
-        foreach ($result as $row) {
-            $this->assertIsArray($row);
-            $this->assertArrayNotHasKey('is_fresh', $row);
-        }
-    }
-
     public function test_decorateRows_isFreshStrings_arePdoShaped(): void
     {
         $rows = [
@@ -525,7 +507,7 @@ final class CarBadgesTest extends TestCase
     {
         $rows = [
             (object) ['id' => 1, 'solddate' => null],
-            ['id' => 2, 'solddate' => null],
+            (object) ['id' => 2, 'solddate' => null],
             (object) ['id' => 3, 'solddate' => null],
             (object) ['id' => 4, 'solddate' => null, 'is_fresh' => 1],
         ];
@@ -533,7 +515,7 @@ final class CarBadgesTest extends TestCase
         $result = CarBadges::decorateRows($rows, []);
 
         $this->assertSame([], self::asObject($result[0])->badges);
-        $this->assertSame([], self::asArray($result[1])['badges']);
+        $this->assertSame([], self::asObject($result[1])->badges);
         $this->assertSame([], self::asObject($result[2])->badges);
         $this->assertSame(['verified'], self::asObject($result[3])->badges);
         $this->assertCount(1, self::logEntries());
@@ -541,173 +523,82 @@ final class CarBadgesTest extends TestCase
         $this->assertStringContainsString('is_fresh', self::logEntries()[0]['message']);
     }
 
-    // ------------------------------------------------------------------
-    // solddate validation (parseSoldDate) through forCar() and decorateRows()
-    // ------------------------------------------------------------------
-
-    /** @return array<string, array{mixed}> */
-    public static function badSolddateProvider(): array
-    {
-        return [
-            'zero date'        => ['0000-00-00'],
-            'garbage'          => ['garbage'],
-            'impossible date'  => ['2025-02-30'],
-            'int'              => [20250314],
-        ];
-    }
-
-    #[DataProvider('badSolddateProvider')]
-    public function test_forCar_badSolddate_noSoldAndLogsOnce(mixed $solddate): void
-    {
-        $car = self::car(['solddate' => $solddate]);
-
-        $this->assertSame([], CarBadges::forCar($car));
-        $this->assertCount(1, self::logEntries());
-        $this->assertSame(LogCategories::LOG_CATEGORY_CAR_ERRORS, self::logEntries()[0]['category']);
-        $this->assertStringContainsString('solddate', self::logEntries()[0]['message']);
-    }
-
-    #[DataProvider('badSolddateProvider')]
-    public function test_decorateRows_badSolddate_noSoldAndLogsOnce(mixed $solddate): void
-    {
-        $rows = [(object) ['id' => 1, 'solddate' => $solddate, 'is_fresh' => 0]];
-
-        $result = CarBadges::decorateRows($rows, []);
-
-        $this->assertSame([], self::asObject($result[0])->badges);
-        $this->assertCount(1, self::logEntries());
-        $this->assertSame(LogCategories::LOG_CATEGORY_CAR_ERRORS, self::logEntries()[0]['category']);
-    }
-
-    public function test_decorateRows_badSolddateOnManyRows_logsOncePerCallWithCount(): void
+    public function test_decorateRows_badgesHtml_isWrappedFlatHtmlOrEmpty(): void
     {
         $rows = [
-            (object) ['id' => 11, 'solddate' => '0000-00-00', 'is_fresh' => 0],
-            ['id' => 12, 'solddate' => '2025-02-30', 'is_fresh' => 0],
-            (object) ['id' => 13, 'solddate' => 'garbage', 'is_fresh' => 0],
-            (object) ['id' => 14, 'solddate' => '2025-03-14', 'is_fresh' => 0],
+            (object) ['id' => 1, 'solddate' => '2025-01-01', 'is_fresh' => 0],
+            (object) ['id' => 2, 'solddate' => null, 'is_fresh' => 0],
+            (object) ['id' => 3, 'solddate' => '2025-01-01', 'is_fresh' => 1],
+            (object) ['id' => 4, 'solddate' => null, 'is_fresh' => 0],
         ];
 
-        $result = CarBadges::decorateRows($rows, []);
+        $result = CarBadges::decorateRows($rows, [1]);
 
-        $this->assertSame([], self::asObject($result[0])->badges);
-        $this->assertSame([], self::asArray($result[1])['badges']);
-        $this->assertSame([], self::asObject($result[2])->badges);
-        $this->assertSame(['sold'], self::asObject($result[3])->badges);
-        $this->assertCount(1, self::logEntries());
-        $this->assertSame(LogCategories::LOG_CATEGORY_CAR_ERRORS, self::logEntries()[0]['category']);
-        $message = self::logEntries()[0]['message'];
-        $this->assertIsString($message);
-        $this->assertStringContainsString('3 of 4 rows have a bad solddate', $message);
-        $this->assertStringContainsString('11, 12, 13', $message);
-    }
-
-    public function test_decorateRows_badSolddateOnMoreThanTenRows_capsLoggedIds(): void
-    {
-        $rows = [];
-        for ($id = 1; $id <= 12; $id++) {
-            $rows[] = (object) ['id' => $id, 'solddate' => '0000-00-00', 'is_fresh' => 0];
-        }
-
-        CarBadges::decorateRows($rows, []);
-
-        $this->assertCount(1, self::logEntries());
-        $message = self::logEntries()[0]['message'];
-        $this->assertIsString($message);
-        $this->assertStringContainsString('12 of 12 rows', $message);
-        $this->assertStringContainsString('1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...', $message);
-        $this->assertStringNotContainsString('11', $message);
+        $wrapper = '<div class="er-badges d-flex flex-wrap gap-1 mt-1">';
+        $this->assertSame(
+            $wrapper . self::NEW_FLAT . self::SOLD_FLAT . '</div>',
+            self::asObject($result[0])->badges_html
+        );
+        $this->assertSame('', self::asObject($result[1])->badges_html);
+        $this->assertSame($wrapper . self::SOLD_FLAT . '</div>', self::asObject($result[2])->badges_html);
+        $this->assertSame('', self::asObject($result[3])->badges_html);
     }
 
     // ------------------------------------------------------------------
-    // parseSoldDate()
+    // isSold() and soldDate()
     // ------------------------------------------------------------------
 
-    public function test_parseSoldDate_validDate_returnsThatDateWithoutLog(): void
-    {
-        $parsed = CarBadges::parseSoldDate('2024-02-29', 501);
-
-        $this->assertNotNull($parsed);
-        $this->assertSame('2024-02-29 00:00:00', $parsed->format('Y-m-d H:i:s'));
-        $this->assertSame([], self::logEntries());
-    }
-
-    #[DataProvider('emptySolddateProvider')]
-    public function test_parseSoldDate_empty_returnsNullWithoutLog(mixed $solddate): void
-    {
-        $this->assertNull(CarBadges::parseSoldDate($solddate, 501));
-        $this->assertSame([], self::logEntries());
-    }
-
-    #[DataProvider('badSolddateProvider')]
-    public function test_parseSoldDate_badValue_returnsNullAndLogsOnce(mixed $solddate): void
-    {
-        $this->assertNull(CarBadges::parseSoldDate($solddate, 501));
-        $this->assertCount(1, self::logEntries());
-        $this->assertSame(LogCategories::LOG_CATEGORY_CAR_ERRORS, self::logEntries()[0]['category']);
-        $message = self::logEntries()[0]['message'];
-        $this->assertIsString($message);
-        $this->assertStringContainsString('car 501 has a bad solddate', $message);
-    }
-
-    #[DataProvider('badSolddateProvider')]
-    public function test_parseSoldDate_badValueWithLogInvalidFalse_returnsNullWithoutLog(mixed $solddate): void
-    {
-        $this->assertNull(CarBadges::parseSoldDate($solddate, 501, false));
-        $this->assertCount(0, self::logEntries());
-    }
-
-    public function test_parseSoldDate_validDateWithLogInvalidFalse_returnsThatDate(): void
-    {
-        $parsed = CarBadges::parseSoldDate('2024-02-29', 501, false);
-        $this->assertNotNull($parsed);
-        $this->assertSame('2024-02-29', $parsed->format('Y-m-d'));
-    }
-
-    public function test_parseSoldDate_withoutCarId_logsUnknownCarId(): void
-    {
-        $this->assertNull(CarBadges::parseSoldDate('0000-00-00'));
-        $this->assertCount(1, self::logEntries());
-        $message = self::logEntries()[0]['message'];
-        $this->assertIsString($message);
-        $this->assertStringContainsString('car unknown has a bad solddate', $message);
-    }
-
-    public function test_validSolddate_isSoldWithoutLog(): void
-    {
-        $this->assertSame(['sold'], CarBadges::forCar(self::car(['solddate' => '2024-02-29'])));
-        $result = CarBadges::decorateRows([['id' => 1, 'solddate' => '2025-03-14', 'is_fresh' => 0]], []);
-        $this->assertSame(['sold'], self::asArray($result[0])['badges']);
-
-        $this->assertSame([], self::logEntries());
-    }
-
-    /** @return array<string, array{mixed}> */
-    public static function emptySolddateProvider(): array
+    /** @return array<string, array{mixed, bool}> */
+    public static function isSoldProvider(): array
     {
         return [
-            'null'         => [null],
-            'empty string' => [''],
+            'null'         => [null, false],
+            'empty string' => ['', false],
+            'date'         => ['2024-02-29', true],
         ];
     }
 
-    #[DataProvider('emptySolddateProvider')]
-    public function test_emptySolddate_isNotSoldWithoutLog(mixed $solddate): void
+    #[DataProvider('isSoldProvider')]
+    public function test_isSold_followsNonEmptySolddate(mixed $solddate, bool $expected): void
     {
-        $this->assertSame([], CarBadges::forCar(self::car(['solddate' => $solddate])));
+        $this->assertSame($expected, CarBadges::isSold($solddate));
+        $this->assertSame($expected ? ['sold'] : [], CarBadges::forCar(self::car(['solddate' => $solddate])));
         $result = CarBadges::decorateRows([(object) ['id' => 1, 'solddate' => $solddate, 'is_fresh' => 0]], []);
-        $this->assertSame([], self::asObject($result[0])->badges);
-
+        $this->assertSame($expected ? ['sold'] : [], self::asObject($result[0])->badges);
         $this->assertSame([], self::logEntries());
     }
 
-    public function test_missingSolddate_isNotSoldWithoutLog(): void
+    public function test_missingSolddate_isNotSold(): void
     {
         $car = self::car();
         unset($car->solddate);
 
         $this->assertSame([], CarBadges::forCar($car));
-        $this->assertSame([], self::logEntries());
+    }
+
+    public function test_soldDate_validDate_returnsThatDateAtMidnight(): void
+    {
+        $parsed = CarBadges::soldDate('2024-02-29');
+
+        $this->assertNotNull($parsed);
+        $this->assertSame('2024-02-29 00:00:00', $parsed->format('Y-m-d H:i:s'));
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function noSoldDateProvider(): array
+    {
+        return [
+            'null'         => [null],
+            'empty string' => [''],
+            'not a date'   => ['garbage'],
+            'not a string' => [20250314],
+        ];
+    }
+
+    #[DataProvider('noSoldDateProvider')]
+    public function test_soldDate_withoutAYmdString_returnsNull(mixed $solddate): void
+    {
+        $this->assertNull(CarBadges::soldDate($solddate));
     }
 
     public function test_decorateRows_stringId_matchesNewIds(): void
