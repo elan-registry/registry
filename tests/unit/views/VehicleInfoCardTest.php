@@ -194,6 +194,59 @@ final class VehicleInfoCardTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Registry dates (ctime, mtime)
+    // ------------------------------------------------------------------
+
+    private const ADDED_STRONG = '//small[normalize-space(.)="Added to Registry"]/following-sibling::strong[1]';
+    private const UPDATED_STRONG = '//small[normalize-space(.)="Last Updated"]/following-sibling::strong[1]';
+
+    public function test_registryDates_validDates_showShortDates(): void
+    {
+        $xp = self::card(self::carData());
+
+        $this->assertSame('Jan 2, 2020', trim($this->firstElement($xp, self::ADDED_STRONG)->textContent));
+        $this->assertSame('Feb 3, 2021', trim($this->firstElement($xp, self::UPDATED_STRONG)->textContent));
+        $this->assertSame([], self::logEntries());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function registryDateColumnProvider(): array
+    {
+        return [
+            'ctime' => ['ctime'],
+            'mtime' => ['mtime'],
+        ];
+    }
+
+    #[DataProvider('registryDateColumnProvider')]
+    public function test_registryDates_zeroDate_isEmptyWithoutLog(string $column): void
+    {
+        $xp = self::card(self::carData([$column => '0000-00-00 00:00:00']));
+
+        $query = $column === 'ctime' ? self::ADDED_STRONG : self::UPDATED_STRONG;
+        $this->assertSame('', trim($this->firstElement($xp, $query)->textContent));
+        $this->assertSame([], self::logEntries());
+    }
+
+    #[DataProvider('registryDateColumnProvider')]
+    public function test_registryDates_badDate_isEmptyAndLogsCarIdAndColumn(string $column): void
+    {
+        $xp = self::card(self::carData(['id' => 812, $column => 'garbage']));
+
+        $query = $column === 'ctime' ? self::ADDED_STRONG : self::UPDATED_STRONG;
+        $this->assertSame('', trim($this->firstElement($xp, $query)->textContent));
+        $this->assertCount(1, self::logEntries());
+        $this->assertSame(
+            \ElanRegistry\LogCategories::LOG_CATEGORY_CAR_ERRORS,
+            self::logEntries()[0]['category']
+        );
+        $this->assertStringContainsString(
+            "_vehicle_info_card.php: car 812 has {$column} 'garbage', which is not a valid date.",
+            (string) self::logEntries()[0]['message']
+        );
+    }
+
+    // ------------------------------------------------------------------
     // Verified row (#1897)
     // ------------------------------------------------------------------
 
@@ -384,7 +437,14 @@ final class VehicleInfoCardTest extends TestCase
         $this->assertStringNotContainsString('Suppressed', $html);
     }
 
-    public function test_emailRow_carsOwnOwnerWithFlag_hasNoRow(): void
+    /**
+     * The row stays hidden when $viewerIsRegistryAdmin is false, also on a
+     * flagged car. The card does not read user_id, so this test cannot tell
+     * the car's owner from any other viewer. The Playwright test "Email on
+     * file row: owner who is not an admin" in car-verified-row.spec.js covers
+     * the real owner case.
+     */
+    public function test_emailRow_viewerNotRegistryAdmin_flaggedCar_hasNoRow(): void
     {
         $xp = self::card(
             self::carData(array_merge(self::flagged(false, true), ['user_id' => 42])),
@@ -449,7 +509,7 @@ final class VehicleInfoCardTest extends TestCase
         $this->assertStringNotContainsString('Resume', $suppressed);
         $this->assertStringNotContainsString('Resume', $bounced);
         $this->assertSame(
-            'Email to this owner bounced. Verification emails start again when the owner confirms a working address.',
+            'Email to this owner bounced. Verification emails start again when the owner confirms a different, working address.',
             $bounced
         );
     }

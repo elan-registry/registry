@@ -10,8 +10,8 @@
 // each car shows) plus 8 sold filler cars, so a search for the chassis marker
 // gives 12 rows and a second page. The fixture needs the application database.
 // The local stack is Docker only (DB_HOST=db does not resolve on the host), so
-// the spec runs the fixture in the app container. If Docker is not available,
-// it falls back to the host `php`.
+// the spec runs the fixture in the app container. It uses the host `php` only
+// when the docker command is not installed.
 //
 // The list tests are public. The account test logs in as the seeded owner
 // with the random password that the fixture prints.

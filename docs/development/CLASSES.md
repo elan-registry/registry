@@ -646,16 +646,17 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `CarValidationException` if either is empty, malformed, or not a real
   calendar date (`2026-02-30` is rejected rather than rolled over to March 2),
   because a malformed value there is a programming error, not a data state.
-  The hook catches this per-car and renders an isolated "Unknown" badge for
+  It reads `freshnessCutoff()` one time and compares both parsed operands to
+  that one value, so both comparisons use the same second. The hook catches this per-car and renders an isolated "Unknown" badge for
   that row rather than failing the whole panel.
-- `isWithinFreshnessWindow(string $timestamp, string $column = 'timestamp'): bool` -
-  Decide if one datetime string is inside the 1-year freshness window that
-  `isFresh()` applies to each operand separately. It compares the result of
-  `parseTimestamp()` with `freshnessCutoff()`. Throws `CarValidationException`
-  if $timestamp is empty, malformed, or not a real calendar date. The `$column`
-  parameter is for the exception message. The default `'timestamp'` is for a
-  caller with no column context. Uses PHP's clock (see the timezone note on
-  `isFresh()`).
+- `isWithinFreshnessWindow(string $timestamp, string $column): bool` -
+  Decide if one datetime string is inside the 1-year freshness window. It
+  compares the result of `parseTimestamp()` with `freshnessCutoff()`. Throws
+  `CarValidationException` if $timestamp is empty, malformed, or not a real
+  calendar date. The required `$column` parameter names the column in the
+  exception message. `CarBadges::verifiedStatus()` uses it to pick the shown
+  date after `isFresh()` says the car is fresh. Uses PHP's clock (see the
+  timezone note on `isFresh()`).
 - `parseTimestamp(string $value, string $column): DateTimeImmutable` - The one
   parser for `last_verified` and `owner_last_updated`. Accepts `Y-m-d H:i:s`
   (a `T` separator is also accepted) and rejects an empty value, a relative
@@ -665,9 +666,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   example `CarBadges::verifiedStatus()`) shows the returned object, so the
   shown date is the validated date.
 - `freshnessCutoff(): int` - The one PHP definition of the window start: the
-  Unix timestamp of one year ago, from PHP's clock. A caller that compares
-  more than one value (for example `CarBadges::verifiedStatus()`) gets the
-  cutoff one time, so all comparisons use the same second.
+  Unix timestamp of one year ago, from PHP's clock. Each call reads the clock
+  again. `isFresh()` reads it one time for both of its comparisons. Throws
+  `CarValidationException` if `strtotime('-1 year')` returns false, because a
+  cast to 0 would make every car fresh.
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
   bounce/suppression state for every car a user owns (`id`, `model`, `series`,
   `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
@@ -1028,22 +1030,23 @@ public static function verifiedStatus(object $car): ?array
   fresh (verified or updated by its owner within the last 12 months), and the
   freshness dates are valid strings. Returns null otherwise (sold car, stale car,
   or missing/malformed dates). On malformed dates it logs one entry to the car
-  errors category. It never reads `mtime`. It parses each date one time with
-  `CarRepository::parseTimestamp()` and compares with one
-  `CarRepository::freshnessCutoff()` value. The source is `'confirmed'` when
-  `last_verified` is inside the freshness window, or `'current'` when only
-  `owner_last_updated` is. The date is the parsed `DateTimeImmutable` of
-  whichever field made the car fresh, so it is the validated date. The return
-  shape is `array{source: 'confirmed'|'current', date: DateTimeImmutable}`.
-  Used by the Vehicle Information card for its Verified row on the account page, car details page, and public vericode
-  landing page.
+  errors category. It never reads `mtime`. `CarRepository::isFresh()` decides
+  if the car is fresh, so the rule is not copied here. For a fresh car, the
+  source is `'confirmed'` when `last_verified` is not null and
+  `CarRepository::isWithinFreshnessWindow()` is true for it, else `'current'`.
+  The date is the `CarRepository::parseTimestamp()` result for the column of
+  that source, so it is the validated date. The return shape is `array{source: 'confirmed'|'current', date: DateTimeImmutable}`.
+  Used by the Vehicle Information card.
 
 **Behavior on bad date data**: `forCar()` does not throw. When
 `owner_last_updated` is missing or is not a string, `last_verified` is not
 a string or null, or `CarRepository::isFresh()` throws
 `CarValidationException`, the method writes one entry to the log
 (`LogCategories::LOG_CATEGORY_CAR_ERRORS`) and treats the car as not fresh.
-The Verified badge does not show. Sold still shows.
+The Verified badge does not show. Sold still shows. `verifiedStatus()` does
+the same and returns null. The log message names the method
+(`CarBadges::forCar` or `CarBadges::verifiedStatus`), so the log shows which
+page part has no Verified status.
 
 **Usage**:
 

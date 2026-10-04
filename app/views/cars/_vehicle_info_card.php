@@ -65,6 +65,36 @@ $_helpButton = static function (string $ariaLabel, string $tooltip): string {
         . ' aria-label="' . htmlspecialchars($ariaLabel, ENT_QUOTES, 'UTF-8') . '">'
         . '<i class="fas fa-circle-question" aria-hidden="true"></i></button>';
 };
+
+/**
+ * Get a registry date (ctime or mtime) for display.
+ *
+ * DB.php sets sql_mode = '', so MySQL can return a zero date. DateTime turns
+ * '0000-00-00' into Nov 30, -0001, so the card shows a zero date as missing.
+ * A value that DateTime cannot parse is a data defect, so it goes to the log.
+ *
+ * @param object $carData Car row
+ * @param string $column  'ctime' or 'mtime'
+ * @return string The date as 'M j, Y', or '' when the value is missing or bad
+ */
+$_registryDate = static function (object $carData, string $column): string {
+    $value = $carData->{$column} ?? null;
+    if (empty($value) || str_starts_with((string) $value, '0000-00-00')) {
+        return '';
+    }
+    try {
+        return (new DateTime((string) $value))->format('M j, Y');
+    } catch (\Exception $e) {
+        logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_CAR_ERRORS, sprintf(
+            "_vehicle_info_card.php: car %s has %s '%s', which is not a valid date. Date not shown: %s",
+            is_scalar($carData->id ?? null) ? (string) $carData->id : 'unknown',
+            $column,
+            (string) $value,
+            $e->getMessage()
+        ));
+        return '';
+    }
+};
 ?>
 <div class="card registry-card mb-4">
     <div class="card-header<?= $_cardHeaderClass ?>">
@@ -170,7 +200,7 @@ $_helpButton = static function (string $ariaLabel, string $tooltip): string {
             </dt>
             <dd class="col-sm-8">
                 <?php if ($_emailBounced) { ?>
-                <span class="me-3">Bounced <?= $_helpButton('What Bounced means', 'Email to this owner bounced. Verification emails start again when the owner confirms a working address.') ?></span>
+                <span class="me-3">Bounced <?= $_helpButton('What Bounced means', 'Email to this owner bounced. Verification emails start again when the owner confirms a different, working address.') ?></span>
                 <?php } ?>
                 <?php if ($_emailSuppressed) { ?>
                 <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab.") ?></span>
@@ -197,14 +227,14 @@ $_helpButton = static function (string $ariaLabel, string $tooltip): string {
                 <i class="fas fa-plus-circle text-success d-block mb-1" aria-hidden="true"></i>
                 <small class="text-muted d-block">Added to Registry</small>
                 <strong>
-                    <?php try { echo !empty($carData->ctime) ? (new DateTime($carData->ctime))->format('M j, Y') : ''; } catch (\Exception) { echo ''; } ?>
+                    <?= $_registryDate($carData, 'ctime') ?>
                 </strong>
             </div>
             <div class="col-6">
                 <i class="fas fa-edit text-info d-block mb-1" aria-hidden="true"></i>
                 <small class="text-muted d-block">Last Updated</small>
                 <strong>
-                    <?php try { echo !empty($carData->mtime) ? (new DateTime($carData->mtime))->format('M j, Y') : ''; } catch (\Exception) { echo ''; } ?>
+                    <?= $_registryDate($carData, 'mtime') ?>
                 </strong>
             </div>
         </div>

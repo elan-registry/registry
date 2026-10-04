@@ -293,12 +293,9 @@ page (`app/admin/design-system.php`). It draws the badges with `CarBadges::html(
 
 ### Help Buttons
 
-Use a help button for inline explanatory tooltips on field labels or short help
-text. The button is a focusable `<button type="button">` with a circle-question
-icon.
-
-A help button on a label makes the field's purpose clear without taking space.
-The tooltip appears on hover and focus, and the button is reachable by keyboard.
+Use a help button to explain a field label or short help text in a tooltip.
+The button takes no space on the page. The tooltip shows on hover and on
+keyboard focus.
 
 ```php
 <!-- ✅ Help button with all required attributes -->
@@ -307,27 +304,18 @@ The tooltip appears on hover and focus, and the button is reachable by keyboard.
 </dt>
 ```
 
-**Implementation pattern** (used in `app/views/cars/_vehicle_info_card.php`):
-
-```php
-$_helpButton = static function (string $ariaLabel, string $tooltip): string {
-    return '<button type="button" class="btn btn-link p-0 align-baseline"'
-        . ' data-bs-toggle="tooltip" data-bs-title="' . htmlspecialchars($tooltip, ENT_QUOTES, 'UTF-8') . '"'
-        . ' aria-label="' . htmlspecialchars($ariaLabel, ENT_QUOTES, 'UTF-8') . '">'
-        . '<i class="fas fa-circle-question" aria-hidden="true"></i></button>';
-};
-```
+The `$_helpButton` helper is defined in
+[`app/views/cars/_vehicle_info_card.php`](../../app/views/cars/_vehicle_info_card.php).
 
 **Requirements:**
 
-- Button type is always `"button"` to prevent form submission
-- Class `btn btn-link` for a link-style button (no background)
-- Class `p-0 align-baseline` removes padding and aligns the icon to text baseline
-- `data-bs-toggle="tooltip"` and `data-bs-title` for Bootstrap tooltip
-- All user text is escaped with `htmlspecialchars($text, ENT_QUOTES, 'UTF-8')`
-- Icon is always `<i class="fas fa-circle-question" aria-hidden="true"></i>`
-- `aria-label` provides an accessible name for screen readers
-- Tooltips are initialized by the existing footer script that starts Bootstrap tooltips on the page
+- A real `<button type="button">`, so the button takes keyboard focus and does not submit a form
+- Class `btn btn-link p-0 align-baseline`: a link-style button with no padding, aligned to the text baseline
+- `data-bs-toggle="tooltip"` and `data-bs-title` for the Bootstrap tooltip
+- `aria-label` gives screen readers an accessible name
+- The icon is `<i class="fas fa-circle-question" aria-hidden="true"></i>`
+- All label and tooltip text is escaped with `htmlspecialchars($text, ENT_QUOTES, 'UTF-8')`
+- The footer script that starts Bootstrap tooltips on the page initializes the tooltip
 
 ### Alerts
 

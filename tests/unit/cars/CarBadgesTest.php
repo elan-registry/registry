@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarBadges;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -415,6 +416,100 @@ final class CarBadgesTest extends TestCase
         $this->assertNull($outside);
     }
 
+    /**
+     * Datetime string at an offset in seconds from the freshness cutoff.
+     *
+     * A 5-second margin keeps the value on its side of the cutoff when the
+     * clock ticks between this call and the call under test.
+     */
+    private static function cutoffPlus(int $seconds): string
+    {
+        return date('Y-m-d H:i:s', CarRepository::freshnessCutoff() + $seconds);
+    }
+
+    /** @return array<string, array{?string}> */
+    public static function staleOrNullLastVerifiedProvider(): array
+    {
+        return [
+            'last_verified stale' => [self::daysAgo(900)],
+            'last_verified null'  => [null],
+        ];
+    }
+
+    // owner_last_updated is NOT NULL by schema, so the last_verified tests use
+    // only a stale owner_last_updated as the other column.
+    public function test_verifiedStatus_lastVerifiedJustInsideCutoff_staleOwner_isConfirmed(): void
+    {
+        $verified = self::cutoffPlus(5);
+        $status = CarBadges::verifiedStatus(self::car([
+            'last_verified'      => $verified,
+            'owner_last_updated' => self::daysAgo(900),
+        ]));
+
+        $this->assertNotNull($status);
+        $this->assertSame('confirmed', $status['source']);
+        $this->assertSame($verified, $status['date']->format('Y-m-d H:i:s'));
+    }
+
+    public function test_verifiedStatus_lastVerifiedJustOutsideCutoff_staleOwner_isNull(): void
+    {
+        $this->assertNull(CarBadges::verifiedStatus(self::car([
+            'last_verified'      => self::cutoffPlus(-5),
+            'owner_last_updated' => self::daysAgo(900),
+        ])));
+        $this->assertSame([], self::logEntries());
+    }
+
+    public function test_verifiedStatus_lastVerifiedJustOutsideCutoff_freshOwner_isCurrent(): void
+    {
+        $owner = self::daysAgo(7);
+        $status = CarBadges::verifiedStatus(self::car([
+            'last_verified'      => self::cutoffPlus(-5),
+            'owner_last_updated' => $owner,
+        ]));
+
+        $this->assertNotNull($status);
+        $this->assertSame('current', $status['source']);
+        $this->assertSame($owner, $status['date']->format('Y-m-d H:i:s'));
+    }
+
+    #[DataProvider('staleOrNullLastVerifiedProvider')]
+    public function test_verifiedStatus_ownerJustInsideCutoff_isCurrent(?string $lastVerified): void
+    {
+        $owner = self::cutoffPlus(5);
+        $status = CarBadges::verifiedStatus(self::car([
+            'last_verified'      => $lastVerified,
+            'owner_last_updated' => $owner,
+        ]));
+
+        $this->assertNotNull($status);
+        $this->assertSame('current', $status['source']);
+        $this->assertSame($owner, $status['date']->format('Y-m-d H:i:s'));
+    }
+
+    #[DataProvider('staleOrNullLastVerifiedProvider')]
+    public function test_verifiedStatus_ownerJustOutsideCutoff_isNull(?string $lastVerified): void
+    {
+        $this->assertNull(CarBadges::verifiedStatus(self::car([
+            'last_verified'      => $lastVerified,
+            'owner_last_updated' => self::cutoffPlus(-5),
+        ])));
+        $this->assertSame([], self::logEntries());
+    }
+
+    public function test_verifiedStatus_ownerJustOutsideCutoff_freshLastVerified_isConfirmed(): void
+    {
+        $verified = self::daysAgo(7);
+        $status = CarBadges::verifiedStatus(self::car([
+            'last_verified'      => $verified,
+            'owner_last_updated' => self::cutoffPlus(-5),
+        ]));
+
+        $this->assertNotNull($status);
+        $this->assertSame('confirmed', $status['source']);
+        $this->assertSame($verified, $status['date']->format('Y-m-d H:i:s'));
+    }
+
     public function test_verifiedStatus_recentMtimeWithStaleDates_isNull(): void
     {
         $this->assertNull(CarBadges::verifiedStatus(self::car(['mtime' => date('Y-m-d H:i:s')])));
@@ -473,6 +568,10 @@ final class CarBadgesTest extends TestCase
         $this->assertNull(CarBadges::verifiedStatus($car));
         $this->assertCount(1, self::logEntries());
         $this->assertSame(LogCategories::LOG_CATEGORY_CAR_ERRORS, self::logEntries()[0]['category']);
+        $this->assertStringContainsString(
+            'CarBadges::verifiedStatus: car 501 has bad freshness dates, Verified status not shown: ',
+            self::logEntries()[0]['message']
+        );
     }
 
     #[DataProvider('wrongTypedValueProvider')]
@@ -645,7 +744,10 @@ final class CarBadgesTest extends TestCase
         $this->assertSame([], CarBadges::forCar($car));
         $this->assertCount(1, self::logEntries());
         $this->assertSame(LogCategories::LOG_CATEGORY_CAR_ERRORS, self::logEntries()[0]['category']);
-        $this->assertStringContainsString('501', self::logEntries()[0]['message']);
+        $this->assertStringContainsString(
+            'CarBadges::forCar: car 501 has bad freshness dates, Verified status not shown: ',
+            self::logEntries()[0]['message']
+        );
     }
 
     /** @return array<string, array{array<string, mixed>}> */

@@ -57,6 +57,8 @@ use ElanRegistry\Car\CarRepository;
  *
  * Run it where the app can reach the database. Local Docker:
  * `docker compose exec -T -u www-data app php tests/playwright/local/fixtures/seed-car-badges.php`
+ * The specs run this command through tests/playwright/fixture-runner.js.
+ * The runner uses the host `php` only when the docker command is not installed.
  *
  * GUARD: this must NEVER run against a deployed environment. The script
  * refuses to run unless US_ENVIRONMENT=development (see seed-bounced-car.php
@@ -285,10 +287,14 @@ foreach ($specs as $name => $spec) {
     // keeps the plaintext so the spec can open the link.
     if ($verifiedRowMode && in_array($name, ['confirmed', 'suppressed'], true)) {
         $plainCode = $verificationManager->generateVerificationCode();
-        $carRepository->updateCar($carId, [
+        $updated = $carRepository->updateCar($carId, [
             'vericode'         => hashVericode($plainCode),
             'vericode_sent_at' => $vericodeSentAt,
         ]);
+        if (!$updated) {
+            fwrite(STDERR, "ERROR: Failed to set the vericode on seed car '{$name}': {$carRepository->errorString()}\n");
+            exit(1);
+        }
         $vericodes[$name] = $plainCode;
     }
 }

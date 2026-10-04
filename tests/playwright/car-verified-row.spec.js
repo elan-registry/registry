@@ -10,7 +10,8 @@
 // car shows). The fixture has its own owner and chassis marker, so this spec
 // can run in parallel with car-badges.spec.js. The fixture needs the
 // application database. The local stack is Docker only, so the spec runs the
-// fixture in the app container and falls back to the host `php`.
+// fixture in the app container. It uses the host `php` only when the docker
+// command is not installed.
 //
 // The admin tests log in with E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD
 // from .env.local. They skip, with a reason, when these are not set.
@@ -140,6 +141,16 @@ test.describe('Verified row: anonymous visitor on the details page', () => {
         const tooltip = page.getByRole('tooltip');
         await expect(tooltip).toBeVisible();
         await expect(tooltip).toHaveText("The owner confirmed, added, or updated this car's record in the last 12 months.");
+    });
+
+    test('suppressed car and bounced car show no Email on file row', async ({ page }) => {
+        for (const key of ['suppressed', 'bounced']) {
+            await page.goto(detailsUrl(seeded.cars[key]), { waitUntil: 'networkidle' });
+            // Non-vacuous: the card rendered its Verified row for the same car.
+            await expect(verifiedLabel(page)).toHaveCount(1);
+            await expect(emailLabel(page)).toHaveCount(0);
+            expect(await page.content()).not.toContain(seeded.bouncedAddress);
+        }
     });
 });
 

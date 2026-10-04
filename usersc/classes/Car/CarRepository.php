@@ -831,7 +831,8 @@ class CarRepository
      * @param string|null $lastVerified      Datetime string, or null if never verified
      * @param string      $ownerLastUpdated  Datetime string (NOT NULL by schema)
      * @return bool True when the car counts as fresh
-     * @throws CarValidationException If either argument is an empty or unparseable date string
+     * @throws CarValidationException If either argument is an empty or unparseable date string,
+     *                                or if PHP cannot calculate the freshness cutoff
      */
     public static function isFresh(?string $lastVerified, string $ownerLastUpdated): bool
     {
@@ -844,11 +845,16 @@ class CarRepository
         // one place the PHP form intentionally diverges from the SQL form's OR
         // short-circuit: SQL cannot raise on a malformed DATETIME because the
         // column type makes one unrepresentable.
-        $ownerFresh    = self::isWithinFreshnessWindow($ownerLastUpdated, 'owner_last_updated');
-        $verifiedFresh = $lastVerified !== null
-            && self::isWithinFreshnessWindow($lastVerified, 'last_verified');
+        $ownerDate    = self::parseTimestamp($ownerLastUpdated, 'owner_last_updated');
+        $verifiedDate = $lastVerified === null
+            ? null
+            : self::parseTimestamp($lastVerified, 'last_verified');
 
-        return $ownerFresh || $verifiedFresh;
+        // Read the clock once, so both operands are compared to the same second.
+        $cutoff = self::freshnessCutoff();
+
+        return $ownerDate->getTimestamp() >= $cutoff
+            || ($verifiedDate !== null && $verifiedDate->getTimestamp() >= $cutoff);
     }
 
     /**
@@ -861,9 +867,10 @@ class CarRepository
      * @param string $timestamp Datetime string in `Y-m-d H:i:s` format (a `T` separator is also accepted)
      * @param string $column    Column name for the exception message
      * @return bool True when $timestamp is on or after the time one year ago
-     * @throws CarValidationException If $timestamp is empty, malformed, or not a real calendar date
+     * @throws CarValidationException If $timestamp is empty, malformed, or not a real calendar date,
+     *                                or if PHP cannot calculate the freshness cutoff
      */
-    public static function isWithinFreshnessWindow(string $timestamp, string $column = 'timestamp'): bool
+    public static function isWithinFreshnessWindow(string $timestamp, string $column): bool
     {
         return self::parseTimestamp($timestamp, $column)->getTimestamp() >= self::freshnessCutoff();
     }
@@ -871,18 +878,27 @@ class CarRepository
     /**
      * Get the start of the 1-year freshness window as a Unix timestamp.
      *
-     * This is the one PHP definition of the window. A caller that must know
-     * which operand makes a car fresh (for example CarBadges::verifiedStatus())
-     * gets the cutoff once from this method and compares each value that
-     * parseTimestamp() returns, so all comparisons use the same second.
+     * This is the one PHP definition of the window. isFresh() and
+     * isWithinFreshnessWindow() compare parsed dates to it. isFresh() reads it
+     * once, so both of its comparisons use the same second. Each call reads the
+     * clock again, so two calls can return different values.
      *
      * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
      *
      * @return int Unix timestamp of the time one year ago
+     * @throws CarValidationException If strtotime() cannot calculate the time one year ago
      */
     public static function freshnessCutoff(): int
     {
-        return (int) strtotime('-1 year');
+        $cutoff = strtotime('-1 year');
+        // A cast would turn false into 0, the Unix epoch, and every car would be fresh.
+        if ($cutoff === false) {
+            throw new CarValidationException(
+                'CarRepository freshness check could not calculate the cutoff: strtotime(\'-1 year\') returned false.'
+            );
+        }
+
+        return $cutoff;
     }
 
     /**

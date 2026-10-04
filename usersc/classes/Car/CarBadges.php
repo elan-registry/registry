@@ -118,11 +118,13 @@ final class CarBadges
     /**
      * Get the Verified row status for one car record.
      *
-     * The status says which date makes the car fresh:
-     * - `confirmed`: `last_verified` is inside the freshness window. The date
-     *   is `last_verified`.
-     * - `current`: only `owner_last_updated` is inside the window. The date is
-     *   `owner_last_updated`.
+     * CarRepository::isFresh() decides if the car is fresh. This method does
+     * not apply the freshness rule itself. When the car is fresh, the status
+     * says which date to show:
+     * - `confirmed`: `last_verified` is not null and is inside the freshness
+     *   window (CarRepository::isWithinFreshnessWindow()). The date is
+     *   `last_verified`.
+     * - `current`: all other fresh cars. The date is `owner_last_updated`.
      *
      * The method returns null when the car is sold (isSold()), when the car is
      * not fresh, or when the freshness dates are missing, have the wrong type,
@@ -140,35 +142,35 @@ final class CarBadges
             return null;
         }
 
-        $dates = self::freshnessStrings($car);
+        $dates = self::freshnessStrings($car, 'verifiedStatus');
         if ($dates === null) {
             return null;
         }
         [$lastVerified, $ownerLastUpdated] = $dates;
 
-        // Parse each value one time with the parser that isFresh() uses, so the
-        // shown date is the validated date. Parse owner_last_updated first, so a
-        // value bad in both columns gives the same message as isFresh().
         try {
-            $ownerDate = CarRepository::parseTimestamp($ownerLastUpdated, 'owner_last_updated');
-            $verifiedDate = $lastVerified === null
-                ? null
-                : CarRepository::parseTimestamp($lastVerified, 'last_verified');
+            if (!CarRepository::isFresh($lastVerified, $ownerLastUpdated)) {
+                return null;
+            }
+
+            // isFresh() said fresh, so this check only picks the date to show.
+            // It reads the clock again. A last_verified value at the exact
+            // cutoff second can fall out between the two reads. The row then
+            // shows "Current since" with the owner_last_updated date, even
+            // when that date is stale. This is a known, accepted edge case:
+            // it lasts one second, once a year for each car.
+            if (
+                $lastVerified !== null
+                && CarRepository::isWithinFreshnessWindow($lastVerified, 'last_verified')
+            ) {
+                return ['source' => 'confirmed', 'date' => CarRepository::parseTimestamp($lastVerified, 'last_verified')];
+            }
+
+            return ['source' => 'current', 'date' => CarRepository::parseTimestamp($ownerLastUpdated, 'owner_last_updated')];
         } catch (CarValidationException $e) {
-            self::logBadDates($car->id ?? 'unknown', $e->getMessage());
+            self::logBadDates($car->id ?? 'unknown', 'verifiedStatus', $e->getMessage());
             return null;
         }
-
-        // One cutoff for both comparisons, so they use the same second.
-        $cutoff = CarRepository::freshnessCutoff();
-        if ($verifiedDate !== null && $verifiedDate->getTimestamp() >= $cutoff) {
-            return ['source' => 'confirmed', 'date' => $verifiedDate];
-        }
-        if ($ownerDate->getTimestamp() >= $cutoff) {
-            return ['source' => 'current', 'date' => $ownerDate];
-        }
-
-        return null;
     }
 
     /**
@@ -348,7 +350,7 @@ final class CarBadges
      */
     private static function isCarFresh(object $car): bool
     {
-        $dates = self::freshnessStrings($car);
+        $dates = self::freshnessStrings($car, 'forCar');
         if ($dates === null) {
             return false;
         }
@@ -356,7 +358,7 @@ final class CarBadges
         try {
             return CarRepository::isFresh($dates[0], $dates[1]);
         } catch (CarValidationException $e) {
-            self::logBadDates($car->id ?? 'unknown', $e->getMessage());
+            self::logBadDates($car->id ?? 'unknown', 'forCar', $e->getMessage());
             return false;
         }
     }
@@ -367,21 +369,22 @@ final class CarBadges
      * When a value has the wrong type, the method logs one entry and returns
      * null. It does not parse the values.
      *
-     * @param object $car Car record
+     * @param object $car     Car record
+     * @param string $context Name of the public method that asks, for the log entry
      * @return array{0: ?string, 1: string}|null [last_verified, owner_last_updated], or null when a type is wrong
      */
-    private static function freshnessStrings(object $car): ?array
+    private static function freshnessStrings(object $car, string $context): ?array
     {
         $carId = $car->id ?? 'unknown';
         $ownerLastUpdated = $car->owner_last_updated ?? null;
         $lastVerified = $car->last_verified ?? null;
 
         if (!is_string($ownerLastUpdated)) {
-            self::logBadDates($carId, 'owner_last_updated is missing or is not a string (' . get_debug_type($ownerLastUpdated) . ')');
+            self::logBadDates($carId, $context, 'owner_last_updated is missing or is not a string (' . get_debug_type($ownerLastUpdated) . ')');
             return null;
         }
         if ($lastVerified !== null && !is_string($lastVerified)) {
-            self::logBadDates($carId, 'last_verified is not a string or null (' . get_debug_type($lastVerified) . ')');
+            self::logBadDates($carId, $context, 'last_verified is not a string or null (' . get_debug_type($lastVerified) . ')');
             return null;
         }
 
@@ -391,17 +394,22 @@ final class CarBadges
     /**
      * Log one entry for a car whose freshness dates are not usable.
      *
-     * @param mixed  $carId  Car ID from the record, or 'unknown'
-     * @param string $reason Why the dates are not usable
+     * forCar() and verifiedStatus() both log here. The context says which
+     * one, so the log shows if the badge or the Verified row is missing.
+     *
+     * @param mixed  $carId   Car ID from the record, or 'unknown'
+     * @param string $context Name of the public method that asks, for example 'forCar' or 'verifiedStatus'
+     * @param string $reason  Why the dates are not usable
      * @return void
      */
-    private static function logBadDates(mixed $carId, string $reason): void
+    private static function logBadDates(mixed $carId, string $context, string $reason): void
     {
         logger(
             0,
             LogCategories::LOG_CATEGORY_CAR_ERRORS,
             sprintf(
-                'CarBadges: car %s has bad freshness dates, Verified badge not shown: %s',
+                'CarBadges::%s: car %s has bad freshness dates, Verified status not shown: %s',
+                $context,
                 is_scalar($carId) ? (string) $carId : 'unknown',
                 $reason
             )
