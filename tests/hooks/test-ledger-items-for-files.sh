@@ -513,6 +513,14 @@ check_rc "author filter: exit 0" 0
 check_out "author filter: NONE and CONTRIBUTOR comments are ignored, OWNER, COLLABORATOR and MEMBER are read"
 reset_env
 
+# --- Trailing whitespace is not printed ---------------------------------------
+printf '### `ws/a.php`\n- [ ] spaces item   \n- [ ] tab item\t\n- [ ] crlf item \t\r\n' > "$FX/body.tmp"
+: > "$STUB_COMMENTS"
+STUB_BODY="$FX/body.tmp" run_paths ws/a.php
+expect_lines "ws/a.php: spaces item" "ws/a.php: tab item" "ws/a.php: crlf item"
+check_out "trailing whitespace: spaces, TAB and CR are not printed"
+reset_env
+
 # --- Control characters are removed from the printed item ---------------------
 printf '### `ctl/a.php`\n- [ ] red \033[31mtext\001 here\tok\177\n' > "$FX/body.tmp"
 : > "$STUB_COMMENTS"

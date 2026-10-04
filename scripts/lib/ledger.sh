@@ -15,10 +15,12 @@
 #     ends in `/` matches each path under that directory. Any other token
 #     matches only the exact path. Other heading text is ignored.
 #   - An item is a column-0 line that starts with `- [ ] ` (open) or
-#     `- [x] ` (ticked). Its text is the rest of the line. Indented lines and
-#     other lines are ignored.
-#   - A trailing CR is removed for matching only. The fetched bytes stay the
-#     same, so a tick does not change the line endings of the ledger.
+#     `- [x] ` (ticked). Its text is the rest of the line, without trailing
+#     spaces and TABs. Indented lines and other lines are ignored.
+#   - A trailing CR and trailing spaces and TABs are removed for matching
+#     only. A PR body often loses trailing whitespace, and the tick must
+#     still find the item. The fetched bytes stay the same, so a tick does
+#     not change the line endings or the trailing whitespace of the ledger.
 #
 # Comment authors: only comments whose author_association is OWNER, MEMBER
 # or COLLABORATOR are read. Other comments are ignored. The ledger issue is
@@ -175,7 +177,9 @@ ledger_fetch_sources() {
 #
 # ledger_classify(line) sets `ledger_kind` to "section", "end", "open",
 # "ticked", or "". For "section" it fills ledger_tok[1..ledger_ntok]. For
-# "open" and "ticked" it sets ledger_text to the item text.
+# "open" and "ticked" it sets ledger_text to the item text, without trailing
+# spaces and TABs. A caller that writes the line back must use $0, not
+# ledger_text.
 # ledger_section_matches(path) returns 1 when a token of the current section
 # heading matches path.
 # ledger_printable(s) returns s without control characters other than TAB.
@@ -211,11 +215,13 @@ function ledger_classify(line,    rest, a, b, tok) {
     if (substr(line, 1, 6) == "- [ ] ") {
         ledger_kind = "open"
         ledger_text = substr(line, 7)
+        sub(/[ \t]+$/, "", ledger_text)
         return
     }
     if (substr(line, 1, 6) == "- [x] ") {
         ledger_kind = "ticked"
         ledger_text = substr(line, 7)
+        sub(/[ \t]+$/, "", ledger_text)
     }
 }
 function ledger_token_matches(tok, path,    n) {

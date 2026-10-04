@@ -12,8 +12,15 @@
 # lines (also `none (...)`) are ignored. Empty stdin ticks nothing and exits
 # 0, with no gh call, and one note on stderr.
 #
+# A model types these lines into the PR body, so the parser accepts two
+# small changes to the text that scripts/ledger-items-for-files.sh printed:
+#   - A trailing CR and trailing spaces and TABs are removed from the line.
+#   - A path in one pair of backticks (`` `app/a.php`: item ``) loses the
+#     backticks.
+#
 # For each line, the script ticks the first open `- [ ] <item text>` line
-# (exact text) under a heading that matches the path. It reads the issue
+# (exact text, without trailing spaces and TABs) under a heading that
+# matches the path. It reads the issue
 # body first, then the comments in API order. scripts/lib/ledger.sh
 # describes the heading and item rules, and the comment-author filter.
 #   - A second open line with the same text under the same heading stays
@@ -66,6 +73,8 @@ BEGIN { printf "" > ENVIRON["LEDGER_REQ_PATHS"]; printf "" > ENVIRON["LEDGER_REQ
     line = $0
     sub(/\r$/, "", line)
     if (substr(line, 1, 2) == "- ") line = substr(line, 3)
+    # After the bullet removal, so that a bare "- " line stays blank.
+    sub(/[ \t]+$/, "", line)
     if (line == "" || line == "none" || substr(line, 1, 6) == "none (") next
     sep = index(line, ": ")
     if (sep <= 1 || sep + 2 > length(line)) {
@@ -74,6 +83,9 @@ BEGIN { printf "" > ENVIRON["LEDGER_REQ_PATHS"]; printf "" > ENVIRON["LEDGER_REQ
     }
     path = substr(line, 1, sep - 1)
     item = substr(line, sep + 2)
+    n = length(path)
+    if (n > 2 && substr(path, 1, 1) == "`" && substr(path, n, 1) == "`")
+        path = substr(path, 2, n - 2)
     if ((path SUBSEP item) in seen) next
     seen[path SUBSEP item] = 1
     print path > ENVIRON["LEDGER_REQ_PATHS"]

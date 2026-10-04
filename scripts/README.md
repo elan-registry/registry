@@ -157,11 +157,14 @@ Requires `gh` CLI authenticated (`gh auth status`). Creates at most one open
 The cleanup ledger is the one open GitHub issue with the `cleanup-ledger`
 label. It holds small cleanup finds, grouped under a level-3 (`###`) heading for each
 file. See `docs/development/ISSUE_WORKFLOW.md` for the workflow. These scripts
-read and tick ledger items. Both need the `gh` CLI, signed in (`gh auth status`).
-`ledger-tick-items.sh` also needs `jq`.
+read and tick ledger items. `ledger-items-for-files.sh` and
+`ledger-tick-items.sh` need the `gh` CLI, signed in (`gh auth status`).
+`ledger-tick-items.sh` also needs `jq`. `ledger-pr-body-items.sh` makes no
+`gh` call.
 
-Both scripts source `scripts/lib/ledger.sh`. That library finds the ledger
-issue, fetches its body and comments, and parses the items.
+`ledger-items-for-files.sh` and `ledger-tick-items.sh` source
+`scripts/lib/ledger.sh`. That library finds the ledger issue, fetches its body
+and comments, and parses the items.
 
 **Comment authors.** The scripts read only the comments whose
 `author_association` is `OWNER`, `MEMBER` or `COLLABORATOR`. Other comments
@@ -188,9 +191,10 @@ keeps every byte.
 other token matches only the exact path. Text after the tokens, such as
 `(est. −960)`, is ignored. A section ends at the next level-2 (`##`) or
 level-3 heading. An item is a line at column 0 that starts with `- [ ]` (open)
-or `- [x]` (ticked), then a space.
+or `- [x]` (ticked), then a space. The item text is the rest of the line,
+without trailing spaces and TABs.
 
-**Exit codes (both scripts).**
+**Exit codes (`ledger-items-for-files.sh` and `ledger-tick-items.sh`).**
 
 | Code | Meaning |
 | --- | --- |
@@ -222,6 +226,15 @@ Ticks ledger items. Input on stdin is `path: item text` lines, the same form
 that `ledger-items-for-files.sh` prints. A leading `-` bullet marker is allowed, so a bullet
 list from a PR body works as-is. `none` lines and blank lines are ignored.
 
+A model types these lines into the PR body, so the script accepts two small
+changes to the text:
+
+- Trailing spaces and TABs on the line are removed. The ledger item text is
+  also compared without its trailing spaces and TABs. The `PATCH` keeps the
+  ledger bytes, trailing whitespace included.
+- A path in one pair of backticks, as in `` `app/a.php`: fix X ``, loses the
+  backticks.
+
 For each line, the script ticks the first open item with exactly that text
 under a heading that matches the path. It changes `[ ]` to `[x]` on that line
 only. It writes each changed ledger source (body or comment) back with one
@@ -247,13 +260,37 @@ echo "usersc/join.php: remove the unused \$legacy variable" | scripts/ledger-tic
 body_file="$(mktemp)"
 gh pr view 2275 --repo elan-registry/registry --json body --jq .body > "$body_file"
 set -o pipefail
-awk '{ sub(/\r$/, "") }
-     /^## / { s = ($0 == "## Ledger items"); next }
-     s && /^- /' "$body_file" | scripts/ledger-tick-items.sh
+scripts/ledger-pr-body-items.sh < "$body_file" | scripts/ledger-tick-items.sh
 ```
 
-The hermetic tests are `tests/hooks/test-ledger-items-for-files.sh` and
-`tests/hooks/test-ledger-tick-items.sh`. They use a stub `gh`.
+### ledger-pr-body-items.sh
+
+Prints the bullets of the `## Ledger items` section of a PR body. Input on
+stdin is the PR body. The script takes no arguments and makes no `gh` call.
+`/finish-issue` runs it after the merge and pipes its output into
+`ledger-tick-items.sh`.
+
+- A section starts at each line that is exactly `## Ledger items`. A trailing
+  CR and trailing spaces and TABs are permitted. The section ends at the next
+  line that starts with `##` or `#`, then a space. When the heading occurs
+  more than once, each section is read.
+- A bullet is a line with optional leading spaces and TABs, then `-`, `*` or
+  `+`, then one space. Other lines are ignored.
+- stdout: one `- <rest of the line>` line for each bullet, with a trailing CR
+  removed.
+- A `- none (ledger query failed)` line means that `/commit-push-pr` could not
+  query the ledger when the PR was opened. The script writes a warning to
+  stderr and still prints the line. `ledger-tick-items.sh` ignores it.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | At least one section was found. Empty output means no bullets. |
+| 1 | Usage error. |
+| 3 | The PR body has no `## Ledger items` section. A note goes to stderr. |
+
+The hermetic tests are `tests/hooks/test-ledger-items-for-files.sh`,
+`tests/hooks/test-ledger-tick-items.sh` and
+`tests/hooks/test-ledger-pr-body-items.sh`. They use a stub `gh`.
 
 ## Database
 

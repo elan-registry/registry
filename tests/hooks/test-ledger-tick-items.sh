@@ -254,7 +254,8 @@ check_patch() {
     elif cmp -s "$2" "$3"; then
         pass "$1"
     else
-        fail "$1" "payload differs (expected < > actual):" "$(diff "$2" "$3" | cat -A)"
+        # od -c shows CR, TAB and trailing spaces. macOS cat has no -A.
+        fail "$1" "payload differs (expected < > actual):" "$(diff "$2" "$3" | od -c)"
     fi
 }
 
@@ -554,6 +555,34 @@ run_lines "none" "" "none (the PR touches no ledger file)" "- none"
 check_rc "14 only none lines: exit 0" 0
 check_no_gh "14 only none lines: no gh call"
 check_err_has "14 only none lines: a note on stderr" "no requests, no query made"
+
+# --- Trailing whitespace and a backticked path --------------------------------
+# A model types the request into the PR body, so the PR body can lose or add
+# trailing whitespace, or put the path in backticks.
+printf '### `ws/a.php`\n- [ ] trailing item  \t\n- [ ] crlf trailing \r\n- [ ] plain item\n' > "$STUB_BODY"
+printf '### `ws/a.php`\n- [x] trailing item  \t\n- [x] crlf trailing \r\n- [ ] plain item\n' > "$EXP.body"
+: > "$STUB_COMMENTS"
+run_lines "ws/a.php: trailing item" "ws/a.php: crlf trailing"
+check_rc "whitespace: ledger item with trailing whitespace: exit 0" 0
+check_patch "whitespace: a request without the trailing whitespace ticks it, and the payload keeps it" "$EXP.body" "$(patch_file 1 issue 2208)"
+expect_lines "ticked: ws/a.php: trailing item" "ticked: ws/a.php: crlf trailing"
+check_out "whitespace: ticked lines have no trailing whitespace"
+printf '### `ws/a.php`\n- [ ] trailing item  \t\n- [ ] crlf trailing \r\n- [x] plain item\n' > "$EXP.body"
+printf 'ws/a.php: plain item  \t\r\n' > "$IN"
+run_input
+check_rc "whitespace: request with trailing spaces and TAB: exit 0" 0
+check_patch "whitespace: request with trailing spaces and TAB ticks the item" "$EXP.body" "$(patch_file 1 issue 2208)"
+expect_lines "ticked: ws/a.php: plain item"
+check_out "whitespace: request with trailing spaces: ticked line has none"
+run_lines '- `ws/a.php`: plain item'
+check_rc "backticks: backticked path: exit 0" 0
+check_patch "backticks: backticked path ticks the item" "$EXP.body" "$(patch_file 1 issue 2208)"
+expect_lines "ticked: ws/a.php: plain item"
+check_out "backticks: ticked line has no backticks"
+run_lines '`ws/a.php: plain item' 'ws/a.php`: plain item' '``: plain item'
+check_patches "backticks: one backtick only, or an empty pair, ticks nothing" 0
+check_err_has "backticks: one backtick only gives a warning" 'nothing ticked: `ws/a.php: plain item'
+reset_env
 
 # --- Extras ---------------------------------------------------------------------
 # Empty stdin: exit 0, no gh call.

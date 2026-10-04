@@ -260,7 +260,8 @@ Three commands check the ledger before and after the PR:
 - `/commit-push-pr` asks you which items the PR completes. It records them in
   a `## Ledger items` section of the PR body. It never decides by itself that
   an item is done.
-- After the merge, `/finish-issue` ticks those items from the PR body with
+- After the merge, `/finish-issue` reads those items from the PR body with
+  `scripts/ledger-pr-body-items.sh` and ticks them with
   `scripts/ledger-tick-items.sh`. It then reports any open items left in the
   files the PR edited. A PR body with no `## Ledger items` section ticks
   nothing.

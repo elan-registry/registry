@@ -80,8 +80,10 @@ prose.
    ```
 
    Write one bullet for each item that the user selected. Copy the
-   `path: item text` line exactly. Otherwise, write the one line from step
-   2 or step 3 (`- none` or `- none (ledger query failed)`).
+   `path: item text` line exactly. If there are no selected items, write the
+   one line from step 2 or step 3 (`- none` or
+   `- none (ledger query failed)`). Write each bullet on one line. Do not
+   wrap it.
 5. Run:
 
    ```bash

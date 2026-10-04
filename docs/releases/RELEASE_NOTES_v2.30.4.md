@@ -47,8 +47,9 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   `migration-modified: CHECK` (developer workflow only, no site change)
 - [#2271](https://github.com/elan-registry/registry/issues/2271) — Cleanup-ledger items are checked before the PR is
   pushed. `/review-pr` reports open items the plan does not list. `/commit-push-pr` asks which items the PR completes
-  and records them in the PR body. `/finish-issue` ticks those items with the new `scripts/ledger-tick-items.sh`. The
-  plugin's `commit-commands:commit-push-pr` skill is denied (developer workflow only, no site change)
+  and records them in the PR body. `/finish-issue` reads that section with the new `scripts/ledger-pr-body-items.sh`
+  and ticks the items with the new `scripts/ledger-tick-items.sh`. The plugin's `commit-commands:commit-push-pr` skill
+  is denied (developer workflow only, no site change)
 
 ## Carried from the Dev Environment milestone
 
