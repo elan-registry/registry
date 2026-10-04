@@ -198,42 +198,88 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     expect([200, 401, 403]).toContain(response.status());
   });
 
-  test('carListConfig.newCarIds on car list page is a JSON int array', async ({ page }) => {
-    // Verifies that CarShowcaseService::getNewCarIds() emits valid JSON to the page.
-    // The value is embedded in the inline script block as
-    // window.carListConfig.newCarIds — shape must be int[].
+  test('carListConfig.badgeDefs on car list page has new, sold and verified definitions', async ({ page }) => {
+    // CarBadges::definitions() is embedded in the inline script block as
+    // window.carListConfig.badgeDefs. The cars list JS draws every badge from it.
     //
     // index.php is a fully public page (ADR-019: its `pages.private` row is 0,
-    // so securePage() admits anonymous visitors) and getNewCarIds() never
-    // throws — a DB error makes it return [], not throw — so carListConfig and
-    // its newCarIds key are always present whenever this page renders, for any
-    // visitor. There is no legitimate "unauthenticated, config didn't render"
-    // case to skip here; a missing config or newCarIds key is a real
-    // regression and must fail, not skip.
+    // so securePage() admits anonymous visitors), so carListConfig and its
+    // badgeDefs key are always present whenever this page renders. A missing
+    // config or key is a real regression and must fail, not skip.
     await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
     const config = await page.evaluate(() => window.carListConfig);
 
     expect(config).toBeDefined();
-    expect(config.newCarIds).toBeDefined();
-    const newCarIds = config.newCarIds;
+    expect(config.newCarIds).toBeUndefined();
+    expect(config.badgeDefs).toBeDefined();
+    expect(Object.keys(config.badgeDefs).sort()).toEqual(['new', 'sold', 'verified']);
 
-    expect(Array.isArray(newCarIds)).toBe(true);
+    for (const [key, def] of Object.entries(config.badgeDefs)) {
+      expect(typeof def.label, `${key} label`).toBe('string');
+      expect(def.label.trim(), `${key} label`).not.toBe('');
+      expect(typeof def.tooltip, `${key} tooltip`).toBe('string');
+      expect(def.tooltip.trim(), `${key} tooltip`).not.toBe('');
+      expect(typeof def.tone, `${key} tone`).toBe('string');
+      expect(def.tone.trim(), `${key} tone`).not.toBe('');
+      // Precedence fields stay on the server: only CarBadges::resolve() applies them.
+      expect(def).not.toHaveProperty('group');
+      expect(def).not.toHaveProperty('suppressedBy');
+    }
+  });
 
-    // Every element must be a positive integer (PHP json_encode on int[] produces JS numbers;
-    // > 0 catches cast failures in getNewCarIds() that would produce 0 or negative values)
-    newCarIds.forEach(id => {
-      expect(typeof id).toBe('number');
-      expect(Number.isInteger(id)).toBe(true);
-      expect(id).toBeGreaterThan(0);
+  test('list.php rows carry a badges array and no freshness fields', async ({ page }) => {
+    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
+
+    // Newest cars first: the 5 newest cars are always NEW, so the first rows have badges.
+    const response = await page.request.post('app/api/cars/list.php', {
+      form: {
+        draw: '1',
+        start: '0',
+        length: '25',
+        'order[0][column]': '12',
+        'order[0][dir]': 'desc',
+        'columns[12][data]': 'ctime',
+        'columns[12][orderable]': 'true'
+      }
+    });
+    expect(response.status()).toBe(200);
+
+    const { data } = await response.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThan(0);
+
+    const allowedKeys = ['new', 'sold', 'verified'];
+    for (const row of data) {
+      expect(Array.isArray(row.badges), `badges on car ${row.id}`).toBe(true);
+      for (const key of row.badges) {
+        expect(typeof key).toBe('string');
+        expect(allowedKeys).toContain(key);
+      }
+      // CarBadges::decorateRows() replaces is_fresh. The response must not
+      // expose the freshness inputs (the list is public).
+      expect(row).not.toHaveProperty('is_fresh');
+      expect(row).not.toHaveProperty('last_verified');
+      expect(row).not.toHaveProperty('owner_last_updated');
+    }
+
+    // Non-vacuous: at least one row carries a badge (the newest car is NEW).
+    expect(data.some(row => row.badges.includes('new'))).toBe(true);
+  });
+
+  test('NEW badge on the car list is outside the Details link', async ({ page }) => {
+    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
+    await waitForDataTables(page, 15000);
+
+    // Sort by date added, newest first. The newest car is always NEW.
+    await page.evaluate(() => {
+      window.jQuery('#cartable').DataTable().order([12, 'desc']).draw();
     });
 
-    if (newCarIds.length > 0) {
-      await waitForDataTables(page, 15000);
-      const badge = page.locator('td a.btn .badge.er-badge-yellow').first();
-      await expect(badge).toBeVisible();
-      await expect(badge).toContainText('NEW');
-    }
+    const badge = page.locator('#cartable td .er-badges .er-badge--new').first();
+    await expect(badge).toBeVisible({ timeout: 15000 });
+    await expect(badge).toHaveText('New');
+    await expect(page.locator('td a.btn .er-badge')).toHaveCount(0);
   });
 
   test('car history endpoint returns DataTables JSON structure', async ({ page }) => {

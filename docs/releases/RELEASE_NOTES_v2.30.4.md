@@ -16,6 +16,10 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 - The statistics page's Data Completeness chart and Quality Metrics list show a "Verified (12 mo)" figure: the share of
   cars verified or updated by their owner in the last 12 months. ([#1898](https://github.com/elan-registry/registry/issues/1898))
 
+- Cars show Sold and Verified badges on your account page and the cars list. The car details page shows a Sold stamp
+  in its Sold row. A car shows at most two badges. Sold hides Verified, and New hides Verified. Every badge has a
+  tooltip that explains it. On the cars list, the New badge now sits below the Details button, not inside it. ([#1900](https://github.com/elan-registry/registry/issues/1900))
+
 ## Admin-Facing Changes
 
 Changes visible only to administrators (admin dashboard, maintenance tools, settings, etc.). One sentence each.
@@ -31,7 +35,11 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - [#2259](https://github.com/elan-registry/registry/issues/2259) — Workflow commands and agents use the model each step
   needs, and repeated review work is removed (developer workflow only, no site change)
 - WIP: [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified status row (and admin-only Email on file row) on the car details page
-- WIP: [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page, cars list, and car details page
+- WIP: [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page
+  and cars list, and a Sold stamp in the Sold row of the car details page (the details-page Verified row is #1897). New
+  class `CarBadges` owns which badges a car shows. The cars list API response has
+  a `badges` key on each row. NEW moved outside the Details link (WCAG 4.1.2). New
+  `--er-badge-*` tokens and `.er-badge` classes. `UI_STANDARDS.md` and `CLASSES.md` describe the system
 - [#1898](https://github.com/elan-registry/registry/issues/1898) — Verified vector on the statistics page's
   data-completeness radar chart. `verified_cars` now uses the shared freshness rule, not a count of non-null
   `last_verified`. The chart no longer shows `NaN` when the registry has no cars.

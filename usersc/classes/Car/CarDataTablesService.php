@@ -182,10 +182,17 @@ class CarDataTablesService
         // new fields; names come from PHP constants, never from user input.
         // For elan_factory_info, also append the car_id lookup subquery
         // (avoids one AJAX chassis-lookup per row, ~25 requests per page turn).
+        // For cars, append is_fresh for the Verified badge. It is SELECT-only and
+        // not in ALLOWED_COLUMNS, so a client cannot sort or filter on it.
+        // The match has no default arm: the VALID_TABLES check above already
+        // rejects other tables, and PHPStan proves these two arms cover the
+        // rest. A new table in VALID_TABLES fails PHPStan here until it gets
+        // its own arm.
         $publicCols = implode(', ', array_map(fn($col) => "`{$col}`", self::ALLOWED_COLUMNS[$tableName]));
-        $selectClause = ($tableName === 'elan_factory_info')
-            ? $publicCols . ', (SELECT id FROM cars WHERE chassis = elan_factory_info.serial LIMIT 1) AS car_id'
-            : $publicCols;
+        $selectClause = match ($tableName) {
+            'elan_factory_info' => $publicCols . ', (SELECT id FROM cars WHERE chassis = elan_factory_info.serial LIMIT 1) AS car_id',
+            'cars'              => $publicCols . ', ' . CarRepository::freshnessSql('cars') . ' AS is_fresh',
+        };
         $dataSql = sprintf('SELECT %s FROM `%s` WHERE 1 %s %s LIMIT %d, %d', $selectClause, $tableName, $combinedWhere, $orderBy, $start, $length);
         $data = $this->db->query($dataSql, $combinedParams)->results();
         if ($this->db->error()) {

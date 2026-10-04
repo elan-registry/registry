@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Admin;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -13,6 +14,8 @@ use PHPUnit\Framework\TestCase;
  *
  * Covers:
  * - usersc/account.php (the try/catch around Owner construction/find())
+ * - usersc/account.php, app/owner/cars/details.php, and
+ *   app/views/cars/_verify_landing.php (solddate through CarBadges::parseSoldDate())
  *
  * The page cannot be require()'d from PHPUnit for a full behavioral test:
  * it renders a complete HTML page inline (no isolated return path), and
@@ -134,5 +137,166 @@ final class AccountPageWiringTest extends TestCase
             $catchBody,
             'The catch block must set $ownerData to null so the existing null-guard degrades the page'
         );
+    }
+
+    // =========================================================================
+    // account.php — status badges in the hero <h3> (#1900, source inspection)
+    // =========================================================================
+
+    /**
+     * The account page cannot be required from PHPUnit (see class docblock), so
+     * the wiring is checked in the source text. The rendered output of the
+     * partial itself is covered by tests/unit/views/StatusBadgesPartialTest.php
+     * and the key logic by tests/unit/cars/CarBadgesTest.php.
+     *
+     * The assertions are scoped to the hero heading, so a badge include moved
+     * out of the <h3>, a changed key source, or a changed style fails here.
+     */
+    public function testHeroHeadingIncludesStatusBadgesPartialWithStampStyle(): void
+    {
+        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+
+        $this->assertStringContainsString('use ElanRegistry\\Car\\CarBadges;', $content);
+
+        $matched = preg_match(
+            '/<h3 class="mb-2 card-header-er-primary-text">(.*?)<\/h3>/s',
+            $content,
+            $matches
+        );
+        $this->assertSame(1, $matched, 'The hero <h3> must exist in account.php');
+        $heading = $matches[1];
+
+        $this->assertMatchesRegularExpression(
+            '/\$badgeKeys\s+=\s+CarBadges::forCar\(\$carData\);/',
+            $heading,
+            'The hero heading must take its badge keys from CarBadges::forCar($carData)'
+        );
+        $this->assertMatchesRegularExpression(
+            "/\\\$badgeStyle\\s+=\\s+'stamp';/",
+            $heading,
+            'The hero heading must use the stamp style'
+        );
+        $this->assertMatchesRegularExpression(
+            '/include\s+\$abs_us_root\s*\.\s*\$us_url_root\s*\.\s*\'app\/views\/cars\/_status_badges\.php\';/',
+            $heading,
+            'The hero heading must include the _status_badges.php partial'
+        );
+
+        // The call must not pass the NEW flag: NEW is a cars-list concept.
+        $this->assertStringNotContainsString('forCar($carData, true)', $content);
+    }
+
+    public function testStatusBadgesPartialIncludeAppearsOnlyInsideHeroHeading(): void
+    {
+        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+
+        $this->assertSame(
+            1,
+            substr_count($content, '_status_badges.php'),
+            'The account.php source must name the status badges partial once, in the hero <h3>. '
+            . 'The Vehicle Information card includes the partial again at render time for its Sold row.'
+        );
+    }
+
+    /**
+     * A bad purchasedate or builddate must not fail silently: each catch logs
+     * the value, like app/owner/cars/details.php does. solddate does not use
+     * a try/catch: see testSoldDateUsesCarBadgesParseSoldDate().
+     *
+     * @return array<string, array{string, string}>
+     */
+    public static function dateParseCatchProvider(): array
+    {
+        return [
+            'purchasedate' => ['$purchaseDate = new DateTime($carData->purchasedate);', 'Invalid purchase date format'],
+            'builddate'    => ['$buildDate = new DateTime($factoryData->builddate);', 'Invalid build date format'],
+        ];
+    }
+
+    #[DataProvider('dateParseCatchProvider')]
+    public function testDateParseCatchLogs(string $tryStatement, string $logMessage): void
+    {
+        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+
+        $matched = preg_match(
+            '/' . preg_quote($tryStatement, '/') . '\s*\}\s*catch\s*\(\\\\Exception\)\s*\{(.*?)\}/s',
+            $content,
+            $matches
+        );
+        $this->assertSame(1, $matched, "account.php must wrap {$tryStatement} in a try/catch");
+        $this->assertMatchesRegularExpression(
+            '/logger\(\$ownerId,\s*LogCategories::LOG_CATEGORY_SYSTEM_ERROR,\s*"' . preg_quote($logMessage, '/') . '/',
+            $matches[1],
+            "The catch for {$tryStatement} must log, not swallow the error"
+        );
+    }
+
+    /**
+     * Every page that sets $soldDate for the Vehicle Information card must
+     * use CarBadges::parseSoldDate(), the same rule as the Sold badge.
+     * `new DateTime()` accepts '0000-00-00' and rolls over '2025-02-30', so
+     * the card showed a Sold date that the hero did not.
+     *
+     * @return array<string, array{string, string}>
+     */
+    public static function soldDateProducerProvider(): array
+    {
+        return [
+            'account.php'         => [self::ACCOUNT_ENDPOINT, '$carData'],
+            'details.php'         => ['app/owner/cars/details.php', '$carData'],
+            '_verify_landing.php' => ['app/views/cars/_verify_landing.php', '$verifyCar'],
+        ];
+    }
+
+    #[DataProvider('soldDateProducerProvider')]
+    public function testSoldDateUsesCarBadgesParseSoldDate(string $relativePath, string $carVar): void
+    {
+        $content = $this->readEndpointSource($relativePath);
+
+        $this->assertMatchesRegularExpression(
+            '/\$soldDate\s*=\s*(?:ElanRegistry\\\\Car\\\\)?CarBadges::parseSoldDate\(\s*'
+                . preg_quote($carVar, '/') . '->solddate\b/',
+            $content,
+            "{$relativePath} must set \$soldDate from CarBadges::parseSoldDate()"
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/new\s+\\\\?DateTime(?:Immutable)?\(\s*' . preg_quote($carVar, '/') . '->solddate/',
+            $content,
+            "{$relativePath} must not parse solddate with new DateTime()"
+        );
+    }
+
+    public function testVerifyLandingAlreadySoldUsesParsedSoldDate(): void
+    {
+        $content = $this->readEndpointSource('app/views/cars/_verify_landing.php');
+
+        $this->assertMatchesRegularExpression('/\$alreadySold\s*=\s*\$soldDate\s*!==\s*null;/', $content);
+        $this->assertStringNotContainsString('!empty($verifyCar->solddate)', $content);
+    }
+
+    public function testVerifyDispatcherIsSoldUsesParseSoldDate(): void
+    {
+        $content = $this->readEndpointSource('app/verify/verify_car.php');
+
+        // The sold action must use the landing page's rule. Otherwise a zero
+        // solddate shows "I've sold this car" and then the already-sold notice.
+        // It passes false because the landing page logs a bad value.
+        $this->assertMatchesRegularExpression(
+            '/\$isSold\s*=\s*CarBadges::parseSoldDate\(\s*\$verifyCar->solddate\b[^;]*,\s*false\s*\)\s*!==\s*null;/',
+            $content
+        );
+        $this->assertStringNotContainsString('!empty($verifyCar->solddate)', $content);
+    }
+
+    public function testAccountLogsABadSoldDateOnlyThroughForCar(): void
+    {
+        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+
+        // forCar() logs a bad solddate, so the card's parse must not log it again.
+        $this->assertMatchesRegularExpression(
+            '/\$soldDate\s*=\s*CarBadges::parseSoldDate\([^;]*,\s*false\s*\);/',
+            $content
+        );
+        $this->assertMatchesRegularExpression('/CarBadges::forCar\(\s*\$carData\s*\)/', $content);
     }
 }

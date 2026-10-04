@@ -181,13 +181,59 @@ if (!securePage($php_self)) {
     <!-- 3. Badges -->
     <div class="er-section-heading">Badges</div>
     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-        <span class="badge text-bg-primary">Verified</span>
         <span class="badge text-bg-warning">Unverified</span>
         <span class="badge text-bg-secondary">Archived</span>
         <span class="badge er-badge-yellow">Featured</span>
         <span class="badge text-bg-danger">Removed</span>
     </div>
     <p class="text-muted small mb-0">&ldquo;Unverified&rdquo; uses the new <code>--er-warning</code> dark goldenrod &mdash; readable on white (4.6:1) where Bootstrap&rsquo;s <code>#ffc107</code> was not (1.6:1).</p>
+
+    <!-- 3a. Car status badges (issue #1900), drawn by the real partial -->
+    <div class="er-section-heading">Car status badges</div>
+    <p class="text-muted small">
+        Drawn by <code>app/views/cars/_status_badges.php</code> from
+        <code>CarBadges::definitions()</code>. Hover or focus a badge to see its tooltip.
+    </p>
+    <div class="row g-3 mb-2">
+        <div class="col-md-4">
+            <div class="small text-muted mb-2">Stamp &mdash; account hero, car details card</div>
+            <div class="d-flex flex-wrap gap-3 align-items-center py-2">
+                <?php
+                $badgeKeys  = ['new', 'sold', 'verified'];
+                $badgeStyle = 'stamp';
+                include $abs_us_root . $us_url_root . 'app/views/cars/_status_badges.php';
+                ?>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="small text-muted mb-2">Flat &mdash; cars list</div>
+            <div class="d-flex flex-wrap gap-1 align-items-center py-2">
+                <?php
+                $badgeKeys  = ['new', 'sold', 'verified'];
+                $badgeStyle = 'flat';
+                include $abs_us_root . $us_url_root . 'app/views/cars/_status_badges.php';
+                ?>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="small text-muted mb-2">Cars list cell &mdash; badges outside the Details link</div>
+            <div class="py-2">
+                <a class="btn btn-primary btn-sm" href="#"><i class="fas fa-eye" aria-hidden="true"></i> Details</a>
+                <div class="er-badges d-flex flex-wrap gap-1 mt-1">
+                    <?php
+                    $badgeKeys  = ['new', 'sold'];
+                    $badgeStyle = 'flat';
+                    include $abs_us_root . $us_url_root . 'app/views/cars/_status_badges.php';
+                    ?>
+                </div>
+            </div>
+        </div>
+    </div>
+    <p class="text-muted small mb-0">
+        <code>CarBadges::resolve()</code> picks the keys: Sold beats Verified, New hides Verified,
+        and a car shows a maximum of two badges. Sold uses its own <code>--er-badge-sold</code>
+        token, because <code>--er-danger</code> is for destructive actions only.
+    </p>
 
     <!-- 4. Stat tiles -->
     <div class="er-section-heading">Stat tiles</div>

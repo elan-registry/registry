@@ -34,7 +34,7 @@ palette or hardcoded hex values in project-owned PHP, CSS, or JS files.
 | `--er-accent` | `#FFF200` | 1.07:1 ❌ | Lotus Yellow — **graphic/border/fill ONLY**, never text on white |
 | `--er-warning` | `#B8860B` | 4.6:1 AA | Warnings, "Unverified" badge — replaces Bootstrap `#ffc107` |
 | `--er-warning-rgb` | `184, 134, 11` | — | `rgba()` calculations |
-| `--er-danger` | `#A52218` | 6.4:1 AA | Destructive actions only |
+| `--er-danger` | `#A52218` | 7.39:1 AAA | Destructive actions only |
 | `--er-danger-rgb` | `165, 34, 24` | — | `rgba()` calculations |
 | `--er-link` | `#0B5394` | 8.6:1 AAA | Hyperlinks **only** — not buttons, not headings |
 | `--er-link-hover` | `#073763` | 11.4:1 AAA | Link hover / visited |
@@ -160,21 +160,127 @@ For heading text inside each level:
 
 ### Badges
 
+Generic badges use Bootstrap classes. Do not use them for car status. Car
+status has its own system, described in "Car status badges" below.
+
 ```html
-<span class="badge text-bg-primary">Verified</span>
 <span class="badge text-bg-warning">Unverified</span>   <!-- dark goldenrod, WCAG AA -->
 <span class="badge text-bg-secondary">Archived</span>
 <span class="badge text-bg-danger">Removed</span>
 <!-- Lotus Yellow badge — text must be --er-on-accent (near-black), NEVER white -->
 <span class="badge er-badge-yellow">Featured</span>
-<!-- NEW badge — recently added car (within 90 days OR top-5 most recent).
-     Uses Lotus Yellow so it pops visually against green primary buttons.
-     Text must be --er-on-accent (near-black), NEVER white.
-     Standalone use (e.g. showcase card): -->
-<span class="badge er-badge-yellow badge-sm">NEW</span>
-<!-- Inside a button (avoids wrapping in narrow table cells, e.g. car list Details column): -->
-<a class="btn btn-primary btn-sm" href="...">Details <span class="badge er-badge-yellow badge-sm">NEW</span></a>
 ```
+
+Do not use `text-bg-primary Verified` for car status. The Verified car
+status badge is `er-badge er-badge--verified`.
+
+#### Car status badges
+
+Car status badges show Sold, Verified, and New. `CarBadges` decides which
+badges a car shows. See [CLASSES.md](CLASSES.md#carbadges). The page code
+only draws the keys it receives.
+
+**Tokens** (defined in `usersc/templates/customizer.css`):
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--er-badge-sold` | `#A52218` (white text 7.39:1, AAA) | Sold fill and border. Text is white |
+| `--er-badge-verified` | `var(--er-primary)` | Verified border |
+| `--er-badge-verified-bg` | `var(--er-primary-light)` | Verified fill |
+| `--er-badge-verified-fg` | `var(--er-primary-dark)` (10.52:1 on the fill, AAA) | Verified text |
+| `--er-badge-new` | `var(--er-accent)` | New fill. Text is `--er-on-accent`, never white |
+
+`--er-badge-sold` has its own name because `--er-danger` is for destructive
+actions only.
+
+**Classes:**
+
+| Class | Purpose |
+| --- | --- |
+| `.er-badge` | Base. Small uppercase pill label. The tone class sets the colors |
+| `.er-badge--sold`, `.er-badge--verified`, `.er-badge--new` | Tone. One per badge. Sold is a red sign. Verified is a light green tag with ✓ and dark green text, so it does not look like the dark green Details button. New is a yellow sign |
+| `.er-badge--stamp` | Adds a thick border, square corners, and a 6 degree counter-clockwise rotation |
+| `.er-badges` | Row that holds flat badges in the cars list |
+
+**Two styles:**
+
+| Style | Where | Class |
+| --- | --- | --- |
+| Stamp | Account page hero, Sold row of the Vehicle Information card | `er-badge er-badge--<tone> er-badge--stamp` |
+| Flat | Cars list | `er-badge er-badge--<tone>` |
+
+Use the partial `app/views/cars/_status_badges.php` in PHP. Set
+`$badgeKeys` (from `CarBadges::forCar()`) and `$badgeStyle` (`'stamp'` or
+`'flat'`) before each include. The partial unsets both variables when it
+ends, so an include without them draws nothing.
+
+The account page hero gets its keys from `CarBadges::forCar()`. The Vehicle
+Information card (`app/views/cars/_vehicle_info_card.php`) does not. It draws
+only the Sold stamp in its Sold row, from `$soldDate`, with the hard-coded
+keys `['sold']`. The card is on the account page, the car details page, and
+the public vericode landing page.
+
+Inside the dark green hero (`.card-header-er-primary-text`), a stamp has a
+white edge. The sold red against the hero green is only 1.2:1, so the red
+edge does not show there. Stamps on white pages keep their tone color edge. The cars list draws the same markup in
+`renderBadges()` in `app/assets/js/car-list.js`, from
+`CarBadges::definitions()`.
+
+**Precedence.** Each badge definition has these fields:
+
+| Field | Effect |
+| --- | --- |
+| `priority` | Sort order, highest first. New 100, Sold 90, Verified 50 |
+| `group` | In one group, only the badge with the highest priority shows. Sold and Verified share `lifecycle`, so Sold hides Verified |
+| `suppressedBy` | The badge hides when a listed key shows. New hides Verified |
+| `MAX_BADGES` | One car shows 2 badges at most |
+
+Do not code these rules in a template or in JS. Change `CarBadges::BADGES`.
+
+**Accessibility rules:**
+
+- Put the badge row outside the Details link. In the cars list, `.er-badges`
+  is a sibling of the Details `<a>`. A badge has `tabindex="0"`, so it is an
+  interactive element. A badge inside a link or button nests interactive
+  elements and fails WCAG 4.1.2.
+- Give each badge `data-bs-toggle="tooltip"`, `data-bs-title`, and
+  `tabindex="0"`. The tabindex lets keyboard users reach the tooltip.
+  `.er-badge:focus-visible` draws the focus ring: a 2px white ring inside a
+  2px `--er-primary-dark` ring (`box-shadow`), so the ring shows on white
+  pages and on the dark green hero. In the account hero
+  (`.card-header-er-primary-text`), the stamp edge is white, so the rings
+  change places: the `--er-primary-dark` ring is inside and the white ring is
+  outside. A transparent outline keeps a ring in Windows forced-colors mode,
+  which removes `box-shadow`.
+- Put an icon (for example the Verified check mark) in
+  `<span aria-hidden="true">`. A screen reader then reads "Verified", not
+  "✓ Verified".
+- Do not add `title` or `aria-label`. Bootstrap adds `aria-describedby`
+  when the tooltip shows. A `title` shows a second native tooltip.
+- In JS, build badges with DOM methods or `textContent`. Do not build them
+  from strings that contain tooltip or label text.
+- After the cars list redraws, `drawCallback` disposes the old tooltips and
+  starts new ones. Tooltips on rows that DataTables creates do not start
+  by themselves.
+
+```html
+<!-- ✅ Flat badges in a row outside the Details link (cars list cell) -->
+<a class="btn btn-primary btn-sm" href="..."><i class="fas fa-eye"></i> Details</a>
+<div class="er-badges d-flex flex-wrap gap-1 mt-1">
+  <span class="er-badge er-badge--new" data-bs-toggle="tooltip"
+        data-bs-title="Added to the registry in the last 90 days, or one of the 5 newest cars."
+        tabindex="0">New</span>
+</div>
+
+<!-- ❌ Badge inside the link: nested interactive element -->
+<a class="btn btn-primary btn-sm" href="...">Details <span class="badge er-badge-yellow badge-sm">NEW</span></a>
+
+<!-- ❌ Icon read aloud, and a second tooltip from title -->
+<span class="er-badge er-badge--verified" title="Verified">✓ Verified</span>
+```
+
+To see all badges, open the Car status badges section of the design system
+page (`app/admin/design-system.php`). It uses the real partial.
 
 ### Alerts
 

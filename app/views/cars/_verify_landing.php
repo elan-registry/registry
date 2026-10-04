@@ -51,13 +51,13 @@ if ($verifyCar === null) {
 $verifyCodeAttr = htmlspecialchars($verifyCode, ENT_QUOTES, 'UTF-8');
 $verifySelfAttr = htmlspecialchars($verifySelfUrl, ENT_QUOTES, 'UTF-8');
 $verifyEditAttr = htmlspecialchars($verifyEditUrl, ENT_QUOTES, 'UTF-8');
-$alreadySold    = !empty($verifyCar->solddate);
 
 // _vehicle_info_card.php's contract: $carData (the car row itself — same
-// shape $verifyCar already is) plus $purchaseDate/$soldDate as DateTime
+// shape $verifyCar already is) plus $purchaseDate/$soldDate as date
 // objects or null. Mirrors app/owner/cars/details.php's own construction of
-// these, including degrading to null on an unparseable stored date rather
-// than fatal-ing on a malformed row.
+// these. A bad purchase date degrades to null. The sold date uses
+// CarBadges::parseSoldDate(), the same rule as verify_car.php's $isSold, so a
+// zero or invalid solddate is "not sold" on this page and in the sold action.
 $carData = $verifyCar;
 
 $purchaseDate = null;
@@ -76,16 +76,8 @@ if (!empty($verifyCar->purchasedate)) {
 // docblock). verify_car.php's dispatch-time globals ($soldDateValue,
 // $soldDateMin, $soldDateMax, $soldDateError) are all distinct names, so
 // this doesn't collide with renderVerifyPage()'s `global` list.
-$soldDate = null;
-if (!empty($verifyCar->solddate)) {
-    try {
-        $soldDate = new DateTime($verifyCar->solddate);
-    } catch (Exception $e) {
-        logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-            "verify_car.php: invalid sold date format for car {$verifyCar->id}: {$verifyCar->solddate}");
-        $soldDate = null;
-    }
-}
+$soldDate    = ElanRegistry\Car\CarBadges::parseSoldDate($verifyCar->solddate ?? null, $verifyCar->id ?? null);
+$alreadySold = $soldDate !== null;
 
 $verifyOwnerLocation = ElanRegistry\OwnerView::displayLocation($verifyCar);
 $verifyOwnerWebsite  = ElanRegistry\OwnerView::websiteUrl($verifyCar->website ?? '');

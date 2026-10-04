@@ -2,6 +2,48 @@
     'use strict';
 
     const textRender = $.fn.dataTable.render.text();
+    let badgeTooltips = [];
+
+    /**
+     * Build the badge row for one car from the server badge keys.
+     *
+     * The server sets the keys and their order (CarBadges::resolve()), so this
+     * function only draws them. The badges are outside the Details link: a
+     * focusable span inside <a> is a nested interactive element (WCAG 4.1.2).
+     * Definition text goes in through textContent and setAttribute, never
+     * through string concatenation.
+     *
+     * @param {string[]|undefined} badgeKeys Badge keys from the row, highest priority first
+     * @returns {string} HTML for the badge row, or '' when there are no badges
+     */
+    function renderBadges(badgeKeys) {
+        const defs = window.carListConfig.badgeDefs || {};
+        const keys = Array.isArray(badgeKeys)
+            ? badgeKeys.filter(function(key) { return Object.hasOwn(defs, key); })
+            : [];
+        if (keys.length === 0) { return ''; }
+
+        const container = document.createElement('div');
+        container.className = 'er-badges d-flex flex-wrap gap-1 mt-1';
+        keys.forEach(function(key) {
+            const def = defs[key];
+            const badge = document.createElement('span');
+            badge.className = 'er-badge er-badge--' + def.tone;
+            badge.setAttribute('data-bs-toggle', 'tooltip');
+            badge.setAttribute('data-bs-title', def.tooltip);
+            badge.setAttribute('tabindex', '0');
+            if (def.icon) {
+                const icon = document.createElement('span');
+                icon.setAttribute('aria-hidden', 'true');
+                icon.textContent = def.icon;
+                badge.append(icon, ' ');
+            }
+            badge.append(def.label);
+            container.append(badge);
+        });
+        return container.outerHTML;
+    }
+
     const table = $('#cartable').DataTable({
         fixedHeader: true,
         responsive: true,
@@ -42,18 +84,29 @@
         columnDefs: [
             { visible: false, targets: [12] }
         ],
+        // The footer starts tooltips once, on page load. Each draw replaces the
+        // rows, so dispose the tooltips of the old rows (their nodes are already
+        // out of the table, and an open tooltip stays in <body> until disposed)
+        // and start tooltips on the new badges.
+        drawCallback: function() {
+            badgeTooltips.forEach(function(tooltip) { tooltip.dispose(); });
+            badgeTooltips = Array.from(
+                this.api().table().node().querySelectorAll('[data-bs-toggle="tooltip"]'),
+                function(el) { return bootstrap.Tooltip.getOrCreateInstance(el); }
+            );
+        },
         columns: [{
             data: 'id',
             searchable: false,
             orderable: false,
             responsivePriority: 1,
             render: function(data, type, row) {
+                if (type !== 'display') { return data; }
                 const carId = parseInt(data, 10);
                 if (!Number.isFinite(carId) || carId <= 0) { return ''; }
-                const isNew = window.carListConfig.newCarIds?.includes(carId);
-                const badge = isNew ? ' <span class="badge er-badge-yellow badge-sm">NEW</span>' : '';
                 // carId is a validated integer; urlRoot is a system-controlled path — concatenation is safe
-                return '<a class="btn btn-primary btn-sm" href="' + window.carListConfig.urlRoot + 'app/owner/cars/details.php?car_id=' + carId + '"><i class="fas fa-eye"></i> Details' + badge + '</a>';
+                const link = '<a class="btn btn-primary btn-sm" href="' + window.carListConfig.urlRoot + 'app/owner/cars/details.php?car_id=' + carId + '"><i class="fas fa-eye"></i> Details</a>';
+                return link + renderBadges(row.badges);
             }
         }, {
             data: 'year',

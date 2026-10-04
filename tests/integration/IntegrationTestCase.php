@@ -361,6 +361,24 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Evaluate a datetime expression on the MySQL server and return the result.
+     *
+     * Freshness fixtures must come from MySQL's clock, not PHP's.
+     * `CarRepository::freshnessSql()` compares against MySQL's `NOW()`, and the
+     * two clocks can differ. On the reference dev box PHP is UTC and MySQL is
+     * Pacific, 7 hours apart, which would swamp a 60-second boundary offset.
+     *
+     * @param string $expression A trusted SQL datetime expression, e.g. 'NOW() - INTERVAL 30 DAY'
+     * @return string The value as MySQL formats it
+     */
+    protected function mysqlDatetime(string $expression): string
+    {
+        $row = $this->db->query("SELECT {$expression} AS t")->first();
+
+        return (string) $row->t;
+    }
+
+    /**
      * Seed a car's owner_last_updated to a known value, so a test can later
      * assert whether an operation changed it. Pins the #1929 freshness
      * contract's precondition.

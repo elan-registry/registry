@@ -1,12 +1,32 @@
 <?php
 if (count(get_included_files()) == 1) { die(); }
 
-// Callers set these before including this partial; default to null so
-// PHPStan (which analyzes this file in isolation) doesn't flag them as
-// possibly undefined, and so a future caller that forgets one degrades
-// gracefully rather than triggering an undefined-variable warning.
+/**
+ * Vehicle Information card, shared by app/owner/cars/details.php,
+ * usersc/account.php, and app/views/cars/_verify_landing.php.
+ *
+ * Caller must set:
+ *   $carData      object        Car row (Car::data() or a plain `cars` row)
+ *   $purchaseDate ?DateTime     Parsed purchasedate, or null
+ *   $soldDate     ?DateTimeInterface From CarBadges::parseSoldDate(), or null.
+ *                               When set, the card shows the Sold row: the Sold
+ *                               stamp and the date.
+ *   $headingTag   string        Card heading element, h1-h6 (default h3)
+ *
+ * The defaults below let PHPStan analyze this file alone. They also make a
+ * caller that forgets a variable get no warning. When $carData is missing or
+ * is not an object, the card draws nothing and logs one entry.
+ */
+$carData ??= null;
 $purchaseDate ??= null;
 $soldDate ??= null;
+$headingTag ??= 'h3';
+
+if (!is_object($carData)) {
+    logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+        '_vehicle_info_card.php: $carData is ' . get_debug_type($carData) . ', not an object. Card not drawn.');
+    return;
+}
 
 $headingTag       = in_array($headingTag, ['h1','h2','h3','h4','h5','h6'], true) ? $headingTag : 'h3';
 $_cardHeaderClass = $headingTag === 'h4' ? ' card-header-er-l2' : '';
@@ -89,8 +109,15 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
             <?php } ?>
 
             <?php if ($soldDate) { ?>
-            <dt class="col-sm-4 text-muted">Sold Date</dt>
-            <dd class="col-sm-8"><?= $soldDate->format('F j, Y') ?></dd>
+            <dt class="col-sm-4 text-muted">Sold</dt>
+            <dd class="col-sm-8">
+                <?php
+                $badgeKeys  = ['sold'];
+                $badgeStyle = 'stamp';
+                include __DIR__ . '/_status_badges.php';
+                ?>
+                <span class="ms-2"><?= $soldDate->format('F j, Y') ?></span>
+            </dd>
             <?php } ?>
         </dl>
         <?php } ?>

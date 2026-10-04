@@ -178,23 +178,6 @@ final class CarFreshnessSqlLiveQueryTest extends IntegrationTestCase
     // -------------------------------------------------------------------------
 
     /**
-     * Evaluate a datetime expression on the MySQL server and return the result.
-     *
-     * Fixtures for the boundary tests must be derived from MySQL's clock, not
-     * PHP's. `freshnessSql()` compares against MySQL's `NOW()`, and the two
-     * clocks are not guaranteed to agree — on the reference dev box PHP is UTC
-     * while MySQL is Pacific, 7 hours apart, which would swamp a 60-second
-     * boundary offset and make these tests flap for a reason unrelated to the
-     * behaviour under test.
-     */
-    private function mysqlDatetime(string $expression): string
-    {
-        $row = $this->db->query("SELECT {$expression} AS t")->first();
-
-        return (string) $row->t;
-    }
-
-    /**
      * A car one minute inside the one-year window must read fresh.
      *
      * Together with its just-stale sibling this is what pins the interval to a

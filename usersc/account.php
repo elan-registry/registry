@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarBadges;
 use ElanRegistry\CarView;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\OwnerDatabaseException;
@@ -70,7 +71,7 @@ if ($ownerData !== null) {
 $qualityScore = $owner->getProfileQualityScore();
 
 // Owner website (only display for http/https)
-$ownerWebsite    = OwnerView::websiteUrl($ownerData?->website ?? '');
+$ownerWebsite    = OwnerView::websiteUrl($ownerData->website ?? '');
 $hasOwnerWebsite = $ownerWebsite !== null;
 
 $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
@@ -231,15 +232,21 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                 $collapseId   = 'car-details-' . $carId;
                 $purchaseDate = null;
                 if (!empty($carData->purchasedate)) {
-                    try { $purchaseDate = new DateTime($carData->purchasedate); } catch (\Exception) {}
+                    try {
+                        $purchaseDate = new DateTime($carData->purchasedate);
+                    } catch (\Exception) {
+                        logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid purchase date format for car ID $carId: " . $carData->purchasedate);
+                    }
                 }
-                $soldDate = null;
-                if (!empty($carData->solddate)) {
-                    try { $soldDate = new DateTime($carData->solddate); } catch (\Exception) {}
-                }
+                // No log here: CarBadges::forCar() below parses the same value and logs a bad one.
+                $soldDate = CarBadges::parseSoldDate($carData->solddate ?? null, $carId, false);
                 $buildDate = null;
                 if ($factoryData && !empty($factoryData->builddate)) {
-                    try { $buildDate = new DateTime($factoryData->builddate); } catch (\Exception) {}
+                    try {
+                        $buildDate = new DateTime($factoryData->builddate);
+                    } catch (\Exception) {
+                        logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid build date format for car ID $carId: " . $factoryData->builddate);
+                    }
                 }
                 $isExpanded   = $carCount === 1;
 
@@ -265,6 +272,11 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                             <div class="col-md-8">
                                 <h3 class="mb-2 card-header-er-primary-text">
                                     <i class="fas fa-car me-2" aria-hidden="true"></i><?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?> Lotus Elan <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?><?php if (!empty($carData->variant)): ?> <small class="fw-normal opacity-75">(<?= htmlspecialchars($carData->variant, ENT_QUOTES, 'UTF-8') ?>)</small><?php endif; ?>
+                                    <?php
+                                    $badgeKeys  = CarBadges::forCar($carData);
+                                    $badgeStyle = 'stamp';
+                                    include $abs_us_root . $us_url_root . 'app/views/cars/_status_badges.php';
+                                    ?>
                                 </h3>
                                 <div class="row g-2 mt-1">
                                     <div class="col-6 col-lg-3">

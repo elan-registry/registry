@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarDataTablesService;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
@@ -279,4 +280,81 @@ final class CarDataTablesServiceTest extends TestCase
         $service->getDataTablesData($request, 'cars');
     }
 
+    // ============================================================
+    // getDataTablesData — SELECT list (is_fresh, #1900)
+    // ============================================================
+
+    /**
+     * Run getDataTablesData() with a sort and a search, and return every SQL
+     * string passed to query(), in call order.
+     *
+     * @return list<string>
+     */
+    private function captureQueries(string $table, string $column): array
+    {
+        $queries = [];
+        $db = $this->createStub(DatabaseInterface::class);
+        $db->method('query')->willReturnCallback(function (string $sql) use (&$queries, $db) {
+            $queries[] = $sql;
+            return $db;
+        });
+        $db->method('first')->willReturn((object) ['count' => 5]);
+        $db->method('results')->willReturn([]);
+        $db->method('error')->willReturn(false);
+
+        $request = [
+            'draw' => 1,
+            'start' => 0,
+            'length' => 10,
+            'search' => ['value' => 'foo'],
+            'order' => [['column' => 0, 'dir' => 'desc']],
+            'columns' => [['data' => $column, 'searchable' => 'true']],
+        ];
+        (new CarDataTablesService($db))->getDataTablesData($request, $table);
+
+        return $queries;
+    }
+
+    public function testCarsSelectAppendsIsFreshExpression(): void
+    {
+        $queries = $this->captureQueries('cars', 'chassis');
+
+        $this->assertCount(3, $queries);
+        [$countSql, $filterSql, $dataSql] = $queries;
+
+        $this->assertStringContainsString(
+            ', ' . CarRepository::freshnessSql('cars') . ' AS is_fresh FROM `cars`',
+            $dataSql
+        );
+        $this->assertStringEndsWith('ORDER BY `chassis` DESC LIMIT 0, 10', $dataSql);
+        $this->assertSame('SELECT COUNT(*) as count FROM `cars`', $countSql);
+        $this->assertStringNotContainsString('is_fresh', $filterSql);
+    }
+
+    public function testFactorySelectDoesNotAppendIsFresh(): void
+    {
+        $dataSql = $this->captureQueries('factory', 'serial')[2];
+
+        $this->assertStringContainsString('AS car_id FROM `elan_factory_info`', $dataSql);
+        $this->assertStringNotContainsString('is_fresh', $dataSql);
+    }
+
+    public function testIsFreshCannotBeUsedForSortOrFilter(): void
+    {
+        $this->assertFalse($this->invokeValidateColumnName('is_fresh', 'cars'));
+    }
+
+    public function testRequestNamingIsFreshColumnIsNotUsedForSortOrSearch(): void
+    {
+        // A client that names is_fresh as its sort and search column must get the
+        // default ORDER BY and no search condition. With no usable search column the
+        // filtered-count query is skipped, so only the COUNT and data queries run.
+        $queries = $this->captureQueries('cars', 'is_fresh');
+
+        $this->assertCount(2, $queries);
+        $dataSql = $queries[1];
+        $this->assertStringEndsWith('ORDER BY id ASC LIMIT 0, 10', $dataSql);
+        $this->assertStringNotContainsString('`is_fresh`', $dataSql);
+        $this->assertStringNotContainsString('LIKE', $dataSql);
+    }
 }
