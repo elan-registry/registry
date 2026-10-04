@@ -55,11 +55,16 @@ entries needs the same explicit check `/finish-issue` Step 4.5 and
 assume it already exists:
 
 ```bash
-BASE=$(gh pr list --head "$(git branch --show-current)" --state open \
+# An empty --head lists every open PR, so skip the lookup on a detached HEAD.
+BRANCH=$(git branch --show-current)
+BASE=
+[ -n "$BRANCH" ] && BASE=$(gh pr list --head "$BRANCH" --state open \
   --json baseRefName --jq '.[0].baseRefName // empty' \
   --repo elan-registry/registry 2>/dev/null)
-[ -z "$BASE" ] && BASE=$(scripts/resolve-base-branch.sh | sed 's|^origin/||')
-BASE=${BASE:-main}
+if [ -z "$BASE" ]; then
+  BASE=$(scripts/resolve-base-branch.sh) || { echo "could not resolve a base branch (detached HEAD?)" >&2; exit 1; }
+  BASE=${BASE#origin/}
+fi
 MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
 
 git diff --name-only $MERGE_BASE..HEAD | scripts/check-baseline-hygiene.sh
@@ -68,6 +73,11 @@ git diff --name-only $MERGE_BASE..HEAD | scripts/check-baseline-hygiene.sh
 Exit 2 means the check couldn't run at all (baseline file not found —
 usually a wrong working directory), not that the branch is clean; fix the
 cwd and re-run rather than proceeding.
+
+Exit 1 from this block means that no base branch could be found, for
+example on a detached HEAD. This is Blocking. Report the message, check out
+the branch, and run `/review-pr` again. Do not record baseline hygiene as
+clean.
 
 If this branch went through `/execute-plan`, its Step 6.5 should have
 already caught and resolved this — treat any hit here as that step being
@@ -91,21 +101,24 @@ call it clean.
 
 ## Step 2: Build the full branch diff
 
-Find the milestone base branch (or fall back to `main`):
+Find the milestone base branch. On a detached HEAD the block exits 1,
+because no base can be found. Stop the review and report it as Blocking.
+Check out the branch and run `/review-pr` again:
 
 ```bash
 # If a PR exists, use its base branch
-BASE=$(gh pr list --head "$(git branch --show-current)" --state open \
+# An empty --head lists every open PR, so skip the lookup on a detached HEAD.
+BRANCH=$(git branch --show-current)
+BASE=
+[ -n "$BRANCH" ] && BASE=$(gh pr list --head "$BRANCH" --state open \
   --json baseRefName --jq '.[0].baseRefName // empty' \
   --repo elan-registry/registry 2>/dev/null)
 
 # Fall back to scripts/resolve-base-branch.sh's derivation if no PR yet
 if [ -z "$BASE" ]; then
-  BASE=$(scripts/resolve-base-branch.sh | sed 's|^origin/||')
+  BASE=$(scripts/resolve-base-branch.sh) || { echo "could not resolve a base branch (detached HEAD?)" >&2; exit 1; }
+  BASE=${BASE#origin/}
 fi
-
-# Last resort
-BASE=${BASE:-main}
 
 MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
 git diff $MERGE_BASE..HEAD
@@ -303,11 +316,14 @@ Shell variables do not carry over between Bash calls. This block computes
 
 ```bash
 set -o pipefail
-BASE=$(gh pr list --head "$(git branch --show-current)" --state open \
+# An empty --head lists every open PR, so skip the lookup on a detached HEAD.
+BRANCH=$(git branch --show-current)
+BASE=
+[ -n "$BRANCH" ] && BASE=$(gh pr list --head "$BRANCH" --state open \
   --json baseRefName --jq '.[0].baseRefName // empty' \
   --repo elan-registry/registry 2>/dev/null)
 if [ -z "$BASE" ]; then
-  BASE=$(scripts/resolve-base-branch.sh) || { echo "could not resolve a base branch" >&2; exit 1; }
+  BASE=$(scripts/resolve-base-branch.sh) || { echo "could not resolve a base branch (detached HEAD?)" >&2; exit 1; }
   BASE=${BASE#origin/}
 fi
 MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
