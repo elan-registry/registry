@@ -132,7 +132,6 @@ final class SendVerificationBatchJobTest extends TestCase
     {
         $reflection = new ReflectionClass(SendVerificationBatchJob::class);
         $method = $reflection->getMethod('jobName');
-        $method->setAccessible(true);
 
         $repo = $this->createStub(CarRepository::class);
         $sendSvc = $this->makeSendSvc($repo);
@@ -145,7 +144,6 @@ final class SendVerificationBatchJobTest extends TestCase
     {
         $reflection = new ReflectionClass(SendVerificationBatchJob::class);
         $method = $reflection->getMethod('guardIntervalHours');
-        $method->setAccessible(true);
 
         $repo = $this->createStub(CarRepository::class);
         $sendSvc = $this->makeSendSvc($repo);
