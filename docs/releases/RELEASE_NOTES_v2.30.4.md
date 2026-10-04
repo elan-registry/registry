@@ -35,7 +35,7 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - [#2259](https://github.com/elan-registry/registry/issues/2259) — Workflow commands and agents use the model each step
   needs, and repeated review work is removed (developer workflow only, no site change)
 - WIP: [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified status row (and admin-only Email on file row) on the car details page
-- WIP: [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page
+- [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges on the account page
   and cars list, and a Sold stamp in the Sold row of the car details page (the details-page Verified row is #1897). New
   class `CarBadges` owns which badges a car shows. The cars list API response has
   a `badges` key on each row. NEW moved outside the Details link (WCAG 4.1.2). New
