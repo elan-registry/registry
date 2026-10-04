@@ -75,7 +75,7 @@ if (!empty($verifyCar->purchasedate)) {
 // docblock). verify_car.php's dispatch-time globals ($soldDateValue,
 // $soldDateMin, $soldDateMax, $soldDateError) are all distinct names, so
 // this doesn't collide with renderVerifyPage()'s `global` list.
-$soldDate    = ElanRegistry\Car\CarBadges::soldDate($verifyCar->solddate ?? null);
+$soldDate    = ElanRegistry\Car\CarBadges::soldDate($verifyCar->solddate ?? null, $verifyCar->id ?? null);
 $alreadySold = ElanRegistry\Car\CarBadges::isSold($verifyCar->solddate ?? null);
 
 $verifyOwnerLocation = ElanRegistry\OwnerView::displayLocation($verifyCar);

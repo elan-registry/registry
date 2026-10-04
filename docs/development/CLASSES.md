@@ -945,25 +945,28 @@ landing page, so all three show that stamp.
 | `verified` | Verified (with a check mark icon) | The car is fresh, not sold, and not new |
 
 The display order is New, Sold, Verified. Each definition also has `tooltip`
-and `tone` (the CSS tone, `er-badge--<tone>`).
+and `tone` (the CSS tone, `er-badge--<tone>`). The `new` tooltip gets its
+numbers (90 days, 5 newest) from `CarShowcaseService::NEW_DAYS` and
+`CarShowcaseService::NEW_FLOOR`, the same constants that
+`getNewCarIds()` uses.
 
 **Methods**:
 
 ```php
 public static function resolve(bool $sold, bool $fresh, bool $isNew): array
-public static function forCar(object $car, bool $isNew = false): array
+public static function forCar(object $car): array
 public static function decorateRows(array $rows, array $newIds): array
 public static function html(array $keys, string $style = 'flat'): string
 public static function isSold(mixed $solddate): bool
-public static function soldDate(mixed $solddate): ?DateTimeImmutable
+public static function soldDate(mixed $solddate, int|string|null $carId = null): ?DateTimeImmutable
 ```
 
 - `resolve()` is a pure function. It applies the "Shows when" rule in the
   table above and returns the badge keys in display order.
 - `forCar()` takes a car record (for example `Car::data()`). Sold comes
   from `isSold()`. Fresh comes from `CarRepository::isFresh()` with
-  `last_verified` and `owner_last_updated`. `$isNew` is true only on the
-  cars list.
+  `last_verified` and `owner_last_updated`. It never adds the `new` badge,
+  because New is for the cars list only (`decorateRows()`).
 - `decorateRows()` adds a `badges` key and a `badges_html` key to each cars
   DataTables row. `badges_html` is the flat badges from `html()` in a
   `<div class="er-badges ...">` row, or `''` when the car has no badges.
@@ -986,9 +989,15 @@ public static function soldDate(mixed $solddate): ?DateTimeImmutable
   accept only a real `Y-m-d` date, so `isSold()` does not check the value
   again. `forCar()`, `decorateRows()`, and the vericode pages use it.
 - `soldDate()` returns the sold date at midnight for display, or null when
-  the car is not sold or the value is not a `Y-m-d` string. The account
+  the car is not sold or the value is not a valid `Y-m-d` date. The account
   page, the car details page, and the vericode landing page use it for the
-  Vehicle Information card.
+  Vehicle Information card. The vericode "already sold" notice also uses it.
+  A sold car with a bad value (for example a zero date or `2024-02-30`) logs
+  one entry to `LOG_CATEGORY_CAR_ERRORS`, with the car ID from `$carId` or
+  `unknown`. `isSold()` is still true for that car, so the account hero and
+  the cars list show Sold. The vericode landing page disables its sold button,
+  and the "already sold" notice leaves out the date. The Vehicle Information
+  card has no Sold row.
 
 **Behavior on bad date data**: `forCar()` does not throw. When
 `owner_last_updated` is missing or is not a string, `last_verified` is not

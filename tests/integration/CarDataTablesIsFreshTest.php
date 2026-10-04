@@ -246,4 +246,43 @@ final class CarDataTablesIsFreshTest extends IntegrationTestCase
         );
         $this->assertStringNotContainsString('is_fresh', (string) json_encode($decorated));
     }
+
+    /**
+     * The account hero uses the PHP rule (forCar() -> CarRepository::isFresh())
+     * and the cars list uses the SQL rule (freshnessSql()). A car must get the
+     * same badges from both, or the two pages disagree about the same car.
+     */
+    #[Group('fast')]
+    public function testForCarOnFullRowMatchesDecorateRowsOnDataTablesRow(): void
+    {
+        $response = $this->fetch($this->request('id'));
+        $this->assertIsArray($response['data']);
+        $decorated = CarBadges::decorateRows($response['data'], []);
+
+        $listBadges = [];
+        foreach ($decorated as $row) {
+            $this->assertIsObject($row);
+            $listBadges[(int) $row->id] = $row->badges;
+        }
+
+        $phpBadges = [];
+        foreach ($this->ids as $letter => $carId) {
+            $carRow = $this->db->query('SELECT * FROM cars WHERE id = ?', [$carId])->first();
+            $this->assertIsObject($carRow, "Fixture car {$letter} must load from the cars table");
+            $this->assertArrayHasKey($carId, $listBadges, "Fixture car {$letter} must be in the DataTables result");
+
+            $phpBadges[$letter] = CarBadges::forCar($carRow);
+            $this->assertSame(
+                $listBadges[$carId],
+                $phpBadges[$letter],
+                "forCar() and decorateRows() must give car {$letter} the same badges"
+            );
+        }
+
+        // Literal values, so the test fails when both rules are wrong in the same way.
+        $this->assertSame(
+            ['A' => ['verified'], 'B' => ['verified'], 'C' => ['sold'], 'D' => []],
+            $phpBadges
+        );
+    }
 }

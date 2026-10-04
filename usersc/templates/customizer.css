@@ -285,11 +285,11 @@
 }
 
 /* Status badges (issue #1900). Sold is a red sign with white text. New is
-   yellow with black text (white on #fff200 is 1.1:1). Verified is a light
+   yellow with black text (white on #fff200 is 1.2:1). Verified is a light
    green tag with dark green text, so it does not look like the dark green
    Details button, stays visible on the dark green account hero, and differs
    from Sold in lightness for colour-blind readers. Flat badges are pills;
-   .er-badge--stamp keeps square corners and adds the rotated stamp look. */
+   .er-badge--stamp keeps a small corner radius and adds the rotated stamp look. */
 .er-badge {
   display: inline-block;
   font-size: 0.7rem;

@@ -170,9 +170,6 @@ final class AccountPageWiringTest extends TestCase
             $heading,
             "The hero heading must draw CarBadges::html(CarBadges::forCar(\$carData), 'stamp')"
         );
-
-        // The call must not pass the NEW flag: NEW is a cars-list concept.
-        $this->assertStringNotContainsString('forCar($carData, true)', $content);
     }
 
     public function testStatusBadgesAppearOnlyInsideHeroHeading(): void

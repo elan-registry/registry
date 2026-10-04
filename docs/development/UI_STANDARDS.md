@@ -198,7 +198,7 @@ actions only.
 | --- | --- |
 | `.er-badge` | Base. Small uppercase pill label. The tone class sets the colors |
 | `.er-badge--sold`, `.er-badge--verified`, `.er-badge--new` | Tone. One per badge. Sold is a red sign. Verified is a light green tag with ✓ and dark green text, so it does not look like the dark green Details button. New is a yellow sign |
-| `.er-badge--stamp` | Adds a thick border, square corners, and a 6 degree counter-clockwise rotation |
+| `.er-badge--stamp` | Adds a thick border, a small corner radius (`0.25rem`), and a 6 degree counter-clockwise rotation |
 | `.er-badges` | Row that holds flat badges in the cars list |
 
 **Two styles:**
@@ -254,11 +254,15 @@ template or in JS. Change `CarBadges::resolve()`.
   "✓ Verified".
 - Do not add `title` or `aria-label`. Bootstrap adds `aria-describedby`
   when the tooltip shows. A `title` shows a second native tooltip.
-- In JS, build badges with DOM methods or `textContent`. Do not build them
-  from strings that contain tooltip or label text.
+- Do not build badges in JS. The cars list gets escaped badge HTML from
+  `CarBadges::html()` in the `badges_html` field and adds it after the
+  Details link.
 - After the cars list redraws, `drawCallback` disposes the old tooltips and
   starts new ones. Tooltips on rows that DataTables creates do not start
   by themselves.
+
+The numbers in the New tooltip below come from
+`CarShowcaseService::NEW_DAYS` and `CarShowcaseService::NEW_FLOOR`.
 
 ```html
 <!-- ✅ Flat badges in a row outside the Details link (cars list cell) -->
@@ -277,7 +281,7 @@ template or in JS. Change `CarBadges::resolve()`.
 ```
 
 To see all badges, open the Car status badges section of the design system
-page (`app/admin/design-system.php`). It uses the real partial.
+page (`app/admin/design-system.php`). It draws the badges with `CarBadges::html()`, the same renderer the pages use.
 
 ### Alerts
 

@@ -47,7 +47,9 @@ final class CarBadges
         'new' => [
             'label'   => 'New',
             'icon'    => null,
-            'tooltip' => 'Added to the registry in the last 90 days, or one of the 5 newest cars.',
+            // From the constants that getNewCarIds() uses, so the text and the rule cannot disagree.
+            'tooltip' => 'Added to the registry in the last ' . CarShowcaseService::NEW_DAYS
+                . ' days, or one of the ' . CarShowcaseService::NEW_FLOOR . ' newest cars.',
             'tone'    => 'new',
         ],
         'sold' => [
@@ -100,14 +102,15 @@ final class CarBadges
      * wrong type, or do not parse, the method logs one entry and treats the
      * car as not fresh. Sold still shows.
      *
-     * @param object $car   Car record (for example Car::data()) with `solddate`,
-     *                      `last_verified`, and `owner_last_updated`
-     * @param bool   $isNew True to include the "new" badge (cars list only)
+     * The "new" badge is for the cars list only, so this method never adds it.
+     *
+     * @param object $car Car record (for example Car::data()) with `solddate`,
+     *                    `last_verified`, and `owner_last_updated`
      * @return list<string> Badge keys, in display order
      */
-    public static function forCar(object $car, bool $isNew = false): array
+    public static function forCar(object $car): array
     {
-        return self::resolve(self::isSold($car->solddate ?? null), self::isCarFresh($car), $isNew);
+        return self::resolve(self::isSold($car->solddate ?? null), self::isCarFresh($car), false);
     }
 
     /**
@@ -215,18 +218,38 @@ final class CarBadges
     /**
      * Get the sold date for display.
      *
-     * @param mixed $solddate Value of `solddate` from the record
-     * @return DateTimeImmutable|null The sold date at midnight, or null when the car is not sold or the value is not a `Y-m-d` string
+     * A sold car with a bad value logs one entry and gets null. isSold() is
+     * still true for it, so the account hero and the cars list show Sold, but
+     * the Vehicle Information card has no Sold row.
+     *
+     * @param mixed           $solddate Value of `solddate` from the record
+     * @param int|string|null $carId    Car ID for the log entry, or null when it is not known
+     * @return DateTimeImmutable|null The sold date at midnight, or null when the car is not sold or the value is not a valid `Y-m-d` date
      */
-    public static function soldDate(mixed $solddate): ?DateTimeImmutable
+    public static function soldDate(mixed $solddate, int|string|null $carId = null): ?DateTimeImmutable
     {
-        if (!self::isSold($solddate) || !is_string($solddate)) {
+        if (!self::isSold($solddate)) {
+            return null;
+        }
+        if (!is_string($solddate)) {
+            self::logBadSoldDate($carId, get_debug_type($solddate));
             return null;
         }
 
+        // createFromFormat() rolls '0000-00-00' and '2024-02-30' over to another
+        // date with only a warning, and DB.php sets sql_mode = '', so a zero
+        // date can reach this code. Same check as CarRepository::parseTimestamp().
         $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $solddate);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (
+            $parsed === false
+            || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        ) {
+            self::logBadSoldDate($carId, "'{$solddate}'");
+            return null;
+        }
 
-        return $parsed === false ? null : $parsed;
+        return $parsed;
     }
 
     /**
@@ -304,6 +327,26 @@ final class CarBadges
                 'CarBadges: car %s has bad freshness dates, Verified badge not shown: %s',
                 is_scalar($carId) ? (string) $carId : 'unknown',
                 $reason
+            )
+        );
+    }
+
+    /**
+     * Log one entry for a sold car whose `solddate` is not a valid date.
+     *
+     * @param mixed  $carId Car ID from the record, or null when it is not known
+     * @param string $value The bad value, or its type when it is not a string
+     * @return void
+     */
+    private static function logBadSoldDate(mixed $carId, string $value): void
+    {
+        logger(
+            0,
+            LogCategories::LOG_CATEGORY_CAR_ERRORS,
+            sprintf(
+                'CarBadges: car %s has solddate %s, which is not a valid Y-m-d date, sold date not shown',
+                is_scalar($carId) ? (string) $carId : 'unknown',
+                $value
             )
         );
     }

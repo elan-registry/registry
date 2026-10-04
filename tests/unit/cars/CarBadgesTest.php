@@ -249,20 +249,6 @@ final class CarBadgesTest extends TestCase
         $this->assertSame([], CarBadges::forCar(self::car()));
     }
 
-    public function test_forCar_isNewAndFresh_suppressesVerified(): void
-    {
-        $car = self::car(['owner_last_updated' => self::daysAgo(10)]);
-
-        $this->assertSame(['new'], CarBadges::forCar($car, true));
-    }
-
-    public function test_forCar_isNewAndSold_returnsNewThenSold(): void
-    {
-        $car = self::car(['solddate' => '2025-03-14']);
-
-        $this->assertSame(['new', 'sold'], CarBadges::forCar($car, true));
-    }
-
     // The boundary tests use 360 and 370 days, not 364 and 366: the rule is
     // "-1 year", which is 366 days when the year includes 29 February.
 
@@ -585,20 +571,58 @@ final class CarBadgesTest extends TestCase
     }
 
     /** @return array<string, array{mixed}> */
-    public static function noSoldDateProvider(): array
+    public static function notSoldProvider(): array
     {
         return [
             'null'         => [null],
             'empty string' => [''],
-            'not a date'   => ['garbage'],
-            'not a string' => [20250314],
         ];
     }
 
-    #[DataProvider('noSoldDateProvider')]
-    public function test_soldDate_withoutAYmdString_returnsNull(mixed $solddate): void
+    #[DataProvider('notSoldProvider')]
+    public function test_soldDate_notSold_returnsNullWithoutLog(mixed $solddate): void
     {
         $this->assertNull(CarBadges::soldDate($solddate));
+        $this->assertSame([], self::logEntries());
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function badSoldDateProvider(): array
+    {
+        return [
+            'not a date'      => ['garbage'],
+            'not a string'    => [20250314],
+            'zero date'       => ['0000-00-00'],
+            'rolls over'      => ['2024-02-30'],
+            'month 13'        => ['2024-13-01'],
+            'has a time part' => ['2024-01-15 00:00:00'],
+        ];
+    }
+
+    #[DataProvider('badSoldDateProvider')]
+    public function test_soldDate_badValue_returnsNullAndLogsOnce(mixed $solddate): void
+    {
+        $this->assertTrue(CarBadges::isSold($solddate));
+        $this->assertNull(CarBadges::soldDate($solddate));
+        $this->assertCount(1, self::logEntries());
+        $this->assertSame(LogCategories::LOG_CATEGORY_CAR_ERRORS, self::logEntries()[0]['category']);
+    }
+
+    public function test_soldDate_badValueWithCarId_logsCarId(): void
+    {
+        $this->assertNull(CarBadges::soldDate('0000-00-00', 732));
+
+        $this->assertCount(1, self::logEntries());
+        $this->assertStringContainsString('car 732 ', self::logEntries()[0]['message']);
+        $this->assertStringContainsString("'0000-00-00'", self::logEntries()[0]['message']);
+    }
+
+    public function test_soldDate_badValueWithoutCarId_logsUnknownCarId(): void
+    {
+        $this->assertNull(CarBadges::soldDate('garbage'));
+
+        $this->assertCount(1, self::logEntries());
+        $this->assertStringContainsString('car unknown ', self::logEntries()[0]['message']);
     }
 
     public function test_decorateRows_stringId_matchesNewIds(): void

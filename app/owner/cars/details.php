@@ -63,7 +63,7 @@ if (!empty($_GET)) {
         }
     }
     
-    $soldDate = CarBadges::soldDate($carData->solddate ?? null);
+    $soldDate = CarBadges::soldDate($carData->solddate ?? null, (int) $carID);
 
     if ($factoryData && !empty($factoryData->builddate)) {
         try {

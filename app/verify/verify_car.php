@@ -492,8 +492,10 @@ if ($action === 'sold' && $isSold) {
     $verifyNoticeState   = 'sold';
     $verifyNoticeIcon    = 'fa-circle-info';
     $verifyNoticeHeading = 'This car is already recorded as sold.';
-    $verifyNoticeBody    = 'We have it as sold on '
-        . date('j F Y', (int) strtotime((string) $verifyCar->solddate))
+    // A bad stored date gives null. Then the notice leaves out the date, so
+    // it never shows a wrong date such as 1 January 1970.
+    $verifySoldOn        = CarBadges::soldDate($verifyCar->solddate ?? null, $verifyCar->id ?? null)?->format('j F Y');
+    $verifyNoticeBody    = ($verifySoldOn !== null ? 'We have it as sold on ' . $verifySoldOn : 'We have it as sold')
         . '. It stays in your account marked as sold, we won\'t send you verification '
         . 'emails about it, and its history stays safely in the registry.';
     renderVerifyPage(__DIR__ . '/../views/cars/_verify_notice.php');
