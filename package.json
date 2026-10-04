@@ -64,7 +64,7 @@
     "chart.js": "4.5.1",
     "datatables.net-bs5": "3.1.1",
     "datatables.net-fixedheader-bs5": "5.1.0",
-    "datatables.net-responsive-bs5": "4.1.0",
+    "datatables.net-responsive-bs5": "4.1.1",
     "esbuild": "^0.28.2",
     "filepond": "^4.32.12",
     "filepond-plugin-file-validate-size": "^2.2.8",
