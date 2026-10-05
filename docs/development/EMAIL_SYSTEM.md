@@ -714,11 +714,11 @@ is not configurable. Brevo has no per-link exclusion for transactional email: no
 turns tracking off for one link (confirmed during #2147).
 
 Rule for templates: **do not print a raw URL as body text.** The reader sees the rewritten tracking URL, which looks
-like a phishing link. Present each action link as an `EmailTemplate::createButton()` button only. If a template needs
-a fallback for a button that does not work, give a `mailto:` contact hint built from `getFeedbackEmail()`. A `mailto:`
-link is not an http(s) link, so Brevo is not expected to rewrite it (not yet confirmed in a live send). The four auth
-templates in `usersc/views/` (`_email_template_forgot_password.php`, `_email_template_registration_attempt.php`,
-`_email_template_verify.php`, `_email_template_verify_new.php`) use this pattern (#2147).
+like a phishing link. Give each action link a text label, never the URL. Use an `EmailTemplate::createButton()` or
+`createButtonRow()` button for a primary action. A secondary link, such as the verification email's Opt-Out link, can
+be a plain `<a>` with a text label. If a template needs a fallback for a button that does not work, give a `mailto:`
+contact hint built from `getFeedbackEmail()`. A `mailto:` link is not an http(s) link, so Brevo is not expected to
+rewrite it (not yet confirmed in a live send). The auth email templates in `usersc/views/` use this pattern.
 
 **Template-variable workaround: tested, does not work.** Some Brevo users report that supplying the URL via a
 template variable (`href="{{ params.link }}"` instead of a literal `href="https://..."`) sometimes escapes

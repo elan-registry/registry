@@ -12,7 +12,10 @@ use ElanRegistry\EmailTemplate;
  * via the EmailTemplate class.
  *
  * Variables available (from $email_field_whitelist):
- *   $fname, $email, $vericode, $user_id, $join_vericode_expiry, $url
+ *   $fname, $email, $vericode, $user_id, $join_vericode_expiry
+ *
+ * $email, $vericode and $user_id need no @var tag: the template reads them
+ * with ??, so PHPStan does not report them as undefined.
  *
  * @var string $fname
  * @var int|string $join_vericode_expiry
@@ -21,8 +24,9 @@ use ElanRegistry\EmailTemplate;
 $emailTemplate = new EmailTemplate();
 
 // Build verification URL from trusted server-side components.
-// $email here is the current (old) email, rawurlencode()'d by user_settings.php — it is not used
-// in the URL. The new address is not in scope; vericode + user_id are sufficient for verify.php.
+// $email here is the current (old) email, already rawurlencode()'d by user_settings.php, so it is
+// not encoded again. verify.php rejects the request without a valid email, but finds the user by
+// vericode + user_id. The new address is not in scope.
 $verifyUrl = getBaseUrl() . '/users/verify.php?new=1'
     . '&email=' . ($email ?? '')
     . '&vericode=' . rawurlencode($vericode ?? '')
