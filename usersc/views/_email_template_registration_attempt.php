@@ -23,11 +23,21 @@ use ElanRegistry\EmailTemplate;
  *   $vericode         — raw plaintext token (rawurlencode applied in this template)
  *   $user_id          — user ID integer
  *   $reset_vericode_expiry — reset link expiry in minutes
+ *
+ * @var string $fname
+ * @var string $email
+ * @var string $vericode
+ * @var int|string $user_id
+ * @var int|string $reset_vericode_expiry
  */
 
 $emailTemplate = new EmailTemplate();
 
 $resetUrl = getBaseUrl() . '/users/forgot_password_reset.php?email=' . $email . '&vericode=' . rawurlencode($vericode) . '&user_id=' . (int)$user_id . '&reset=1';
+
+// Brevo rewrites every http link through its tracking domain, so the fallback is a
+// mailto contact, not a printed URL (#2147).
+$safeContact = htmlspecialchars(getFeedbackEmail(), ENT_QUOTES, 'UTF-8');
 
 $content = "
     <p>Hello <strong>" . htmlspecialchars($fname, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
@@ -38,8 +48,7 @@ $content = "
 
     " . $emailTemplate->createButton('Reset My Password', $resetUrl, 'primary') . "
 
-    <p>Or copy and paste this link into your browser:</p>
-    <p style=\"word-break:break-all;font-size:13px;color:#6c757d;\">" . htmlspecialchars($resetUrl, ENT_QUOTES, 'UTF-8') . "</p>
+    <p>If the button above does not work, contact <a href=\"mailto:" . $safeContact . "\">" . $safeContact . "</a>.</p>
 
     <p>This reset link expires in <strong>" . htmlspecialchars((string)$reset_vericode_expiry, ENT_QUOTES, 'UTF-8') . " minutes</strong>.</p>
 

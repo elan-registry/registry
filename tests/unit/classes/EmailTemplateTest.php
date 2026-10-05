@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\EmailTemplate;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -1407,5 +1408,84 @@ final class EmailTemplateTest extends TestCase
         $this->assertStringNotContainsString('href="//evil.com', $html);
         $this->assertStringNotContainsString('href="http://evil.com', $html);
         $this->assertStringNotContainsString('href="https://evil.com', $html);
+    }
+
+    // ============================================================
+    // AUTH TEMPLATES — no visible fallback URL (#2147)
+    // ============================================================
+
+    /**
+     * Brevo rewrites every http link through its tracking domain, so a
+     * printed fallback URL shows the reader a third-party tracking URL.
+     *
+     * @return array<string, array{string, array<string, mixed>, string, string}>
+     */
+    public static function authTemplateProvider(): array
+    {
+        $base = 'https://test.elanregistry.org';
+        $resetVars = [
+            'fname'                 => 'Bob',
+            'email'                 => rawurlencode('bob@example.com'),
+            'vericode'              => 'ABC123DEFG',
+            'user_id'               => 7,
+            'reset_vericode_expiry' => 15,
+        ];
+        $resetUrl = $base . '/users/forgot_password_reset.php?email=bob%40example.com'
+            . '&vericode=ABC123DEFG&user_id=7&reset=1';
+        $joinVars = [
+            'fname'                => 'Bob',
+            'email'                => 'bob@example.com',
+            'vericode'             => 'ABC123DEFG',
+            'user_id'              => 7,
+            'join_vericode_expiry' => 48,
+        ];
+
+        return [
+            'forgot_password' => [
+                '_email_template_forgot_password.php', $resetVars, $resetUrl, 'Reset My Password',
+            ],
+            'registration_attempt' => [
+                '_email_template_registration_attempt.php', $resetVars, $resetUrl, 'Reset My Password',
+            ],
+            'verify' => [
+                '_email_template_verify.php',
+                $joinVars,
+                $base . '/users/verify.php?email=bob%40example.com&vericode=ABC123DEFG&user_id=7',
+                'Verify My Email Address',
+            ],
+            'verify_new' => [
+                '_email_template_verify_new.php',
+                ['email' => rawurlencode('bob@example.com')] + $joinVars,
+                $base . '/users/verify.php?new=1&email=bob%40example.com&vericode=ABC123DEFG&user_id=7',
+                'Verify New Email Address',
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $vars
+     */
+    #[DataProvider('authTemplateProvider')]
+    public function testAuthTemplateShowsActionUrlOnlyInButtonAndMailtoFallback(
+        string $view,
+        array $vars,
+        string $actionUrl,
+        string $buttonLabel
+    ): void {
+        $html = $this->renderView($view, $vars, $this->userscViewDir());
+        $escapedUrl = htmlspecialchars($actionUrl, ENT_QUOTES, 'UTF-8');
+
+        $this->assertStringNotContainsString('copy and paste', $html);
+        $this->assertSame(1, substr_count($html, $escapedUrl), 'Action URL must appear only once');
+        $this->assertStringContainsString('href="' . $escapedUrl . '"', $html);
+        $this->assertSame(1, substr_count($html, '>' . $buttonLabel . '</a>'), 'Expected exactly one button');
+        $this->assertStringNotContainsString('word-break:break-all', $html);
+        $this->assertDoesNotMatchRegularExpression('#<p[^>]*>\s*</p>#', $html);
+
+        $contact = htmlspecialchars(getFeedbackEmail(), ENT_QUOTES, 'UTF-8');
+        $this->assertStringContainsString(
+            'If the button above does not work, contact <a href="mailto:' . $contact . '">' . $contact . '</a>.',
+            $html
+        );
     }
 }

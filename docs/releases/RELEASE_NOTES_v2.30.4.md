@@ -22,6 +22,8 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 - The Vehicle Information card on the car details page, your account page, and the vericode page has a Verified row.
   It shows "Last confirmed" or "Current since" with a date, or "Not specified" when the record is more than 12 months
   old. A help button explains what Verified means. ([#1897](https://github.com/elan-registry/registry/issues/1897))
+- The password reset, registration attempt, and email verification emails no longer show a long link as text. If the
+  button does not work, the email gives a contact address. ([#2147](https://github.com/elan-registry/registry/issues/2147))
 
 ## Admin-Facing Changes
 
@@ -54,7 +56,10 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   `last_verified`. The chart no longer shows `NaN` when the registry has no cars.
 - WIP: [#1894](https://github.com/elan-registry/registry/issues/1894) — Verification email photo thumbnail at 300px with
   descriptive alt text, and a highlighted fallback when a car has no photo (includes the remaining gap from #1892)
-- WIP: [#2147](https://github.com/elan-registry/registry/issues/2147) — Stop displaying Brevo's rewritten tracking URL in the four auth email templates
+- [#2147](https://github.com/elan-registry/registry/issues/2147) — The password reset, registration attempt, and
+  email verification emails no longer print the link as text. Brevo rewrites that link to its tracking domain, so it
+  looked like a phishing link. A contact address replaces it. The unused `NO_TRACK_LINK_CLASS` is removed, and
+  `EMAIL_SYSTEM.md` states the rule for links in email templates
 - [#2150](https://github.com/elan-registry/registry/issues/2150) — Integration tests now connect the verification email
   links to the landing page and show that a hard bounce or an opt-out removes the car from the next verification batch
   (tests only, no site change)
