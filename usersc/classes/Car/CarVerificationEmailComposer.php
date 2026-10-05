@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use ElanRegistry\EmailTemplate;
+use ElanRegistry\LogCategories;
 
 /**
  * CarVerificationEmailComposer - Builds the periodic owner verification email
@@ -15,14 +16,19 @@ use ElanRegistry\EmailTemplate;
  * approved mockup (docs/plans/features/car-owner-verification/images/exhibit-a-email.png):
  * greeting, Verify/Sold buttons, Owner Information, Car Information (with the
  * conditional chassis-override badge and highlighted rows for any blank
- * optional field — Color, Variant, Purchase Date, Website), the conditional
+ * optional field — Color, Variant, Purchase Date, Photos, Website), the conditional
  * "About the Chassis Number" alert, the edit CTA, and a footer carrying the
  * one-click opt-out link.
  *
- * This class performs NO database access. Everything it renders comes from the
- * `$carData` and `$owner` objects supplied by the caller — the same shapes
- * app/verify/verify_car.php already builds — which keeps it unit-testable with
- * no framework bootstrap beyond getBaseUrl().
+ * This class performs NO database access of its own. Everything it renders
+ * comes from the `$carData` and `$owner` objects supplied by the caller — the
+ * same shapes app/verify/verify_car.php already builds — which keeps it
+ * unit-testable with no framework bootstrap beyond getBaseUrl(), logger(),
+ * EMAIL_SUBJECT_PREFIX and ELAN_IMAGE_DIR. The one exception is logger(),
+ * which writes to the logs table when a car's photos cannot be shown. The
+ * class also reads the filesystem (is_file() only) so the email never links
+ * an image that would show as broken. See photosRow() for the three Photos
+ * states.
  *
  * Escaping: EmailTemplate::createMessageBox()'s `$content` and
  * createRawDetailRow()'s `$trustedHtml` are raw HTML by design, so every
@@ -49,23 +55,36 @@ final class CarVerificationEmailComposer
     /** Display text used for any car/owner field that is null or blank. */
     private const NOT_SPECIFIED = 'Not specified';
 
-    /** Display text used for a blank website, which gets the highlighted row treatment. */
-    private const WEBSITE_NOT_PROVIDED = 'Not yet provided';
+    /** Display text used for a blank website or missing photo, which get the highlighted row treatment. */
+    private const NOT_YET_PROVIDED = 'Not yet provided';
 
     private EmailTemplate $template;
 
+    private string $imageRoot;
+
     /**
-     * @param EmailTemplate|null $template Renderer to compose with; a default
-     *                                     instance is created when null, so
-     *                                     tests can inject their own.
+     * @param EmailTemplate|null $template  Renderer to compose with; a default
+     *                                      instance is created when null, so
+     *                                      tests can inject their own.
+     * @param string|null        $imageRoot Directory holding the per-car image
+     *                                      folders (`{root}/{carId}/`). Defaults
+     *                                      to the site's ELAN_IMAGE_DIR, so the
+     *                                      class reads no globals. Tests inject
+     *                                      a temporary one.
      */
-    public function __construct(?EmailTemplate $template = null)
+    public function __construct(?EmailTemplate $template = null, ?string $imageRoot = null)
     {
-        $this->template = $template ?? new EmailTemplate();
+        $this->template  = $template ?? new EmailTemplate();
+        $this->imageRoot = rtrim($imageRoot ?? dirname(__DIR__, 3) . '/' . ELAN_IMAGE_DIR, '/');
     }
 
     /**
      * Compose the verification email's subject line and HTML body.
+     *
+     * A car with no safe photo listed gets a highlighted "Not yet provided" Photos
+     * row and is named in the blank-field callout, the same as a blank Website.
+     * A car with photos listed but no displayable thumbnail gets a plain
+     * "N photos on file" row and is not named in the callout.
      *
      * @param object $carData Car row: id, year, type, chassis, chassis_override,
      *                        series, variant, color, purchasedate, solddate,
@@ -78,7 +97,8 @@ final class CarVerificationEmailComposer
     public function compose(object $carData, object $owner, string $vericode): array
     {
         $chassisOverride = (int) ($carData->chassis_override ?? 0) === 1;
-        $website         = trim((string) ($carData->website ?? ''));
+        $website         = $this->fieldOrDefault($carData->website ?? null, '');
+        $photo           = $this->primaryPhoto($carData);
 
         // Fields checked for the highlight/callout treatment: genuinely
         // optional/supplementary details an owner might not have filled in
@@ -86,17 +106,13 @@ final class CarVerificationEmailComposer
         // mandatory structural identifiers a car record shouldn't exist
         // without — and solddate, whose blankness for an unsold car is the
         // expected state, not missing data.
-        $blankFields = [];
-        foreach ([
-            'Color'         => trim((string) ($carData->color ?? '')),
-            'Variant'       => trim((string) ($carData->variant ?? '')),
-            'Purchase Date' => trim((string) ($carData->purchasedate ?? '')),
-            'Website'       => $website,
-        ] as $label => $value) {
-            if ($value === '') {
-                $blankFields[] = $label;
-            }
-        }
+        $blankFields = array_keys(array_filter([
+            'Color'         => $this->fieldOrDefault($carData->color ?? null, '') === '',
+            'Variant'       => $this->fieldOrDefault($carData->variant ?? null, '') === '',
+            'Purchase Date' => $this->fieldOrDefault($carData->purchasedate ?? null, '') === '',
+            'Photos'        => $photo === null,
+            'Website'       => $website === '',
+        ]));
 
         $subject = EMAIL_SUBJECT_PREFIX . ' Please verify your Lotus Elan registry record';
 
@@ -125,7 +141,7 @@ final class CarVerificationEmailComposer
         // 5. Car Information
         $content .= $this->template->createMessageBox(
             'Car Information',
-            $this->carRows($carData, $chassisOverride, $website, $blankFields),
+            $this->carRows($carData, $chassisOverride, $website, $blankFields, $photo),
             'default'
         );
 
@@ -272,16 +288,21 @@ final class CarVerificationEmailComposer
      * @param array<int, string> $blankFields Labels (from the same set this
      *                                        method renders — 'Color',
      *                                        'Variant', 'Purchase Date',
-     *                                        'Website') currently blank;
-     *                                        each gets the highlighted row
-     *                                        treatment
+     *                                        'Website') currently blank, plus
+     *                                        'Photos' only when no safe photo
+     *                                        is listed; each gets the highlighted
+     *                                        row treatment
+     * @param array{thumb: string|null, listed: int, onDisk: int}|null $photo
+     *        primaryPhoto() result. The Photos row follows it: thumbnail,
+     *        plain "N photos on file", or highlighted when null
      * @return string HTML rows
      */
     private function carRows(
         object $carData,
         bool $chassisOverride,
         string $website,
-        array $blankFields
+        array $blankFields,
+        ?array $photo
     ): string {
         $websiteBlank = in_array('Website', $blankFields, true);
 
@@ -322,10 +343,10 @@ final class CarVerificationEmailComposer
                 in_array('Purchase Date', $blankFields, true)
             )
             . $this->template->createDetailRow('Sold Date', $this->fieldOrDefault($carData->solddate ?? null))
-            . $this->template->createRawDetailRow('Photos', $this->photoRow($carData))
+            . $this->photosRow($photo, $carData)
             . $this->template->createDetailRow(
                 'Website',
-                $websiteBlank ? self::WEBSITE_NOT_PROVIDED : $website,
+                $websiteBlank ? self::NOT_YET_PROVIDED : $website,
                 $websiteBlank
             );
 
@@ -354,85 +375,204 @@ final class CarVerificationEmailComposer
     }
 
     /**
-     * Build the Photos row's trusted-HTML value: a thumbnail of the first
-     * photo plus a "View all N photos" link, or a plain "None on file" text
-     * when there are none.
+     * Build the Photos row for whichever of the three states applies.
      *
-     * Reads `cars.image` (a JSON array of bare filenames) directly rather than
-     * going through CarImageProcessor, which needs a repository and therefore a
-     * database connection this class deliberately does without — so the
-     * thumbnail path is built as `{basename}-resized-100.{ext}`
-     * (CarImageProcessor's documented resize-variant naming) rather than
-     * confirmed to exist on disk. A missing resized variant renders as a
-     * broken image icon in the recipient's mail client, which is an accepted
-     * tradeoff (the same risk any email image already carries, and most mail
-     * clients block images by default until the viewer opts in) rather than
-     * omitting the thumbnail the approved mockup shows.
+     * - Thumbnail: the primary photo and its -resized-300 file are on disk. A
+     *   linked image plus "View all N photos", N being the photos on disk.
+     * - Plain "N photos on file": photos are listed but no thumbnail can be
+     *   shown. Not highlighted, not in the callout. primaryPhoto() logs it.
+     * - Highlighted "Not yet provided": no safe photo is listed. compose()
+     *   names Photos in the blank-field callout.
      *
-     * @param object $carData Car row (id, image)
-     * @return string Trusted HTML for createRawDetailRow() — every
-     *                interpolated value is escaped by this method itself
+     * @param array{thumb: string|null, listed: int, onDisk: int}|null $photo primaryPhoto() result
+     * @param object $carData Car row
+     * @return string HTML row
      */
-    private function photoRow(object $carData): string
+    private function photosRow(?array $photo, object $carData): string
     {
-        $raw = $carData->image ?? null;
-        if (!is_string($raw) || trim($raw) === '') {
-            return 'None on file';
+        if ($photo === null) {
+            return $this->template->createDetailRow('Photos', self::NOT_YET_PROVIDED, true);
         }
 
-        $decoded = json_decode($raw, true);
-        if (!is_array($decoded) || $decoded === []) {
-            return 'None on file';
+        if ($photo['thumb'] === null) {
+            return $this->template->createDetailRow(
+                'Photos',
+                $photo['listed'] === 1 ? '1 photo on file' : $photo['listed'] . ' photos on file'
+            );
         }
 
-        $first = $decoded[0] ?? null;
-        if (!is_string($first) || trim($first) === '') {
-            return $this->photoSummary($carData);
-        }
-
-        $carId = (int) ($carData->id ?? 0);
-        $dot   = strrpos($first, '.');
-        $thumb = $dot === false
-            ? $first . '-resized-100'
-            : substr($first, 0, $dot) . '-resized-100' . substr($first, $dot);
-
-        $thumbUrl  = $this->esc(getBaseUrl() . '/userimages/' . $carId . '/' . $thumb);
-        $detailUrl = $this->esc(getBaseUrl() . '/app/owner/cars/details.php?car_id=' . $carId);
-        $count     = count($decoded);
-        $linkText  = $count === 1 ? 'View photo →' : "View all {$count} photos →";
-
-        return '<img src="' . $thumbUrl . '" alt="Car photo" width="80" height="60"'
-            . ' style="border-radius: 6px; object-fit: cover; vertical-align: middle;'
-            . ' margin-right: 10px;">'
-            . '<a href="' . $detailUrl . '" style="vertical-align: middle;">' . $linkText . '</a>';
+        return $this->template->createRawDetailRow(
+            'Photos',
+            $this->thumbnailHtml($photo['thumb'], $photo['onDisk'], $carData)
+        );
     }
 
     /**
-     * Describe how many photos the car has on file, as plain text.
+     * Find the car's primary photo and count the photos listed and on disk.
      *
-     * Used as photoRow()'s fallback when the first filename entry is
-     * malformed (present but not a usable string) — still reports an
-     * accurate count without attempting to build a thumbnail URL from data
-     * that isn't a filename.
+     * Reads `cars.image` directly rather than going through CarImageProcessor,
+     * which needs a repository and therefore a database connection this class
+     * deliberately does without. The value is decoded as
+     * CarImageProcessor::decodeAndProcessImages() does (JSON, else legacy
+     * comma-separated). Entries that are not strings or fail
+     * CarImageProcessor::isSafeFilename() are skipped, which also keeps a
+     * crafted value from steering is_file() outside the car's folder.
      *
-     * @param object $carData Car row
-     * @return string Human-readable photo count
+     * The primary photo is the first safe entry whose base file exists. This is
+     * the same rule verifyPrimaryPhotoUrl() in verify_car.php uses, so the
+     * email and the landing page show the same photo. The email links the
+     * -resized-300 variant, and only when that file exists, so a recipient
+     * never sees a broken image.
+     *
+     * Logs once under FileError when photos are listed but no thumbnail can be
+     * shown, and when the value holds entries but none is safe. An empty list
+     * (`[]`, stored after the last photo is removed) is the normal no-photo
+     * state and logs nothing. Raw values and filesystem paths stay out of
+     * the message.
+     *
+     * @param object $carData Car row (id, image)
+     * @return array{thumb: string|null, listed: int, onDisk: int}|null Null when
+     *         no safe photo is listed. Otherwise `thumb` is the variant filename
+     *         (null when no thumbnail can be shown), `listed` counts safe
+     *         entries and `onDisk` counts those whose base file exists
      */
-    private function photoSummary(object $carData): string
+    private function primaryPhoto(object $carData): ?array
     {
-        $raw = $carData->image ?? null;
-        if (!is_string($raw) || trim($raw) === '') {
-            return 'None on file';
+        $carId = (int) ($carData->id ?? 0);
+        $raw   = $carData->image ?? null;
+        if ($carId <= 0 || !is_string($raw) || trim($raw) === '') {
+            return null;
         }
 
-        $decoded = json_decode($raw, true);
-        $count   = is_array($decoded) ? count($decoded) : 0;
-
-        if ($count === 0) {
-            return 'None on file';
+        $entries = $this->decodeImageEntries($raw);
+        if ($entries === []) {
+            return null;
         }
 
-        return $count === 1 ? '1 photo on file' : $count . ' photos on file';
+        $safe = array_values(array_filter(
+            $entries,
+            static fn (mixed $entry): bool => is_string($entry) && CarImageProcessor::isSafeFilename($entry)
+        ));
+        $unsafe = count($entries) - count($safe);
+        if ($safe === []) {
+            $this->logPhotoProblem($carId, sprintf(
+                'has %d image entries, %d unsafe skipped; no usable photo',
+                count($entries),
+                $unsafe
+            ));
+            return null;
+        }
+
+        $dir    = $this->imageRoot . '/' . $carId . '/';
+        $onDisk = array_values(array_filter($safe, static fn (string $name): bool => is_file($dir . $name)));
+        $photo  = ['thumb' => null, 'listed' => count($safe), 'onDisk' => count($onDisk)];
+
+        $reason = 'no base file on disk';
+        if ($onDisk !== []) {
+            $parts = pathinfo($onDisk[0]);
+            // isSafeFilename() guarantees an extension; the default only satisfies the optional key's type.
+            $candidate = $parts['filename'] . '-resized-300.' . ($parts['extension'] ?? '');
+            if (is_file($dir . $candidate)) {
+                $photo['thumb'] = $candidate;
+                return $photo;
+            }
+            $reason = 'primary -resized-300 missing';
+        }
+
+        $this->logPhotoProblem($carId, sprintf(
+            'lists %d photo(s), %d on disk, %d unsafe skipped; no thumbnail (%s)',
+            count($safe),
+            count($onDisk),
+            $unsafe,
+            $reason
+        ));
+
+        return $photo;
+    }
+
+    /**
+     * Log a car whose listed photos cannot be shown, once per compose() call.
+     *
+     * The message holds counts and a fixed reason only. Raw `cars.image`
+     * values and filesystem paths stay out of the logs table.
+     *
+     * @param int    $carId  Car id
+     * @param string $detail Counts and reason, appended after the car id
+     */
+    private function logPhotoProblem(int $carId, string $detail): void
+    {
+        logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, "CarVerificationEmailComposer: car {$carId} {$detail}");
+    }
+
+    /**
+     * Decode a `cars.image` value into its raw entries.
+     *
+     * Same order as CarImageProcessor::decodeAndProcessImages(): JSON first,
+     * then the legacy comma-separated format. A JSON scalar yields no
+     * entries, which matches the landing page: its foreach over a scalar
+     * finds no photo.
+     *
+     * @param string $raw Non-empty `cars.image` value
+     * @return array<mixed> Entries of unknown type, empty when the value is not a list
+     */
+    private function decodeImageEntries(string $raw): array
+    {
+        $decoded = json_decode($raw, true) ?? explode(',', $raw);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Build descriptive alt text naming the car, for the photo thumbnail.
+     *
+     * Blank parts are left out so the text never has double spaces or a
+     * dangling comma. Not escaped; the caller escapes it.
+     *
+     * @param object $carData Car row (year, series, variant, type, color)
+     * @return string e.g. "1969 Lotus Elan S4 SE FHC, British Racing Green"
+     */
+    private function photoAltText(object $carData): string
+    {
+        $alt = implode(' ', array_filter([
+            $this->fieldOrDefault($carData->year ?? null, ''),
+            'Lotus Elan',
+            $this->fieldOrDefault($carData->series ?? null, ''),
+            $this->fieldOrDefault($carData->variant ?? null, ''),
+            $this->fieldOrDefault($carData->type ?? null, ''),
+        ], static fn (string $part): bool => $part !== ''));
+        $color = $this->fieldOrDefault($carData->color ?? null, '');
+
+        return $color === '' ? $alt : $alt . ', ' . $color;
+    }
+
+    /**
+     * Build the thumbnail state's trusted-HTML value: a 300px image of the
+     * primary photo plus a link to the car's details page.
+     *
+     * Pure markup builder — existence checks already happened in
+     * primaryPhoto(). The image has no height attribute because the variant's
+     * longest side is 300px, so its aspect ratio varies.
+     *
+     * @param string $thumb  Variant filename from primaryPhoto()
+     * @param int    $onDisk Number of photos on disk, for the link text
+     * @param object $carData Car row (id, year, series, variant, type, color)
+     * @return string Trusted HTML for createRawDetailRow() — every
+     *                interpolated value is escaped by this method itself
+     */
+    private function thumbnailHtml(string $thumb, int $onDisk, object $carData): string
+    {
+        $carId     = (int) ($carData->id ?? 0);
+        $thumbUrl  = $this->esc(getBaseUrl() . '/' . ELAN_IMAGE_DIR . $carId . '/' . $thumb);
+        $detailUrl = $this->esc(getBaseUrl() . '/app/owner/cars/details.php?car_id=' . $carId);
+        $alt       = $this->esc($this->photoAltText($carData));
+        $linkText  = $this->esc(
+            $onDisk === 1 ? 'View photo →' : 'View all ' . $onDisk . ' photos →'
+        );
+
+        return '<img src="' . $thumbUrl . '" alt="' . $alt . '" width="300"'
+            . ' style="max-width: 100%; height: auto; border-radius: 6px; display: block;'
+            . ' margin-bottom: 8px;">'
+            . '<a href="' . $detailUrl . '">' . $linkText . '</a>';
     }
 
     /**

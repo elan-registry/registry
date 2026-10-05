@@ -633,27 +633,39 @@ the same shape to the reconciliation job via `ReconciliationSummary`.
 
 The periodic verification email that requests owners confirm their car records are current is built by `CarVerificationEmailComposer`
 and includes a one-click opt-out link that lets owners suppress all future verification mail via a single vericode-authenticated
-action. The composer is built and unit-tested but not yet wired to any send path — that wiring is future issue #1884's responsibility.
+action. `CarVerificationSendService` uses the composer. `app/admin/index.php` and `users/cron/send_verification_batch.php` both build
+that service, so the composer is wired to the send path.
 
 ### Verification Email Composer
 
 **Location:** `usersc/classes/Car/CarVerificationEmailComposer.php`
 
-The `CarVerificationEmailComposer` class has one public method, `compose(object $carData, object $owner, string $vericode): array{subject,
-html}`, which builds the subject line and full branded HTML body. The class intentionally performs **no database access** — everything
-it renders comes from the `$carData` (car row) and `$owner` (owner row) objects supplied by the caller. This design keeps the composer
-testable with fixture objects alone, no framework bootstrap or database required.
+The `CarVerificationEmailComposer` class has one main public method, `compose(object $carData, object $owner, string $vericode):
+array{subject, html}`, which builds the subject line and full branded HTML body. It also has the public URL builders `verifyUrl()`,
+`soldUrl()`, `optOutUrl()`, and `editUrl()`. The class intentionally performs **no database access** — everything it renders comes
+from the `$carData` (car row) and `$owner` (owner row) objects supplied by the caller. The one exception is `logger()`, which writes
+to the logs table. The constructor is
+`__construct(?EmailTemplate $template = null, ?string $imageRoot = null)` where `$imageRoot` defaults to the repo's `userimages/`
+directory. Tests inject a temporary directory. The composer checks the filesystem to see whether photo files exist. This design keeps
+the composer testable with fixture objects and an optional temp image directory, no framework bootstrap or database required.
 
 The composed email includes:
 
 - **Greeting and explanation** — why the owner is receiving this request
 - **Verify/Sold side-by-side buttons** — confirm ownership or report the car sold
 - **Owner Information box** — ID, name, email, location, join date
-- **Car Information box** — ID, year, type, chassis, series, variant, color, purchase/sale dates, photo count, and website
+- **Car Information box** — ID, year, type, chassis, series, variant, color, purchase/sale dates, and website, plus a Photos row
+  with a linked 300px thumbnail of the car's primary photo (first photo file on disk, `-resized-300` variant, absolute URL, alt text:
+  year, "Lotus Elan", series, variant, type, color) and a "View all N photos" link to `app/owner/cars/details.php`. The Photos row has three states:
+  - Thumbnail: the primary photo (the first listed photo whose base file is on disk) also has its `-resized-300` file. A later
+    photo is not used in its place. N counts the photos on disk
+  - "N photos on file": photos are listed but no thumbnail can be shown. The text is plain, not highlighted, and the composer logs the
+    cause once under `FileError`
+  - Highlighted "Not yet provided": no safe photo is listed. Only this state names Photos in the blank-field callout
 - **Conditional "About the Chassis Number" alert** — appears only when `cars.chassis_override = 1`, explaining that the chassis was
   manually entered and may differ from factory records
-- **Conditional blank-field callout** — appears when any of Color, Variant, Purchase Date, or Website is blank, naming every blank
-  field and highlighting its row, and encouraging the owner to fill them in
+- **Conditional blank-field callout** — appears when any of Color, Variant, Purchase Date, Photos (only when no safe photo is listed), or Website is
+  blank, naming every blank field and highlighting its row, and encouraging the owner to fill them in
 - **Edit button** — links to the full `app/owner/cars/edit.php` form (requires login)
 - **Footer block** — opt-out link (see below) and 60-day expiry notice
 

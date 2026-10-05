@@ -994,6 +994,41 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         );
     }
 
+    public function testLandingPageShowsSecondPhotoWhenTheFirstListedFileIsMissing(): void
+    {
+        // decodeAndProcessImages() drops entries whose base file is missing and
+        // re-indexes with array_values(), so element 0 is the first photo on
+        // disk. This pins that rule, which the verification email's
+        // primaryPhoto() copies.
+        $dir = self::$projectRoot . '/userimages/' . $this->testCarId;
+        $this->db->query(
+            'UPDATE cars SET image = ? WHERE id = ?',
+            [json_encode(['first-missing.jpg', 'second-present.jpg']), $this->testCarId]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed cars.image');
+        $code = $this->issueVericode();
+
+        mkdir($dir, 0775, true);
+        try {
+            file_put_contents($dir . '/second-present.jpg', '');
+            file_put_contents($dir . '/second-present-resized-300.jpg', '');
+
+            $result = $this->get('vericode=' . $code);
+        } finally {
+            foreach (glob($dir . '/*') ?: [] as $file) {
+                unlink($file);
+            }
+            rmdir($dir);
+        }
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(
+            'userimages/' . $this->testCarId . '/second-present-resized-300.jpg',
+            $result['body']
+        );
+        $this->assertStringNotContainsString('first-missing', $result['body']);
+    }
+
     // ------------------------------------------------------------------
     // action=optout (#1883 — one-click verification-email opt-out)
     // ------------------------------------------------------------------

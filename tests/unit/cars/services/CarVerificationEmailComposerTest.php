@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\EmailTemplate;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -25,9 +26,60 @@ final class CarVerificationEmailComposerTest extends TestCase
 {
     private CarVerificationEmailComposer $composer;
 
+    /** Temporary image root, one per test; stands in for userimages/. */
+    private string $imageRoot;
+
     protected function setUp(): void
     {
-        $this->composer = new CarVerificationEmailComposer(new EmailTemplate());
+        // tests/bootstrap-unit.php's logger() stub appends to this global.
+        $GLOBALS['mockLogEntries'] = [];
+        $this->imageRoot = sys_get_temp_dir() . '/elan-composer-test-' . bin2hex(random_bytes(8));
+        mkdir($this->imageRoot, 0777, true);
+        $this->composer = new CarVerificationEmailComposer(new EmailTemplate(), $this->imageRoot);
+    }
+
+    protected function tearDown(): void
+    {
+        $this->removeTree($this->imageRoot);
+    }
+
+    private function removeTree(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($items as $item) {
+            $item->isDir() && !$item->isLink() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+        }
+        rmdir($dir);
+    }
+
+    /**
+     * Create an empty file at {imageRoot}/{carId}/{name}.
+     */
+    private function touchFile(int $carId, string $name): void
+    {
+        $dir = $this->imageRoot . '/' . $carId;
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+        file_put_contents($dir . '/' . $name, '');
+    }
+
+    /**
+     * Create a photo's base file and, unless told not to, its -resized-300
+     * variant. $base must end in ".jpg".
+     */
+    private function seedPhoto(int $carId, string $base, bool $withVariant = true): void
+    {
+        $this->touchFile($carId, $base);
+        if ($withVariant) {
+            $this->touchFile($carId, preg_replace('/\.jpg\z/', '-resized-300.jpg', $base) ?? $base);
+        }
     }
 
     /**
@@ -443,6 +495,8 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testBlankWebsiteHighlightedRowAndCalloutAbsentWhenNonBlank(): void
     {
+        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
+        $this->seedPhoto(42, 'a.jpg');
         $car = $this->carFixture(['website' => 'https://example.com']);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
 
@@ -452,6 +506,8 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testWebsiteHighlightedRowEscapesMaliciousValueEvenWhenNonBlank(): void
     {
+        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
+        $this->seedPhoto(42, 'a.jpg');
         $malicious = '"><script>alert(1)</script>';
         $car = $this->carFixture(['website' => $malicious]);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
@@ -464,6 +520,8 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testBlankColorGetsHighlightedRowAndSingularCallout(): void
     {
+        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
+        $this->seedPhoto(42, 'a.jpg');
         $car = $this->carFixture(['color' => '']);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
 
@@ -476,6 +534,8 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testMultipleBlankFieldsAllHighlightedAndAllNamedInOneCallout(): void
     {
+        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
+        $this->seedPhoto(42, 'a.jpg');
         $car = $this->carFixture(['color' => '', 'purchasedate' => '', 'website' => '']);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
 
@@ -489,6 +549,8 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testStructuralFieldsNeverGetHighlightedEvenWhenBlank(): void
     {
+        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
+        $this->seedPhoto(42, 'a.jpg');
         // Year/Type/Chassis/Series are near-mandatory identifiers, not
         // optional details — a car record with these blank is a data
         // problem, not something the email should invite the owner to
@@ -568,60 +630,584 @@ final class CarVerificationEmailComposerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // 19. Photos row — thumbnail + link vs. plain-text fallback
+    // 19. Photos row — 300px linked thumbnail vs. plain count vs. highlighted fallback (#1894)
     // ------------------------------------------------------------------
 
-    public function testPhotosRowRendersThumbnailAndViewAllLinkWhenPhotosExist(): void
+    public function testPhotosThumbnailUsesThe300pxVariant(): void
     {
-        $car = $this->carFixture(['id' => 2203, 'image' => json_encode(['abc123.jpg', 'def456.jpg', 'ghi789.jpg'])]);
-        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
+        $this->seedPhoto(2203, 'abc123.jpg');
+        $car  = $this->carFixture(['id' => 2203, 'image' => json_encode(['abc123.jpg'])]);
+        $html = $this->composeHtml($car);
+        $row  = $this->photosRow($html);
 
-        $this->assertStringContainsString('abc123-resized-100.jpg', $html);
-        $this->assertStringContainsString('/userimages/2203/', $html);
-        $this->assertStringContainsString('View all 3 photos', $html);
-        $this->assertStringContainsString('/app/owner/cars/details.php?car_id=2203', $html);
+        $this->assertStringContainsString('/userimages/2203/abc123-resized-300.jpg', $row);
+        $this->assertStringNotContainsString('-resized-100', $html);
+        $img = $this->photoImg($row);
+        $this->assertSame('300', $img->getAttribute('width'));
+        $this->assertFalse($img->hasAttribute('height'), 'Variant aspect ratio varies, so no fixed height');
     }
 
-    public function testPhotosRowSingularLinkTextForOnePhoto(): void
+    public function testPhotosThumbnailSrcIsAbsolute(): void
     {
-        $car = $this->carFixture(['image' => json_encode(['only.jpg'])]);
-        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
+        $this->seedPhoto(42, 'a.jpg');
+        $html = $this->composeHtml($this->carFixture(['image' => json_encode(['a.jpg'])]));
 
-        $this->assertStringContainsString('View photo', $html);
-        $this->assertStringNotContainsString('View all 1 photo', $html);
+        $src   = $this->photoImg($this->photosRow($html))->getAttribute('src');
+        $parts = parse_url($src);
+        $this->assertIsArray($parts);
+        $this->assertArrayHasKey('scheme', $parts);
+        $this->assertArrayHasKey('host', $parts);
+        $this->assertStringStartsWith(getBaseUrl(), $src);
+        $this->assertSame(getBaseUrl() . '/userimages/42/a-resized-300.jpg', $src);
     }
 
-    public function testPhotosRowShowsNoneOnFileWhenImageIsEmpty(): void
+    public function testPhotosAltTextNamesTheCar(): void
     {
-        $car = $this->carFixture(['image' => '']);
-        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
+        $this->seedPhoto(42, 'a.jpg');
+        $html = $this->composeHtml($this->carFixture(['image' => json_encode(['a.jpg'])]));
 
-        $this->assertStringContainsString('None on file', $html);
-        // The branded header logo is its own <img>, present regardless — only
-        // the photo-thumbnail <img> (identifiable by its userimages/ src) must
-        // be absent here.
+        $this->assertStringContainsString('alt="1969 Lotus Elan S4 SE FHC, British Racing Green"', $html);
+    }
+
+    public function testPhotosAltTextEscapesDoubleQuoteInColor(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $car  = $this->carFixture(['color' => 'Red "Signal"', 'image' => json_encode(['a.jpg'])]);
+        $html = $this->composeHtml($car);
+        $row  = $this->photosRow($html);
+
+        $this->assertStringContainsString('Red &quot;Signal&quot;', $row);
+        $this->assertSame(
+            '1969 Lotus Elan S4 SE FHC, Red "Signal"',
+            $this->photoImg($row)->getAttribute('alt'),
+            'The attribute must round-trip through an HTML parser unchanged'
+        );
+    }
+
+    public function testPhotosAltTextEscapesMarkupInVariant(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $car  = $this->carFixture(['variant' => '"><script>alert(1)</script>', 'image' => json_encode(['a.jpg'])]);
+        $html = $this->composeHtml($car);
+
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
+        $this->assertSame(
+            '1969 Lotus Elan S4 "><script>alert(1)</script> FHC, British Racing Green',
+            $this->photoImg($this->photosRow($html))->getAttribute('alt')
+        );
+    }
+
+    public function testPhotosAltTextOmitsBlankParts(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $car  = $this->carFixture(['variant' => '', 'color' => '', 'image' => json_encode(['a.jpg'])]);
+        $html = $this->composeHtml($car);
+
+        $this->assertSame(
+            '1969 Lotus Elan S4 FHC',
+            $this->photoImg($this->photosRow($html))->getAttribute('alt')
+        );
+    }
+
+    public function testPhotosAltTextOmitsBlankYearAndSeries(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $car  = $this->carFixture(['year' => null, 'series' => '  ', 'image' => json_encode(['a.jpg'])]);
+        $html = $this->composeHtml($car);
+
+        $this->assertSame(
+            'Lotus Elan SE FHC, British Racing Green',
+            $this->photoImg($this->photosRow($html))->getAttribute('alt')
+        );
+    }
+
+    public function testPhotosLinkPointsToDetailsPageAndCountsOnlyFilesOnDisk(): void
+    {
+        // a.jpg: base + variant. b.jpg: base only. c.jpg: nothing on disk.
+        $this->seedPhoto(2203, 'a.jpg');
+        $this->seedPhoto(2203, 'b.jpg', false);
+        $car  = $this->carFixture(['id' => 2203, 'image' => json_encode(['a.jpg', 'b.jpg', 'c.jpg'])]);
+        $row  = $this->photosRow($this->composeHtml($car));
+
+        $this->assertSame(
+            getBaseUrl() . '/app/owner/cars/details.php?car_id=2203',
+            $this->photoLink($row)->getAttribute('href')
+        );
+        $this->assertStringContainsString('View all 2 photos →', $row);
+        $this->assertStringNotContainsString('View all 3', $row);
+    }
+
+    public function testPhotosLinkTextIsSingularForOnePhoto(): void
+    {
+        // Two entries, one file on disk: the count is 1, not 2.
+        $this->seedPhoto(42, 'only.jpg');
+        $row = $this->photosRow(
+            $this->composeHtml($this->carFixture(['image' => json_encode(['only.jpg', 'ghost.jpg'])]))
+        );
+
+        $this->assertStringContainsString('View photo →', $row);
+        $this->assertStringNotContainsString('View all', $row);
+    }
+
+    public function testPhotosPrimarySkipsEntryWhoseBaseFileIsMissing(): void
+    {
+        $this->seedPhoto(42, 'second.jpg');
+        $this->seedPhoto(42, 'third.jpg');
+        $car = $this->carFixture(['image' => json_encode(['first.jpg', 'second.jpg', 'third.jpg'])]);
+        $row = $this->photosRow($this->composeHtml($car));
+
+        $this->assertStringContainsString('/userimages/42/second-resized-300.jpg', $row);
+        $this->assertStringNotContainsString('first-resized-300', $row);
+        $this->assertStringContainsString('View all 2 photos →', $row);
+    }
+
+    // State b: photos listed, no thumbnail possible -> plain "N photos on file".
+
+    public function testPhotosPlainCountWhenNoBaseFileExistsOnDisk(): void
+    {
+        $car = $this->carFixture(['image' => json_encode(['alpha-shot.jpg', 'beta-shot.jpg'])]);
+
+        $this->assertPhotosPlainCount($this->composeHtml($car), '2 photos on file', ['alpha-shot', 'beta-shot']);
+    }
+
+    public function testPhotosPlainCountWhenOnlyTheVariantExists(): void
+    {
+        $this->touchFile(42, 'alpha-shot-resized-300.jpg');
+        $car = $this->carFixture(['image' => json_encode(['alpha-shot.jpg'])]);
+
+        $this->assertPhotosPlainCount($this->composeHtml($car), '1 photo on file', ['alpha-shot']);
+    }
+
+    public function testPhotosPlainCountWhenBaseExistsButThe300pxVariantDoesNot(): void
+    {
+        $this->seedPhoto(42, 'alpha-shot.jpg', false);
+        // A 100px variant must not stand in for the missing 300px one.
+        $this->touchFile(42, 'alpha-shot-resized-100.jpg');
+        $car = $this->carFixture(['image' => json_encode(['alpha-shot.jpg'])]);
+
+        $this->assertPhotosPlainCount($this->composeHtml($car), '1 photo on file', ['alpha-shot']);
+    }
+
+    public function testPhotosPlainCountWhenPrimaryLacksVariantEvenIfALaterPhotoIsComplete(): void
+    {
+        // The primary rule does not skip to a later photo that has a variant.
+        $this->seedPhoto(42, 'alpha-shot.jpg', false);
+        $this->seedPhoto(42, 'beta-shot.jpg');
+        $car = $this->carFixture(['image' => json_encode(['alpha-shot.jpg', 'beta-shot.jpg'])]);
+
+        $this->assertPhotosPlainCount($this->composeHtml($car), '2 photos on file', ['alpha-shot', 'beta-shot']);
+    }
+
+    public function testPhotosPlainCountIsSingularForOneListedPhoto(): void
+    {
+        $car  = $this->carFixture(['image' => json_encode(['alpha-shot.jpg'])]);
+        $html = $this->composeHtml($car);
+
+        $this->assertPhotosPlainCount($html, '1 photo on file', ['alpha-shot']);
+        $this->assertStringNotContainsString('1 photos', $html);
+    }
+
+    public function testPhotosPlainCountCountsOnlySafeEntries(): void
+    {
+        $car = $this->carFixture(['image' => json_encode(['../evil-shot.jpg', 'alpha-shot.jpg'])]);
+
+        $this->assertPhotosPlainCount($this->composeHtml($car), '1 photo on file', ['alpha-shot', 'evil-shot']);
+    }
+
+    // State c logging, and no logging when nothing is wrong.
+
+    public function testPhotosLogsNothingWhenAThumbnailIsShown(): void
+    {
+        $this->seedPhoto(42, 'alpha-shot.jpg');
+        $this->composeHtml($this->carFixture(['image' => json_encode(['alpha-shot.jpg'])]));
+
+        $this->assertSame([], $GLOBALS['mockLogEntries']);
+    }
+
+    /**
+     * @return array<string, array{0: ?string}>
+     */
+    public static function emptyImageValueProvider(): array
+    {
+        return [
+            'empty string' => [''],
+            'whitespace'   => ['   '],
+            'null'         => [null],
+            // Stored after the last photo is removed: the normal no-photo state.
+            'empty array'  => ['[]'],
+            // A JSON scalar is not a list. The landing page finds no photo in it either.
+            'JSON scalar'  => ['"a.jpg"'],
+            'JSON number'  => ['42'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('emptyImageValueProvider')]
+    public function testPhotosLogsNothingWhenImageValueIsEmpty(?string $image): void
+    {
+        // Files exist on disk, so only the cars.image value can cause the fallback.
+        $this->seedPhoto(42, 'a.jpg');
+
+        $this->assertPhotosFallback($this->composeHtml($this->carFixture(['image' => $image])));
+
+        $this->assertSame([], $GLOBALS['mockLogEntries']);
+    }
+
+    public function testPhotosLogsOnceWhenImageValueHasOnlyUnsafeEntries(): void
+    {
+        $car = $this->carFixture(['image' => json_encode(['../../etc/passwd', 'sub/evil-shot.jpg'])]);
+
+        $this->assertPhotosFallback($this->composeHtml($car));
+        $this->assertSingleFileErrorLog(['passwd', 'evil-shot', 'etc/']);
+    }
+
+    public function testPhotosLogsOnceWhenImageValueIsNonEmptyButHasNoSafeEntry(): void
+    {
+        $this->assertPhotosFallback($this->composeHtml($this->carFixture(['image' => 'not json at all'])));
+
+        $this->assertSingleFileErrorLog(['not json']);
+    }
+
+    // Legacy image formats decode like CarImageProcessor.
+
+    public function testPhotosLegacyCommaSeparatedValueShowsThumbnailAndCount(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $this->seedPhoto(42, 'b.jpg');
+        $row = $this->photosRow($this->composeHtml($this->carFixture(['image' => 'a.jpg,b.jpg'])));
+
+        $this->assertStringContainsString('/userimages/42/a-resized-300.jpg', $row);
+        $this->assertStringContainsString('View all 2 photos →', $row);
+        $this->assertSame([], $GLOBALS['mockLogEntries']);
+    }
+
+    public function testPhotosLegacyBareFilenameShowsThumbnail(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $row = $this->photosRow($this->composeHtml($this->carFixture(['image' => 'a.jpg'])));
+
+        $this->assertStringContainsString('/userimages/42/a-resized-300.jpg', $row);
+        $this->assertStringContainsString('View photo →', $row);
+    }
+
+    // Wrong-typed alt-text inputs (year and color).
+
+    /**
+     * @return array<string, array{0: array<string, mixed>, 1: string}>
+     */
+    public static function wrongTypedAltInputProvider(): array
+    {
+        return [
+            'year array'   => [['year' => [1969]], 'Lotus Elan S4 SE FHC, British Racing Green'],
+            'year object'  => [['year' => new \stdClass()], 'Lotus Elan S4 SE FHC, British Racing Green'],
+            'color array'  => [['color' => ['red']], '1969 Lotus Elan S4 SE FHC'],
+            'color object' => [['color' => new \stdClass()], '1969 Lotus Elan S4 SE FHC'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('wrongTypedAltInputProvider')]
+    public function testPhotosAltTextDropsWrongTypedFieldWithoutWarning(array $overrides, string $expectedAlt): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $car = $this->carFixture($overrides + ['image' => json_encode(['a.jpg'])]);
+
+        set_error_handler(static function (int $errno, string $errstr): bool {
+            throw new \ErrorException($errstr, 0, $errno);
+        });
+
+        try {
+            $html = $this->composeHtml($car);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame($expectedAlt, $this->photoImg($this->photosRow($html))->getAttribute('alt'));
+    }
+
+    // Default image root.
+
+    public function testDefaultImageRootIsTheRepositoryUserimagesDirectory(): void
+    {
+        $composer = new CarVerificationEmailComposer();
+        $prop     = new \ReflectionProperty(CarVerificationEmailComposer::class, 'imageRoot');
+        $actual   = $prop->getValue($composer);
+
+        $expected = realpath(dirname(__DIR__, 4) . '/userimages');
+        $this->assertIsString($expected, 'The repository must have a userimages/ directory');
+        $this->assertIsString($actual);
+        $this->assertSame($expected, realpath($actual));
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function unsafeFilenameProvider(): array
+    {
+        return [
+            'path traversal to a system file' => ['../../etc/passwd'],
+            'traversal to a real image'       => ['../evil.jpg'],
+            'subdirectory'                    => ['sub/evil.jpg'],
+            'no extension'                    => ['noextension'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('unsafeFilenameProvider')]
+    public function testPhotosFallbackWhenTheOnlyEntryIsUnsafe(string $name): void
+    {
+        // Plant files the unsafe name would reach if it were not rejected:
+        // basename($name) resolves inside the car's own folder.
+        $this->seedPhoto(42, 'evil.jpg');
+        $this->seedPhoto(42, 'noextension', false);
+        $this->touchFile(42, 'noextension-resized-300.');
+        $car = $this->carFixture(['image' => json_encode([$name])]);
+
+        $this->assertPhotosFallback($this->composeHtml($car));
+    }
+
+    public function testPhotosSkipsUnsafeEntryAndUsesTheNextValidOne(): void
+    {
+        $this->seedPhoto(42, 'evil.jpg');
+        $this->seedPhoto(42, 'good.jpg');
+        $car = $this->carFixture(['image' => json_encode(['../evil.jpg', 'good.jpg'])]);
+        $row = $this->photosRow($this->composeHtml($car));
+
+        $this->assertStringContainsString('/userimages/42/good-resized-300.jpg', $row);
+        $this->assertStringNotContainsString('evil', $row);
+        $this->assertStringContainsString('View photo →', $row, 'The unsafe entry must not be counted');
+    }
+
+    public function testPhotosSkipsMalformedEntriesAndUsesTheNextValidOne(): void
+    {
+        $this->seedPhoto(42, 'second.jpg');
+        $car = $this->carFixture(['image' => json_encode([[], 123, null, 'second.jpg'])]);
+        $row = $this->photosRow($this->composeHtml($car));
+
+        $this->assertStringContainsString('/userimages/42/second-resized-300.jpg', $row);
+        $this->assertStringContainsString('View photo →', $row);
+        $this->assertStringNotContainsString('Not yet provided', $row);
+    }
+
+    public function testPhotosFallbackWhenAllEntriesAreMalformed(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $car = $this->carFixture(['image' => json_encode([[], 123, null])]);
+
+        $this->assertPhotosFallback($this->composeHtml($car));
+    }
+
+    public function testBlankPhotosIsNamedBeforeWebsiteInTheCallout(): void
+    {
+        $car  = $this->carFixture(['website' => '', 'image' => '[]']);
+        $html = $this->composeHtml($car);
+
+        $this->assertSame(1, substr_count($html, 'still blank'));
+        $this->assertMatchesRegularExpression(
+            '/2 fields above are still blank.{0,60}Photos and Website, highlighted above/s',
+            $html
+        );
+    }
+
+    public function testPhotosPresentIsNotNamedInTheCalloutOrHighlighted(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $html = $this->composeHtml($this->carFixture(['website' => '']));
+
+        $this->assertMatchesRegularExpression(
+            '/1 field above is still blank.{0,20}Website, highlighted above/s',
+            $html
+        );
+        $this->assertStringNotContainsString('#FFF9E0', $this->photosRow($html));
+    }
+
+    public function testPhotosHandlesWrongTypedImageValueWithoutError(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+
+        set_error_handler(static function (int $errno, string $errstr): bool {
+            throw new \ErrorException($errstr, 0, $errno);
+        });
+
+        try {
+            // A non-string `image` (corrupt row, or a driver returning a native
+            // array/int) must fall back, not throw a TypeError.
+            foreach ([5, ['a.jpg'], true, 1.5] as $bad) {
+                $html = $this->composeHtml($this->carFixture(['image' => $bad]));
+                $this->assertPhotosFallback($html);
+            }
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    public function testPhotosHandlesIntegerYearAndColorWithoutError(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+
+        set_error_handler(static function (int $errno, string $errstr): bool {
+            throw new \ErrorException($errstr, 0, $errno);
+        });
+
+        try {
+            $car  = $this->carFixture(['year' => 1969, 'color' => 7, 'image' => json_encode(['a.jpg'])]);
+            $html = $this->composeHtml($car);
+
+            $this->assertSame(
+                '1969 Lotus Elan S4 SE FHC, 7',
+                $this->photoImg($this->photosRow($html))->getAttribute('alt')
+            );
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    public function testPhotosHandlesMissingImageAndIdPropertiesWithoutError(): void
+    {
+        set_error_handler(static function (int $errno, string $errstr): bool {
+            throw new \ErrorException($errstr, 0, $errno);
+        });
+
+        try {
+            $car = $this->carFixture();
+            unset($car->image, $car->id);
+
+            $this->assertPhotosFallback($this->composeHtml($car));
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    public function testComposeReturnsOnlySubjectAndHtmlAndEmbedsNoImageData(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $result = $this->composer->compose(
+            $this->carFixture(['image' => json_encode(['a.jpg'])]),
+            $this->ownerFixture(),
+            self::VERICODE
+        );
+
+        $keys = array_keys($result);
+        sort($keys);
+        $this->assertSame(['html', 'subject'], $keys);
+        $this->assertStringNotContainsString('cid:', $result['html']);
+        $this->assertStringNotContainsString('data:image', $result['html']);
+        $this->assertStringContainsString('/userimages/42/a-resized-300.jpg', $result['html']);
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers for section 19
+    // ------------------------------------------------------------------
+
+    private function composeHtml(object $car): string
+    {
+        return $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
+    }
+
+    /**
+     * The one detail-row table that holds the "Photos:" label.
+     */
+    private function photosRow(string $html): string
+    {
+        $label = strpos($html, 'Photos:');
+        $this->assertIsInt($label, 'Photos row must be present');
+        $start = strrpos(substr($html, 0, $label), '<table');
+        $end   = strpos($html, '</table>', $label);
+        $this->assertIsInt($start);
+        $this->assertIsInt($end);
+
+        return substr($html, $start, $end + strlen('</table>') - $start);
+    }
+
+    private function parseFragment(string $fragment): \DOMDocument
+    {
+        $doc  = new \DOMDocument();
+        $prev = libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="utf-8" ?>' . $fragment);
+        libxml_clear_errors();
+        libxml_use_internal_errors($prev);
+
+        return $doc;
+    }
+
+    private function photoImg(string $row): \DOMElement
+    {
+        $img = $this->parseFragment($row)->getElementsByTagName('img')->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $img, 'Photos row must contain an <img>');
+
+        return $img;
+    }
+
+    private function photoLink(string $row): \DOMElement
+    {
+        $a = $this->parseFragment($row)->getElementsByTagName('a')->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $a, 'Photos row must contain a link');
+
+        return $a;
+    }
+
+    /**
+     * Highlighted "Not yet provided" Photos cell, no photo URL anywhere in the
+     * email, and the callout names Photos (the only blank field in the fixture).
+     */
+    private function assertPhotosFallback(string $html): void
+    {
+        $row = $this->photosRow($html);
+
+        $this->assertStringContainsString('Not yet provided', $row);
+        $this->assertStringContainsString('background-color: #FFF9E0', $row);
+        $this->assertStringNotContainsString('<img', $row);
+        // The branded header logo is its own <img>; only a photo has a
+        // userimages/ src.
         $this->assertStringNotContainsString('/userimages/', $html);
+        $this->assertMatchesRegularExpression(
+            '/1 field above is still blank.{0,20}Photos, highlighted above/s',
+            $html
+        );
     }
 
-    public function testPhotosRowHandlesFilenameWithoutExtension(): void
+    /**
+     * State b: plain "N photos on file" text. No highlight, no image, no photo
+     * URL, Photos not named in the callout, and exactly one FileError log entry
+     * with neither a filename nor a filesystem path in its message.
+     *
+     * @param list<string> $forbiddenInLog Fragments that must not appear in the log message
+     */
+    private function assertPhotosPlainCount(string $html, string $expectedText, array $forbiddenInLog): void
     {
-        $car = $this->carFixture(['image' => json_encode(['noextension'])]);
-        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
+        $row = $this->photosRow($html);
 
-        $this->assertStringContainsString('noextension-resized-100', $html);
-    }
-
-    public function testPhotosRowFallsBackToCountWhenFirstFilenameIsMalformed(): void
-    {
-        // Structured-input hardening: the first array entry present but not
-        // a usable string (e.g. a nested array from a corrupt cars.image
-        // value) must not reach string-interpolation logic — it falls back
-        // to the plain photo-count text rather than throwing or emitting a
-        // broken thumbnail URL built from non-string data.
-        $car = $this->carFixture(['image' => json_encode([[], 'second.jpg'])]);
-        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
-
-        $this->assertStringContainsString('2 photos on file', $html);
+        $this->assertStringContainsString($expectedText, $row);
+        $this->assertStringNotContainsString('#FFF9E0', $row);
+        $this->assertStringNotContainsString('Not yet provided', $row);
+        $this->assertStringNotContainsString('<img', $row);
         $this->assertStringNotContainsString('/userimages/', $html);
+        $this->assertStringNotContainsString('still blank', $html);
+        $this->assertStringNotContainsString('Photos, highlighted', $html);
+
+        $this->assertSingleFileErrorLog($forbiddenInLog);
+    }
+
+    /**
+     * Exactly one FileError log entry. Its message names car 42 and holds no
+     * raw filename fragment, temp directory path, or image root.
+     *
+     * @param list<string> $forbiddenFragments
+     */
+    private function assertSingleFileErrorLog(array $forbiddenFragments = []): void
+    {
+        $entries = $GLOBALS['mockLogEntries'];
+        $this->assertIsArray($entries);
+        $this->assertCount(1, $entries);
+
+        $entry = $entries[0];
+        $this->assertSame(LogCategories::LOG_CATEGORY_FILE_ERROR, $entry['category']);
+
+        $message = (string) $entry['message'];
+        // The car id is what an operator needs to act on the entry.
+        $this->assertStringContainsString('car 42 ', $message);
+        foreach ([...$forbiddenFragments, $this->imageRoot, sys_get_temp_dir(), 'elan-composer-test'] as $fragment) {
+            $this->assertStringNotContainsString($fragment, $message);
+        }
     }
 }
