@@ -661,7 +661,6 @@ The composed email includes:
 
 - `LINK_TTL_DAYS = 60` — Lifetime of the Verify/Sold/Opt-Out links. Must equal `VERIFY_LINK_TTL_DAYS` in `app/verify/verify_car.php`;
   a unit test guards against drift since the composer's expiry notice text promises this window
-- `NO_TRACK_LINK_CLASS = 'er-no-track'` — CSS class marking the opt-out (and ideally Verify/Sold) links for click-tracking exclusion
 
 **URL Builders** (public):
 
@@ -707,14 +706,19 @@ record. Failures (a DB error while counting cars, or during the suppression tran
 (`renderActionFailed()`), which states plainly that the write did not complete — deliberately not the generic
 "expired or invalid link" copy, since the vericode has already authenticated by this point.
 
-### Click-Tracking Exclusion Note
+### Brevo Link Rewriting
 
-The Opt-Out link carries the CSS class `NO_TRACK_LINK_CLASS = 'er-no-track'`, originally intended to mark it for Brevo
-click-tracking exclusion. **No such exclusion is possible** — confirmed during #2147's investigation, Brevo has no
-per-link tracking-exclusion mechanism for transactional email (no CSS class, tag, or API parameter accomplishes this).
-This is not a "not yet built" gap; it cannot be built against Brevo as-is. The class is currently inert and every link
-in a Registry transactional email, including this one, is rewritten through Brevo's tracking redirect domain — see the
-broader consequence (a raw tracking URL displayed as body text in several templates) and its resolution in issue #2147.
+Brevo rewrites every http(s) link in a transactional email through its click-tracking redirect domain. This applies to
+the Verify, Sold, Opt-Out, and edit links in the verification email, and to the http(s) links in the auth emails. It
+is not configurable. Brevo has no per-link exclusion for transactional email: no CSS class, tag, or API parameter
+turns tracking off for one link (confirmed during #2147).
+
+Rule for templates: **do not print a raw URL as body text.** The reader sees the rewritten tracking URL, which looks
+like a phishing link. Present each action link as an `EmailTemplate::createButton()` button only. If a template needs
+a fallback for a button that does not work, give a `mailto:` contact hint built from `getFeedbackEmail()`. A `mailto:`
+link is not an http(s) link, so Brevo is not expected to rewrite it (not yet confirmed in a live send). The four auth
+templates in `usersc/views/` (`_email_template_forgot_password.php`, `_email_template_registration_attempt.php`,
+`_email_template_verify.php`, `_email_template_verify_new.php`) use this pattern (#2147).
 
 **Template-variable workaround: tested, does not work.** Some Brevo users report that supplying the URL via a
 template variable (`href="{{ params.link }}"` instead of a literal `href="https://..."`) sometimes escapes
@@ -726,8 +730,9 @@ this account/plan. Confirms the exclusion is not achievable via this route eithe
 new reason to expect different behavior (e.g. a plan/setting change on Brevo's side).
 
 **If per-message tracking-off becomes a hard requirement.** Research from #2151 (prices as of 2026-09-23, volume
-about 150–250 emails a month). Revisit only if a security reviewer objects to #2147's plain-text links, Brevo
-becomes unsuitable for another reason, or a feature needs clickable security-sensitive links.
+about 150–250 emails a month). Revisit only if a security reviewer objects to Brevo-rewritten links in
+security-sensitive emails, Brevo becomes unsuitable for another reason, or a feature needs a link that Brevo must not
+track.
 
 | Provider | Tracking-off | Cost at our volume | Migration size |
 | --- | --- | --- | --- |

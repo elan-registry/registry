@@ -291,7 +291,7 @@ final class CarVerificationEmailComposerTest extends TestCase
     // 11. Footer opt-out anchor
     // ------------------------------------------------------------------
 
-    public function testFooterContainsOptOutAnchorWithActionOptoutVericodeAndNoTrackClass(): void
+    public function testFooterContainsOptOutAnchorWithActionOptoutAndVericode(): void
     {
         $html = $this->composer->compose($this->carFixture(), $this->ownerFixture(), self::VERICODE)['html'];
 
@@ -303,10 +303,7 @@ final class CarVerificationEmailComposerTest extends TestCase
             htmlspecialchars($expectedHref, ENT_QUOTES, 'UTF-8'),
             $html
         );
-        $this->assertStringContainsString(
-            'class="' . CarVerificationEmailComposer::NO_TRACK_LINK_CLASS . '"',
-            $html
-        );
+        $this->assertStringNotContainsString('er-no-track', $html);
         $this->assertStringContainsString('Stop sending me these', $html);
     }
 
