@@ -135,7 +135,8 @@ targeting the milestone branch. Each command describes its own steps.
   per issue: /start-issue → /execute-plan → /simplify → /commit → /commit-push-pr
              → /address-pr-comments → /finish-issue
 /finish-milestone → /review-pr → /review-milestone → /release-milestone
-Other: /new-issue, /found, /security-review, /sprint-status, /revise-claude-md, /clean_gone
+Other: /new-issue, /found, /security-review, /sprint-status, /groom-backlog,
+       /revise-claude-md, /clean_gone
 ```
 
 For milestone planning, ask `senior-product-manager`, `senior-architect`, and
