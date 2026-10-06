@@ -632,6 +632,13 @@ to provide a focused, testable data access layer wrapping the `cars`,
   to prevent SQL injection. Compares against MySQL's `NOW()`.
 - `stalenessSql(string $alias = 'cars'): string` - Static; returns
   `'NOT ' . freshnessSql($alias)` — the exact boolean negation of freshness.
+  The statistics page's "Fresh (12 mo)" figure (`verified_cars` from
+  `StatisticsDataService::getDataCompleteness()`) counts every car that is
+  fresh by `freshnessSql()`. Sold cars are included, so the figure and the
+  stale count add up to the total. The figure does not match the Verified
+  badge, because `CarBadges::resolve()` hides Verified on a sold car. The
+  label says "Fresh", not "Verified", for this reason. The response key stays
+  `verified_cars` because it is the API contract.
 - `isFresh(?string $lastVerified, string $ownerLastUpdated): bool` - PHP
   equivalent of `freshnessSql()` for in-code freshness checks, using PHP's clock
   where the SQL form uses MySQL's `NOW()`. First production caller is the admin

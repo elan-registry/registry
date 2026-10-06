@@ -382,9 +382,9 @@ Verified against code. Each of these is a real gap, not a documentation error.
   away.** `StatisticsDataService::getDataCompleteness()` selects
   `COUNT(solddate) AS has_sold_date` on every request and ships it to the
   browser, but nothing in `app/assets/js/statistics.js` reads it. Its
-  `verified_cars` field is shown: it counts cars that are fresh by
-  `CarRepository::freshnessSql()` (verified or updated by the owner in the
-  last 12 months) and is the seventh vector on the radar chart.
+  `verified_cars` field is shown as "Fresh (12 mo)", the seventh vector on
+  the radar chart. It counts sold cars, so it does not match the Verified
+  badge. See [CLASSES.md § CarRepository](CLASSES.md#carrepository).
 
 ## 8. Where to read more
 

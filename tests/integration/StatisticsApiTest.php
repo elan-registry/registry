@@ -196,4 +196,27 @@ class StatisticsApiTest extends IntegrationTestCase
         $this->assertSame(1, (int) $after->verified_cars - (int) $baseline->verified_cars, 'Only the fresh car adds to verified_cars');
         $this->assertSame(2, (int) $after->total_cars - (int) $baseline->total_cars, 'Both cars add to total_cars');
     }
+
+    /**
+     * A sold car with a fresh owner_last_updated counts in verified_cars.
+     *
+     * The statistics figure follows the freshness rule only. It does not follow
+     * CarBadges, which hides Verified on a sold car. That is why the chart label
+     * is "Fresh (12 mo)", not "Verified".
+     */
+    public function testGetDataCompletenessCountsFreshSoldCar(): void
+    {
+        $service  = new StatisticsDataService($this->db);
+        $baseline = $service->getDataCompleteness();
+        $this->assertNotNull($baseline);
+
+        $soldCarId = $this->createTestCar($this->testUserId, ['solddate' => '2025-01-01']);
+        $this->seedOwnerLastUpdated($soldCarId, date('Y-m-d H:i:s'));
+
+        $after = $service->getDataCompleteness();
+        $this->assertNotNull($after);
+
+        $this->assertSame(1, (int) $after->verified_cars - (int) $baseline->verified_cars, 'A fresh sold car must add to verified_cars');
+        $this->assertSame(1, (int) $after->total_cars - (int) $baseline->total_cars);
+    }
 }

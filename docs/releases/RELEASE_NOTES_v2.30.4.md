@@ -11,7 +11,7 @@ in the verification email.
 
 - Sold and Verified badges on the account page, cars list, and car details page. ([#1900](https://github.com/elan-registry/registry/issues/1900))
 - Verified row with a date on the Vehicle Information card. ([#1897](https://github.com/elan-registry/registry/issues/1897))
-- "Verified (12 mo)" figure on the statistics page. ([#1898](https://github.com/elan-registry/registry/issues/1898))
+- "Fresh (12 mo)" figure on the statistics page: cars whose record changed in the last 12 months. ([#1898](https://github.com/elan-registry/registry/issues/1898))
 - Removing a photo from your own car keeps its record current. ([#1929](https://github.com/elan-registry/registry/issues/1929))
 - The verification email shows a photo of your car, or asks for one. ([#1894](https://github.com/elan-registry/registry/issues/1894))
 - Auth emails no longer show a long tracking link as text. ([#2147](https://github.com/elan-registry/registry/issues/2147))

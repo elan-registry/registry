@@ -250,7 +250,7 @@ test.describe('Maps and Charts', () => {
 
   // The Data Quality tab loads its numbers with a POST to statistics.php, so the
   // route below serves fixed JSON. The assertions then test the rendering only:
-  // the radar field for "Verified (12 mo)" and the division guard.
+  // the radar field for "Fresh (12 mo)" and the division guard.
   const SAMPLE_COMPLETENESS = {
     total_cars: 10,
     has_chassis: 8,
@@ -291,11 +291,11 @@ test.describe('Maps and Charts', () => {
     });
   }
 
-  test('data quality radar shows a Verified (12 mo) field at 0 when no car is fresh', async ({ page }) => {
+  test('data quality radar shows a Fresh (12 mo) field at 0 when no car is fresh', async ({ page }) => {
     const { labels, values } = await openQualityTab(page, { ...SAMPLE_COMPLETENESS, verified_cars: 0 });
 
     expect(labels).toHaveLength(7);
-    expect(labels[6]).toBe('Verified (12 mo)');
+    expect(labels[6]).toBe('Fresh (12 mo)');
     expect(values).toHaveLength(7);
     // Every value is checked, so a swapped prop in COMPLETENESS_FIELDS fails the test.
     expect(values).toEqual([80, 70, 60, 50, 40, 30, 0]);
@@ -303,7 +303,7 @@ test.describe('Maps and Charts', () => {
     await expect(page.locator('[data-metric="verified"]')).toHaveText('0%');
   });
 
-  test('data quality radar shows Verified (12 mo) as a percentage of all cars', async ({ page }) => {
+  test('data quality radar shows Fresh (12 mo) as a percentage of all cars', async ({ page }) => {
     const { values } = await openQualityTab(page, { ...SAMPLE_COMPLETENESS, verified_cars: 9 });
 
     expect(values[6]).toBe(90);

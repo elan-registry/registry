@@ -483,7 +483,8 @@ const COMPLETENESS_FIELDS = [
   { key: 'purchase_date', prop: 'has_purchase_date', label: 'Purchase Dates' },
   { key: 'image',         prop: 'has_image',         label: 'Photos' },
   { key: 'location',      prop: 'has_location',      label: 'Location Data' },
-  { key: 'verified',      prop: 'verified_cars',     label: 'Verified (12 mo)' },
+  // Not "Verified": this figure counts sold cars, and the Verified badge does not.
+  { key: 'verified',      prop: 'verified_cars',     label: 'Fresh (12 mo)' },
 ];
 
 /**
@@ -524,6 +525,7 @@ function renderQualityTab(container, data) {
                         </div>
                         <hr>
                         <div class="small" data-metric-rows></div>
+                        <p class="small text-muted mt-3 mb-0">Fresh (12 mo): the share of cars whose owner confirmed, added, or updated the record in the last 12 months. Sold cars are included.</p>
                     </div>
                 </div>
             </div>
