@@ -90,7 +90,13 @@ if nothing gets better when it's fixed, say so plainly.
 
 ## Step 3: For survivors, recommend placement
 
-For each issue that passes the gate:
+Exempt issues (`gate-critical`/`signal:forced`, marked in Step 2) skip this
+step's placement logic — they stay in their current milestone (or Backlog)
+untouched. Still list each one in Step 4's table, as
+**KEEP, gate-critical/signal:forced — exempt, no placement change**, so a
+future run doesn't silently drop them from the output.
+
+For each other issue that passes the gate:
 
 - **Already in a themed release milestone** (not Backlog) whose theme it
   clearly serves → leave it, no action.
@@ -116,6 +122,14 @@ Numbered milestones in this project are not strictly chronological (e.g.
 v2.30.x–v2.31.x are a verification-system sub-sequence) — a new,
 unsequenced theme takes the next open integer, not a slot inside an
 existing sub-sequence.
+
+This grep-and-sort is the only place in the project's commands that derives
+a milestone version automatically rather than taking it as an argument.
+Before creating the milestone, state the computed number and cross-check it
+by eye against the full title list the command just printed — confirm the
+highest existing number really is what it looks like, not an
+off-by-one from a sub-sequence like v2.30–v2.31. Don't skip this check to
+save a step.
 
 ## Step 4: Present and confirm once
 
