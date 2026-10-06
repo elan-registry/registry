@@ -26,6 +26,8 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
   asks you to add one. ([#1894](https://github.com/elan-registry/registry/issues/1894))
 - The password reset, registration attempt, and email verification emails no longer show a long link as text. If the
   button does not work, the email gives a contact address. ([#2147](https://github.com/elan-registry/registry/issues/2147))
+- The maps on the statistics page, car details page, and your account page show a flat world again, not a globe,
+  when you zoom out. ([#2268](https://github.com/elan-registry/registry/issues/2268))
 
 ## Admin-Facing Changes
 
@@ -79,6 +81,9 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   and records them in the PR body. `/finish-issue` reads that section with the new `scripts/ledger-pr-body-items.sh`
   and ticks the items with the new `scripts/ledger-tick-items.sh`. The plugin's `commit-commands:commit-push-pr` skill
   is denied (developer workflow only, no site change)
+- [#2268](https://github.com/elan-registry/registry/issues/2268) — `scripts/build.js` passes `projection: 'mercator'`
+  to `osm()`. `@versatiles/style` v6 made `globe` the default. A Playwright test checks the projection in the built
+  `usersc/js/versatiles-colorful.json`
 
 ## Carried from the Dev Environment milestone
 

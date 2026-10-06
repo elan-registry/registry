@@ -73,6 +73,16 @@ test.describe('Maps and Charts', () => {
     ).toHaveLength(0);
   });
 
+  // The render tests pass for a globe and a flat map alike. Check the built
+  // style, so a library default that turns the maps back into a globe fails
+  // here (#2268).
+  test('generated map style uses the flat Mercator projection', async ({ request }) => {
+    const response = await request.get('usersc/js/versatiles-colorful.json');
+    expect(response.status()).toBe(200);
+    const style = await response.json();
+    expect(style.projection?.type).toBe('mercator');
+  });
+
   test('statistics page marker data is inlined as JSON', async ({ page }) => {
     await page.goto('app/owner/reports/statistics.php');
     await page.waitForLoadState('networkidle');

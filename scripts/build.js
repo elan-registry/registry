@@ -191,7 +191,15 @@ Promise.all([
     signal: AbortSignal.timeout(10000),
   }).then((r) => r.json());
   osmTileJson.tiles = osmTileJson.tiles.map((t) => (/^https?:\/\//.test(t) ? t : VERSATILES_BASE + t));
-  const style = osm({ urls: { base: VERSATILES_BASE, osm: osmTileJson }, text: { language: 'en' }, theme: 'colorful' });
+  // @versatiles/style v6 defaults the style projection to 'globe', and the
+  // MapLibre GL JS version we ship obeys it. The registry maps show where cars
+  // are on a flat world view, so set Mercator explicitly (#2268).
+  const style = osm({
+    urls: { base: VERSATILES_BASE, osm: osmTileJson },
+    text: { language: 'en' },
+    theme: 'colorful',
+    projection: 'mercator',
+  });
   fs.writeFileSync('usersc/js/versatiles-colorful.json', JSON.stringify(style));
   console.log('Generated usersc/js/versatiles-colorful.json');
 }).catch((err) => {
