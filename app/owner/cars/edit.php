@@ -135,6 +135,8 @@ function updateCarDetails(array &$car): void
             <div class="row justify-content-center">
                 <div class="col-xl-10 col-lg-11 col-md-12">
             <?php
+            $isEditOwner = false;
+
             // Show admin override warning if applicable
             if (isset($cardetails['id']) && isset($user) && $user->isLoggedIn()) {
                 $editCarObj = new Car((int)$cardetails['id']);
@@ -165,7 +167,7 @@ function updateCarDetails(array &$car): void
 
                     <div class="mb-3 row">
                         <label for="car_id_display" class="col-md-3 col-12 col-form-label">Car ID</label>
-                        <div class="col-12 col-sm-9">
+                        <div class="col-12 col-md-9">
                             <input type="text" id="car_id_display" class="form-control-plaintext" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" readonly>
                         </div>
                     </div>
@@ -175,7 +177,7 @@ function updateCarDetails(array &$car): void
                 <!-- Year -->
                 <div class="mb-3 row">
                     <label for="year" class="col-md-3 col-12 col-form-label">Year *</label>
-                    <div class="col-12 col-sm-9">
+                    <div class="col-12 col-md-9">
                         <div class="input-group">
                             <span class="input-group-text"><i aria-hidden="true" class="fas fa-calendar-check"></i></span>
                             <select name='year' id='year' class='form-select'>
@@ -201,7 +203,7 @@ function updateCarDetails(array &$car): void
                 <!-- Model -->
                 <div class="mb-3 row">
                     <label for="model" class="col-md-3 col-12 col-form-label">Model *</label>
-                    <div class="col-12 col-sm-9">
+                    <div class="col-12 col-md-9">
                         <div class="input-group">
                             <span class="input-group-text"><i aria-hidden="true" class="fas fa-car-side"></i></span>
                             <select disabled class="form-select" name="model" id="model">
@@ -216,7 +218,7 @@ function updateCarDetails(array &$car): void
                 <!-- Chassis -->
                 <div class="mb-3 row">
                     <label for="chassis" class="col-md-3 col-12 col-form-label">Chassis *</label>
-                    <div class="col-12 col-sm-9">
+                    <div class="col-12 col-md-9">
                         <div class="input-group">
                             <span class="input-group-text"><i aria-hidden="true" class="fas fa-barcode"></i></span>
                             <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= htmlspecialchars($carprompt['chassis'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['chassis'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
@@ -298,7 +300,7 @@ function updateCarDetails(array &$car): void
                 <!-- Color -->
                 <div class="mb-3 row">
                     <label for="color" class="col-md-3 col-12 col-form-label">Color</label>
-                    <div class="col-12 col-sm-9">
+                    <div class="col-12 col-md-9">
                         <div class="input-group">
                             <span class="input-group-text"><i aria-hidden="true" class="fas fa-palette"></i></span>
                             <input class="form-control" type="text" name="color" id="color" placeholder="<?= htmlspecialchars($carprompt['color'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['color'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
@@ -309,7 +311,7 @@ function updateCarDetails(array &$car): void
                 <!-- Engine Number -->
                 <div class="mb-3 row">
                     <label for="engine" class="col-md-3 col-12 col-form-label">Engine Number</label>
-                    <div class="col-12 col-sm-9">
+                    <div class="col-12 col-md-9">
                         <div class="input-group">
                             <span class="input-group-text"><i aria-hidden="true" class="fas fa-car"></i></span>
                             <input class="form-control" type="text" name="engine" id="engine" placeholder="<?= htmlspecialchars($carprompt['engine'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['engine'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
@@ -319,7 +321,7 @@ function updateCarDetails(array &$car): void
                 <!-- Comments -->
                 <div class='mb-3 row'>
                     <label for='comments' class='col-md-3 col-12 col-form-label'>Comments</label>
-                    <div class='col-12 col-sm-9'>
+                    <div class='col-12 col-md-9'>
                         <div class='input-group'>
                             <span class='input-group-text'><i aria-hidden='true' class='fas fa-comment-alt'></i></span>
                             <textarea class='form-control' name='comments' id='comments' rows='4' wrap='soft' maxlength='2000' placeholder='<?= htmlspecialchars($carprompt['comments'], ENT_QUOTES, 'UTF-8') ?>'><?= htmlspecialchars((string)($cardetails['comments'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
@@ -331,7 +333,7 @@ function updateCarDetails(array &$car): void
                 <!-- Purchase Date  -->
                 <div class='mb-3 row'>
                     <label for='purchasedate' class='col-md-3 col-12 col-form-label'>Purchase Date</label>
-                    <div class='col-12 col-sm-9'>
+                    <div class='col-12 col-md-9'>
                         <div class='input-group'>
                             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
                             <input class='form-control' name='purchasedate' id='purchasedate' value='<?= htmlspecialchars((string)($cardetails['purchasedate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' aria-describedby='purchasedateHelp' />
@@ -343,7 +345,7 @@ function updateCarDetails(array &$car): void
                 <!-- Sold Date toggle -->
                 <div class='mb-3 mt-3 row'>
                     <div class='col-md-3 col-12'></div>
-                    <div class='col-12 col-sm-9'>
+                    <div class='col-12 col-md-9'>
                         <div class='form-check'>
                             <input class='form-check-input' type='checkbox' id='sold-toggle' <?= !empty($cardetails['solddate']) ? 'checked' : '' ?> />
                             <label class='form-check-label' for='sold-toggle'>I no longer own this car</label>
@@ -354,7 +356,7 @@ function updateCarDetails(array &$car): void
                 <!-- Sold Date (revealed by toggle) -->
                 <div id='solddate-row' class='mb-3 row <?= empty($cardetails['solddate']) ? 'd-none' : '' ?>'>
                     <label for='solddate' class='col-md-3 col-12 col-form-label'>Sold Date</label>
-                    <div class='col-12 col-sm-9'>
+                    <div class='col-12 col-md-9'>
                         <div class='input-group'>
                             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
                             <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' aria-describedby='solddateHelp' />
@@ -364,6 +366,15 @@ function updateCarDetails(array &$car): void
                 </div>
 
                 <hr class="my-4">
+
+                <?php if ($isEditOwner) { ?>
+                <p class="text-muted small" id="owner-information-link-row">
+                    To update your name, location, or website, use
+                    <a href="<?= htmlspecialchars($us_url_root . 'usersc/user_settings.php', ENT_QUOTES, 'UTF-8') ?>" id="owner-information-account-link">Account Settings</a>.
+                </p>
+
+                <hr class="my-4">
+                <?php } ?>
 
                 <h5 class="form-section-heading"><i class="fas fa-camera me-2"></i>Photos <small class="text-muted fw-normal" style="font-size:0.7rem;letter-spacing:0">optional</small></h5>
                 <div class='row'>

@@ -349,6 +349,59 @@ class Owner
     }
 
     /**
+     * Update this owner's profile fields, then copy them onto every car the
+     * owner has.
+     *
+     * This is the one write path for the owner-contact fields (name,
+     * location, website, email). Callers must not write these columns
+     * directly, because the cars then keep stale copies. The update commits
+     * before the sync starts: syncOwnerFieldsToCars() refuses to run inside
+     * an outer transaction.
+     *
+     * The ID comes from the loaded owner, never from $fields. An 'id' key in
+     * $fields is overwritten. If this Owner did not load, update() rejects
+     * the null ID and the sync does not run.
+     *
+     * A partial sync is not an exception. The caller reads the returned
+     * result and decides how to report failed or skipped cars.
+     *
+     * @param array<string, mixed> $fields Owner fields keyed by column name
+     *        (fname, lname, email, city, state, country, lat, lon, website).
+     *        update() drops unknown keys and empty values.
+     * @return OwnerSyncResult Per-car outcome of the sync
+     * @throws OwnerValidationException If this Owner did not load, or a field
+     *         fails validation. Nothing was written.
+     * @throws OwnerUpdateException If the users or profiles write fails.
+     *         update() rolled back, so nothing was written.
+     * @throws OwnerDatabaseException If the sync cannot read the car list, an
+     *         ownership check fails, or update()'s own post-commit reload
+     *         failed (this Owner is left unloaded rather than risk syncing
+     *         stale pre-update values). The profile write already committed.
+     * @throws CarDatabaseException If a per-car UPDATE fails at the DB level.
+     *         The profile write already committed.
+     */
+    public function updateProfileAndSync(array $fields): OwnerSyncResult
+    {
+        $fields['id'] = $this->_data->id ?? null;
+
+        // update()'s post-commit reload failure is deliberately non-fatal there
+        // (#1505 PR A: the write already succeeded, so a reload failure is a
+        // lower-severity, logged-not-thrown condition) — but that means _data
+        // can be left holding its PRE-update values if the reload fails. Left
+        // alone, syncOwnerFieldsToCars() below would then read those stale
+        // values and copy them onto every owned car while reporting success.
+        // Clearing _data first means a reload failure leaves it null, which
+        // syncOwnerFieldsToCars()'s own "not loaded" guard turns into a thrown
+        // OwnerDatabaseException instead of a silent stale sync. _carsOwned is
+        // not cleared: it caches which cars this owner has, not their contact
+        // fields, and editing name/location/website never changes that list.
+        $this->_data = null;
+        $this->update($fields);
+
+        return $this->syncOwnerFieldsToCars();
+    }
+
+    /**
      * Get all cars owned by this owner
      *
      * @return array Array of car objects owned by this owner
@@ -923,6 +976,25 @@ class Owner
     }
 
     /**
+     * Reject a non-string, non-null value for a field that every later check
+     * in its switch case (InputSanitizer::normalize(), trim(), strlen(), ...)
+     * assumes is already a string. Without this, an array/object/int value
+     * reaches one of those string-typed helpers and throws an uncaught
+     * TypeError instead of this class's own OwnerValidationException.
+     *
+     * @param string $key Field name, used in the internal (non-user-facing) message
+     * @param mixed $value The value to check
+     * @param string $userMessage Shown to the end user if $value is rejected
+     * @throws OwnerValidationException If $value is neither a string nor null
+     */
+    private function rejectNonStringField(string $key, mixed $value, string $userMessage): void
+    {
+        if (!is_string($value) && $value !== null) {
+            throw OwnerValidationException::withUserMessage("{$key} must be a string", $userMessage);
+        }
+    }
+
+    /**
      * Validate and sanitize owner fields
      *
      * @param array $fields Fields to validate and sanitize
@@ -938,6 +1010,7 @@ class Owner
             switch ($key) {
                 case 'fname':
                 case 'lname':
+                    $this->rejectNonStringField($key, $value, 'A name field has an invalid value.');
                     if (!empty($value)) {
                         $validatedFields[$key] = InputSanitizer::normalize($value, 25);
                         if ($validatedFields[$key] === '') {
@@ -955,6 +1028,7 @@ class Owner
                     break;
 
                 case 'email':
+                    $this->rejectNonStringField($key, $value, 'Invalid email format.');
                     if (!empty($value)) {
                         $email = filter_var(trim($value), FILTER_VALIDATE_EMAIL);
                         if ($email === false) {
@@ -972,12 +1046,18 @@ class Owner
                 case 'city':
                 case 'state':
                 case 'country':
+                    $this->rejectNonStringField($key, $value, 'A location field has an invalid value.');
                     if (!empty($value)) {
                         $validatedFields[$key] = InputSanitizer::normalize($value, 100);
                     }
                     break;
 
                 case 'website':
+                    $this->rejectNonStringField(
+                        $key,
+                        $value,
+                        'Website URL must start with http:// or https:// (e.g. https://example.com)'
+                    );
                     if (!empty($value)) {
                         $trimmed = trim($value);
                         if (!filter_var($trimmed, FILTER_VALIDATE_URL)) {
@@ -998,6 +1078,7 @@ class Owner
                     break;
 
                 case 'password':
+                    $this->rejectNonStringField($key, $value, 'Password must be at least 6 characters long.');
                     if (!empty($value)) {
                         // Basic password validation - UserSpice handles detailed requirements
                         if (strlen($value) < 6) {

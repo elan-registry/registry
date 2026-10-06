@@ -93,17 +93,17 @@ final class UserSettingsWiringTest extends TestCase
             'The owner-field sync call must be wrapped in a try block'
         );
         $this->assertStringContainsString(
-            '$syncResult = $owner->syncOwnerFieldsToCars();',
+            '$syncResult = $owner->updateProfileAndSync($ownerFields);',
             $content,
-            'The endpoint must call syncOwnerFieldsToCars() inside the try block'
+            'The endpoint must call updateProfileAndSync() inside the try block'
         );
 
         // Isolate the catch block that immediately follows the sync call, so
         // assertions below can't accidentally match an unrelated catch block
         // elsewhere in the file (e.g. a future addition).
-        $tryStart = strpos($content, '$syncResult = $owner->syncOwnerFieldsToCars();');
-        $this->assertIsInt($tryStart, 'Could not locate the syncOwnerFieldsToCars() call site');
-        $catchBlock = substr($content, $tryStart, 3000);
+        $tryStart = strpos($content, '$syncResult = $owner->updateProfileAndSync($ownerFields);');
+        $this->assertIsInt($tryStart, 'Could not locate the updateProfileAndSync() call site');
+        $catchBlock = substr($content, $tryStart, 4000);
 
         $this->assertMatchesRegularExpression(
             '/}\s*catch\s*\(\\\\?(ElanRegistry\\\\Exceptions\\\\)?OwnerDatabaseException\s*\|\s*\\\\?(ElanRegistry\\\\Exceptions\\\\)?CarDatabaseException\s+\$e\)\s*{/',
@@ -121,7 +121,7 @@ final class UserSettingsWiringTest extends TestCase
         // content from a later, unrelated block.
         $catchBodyStart = strpos($catchBlock, 'OwnerDatabaseException | CarDatabaseException $e) {');
         $this->assertIsInt($catchBodyStart, 'Could not locate the combined-catch body');
-        $catchBodyEnd = strpos($catchBlock, "\n            }", $catchBodyStart);
+        $catchBodyEnd = strpos($catchBlock, "\n                }", $catchBodyStart);
         $this->assertIsInt($catchBodyEnd, 'Could not locate the end of the combined-catch body');
         $catchBody = substr($catchBlock, $catchBodyStart, $catchBodyEnd - $catchBodyStart);
 
@@ -134,6 +134,58 @@ final class UserSettingsWiringTest extends TestCase
             '$errors[] = ',
             $catchBody,
             'The catch block must populate $errors[] with a friendly message rather than let the exception propagate'
+        );
+    }
+
+    /**
+     * Regression guard (#1891): `new Owner($userId)` must be in its own try
+     * block, separate from the write/sync try block, so a failure loading
+     * the owner (nothing written yet) is never reported with the same
+     * "Owner details saved, but..." message used when the write actually
+     * committed and only the sync step afterward failed. Both failures throw
+     * the same OwnerDatabaseException type, so only the source structure —
+     * not the exception type — can tell them apart.
+     *
+     * Source inspection: the real failure (a DB fault inside new Owner()'s
+     * own find() call) cannot be triggered deterministically from a PHPUnit
+     * process or a real HTTP request (same constraint as this file's other
+     * DB-failure test above).
+     */
+    public function testOwnerConstructionHasItsOwnTryBlockSeparateFromTheWriteAndSync(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        $constructPos = strpos($content, '$owner = new Owner($userId);');
+        $this->assertIsInt($constructPos, 'Could not locate the new Owner($userId) call site');
+
+        // The nearest preceding "try {" must be the one that wraps ONLY the
+        // constructor — not the one that also wraps updateProfileAndSync().
+        $precedingTry = strrpos(substr($content, 0, $constructPos), 'try {');
+        $this->assertIsInt($precedingTry, 'Could not locate the try block wrapping new Owner($userId)');
+
+        $constructTryBlock = substr($content, $precedingTry, 600);
+        $this->assertStringNotContainsString(
+            'updateProfileAndSync',
+            substr($constructTryBlock, 0, strpos($constructTryBlock, '} catch') ?: 600),
+            'new Owner($userId) must be the ONLY statement in its try block — '
+            . 'updateProfileAndSync() must not be called in the same try, or a '
+            . 'construction failure and a post-write sync failure become '
+            . 'indistinguishable to the catch ladder (#1891)'
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/catch\s*\(\\\\?(ElanRegistry\\\\Exceptions\\\\)?OwnerDatabaseException\s+\$e\)\s*\{.*?\$owner\s*=\s*null;/s',
+            $constructTryBlock,
+            'new Owner($userId)\'s own try block must catch OwnerDatabaseException and '
+            . 'set $owner = null, so the write/sync block below can tell "owner failed '
+            . 'to load" apart from "owner loaded, then something else failed" (#1891)'
+        );
+
+        $this->assertStringContainsString(
+            'if ($owner !== null) {',
+            $content,
+            'The write/sync try block must be gated on $owner !== null, so a failed '
+            . 'new Owner($userId) never reaches updateProfileAndSync() with a null $owner (#1891)'
         );
     }
 
@@ -329,49 +381,58 @@ final class UserSettingsWiringTest extends TestCase
             'The email_act == 1 branch must still be the one that stages email_new'
         );
         $this->assertStringNotContainsString(
-            '$profileFieldsChanged = true;',
+            "\$ownerFields['email']",
             $branchBody,
             'The email_act == 1 branch stages email_new only — users.email is unchanged '
-            . 'until the owner confirms, so it must NOT set $profileFieldsChanged or an '
-            . 'unconfirmed address would be synced onto every car (#1873)'
+            . "until the owner confirms, so it must NOT queue \$ownerFields['email'] or an "
+            . 'unconfirmed address would be synced onto every car (#1873, #1891)'
         );
     }
 
     /**
-     * The sync must remain gated on $profileFieldsChanged, and the flag must be
-     * set by each branch that actually persists a synced owner-contact field.
+     * The sync must remain gated on $ownerFields being non-empty, and each
+     * branch that persists a synced owner-contact field must queue its key
+     * into $ownerFields.
      *
-     * Mutations that drop a `$profileFieldsChanged = true;` (e.g. from the
-     * location block) silently stop syncing that field class — the exact defect
-     * #1873 was filed to fix — and no behavioral test catches it.
+     * Mutations that drop a field's `$ownerFields['...'] = ...` assignment
+     * (e.g. from the location block) silently stop syncing that field class —
+     * the exact defect #1873 was filed to fix — and no behavioral test
+     * catches it. (#1891 replaced the boolean $profileFieldsChanged flag with
+     * the $ownerFields array itself as the gate, carrying the same contract.)
      */
-    public function testSyncIsGatedOnProfileFieldsChangedFlag(): void
+    public function testSyncIsGatedOnOwnerFieldsBeingNonEmpty(): void
     {
         $content = $this->readEndpointSource('usersc/user_settings.php');
 
         $this->assertMatchesRegularExpression(
-            '/if\s*\(\s*\$profileFieldsChanged\s*\)/',
+            '/if\s*\(\s*\$ownerFields\s*!==\s*\[\]\s*\)/',
             $content,
-            'The car sync must stay gated on $profileFieldsChanged so a save that '
+            'The car sync must stay gated on $ownerFields !== [] so a save that '
             . 'persisted nothing does not push stale values onto the cars'
         );
 
         $this->assertStringContainsString(
-            'syncOwnerFieldsToCars()',
+            'updateProfileAndSync($ownerFields)',
             $content,
-            'user_settings.php must call syncOwnerFieldsToCars() (#1873)'
+            'user_settings.php must call Owner::updateProfileAndSync() with the queued fields (#1873, #1891)'
         );
 
-        // fname, lname, location, website, and the confirmed-email branch each
-        // persist a synced column, so each must set the flag. The unconfirmed
-        // email branch must not — asserted separately above.
+        // fname, lname, website, and the confirmed-email branch each queue
+        // their own key directly; location queues city/state/country (and
+        // lat/lon when present) via one array_merge() call. The unconfirmed
+        // email branch must not queue anything — asserted separately above.
         $this->assertSame(
-            5,
-            substr_count($content, '$profileFieldsChanged = true;'),
-            'Exactly five branches persist a synced owner-contact field (fname, lname, '
-            . 'location, website, confirmed email) and each must set $profileFieldsChanged. '
-            . 'A change here means either a sync trigger was dropped or the unconfirmed-email '
-            . 'branch gained one (#1873)'
+            4,
+            substr_count($content, "\$ownerFields['") + substr_count($content, '$ownerFields["'),
+            "Expected exactly 4 direct \$ownerFields['key'] = ... assignments (fname, lname, "
+            . 'website, confirmed email). A change here means either a sync trigger was '
+            . 'dropped or the unconfirmed-email branch gained one (#1873)'
+        );
+        $this->assertSame(
+            1,
+            substr_count($content, '$ownerFields = array_merge($ownerFields,'),
+            'Expected exactly one array_merge() call queuing the location fields onto '
+            . '$ownerFields (#1873)'
         );
     }
 

@@ -305,6 +305,13 @@ $score = $owner->getProfileQualityScore(); // Returns 0-100
 
 // Search owners (admin function)
 $results = (new Owner())->searchOwners('Portland');
+
+// Update name, location, or website and sync the change to every owned car
+$syncResult = $owner->updateProfileAndSync([
+    'fname' => 'Jane',
+    'lname' => 'Doe',
+    'website' => 'https://example.com',
+]);
 ```
 
 **Database Tables**:
@@ -362,6 +369,31 @@ deliberately does not call it — it stays silent on a skip-only outcome since
 a car the owner no longer owns isn't actionable for them; this is intentional
 divergence, not drift. Callers with a real failure build their own message
 from `failedCarsPhrase()` instead.
+
+`updateProfileAndSync(array $fields): OwnerSyncResult` is the single write
+path for an owner's name, location, website, and email. It calls
+`update($fields)`, then `syncOwnerFieldsToCars()`, and returns that call's
+`OwnerSyncResult`. The owner ID comes from the already-loaded `Owner`, not
+from `$fields` — an `id` key in `$fields` is overwritten. Its caller is
+`usersc/user_settings.php` (an owner editing their own profile), which
+replaced that page's separate inline update-then-sync blocks with this one
+call (#1891). It throws `OwnerValidationException` or `OwnerUpdateException`
+from the `update()` step — nothing is written when either throws. Once
+`update()` commits, `syncOwnerFieldsToCars()` can still throw
+`OwnerDatabaseException` or `CarDatabaseException`; the profile write already
+committed in that case, so the caller must not re-raise it as a reason to
+also fail the surrounding request. A result where `isCompleteSuccess()` is
+`false` is not an exception — the caller reads the returned
+`OwnerSyncResult` and decides how to report it.
+
+`update()`'s post-commit reload failure is deliberately non-fatal there
+(#1505 PR A: the write already succeeded, so a reload failure is logged, not
+thrown) — but a stale `_data` left behind by that failure would otherwise
+feed pre-update values into the sync, below. `updateProfileAndSync()` clears
+`_data`/`_carsOwned` before calling `update()`, so a failed reload leaves
+`_data` null, and `syncOwnerFieldsToCars()`'s own "not loaded" guard turns
+that into a thrown `OwnerDatabaseException` instead of silently syncing
+stale values while reporting success.
 
 `ownerContactFields()` is the single definition of the nine denormalized
 owner-contact columns (`fname`, `lname`, `email` from `users`; `city`,
