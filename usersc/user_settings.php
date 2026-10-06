@@ -106,6 +106,7 @@ if (!empty($_POST)) {
         // The success messages and log lines for these fields are held back
         // until that write succeeds.
         $ownerFields = [];
+        $websiteCleared = false;
         $ownerSuccesses = [];
         $ownerLogLines = [];
 
@@ -302,8 +303,16 @@ if (!empty($_POST)) {
             // Validate URL format then restrict to http/https schemes (empty = clear the field)
             if ($websiteUrl === '') {
                 // Written directly: Owner::update() drops empty values, so it
-                // cannot clear the website.
-                $db->update('profiles', $profileId, ['website' => $websiteUrl]);
+                // cannot clear the website. $websiteCleared below pushes the
+                // clear onto the owner's cars even when no other field changed.
+                if ($db->update('profiles', $profileId, ['website' => $websiteUrl])) {
+                    $websiteCleared = true;
+                    $ownerSuccesses[] = 'Website removed.';
+                    $ownerLogLines[] = "Changed website from {$profiledetails->website} to (empty).";
+                } else {
+                    $errors[] = 'Failed to remove website. Please try again.';
+                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to clear website for user {$userId}");
+                }
             } elseif (!filter_var($websiteUrl, FILTER_VALIDATE_URL)) {
                 $errors[] = 'Website URL must start with http:// or https:// (e.g. https://example.com)';
                 logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Invalid website URL rejected for user {$userId}");
@@ -460,37 +469,89 @@ if (!empty($_POST)) {
 
         // Write the owner's contact fields and push them onto their cars once,
         // after every block above has validated its field. Gated on any field
-        // being queued rather than on coordinates: a pure city/state text
-        // change, or a name/website/email change, must sync too (#1873).
+        // being queued, or a website clear, rather than on coordinates: a pure
+        // city/state text change, or a name/website/email change, must sync
+        // too (#1873), and so must clearing the website to empty (#1891).
         //
         // getCarsOwned()/syncOwnerFieldsToCars() throw OwnerDatabaseException on a DB
         // failure (#1505 PR B) rather than silently returning []/0 — this page has no
         // exception handling elsewhere, so a DB blip here must degrade gracefully
         // rather than crash the whole settings page after the profile fields
         // already saved. Matches the defensive-wrap precedent from PR A (#1816).
-        if ($ownerFields !== []) {
+        if ($ownerFields !== [] || $websiteCleared) {
             // new Owner($userId) is split into its own try block, before the write,
             // so a failure here (nothing written yet) is never confused with a
             // failure inside the try block below (the write may have committed).
             // Both find() and updateProfileAndSync() can throw OwnerDatabaseException,
             // and conflating "nothing was written" with "it was written, syncing
             // failed" told the owner their changes were saved when they were not.
+            // Reports $ownerSuccesses/$ownerLogLines exactly once, from whichever
+            // path below actually reaches it. Idempotent: a path that already
+            // reported (e.g. the success path) must not report again if a later
+            // \Throwable from inside the same try block reaches a catch that
+            // also calls this.
+            $ownerFieldsReported = false;
+            $reportOwnerWrite = function () use (&$successes, &$ownerFieldsReported, $ownerSuccesses, $ownerLogLines, $userId): void {
+                if ($ownerFieldsReported) {
+                    return;
+                }
+                $ownerFieldsReported = true;
+                $successes = array_merge($successes, $ownerSuccesses);
+                foreach ($ownerLogLines as $logLine) {
+                    logger($userId, LogCategories::LOG_CATEGORY_USER, $logLine);
+                }
+            };
+
+            // Reports only the website-clear's own success message and log
+            // line — never $ownerSuccesses as a whole, which may include other
+            // fields that were never written when this runs (e.g. the owner
+            // failed to load, or update() rejected an unrelated field). Those
+            // other fields' own outcome is reported separately by whichever
+            // catch calls this. Idempotent for the same reason as $reportOwnerWrite.
+            $websiteClearReported = false;
+            $reportWebsiteCleared = function () use (&$successes, &$websiteClearReported, $userId, $profiledetails): void {
+                if ($websiteClearReported) {
+                    return;
+                }
+                $websiteClearReported = true;
+                $successes[] = 'Website removed.';
+                logger($userId, LogCategories::LOG_CATEGORY_USER, "Changed website from {$profiledetails->website} to (empty).");
+            };
+
             try {
                 $owner = new Owner($userId);
             } catch (OwnerDatabaseException $e) {
                 logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
                     "user_settings.php: failed to load owner {$userId} before profile update: " . $e->getMessage());
-                $errors[] = 'Your changes could not be saved. Please try again.';
+                if ($websiteCleared) {
+                    // The direct website-clear write above already committed —
+                    // only the reload needed to sync it to the cars failed. Say
+                    // so accurately instead of the generic "not saved": the
+                    // clear itself did save, it just has not reached the cars.
+                    // $ownerFields (if any) was never attempted — report only
+                    // the clear, not $ownerSuccesses as a whole.
+                    $reportWebsiteCleared();
+                    $errors[] = 'Website removed, but could not be synchronized to your cars. Please contact support if this persists.';
+                    if ($ownerFields !== []) {
+                        $errors[] = 'Your other changes could not be saved. Please try again.';
+                    }
+                } else {
+                    $errors[] = 'Your changes could not be saved. Please try again.';
+                }
                 $owner = null;
             }
 
             if ($owner !== null) {
                 try {
-                    $syncResult = $owner->updateProfileAndSync($ownerFields);
-                    $successes = array_merge($successes, $ownerSuccesses);
-                    foreach ($ownerLogLines as $logLine) {
-                        logger($userId, LogCategories::LOG_CATEGORY_USER, $logLine);
-                    }
+                    // A website-only clear carries no field for update() to write
+                    // (it drops empty values), so $ownerFields can be empty here —
+                    // sync the already-cleared value straight from the reloaded
+                    // owner instead of calling updateProfileAndSync(), which
+                    // requires at least one field.
+                    $syncResult = $ownerFields !== []
+                        ? $owner->updateProfileAndSync($ownerFields)
+                        : $owner->syncOwnerFieldsToCars();
+                    $reportOwnerWrite();
                     // Cars in $syncResult's skipped bucket (no longer owned by this user) are
                     // intentionally not reported here — there's nothing actionable for the
                     // owner, since the car isn't theirs anymore. isCompleteSuccess() already
@@ -515,11 +576,29 @@ if (!empty($_POST)) {
                         $errors[] = $syncError . ' Please contact support if this persists.';
                     }
                 } catch (OwnerValidationException | OwnerUpdateException $e) {
-                    // update() rejected or rolled back the write, so nothing was
-                    // saved and no sync ran. The fields' success messages stay unsent.
+                    // update() rejected or rolled back the write, so $ownerFields'
+                    // own success messages stay unsent — but a website clear
+                    // outside $ownerFields may have already committed on its own
+                    // (direct write, above), so sync it here rather than leave it
+                    // stale until some other field happens to change later.
                     logger($userId, $e->getLogCategory(),
                         "user_settings.php: owner profile update failed for user {$userId}: " . $e->getMessage());
                     $errors[] = $e->getUserMessage();
+                    if ($websiteCleared) {
+                        // Report the clear as soon as it's known to have committed
+                        // (the direct write, above), before attempting the sync —
+                        // otherwise a sync failure here would leave the clear's own
+                        // audit log line unwritten, unlike every other path that
+                        // reaches a committed clear.
+                        $reportWebsiteCleared();
+                        try {
+                            $owner->syncOwnerFieldsToCars();
+                        } catch (\Throwable $syncException) {
+                            logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                                "user_settings.php: website-clear sync failed for user {$userId}: " . $syncException->getMessage());
+                            $errors[] = 'Website removed, but could not be synchronized to your cars. Please contact support if this persists.';
+                        }
+                    }
                 } catch (OwnerDatabaseException | CarDatabaseException $e) {
                     // CarDatabaseException is a sibling of OwnerDatabaseException, not a
                     // subclass — both must be named explicitly. syncOwnerFieldsToCars()
@@ -531,7 +610,7 @@ if (!empty($_POST)) {
                     // block above already handled a find() failure), and update() throws
                     // neither of these types, so reaching this catch means the profile
                     // write committed: report the saved fields too.
-                    $successes = array_merge($successes, $ownerSuccesses);
+                    $reportOwnerWrite();
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
                         "user_settings.php: car owner-field sync failed for user {$userId}: " . $e->getMessage());
                     $errors[] = 'Owner details saved, but car synchronization encountered an error. Please contact support if this persists.';
@@ -544,6 +623,7 @@ if (!empty($_POST)) {
                     // redirect, blanking the page AFTER the profile writes above already
                     // committed — so the owner sees a crash, retries, finds their new
                     // values displayed, and concludes it worked while the cars stay stale.
+                    $reportOwnerWrite();
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
                         'user_settings.php: unexpected ' . get_class($e)
                         . " during owner-field sync for user {$userId}: " . $e->getMessage());

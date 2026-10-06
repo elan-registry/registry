@@ -370,16 +370,20 @@ a car the owner no longer owns isn't actionable for them; this is intentional
 divergence, not drift. Callers with a real failure build their own message
 from `failedCarsPhrase()` instead.
 
-`updateProfileAndSync(array $fields): OwnerSyncResult` is the single write
-path for an owner's name, location, website, and email. It calls
-`update($fields)`, then `syncOwnerFieldsToCars()`, and returns that call's
-`OwnerSyncResult`. The owner ID comes from the already-loaded `Owner`, not
-from `$fields` — an `id` key in `$fields` is overwritten. Its caller is
-`usersc/user_settings.php` (an owner editing their own profile), which
-replaced that page's separate inline update-then-sync blocks with this one
-call (#1891). It throws `OwnerValidationException` or `OwnerUpdateException`
-from the `update()` step — nothing is written when either throws. Once
-`update()` commits, `syncOwnerFieldsToCars()` can still throw
+`updateProfileAndSync(array $fields): OwnerSyncResult` is the write path for
+an owner's name, location, website, and email, with one known exception: it
+cannot clear the website to empty, because `update()` drops empty values.
+`usersc/user_settings.php` works around that one case with its own direct
+write, then calls `syncOwnerFieldsToCars()` to push the clear onto the
+owner's cars. For every other field, write through this method, not
+directly, or the cars keep stale copies.
+
+It calls `update($fields)`, then `syncOwnerFieldsToCars()`, and returns that
+call's `OwnerSyncResult`. The owner ID comes from the already-loaded `Owner`,
+not from `$fields` — an `id` key in `$fields` is overwritten. It throws
+`OwnerValidationException` or `OwnerUpdateException` for any failure before
+the `users`/`profiles` write commits — nothing is written in that case. Once
+that write commits, `syncOwnerFieldsToCars()` can still throw
 `OwnerDatabaseException` or `CarDatabaseException`; the profile write already
 committed in that case, so the caller must not re-raise it as a reason to
 also fail the surrounding request. A result where `isCompleteSuccess()` is
@@ -387,10 +391,11 @@ also fail the surrounding request. A result where `isCompleteSuccess()` is
 `OwnerSyncResult` and decides how to report it.
 
 `update()`'s post-commit reload failure is deliberately non-fatal there
-(#1505 PR A: the write already succeeded, so a reload failure is logged, not
-thrown) — but a stale `_data` left behind by that failure would otherwise
-feed pre-update values into the sync, below. `updateProfileAndSync()` clears
-`_data`/`_carsOwned` before calling `update()`, so a failed reload leaves
+(the write already succeeded, so a reload failure is logged, not thrown) —
+but a stale `_data` left behind by that failure would otherwise feed
+pre-update values into the sync, below. `updateProfileAndSync()` clears
+`_data` before calling `update()` (not `_carsOwned`, which caches only which
+cars the owner has, not their contact fields), so a failed reload leaves
 `_data` null, and `syncOwnerFieldsToCars()`'s own "not loaded" guard turns
 that into a thrown `OwnerDatabaseException` instead of silently syncing
 stale values while reporting success.

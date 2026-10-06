@@ -92,4 +92,34 @@ final class OwnerUpdateProfileAndSyncTest extends IntegrationTestCase
             $this->assertEqualsWithDelta(-122.6765, (float) $carRow->lon, 0.001);
         }
     }
+
+    /**
+     * Regression guard (#1891): usersc/user_settings.php cannot clear the
+     * website through updateProfileAndSync($ownerFields), because
+     * Owner::update() drops empty values — an empty website never survives
+     * validateAndSanitizeFields(). The page instead writes `profiles.website`
+     * directly, then calls syncOwnerFieldsToCars() on its own (see
+     * $websiteCleared in usersc/user_settings.php). This test proves that
+     * second half of the page's workaround actually clears the car, using
+     * the same two calls the page makes, not updateProfileAndSync().
+     */
+    public function testClearedWebsiteReachesCarsViaDirectWriteThenSync(): void
+    {
+        $userId = $this->createTestUser([], withProfile: true);
+        $carId = $this->createTestCar($userId, ['website' => 'https://stale.example.com']);
+
+        // Mirrors the page's own direct write for the empty-website case.
+        $this->db->update('profiles', ['user_id' => $userId], ['website' => '']);
+
+        $owner = new Owner($userId);
+        $this->assertNotNull($owner->data(), 'Owner must load successfully before calling syncOwnerFieldsToCars()');
+
+        $result = $owner->syncOwnerFieldsToCars();
+
+        $this->assertTrue($result->isCompleteSuccess());
+        $this->assertSame([$carId], $result->updated);
+
+        $carRow = $this->db->query('SELECT website FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertSame('', (string) $carRow->website, 'The cleared website must reach the car, not stay stale');
+    }
 }

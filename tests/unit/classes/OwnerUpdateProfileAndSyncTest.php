@@ -18,9 +18,10 @@ use Tests\Support\FakeDatabase;
  * wrapper that chains update() and syncOwnerFieldsToCars() into one call.
  *
  * This is the wrapper's own wiring: does it call update() first, propagate
- * whatever update() throws before sync ever runs, and return sync()'s result
- * (including a non-complete-success result) rather than swallowing it. The
- * wrapper adds no validation of its own — Owner::update()'s existing
+ * update()'s own exceptions (and convert any other \Throwable from before
+ * the commit into one of them) before sync ever runs, and return sync()'s
+ * result (including a non-complete-success result) rather than swallowing
+ * it. The wrapper adds no validation of its own — Owner::update()'s existing
  * validateAndSanitizeFields() already rejects malformed input, and that
  * rejection is pinned at the unit level by tests/unit/OwnerValidationTest.php
  * and at this call site specifically below, because validateAndSanitizeFields()
@@ -52,8 +53,9 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
      *   fields that were just written (so this double doubles as "today's
      *   current values" for ownerContactFields()), unless $failReload is set,
      *   in which case it returns zero rows (simulating update()'s own
-     *   documented non-fatal reload failure — #1891's Owner::_data/_carsOwned
-     *   reset guards against this leaving stale pre-update values for sync).
+     *   documented non-fatal reload failure — Owner::updateProfileAndSync()'s
+     *   own `_data` reset guards against this leaving stale pre-update values
+     *   for sync).
      * - getCarsOwned()'s SELECT: returns $carCount synthetic car rows.
      * - updateCarForOwner()'s UPDATE: reports 1 row changed (so every car is
      *   treated as actually changed, never the ambiguous-zero branch).
@@ -63,35 +65,87 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
      *   integration tier (dbFailingHistoryInsert()), reproduced here without
      *   a live connection.
      */
+    /**
+     * @return FakeDatabase&object{queriesSeen: list<string>}
+     */
     private function makeDatabase(
         int $carCount,
         bool $failUserUpdate = false,
         bool $failProfileUpdate = false,
         ?int $failHistoryForCarId = null,
-        bool $failReload = false
-    ): DatabaseInterface {
+        bool $failReload = false,
+        bool $failCommit = false
+    ) {
         return new class (
             $carCount,
             $failUserUpdate,
             $failProfileUpdate,
             $failHistoryForCarId,
-            $failReload
+            $failReload,
+            $failCommit
         ) extends FakeDatabase {
             private string $lastSql = '';
+            private bool $inTransaction = false;
+
+            /** @var list<string> Every SQL string passed to query(), in call order. */
+            public array $queriesSeen = [];
 
             public function __construct(
                 private int $carCount,
                 private bool $failUserUpdate,
                 private bool $failProfileUpdate,
                 private ?int $failHistoryForCarId,
-                private bool $failReload
+                private bool $failReload,
+                private bool $failCommit
             ) {
             }
 
             public function query(string $sql, array $params = []): self
             {
                 $this->lastSql = $sql;
+                $this->queriesSeen[] = $sql;
                 return $this;
+            }
+
+            // Owner::commit()/beginTransaction() only call through to the
+            // database when inTransaction() reports the matching state — the
+            // base FakeDatabase always returns false here, which would make
+            // $failCommit unreachable. Track it for real so the state this
+            // test cares about (whether a later syncOwnerFieldsToCars() call
+            // still sees an open transaction) stays correct too.
+            public function beginTransaction(): bool
+            {
+                $this->inTransaction = true;
+                return true;
+            }
+
+            // DatabaseInterface::inTransaction() declares @phpstan-impure; this
+            // double tracks real state via a property, which PHPStan's purity
+            // check reads as a pure getter even though the interface requires
+            // the override.
+            // @phpstan-ignore impureMethod.pure
+            public function inTransaction(): bool
+            {
+                return $this->inTransaction;
+            }
+
+            public function commit(): bool
+            {
+                if ($this->failCommit) {
+                    // Simulates a PDOException from a failed COMMIT (lost
+                    // connection, deadlock) — not one of Owner's own exception
+                    // types, so updateProfileAndSync() must convert it rather
+                    // than let it reach a caller's catch ladder unconverted.
+                    throw new \PDOException('simulated commit failure');
+                }
+                $this->inTransaction = false;
+                return true;
+            }
+
+            public function rollBack(): bool
+            {
+                $this->inTransaction = false;
+                return true;
             }
 
             public function update(string $table, array|int $id, array $fields): bool
@@ -229,15 +283,79 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
     public function testValidationFailureThrowsBeforeSyncIsEverCalled(): void
     {
         // An out-of-range lat is rejected by validateAndSanitizeFields()
-        // before any DB write. If syncOwnerFieldsToCars() ran anyway, the
-        // double's getCarsOwned() query would succeed and no exception would
-        // surface — so a passing test here proves update() really did stop
-        // the call before sync, not merely that an exception was thrown.
+        // before any DB write. Asserting the exception type alone would still
+        // pass if update() and syncOwnerFieldsToCars() ran in the other order
+        // (sync first, then a throwing update()) — so this checks the actual
+        // queries the double saw, not just that something was thrown.
         $db = $this->makeDatabase(carCount: 2);
         $owner = $this->ownerLoadedWithId($db);
 
-        $this->expectException(OwnerValidationException::class);
-        $owner->updateProfileAndSync(['lat' => '91']);
+        try {
+            $owner->updateProfileAndSync(['lat' => '91']);
+            $this->fail('Expected OwnerValidationException was not thrown');
+        } catch (OwnerValidationException $e) {
+            // Caught below, outside the try, so the assertions on $db run
+            // even if a different exception type would otherwise mask them.
+        }
+
+        $this->assertSame(
+            [],
+            array_filter($db->queriesSeen, static fn (string $sql): bool => str_starts_with($sql, 'SELECT c.* FROM cars')),
+            'syncOwnerFieldsToCars() must not read the car list when update() rejects the fields first'
+        );
+    }
+
+    /**
+     * Regression guard: updateProfileAndSync() must restore $_data to its
+     * pre-call snapshot when update() throws before committing, not leave it
+     * null. A caller that writes a field outside $ownerFields on its own
+     * (usersc/user_settings.php's direct website-clear write, since
+     * Owner::update() drops empty values) and then retries
+     * syncOwnerFieldsToCars() on the SAME already-loaded Owner after this
+     * throw must not hit syncOwnerFieldsToCars()'s "not loaded" guard — this
+     * Owner really is still loaded; nothing about the rejected fields
+     * invalidates that.
+     */
+    public function testValidationFailureRestoresDataSoARetriedSyncStillWorks(): void
+    {
+        $db = $this->makeDatabase(carCount: 2);
+        $owner = $this->ownerLoadedWithId($db);
+
+        try {
+            $owner->updateProfileAndSync(['lat' => '91']);
+            $this->fail('Expected OwnerValidationException was not thrown');
+        } catch (OwnerValidationException $e) {
+            // Caught below, outside the try, so the retry below still runs
+            // even if a different exception type would otherwise mask it.
+        }
+
+        // Mirrors usersc/user_settings.php's retry: the same $owner, still
+        // loaded, syncs a field written outside the failed updateProfileAndSync()
+        // call. Before the fix, $_data stayed null and this threw
+        // OwnerDatabaseException("not loaded") instead of succeeding.
+        $result = $owner->syncOwnerFieldsToCars();
+
+        $this->assertTrue($result->isCompleteSuccess());
+        $this->assertSame([1, 2], $result->updated);
+    }
+
+    /**
+     * Regression guard: a \Throwable from update() that is not one of its own
+     * documented exception types (OwnerValidationException/OwnerUpdateException)
+     * must still be reported as "nothing was written" rather than reach a
+     * caller's catch ladder unconverted and be read as a post-commit sync
+     * failure, which usersc/user_settings.php reports as "Owner details saved,
+     * but...". A failed COMMIT (simulated here as a PDOException, matching
+     * what a real lost-connection/deadlock failure throws) is exactly such a
+     * \Throwable: it is neither of update()'s own exception types.
+     */
+    public function testThrowableFromUpdateBeforeCommitIsConvertedNotPassedThrough(): void
+    {
+        $db = $this->makeDatabase(carCount: 2, failCommit: true);
+        $owner = $this->ownerLoadedWithId($db);
+
+        $this->expectException(\ElanRegistry\Exceptions\OwnerUpdateException::class);
+        $owner->updateProfileAndSync(['fname' => 'Synced']);
     }
 
     /**
@@ -245,15 +363,16 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
      * pre-update values onto the owner's cars while reporting success.
      *
      * update()'s own post-commit find() failure is deliberately non-fatal
-     * there (#1505 PR A — the write already succeeded, so a reload failure
-     * is logged, not thrown). Before the #1891 fix, updateProfileAndSync()
-     * left $_data holding its pre-update values when the reload failed, and
-     * syncOwnerFieldsToCars() read ownerContactFields() from that stale
+     * there (the write already succeeded, so a reload failure is logged, not
+     * thrown). Without a reset, updateProfileAndSync() would leave $_data
+     * holding its pre-update values when the reload failed, and
+     * syncOwnerFieldsToCars() would read ownerContactFields() from that stale
      * $_data — copying the OLD name/location/website onto every owned car
-     * and returning a complete-success OwnerSyncResult. The fix clears
-     * $_data/$_carsOwned before update() runs, so a failed reload leaves
-     * $_data null, which syncOwnerFieldsToCars()'s own "not loaded" guard
-     * turns into a thrown OwnerDatabaseException instead.
+     * and returning a complete-success OwnerSyncResult. Clearing $_data (not
+     * $_carsOwned, which caches only which cars the owner has) before
+     * update() runs means a failed reload leaves $_data null, which
+     * syncOwnerFieldsToCars()'s own "not loaded" guard turns into a thrown
+     * OwnerDatabaseException instead.
      */
     public function testReloadFailureAfterCommitThrowsRatherThanSyncsStaleData(): void
     {

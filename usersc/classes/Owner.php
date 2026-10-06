@@ -371,8 +371,9 @@ class Owner
      * @return OwnerSyncResult Per-car outcome of the sync
      * @throws OwnerValidationException If this Owner did not load, or a field
      *         fails validation. Nothing was written.
-     * @throws OwnerUpdateException If the users or profiles write fails.
-     *         update() rolled back, so nothing was written.
+     * @throws OwnerUpdateException If the users or profiles write fails, or
+     *         any other error happens before that write commits. Nothing
+     *         was written.
      * @throws OwnerDatabaseException If the sync cannot read the car list, an
      *         ownership check fails, or update()'s own post-commit reload
      *         failed (this Owner is left unloaded rather than risk syncing
@@ -395,8 +396,35 @@ class Owner
         // OwnerDatabaseException instead of a silent stale sync. _carsOwned is
         // not cleared: it caches which cars this owner has, not their contact
         // fields, and editing name/location/website never changes that list.
+        $previousData = $this->_data;
         $this->_data = null;
-        $this->update($fields);
+
+        try {
+            $this->update($fields);
+        } catch (OwnerValidationException | OwnerUpdateException $e) {
+            // Nothing was written, so the pre-call snapshot is still accurate.
+            // Restore it rather than leave this Owner looking unloaded — a
+            // caller that retries syncOwnerFieldsToCars() on a field it wrote
+            // outside this call (e.g. a website clear written directly, since
+            // update() drops empty values) would otherwise always hit the
+            // "not loaded" guard, even though this Owner really is loaded.
+            $this->_data = $previousData;
+            throw $e;
+        } catch (\Throwable $e) {
+            // Anything else from update() (e.g. a PDOException from a failed
+            // BEGIN or COMMIT) is not one of update()'s own exception types,
+            // so a caller's catch ladder built on those types would wrongly
+            // treat it as a post-commit sync failure and report "Owner
+            // details saved" when nothing was. Converting it here keeps that
+            // distinction true for every caller, not just this one.
+            $this->_data = $previousData;
+            throw new OwnerUpdateException(
+                'Owner update failed before commit: ' . $e->getMessage(),
+                0,
+                $e,
+                'Your changes could not be saved. Please try again.'
+            );
+        }
 
         return $this->syncOwnerFieldsToCars();
     }
