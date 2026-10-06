@@ -63,7 +63,9 @@ final class CarBadges
         'verified' => [
             'label'   => 'Verified',
             'icon'    => '✓',
-            'tooltip' => "The owner confirmed, added, or updated this car's record in the last 12 months.",
+            // From the constant that CarRepository::freshnessCutoff() uses, so the text and the rule cannot disagree.
+            'tooltip' => "The owner confirmed, added, or updated this car's record in the last "
+                . CarRepository::FRESHNESS_MONTHS . ' months.',
             'tone'    => 'verified',
         ],
     ];
@@ -81,6 +83,10 @@ final class CarBadges
      * - Sold shows when the car is sold.
      * - Verified shows when the car is fresh, not sold, and not new.
      * The order is New, Sold, Verified.
+     *
+     * @internal Use forCar() or decorateRows(). This method stays public only
+     *           because CarBadgesTest tests the rule directly with all eight
+     *           combinations of the three flags.
      *
      * @param bool $sold  True when the car is sold (see isSold())
      * @param bool $fresh True when the car's registry data is fresh (see CarRepository::isFresh())
@@ -116,14 +122,27 @@ final class CarBadges
     }
 
     /**
+     * Get the tooltip text of the Verified badge.
+     *
+     * The Vehicle Information card uses it for the help button on its
+     * Verified row, so the badge and the row show the same text.
+     *
+     * @return string The tooltip text, not escaped
+     */
+    public static function verifiedTooltip(): string
+    {
+        return self::BADGES['verified']['tooltip'];
+    }
+
+    /**
      * Get the Verified row status for one car record.
      *
-     * CarRepository::isFresh() decides if the car is fresh. This method does
-     * not apply the freshness rule itself. When the car is fresh, the status
+     * CarRepository::freshnessSource() decides if the car is fresh and which
+     * date to show. This method does not apply the freshness rule itself.
+     * The method reads the clock one time. When the car is fresh, the status
      * says which date to show:
      * - `confirmed`: `last_verified` is not null and is inside the freshness
-     *   window (CarRepository::isWithinFreshnessWindow()). The date is
-     *   `last_verified`.
+     *   window. The date is `last_verified`.
      * - `current`: all other fresh cars. The date is `owner_last_updated`.
      *
      * The method returns null when the car is sold (isSold()), when the car is
@@ -149,24 +168,7 @@ final class CarBadges
         [$lastVerified, $ownerLastUpdated] = $dates;
 
         try {
-            if (!CarRepository::isFresh($lastVerified, $ownerLastUpdated)) {
-                return null;
-            }
-
-            // isFresh() said fresh, so this check only picks the date to show.
-            // It reads the clock again. A last_verified value at the exact
-            // cutoff second can fall out between the two reads. The row then
-            // shows "Current since" with the owner_last_updated date, even
-            // when that date is stale. This is a known, accepted edge case:
-            // it lasts one second, once a year for each car.
-            if (
-                $lastVerified !== null
-                && CarRepository::isWithinFreshnessWindow($lastVerified, 'last_verified')
-            ) {
-                return ['source' => 'confirmed', 'date' => CarRepository::parseTimestamp($lastVerified, 'last_verified')];
-            }
-
-            return ['source' => 'current', 'date' => CarRepository::parseTimestamp($ownerLastUpdated, 'owner_last_updated')];
+            return CarRepository::freshnessSource($lastVerified, $ownerLastUpdated);
         } catch (CarValidationException $e) {
             self::logBadDates($car->id ?? 'unknown', 'verifiedStatus', $e->getMessage());
             return null;

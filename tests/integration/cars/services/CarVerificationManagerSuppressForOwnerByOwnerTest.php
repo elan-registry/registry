@@ -338,4 +338,68 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         $this->assertContains($carOneId, $after, 'Owner-cleared car must be eligible, same as the admin-cleared one');
         $this->assertContains($carTwoId, $after, 'Admin-cleared car must be eligible');
     }
+
+    /**
+     * Double-submit race (#1895 review). Request B reads the profile flag as
+     * 1 with a plain read, so its transaction holds a snapshot. Request A, on
+     * another connection, then clears the flag and commits. B must still
+     * succeed: the manager's locking read sees A's committed 0 and skips the
+     * profile write. Before the fix, B's plain read returned the snapshot's
+     * 1, its UPDATE affected 0 rows, and B threw CarDatabaseException.
+     */
+    #[Group('fast')]
+    public function testConcurrentResumeAfterOtherRequestCommittedSucceeds(): void
+    {
+        $ownerId = $this->createTestUser([], true);
+        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
+        $carId = $this->createTestCar($ownerId, ['email' => 'race@example.com', 'email_suppressed' => 1]);
+
+        $otherRequest = $this->secondConnection();
+
+        $this->repo->beginTransaction();
+        try {
+            $this->assertSame(1, $this->repo->findProfileEmailSuppressed($ownerId), 'Test setup: B reads 1 first');
+
+            $stmt = $otherRequest->prepare('UPDATE profiles SET email_suppressed = 0 WHERE user_id = ?');
+            $stmt->execute([$ownerId]);
+            $this->assertSame(1, $stmt->rowCount(), 'Test setup: request A must clear and commit the profile flag');
+
+            $this->assertSame(
+                1,
+                $this->repo->findProfileEmailSuppressed($ownerId),
+                'Test setup: B\'s plain read must still return its snapshot value, or this test proves nothing'
+            );
+
+            $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+            $this->repo->commit();
+        } catch (\Throwable $e) {
+            $this->repo->rollback();
+            throw $e;
+        }
+
+        $this->assertSame(0, $this->profileEmailSuppressed($ownerId));
+        $this->assertSame(0, $this->emailSuppressed($carId));
+    }
+
+    /**
+     * A second connection to the test database, so a test can commit a
+     * write that the connection under test did not make.
+     */
+    private function secondConnection(): \PDO
+    {
+        $host = (string) ($_ENV['DB_HOST'] ?? getenv('DB_HOST'));
+        $port = $_ENV['DB_PORT'] ?? getenv('DB_PORT') ?: 3306;
+        $name = (string) ($_ENV['DB_NAME'] ?? getenv('DB_NAME'));
+
+        if (str_contains($host, ':')) {
+            [$host, $port] = explode(':', $host, 2);
+        }
+
+        return new \PDO(
+            "mysql:host={$host};port={$port};dbname={$name}",
+            (string) ($_ENV['DB_USER'] ?? getenv('DB_USER')),
+            (string) ($_ENV['DB_PASS'] ?? getenv('DB_PASS')),
+            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
+        );
+    }
 }

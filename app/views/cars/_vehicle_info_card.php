@@ -181,7 +181,7 @@ $_registryDate = static function (object $carData, string $column): string {
 
             <?php if (!$_isSold) { ?>
             <dt class="col-sm-4 text-muted">
-                Verified <?= $_helpButton('What Verified means', "The owner confirmed, added, or updated this car's record in the last 12 months.") ?>
+                Verified <?= $_helpButton('What Verified means', \ElanRegistry\Car\CarBadges::verifiedTooltip()) ?>
             </dt>
             <dd class="col-sm-8">
                 <?php if ($_verifiedStatus !== null) { ?>

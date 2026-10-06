@@ -251,6 +251,42 @@ git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD \
 - **Exit 2** — could not run at all (baseline file not found, usually a
   wrong working directory) — treat as "can't verify," not "clean."
 
+### Step 6.6: Cleanup Ledger Check
+
+`/start-issue` Step 5.5 pulls ledger items known at plan-approval time into
+the plan's **Ledger items** section and the Implementation Checklist. This
+step catches two gaps that step can't: an item added to the ledger *after*
+this plan was approved, and a file this implementation ended up touching
+that the plan didn't foresee touching.
+
+```bash
+git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD \
+  | scripts/ledger-items-for-files.sh
+```
+
+(No commits yet? Use `git diff --name-only` or `git status --short` reduced
+to paths, same substitution Step 6.5 uses.)
+
+- **No output** — clean. Proceed to Step 7.
+- **Output, and every line already appears in the plan's Ledger items
+  section** — already handled by Step 5/6's implementation. Proceed to
+  Step 7.
+- **Output with a line not in the plan** — offer it, don't fix it
+  unconditionally and don't silently skip it. For each new item, in order:
+  state the file:line and item text, then AskUserQuestion: "`<file>` has an
+  open cleanup-ledger item not in this plan: `<item text>`. Fix it in this
+  PR?" Options: `Fix now` (recommended only when the fix is small and
+  doesn't expand scope beyond the plan's files), `Add to plan and fix now`
+  (recommended when it's larger — updates the Implementation Checklist
+  first, then fixes), `Leave for its own PR`. Act on the answer: `Fix now`
+  or `Add to plan and fix now` — fix it, then add a `## Ledger items` bullet
+  to the plan file if one doesn't exist yet; `Leave for its own PR` — no
+  action here, it stays in the ledger for a future branch that's asked the
+  same way.
+- **A failed query (non-zero exit with no clean "no items" signal)** —
+  treat as "can't verify," not "clean"; tell the user and continue — this
+  check does not block the rest of the workflow.
+
 ### Step 7: The single review round — all reviewers, in parallel, before the push
 
 **Launch every applicable reviewer at once, against the same commit.** Not in
@@ -496,3 +532,7 @@ within this command — that happens later, at merge time, not here.
   for new public methods. Both classes have shipped real, review-missed bugs
   from careful-looking code that only broke at execution time. Catch them in
   Step 6, not two workflow stages later at `/review-pr`.
+- **Check the cleanup ledger for touched files, offer to fix, never fix
+  unconditionally and never silently skip** (Step 6.6) — a file this plan
+  ends up touching may carry an open ledger item the plan never saw. Ask the
+  user per item; act on their answer.

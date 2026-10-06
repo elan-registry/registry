@@ -108,7 +108,8 @@ if (!function_exists('userSettingsHistoryFields')) {
             'model'                 => $carData->model ?? '',
             'series'                => $carData->series ?? '',
             'variant'               => $carData->variant ?? '',
-            'year'                  => $carData->year ?? '',
+            // cars_hist.year is SMALLINT UNSIGNED NULL. Strict mode rejects ''.
+            'year'                  => $carData->year ?? null,
             'type'                  => $carData->type ?? '',
             'chassis'               => $carData->chassis ?? '',
             'color'                 => $carData->color ?? '',
@@ -176,6 +177,12 @@ if (!empty($_POST)) {
         //
         // One transaction covers the fan-out and every audit row, so a car
         // never ends up cleared with no cars_hist record of who asked.
+        //
+        // $committed tells the catch below whether the change is already
+        // saved. After commit(), a fault in logger(), usSuccess() or
+        // Redirect::to() must not roll back (a no-op) or tell the owner that
+        // nothing was changed.
+        $committed = false;
         $repo->beginTransaction();
         try {
             $resumedCars = $verifier->clearSuppressedForOwnerByOwner($userId);
@@ -185,13 +192,16 @@ if (!empty($_POST)) {
                     'SUPPRESSION CLEARED BY OWNER',
                     'Owner action via Account Settings (Resume verification emails)'
                 ))) {
+                    // Read the error before any other query resets the shared connection state.
                     throw new CarDatabaseException(
                         'user_settings.php: audit trail insert failed for SUPPRESSION CLEARED BY OWNER on car '
-                        . (int) $beforeCar->id . " for owner {$userId}"
+                        . (int) $beforeCar->id . " for owner {$userId}: "
+                        . ($repo->errorString() ?: 'unknown')
                     );
                 }
             }
             $repo->commit();
+            $committed = true;
 
             logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
                 'user_settings.php: SUPPRESSION CLEARED BY OWNER applied for owner %d (%d cars changed)',
@@ -201,24 +211,36 @@ if (!empty($_POST)) {
             usSuccess('Verification emails have been resumed for your cars.');
             Redirect::to($us_url_root . 'usersc/user_settings.php');
             exit;
-        } catch (ElanRegistryException $e) {
-            // CarDatabaseException from the manager or the audit insert, and
-            // OwnerDatabaseException from the history snapshot.
-            $repo->rollback();
-            logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-                "user_settings.php: SUPPRESSION CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage());
-            $errors[] = 'Verification emails could not be resumed. Nothing was changed. Please try again or contact support.';
         } catch (\Throwable $e) {
-            // A narrower catch would leave the transaction open for the rest
-            // of the request on a fault that is not an ElanRegistryException.
-            $repo->rollback();
-            logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
-                'user_settings.php: SUPPRESSION CLEARED BY OWNER unexpected error [%s] for owner %d: %s',
-                get_class($e),
-                $userId,
-                $e->getMessage()
-            ));
-            $errors[] = 'Verification emails could not be resumed. Nothing was changed. Please try again or contact support.';
+            // \Throwable, not only ElanRegistryException: a narrower catch
+            // would leave the transaction open for the rest of the request.
+            if ($committed) {
+                logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                    'user_settings.php: SUPPRESSION CLEARED BY OWNER committed for owner %d, '
+                    . 'but a post-commit step failed [%s]: %s',
+                    $userId,
+                    get_class($e),
+                    $e->getMessage()
+                ));
+                $errors[] = 'Verification emails were resumed, but the confirmation could not be shown. Reload this page to check.';
+            } else {
+                $repo->rollback();
+                if ($e instanceof ElanRegistryException) {
+                    // CarDatabaseException from the manager or the audit
+                    // insert, and OwnerDatabaseException from the history
+                    // snapshot.
+                    logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+                        "user_settings.php: SUPPRESSION CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage());
+                } else {
+                    logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                        'user_settings.php: SUPPRESSION CLEARED BY OWNER unexpected error [%s] for owner %d: %s',
+                        get_class($e),
+                        $userId,
+                        $e->getMessage()
+                    ));
+                }
+                $errors[] = 'Verification emails could not be resumed. Nothing was changed. Please try again or contact support.';
+            }
         }
     } else {
         // Owner-contact fields (fname, lname, email, city, state, country, lat,
@@ -789,22 +811,32 @@ if ($userQ2->count() > 0) {
     echo 'USER_SETTING(390) something is wrong with the user profile <br>';
 }
 
-// Keyed on the owner-level flag, not on per-car flags: a car added after the
-// owner opted out keeps cars.email_suppressed = 0 but is still blocked by
-// profiles.email_suppressed (see CarRepository::findVerificationEligible()).
-// For the same reason the count is every owned car. PDO returns the column as
-// int|string, so cast before the strict comparison.
-$emailSuppressed = (int) ($profiledetails->email_suppressed ?? 0) === 1;
+// Two flags can pause an owner's emails, so either one shows the control:
+// - profiles.email_suppressed = 1 (the owner opted out). This blocks every
+//   owned car, also a car added after the opt-out that keeps
+//   cars.email_suppressed = 0 (see CarRepository::findVerificationEligible()).
+//   So the count is every owned car.
+// - cars.email_suppressed = 1 on one or more cars, with the profile flag at 0.
+//   A Brevo spam or unsubscribe event sets only the flag on that one car
+//   (EmailEventApplier::apply()). So the count is those cars only.
+// clearSuppressedForOwnerByOwner() clears both kinds: its fan-out reads each
+// car's own flag, whatever the profile flag is. PDO returns the columns as
+// int|string, so cast before the strict comparisons.
+$profileSuppressed = (int) ($profiledetails->email_suppressed ?? 0) === 1;
+$emailSuppressed = $profileSuppressed;
 $pausedCarCount = null;
-if ($emailSuppressed) {
-    try {
-        $pausedCarCount = count($repo->findByOwner($userId));
-    } catch (ElanRegistryException $e) {
-        // The count is copy, not a gate. Keep the control available and show
-        // generic text instead of a number we do not have.
-        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-            "user_settings.php: owner car count failed for owner {$userId}: " . $e->getMessage());
-    }
+try {
+    $ownedCars = $repo->findVerificationStateByOwner($userId);
+    $pausedCarCount = $profileSuppressed
+        ? count($ownedCars)
+        : count(array_filter($ownedCars, static fn(object $car): bool => (int) $car->email_suppressed === 1));
+    $emailSuppressed = $profileSuppressed || $pausedCarCount > 0;
+} catch (ElanRegistryException $e) {
+    // With the profile flag set, the count is copy, not a gate: keep the
+    // control and show generic text. With the profile flag at 0, the per-car
+    // flags are unknown, so the control stays hidden until the next load.
+    logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+        "user_settings.php: owner car suppression lookup failed for owner {$userId}: " . $e->getMessage());
 }
 
 ?>

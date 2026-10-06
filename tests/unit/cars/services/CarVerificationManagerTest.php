@@ -1019,7 +1019,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 30;
 
-        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressedForUpdate')
             ->with($ownerId)->willReturn(1);
         $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
             ->with($ownerId, false)->willReturn(true);
@@ -1057,7 +1057,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 31;
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(1);
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(1);
         $this->mockRepo->method('updateProfileEmailSuppressed')->willReturn(true);
 
         $this->mockRepo->method('findByOwner')->willReturn([
@@ -1085,7 +1085,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 32;
 
-        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressedForUpdate')
             ->with($ownerId)->willReturn(0);
         $this->mockRepo->expects($this->never())->method('updateProfileEmailSuppressed');
 
@@ -1107,7 +1107,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 33;
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->with($ownerId)->willReturn(null);
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->with($ownerId)->willReturn(null);
 
         $this->mockRepo->expects($this->never())->method('findByOwner');
         $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
@@ -1126,7 +1126,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 40;
 
-        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressedForUpdate')
             ->with($ownerId)->willReturn(1);
         $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
             ->with($ownerId, false)->willReturn(true);
@@ -1164,7 +1164,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 41;
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(1);
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(1);
         $this->mockRepo->method('updateProfileEmailSuppressed')->willReturn(true);
 
         $this->mockRepo->method('findByOwner')->willReturn([
@@ -1192,7 +1192,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 42;
 
-        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressedForUpdate')
             ->with($ownerId)->willReturn(0);
         $this->mockRepo->expects($this->never())->method('updateProfileEmailSuppressed');
 
@@ -1214,7 +1214,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 43;
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->with($ownerId)->willReturn(null);
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->with($ownerId)->willReturn(null);
 
         $this->mockRepo->expects($this->never())->method('findByOwner');
         $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
@@ -1233,7 +1233,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 44;
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(1);
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(1);
         $this->mockRepo->method('updateProfileEmailSuppressed')->willReturn(true);
         $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
         $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 1]);

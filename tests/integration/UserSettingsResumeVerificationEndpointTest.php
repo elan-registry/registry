@@ -20,8 +20,9 @@ use PHPUnit\Framework\Attributes\Group;
  * callback inside that subprocess captures the usSuccess() session flash to a
  * temp file just before PHP tears the process down — the exit() itself always
  * wins the race against any code placed after `require` in the same script.
- * The test then asserts on that captured flash plus real database state
- * (flags, cars_hist rows), never on the rendered page body.
+ * The POST tests then assert on that captured flash plus real database state
+ * (flags, cars_hist rows), never on the rendered page body. Only the GET
+ * tests read the rendered body, to check when the control shows.
  *
  * securePage($php_self) (called by usersc/user_settings.php) needs a real
  * web-relative $php_self to find its `pages` row. Server::get('PHP_SELF')
@@ -151,13 +152,21 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
      *                          invalid value — proves the missing-key case,
      *                          not just the bad-value case. Overrides
      *                          $withValidCsrf.
+     * @param bool $asGet When true, the request is a plain GET page load: no
+     *                    $_POST fields are set and the other POST options are
+     *                    ignored. Use it to assert on the rendered page body.
+     * @param bool $withResumeField When false, the 'resume_verification_emails'
+     *                              field is left out, so the request is the
+     *                              ordinary profile-update form POST.
      * @return array{exitCode: int, raw: string, successFlash: string}
      */
     private function invokeResumeEndpoint(
         int $loggedInUserId,
         bool $withValidCsrf,
         array $extraPost = [],
-        bool $omitCsrfKey = false
+        bool $omitCsrfKey = false,
+        bool $asGet = false,
+        bool $withResumeField = true
     ): array {
         $endpointFile = dirname(__DIR__, 2) . '/usersc/user_settings.php';
         $projectRoot = dirname(__DIR__, 2);
@@ -168,7 +177,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         $this->createdTempFiles[] = $captureFile;
 
         $csrfSnippet = match (true) {
-            $omitCsrfKey => '',
+            $asGet, $omitCsrfKey => '',
             $withValidCsrf => '$_POST["csrf"] = \Token::generate();',
             default => '$_POST["csrf"] = "deliberately-invalid-token-0000000000000000000000000000000000";',
         };
@@ -182,7 +191,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         );
 
         $extraPostSnippet = '';
-        foreach ($extraPost as $key => $value) {
+        foreach ($asGet ? [] : $extraPost as $key => $value) {
             $extraPostSnippet .= sprintf('$_POST[%s] = %s; ', var_export($key, true), var_export($value, true));
         }
 
@@ -191,12 +200,12 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             'require %s; ' .
             '\Dotenv\Dotenv::createMutable(%s, ".env.test.local")->load(); ' .
             '$_SERVER["DOCUMENT_ROOT"] = %s; ' .
-            '$_SERVER["REQUEST_METHOD"] = "POST"; ' .
+            '$_SERVER["REQUEST_METHOD"] = %s; ' .
             'chdir(%s); ' .
             'require_once %s; ' .
             '%s ' .
             '%s ' .
-            '$_POST["resume_verification_emails"] = "1"; ' .
+            '%s ' .
             '%s ' .
             '$__captureFile = %s; ' .
             'register_shutdown_function(function () use ($__captureFile) { ' .
@@ -208,10 +217,12 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             var_export($projectRoot . '/vendor/autoload.php', true),
             var_export($projectRoot, true),
             var_export($projectRoot, true),
+            var_export($asGet ? 'GET' : 'POST', true),
             var_export(dirname($endpointFile), true),
             var_export($projectRoot . '/users/init.php', true),
             $csrfSnippet,
             $loginSnippet,
+            ($asGet || !$withResumeField) ? '' : '$_POST["resume_verification_emails"] = "1";',
             $extraPostSnippet,
             var_export($captureFile, true),
             var_export($endpointFile, true)
@@ -413,5 +424,151 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             $ops[0],
             'The owner path\'s operation string must differ from the admin path\'s'
         );
+    }
+
+    /**
+     * A Brevo spam or unsubscribe event (EmailEventApplier::apply()) sets
+     * only cars.email_suppressed on one car. The profile flag stays 0. The
+     * owner must still see the control, with a count of that one car, and
+     * the resume action must clear the car.
+     */
+    #[Group('fast')]
+    public function testCarOnlySuppressionShowsControlAndResumeClearsIt(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->assertSame(0, $this->profileEmailSuppressed($ownerId), 'Test sanity: profile flag starts at 0');
+        $suppressedCarId = $this->createTestCar($ownerId, ['email' => 'spam-complaint@example.com', 'email_suppressed' => 1]);
+        $this->createTestCar($ownerId, ['email' => 'spam-complaint-other@example.com']);
+
+        $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
+
+        $this->assertSame(0, $page['exitCode'], 'Subprocess must exit cleanly: ' . $page['raw']);
+        $this->assertStringContainsString('id="resume-emails"', $page['raw'], 'A car-only suppression must show the control');
+        $this->assertStringContainsString(
+            'Verification emails are currently paused for 1 of your cars.',
+            $page['raw'],
+            'With the profile flag at 0, the count must be the suppressed cars only'
+        );
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertSame(0, $this->emailSuppressed($suppressedCarId), 'The resume action must clear the car flag');
+        $this->assertSame(0, $this->profileEmailSuppressed($ownerId));
+        $this->assertSame(['SUPPRESSION CLEARED BY OWNER'], $this->suppressionCarsHistOperations($suppressedCarId));
+        $this->assertStringContainsString('Verification emails have been resumed for your cars.', $result['successFlash']);
+    }
+
+    #[Group('fast')]
+    public function testProfileSuppressionCountsEveryOwnedCar(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
+        $this->createTestCar($ownerId, ['email' => 'profile-count-one@example.com', 'email_suppressed' => 1]);
+        // A car added after the opt-out keeps its own flag at 0 but is still blocked.
+        $this->createTestCar($ownerId, ['email' => 'profile-count-two@example.com']);
+
+        $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
+
+        $this->assertSame(0, $page['exitCode'], 'Subprocess must exit cleanly: ' . $page['raw']);
+        $this->assertStringContainsString(
+            'Verification emails are currently paused for 2 of your cars.',
+            $page['raw'],
+            'With the profile flag at 1, the count must be every owned car'
+        );
+    }
+
+    #[Group('fast')]
+    public function testNoSuppressionHidesControl(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->createTestCar($ownerId, ['email' => 'not-suppressed@example.com']);
+
+        $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
+
+        $this->assertSame(0, $page['exitCode'], 'Subprocess must exit cleanly: ' . $page['raw']);
+        $this->assertStringContainsString('updateAccount', $page['raw'], 'Test sanity: the settings page must have rendered');
+        $this->assertStringNotContainsString('id="resume-emails"', $page['raw'], 'No flag set means no control');
+    }
+
+    /**
+     * AC3: no path on Account Settings can set email_suppressed. The ordinary
+     * profile-update form POST (valid CSRF, no resume_verification_emails
+     * field) changes the city, and also carries a forged email_suppressed=1
+     * field. The profile flag and every owned car's flag must stay 0.
+     */
+    #[Group('fast')]
+    public function testOrdinaryProfileUpdateCannotSetEmailSuppressed(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->db->query(
+            "UPDATE profiles SET city = 'OriginalCity', state = 'OriginalState', country = 'OriginalCountry' WHERE user_id = ?",
+            [$ownerId]
+        );
+        $carOneId = $this->createTestCar($ownerId, ['email' => 'ac3-one@example.com']);
+        $carTwoId = $this->createTestCar($ownerId, ['email' => 'ac3-two@example.com']);
+
+        $this->assertSame(0, $this->profileEmailSuppressed($ownerId), 'Test sanity: profile flag starts at 0');
+        $this->assertSame(0, $this->emailSuppressed($carOneId), 'Test sanity: car flag starts at 0');
+        $this->assertSame(0, $this->emailSuppressed($carTwoId), 'Test sanity: car flag starts at 0');
+
+        $owner = $this->db->query('SELECT username, fname, lname, email FROM users WHERE id = ?', [$ownerId])->first();
+        $this->assertNotNull($owner, 'Test setup: owner row must exist');
+
+        // Unchanged username, names and email keep the request off the
+        // password-protected branches. Only the location changes.
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true, extraPost: [
+            'username' => (string) $owner->username,
+            'fname' => (string) $owner->fname,
+            'lname' => (string) $owner->lname,
+            'email' => (string) $owner->email,
+            'city' => 'ChangedCity',
+            'state' => 'ChangedState',
+            'country' => 'ChangedCountry',
+            'website' => '',
+            'email_suppressed' => '1',
+        ], withResumeField: false);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertStringNotContainsStringIgnoringCase('fatal error', $result['raw']);
+        $this->assertSame(
+            'ChangedCity',
+            $this->profileCity($ownerId),
+            'Test sanity: the ordinary profile-update path must have run: ' . $result['raw']
+        );
+
+        $this->assertSame(0, $this->profileEmailSuppressed($ownerId), 'The profile-update path must not set the profile flag');
+        $this->assertSame(0, $this->emailSuppressed($carOneId), 'The profile-update path must not set a car flag');
+        $this->assertSame(0, $this->emailSuppressed($carTwoId), 'The profile-update path must not set a car flag');
+    }
+
+    /**
+     * Regression: cars_hist.year is SMALLINT UNSIGNED NULL and the database
+     * runs in strict mode. The history snapshot once used '' for a NULL year,
+     * which made the whole resume action fail.
+     */
+    #[Group('fast')]
+    public function testCarWithNullYearResumesAndRecordsNullYearInHistory(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
+        $carId = $this->createTestCar($ownerId, ['email' => 'null-year@example.com', 'email_suppressed' => 1, 'year' => null]);
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertStringContainsString(
+            'Verification emails have been resumed for your cars.',
+            $result['successFlash'],
+            'A NULL year must not make the resume action fail: ' . $result['raw']
+        );
+        $this->assertSame(0, $this->emailSuppressed($carId));
+
+        $histRow = $this->db->query(
+            "SELECT year FROM cars_hist WHERE car_id = ? AND operation = 'SUPPRESSION CLEARED BY OWNER'",
+            [$carId]
+        )->first();
+        $this->assertNotNull($histRow, 'The audit row must have been inserted');
+        $this->assertNull($histRow->year, 'The audit row must record the NULL year as NULL');
     }
 }

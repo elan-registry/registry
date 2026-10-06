@@ -398,11 +398,22 @@ the flash message names the owner and affected car count.
 
 ### Resume Verification Emails (Owner Self-Service)
 
-The Account Settings page shows a control (anchor id `resume-emails`) only when
-`profiles.email_suppressed = 1`. It displays "Verification emails are currently
-paused for {N} of your cars." where N is every owned car, because the profile
+The Account Settings page shows a control (anchor id `resume-emails`) when
+`profiles.email_suppressed = 1` OR at least one owned car has
+`cars.email_suppressed = 1`. Two paths set these flags differently:
+
+- An owner opt-out sets the profile flag and fans out to every car.
+- A Brevo spam or unsubscribe event (`EmailEventApplier::apply()`) sets only
+  `cars.email_suppressed` on the one car. The profile flag stays 0.
+
+A control keyed on the profile flag alone would hide from the second owner,
+for example an owner whose spam complaint was a mistake.
+
+The control displays "Verification emails are currently paused for {N} of your
+cars." With the profile flag at 1, N is every owned car, because the profile
 flag blocks all cars, including cars added after the opt-out whose own
-`cars.email_suppressed` is still 0. The `findVerificationEligible()` query
+`cars.email_suppressed` is still 0. With the profile flag at 0, N is the count
+of cars with `cars.email_suppressed = 1`. The `findVerificationEligible()` query
 excludes a car when either flag is 1.
 
 The button POSTs with CSRF. The handler clears both `profiles.email_suppressed`
@@ -411,6 +422,11 @@ action), via `CarVerificationManager::clearSuppressedForOwnerByOwner()`. It writ
 one `cars_hist` row per car with operation `'SUPPRESSION CLEARED BY OWNER'` and does
 not touch bounce state. Resumed cars go back into the normal cron schedule. There
 is no immediate send.
+
+The manager reads the profile flag with a locking read, so a double-submit is
+safe: the second request waits for the first to commit, reads 0, and succeeds.
+If a step after the commit fails (log line, flash message, or redirect), the
+owner sees that the emails were resumed, not "Nothing was changed".
 
 ### The Shared Send Service
 

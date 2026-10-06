@@ -724,35 +724,20 @@ class CarVerificationManager
 
     /**
      * Clear the suppressed flag on an owner's profile and on every car they have
-     * (admin reversal of an opt-out, #1884). Runs no transaction of its own —
-     * the caller wraps this and the per-car cars_hist inserts in one
-     * transaction, matching setSuppressedForOwner()'s contract.
+     * (admin reversal of an opt-out, #1884).
      *
      * The inverse of {@see setSuppressedForOwner()}: where that records an
      * owner-initiated opt-out, this is an admin undoing one on their behalf.
-     *
-     * TWO WRITES, TWO MEANINGS, as in setSuppressedForOwner(): the profile flag
-     * is the authoritative owner-level record, the per-car flags are the fan-out
-     * target and are also written by the Brevo webhook/sync paths. The profile
-     * write happens FIRST, so an owner with no profiles row fails the whole
-     * reversal cleanly rather than part-way through the fan-out. The two writes
-     * are independently idempotent: a profile flag already at 0 is skipped
-     * without skipping the fan-out, so per-car flags that have drifted out of
-     * step with the profile are still cleared.
+     * Only admin code may call it. The owner self-service path is
+     * {@see clearSuppressedForOwnerByOwner()}. The database behavior, return
+     * value, exceptions, and transaction contract are in
+     * {@see clearSuppressedForOwnerShared()}. This wrapper adds the
+     * `clearSuppressedForOwner` log prefix and the "opt-out could not be
+     * cleared" exception text.
      *
      * @param int $ownerId Owner user ID
-     * @return array<object> PRE-CHANGE snapshots of the car rows actually
-     *                        changed — each is a clone taken before
-     *                        clearSuppressed() wrote email_suppressed=0 onto it,
-     *                        so the caller's cars_hist row records the OLD value
-     *                        (matching the cars_update trigger's OLD.*
-     *                        convention). Cars that are not suppressed are
-     *                        skipped. An empty array does NOT mean nothing
-     *                        happened: the owner-level profile flag may still
-     *                        have been cleared.
-     * @throws CarDatabaseException If a database update fails, or if the owner
-     *                              has no `profiles` row (nothing is written in
-     *                              that case — the check runs before the fan-out)
+     * @return array<object> See {@see clearSuppressedForOwnerShared()}
+     * @throws CarDatabaseException See {@see clearSuppressedForOwnerShared()}
      */
     public function clearSuppressedForOwner(int $ownerId): array
     {
@@ -767,41 +752,20 @@ class CarVerificationManager
     /**
      * Clear the suppressed flag on an owner's profile and on every car they have
      * (owner self-service "Resume verification emails" on Account Settings,
-     * #1895). Runs no transaction of its own — the caller wraps this and the
-     * per-car cars_hist inserts in one transaction, matching
-     * setSuppressedForOwner()'s contract.
+     * #1895).
      *
-     * The owner-initiated inverse of {@see setSuppressedForOwner()}. The admin
-     * reversal is {@see clearSuppressedForOwner()}. Both call the same shared
-     * body, {@see clearSuppressedForOwnerShared()} — the database behavior is
-     * identical by design — with their own log prefix and exception text, so
-     * log greps and tests still separate the two call paths.
-     *
-     * SUPPRESSION ONLY. This method never reads or writes the bounce columns
-     * (`email_bounced`, `email_bounced_address`) on the profile or on any car.
-     * A bounce is a deliverability fact that only an admin can clear.
-     *
-     * TWO WRITES, TWO MEANINGS, as in setSuppressedForOwner(): the profile flag
-     * is the authoritative owner-level record, the per-car flags are the fan-out
-     * target. The profile write happens FIRST, so an owner with no profiles row
-     * fails the whole reversal cleanly rather than part-way through the fan-out.
-     * The two writes are independently idempotent: a profile flag already at 0
-     * is skipped without skipping the fan-out, so per-car flags that have
-     * drifted out of step with the profile are still cleared.
+     * The owner-initiated inverse of {@see setSuppressedForOwner()}. Only the
+     * owner's own request may call it, with the owner ID from the session. The
+     * admin reversal is {@see clearSuppressedForOwner()}. The database
+     * behavior, return value, exceptions, and transaction contract are in
+     * {@see clearSuppressedForOwnerShared()}. This wrapper adds the
+     * `clearSuppressedForOwnerByOwner` log prefix and the "Verification emails
+     * could not be resumed" exception text, so log greps and tests still
+     * separate the two call paths.
      *
      * @param int $ownerId Owner user ID (the logged-in user, from the session)
-     * @return array<object> PRE-CHANGE snapshots of the car rows actually
-     *                        changed — each is a clone taken before
-     *                        clearSuppressed() wrote email_suppressed=0 onto it,
-     *                        so the caller's cars_hist row records the OLD value
-     *                        (matching the cars_update trigger's OLD.*
-     *                        convention). Cars that are not suppressed are
-     *                        skipped. An empty array does NOT mean nothing
-     *                        happened: the owner-level profile flag may still
-     *                        have been cleared.
-     * @throws CarDatabaseException If a database update fails, or if the owner
-     *                              has no `profiles` row (nothing is written in
-     *                              that case — the check runs before the fan-out)
+     * @return array<object> See {@see clearSuppressedForOwnerShared()}
+     * @throws CarDatabaseException See {@see clearSuppressedForOwnerShared()}
      */
     public function clearSuppressedForOwnerByOwner(int $ownerId): array
     {
@@ -820,14 +784,48 @@ class CarVerificationManager
      * them, their log prefix, and the exception text a user may see — the
      * database behavior is identical by design, so it lives once here.
      *
+     * Runs no transaction of its own. The caller must open one, then wrap this
+     * and the per-car cars_hist inserts in it, matching
+     * setSuppressedForOwner()'s contract. The profile read is a locking read
+     * ({@see CarRepository::findProfileEmailSuppressedForUpdate()}), so a
+     * double-submit is serialized: the second request waits for the first to
+     * commit, reads 0, and skips the profile write instead of failing on an
+     * UPDATE that affects 0 rows.
+     *
+     * SUPPRESSION ONLY. This method never reads or writes the bounce columns
+     * (`email_bounced`, `email_bounced_address`) on the profile or on any car.
+     * A bounce is a deliverability fact that only an admin can clear.
+     *
+     * TWO WRITES, TWO MEANINGS, as in setSuppressedForOwner(): the profile flag
+     * is the authoritative owner-level record, the per-car flags are the fan-out
+     * target and are also written by the Brevo webhook/sync paths. The profile
+     * write happens FIRST, so an owner with no profiles row fails the whole
+     * reversal cleanly rather than part-way through the fan-out. The two writes
+     * are independently idempotent: a profile flag already at 0 is skipped
+     * without skipping the fan-out, so per-car flags that have drifted out of
+     * step with the profile are still cleared.
+     *
+     * @param int $ownerId Owner user ID
      * @param string $logPrefix Method name used in every logger() line, so
      *                          log greps separate the admin and owner paths.
      * @param string $logContext Short phrase describing the action in log
      *                           text (e.g. "opt-out reversal", "owner resume").
      * @param string $userMessage Exception message shown to the caller on
      *                            failure.
-     * @return array<object> See {@see clearSuppressedForOwner()}'s return doc.
-     * @throws CarDatabaseException See {@see clearSuppressedForOwner()}'s throws doc.
+     * @return array<object> PRE-CHANGE snapshots of the car rows actually
+     *                        changed — each is a clone taken before
+     *                        clearSuppressed() wrote email_suppressed=0 onto it,
+     *                        so the caller's cars_hist row records the OLD value
+     *                        (matching the cars_update trigger's OLD.*
+     *                        convention). Cars that are not suppressed are
+     *                        skipped. An empty array does NOT mean nothing
+     *                        happened: the owner-level profile flag may still
+     *                        have been cleared.
+     * @throws CarDatabaseException If a database read or update fails, or if
+     *                              the owner has no `profiles` row (nothing is
+     *                              written in that case — the check runs
+     *                              before the fan-out). The message is
+     *                              $userMessage.
      */
     private function clearSuppressedForOwnerShared(
         int $ownerId,
@@ -835,7 +833,7 @@ class CarVerificationManager
         string $logContext,
         string $userMessage
     ): array {
-        $currentFlag = $this->repo->findProfileEmailSuppressed($ownerId);
+        $currentFlag = $this->repo->findProfileEmailSuppressedForUpdate($ownerId);
 
         if ($currentFlag === null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
