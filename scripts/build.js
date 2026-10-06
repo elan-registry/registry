@@ -7,6 +7,7 @@
 // devDependencies entirely.
 const esbuild = require('esbuild');
 const fs = require('fs');
+const { versatilesStyleOptions } = require('./versatiles-style-options.js');
 
 const jsFiles = [
   'app/assets/js/api-client.js',
@@ -191,15 +192,7 @@ Promise.all([
     signal: AbortSignal.timeout(10000),
   }).then((r) => r.json());
   osmTileJson.tiles = osmTileJson.tiles.map((t) => (/^https?:\/\//.test(t) ? t : VERSATILES_BASE + t));
-  // @versatiles/style v6 defaults the style projection to 'globe', and the
-  // MapLibre GL JS version we ship obeys it. The registry maps show where cars
-  // are on a flat world view, so set Mercator explicitly (#2268).
-  const style = osm({
-    urls: { base: VERSATILES_BASE, osm: osmTileJson },
-    text: { language: 'en' },
-    theme: 'colorful',
-    projection: 'mercator',
-  });
+  const style = osm(versatilesStyleOptions(VERSATILES_BASE, osmTileJson));
   fs.writeFileSync('usersc/js/versatiles-colorful.json', JSON.stringify(style));
   console.log('Generated usersc/js/versatiles-colorful.json');
 }).catch((err) => {

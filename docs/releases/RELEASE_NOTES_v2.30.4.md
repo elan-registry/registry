@@ -82,7 +82,9 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   and ticks the items with the new `scripts/ledger-tick-items.sh`. The plugin's `commit-commands:commit-push-pr` skill
   is denied (developer workflow only, no site change)
 - [#2268](https://github.com/elan-registry/registry/issues/2268) — `scripts/build.js` passes `projection: 'mercator'`
-  to `osm()`. `@versatiles/style` v6 made `globe` the default. A Playwright test checks the projection in the built
+  to `osm()`. `@versatiles/style` v6 made `globe` the default. The `osm()` options moved to the new
+  `scripts/versatiles-style-options.js`. The new `tests/playwright-map-style.test.js` builds the style with them and
+  checks the projection in CI (`npm run test:js-unit`). A Playwright test checks the projection in the built
   `usersc/js/versatiles-colorful.json`
 
 ## Carried from the Dev Environment milestone

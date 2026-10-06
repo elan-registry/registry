@@ -75,7 +75,8 @@ test.describe('Maps and Charts', () => {
 
   // The render tests pass for a globe and a flat map alike. Check the built
   // style, so a library default that turns the maps back into a globe fails
-  // here (#2268).
+  // here. The style file is git-ignored build output: without a run of
+  // `npm run build`, the server returns 404 and this test fails.
   test('generated map style uses the flat Mercator projection', async ({ request }) => {
     const response = await request.get('usersc/js/versatiles-colorful.json');
     expect(response.status()).toBe(200);
