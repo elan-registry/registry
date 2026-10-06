@@ -94,7 +94,7 @@ out = f"""<!DOCTYPE html>
 <body>
 <main>
   <h1>Summaries</h1>
-  <p class="lede">Status pages in docs/plans/summaries, newest first. Built by build_index.py.</p>
+  <p class="lede">Status pages in docs/plans/summaries, newest first. Built by scripts/build-summary-index.py.</p>
 
 <section>
   <h2>Pages · {len(pages)}</h2>
