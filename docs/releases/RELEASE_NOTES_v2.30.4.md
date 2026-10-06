@@ -23,9 +23,11 @@ in the verification email.
 
 ## Issues Resolved
 
-- [#1894](https://github.com/elan-registry/registry/issues/1894) — Photo thumbnail row in the verification email (includes the gap left by #1892).
+- [#1894](https://github.com/elan-registry/registry/issues/1894) —
+  Photo thumbnail row in the verification email (includes the gap left by #1892).
+  If the email cannot be composed, the send job restores the previous verification code.
 - [#1897](https://github.com/elan-registry/registry/issues/1897) — Verified row and admin Email on file row. Owner Resume control deferred to [#1895](https://github.com/elan-registry/registry/issues/1895).
-- [#1898](https://github.com/elan-registry/registry/issues/1898) — Verified vector on the data-completeness radar.
+- [#1898](https://github.com/elan-registry/registry/issues/1898) — "Fresh (12 mo)" vector on the data-completeness radar.
 - [#1900](https://github.com/elan-registry/registry/issues/1900) — Sold and Verified badges, owned by the new `CarBadges` class.
 - [#1929](https://github.com/elan-registry/registry/issues/1929) — `CLASSES.md` defines which owner actions reset `owner_last_updated`.
 - [#2147](https://github.com/elan-registry/registry/issues/2147) — Auth emails no longer print the Brevo-rewritten link.
