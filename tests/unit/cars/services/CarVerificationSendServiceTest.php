@@ -500,6 +500,56 @@ final class CarVerificationSendServiceTest extends TestCase
         $this->assertSame(100, $result->carId);
     }
 
+    /**
+     * compose() does I/O since #1894 (logger() can throw \PDOException). A
+     * throw there happens after Scope A committed the rotated code, so the
+     * previous code must be restored and no email may go out.
+     *
+     * The composer is final, so the throw comes from a mocked EmailTemplate
+     * inside a real composer. mockVerifier is a behavior stub only.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSendOneRestoresPreviousVericodeAndFailsWhenComposeThrows(): void
+    {
+        $carData = $this->eligibleCar();
+        $previousVericode = $carData->vericode;
+        $previousSentAt = $carData->vericode_sent_at;
+
+        $throwingTemplate = $this->createStub(EmailTemplate::class);
+        $throwingTemplate->method('createButtonRow')
+            ->willThrowException(new \RuntimeException('logger insert failed'));
+        $service = new CarVerificationSendService(
+            $this->mockRepo,
+            $this->mockVerifier,
+            new CarVerificationEmailComposer($throwingTemplate)
+        );
+
+        $this->mockVerifier->method('generateVerificationCode')->willReturn('newcode1234567890');
+        $this->mockVerifier->method('setVerificationCode')
+            ->willReturnCallback(function (object $car, string $code): bool {
+                $car->vericode = $code;
+                return true;
+            });
+        $this->mockVerifier->method('setVerificationSentAt')
+            ->willReturnCallback(function (object $car, string $sentAt): bool {
+                $car->vericode_sent_at = $sentAt;
+                return true;
+            });
+
+        $this->mockRepo->expects($this->once())->method('restoreVerificationCodeState')
+            ->with(100, $previousVericode, $previousSentAt)
+            ->willReturn(true);
+        $this->mockRepo->expects($this->never())->method('incrementVerificationAttempts');
+        $this->mockRepo->expects($this->never())->method('insertEmailEvent');
+
+        $result = $service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame(100, $result->carId);
+        $this->assertSame('The verification email could not be composed.', $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'email() must not be called when compose() throws');
+    }
+
     // ------------------------------------------------------------------
     // sendOne() — owner-not-found path
     // ------------------------------------------------------------------

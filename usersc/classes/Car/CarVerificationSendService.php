@@ -211,8 +211,28 @@ final class CarVerificationSendService
         }
 
         // Scope B — compose and send with no transaction open.
-        $composed = $this->composer->compose($carData, $owner, $newVericode);
-        $sendOk   = email((string) $carData->email, $composed['subject'], $composed['html']);
+        //
+        // compose() is guarded because it does I/O since #1894: logPhotoProblem()
+        // calls logger(), which can throw \PDOException. Scope A has already
+        // committed the rotated code, so an unguarded throw here would skip the
+        // restore and leave the car with a code that no email quoted.
+        try {
+            $composed = $this->composer->compose($carData, $owner, $newVericode);
+        } catch (\Throwable $e) {
+            $this->restoreAfterFailedSend($carId, $previousVericode, $previousVericodeSentAt);
+
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: verification email could not be composed for car %d (%s): %s; '
+                . 'verification_attempts deliberately not incremented',
+                $carId,
+                get_class($e),
+                $e->getMessage()
+            ));
+
+            return SendResult::failed($carId, 'The verification email could not be composed.');
+        }
+
+        $sendOk = email((string) $carData->email, $composed['subject'], $composed['html']);
 
         // Strict `!== true` rather than `=== false`: email() has no single
         // typed contract across the mailers this app can run with. Today
@@ -228,48 +248,7 @@ final class CarVerificationSendService
         // the attempt count and consuming the yearly cap with no email
         // actually delivered.
         if ($sendOk !== true) {
-            // Restore the pre-send state in one atomic update so the car is left
-            // exactly as found. This is the one genuinely unrecoverable spot in
-            // the whole sequence: if the restore itself fails, the car is stuck
-            // with a rotated code that no email ever quoted, which invalidates
-            // any verification link the owner may still be holding from a
-            // previous send. Log it loudly enough to be actioned by hand.
-            try {
-                // restoreVerificationCodeState(), not updateCar(): updateCar()
-                // returns true for any UPDATE that executes, even one matching
-                // zero rows (e.g. this car was deleted between the rotation
-                // above and this restore attempt) — that would make the
-                // $restored === false check below unreachable for the exact
-                // scenario it exists to catch. restoreVerificationCodeState()
-                // confirms the row still exists with a follow-up read, so false
-                // means only "the car is gone" — never merely "the write
-                // changed no columns," which is routine (restoring NULL over
-                // NULL for a car never sent to before).
-                $restored = $this->repo->restoreVerificationCodeState(
-                    $carId,
-                    $previousVericode,
-                    $previousVericodeSentAt
-                );
-
-                if ($restored === false) {
-                    logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                        'CarVerificationSendService::sendOne: CRITICAL - car %d has a rotated vericode but no email '
-                        . 'was sent, and the restore of the previous vericode/vericode_sent_at matched no row '
-                        . '(the car may have been deleted mid-send). Any verification link the owner already '
-                        . 'holds is now invalid. Manual repair required.',
-                        $carId
-                    ));
-                }
-            } catch (\Throwable $restoreError) {
-                logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                    'CarVerificationSendService::sendOne: CRITICAL - car %d has a rotated vericode but no email was '
-                    . 'sent, and the restore of the previous vericode/vericode_sent_at ALSO failed (%s): %s. '
-                    . 'Any verification link the owner already holds is now invalid. Manual repair required.',
-                    $carId,
-                    get_class($restoreError),
-                    $restoreError->getMessage()
-                ));
-            }
+            $this->restoreAfterFailedSend($carId, $previousVericode, $previousVericodeSentAt);
 
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: email() returned %s (expected true) for car %d; '
@@ -388,6 +367,59 @@ final class CarVerificationSendService
         }
 
         return SendResult::sent($carId);
+    }
+
+    /**
+     * Put back the vericode state that a failed send rotated away
+     *
+     * @param int $carId Car whose code Scope A rotated
+     * @param string|null $previousVericode Stored vericode before the rotation
+     * @param string|null $previousVericodeSentAt Stored vericode_sent_at before the rotation
+     */
+    private function restoreAfterFailedSend(int $carId, ?string $previousVericode, ?string $previousVericodeSentAt): void
+    {
+        // Restore the pre-send state in one atomic update so the car is left
+        // exactly as found. This is the one genuinely unrecoverable spot in
+        // the whole sequence: if the restore itself fails, the car is stuck
+        // with a rotated code that no email ever quoted, which invalidates
+        // any verification link the owner may still be holding from a
+        // previous send. Log it loudly enough to be actioned by hand.
+        try {
+            // restoreVerificationCodeState(), not updateCar(): updateCar()
+            // returns true for any UPDATE that executes, even one matching
+            // zero rows (e.g. this car was deleted between the rotation
+            // in sendOne() and this restore attempt) — that would make the
+            // $restored === false check below unreachable for the exact
+            // scenario it exists to catch. restoreVerificationCodeState()
+            // confirms the row still exists with a follow-up read, so false
+            // means only "the car is gone" — never merely "the write
+            // changed no columns," which is routine (restoring NULL over
+            // NULL for a car never sent to before).
+            $restored = $this->repo->restoreVerificationCodeState(
+                $carId,
+                $previousVericode,
+                $previousVericodeSentAt
+            );
+
+            if ($restored === false) {
+                logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                    'CarVerificationSendService::sendOne: CRITICAL - car %d has a rotated vericode but no email '
+                    . 'was sent, and the restore of the previous vericode/vericode_sent_at matched no row '
+                    . '(the car may have been deleted mid-send). Any verification link the owner already '
+                    . 'holds is now invalid. Manual repair required.',
+                    $carId
+                ));
+            }
+        } catch (\Throwable $restoreError) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: CRITICAL - car %d has a rotated vericode but no email was '
+                . 'sent, and the restore of the previous vericode/vericode_sent_at ALSO failed (%s): %s. '
+                . 'Any verification link the owner already holds is now invalid. Manual repair required.',
+                $carId,
+                get_class($restoreError),
+                $restoreError->getMessage()
+            ));
+        }
     }
 
     /**
