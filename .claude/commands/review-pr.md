@@ -331,12 +331,53 @@ each with the quoted issue/plan line — or "Spec: no issue found">
 
 **If there are Recommendation items:**
 
-- Present them to the user with a one-line summary each
-- Ask: "Here are recommendations from the review. Which (if any) would you like
-  to address before pushing?"
-- Wait for the user's response before continuing
-- For each item the user wants to address: fix it, then re-run the code-reviewer
-  to confirm
+Walk them one at a time, not as a single batch ask. For each item, in order:
+
+1. State the item (agent, file:line, suggestion).
+2. Give a one-line recommendation (fix now / defer / skip) with a short
+   pro/con for the other options — enough for the user to disagree with a
+   reason, not a full essay.
+3. Ask via `AskUserQuestion`, options `Fix now`, `Defer`, `Skip entirely`,
+   with the recommended option first and marked `(Recommended)`.
+4. Act on the answer before moving to the next item:
+   - **Fix now** — fix it, then re-run the `code-reviewer` agent on the
+     full branch diff + changed files to confirm clean before continuing to
+     the next item.
+   - **Defer** — ask a follow-up `AskUserQuestion` (options `Cleanup ledger`,
+     `New GitHub issue`) to pick the destination, same distinction `/found`
+     uses between cleanup and defect:
+     - *Cleanup ledger* — follow `/found`'s "Ledger" steps: find the open
+       `cleanup-ledger` issue, add one checkbox line under that file's
+       heading (or a new heading if none exists for the file).
+     - *New GitHub issue* — follow `/found`'s "Defer" steps: `gh issue
+       create` with the `triage` label and a `TYPE:` title prefix matching
+       the finding (`bug:` for a defect, `tech-debt:`/`chore:` otherwise).
+       `/found`'s body template references "#CURRENT_ISSUE" — this command
+       also runs on ad-hoc/hotfix branches with no milestone issue in
+       flight. If `scripts/check-plan-state.sh` found no issue for this
+       branch, reference the PR instead: "Pre-existing issue found while
+       reviewing PR #<pr-number>."
+   - **Skip entirely** — no action. Note it was declined in the summary.
+5. Continue to the next Recommendation item.
+
+This mirrors `/found`'s classification steps rather than inventing a new
+one — the same defect-vs-cleanup question, asked at a different point in
+the workflow (after a full-branch review instead of an incidental find).
+
+Once every item is resolved, report one summary line per item before
+telling the user to proceed:
+
+```text
+### Recommendations — resolved
+| File:Line | Decision | Where |
+|-----------|----------|-------|
+```
+
+`Decision` is `Fixed`, `Deferred` or `Skipped`; `Where` is the commit (for
+Fixed), the ledger issue number or new issue number (for Deferred), or
+blank (for Skipped). Then proceed the same way as the clean-review branch
+below: report the Suites executed table and tell the user to type
+`/commit-push-pr`.
 
 **If the review is clean:**
 
@@ -347,10 +388,14 @@ start, or skipped.
 
 - Report: "Local review clean — no blocking issues, no open recommendations."
   Include the Suites executed table so the claim is backed by real counts.
-- Proceed to `/commit-push-pr` or `/commit`. Compacting context first is also
-  reasonable before that step — the review is already recorded in this
-  report, so nothing is lost. `/compact` is a client-level operation the user
-  runs themselves, not something this command can trigger via a tool.
+- Tell the user to type `/commit-push-pr`. Do not start it through the Skill
+  tool: `commit-push-pr.md` declares `model: haiku`, and a command started
+  through the Skill tool runs on the *starting* command's model, not its
+  own — so a Skill-tool start here would run `/commit-push-pr` on this
+  command's model instead. Compacting context first is also reasonable
+  before that step — the review is already recorded in this report, so
+  nothing is lost. `/compact` is a client-level operation the user runs
+  themselves, not something this command can trigger via a tool.
 
 ---
 
