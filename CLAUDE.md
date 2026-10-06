@@ -44,7 +44,8 @@ Cloudflare provides edge caching and CDN (US, EU, AU users).
   classes (PSR-4: `ElanRegistry\` → `usersc/classes/`,
   `ElanRegistry\Exceptions\` → `usersc/classes/Exceptions/`)
 - `/tests/` — `unit/` (no DB, incl. `unit/regression/` tagged
-  `#[Group('regression')]`), `integration/` (real DB), `playwright/`, `manual/`
+  `#[Group('regression')]`), `integration/` (real DB), `playwright/`, `manual/`,
+  `hooks/` (shell tests for `scripts/` and the git hooks: `bash tests/hooks/test-*.sh`)
 
 **Key Integration Points:**
 
