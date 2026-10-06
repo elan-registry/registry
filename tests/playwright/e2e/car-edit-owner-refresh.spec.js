@@ -54,25 +54,22 @@
 // Requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in .env.local.
 //
 // NOT enrolled on Test or Production (see playwright.config.test.js /
-// playwright.config.prod.js testMatch, which excludes this file). Enrollment
-// was attempted and reverted: this test still FAILS on those tiers. Root
-// cause is a timing race, not a permanently-disabled field: on page load,
-// app/assets/js/car-edit.js's isUpdate block re-enables #model via the
-// #year change handler (triggered synchronously at load) and then, in a
-// separate 500ms setTimeout, calls ModelLoader.populateModelDropdown() to
-// actually set #model's value. This test clicks #submit as soon as
-// #comments is visible, without waiting for that async chain to settle —
-// so the real (unmocked) save.php's updateModel() rejects the still-empty
-// model value. Tracked by #2045 — do not re-enroll until fixed (the correct
-// fix is waiting for #model to have a value before submitting, not
-// re-enabling a field that's already enabled by the time submit fires).
+// playwright.config.prod.js testMatch, which excludes this file). An earlier
+// enrollment failed on a timing race in app/assets/js/car-edit.js: in update
+// mode it repopulated #model asynchronously and used a blind 500ms
+// setTimeout before it selected the saved model, so a fast #submit click
+// sent an empty model that save.php rejected. #2295 (which absorbs #2045)
+// fixed the race: the repopulation is now awaited and #submit stays disabled
+// until the saved model is selected. This test also waits for that state
+// before it clicks #submit. Enrollment on Test/Production is tracked
+// separately in #2301.
 //
 // The target car is discovered dynamically via usersc/account.php's "Update
 // Car" button rather than a hardcoded fixture id (car ownership differs per
 // account — a hardcoded CAR_ID_STANDARD previously hit an unowned/nonexistent
 // car on Test). The credential gate below is tier-aware (E2E_AUTH_TIER) for
-// the same reason — both are preparatory groundwork for #2045's fix, kept
-// even though the test isn't enrolled yet.
+// the same reason — both are preparatory groundwork for enrollment on
+// Test/Production (#2301).
 
 const { test, expect } = require('@playwright/test');
 
@@ -95,7 +92,7 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
   // failing loudly before `admin` runs (see docs/testing/PLAYWRIGHT_E2E.md)
   // — so the credential check below only applies when E2E_AUTH_TIER is unset
   // (Local/Dev). This is preparatory: this test isn't enrolled on Test/
-  // Production yet (see the file header — #2045), but gating it
+  // Production yet (see the file header — #2301), but gating it
   // unconditionally would still incorrectly skip it there once it is.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'admin') {
@@ -170,6 +167,12 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
     // assertion pass vacuously regardless of outcome — wait for the actual
     // redirect instead, which fails loudly (with the alert still visible for
     // debugging) if the save was rejected.
+    //
+    // In update mode car-edit.js repopulates #model asynchronously and keeps
+    // #submit disabled until the saved model is selected (#2295). Wait for
+    // that state so the click never sends an empty model.
+    await expect(page.locator('#model')).not.toHaveValue('');
+    await expect(page.locator('#submit')).toBeEnabled();
     await page.locator('#submit').click();
     await page.waitForURL(/details\.php\?car_id=/, { timeout: 10000 });
     await page.waitForLoadState('domcontentloaded');

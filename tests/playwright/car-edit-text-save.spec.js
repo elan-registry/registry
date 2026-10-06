@@ -872,6 +872,165 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBe(1);
         expect(realUploads[0].filename).toBe('new-photo.jpg');
     });
+
+    // -----------------------------------------------------------------------
+    // Regression test for issue #2295: update mode set the saved model value
+    // before the model dropdown had finished loading, so a slow models.php
+    // left #model empty and save.php rejected the form.
+    //
+    // Fix: edit.php now awaits the named onYearChange() function — which
+    // calls ModelLoader.populateModelDropdown() against
+    // app/api/cars/models.php — before setting the saved model value, and
+    // keeps #submit disabled via blockSubmit('models')/unblockSubmit('models')
+    // while waiting.
+    //
+    // This test delays models.php by 1.5s and verifies:
+    //   - #submit is disabled while models.php is still pending
+    //   - #model is populated with the saved value once models.php resolves
+    //   - #submit is enabled once models.php resolves
+    //   - the eventual save POST carries the correct, non-empty model
+    // -----------------------------------------------------------------------
+    test('update mode: #submit stays disabled until the model dropdown finishes loading', async ({ page }) => {
+        // Reproduce the real "Update Car" POST, as in the mixed-save test above —
+        // this is the only way to reach real update mode (window.editCarConfig.isUpdate).
+        await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
+
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
+
+        const csrfToken = await page.locator('#csrf').inputValue();
+        expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
+
+        // Delay models.php by 1.5s before the update-mode POST navigation, so
+        // the delay is already in effect the moment edit.php's ready handler
+        // calls onYearChange() during cfg.isUpdate pre-population.
+        await page.route('**/app/api/cars/models.php', async (route) => {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            await route.fallback();
+        });
+
+        const navigationStart = Date.now();
+
+        await Promise.all([
+            page.waitForLoadState('domcontentloaded'),
+            page.evaluate(({ csrf, carId }) => {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = window.location.pathname;
+                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
+                for (const [name, value] of Object.entries(fields)) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = name;
+                    input.value = value;
+                    form.appendChild(input);
+                }
+                document.body.appendChild(form);
+                form.submit();
+            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
+        ]);
+
+        // Wait for the post-navigation document to settle before reading
+        // window.editCarConfig — a bare evaluate() right after the POST can
+        // race the navigation and throw "Execution context was destroyed".
+        await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
+
+        const isUpdateMode = await page.evaluate(() => window.editCarConfig?.isUpdate === true);
+        expect(
+            isUpdateMode,
+            'POST with action=updateCar must render edit.php in real update mode — if this fails, verify E2E_DEV_ADMIN_USERNAME still has admin/editor access and CAR_ID_WITH_HISTORY still exists'
+        ).toBe(true);
+
+        const submitBtn = page.locator('#submit');
+        await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
+
+        // --- Assertion A: #submit must still be disabled while models.php is held ---
+        // The 1.5s route delay started before the POST above, so as long as we
+        // check well inside that window, the models request is still pending.
+        const elapsedBeforeCheck = Date.now() - navigationStart;
+        expect(
+            elapsedBeforeCheck,
+            'Check ran too late to be inside the 1.5s models.php delay — the assertion below would be meaningless'
+        ).toBeLessThan(1500);
+
+        await expect(
+            submitBtn,
+            '#submit must be disabled while models.php is still loading (blockSubmit(\'models\') — regression #2295)'
+        ).toBeDisabled();
+
+        // --- Assertion B: once models.php resolves, #model is populated and #submit re-enables ---
+        const expectedModel = await page.evaluate(() => window.editCarConfig?.model);
+        expect(
+            expectedModel,
+            'window.editCarConfig.model must be a non-empty saved value for CAR_ID_WITH_HISTORY'
+        ).toBeTruthy();
+
+        await expect(
+            submitBtn,
+            '#submit must re-enable once the model dropdown finishes loading (unblockSubmit(\'models\'))'
+        ).toBeEnabled({ timeout: 5000 });
+
+        const modelValue = await page.locator('#model').inputValue();
+        expect(
+            modelValue,
+            '#model must be populated with the saved model value after models.php resolves (regression #2295)'
+        ).toBe(expectedModel);
+
+        // --- Assertion C: the eventual save POST carries the correct, non-empty model ---
+        let capturedModel = null;
+        let resolveCapture;
+        const capturePromise = new Promise((resolve) => { resolveCapture = resolve; });
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
+            if (request.method() === 'POST') {
+                const postData = request.postData() || '';
+                if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
+                    const contentType = request.headers()['content-type'] || '';
+                    const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+                    if (boundaryMatch) {
+                        const bodyBuffer = request.postDataBuffer();
+                        if (bodyBuffer) {
+                            const fields = parseMultipart(bodyBuffer, boundaryMatch[1]);
+                            const modelEntries = fields.get('model');
+                            if (modelEntries && modelEntries.length > 0) {
+                                capturedModel = modelEntries[0].value;
+                            }
+                        }
+                    }
+                    resolveCapture();
+                    await route.fulfill({
+                        status: 200,
+                        contentType: 'application/json',
+                        body: JSON.stringify({ success: true, cardetails: { id: 1 } })
+                    });
+                    return;
+                }
+            }
+            await route.fallback();
+        });
+
+        await submitBtn.click();
+
+        // Wait for the route handler to resolve the capture, not a fixed poll —
+        // the handler itself signals completion instead of being polled for it.
+        await Promise.race([
+            capturePromise,
+            new Promise((resolve) => setTimeout(resolve, 8000)),
+        ]);
+
+        expect(
+            capturedModel,
+            'Form submit POST was not captured, or carried no "model" field'
+        ).not.toBeNull();
+
+        expect(
+            capturedModel,
+            'Saved model must not be blank in the save POST (regression #2295: a slow models.php previously left #model empty)'
+        ).not.toBe('');
+
+        expect(
+            capturedModel,
+            'Saved model in the save POST must match the car\'s saved model value'
+        ).toBe(expectedModel);
+    });
 });
 
 // ---------------------------------------------------------------------------

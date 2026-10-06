@@ -26,7 +26,7 @@
 // #submit. Unlike car-edit-owner-refresh.spec.js (whose entire purpose is
 // exercising the real save.php path), this file's scope is client-side form
 // interactions only, so it doesn't inherit that file's write-safety
-// concerns (#2045/#2014).
+// concerns (#2014).
 //
 // Runs against Local/Dev only: the local Docker site, default
 // http://localhost:$APP_HOST_PORT/ (see tests/playwright/base-url.js).
@@ -34,16 +34,15 @@
 // Requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in .env.local.
 //
 // NOT enrolled on Test or Production (see playwright.config.test.js /
-// playwright.config.prod.js testMatch, which excludes this file) — deferred
-// pending #2045, whose SUBMIT-time #model blocker may not apply here since
-// this file never submits, but that assumption needs re-verifying against
-// whatever #2045 concludes before enrolling independently.
+// playwright.config.prod.js testMatch, which excludes this file). The
+// SUBMIT-time #model race that blocked enrollment (#2045) is fixed by #2295.
+// Enrollment on Test/Production is tracked separately in #2301.
 //
 // The target car is discovered dynamically via usersc/account.php's "Update
 // Car" button rather than a hardcoded fixture id, and the credential gate
 // below is tier-aware (E2E_AUTH_TIER), both for the reasons documented at
 // length in car-edit-owner-refresh.spec.js — kept here so this file is ready
-// for enrollment the moment #2045 lands.
+// for enrollment (#2301).
 
 const { test, expect } = require('@playwright/test');
 
@@ -59,7 +58,7 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
   // authenticate via a saved storageState and are already gated by
   // check-auth-admin failing loudly beforehand (docs/testing/PLAYWRIGHT_E2E.md),
   // so the credential check only applies when E2E_AUTH_TIER is unset
-  // (Local/Dev) — kept here in preparation for #2045 enrollment (see file
+  // (Local/Dev) — kept here in preparation for #2301 enrollment (see file
   // header) so an unconditional gate doesn't incorrectly skip it there.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'admin') {
@@ -132,12 +131,18 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
     const modelSelect = page.locator('#model');
     const modelOptions = page.locator('#model option');
 
-    // Baseline the model dropdown. In update mode car-edit.js already fires
-    // $('#year').val(year).trigger('change') at load (car-edit.js:339) and,
-    // 500ms later, sets the saved model value — so #model may already carry
-    // options for the car's own year by the time we get here. Recording the
-    // pre-change option list lets the assertion below key off an observed
-    // change rather than an assumed empty starting state.
+    // In update mode car-edit.js repopulates #model for the car's own year at
+    // load, awaits that call, and then selects the saved model. #submit stays
+    // disabled until this is done (#2295). Wait for that state first, so the
+    // load-time repopulation cannot finish after the baseline below and be
+    // mistaken for the repopulation that this helper's year change causes.
+    await expect(modelSelect).not.toHaveValue('');
+    await expect(page.locator('#submit')).toBeEnabled();
+
+    // Baseline the model dropdown. #model already carries the options for the
+    // car's own year, so recording the pre-change option list lets the
+    // assertion below key off an observed change rather than an assumed
+    // empty starting state.
     const optionsBeforeChange = await modelOptions.allTextContents();
 
     // Pick a year different from whatever is currently selected so the change
@@ -151,13 +156,13 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
     await yearSelect.selectOption(targetYear);
 
     // Wait for a REAL signal that the async repopulate finished, not a fixed
-    // timeout. car-edit.js's handler is `$('#year').change(async function() {
-    // ... await ModelLoader.populateModelDropdown(validYear, $('#model')); })`
-    // (car-edit.js:383, :406), and populateModelDropdown() fetches
+    // timeout. car-edit.js binds `$('#year').change(onYearChange)`, and the
+    // async onYearChange() awaits
+    // ModelLoader.populateModelDropdown(validYear, $('#model')), which fetches
     // app/api/cars/models.php, strips every option but the placeholder, then
     // appends one <option> per model for the year (model-loader.js:73-97).
-    // A `page.waitForTimeout()` guess here is exactly the mistake #2045
-    // documents as blocking car-edit-owner-refresh.spec.js from Test/Prod —
+    // A `page.waitForTimeout()` guess here is the same mistake as the blind
+    // 500ms setTimeout that car-edit.js used before #2295 (#2045) —
     // it races the network and passes or fails on machine speed. Polling for
     // "more than just the placeholder option, and a different list than
     // before" observes the completed DOM write instead, so this is
