@@ -352,6 +352,11 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
      - *New GitHub issue* — follow `/found`'s "Defer" steps: `gh issue
        create` with the `triage` label and a `TYPE:` title prefix matching
        the finding (`bug:` for a defect, `tech-debt:`/`chore:` otherwise).
+       `/found`'s body template references "#CURRENT_ISSUE" — this command
+       also runs on ad-hoc/hotfix branches with no milestone issue in
+       flight. If `scripts/check-plan-state.sh` found no issue for this
+       branch, reference the PR instead: "Pre-existing issue found while
+       reviewing PR #<pr-number>."
    - **Skip entirely** — no action. Note it was declined in the summary.
 5. Continue to the next Recommendation item.
 
@@ -384,11 +389,13 @@ start, or skipped.
 - Report: "Local review clean — no blocking issues, no open recommendations."
   Include the Suites executed table so the claim is backed by real counts.
 - Tell the user to type `/commit-push-pr`. Do not start it through the Skill
-  tool: it declares `model: haiku`, and a Skill-tool start runs it on this
-  command's model (CLAUDE.md, "Hand-offs between commands"). Compacting context first is also
-  reasonable before that step — the review is already recorded in this
-  report, so nothing is lost. `/compact` is a client-level operation the user
-  runs themselves, not something this command can trigger via a tool.
+  tool: `commit-push-pr.md` declares `model: haiku`, and a command started
+  through the Skill tool runs on the *starting* command's model, not its
+  own — so a Skill-tool start here would run `/commit-push-pr` on this
+  command's model instead. Compacting context first is also reasonable
+  before that step — the review is already recorded in this report, so
+  nothing is lost. `/compact` is a client-level operation the user runs
+  themselves, not something this command can trigger via a tool.
 
 ---
 
