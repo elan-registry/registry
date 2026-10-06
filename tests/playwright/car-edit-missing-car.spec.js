@@ -203,6 +203,14 @@ test.describe('Car edit page — missing car (#1313)', () => {
             'E2E_DEV_NONADMIN_USERNAME must be logged in before the ownership POST'
         ).toBe(false);
 
+        // users/init.php sends a logged-in user with email_verified=0 to
+        // users/verify.php on every page. That page has no #csrf field, so
+        // without this check the failure shows as a #csrf timeout below.
+        expect(
+            prePostUrl.includes('users/verify.php'),
+            `${process.env.E2E_DEV_NONADMIN_USERNAME} must have email_verified=1 locally — see ENVIRONMENT.md`
+        ).toBe(false);
+
         const csrfToken = await page.locator('#csrf').inputValue();
         expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
 

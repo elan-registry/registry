@@ -89,6 +89,10 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
   });
 
   test('should be able to update car information', async ({ page }) => {
+    // This test writes a real comment to a real car. E2E_AUTH_TIER is set
+    // only by the Test/Production configs, so it gates the write to Local/Dev.
+    test.skip(!!process.env.E2E_AUTH_TIER, 'write test; runs on Local/Dev only');
+
     // Navigate to account page. NOTE: usersc/account.php, not
     // users/account.php — the latter is the upstream UserSpice profile
     // page and never includes app/views/cars/_car_hero_actions.php (the
@@ -129,23 +133,27 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     // applied to car-edit-owner-refresh.spec.js and functionality.spec.js;
     // this was the last surviving call site (#1949).
 
+    // In update mode car-edit.js repopulates #model asynchronously and keeps
+    // #submit disabled until the saved model is selected (#2295). Clicking
+    // earlier sends an empty model, which save.php rejects.
+    await expect(page.locator('#model')).not.toHaveValue('');
+    await expect(page.locator('#submit')).toBeEnabled();
+
+    // submitCarForm() saves with fetch() to app/api/cars/save.php and, on
+    // success, sets window.location to details.php?car_id=<id>. On failure it
+    // stays on edit.php with an alert, so this wait fails loudly.
     await page.locator('#submit').click();
-    await page.waitForLoadState('domcontentloaded');
-    console.log('✓ Clicked Update Car button');
+    await page.waitForURL(/details\.php\?car_id=/, { timeout: 10000 });
+    console.log('✓ Clicked Update Car button and reached the details page');
 
-    // Take screenshot after update
-    await page.screenshot({ path: 'screenshots/car-update-result.png', fullPage: true });
-    console.log('✓ Screenshot saved to screenshots/car-update-result.png');
-
-    // Verify no error alert appeared (UserSpice renders failures via usError() -> .alert-danger)
     await expect(page.locator('.alert-danger')).toHaveCount(0);
 
-    // Verify the save round-tripped: edit.php reloads $cardetails from DB after a
-    // successful update and re-renders it into this same textarea.
-    const commentFieldAfterSave = page.locator('textarea[name*="comment"], textarea[id*="comment"], textarea[placeholder*="comment" i]').first();
-    await expect(commentFieldAfterSave).toHaveValue(testNote);
+    // details.php shows the saved comment in the Owner Comments block of
+    // app/views/cars/_vehicle_info_card.php (an h6 heading, then a div).
+    const ownerComments = page.locator('h6:has-text("Owner Comments") + div');
+    await expect(ownerComments).toContainText(testNote);
 
-    console.log('✓ Car update verified: no error alert, comment value persisted');
+    console.log('✓ Car update verified: no error alert, comment shown on details page');
   });
 });
 
@@ -305,7 +313,15 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
       }
     }
 
-    const uniqueLinks = Array.from(allInternalLinks).sort();
+    // The Customizer menu is a bare <ul class="us_menu"> with no <nav> or
+    // <header> wrapper, so the selector above also collects its Logout link
+    // (users/logout.php). A visit to it ends the shared admin storageState
+    // session, and later tests in this project (for example the #2144 car
+    // history tests) then run logged out. No other GET link ends the session.
+    const isSessionEndingLink = link => /\/logout\.php(\?|#|$)/i.test(link);
+    const uniqueLinks = Array.from(allInternalLinks)
+      .filter(link => !isSessionEndingLink(link))
+      .sort();
 
     const downloadExtensions = ['.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.svg'];
     const navigableLinks = [];

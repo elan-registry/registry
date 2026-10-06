@@ -291,6 +291,10 @@ and `logged-in-non-admin` projects through `auth-dev.setup.js` and
   non-admin test account. `auth-non-admin.setup.js` saves its storage state to
   `tests/playwright/.auth/user-dev-non-admin.json`. The dev config uses this
   file for the `logged-in-non-admin` project. The project has no test specs yet.
+  The account must have `email_verified = 1` in the local database. Otherwise
+  UserSpice's verify wall redirects every page to the verify page, and tests
+  that log in as this account fail. To fix, run this command in the Docker `db`
+  container: `UPDATE users SET email_verified = 1 WHERE id = <id>`.
 - All four live in `.env.local` (gitignored) and must never be committed. See
   `.env.example` for the placeholder entries.
 - These accounts are for local and dev environments. They use plain HTTP on
