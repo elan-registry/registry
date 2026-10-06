@@ -19,8 +19,9 @@ use PHPUnit\Framework\TestCase;
  *
  * Following the same source-text regression pattern used by
  * Issue1406RegressionTest for usersc/join.php, this test asserts the
- * endpoint's control flow (CSRF check first, then rate limit, then
- * reason/detail normalization, then logging with the correct category and
+ * endpoint's control flow (method check, then the rate limit — checked and
+ * recorded, with no CSRF check since #2227 — then reason/detail
+ * normalization, then logging with the correct category and
  * stage) directly against the live source. The pure reason/detail
  * normalization logic is also duplicated and exercised directly below
  * (dataProvider-driven) since it has no side effects and is safe to
@@ -31,6 +32,7 @@ use PHPUnit\Framework\TestCase;
  *
  * @issue 1690
  * @link https://github.com/elan-registry/registry/issues/1690
+ * @link https://github.com/elan-registry/registry/issues/2227
  */
 #[Group('regression')]
 #[Group('fast')]
@@ -61,57 +63,143 @@ final class JoinFailureReportEndpointTest extends TestCase
         );
     }
 
-    public function testChecksCsrfTokenBeforeRateLimit(): void
+    /**
+     * The beacon carried the join page's render-time CSRF token until #2227.
+     * In production that token went stale and the endpoint answered 403,
+     * dropping the reports it exists to collect. The token is gone for good:
+     * re-adding it would reintroduce the bug, so assert its absence rather
+     * than only its non-use.
+     */
+    public function testHasNoCsrfCheck(): void
     {
         $source = $this->endpointSource();
 
-        $csrfPos = strpos($source, '!Token::check(Input::get(\'csrf\'))');
-        $this->assertNotFalse($csrfPos, 'Could not locate the CSRF check');
+        $this->assertStringNotContainsString(
+            'Token::check(',
+            $source,
+            'The beacon must not validate a CSRF token — a render-time token can go stale and '
+                . 'silently drop the report (#2227). Abuse is bounded by the enforced '
+                . "'join_failure_beacon' rate limit under ADR-019 instead"
+        );
 
-        $rateLimitPos = strpos($source, "checkRateLimit('join_failure_beacon')");
-        $this->assertNotFalse($rateLimitPos, 'Could not locate the rate-limit check');
-
-        $this->assertLessThan(
-            $rateLimitPos,
-            $csrfPos,
-            'CSRF must be validated before the rate limit is checked'
+        $this->assertStringNotContainsString(
+            "Input::get('csrf')",
+            $source,
+            'The beacon must not read a csrf field at all — the client stopped sending one in #2227'
         );
     }
 
-    public function testCsrfFailureSendsForbiddenAndLogsSecurityCategory(): void
+    /**
+     * The client half of #2227. Before it, the beacon looked up the join
+     * form's csrf input and returned early, with no warning, when the input
+     * was missing — a silent drop of the report. The server test above cannot
+     * see a token quietly returning on the client, so pin it here too.
+     *
+     * The source file keeps a comment that mentions CSRF, so it is checked
+     * for the two code shapes that were removed. The minified build has no
+     * comments and is what production serves, so it must not mention csrf at
+     * all.
+     */
+    public function testBeaconClientSendsNoCsrfToken(): void
+    {
+        $jsDir = __DIR__ . '/../../../app/assets/js/';
+
+        $js = file_get_contents($jsDir . 'join-form-beacon.js');
+        $this->assertIsString($js, 'app/assets/js/join-form-beacon.js must be readable');
+        $this->assertStringNotContainsString(
+            'input[name="csrf"]',
+            $js,
+            'The beacon must not look up the join form\'s csrf input — its early return on a '
+                . 'missing input silently dropped reports'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\bcsrf\s*:/',
+            $js,
+            'The beacon must not send a csrf field (#2227)'
+        );
+
+        $minJs = file_get_contents($jsDir . 'join-form-beacon.min.js');
+        $this->assertIsString($minJs, 'app/assets/js/join-form-beacon.min.js must be readable');
+        $this->assertStringNotContainsStringIgnoringCase(
+            'csrf',
+            $minJs,
+            'The served build still references csrf — run npm run build after editing the source'
+        );
+    }
+
+    /**
+     * This is the test that would have caught the never-trips defect folded
+     * into #2227: the endpoint called checkRateLimit() but never
+     * recordRateLimit(). RateLimit::check() counts us_rate_limits rows and
+     * only record() writes them, so the count stayed at 0 forever and the
+     * configured limit could not trip. With CSRF removed this limit is the
+     * only abuse control, so the record call must stay.
+     */
+    public function testRecordsAdmittedRequestsAgainstBeaconRateLimit(): void
     {
         $source = $this->endpointSource();
 
-        $csrfPos = strpos($source, '!Token::check(Input::get(\'csrf\'))');
-        $this->assertNotFalse($csrfPos);
-
-        $rateLimitPos = strpos($source, "checkRateLimit('join_failure_beacon')");
-        $this->assertNotFalse($rateLimitPos);
-
-        $csrfBranch = substr($source, $csrfPos, $rateLimitPos - $csrfPos);
-
-        $this->assertStringContainsString('ApiResponse::forbidden(', $csrfBranch);
-        $this->assertStringContainsString('LogCategories::LOG_CATEGORY_SECURITY', $csrfBranch);
-        $this->assertStringContainsString('->send()', $csrfBranch);
-
-        // Ordering, not just containment: forbidden() must be constructed
-        // before the security-category logging is attached, and the whole
-        // chain must terminate in ->send() — otherwise a refactor could
-        // split withLogging()'s category argument onto an unrelated call
-        // within this same branch and this test would still pass.
-        $forbiddenPos = strpos($csrfBranch, 'ApiResponse::forbidden(');
-        $securityCategoryPos = strpos($csrfBranch, 'LogCategories::LOG_CATEGORY_SECURITY');
-        $sendPosInBranch = strpos($csrfBranch, '->send()');
-
-        $this->assertLessThan(
-            $securityCategoryPos,
-            $forbiddenPos,
-            'ApiResponse::forbidden() must be constructed before the security-category logging call'
+        $recordPos = strpos($source, "recordRateLimit('join_failure_beacon', true)");
+        $this->assertNotFalse(
+            $recordPos,
+            "The endpoint must record admitted requests via recordRateLimit('join_failure_beacon', true) — "
+                . 'checkRateLimit() alone counts rows that nothing writes, so the limit never trips'
         );
+
+        // ApiResponse::send() exits, so code after the 429 send runs only for
+        // admitted requests. Pinning the record call after it rejects every
+        // wrong placement a plain "after the check" test would accept: in the
+        // check's catch, or between the check and the refusal.
+        $refusalSend = "ApiResponse::error(getRateLimitErrorMessage('join_failure_beacon'), 429)->send();";
+        $refusalPos = strpos($source, $refusalSend);
+        $this->assertNotFalse($refusalPos, 'Could not locate the 429 refusal');
+
+        $this->assertGreaterThan(
+            $refusalPos,
+            $recordPos,
+            'The attempt must be recorded only after the 429 refusal has had its chance to exit — '
+                . 'anywhere earlier also records refused requests'
+        );
+
+        $recordSection = substr($source, $refusalPos + strlen($refusalSend), $recordPos - $refusalPos);
+        $this->assertStringContainsString(
+            'try {',
+            $recordSection,
+            'recordRateLimit() writes to the database and can throw — it needs its own try'
+        );
+
+        // Slice to the start of the next section rather than a fixed length,
+        // so a comment added inside the catch cannot push the log call out of
+        // the window and fail this test for the wrong reason.
+        $nextSectionPos = strpos($source, '$allowedReasons', $recordPos);
+        $this->assertNotFalse($nextSectionPos, 'Could not locate the section after the record block');
+        $recordCatch = substr($source, $recordPos, $nextSectionPos - $recordPos);
+
+        $this->assertStringContainsString(
+            'rate limit record failed',
+            $recordCatch,
+            'A failed record must be logged as a record failure, not as a failed check'
+        );
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_SYSTEM_ERROR',
+            $recordCatch,
+            'A failed record is an infrastructure fault, not a registration event — log it as '
+                . 'SystemError so it is not mixed in with the client-blocked registration rows'
+        );
+        $this->assertStringNotContainsString(
+            '$rateLimitAllowed',
+            $recordCatch,
+            'A failed record must not change the admission decision the check already made'
+        );
+
+        $loggerPos = strpos($source, "logger(0, LogCategories::LOG_CATEGORY_REGISTRATION_FAILED,\n"
+            . "    'join-failure-report: Client-side submission blocked");
+        $this->assertNotFalse($loggerPos, 'Could not locate the client-blocked logger() call');
+
         $this->assertLessThan(
-            $sendPosInBranch,
-            $securityCategoryPos,
-            'The security-category logging must be attached before ->send() terminates the chain'
+            $loggerPos,
+            $recordPos,
+            'The rate limit must be recorded before the beacon writes its log row'
         );
     }
 
@@ -278,7 +366,8 @@ final class JoinFailureReportEndpointTest extends TestCase
             'securePage(',
             $source,
             'join-failure-report.php must not call securePage() — it is an anonymous, '
-                . 'CSRF-protected, rate-limited endpoint, consistent with other app/api/shared/ scripts'
+                . 'rate-limited endpoint with no CSRF token (ADR-019 diagnostic-log exception), '
+                . 'consistent with other app/api/shared/ scripts'
         );
     }
 

@@ -210,6 +210,12 @@ result.
    The command prints a temporary `https://*.trycloudflare.com` URL — open
    that in your browser instead of `http://localhost:$APP_HOST_PORT`.
 
+   The tunnel host is not on the trusted-host list in
+   `usersc/includes/server_globals.php`, so `$host` is `''` for these
+   requests. Pages and Turnstile work, but emailed links and the sitemap use
+   `email.verify_url` (your local URL), and pages carry no canonical tag. See
+   [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md#host-and-generated-urls).
+
 3. **Choose test keys** based on what you are testing:
 
    | Scenario           | `TURNSTILE_SITE_KEY`       | `TURNSTILE_SECRET_KEY`                | Widget result                  | Server result    |

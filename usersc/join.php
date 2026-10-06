@@ -378,10 +378,10 @@ if (Input::existsPost()) {
                 'join.php: recovery-notification side effect failed — ' . get_class($e) . ': ' . $safeToLog);
         } finally {
             // A blocking sleep here is only DoS-safe because it's bounded by
-            // registration_attempt's own rate limit (ip_max=5/hour, total_max=20/hour
-            // — see rate_limits.php) checked earlier in this file, not by anything in
-            // this block — an attacker can't cheaply amplify worker-blocking beyond
-            // that ceiling.
+            // registration_attempt's own per-IP and total hourly rate limits
+            // (current values in usersc/includes/rate_limits.php), checked earlier
+            // in this file, not by anything in this block — an attacker can't
+            // cheaply amplify worker-blocking beyond that ceiling.
             $recoveryElapsedSeconds = microtime(true) - $recoveryStartTime;
             $recoveryRemainingSeconds = $recoveryTimingFloorSeconds - $recoveryElapsedSeconds;
             if ($recoveryRemainingSeconds > 0) {

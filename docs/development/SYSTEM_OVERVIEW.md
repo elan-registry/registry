@@ -86,12 +86,14 @@ researching a chassis number.
   processing so the ~1,500 records paginate without shipping the whole table.
 - **View a car** (`app/owner/cars/details.php`) — the central page.
   Specifications, chassis, colour and engine, purchase and sale dates,
-  comments, photo carousel, approximate location on a map, factory
-  cross-reference (labelled "Unverified"), and the **complete field-level
-  change history**. All of it renders identically for anonymous visitors; only
-  the action buttons differ — "Log in to contact owner" for a guest, "Update
-  Car" for the owner, an admin banner and edit link for staff, "Contact Owner"
-  for another member.
+  comments, photo carousel, approximate location on a map, and factory
+  cross-reference (labelled "Unverified") render identically for every
+  visitor. The **complete field-level change history** is shown only to
+  logged-in members (#2144); an anonymous visitor sees a prompt to log in
+  instead of the table. Only the action buttons and the history card differ
+  by viewer — "Log in to contact owner" for a guest, "Update Car" for the
+  owner, an admin banner and edit link for staff, "Contact Owner" for
+  another member.
 - **Factory records** (`app/owner/cars/factory.php`) — original build data
   matched to a chassis number where the registry holds it.
 - **Statistics** (`app/owner/reports/statistics.php`) — production trends,
@@ -107,6 +109,11 @@ researching a chassis number.
 - **Sitemap** (`app/api/shared/sitemap.php`) — XML for crawlers. A documented
   exception to the API conventions: no auth, no CSRF, no rate limit, because it
   must stay freely crawlable.
+- **Join-failure beacon** (`app/api/shared/join-failure-report.php`) — records a
+  join attempt that failed in the browser before it reached the server. Also
+  carries no CSRF token, under ADR-019's exception for anonymous diagnostic log
+  writes: a render-time token went stale and dropped the reports (#2227), and
+  its own rate limit bounds abuse instead.
 
 Note that these pages still call `securePage()`. In UserSpice that registers the
 page for permission lookup; it does not by itself require a login. Public versus
@@ -298,21 +305,24 @@ posture is more deliberate than most hobby projects.
 - **A car's public page shows more than most people expect.** Car list, car
   detail, factory records, statistics and the privacy policy are all **public**
   — no login. A car page renders the full specification, photo carousel, map,
-  owner's first name and city, and the complete field-level change history to
-  anonymous visitors. Only the action buttons vary by viewer. Privacy comes
-  from what is never stored or shown — last name and email address are not on
-  the page for anyone — rather than from per-viewer redaction.
+  and owner's first name and city to anonymous visitors. The complete
+  field-level change history is members-only (#2144). Only the action buttons
+  and the history card vary by viewer. Privacy comes from what is never
+  stored or shown — last name and email address are not on the page for
+  anyone — rather than from per-viewer redaction.
 - **Public read endpoints carry no CSRF gate, and (as of #2018) no rate limit
-  either.** The car list, factory records, car history, and statistics
-  endpoints are all public and read-only: they change no state, require no
-  login, and return no data beyond what the corresponding public page already
-  renders. Per [ADR-019](adr/ADR-019-no-csrf-on-public-read-only-endpoints.md),
-  these endpoints carry no CSRF token check — that eliminates the stale-token
+  either.** The car list, factory records, and statistics endpoints are all
+  public and read-only: they change no state, require no login, and return no
+  data beyond what the corresponding public page already renders. Per
+  [ADR-019](adr/ADR-019-no-csrf-on-public-read-only-endpoints.md), these
+  endpoints carry no CSRF token check — that eliminates the stale-token
   failure when a session ends. Rate limiting was ADR-019's substitute control,
-  but was itself removed from these four endpoints by #2018 (production
+  but was itself removed from these endpoints by #2018 (production
   log/performance complaint about `us_rate_limits` row growth), leaving them
   with no app-layer abuse control at all. See ADR-019's 2026-09-08 update for
-  the full rationale and the alternative (#2015) that was not chosen.
+  the full rationale and the alternative (#2015) that was not chosen. The car
+  history endpoint requires login (#2144) and still carries no CSRF token, for
+  the reasons ADR-019's Notes record.
 
 ## 6. What is deliberately not built
 

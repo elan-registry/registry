@@ -28,6 +28,11 @@ if (!securePage($php_self)) {
     die();
 }
 
+// The page differs per viewer and carries members-only history (#2144), so no
+// shared cache may keep it. Set explicitly rather than rely on PHP's session
+// cache_limiter default.
+header('Cache-Control: private, no-store');
+
 // Get car information from URL parameter
 if (!empty($_GET)) {
     $carID = Input::get('car_id');
@@ -47,9 +52,17 @@ if (!empty($_GET)) {
     // Cache car data objects to eliminate repeated method calls (Performance Optimization)
     $carData = $car->data();
     $factoryData = $car->factory();
-    $carHistory = $car->history();
-    $historyCount = count($carHistory);
-    
+    // History rows carry past owners' first name and location, so they are for
+    // members only (#2144). No try/catch: Car::find() already catches a failed
+    // history query, logs it, and leaves an empty history, so history() does
+    // not throw.
+    $carHistory = [];
+    $historyCount = 0;
+    if ($user->isLoggedIn()) {
+        $carHistory = $car->history();
+        $historyCount = count($carHistory);
+    }
+
     // Pre-process common dates to avoid redundant DateTime creation
     $purchaseDate = null;
     $buildDate = null;
@@ -81,7 +94,12 @@ if (!empty($_GET)) {
     exit;
 }
 
-$carSchema = CarView::buildCarSchema($carData, $current_url ?? '');
+// $current_url is 'https:///…' when the request's host is not trusted
+// (server_globals.php), so build the schema URL from getBaseUrl() in that case.
+$schemaUrl = !empty($host)
+    ? ($current_url ?? '')
+    : getBaseUrl() . '/app/owner/cars/details.php?car_id=' . (int) $carID;
+$carSchema = CarView::buildCarSchema($carData, $schemaUrl);
 $carSchemaJson = json_encode(
     $carSchema,
     JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES
@@ -313,13 +331,23 @@ if ($carSchemaJson === false) {
                                     </h3>
                                     <small class="text-muted">Track all changes and updates made to this car's registry information</small>
                                 </div>
+                                <?php if ($user->isLoggedIn()) { ?>
                                 <div class="col-md-4 text-md-end">
                                     <button class="btn btn-outline-secondary btn-sm" type="button" id="historyToggleBtn" data-bs-toggle="collapse" data-bs-target="#historyDetails" aria-expanded="false" aria-controls="historyDetails">
                                         <i class="fas fa-eye"></i> <span id="historyToggleText">Show Details</span>
                                     </button>
                                 </div>
+                                <?php } ?>
                             </div>
                         </div>
+                        <?php if (!$user->isLoggedIn()) { ?>
+                        <div class="card-body">
+                            <div class="alert alert-primary mb-0">
+                                <i class="fas fa-info-circle" aria-hidden="true"></i>
+                                <a href="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>users/login.php">Log in</a> to see this car's update history.
+                            </div>
+                        </div>
+                        <?php } else { ?>
                         <div class="card-body">
                             <div class="collapse" id="historyDetails">
                                 <div class="alert alert-primary mb-3">
@@ -464,6 +492,7 @@ if ($carSchemaJson === false) {
                                 </div>
                             </div>
                         </div>
+                        <?php } ?>
                     </div>
                 </div>
             </div>
@@ -476,10 +505,12 @@ if ($carSchemaJson === false) {
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
 ?>
 
+<?php if ($user->isLoggedIn()): ?>
 <script src="<?=$us_url_root?>usersc/js/datatables.min.js"></script>
 <script src="<?=$us_url_root?>usersc/js/datatables-fixedheader.min.js"></script>
 <script src="<?=$us_url_root?>usersc/js/datatables-responsive.min.js"></script>
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/datatables.min.css">
+<?php endif; ?>
 
 <?php include 'includes/elan-config-island.php'; ?>
 <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
@@ -490,8 +521,10 @@ window.carDetailsConfig = {
 window.img_root = <?= json_encode((string)($us_url_root . ELAN_IMAGE_DIR), JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 </script>
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js?v=<?= ASSET_VERSION ?>'></script>
+<?php if ($user->isLoggedIn()): ?>
 <script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.min.js?v=<?= ASSET_VERSION ?>'></script>
 <script src='<?= $us_url_root ?>app/assets/js/car_details.min.js?v=<?= ASSET_VERSION ?>'></script>
+<?php endif; ?>
 
 <?php if (!empty($carData->lat) && is_numeric($carData->lat) && $carData->lat != 0 &&
           !empty($carData->lon) && is_numeric($carData->lon) && $carData->lon != 0): ?>
