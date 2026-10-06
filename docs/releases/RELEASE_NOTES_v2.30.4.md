@@ -86,3 +86,12 @@ v2.30.4 is the first versioned release that ships these production-affecting cha
   `US_ENVIRONMENT` is `development` and `BREVO_API_HOST` is set, so test and prod `.env` must set neither.
 - [#2232](https://github.com/elan-registry/registry/pull/2232) — With no request (CLI or early boot) and an empty `email.verify_url` setting, `getBaseUrl()` now
   returns `https://elanregistry.org`, not an empty string.
+
+## Retrospective
+
+- **Shipped but not needed:** the workflow work in #2259 (model routing) and #2271 (ledger gate).
+  It improved the developer process and gave users nothing.
+- **What we learned about the audience:** too early to say. The verification send pipeline is
+  still switched off, so no researcher or owner has seen the freshness signals yet.
+- **Signal we ignored:** #2149 asked for an enum-backed `SendResult` status. We moved it to the
+  cleanup ledger (#2208). That was right, because it has no user impact.
