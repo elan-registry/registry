@@ -14,8 +14,11 @@ use PHPUnit\Framework\TestCase;
  * No DB access — the composer takes plain stdClass fixtures shaped exactly
  * like verify_car.php's own $carData/$owner objects (see that file's
  * verifyHistoryFields() and the composer's own compose() docblock) and an
- * EmailTemplate instance, which itself only needs getBaseUrl() (mocked in
- * tests/bootstrap-unit.php).
+ * EmailTemplate instance, which itself only needs getBaseUrl(). Each test
+ * also gets its own temporary image directory as the composer's image root,
+ * and creates only the photo files it needs. tests/bootstrap-unit.php mocks
+ * getBaseUrl() and stubs logger(), which appends each call to
+ * $GLOBALS['mockLogEntries'] instead of writing to the logs table.
  *
  * XSS coverage is the #1 requirement here (#1882's core acceptance
  * criterion): every free-form value must render escaped and a raw
@@ -80,6 +83,17 @@ final class CarVerificationEmailComposerTest extends TestCase
         if ($withVariant) {
             $this->touchFile($carId, preg_replace('/\.jpg\z/', '-resized-300.jpg', $base) ?? $base);
         }
+    }
+
+    /**
+     * Seed both photos the default fixture lists, with their -resized-300
+     * variants. Photos is then in the thumbnail state and logs nothing, so a
+     * test can focus on the other rows and the callout.
+     */
+    private function seedFixturePhotos(): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+        $this->seedPhoto(42, 'b.jpg');
     }
 
     /**
@@ -377,10 +391,10 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     /**
      * CarVerificationEmailComposer::LINK_TTL_DAYS must stay equal to
-     * VERIFY_LINK_TTL_DAYS in app/verify/verify_car.php (currently 60,
-     * confirmed by grep). If either constant changes without the other, this
-     * test — and the composer's own expiry-notice copy — will drift out of
-     * sync with the landing page's actual enforcement.
+     * VERIFY_LINK_TTL_DAYS in app/verify/verify_car.php. If either constant
+     * changes without the other, this test — and the composer's own
+     * expiry-notice copy — will drift out of sync with the landing page's
+     * actual enforcement.
      */
     public function testLinkTtlDaysIsSixtyAndMatchesVerifyCarPhp(): void
     {
@@ -486,17 +500,14 @@ final class CarVerificationEmailComposerTest extends TestCase
         $car = $this->carFixture(['website' => '']);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
 
-        $this->assertStringContainsString('Not yet provided', $html);
-        // Highlighted-row styling per EmailTemplate::createDetailRow()'s $highlighted contract.
-        $this->assertStringContainsString('#FFF9E0', $html);
-        $this->assertStringContainsString('#B8860B', $html);
+        $this->assertStringContainsString('Not yet provided', $this->detailRow($html, 'Website'));
+        $this->assertRowHighlighted($html, 'Website');
         $this->assertStringContainsString('still blank', $html, '"field still blank" callout must be present');
     }
 
     public function testBlankWebsiteHighlightedRowAndCalloutAbsentWhenNonBlank(): void
     {
-        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
-        $this->seedPhoto(42, 'a.jpg');
+        $this->seedFixturePhotos();
         $car = $this->carFixture(['website' => 'https://example.com']);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
 
@@ -506,8 +517,7 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testWebsiteHighlightedRowEscapesMaliciousValueEvenWhenNonBlank(): void
     {
-        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
-        $this->seedPhoto(42, 'a.jpg');
+        $this->seedFixturePhotos();
         $malicious = '"><script>alert(1)</script>';
         $car = $this->carFixture(['website' => $malicious]);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
@@ -520,12 +530,14 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testBlankColorGetsHighlightedRowAndSingularCallout(): void
     {
-        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
-        $this->seedPhoto(42, 'a.jpg');
+        $this->seedFixturePhotos();
         $car = $this->carFixture(['color' => '']);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
 
-        $this->assertStringContainsString('#FFF9E0', $html);
+        $this->assertRowHighlighted($html, 'Color');
+        foreach (['Variant', 'Purchase Date', 'Photos', 'Website'] as $label) {
+            $this->assertRowNotHighlighted($html, $label);
+        }
         $this->assertMatchesRegularExpression(
             '/1 field above is still blank.{0,20}Color, highlighted above/s',
             $html
@@ -534,11 +546,16 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testMultipleBlankFieldsAllHighlightedAndAllNamedInOneCallout(): void
     {
-        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
-        $this->seedPhoto(42, 'a.jpg');
+        $this->seedFixturePhotos();
         $car = $this->carFixture(['color' => '', 'purchasedate' => '', 'website' => '']);
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
 
+        foreach (['Color', 'Purchase Date', 'Website'] as $label) {
+            $this->assertRowHighlighted($html, $label);
+        }
+        foreach (['Variant', 'Photos'] as $label) {
+            $this->assertRowNotHighlighted($html, $label);
+        }
         // Exactly one callout, not one per field.
         $this->assertSame(1, substr_count($html, 'still blank'));
         $this->assertMatchesRegularExpression(
@@ -549,8 +566,7 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testStructuralFieldsNeverGetHighlightedEvenWhenBlank(): void
     {
-        // Seed a displayable photo so Photos is in the thumbnail state and logs nothing.
-        $this->seedPhoto(42, 'a.jpg');
+        $this->seedFixturePhotos();
         // Year/Type/Chassis/Series are near-mandatory identifiers, not
         // optional details — a car record with these blank is a data
         // problem, not something the email should invite the owner to
@@ -560,7 +576,9 @@ final class CarVerificationEmailComposerTest extends TestCase
         $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
 
         $this->assertStringNotContainsString('still blank', $html);
-        $this->assertStringNotContainsString('#FFF9E0', $html);
+        foreach (['Year', 'Type', 'Series'] as $label) {
+            $this->assertRowNotHighlighted($html, $label);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -568,12 +586,11 @@ final class CarVerificationEmailComposerTest extends TestCase
     // ------------------------------------------------------------------
 
     /**
-     * The composer reads every $carData/$owner property via `??` (see
-     * fieldOrDefault()'s '?? null' call sites and the direct '?? ""'/'?? 0'
-     * usages throughout compose()/ownerRows()/carRows()), so a completely
-     * missing property (not merely null) is expected to render the same
-     * 'Not specified' fallback rather than throwing or emitting a PHP
-     * warning for undefined property access.
+     * The composer reads every $carData/$owner property as `$obj->prop ?? null`
+     * and passes the value to fieldOrDefault() (or intOrZero() for an id or
+     * flag). A missing property (not merely null) must therefore render the
+     * same fallback as null, with no exception and no PHP warning for
+     * undefined property access.
      */
     public function testComposeHandlesOwnerMissingEmailPropertyGracefully(): void
     {
@@ -747,6 +764,9 @@ final class CarVerificationEmailComposerTest extends TestCase
 
         $this->assertStringContainsString('View photo →', $row);
         $this->assertStringNotContainsString('View all', $row);
+        // A missing file alone, with no unsafe entry, must still log.
+        $message = $this->assertSingleFileErrorLog(['ghost.jpg']);
+        $this->assertStringContainsString('1 readable on disk, 0 unsafe skipped', $message);
     }
 
     public function testPhotosPrimarySkipsEntryWhoseBaseFileIsMissing(): void
@@ -761,22 +781,38 @@ final class CarVerificationEmailComposerTest extends TestCase
         $this->assertStringContainsString('View all 2 photos →', $row);
     }
 
-    // State b: photos listed, no thumbnail possible -> plain "N photos on file".
+    // Listed photos with no base file readable on disk -> the no-photo state.
 
-    public function testPhotosPlainCountWhenNoBaseFileExistsOnDisk(): void
+    public function testPhotosNoPhotoStateWhenNoBaseFileIsReadableOnDisk(): void
     {
         $car = $this->carFixture(['image' => json_encode(['alpha-shot.jpg', 'beta-shot.jpg'])]);
 
-        $this->assertPhotosPlainCount($this->composeHtml($car), '2 photos on file', ['alpha-shot', 'beta-shot']);
+        $this->assertPhotosFallback($this->composeHtml($car));
+        $message = $this->assertSingleFileErrorLog(['alpha-shot', 'beta-shot']);
+        $this->assertStringContainsString('lists 2 photo(s), 0 readable on disk', $message);
+        $this->assertStringContainsString('no base file readable on disk', $message);
     }
 
-    public function testPhotosPlainCountWhenOnlyTheVariantExists(): void
+    public function testPhotosNoPhotoStateWhenOnlyTheVariantExists(): void
     {
         $this->touchFile(42, 'alpha-shot-resized-300.jpg');
         $car = $this->carFixture(['image' => json_encode(['alpha-shot.jpg'])]);
 
-        $this->assertPhotosPlainCount($this->composeHtml($car), '1 photo on file', ['alpha-shot']);
+        $this->assertPhotosFallback($this->composeHtml($car));
+        $message = $this->assertSingleFileErrorLog(['alpha-shot']);
+        $this->assertStringContainsString('no base file readable on disk', $message);
     }
+
+    public function testPhotosNoPhotoStateCountsUnsafeEntriesInTheLog(): void
+    {
+        $car = $this->carFixture(['image' => json_encode(['../evil-shot.jpg', 'alpha-shot.jpg'])]);
+
+        $this->assertPhotosFallback($this->composeHtml($car));
+        $message = $this->assertSingleFileErrorLog(['alpha-shot', 'evil-shot']);
+        $this->assertStringContainsString('lists 1 photo(s), 0 readable on disk, 1 unsafe skipped', $message);
+    }
+
+    // Base file on disk, primary -resized-300 missing -> plain "N photos on file".
 
     public function testPhotosPlainCountWhenBaseExistsButThe300pxVariantDoesNot(): void
     {
@@ -786,6 +822,7 @@ final class CarVerificationEmailComposerTest extends TestCase
         $car = $this->carFixture(['image' => json_encode(['alpha-shot.jpg'])]);
 
         $this->assertPhotosPlainCount($this->composeHtml($car), '1 photo on file', ['alpha-shot']);
+        $this->assertStringContainsString('primary -resized-300 missing', $GLOBALS['mockLogEntries'][0]['message']);
     }
 
     public function testPhotosPlainCountWhenPrimaryLacksVariantEvenIfALaterPhotoIsComplete(): void
@@ -800,6 +837,7 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testPhotosPlainCountIsSingularForOneListedPhoto(): void
     {
+        $this->seedPhoto(42, 'alpha-shot.jpg', false);
         $car  = $this->carFixture(['image' => json_encode(['alpha-shot.jpg'])]);
         $html = $this->composeHtml($car);
 
@@ -809,12 +847,13 @@ final class CarVerificationEmailComposerTest extends TestCase
 
     public function testPhotosPlainCountCountsOnlySafeEntries(): void
     {
+        $this->seedPhoto(42, 'alpha-shot.jpg', false);
         $car = $this->carFixture(['image' => json_encode(['../evil-shot.jpg', 'alpha-shot.jpg'])]);
 
         $this->assertPhotosPlainCount($this->composeHtml($car), '1 photo on file', ['alpha-shot', 'evil-shot']);
     }
 
-    // State c logging, and no logging when nothing is wrong.
+    // Logging: one entry per compose() call when the photo data has a problem, none when it is clean.
 
     public function testPhotosLogsNothingWhenAThumbnailIsShown(): void
     {
@@ -822,6 +861,32 @@ final class CarVerificationEmailComposerTest extends TestCase
         $this->composeHtml($this->carFixture(['image' => json_encode(['alpha-shot.jpg'])]));
 
         $this->assertSame([], $GLOBALS['mockLogEntries']);
+    }
+
+    public function testPhotosLogsNothingWhenEveryListedPhotoIsCleanAndOnDisk(): void
+    {
+        $this->seedPhoto(42, 'alpha-shot.jpg');
+        $this->seedPhoto(42, 'beta-shot.jpg', false);
+        $row = $this->photosRow(
+            $this->composeHtml($this->carFixture(['image' => json_encode(['alpha-shot.jpg', 'beta-shot.jpg'])]))
+        );
+
+        $this->assertStringContainsString('View all 2 photos →', $row);
+        $this->assertSame([], $GLOBALS['mockLogEntries']);
+    }
+
+    public function testPhotosLogsOnceWhenAThumbnailIsShownButEntriesAreSkippedOrMissing(): void
+    {
+        // alpha-shot: shown. beta-shot: listed, not on disk. ../evil-shot.jpg: unsafe.
+        $this->seedPhoto(42, 'alpha-shot.jpg');
+        $car = $this->carFixture([
+            'image' => json_encode(['alpha-shot.jpg', 'beta-shot.jpg', '../evil-shot.jpg']),
+        ]);
+        $row = $this->photosRow($this->composeHtml($car));
+
+        $this->assertStringContainsString('/userimages/42/alpha-shot-resized-300.jpg', $row);
+        $message = $this->assertSingleFileErrorLog(['alpha-shot', 'beta-shot', 'evil-shot']);
+        $this->assertStringContainsString('thumbnail shown; 2 listed, 1 readable on disk, 1 unsafe skipped', $message);
     }
 
     /**
@@ -833,11 +898,8 @@ final class CarVerificationEmailComposerTest extends TestCase
             'empty string' => [''],
             'whitespace'   => ['   '],
             'null'         => [null],
-            // Stored after the last photo is removed: the normal no-photo state.
+            // An empty list. CarImageProcessor stores '' after the last photo is removed.
             'empty array'  => ['[]'],
-            // A JSON scalar is not a list. The landing page finds no photo in it either.
-            'JSON scalar'  => ['"a.jpg"'],
-            'JSON number'  => ['42'],
         ];
     }
 
@@ -850,6 +912,29 @@ final class CarVerificationEmailComposerTest extends TestCase
         $this->assertPhotosFallback($this->composeHtml($this->carFixture(['image' => $image])));
 
         $this->assertSame([], $GLOBALS['mockLogEntries']);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function jsonScalarImageValueProvider(): array
+    {
+        return [
+            // A JSON scalar is not a list. The landing page finds no photo in it either.
+            'JSON string' => ['"a.jpg"', 'string'],
+            'JSON number' => ['42', 'int'],
+            'JSON bool'   => ['true', 'bool'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('jsonScalarImageValueProvider')]
+    public function testPhotosLogsOnceWhenImageValueIsAJsonScalar(string $image, string $type): void
+    {
+        $this->seedPhoto(42, 'a.jpg');
+
+        $this->assertPhotosFallback($this->composeHtml($this->carFixture(['image' => $image])));
+        $message = $this->assertSingleFileErrorLog(['a.jpg']);
+        $this->assertStringContainsString("decodes to JSON of type {$type}, not a list", $message);
     }
 
     public function testPhotosLogsOnceWhenImageValueHasOnlyUnsafeEntries(): void
@@ -865,6 +950,15 @@ final class CarVerificationEmailComposerTest extends TestCase
         $this->assertPhotosFallback($this->composeHtml($this->carFixture(['image' => 'not json at all'])));
 
         $this->assertSingleFileErrorLog(['not json']);
+    }
+
+    public function testPhotosLogsJsonNullLiteralAsAnUnsafeEntry(): void
+    {
+        // json_decode('null') is PHP null, so the comma fallback gives the entry "null".
+        $this->assertPhotosFallback($this->composeHtml($this->carFixture(['image' => 'null'])));
+
+        $message = $this->assertSingleFileErrorLog();
+        $this->assertStringContainsString('has 1 image entries, 1 unsafe skipped', $message);
     }
 
     // Legacy image formats decode like CarImageProcessor.
@@ -976,6 +1070,9 @@ final class CarVerificationEmailComposerTest extends TestCase
         $this->assertStringContainsString('/userimages/42/good-resized-300.jpg', $row);
         $this->assertStringNotContainsString('evil', $row);
         $this->assertStringContainsString('View photo →', $row, 'The unsafe entry must not be counted');
+        // An unsafe entry alone, with every safe file on disk, must still log.
+        $message = $this->assertSingleFileErrorLog(['evil']);
+        $this->assertStringContainsString('1 readable on disk, 1 unsafe skipped', $message);
     }
 
     public function testPhotosSkipsMalformedEntriesAndUsesTheNextValidOne(): void
@@ -1018,10 +1115,29 @@ final class CarVerificationEmailComposerTest extends TestCase
             '/1 field above is still blank.{0,20}Website, highlighted above/s',
             $html
         );
-        $this->assertStringNotContainsString('#FFF9E0', $this->photosRow($html));
+        $this->assertRowNotHighlighted($html, 'Photos');
     }
 
-    public function testPhotosHandlesWrongTypedImageValueWithoutError(): void
+    /**
+     * @return array<string, array{0: mixed, 1: string}>
+     */
+    public static function wrongTypedImageValueProvider(): array
+    {
+        return [
+            'int'    => [5, 'int'],
+            'float'  => [1.5, 'float'],
+            'array'  => [['a.jpg'], 'array'],
+            'true'   => [true, 'bool'],
+            'object' => [new \stdClass(), 'stdClass'],
+        ];
+    }
+
+    /**
+     * A non-string `image` (corrupt row, or a driver returning a native
+     * array or int) must fall back and log, not throw a TypeError.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('wrongTypedImageValueProvider')]
+    public function testPhotosFallsBackAndLogsOnceForWrongTypedImageValue(mixed $image, string $type): void
     {
         $this->seedPhoto(42, 'a.jpg');
 
@@ -1030,15 +1146,135 @@ final class CarVerificationEmailComposerTest extends TestCase
         });
 
         try {
-            // A non-string `image` (corrupt row, or a driver returning a native
-            // array/int) must fall back, not throw a TypeError.
-            foreach ([5, ['a.jpg'], true, 1.5] as $bad) {
-                $html = $this->composeHtml($this->carFixture(['image' => $bad]));
-                $this->assertPhotosFallback($html);
-            }
+            $html = $this->composeHtml($this->carFixture(['image' => $image]));
         } finally {
             restore_error_handler();
         }
+
+        $this->assertPhotosFallback($html);
+        $message = $this->assertSingleFileErrorLog(['a.jpg']);
+        $this->assertStringContainsString("image value of type {$type}, not a string", $message);
+    }
+
+    /**
+     * @return array<string, array{0: mixed, 1: string}>
+     */
+    public static function invalidCarIdProvider(): array
+    {
+        return [
+            'array'            => [[1], 'array'],
+            'true'             => [true, 'bool'],
+            'digits then text' => ['1abc', 'string'],
+            'zero'             => [0, 'int'],
+            'negative'         => [-5, 'int'],
+        ];
+    }
+
+    /**
+     * A plain (int) cast reads each of these ids as car 1 (or 0). Car 1's
+     * folder holds a complete photo, so a wrong cast would show it.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidCarIdProvider')]
+    public function testPhotosInvalidCarIdNeverReadsAnotherCarsPhotos(mixed $id, string $type): void
+    {
+        $this->seedPhoto(1, 'a.jpg');
+        $car  = $this->carFixture(['id' => $id, 'image' => json_encode(['a.jpg'])]);
+        $html = $this->composeHtml($car);
+
+        $this->assertPhotosFallback($html);
+        $this->assertStringContainsString(
+            htmlspecialchars($this->composer->editUrl(0), ENT_QUOTES, 'UTF-8'),
+            $html
+        );
+        $this->assertStringNotContainsString('car_id=1', $html);
+        $message = $this->assertSingleFileErrorLog(['a.jpg'], 'car with an invalid id ');
+        $this->assertStringContainsString("its id of type {$type} is not valid", $message);
+    }
+
+    public function testPhotosInvalidCarIdWithAnEmptyListLogsNothing(): void
+    {
+        $car = $this->carFixture(['id' => [1], 'image' => '[]']);
+
+        $this->assertPhotosFallback($this->composeHtml($car));
+        $this->assertSame([], $GLOBALS['mockLogEntries']);
+    }
+
+    public function testPhotosLogsOnceWhenIdIsMissingButAnImageIsListed(): void
+    {
+        $car = $this->carFixture(['image' => json_encode(['a.jpg'])]);
+        unset($car->id);
+
+        $this->assertPhotosFallback($this->composeHtml($car));
+        $this->assertSingleFileErrorLog(['a.jpg'], 'car with an invalid id ');
+    }
+
+    /**
+     * @return array<string, array{0: mixed}>
+     */
+    public static function invalidChassisOverrideProvider(): array
+    {
+        return [
+            'true'  => [true],
+            'array' => [[1]],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidChassisOverrideProvider')]
+    public function testChassisExplainerAbsentForWrongTypedOverrideFlag(mixed $flag): void
+    {
+        $html = $this->composeHtml($this->carFixture(['chassis_override' => $flag]));
+
+        $this->assertStringNotContainsString('About the Chassis Number', $html);
+        $this->assertStringNotContainsString('Please double-check', $html);
+    }
+
+    public function testChassisExplainerPresentForDigitStringOverrideFlag(): void
+    {
+        // MySQL returns integer columns as strings, so '1' must still count.
+        $html = $this->composeHtml($this->carFixture(['chassis_override' => '1']));
+
+        $this->assertStringContainsString('About the Chassis Number', $html);
+    }
+
+    public function testGreetingHandlesArrayFirstNameWithoutError(): void
+    {
+        set_error_handler(static function (int $errno, string $errstr): bool {
+            throw new \ErrorException($errstr, 0, $errno);
+        });
+
+        try {
+            $html = $this->composer->compose(
+                $this->carFixture(),
+                $this->ownerFixture(['fname' => ['Jane']]),
+                self::VERICODE
+            )['html'];
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertStringContainsString('Hello <strong></strong>,', $html);
+        $this->assertStringNotContainsString('Array', $html);
+    }
+
+    public function testAllFiveOptionalFieldsBlankAreHighlightedAndNamedInRowOrder(): void
+    {
+        $car  = $this->carFixture([
+            'color'        => '',
+            'variant'      => '',
+            'purchasedate' => '',
+            'image'        => '',
+            'website'      => '',
+        ]);
+        $html = $this->composeHtml($car);
+
+        foreach (['Color', 'Variant', 'Purchase Date', 'Photos', 'Website'] as $label) {
+            $this->assertRowHighlighted($html, $label);
+        }
+        $this->assertSame(1, substr_count($html, 'still blank'));
+        $this->assertStringContainsString(
+            '5 fields above are still blank — Color, Variant, Purchase Date, Photos and Website, highlighted above',
+            $html
+        );
     }
 
     public function testPhotosHandlesIntegerYearAndColorWithoutError(): void
@@ -1109,14 +1345,51 @@ final class CarVerificationEmailComposerTest extends TestCase
      */
     private function photosRow(string $html): string
     {
-        $label = strpos($html, 'Photos:');
-        $this->assertIsInt($label, 'Photos row must be present');
-        $start = strrpos(substr($html, 0, $label), '<table');
-        $end   = strpos($html, '</table>', $label);
+        return $this->detailRow($html, 'Photos');
+    }
+
+    /**
+     * The one detail-row table whose label cell reads "{$label}:".
+     *
+     * Matches the closing `:</td>` so that a label inside another row's value
+     * or the callout text does not match.
+     */
+    private function detailRow(string $html, string $label): string
+    {
+        $labelPos = strpos($html, '>' . $label . ':</td>');
+        $this->assertIsInt($labelPos, "{$label} row must be present");
+        $this->assertFalse(
+            strpos($html, '>' . $label . ':</td>', $labelPos + 1),
+            "Exactly one {$label} row must be present"
+        );
+        $start = strrpos(substr($html, 0, $labelPos), '<table');
+        $end   = strpos($html, '</table>', $labelPos);
         $this->assertIsInt($start);
         $this->assertIsInt($end);
 
         return substr($html, $start, $end + strlen('</table>') - $start);
+    }
+
+    /**
+     * The row labelled $label has the highlighted style from
+     * EmailTemplate::createDetailRow(). The check reads that row only, so a
+     * highlight on another row cannot make it pass.
+     */
+    private function assertRowHighlighted(string $html, string $label): void
+    {
+        $row = $this->detailRow($html, $label);
+        $this->assertStringContainsString('background-color: #FFF9E0', $row, "{$label} row must be highlighted");
+        $this->assertStringContainsString('border-left: 4px solid #B8860B', $row, "{$label} row must be highlighted");
+    }
+
+    /**
+     * The row labelled $label has no highlighted style.
+     */
+    private function assertRowNotHighlighted(string $html, string $label): void
+    {
+        $row = $this->detailRow($html, $label);
+        $this->assertStringNotContainsString('#FFF9E0', $row, "{$label} row must not be highlighted");
+        $this->assertStringNotContainsString('#B8860B', $row, "{$label} row must not be highlighted");
     }
 
     private function parseFragment(string $fragment): \DOMDocument
@@ -1155,7 +1428,7 @@ final class CarVerificationEmailComposerTest extends TestCase
         $row = $this->photosRow($html);
 
         $this->assertStringContainsString('Not yet provided', $row);
-        $this->assertStringContainsString('background-color: #FFF9E0', $row);
+        $this->assertRowHighlighted($html, 'Photos');
         $this->assertStringNotContainsString('<img', $row);
         // The branded header logo is its own <img>; only a photo has a
         // userimages/ src.
@@ -1167,7 +1440,7 @@ final class CarVerificationEmailComposerTest extends TestCase
     }
 
     /**
-     * State b: plain "N photos on file" text. No highlight, no image, no photo
+     * Plain "N photos on file" state. No highlight, no image, no photo
      * URL, Photos not named in the callout, and exactly one FileError log entry
      * with neither a filename nor a filesystem path in its message.
      *
@@ -1178,7 +1451,7 @@ final class CarVerificationEmailComposerTest extends TestCase
         $row = $this->photosRow($html);
 
         $this->assertStringContainsString($expectedText, $row);
-        $this->assertStringNotContainsString('#FFF9E0', $row);
+        $this->assertRowNotHighlighted($html, 'Photos');
         $this->assertStringNotContainsString('Not yet provided', $row);
         $this->assertStringNotContainsString('<img', $row);
         $this->assertStringNotContainsString('/userimages/', $html);
@@ -1189,12 +1462,14 @@ final class CarVerificationEmailComposerTest extends TestCase
     }
 
     /**
-     * Exactly one FileError log entry. Its message names car 42 and holds no
+     * Exactly one FileError log entry. Its message names the car and holds no
      * raw filename fragment, temp directory path, or image root.
      *
      * @param list<string> $forbiddenFragments
+     * @param string       $carReference How the message must name the car
+     * @return string The log message, for further assertions
      */
-    private function assertSingleFileErrorLog(array $forbiddenFragments = []): void
+    private function assertSingleFileErrorLog(array $forbiddenFragments = [], string $carReference = 'car 42 '): string
     {
         $entries = $GLOBALS['mockLogEntries'];
         $this->assertIsArray($entries);
@@ -1205,9 +1480,11 @@ final class CarVerificationEmailComposerTest extends TestCase
 
         $message = (string) $entry['message'];
         // The car id is what an operator needs to act on the entry.
-        $this->assertStringContainsString('car 42 ', $message);
+        $this->assertStringContainsString($carReference, $message);
         foreach ([...$forbiddenFragments, $this->imageRoot, sys_get_temp_dir(), 'elan-composer-test'] as $fragment) {
             $this->assertStringNotContainsString($fragment, $message);
         }
+
+        return $message;
     }
 }

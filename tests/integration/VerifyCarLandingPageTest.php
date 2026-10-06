@@ -1001,24 +1001,35 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         // disk. This pins that rule, which the verification email's
         // primaryPhoto() copies.
         $dir = self::$projectRoot . '/userimages/' . $this->testCarId;
+        // userimages/ is shared with the dev database. A folder that is already
+        // there can hold a real car's photos, so the test must not touch it.
+        if (is_dir($dir)) {
+            $this->markTestSkipped("{$dir} already exists. Remove it if a stopped test run left it.");
+        }
         $this->db->query(
             'UPDATE cars SET image = ? WHERE id = ?',
             [json_encode(['first-missing.jpg', 'second-present.jpg']), $this->testCarId]
         );
         $this->assertFalse($this->db->error(), 'Test setup: failed to seed cars.image');
         $code = $this->issueVericode();
+        $files = [$dir . '/second-present.jpg', $dir . '/second-present-resized-300.jpg'];
 
-        mkdir($dir, 0775, true);
         try {
-            file_put_contents($dir . '/second-present.jpg', '');
-            file_put_contents($dir . '/second-present-resized-300.jpg', '');
+            mkdir($dir, 0775, true);
+            foreach ($files as $file) {
+                file_put_contents($file, '');
+            }
 
             $result = $this->get('vericode=' . $code);
         } finally {
-            foreach (glob($dir . '/*') ?: [] as $file) {
-                unlink($file);
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
             }
-            rmdir($dir);
+            if (is_dir($dir)) {
+                rmdir($dir);
+            }
         }
 
         $this->assertSame(200, $result['status']);

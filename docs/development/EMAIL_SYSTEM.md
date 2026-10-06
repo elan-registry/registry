@@ -646,7 +646,8 @@ array{subject, html}`, which builds the subject line and full branded HTML body.
 from the `$carData` (car row) and `$owner` (owner row) objects supplied by the caller. The one exception is `logger()`, which writes
 to the logs table. The constructor is
 `__construct(?EmailTemplate $template = null, ?string $imageRoot = null)` where `$imageRoot` defaults to the repo's `userimages/`
-directory. Tests inject a temporary directory. The composer checks the filesystem to see whether photo files exist. This design keeps
+directory. Tests inject a temporary directory. `$imageRoot` sets the disk root only. The image URL always uses `ELAN_IMAGE_DIR`, so
+an injected root must use the same `{root}/{carId}/` layout. The composer checks the filesystem to see whether photo files exist. This design keeps
 the composer testable with fixture objects and an optional temp image directory, no framework bootstrap or database required.
 
 The composed email includes:
@@ -654,25 +655,33 @@ The composed email includes:
 - **Greeting and explanation** — why the owner is receiving this request
 - **Verify/Sold side-by-side buttons** — confirm ownership or report the car sold
 - **Owner Information box** — ID, name, email, location, join date
-- **Car Information box** — ID, year, type, chassis, series, variant, color, purchase/sale dates, and website, plus a Photos row
-  with a linked 300px thumbnail of the car's primary photo (first photo file on disk, `-resized-300` variant, absolute URL, alt text:
-  year, "Lotus Elan", series, variant, type, color) and a "View all N photos" link to `app/owner/cars/details.php`. The Photos row has three states:
-  - Thumbnail: the primary photo (the first listed photo whose base file is on disk) also has its `-resized-300` file. A later
-    photo is not used in its place. N counts the photos on disk
-  - "N photos on file": photos are listed but no thumbnail can be shown. The text is plain, not highlighted, and the composer logs the
-    cause once under `FileError`
-  - Highlighted "Not yet provided": no safe photo is listed. Only this state names Photos in the blank-field callout
+- **Car Information box** — ID, year, type, chassis, series, variant, color, purchase/sale dates, website, and a Photos row
+  (see Photos row states below)
 - **Conditional "About the Chassis Number" alert** — appears only when `cars.chassis_override = 1`, explaining that the chassis was
   manually entered and may differ from factory records
-- **Conditional blank-field callout** — appears when any of Color, Variant, Purchase Date, Photos (only when no safe photo is listed), or Website is
-  blank, naming every blank field and highlighting its row, and encouraging the owner to fill them in
+- **Conditional blank-field callout** — appears when any of Color, Variant, Purchase Date, Photos (highlighted state only), or
+  Website is blank. It names every blank field, highlights its row, and asks the owner to fill them in
 - **Edit button** — links to the full `app/owner/cars/edit.php` form (requires login)
-- **Footer block** — opt-out link (see below) and 60-day expiry notice
+- **Footer block** — opt-out link (see below) and an expiry notice for the `LINK_TTL_DAYS` window
+
+**Photos row states:**
+
+- **Thumbnail** — the primary photo is the first listed photo whose base file is on disk. When its `-resized-300` file also
+  exists, the row shows that file at 300px (absolute URL). The alt text names the car (year, "Lotus Elan", series, variant, type,
+  color). A "View all N photos" link opens `app/owner/cars/details.php`. N counts the photos on disk
+- **Plain "N photos on file"** — at least one listed base file is on disk, but the primary photo has no `-resized-300` file. A
+  later photo is not used in its place. N counts the safe entries listed. The row is not highlighted
+- **Highlighted "Not yet provided"** — no safe photo is listed, or no listed base file is readable on disk. Only this state names
+  Photos in the blank-field callout
+
+The composer logs once per email under `FileError` when the photo data has a problem. Examples are a value that is not a list,
+an invalid car id, unsafe entries, or listed files missing from disk. The message holds counts and types only, never filenames
+or paths. An empty value or an empty list is the normal no-photo state and logs nothing.
 
 **Public Constants:**
 
-- `LINK_TTL_DAYS = 60` — Lifetime of the Verify/Sold/Opt-Out links. Must equal `VERIFY_LINK_TTL_DAYS` in `app/verify/verify_car.php`;
-  a unit test guards against drift since the composer's expiry notice text promises this window
+- `LINK_TTL_DAYS = 60` — Lifetime of the Verify/Sold/Opt-Out links. Must equal `VERIFY_LINK_TTL_DAYS` in `app/verify/verify_car.php`.
+  A unit test guards against drift, because the composer's expiry notice text promises this window
 
 **URL Builders** (public):
 

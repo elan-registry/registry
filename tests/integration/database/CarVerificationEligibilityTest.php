@@ -364,6 +364,40 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         );
     }
 
+    /**
+     * The verification email reads `image` from these rows to show the car's
+     * photo. The send path uses findVerificationEligible(), and the landing
+     * page uses findById(). Both must return the stored value unchanged.
+     */
+    #[Group('fast')]
+    public function testEligibleRowsAndFindByIdReturnTheStoredImageValue(): void
+    {
+        $image = json_encode(['eligible-photo.jpg', 'second-photo.jpg']);
+        $carId = $this->createTestCar($this->testUserId, [
+            'email'              => 'image-owner@example.com',
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => $this->staleDate(),
+            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+            'image'              => $image,
+        ]);
+
+        $eligibleRow = null;
+        foreach ($this->repo->findVerificationEligible(1000, 0) as $row) {
+            if ((int) $row->id === $carId) {
+                $eligibleRow = $row;
+                break;
+            }
+        }
+        $this->assertNotNull($eligibleRow, 'Test setup: the car must be eligible');
+        $this->assertSame($image, $eligibleRow->image);
+
+        $foundRow = $this->repo->findById($carId);
+        $this->assertNotNull($foundRow);
+        $this->assertSame($image, $foundRow->image);
+    }
+
     /** The fully-eligible case: stale last_verified AND stale owner_last_updated. */
     #[Group('fast')]
     public function testStaleCarIsEligible(): void

@@ -58,8 +58,9 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   `last_verified`. The chart no longer shows `NaN` when the registry has no cars.
 - [#1894](https://github.com/elan-registry/registry/issues/1894) — The verification email's Photos row links the
   primary photo's `-resized-300` file by absolute URL, with escaped alt text that names the car. It has three states:
-  thumbnail, plain "N photos on file" when the files are missing (logged once under `FileError`), and a highlighted
-  "Not yet provided" that the blank-field callout names. `CarVerificationEmailComposer` takes an optional image root and
+  thumbnail, plain "N photos on file" when the primary photo has no `-resized-300` file, and a highlighted
+  "Not yet provided" when no listed photo is on disk. Only the last state is named in the blank-field callout. A listed
+  photo that cannot be shown is logged once under `FileError`. `CarVerificationEmailComposer` takes an optional image root and
   reads legacy comma-separated `cars.image` values. `EMAIL_SYSTEM.md` no longer says the composer is not wired to a send
   path (includes the remaining gap from #1892)
 - [#2147](https://github.com/elan-registry/registry/issues/2147) — The password reset, registration attempt, and

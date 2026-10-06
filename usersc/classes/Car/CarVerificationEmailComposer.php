@@ -13,22 +13,20 @@ use ElanRegistry\LogCategories;
  * Composes the subject line and full branded HTML body for the verification
  * email an owner receives at most twice per twelve months, asking them to
  * confirm their car record is still accurate. The rendered layout matches the
- * approved mockup (docs/plans/features/car-owner-verification/images/exhibit-a-email.png):
- * greeting, Verify/Sold buttons, Owner Information, Car Information (with the
- * conditional chassis-override badge and highlighted rows for any blank
- * optional field — Color, Variant, Purchase Date, Photos, Website), the conditional
- * "About the Chassis Number" alert, the edit CTA, and a footer carrying the
- * one-click opt-out link.
+ * approved design: greeting, Verify/Sold buttons, Owner Information, Car
+ * Information (with the conditional chassis-override badge and highlighted
+ * rows for any blank optional field — Color, Variant, Purchase Date, Photos,
+ * Website), the conditional "About the Chassis Number" alert, the edit CTA,
+ * and a footer carrying the one-click opt-out link.
  *
  * This class performs NO database access of its own. Everything it renders
  * comes from the `$carData` and `$owner` objects supplied by the caller — the
  * same shapes app/verify/verify_car.php already builds — which keeps it
  * unit-testable with no framework bootstrap beyond getBaseUrl(), logger(),
  * EMAIL_SUBJECT_PREFIX and ELAN_IMAGE_DIR. The one exception is logger(),
- * which writes to the logs table when a car's photos cannot be shown. The
+ * which writes to the logs table when a car's photo data has a problem. The
  * class also reads the filesystem (is_file() only) so the email never links
- * an image that would show as broken. See photosRow() for the three Photos
- * states.
+ * an image that would show as broken. See photosRow() for the Photos states.
  *
  * Escaping: EmailTemplate::createMessageBox()'s `$content` and
  * createRawDetailRow()'s `$trustedHtml` are raw HTML by design, so every
@@ -66,11 +64,13 @@ final class CarVerificationEmailComposer
      * @param EmailTemplate|null $template  Renderer to compose with; a default
      *                                      instance is created when null, so
      *                                      tests can inject their own.
-     * @param string|null        $imageRoot Directory holding the per-car image
-     *                                      folders (`{root}/{carId}/`). Defaults
-     *                                      to the site's ELAN_IMAGE_DIR, so the
-     *                                      class reads no globals. Tests inject
-     *                                      a temporary one.
+     * @param string|null        $imageRoot Disk directory that holds the per-car
+     *                                      image folders. Defaults to the site's
+     *                                      ELAN_IMAGE_DIR. This sets the disk root
+     *                                      only. The image URL always uses
+     *                                      ELAN_IMAGE_DIR, so an injected root
+     *                                      must use the same `{root}/{carId}/`
+     *                                      layout. Tests inject a temporary one.
      */
     public function __construct(?EmailTemplate $template = null, ?string $imageRoot = null)
     {
@@ -81,10 +81,7 @@ final class CarVerificationEmailComposer
     /**
      * Compose the verification email's subject line and HTML body.
      *
-     * A car with no safe photo listed gets a highlighted "Not yet provided" Photos
-     * row and is named in the blank-field callout, the same as a blank Website.
-     * A car with photos listed but no displayable thumbnail gets a plain
-     * "N photos on file" row and is not named in the callout.
+     * The Photos row has its own states. See photosRow().
      *
      * @param object $carData Car row: id, year, type, chassis, chassis_override,
      *                        series, variant, color, purchasedate, solddate,
@@ -93,10 +90,12 @@ final class CarVerificationEmailComposer
      *                        country, join_date
      * @param string $vericode Plaintext verification code for this car's links
      * @return array{subject: string, html: string} SMTP subject line and full HTML body
+     * @throws \PDOException When logger() cannot prepare its insert into the
+     *                       logs table (UserSpice DB uses ERRMODE_EXCEPTION)
      */
     public function compose(object $carData, object $owner, string $vericode): array
     {
-        $chassisOverride = (int) ($carData->chassis_override ?? 0) === 1;
+        $chassisOverride = $this->intOrZero($carData->chassis_override ?? null) === 1;
         $website         = $this->fieldOrDefault($carData->website ?? null, '');
         $photo           = $this->primaryPhoto($carData);
 
@@ -117,7 +116,7 @@ final class CarVerificationEmailComposer
         $subject = EMAIL_SUBJECT_PREFIX . ' Please verify your Lotus Elan registry record';
 
         // 1. Greeting
-        $content = '<p>Hello <strong>' . $this->esc((string) ($owner->fname ?? '')) . '</strong>,</p>';
+        $content = '<p>Hello <strong>' . $this->esc($this->fieldOrDefault($owner->fname ?? null, '')) . '</strong>,</p>';
 
         // 2. Why you're getting this, plus the sign-off (static copy, matches the mockup)
         $content .= '<p>It\'s been a while since you created or updated the information in the'
@@ -171,7 +170,7 @@ final class CarVerificationEmailComposer
         // letting the owner discover a login wall after clicking.
         $content .= $this->template->createButton(
             'Login and Review or Update Your Car Record',
-            $this->editUrl((int) ($carData->id ?? 0)),
+            $this->editUrl($this->intOrZero($carData->id ?? null)),
             'primary'
         );
 
@@ -285,16 +284,13 @@ final class CarVerificationEmailComposer
      * @param object $carData        Car row
      * @param bool   $chassisOverride Whether the chassis number was explicitly overridden
      * @param string $website        Trimmed website value ('' when blank)
-     * @param array<int, string> $blankFields Labels (from the same set this
-     *                                        method renders — 'Color',
-     *                                        'Variant', 'Purchase Date',
-     *                                        'Website') currently blank, plus
-     *                                        'Photos' only when no safe photo
-     *                                        is listed; each gets the highlighted
-     *                                        row treatment
+     * @param array<int, string> $blankFields Labels of the blank optional
+     *                                        fields ('Color', 'Variant',
+     *                                        'Purchase Date', 'Photos',
+     *                                        'Website'). Each one gets the
+     *                                        highlighted row treatment
      * @param array{thumb: string|null, listed: int, onDisk: int}|null $photo
-     *        primaryPhoto() result. The Photos row follows it: thumbnail,
-     *        plain "N photos on file", or highlighted when null
+     *        primaryPhoto() result. See photosRow() for the Photos states
      * @return string HTML rows
      */
     private function carRows(
@@ -379,10 +375,14 @@ final class CarVerificationEmailComposer
      *
      * - Thumbnail: the primary photo and its -resized-300 file are on disk. A
      *   linked image plus "View all N photos", N being the photos on disk.
-     * - Plain "N photos on file": photos are listed but no thumbnail can be
-     *   shown. Not highlighted, not in the callout. primaryPhoto() logs it.
-     * - Highlighted "Not yet provided": no safe photo is listed. compose()
-     *   names Photos in the blank-field callout.
+     * - Plain "N photos on file": at least one listed base file is on disk,
+     *   but the primary photo has no -resized-300 file. N is the safe entries
+     *   listed. Not highlighted, not in the callout.
+     * - Highlighted "Not yet provided": no safe photo is listed, or no listed
+     *   base file is readable on disk. compose() names Photos in the
+     *   blank-field callout.
+     *
+     * primaryPhoto() logs each state that comes from bad photo data.
      *
      * @param array{thumb: string|null, listed: int, onDisk: int}|null $photo primaryPhoto() result
      * @param object $carData Car row
@@ -412,8 +412,8 @@ final class CarVerificationEmailComposer
      *
      * Reads `cars.image` directly rather than going through CarImageProcessor,
      * which needs a repository and therefore a database connection this class
-     * deliberately does without. The value is decoded as
-     * CarImageProcessor::decodeAndProcessImages() does (JSON, else legacy
+     * deliberately does without. The value is decoded in the same order as
+     * CarImageProcessor::decodeAndProcessImages() (JSON, else legacy
      * comma-separated). Entries that are not strings or fail
      * CarImageProcessor::isSafeFilename() are skipped, which also keeps a
      * crafted value from steering is_file() outside the car's folder.
@@ -424,28 +424,57 @@ final class CarVerificationEmailComposer
      * -resized-300 variant, and only when that file exists, so a recipient
      * never sees a broken image.
      *
-     * Logs once under FileError when photos are listed but no thumbnail can be
-     * shown, and when the value holds entries but none is safe. An empty list
-     * (`[]`, stored after the last photo is removed) is the normal no-photo
-     * state and logs nothing. Raw values and filesystem paths stay out of
-     * the message.
+     * Logs once under FileError when the photo data has a problem: a value
+     * that is not a string or not a list, an invalid car id, unsafe entries,
+     * or listed files missing from disk. This includes a shown thumbnail with
+     * skipped or missing entries. An empty value or an empty list is the
+     * normal no-photo state and logs nothing. CarImageProcessor stores `''`
+     * after the last photo is removed. Raw values and filesystem paths stay
+     * out of the message.
      *
      * @param object $carData Car row (id, image)
      * @return array{thumb: string|null, listed: int, onDisk: int}|null Null when
-     *         no safe photo is listed. Otherwise `thumb` is the variant filename
-     *         (null when no thumbnail can be shown), `listed` counts safe
-     *         entries and `onDisk` counts those whose base file exists
+     *         no safe photo is listed or no listed base file is on disk.
+     *         Otherwise `thumb` is the variant filename (null when the primary
+     *         photo has no variant), `listed` counts safe entries and `onDisk`
+     *         counts those whose base file exists
      */
     private function primaryPhoto(object $carData): ?array
     {
-        $carId = (int) ($carData->id ?? 0);
-        $raw   = $carData->image ?? null;
-        if ($carId <= 0 || !is_string($raw) || trim($raw) === '') {
+        $raw = $carData->image ?? null;
+        if ($raw === null) {
+            return null;
+        }
+
+        $carId = $this->intOrZero($carData->id ?? null);
+        if (!is_string($raw)) {
+            $this->logPhotoProblem($carId, sprintf(
+                'has an image value of type %s, not a string; treated as no photo',
+                get_debug_type($raw)
+            ));
+            return null;
+        }
+        if (trim($raw) === '') {
             return null;
         }
 
         $entries = $this->decodeImageEntries($raw);
+        if (!is_array($entries)) {
+            $this->logPhotoProblem($carId, sprintf(
+                'has an image value that decodes to JSON of type %s, not a list; treated as no photo',
+                get_debug_type($entries)
+            ));
+            return null;
+        }
         if ($entries === []) {
+            return null;
+        }
+        // After the empty-list check, so that '[]' stays silent even with a bad id.
+        if ($carId <= 0) {
+            $this->logPhotoProblem($carId, sprintf(
+                'lists an image value but its id of type %s is not valid; treated as no photo',
+                get_debug_type($carData->id ?? null)
+            ));
             return null;
         }
 
@@ -456,7 +485,7 @@ final class CarVerificationEmailComposer
         $unsafe = count($entries) - count($safe);
         if ($safe === []) {
             $this->logPhotoProblem($carId, sprintf(
-                'has %d image entries, %d unsafe skipped; no usable photo',
+                'has %d image entries, %d unsafe skipped; treated as no photo',
                 count($entries),
                 $unsafe
             ));
@@ -465,61 +494,78 @@ final class CarVerificationEmailComposer
 
         $dir    = $this->imageRoot . '/' . $carId . '/';
         $onDisk = array_values(array_filter($safe, static fn (string $name): bool => is_file($dir . $name)));
-        $photo  = ['thumb' => null, 'listed' => count($safe), 'onDisk' => count($onDisk)];
-
-        $reason = 'no base file on disk';
-        if ($onDisk !== []) {
-            $parts = pathinfo($onDisk[0]);
-            // isSafeFilename() guarantees an extension; the default only satisfies the optional key's type.
-            $candidate = $parts['filename'] . '-resized-300.' . ($parts['extension'] ?? '');
-            if (is_file($dir . $candidate)) {
-                $photo['thumb'] = $candidate;
-                return $photo;
-            }
-            $reason = 'primary -resized-300 missing';
+        if ($onDisk === []) {
+            $this->logPhotoProblem($carId, sprintf(
+                'lists %d photo(s), 0 readable on disk, %d unsafe skipped; treated as no photo'
+                . ' (no base file readable on disk)',
+                count($safe),
+                $unsafe
+            ));
+            return null;
         }
 
-        $this->logPhotoProblem($carId, sprintf(
-            'lists %d photo(s), %d on disk, %d unsafe skipped; no thumbnail (%s)',
-            count($safe),
-            count($onDisk),
-            $unsafe,
-            $reason
-        ));
+        $photo = ['thumb' => null, 'listed' => count($safe), 'onDisk' => count($onDisk)];
+        $parts = pathinfo($onDisk[0]);
+        // isSafeFilename() guarantees an extension. The default only satisfies the optional key's type.
+        $candidate = $parts['filename'] . '-resized-300.' . ($parts['extension'] ?? '');
+        if (!is_file($dir . $candidate)) {
+            $this->logPhotoProblem($carId, sprintf(
+                'lists %d photo(s), %d readable on disk, %d unsafe skipped; no thumbnail'
+                . ' (primary -resized-300 missing)',
+                $photo['listed'],
+                $photo['onDisk'],
+                $unsafe
+            ));
+            return $photo;
+        }
+
+        $photo['thumb'] = $candidate;
+        // The owner sees a photo, so only the logs can show the bad entries.
+        if ($unsafe > 0 || $photo['onDisk'] < $photo['listed']) {
+            $this->logPhotoProblem($carId, sprintf(
+                'thumbnail shown; %d listed, %d readable on disk, %d unsafe skipped',
+                $photo['listed'],
+                $photo['onDisk'],
+                $unsafe
+            ));
+        }
 
         return $photo;
     }
 
     /**
-     * Log a car whose listed photos cannot be shown, once per compose() call.
+     * Log a problem with a car's photo data, once per compose() call.
      *
-     * The message holds counts and a fixed reason only. Raw `cars.image`
-     * values and filesystem paths stay out of the logs table.
+     * The message holds counts, types, and a fixed reason only. Raw
+     * `cars.image` values and filesystem paths stay out of the logs table.
      *
-     * @param int    $carId  Car id
-     * @param string $detail Counts and reason, appended after the car id
+     * @param int    $carId  Car id, or 0 or less when the id is not valid
+     * @param string $detail Counts and reason, appended after the car reference
      */
     private function logPhotoProblem(int $carId, string $detail): void
     {
-        logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, "CarVerificationEmailComposer: car {$carId} {$detail}");
+        $car = $carId > 0 ? "car {$carId}" : 'car with an invalid id';
+        logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, "CarVerificationEmailComposer: {$car} {$detail}");
     }
 
     /**
-     * Decode a `cars.image` value into its raw entries.
+     * Decode a `cars.image` value.
      *
      * Same order as CarImageProcessor::decodeAndProcessImages(): JSON first,
-     * then the legacy comma-separated format. A JSON scalar yields no
-     * entries, which matches the landing page: its foreach over a scalar
-     * finds no photo.
+     * then the legacy comma-separated format. A JSON scalar other than `null`
+     * comes back as that scalar, and the caller logs it. The landing page also
+     * finds no photo in it, but its foreach emits a PHP warning. The JSON
+     * literal `null` decodes to PHP null, so it falls through to the
+     * comma-separated format as the entry "null", the same as in
+     * CarImageProcessor.
      *
      * @param string $raw Non-empty `cars.image` value
-     * @return array<mixed> Entries of unknown type, empty when the value is not a list
+     * @return mixed An array of entries of unknown type, or the decoded JSON
+     *               scalar when the value is not a list
      */
-    private function decodeImageEntries(string $raw): array
+    private function decodeImageEntries(string $raw): mixed
     {
-        $decoded = json_decode($raw, true) ?? explode(',', $raw);
-
-        return is_array($decoded) ? $decoded : [];
+        return json_decode($raw, true) ?? explode(',', $raw);
     }
 
     /**
@@ -561,7 +607,7 @@ final class CarVerificationEmailComposer
      */
     private function thumbnailHtml(string $thumb, int $onDisk, object $carData): string
     {
-        $carId     = (int) ($carData->id ?? 0);
+        $carId     = $this->intOrZero($carData->id ?? null);
         $thumbUrl  = $this->esc(getBaseUrl() . '/' . ELAN_IMAGE_DIR . $carId . '/' . $thumb);
         $detailUrl = $this->esc(getBaseUrl() . '/app/owner/cars/details.php?car_id=' . $carId);
         $alt       = $this->esc($this->photoAltText($carData));
@@ -573,6 +619,24 @@ final class CarVerificationEmailComposer
             . ' style="max-width: 100%; height: auto; border-radius: 6px; display: block;'
             . ' margin-bottom: 8px;">'
             . '<a href="' . $detailUrl . '">' . $linkText . '</a>';
+    }
+
+    /**
+     * Read an integer field such as a car id or flag.
+     *
+     * A plain (int) cast turns `true`, a non-empty array, or '1abc' into 1.
+     * For a car id, that would read and link another car's photos.
+     *
+     * @param mixed $value Raw field value
+     * @return int The value for a non-negative int or a string of digits, otherwise 0
+     */
+    private function intOrZero(mixed $value): int
+    {
+        if (is_int($value)) {
+            return $value >= 0 ? $value : 0;
+        }
+
+        return is_string($value) && ctype_digit($value) ? (int) $value : 0;
     }
 
     /**
