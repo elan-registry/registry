@@ -93,37 +93,56 @@ final class UserSettingsWiringTest extends TestCase
             'The owner-field sync call must be wrapped in a try block'
         );
         $this->assertStringContainsString(
-            '$syncResult = $owner->syncOwnerFieldsToCars();',
+            '$owner->updateProfileAndSync($ownerFields)',
             $content,
-            'The endpoint must call syncOwnerFieldsToCars() inside the try block'
+            'The endpoint must call updateProfileAndSync() inside the try block'
         );
 
         // Isolate the catch block that immediately follows the sync call, so
         // assertions below can't accidentally match an unrelated catch block
-        // elsewhere in the file (e.g. a future addition).
-        $tryStart = strpos($content, '$syncResult = $owner->syncOwnerFieldsToCars();');
-        $this->assertIsInt($tryStart, 'Could not locate the syncOwnerFieldsToCars() call site');
-        $catchBlock = substr($content, $tryStart, 3000);
+        // elsewhere in the file (e.g. a future addition). The call site is a
+        // ternary ($ownerFields !== [] ? updateProfileAndSync() :
+        // syncOwnerFieldsToCars(), for the website-only-clear case where
+        // $ownerFields is empty) — anchor on its assignment, not on either
+        // branch alone.
+        $tryStart = strpos($content, '$syncResult = $ownerFields !== []');
+        $this->assertIsInt($tryStart, 'Could not locate the sync-call ternary');
 
-        $this->assertMatchesRegularExpression(
-            '/}\s*catch\s*\(\\\\?(ElanRegistry\\\\Exceptions\\\\)?OwnerDatabaseException\s*\|\s*\\\\?(ElanRegistry\\\\Exceptions\\\\)?CarDatabaseException\s+\$e\)\s*{/',
-            $catchBlock,
-            'The owner-field sync call must be caught with both OwnerDatabaseException AND '
-            . 'CarDatabaseException — they are siblings under ElanRegistryException, not '
-            . 'parent/child, so catching only one lets the other escape as an unlogged fatal '
-            . '(regression guard: this catch was OwnerDatabaseException-only until #1873 round '
-            . 'two, since syncOwnerFieldsToCars() can also propagate CarDatabaseException from '
-            . "CarRepository's updateCarForOwner())"
+        // Find the OwnerDatabaseException | CarDatabaseException catch itself
+        // first (not a fixed-length window after $tryStart — the sibling
+        // OwnerValidationException | OwnerUpdateException catch that precedes
+        // it in source order can grow independently of this one), then
+        // brace-balance to its own closing brace.
+        $catchHeaderPos = strpos($content, 'catch (OwnerDatabaseException | CarDatabaseException $e) {', $tryStart);
+        $this->assertIsInt($catchHeaderPos, 'Could not locate the combined-catch header');
+
+        // Confirm the header is a real `} catch (...)` clause closing the
+        // preceding catch block, not matched by a fixed-length window —
+        // the preceding sibling catch's body can grow independently (nested
+        // try/catch for the website-clear retry, #1891 round two), so scan
+        // backward past only whitespace and closing braces to the nearest
+        // non-brace character, which must be a semicolon or a block's `}`.
+        $i = $catchHeaderPos - 1;
+        while ($i >= 0 && ($content[$i] === ' ' || $content[$i] === "\n" || $content[$i] === "\t" || $content[$i] === '}')) {
+            $i--;
+        }
+        $this->assertGreaterThanOrEqual(0, $i, 'Ran off the start of the file looking for the previous statement');
+        $this->assertSame(
+            ';',
+            $content[$i],
+            'The combined-catch header must immediately follow closing syntax (braces back '
+            . 'to a statement\'s semicolon), not be embedded inside unrelated code'
         );
 
         // Isolate just the body of this catch block (up to its own closing
         // brace) so the following assertions can't accidentally match
         // content from a later, unrelated block.
-        $catchBodyStart = strpos($catchBlock, 'OwnerDatabaseException | CarDatabaseException $e) {');
-        $this->assertIsInt($catchBodyStart, 'Could not locate the combined-catch body');
-        $catchBodyEnd = strpos($catchBlock, "\n            }", $catchBodyStart);
+        $catchBodyStart = $catchHeaderPos;
+        $catchOpenBrace = strpos($content, '{', $catchBodyStart);
+        $this->assertIsInt($catchOpenBrace, 'Could not locate the combined-catch body\'s opening brace');
+        $catchBodyEnd = $this->matchingBraceEnd($content, $catchOpenBrace);
         $this->assertIsInt($catchBodyEnd, 'Could not locate the end of the combined-catch body');
-        $catchBody = substr($catchBlock, $catchBodyStart, $catchBodyEnd - $catchBodyStart);
+        $catchBody = substr($content, $catchBodyStart, $catchBodyEnd - $catchBodyStart);
 
         $this->assertStringContainsString(
             'LOG_CATEGORY_DATABASE_ERROR',
@@ -134,6 +153,71 @@ final class UserSettingsWiringTest extends TestCase
             '$errors[] = ',
             $catchBody,
             'The catch block must populate $errors[] with a friendly message rather than let the exception propagate'
+        );
+    }
+
+    /**
+     * Regression guard (#1891): `new Owner($userId)` must be in its own try
+     * block, separate from the write/sync try block, so a failure loading
+     * the owner (nothing written yet) is never reported with the same
+     * "Owner details saved, but..." message used when the write actually
+     * committed and only the sync step afterward failed. Both failures throw
+     * the same OwnerDatabaseException type, so only the source structure —
+     * not the exception type — can tell them apart.
+     *
+     * Source inspection: the real failure (a DB fault inside new Owner()'s
+     * own find() call) cannot be triggered deterministically from a PHPUnit
+     * process or a real HTTP request (same constraint as this file's other
+     * DB-failure test above).
+     */
+    public function testOwnerConstructionHasItsOwnTryBlockSeparateFromTheWriteAndSync(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        $constructPos = strpos($content, '$owner = new Owner($userId);');
+        $this->assertIsInt($constructPos, 'Could not locate the new Owner($userId) call site');
+
+        // The nearest preceding "try {" must be the one that wraps ONLY the
+        // constructor — not the one that also wraps updateProfileAndSync().
+        $precedingTry = strrpos(substr($content, 0, $constructPos), 'try {');
+        $this->assertIsInt($precedingTry, 'Could not locate the try block wrapping new Owner($userId)');
+
+        // Brace-balance the try block itself, then its matching catch block,
+        // rather than a fixed-length window — a fixed window truncates once
+        // the catch body grows past it (#1891 round two).
+        $tryOpenBrace = strpos($content, '{', $precedingTry);
+        $this->assertIsInt($tryOpenBrace, 'Could not locate the try block\'s opening brace');
+        $tryCloseBrace = $this->matchingBraceEnd($content, $tryOpenBrace);
+        $this->assertIsInt($tryCloseBrace, 'Could not locate the try block\'s closing brace');
+
+        $catchOpenBrace = strpos($content, '{', $tryCloseBrace);
+        $this->assertIsInt($catchOpenBrace, 'Could not locate the catch block\'s opening brace');
+        $catchCloseBrace = $this->matchingBraceEnd($content, $catchOpenBrace);
+        $this->assertIsInt($catchCloseBrace, 'Could not locate the catch block\'s closing brace');
+
+        $constructTryBlock = substr($content, $precedingTry, $catchCloseBrace - $precedingTry + 1);
+        $this->assertStringNotContainsString(
+            'updateProfileAndSync',
+            substr($content, $precedingTry, $tryCloseBrace - $precedingTry + 1),
+            'new Owner($userId) must be the ONLY statement in its try block — '
+            . 'updateProfileAndSync() must not be called in the same try, or a '
+            . 'construction failure and a post-write sync failure become '
+            . 'indistinguishable to the catch ladder (#1891)'
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/catch\s*\(\\\\?(ElanRegistry\\\\Exceptions\\\\)?OwnerDatabaseException\s+\$e\)\s*\{.*?\$owner\s*=\s*null;/s',
+            $constructTryBlock,
+            'new Owner($userId)\'s own try block must catch OwnerDatabaseException and '
+            . 'set $owner = null, so the write/sync block below can tell "owner failed '
+            . 'to load" apart from "owner loaded, then something else failed" (#1891)'
+        );
+
+        $this->assertStringContainsString(
+            'if ($owner !== null) {',
+            $content,
+            'The write/sync try block must be gated on $owner !== null, so a failed '
+            . 'new Owner($userId) never reaches updateProfileAndSync() with a null $owner (#1891)'
         );
     }
 
@@ -258,7 +342,7 @@ final class UserSettingsWiringTest extends TestCase
     }
 
     // =========================================================================
-    // user_settings.php — $profileFieldsChanged sync gating (source inspection)
+    // user_settings.php — $ownerFields / $websiteCleared sync gating (source inspection)
     // =========================================================================
 
     /**
@@ -267,7 +351,7 @@ final class UserSettingsWiringTest extends TestCase
      * `cars.email` is the address verification batches send to. When
      * `email_act == 1`, user_settings.php writes only `email_new` — `users.email`
      * is unchanged until the owner confirms via users/verify.php. Setting
-     * $profileFieldsChanged in that branch would push an UNCONFIRMED address onto
+     * Queuing $ownerFields['email'] in that branch would push an UNCONFIRMED address onto
      * every car the owner has.
      *
      * Only a comment enforces this today, and a mutation adding the flag to that
@@ -329,49 +413,206 @@ final class UserSettingsWiringTest extends TestCase
             'The email_act == 1 branch must still be the one that stages email_new'
         );
         $this->assertStringNotContainsString(
-            '$profileFieldsChanged = true;',
+            "\$ownerFields['email']",
             $branchBody,
             'The email_act == 1 branch stages email_new only — users.email is unchanged '
-            . 'until the owner confirms, so it must NOT set $profileFieldsChanged or an '
-            . 'unconfirmed address would be synced onto every car (#1873)'
+            . "until the owner confirms, so it must NOT queue \$ownerFields['email'] or an "
+            . 'unconfirmed address would be synced onto every car (#1873, #1891)'
         );
     }
 
     /**
-     * The sync must remain gated on $profileFieldsChanged, and the flag must be
-     * set by each branch that actually persists a synced owner-contact field.
+     * The sync must remain gated on $ownerFields being non-empty, or a
+     * website clear, and each branch that persists a synced owner-contact
+     * field must queue its key into $ownerFields.
      *
-     * Mutations that drop a `$profileFieldsChanged = true;` (e.g. from the
-     * location block) silently stop syncing that field class — the exact defect
-     * #1873 was filed to fix — and no behavioral test catches it.
+     * Mutations that drop a field's `$ownerFields['...'] = ...` assignment
+     * (e.g. from the location block) silently stop syncing that field class —
+     * the exact defect #1873 was filed to fix — and no behavioral test
+     * catches it. A website clear carries no field for update() to write (it
+     * drops empty values), so it cannot queue into $ownerFields the way the
+     * other fields do — $websiteCleared covers that case in the gate.
      */
-    public function testSyncIsGatedOnProfileFieldsChangedFlag(): void
+    public function testSyncIsGatedOnOwnerFieldsBeingNonEmpty(): void
     {
         $content = $this->readEndpointSource('usersc/user_settings.php');
 
         $this->assertMatchesRegularExpression(
-            '/if\s*\(\s*\$profileFieldsChanged\s*\)/',
+            '/if\s*\(\s*\$ownerFields\s*!==\s*\[\]\s*\|\|\s*\$websiteCleared\s*\)/',
             $content,
-            'The car sync must stay gated on $profileFieldsChanged so a save that '
-            . 'persisted nothing does not push stale values onto the cars'
+            'The car sync must stay gated on $ownerFields !== [] or $websiteCleared, so a '
+            . 'save that persisted nothing does not push stale values onto the cars, and so '
+            . 'a website-only clear (which queues nothing into $ownerFields) still syncs'
+        );
+
+        $this->assertStringContainsString(
+            'updateProfileAndSync($ownerFields)',
+            $content,
+            'user_settings.php must call Owner::updateProfileAndSync() with the queued fields (#1873, #1891)'
         );
 
         $this->assertStringContainsString(
             'syncOwnerFieldsToCars()',
             $content,
-            'user_settings.php must call syncOwnerFieldsToCars() (#1873)'
+            'A website-only clear must fall back to syncOwnerFieldsToCars() directly, since '
+            . 'updateProfileAndSync() requires at least one queued field'
         );
 
-        // fname, lname, location, website, and the confirmed-email branch each
-        // persist a synced column, so each must set the flag. The unconfirmed
-        // email branch must not — asserted separately above.
+        // fname, lname, website, and the confirmed-email branch each queue
+        // their own key directly; location queues city/state/country (and
+        // lat/lon when present) via one array_merge() call. The unconfirmed
+        // email branch must not queue anything — asserted separately above.
         $this->assertSame(
-            5,
-            substr_count($content, '$profileFieldsChanged = true;'),
-            'Exactly five branches persist a synced owner-contact field (fname, lname, '
-            . 'location, website, confirmed email) and each must set $profileFieldsChanged. '
-            . 'A change here means either a sync trigger was dropped or the unconfirmed-email '
-            . 'branch gained one (#1873)'
+            4,
+            substr_count($content, "\$ownerFields['") + substr_count($content, '$ownerFields["'),
+            "Expected exactly 4 direct \$ownerFields['key'] = ... assignments (fname, lname, "
+            . 'website, confirmed email). A change here means either a sync trigger was '
+            . 'dropped or the unconfirmed-email branch gained one (#1873)'
+        );
+        $this->assertSame(
+            1,
+            substr_count($content, '$ownerFields = array_merge($ownerFields,'),
+            'Expected exactly one array_merge() call queuing the location fields onto '
+            . '$ownerFields (#1873)'
+        );
+    }
+
+    /**
+     * Regression guard (#1891): clearing the website must still reach the
+     * owner's cars, even though it cannot go through $ownerFields the way
+     * every other field does — Owner::update() drops empty values, so an
+     * empty website can never survive validateAndSanitizeFields(). Without
+     * $websiteCleared, a website-only clear sets no $ownerFields key, the
+     * sync gate sees an empty array, and the cars keep the stale URL forever.
+     */
+    public function testWebsiteClearSetsTheFlagThatKeepsTheSyncGateOpen(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        $clearPos = strpos($content, "\$websiteUrl === ''");
+        $this->assertIsInt($clearPos, 'Could not locate the website-clear branch');
+        $clearBranch = substr($content, $clearPos, 500);
+
+        $this->assertStringContainsString(
+            '$websiteCleared = true;',
+            $clearBranch,
+            'The website-clear branch must set $websiteCleared so the sync gate below '
+            . 'still opens when it is the only change'
+        );
+        $this->assertStringNotContainsString(
+            "\$ownerFields['website']",
+            $clearBranch,
+            'The clear branch cannot queue into $ownerFields — update() drops empty '
+            . 'values, so an empty website would never survive validation'
+        );
+    }
+
+    /**
+     * Regression guard (#1891 round two): a website clear writes directly to
+     * `profiles` and commits before `new Owner($userId)` runs. If that load
+     * then fails, the clear already committed — the page must say so rather
+     * than the generic "could not be saved", or the owner wrongly concludes
+     * the clear itself failed and may resubmit indefinitely with no visible
+     * effect (resubmitting the same empty value trips no change-detection).
+     */
+    public function testOwnerLoadFailureAfterWebsiteClearReportsTheCommitAccurately(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        $constructPos = strpos($content, '$owner = new Owner($userId);');
+        $this->assertIsInt($constructPos, 'Could not locate the new Owner($userId) call site');
+        $precedingTry = strrpos(substr($content, 0, $constructPos), 'try {');
+        $this->assertIsInt($precedingTry, 'Could not locate the try block wrapping new Owner($userId)');
+
+        $tryOpenBrace = strpos($content, '{', $precedingTry);
+        $this->assertIsInt($tryOpenBrace, 'Could not locate the try block\'s opening brace');
+        $tryCloseBrace = $this->matchingBraceEnd($content, $tryOpenBrace);
+        $this->assertIsInt($tryCloseBrace, 'Could not locate the try block\'s closing brace');
+        $catchOpenBrace = strpos($content, '{', $tryCloseBrace);
+        $this->assertIsInt($catchOpenBrace, 'Could not locate the catch block\'s opening brace');
+        $catchCloseBrace = $this->matchingBraceEnd($content, $catchOpenBrace);
+        $this->assertIsInt($catchCloseBrace, 'Could not locate the catch block\'s closing brace');
+        $catchBody = substr($content, $tryCloseBrace, $catchCloseBrace - $tryCloseBrace + 1);
+
+        $this->assertStringContainsString(
+            'if ($websiteCleared) {',
+            $catchBody,
+            'The owner-load-failure catch must branch on $websiteCleared so a committed '
+            . 'clear is reported differently from "nothing was saved"'
+        );
+
+        // Isolate the $websiteCleared branch's own body so the following
+        // assertions can't match the unrelated else branch below it.
+        $websiteClearedPos = strpos($catchBody, 'if ($websiteCleared) {');
+        $this->assertIsInt($websiteClearedPos, 'Could not locate the $websiteCleared branch');
+        $branchOpenBrace = strpos($catchBody, '{', $websiteClearedPos);
+        $this->assertIsInt($branchOpenBrace, 'Could not locate the $websiteCleared branch\'s opening brace');
+        $branchCloseBrace = $this->matchingBraceEnd($catchBody, $branchOpenBrace);
+        $this->assertIsInt($branchCloseBrace, 'Could not locate the $websiteCleared branch\'s closing brace');
+        $websiteClearedBranch = substr($catchBody, $websiteClearedPos, $branchCloseBrace - $websiteClearedPos);
+
+        $this->assertStringNotContainsString(
+            "Your changes could not be saved",
+            $websiteClearedBranch,
+            'A committed website clear must not be told "could not be saved" — the clear '
+            . 'did save; only syncing it to the cars failed'
+        );
+        $this->assertStringContainsString(
+            'reportWebsiteCleared()',
+            $websiteClearedBranch,
+            'The branch must report the website clear\'s own success message — it must '
+            . 'not call $reportOwnerWrite(), which would also report $ownerFields entries '
+            . 'that this catch never attempted to write'
+        );
+        $this->assertStringNotContainsString(
+            'reportOwnerWrite()',
+            $websiteClearedBranch,
+            '$ownerFields (if any) was never attempted when new Owner() itself fails — '
+            . 'reporting it here would claim unsaved fields were saved'
+        );
+    }
+
+    /**
+     * Regression guard (#1891 round two): when update() rejects or rolls back
+     * a non-website field (e.g. an invalid name), a website clear that
+     * already committed on its own must still be synced to the owner's
+     * cars here — otherwise it stays stale until some unrelated field
+     * happens to change in a later submit.
+     */
+    public function testValidationFailureCatchStillSyncsAnAlreadyCommittedWebsiteClear(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        $catchPos = strpos($content, 'catch (OwnerValidationException | OwnerUpdateException $e) {');
+        $this->assertIsInt($catchPos, 'Could not locate the OwnerValidationException | OwnerUpdateException catch');
+        $catchOpenBrace = strpos($content, '{', $catchPos);
+        $this->assertIsInt($catchOpenBrace, 'Could not locate the catch body\'s opening brace');
+        $catchCloseBrace = $this->matchingBraceEnd($content, $catchOpenBrace);
+        $this->assertIsInt($catchCloseBrace, 'Could not locate the catch body\'s closing brace');
+        $catchBody = substr($content, $catchPos, $catchCloseBrace - $catchPos);
+
+        $this->assertStringContainsString(
+            'if ($websiteCleared) {',
+            $catchBody,
+            'A rejected/rolled-back update() must not skip syncing an already-committed '
+            . 'website clear — it is a separate direct write, not part of $ownerFields'
+        );
+        $this->assertStringContainsString(
+            'syncOwnerFieldsToCars()',
+            $catchBody,
+            'The website-clear retry must call syncOwnerFieldsToCars(), not '
+            . 'updateProfileAndSync(), since there is no $ownerFields entry to pass it'
+        );
+        $this->assertStringContainsString(
+            'reportWebsiteCleared()',
+            $catchBody,
+            'A successful retry must report the website clear\'s own success message'
+        );
+        $this->assertStringNotContainsString(
+            'reportOwnerWrite()',
+            $catchBody,
+            '$ownerFields (if any) was rejected/rolled back by update() when this catch '
+            . 'runs — calling $reportOwnerWrite() here would report those unsaved fields as saved'
         );
     }
 
