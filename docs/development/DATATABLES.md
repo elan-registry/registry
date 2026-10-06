@@ -21,9 +21,9 @@ As of v2.11.0, we use **only 3 DataTables extensions** for optimal performance:
 
 | Extension       | Version | Purpose                     | Used on                       |
 | --------------- | ------- | --------------------------- | ----------------------------- |
-| DataTables Core | 3.1.1   | Base table functionality    | All DataTables views          |
-| FixedHeader     | 5.1.0   | Sticky table headers        | List, factory, history, admin |
-| Responsive      | 4.1.0   | Mobile-responsive tables    | Main and admin views          |
+| DataTables Core | 3.1.2   | Base table functionality    | All DataTables views          |
+| FixedHeader     | 5.1.1   | Sticky table headers        | List, factory, history, admin |
+| Responsive      | 4.1.1   | Mobile-responsive tables    | Main and admin views          |
 
 ## Where DataTables is Used
 
@@ -133,9 +133,9 @@ The build uses the pinned npm packages:
 
 | Extension Code | Full Name       | Version    |
 | -------------- | --------------- | ---------- |
-| `dt`           | DataTables Core | `3.1.1`    |
-| `fh`           | FixedHeader     | `5.1.0`    |
-| `r`            | Responsive      | `4.1.0`    |
+| `dt`           | DataTables Core | `3.1.2`    |
+| `fh`           | FixedHeader     | `5.1.1`    |
+| `r`            | Responsive      | `4.1.1`    |
 
 The styling target is `bs5` (Bootstrap 5).
 
@@ -197,9 +197,9 @@ endpoint and tests as required.
 
 **Current versions are stable and battle-tested**:
 
-- DataTables Core: 3.1.1
-- FixedHeader: 5.1.0
-- Responsive: 4.1.0
+- DataTables Core: 3.1.2
+- FixedHeader: 5.1.1
+- Responsive: 4.1.1
 
 **When to upgrade**:
 
