@@ -292,8 +292,9 @@ since they touch different files.
 
 ### Step 6.5: Release retrospective — three questions
 
-Five minutes, appended to the release notes under a `## Retrospective`
-heading. One line each is enough.
+Five minutes. One line each is enough. The release notes template has no
+retrospective section, so the answers go to the gitignored
+`docs/plans/releases/<version>-retro.md`, not to the release notes.
 
 Ask the user, one at a time:
 
@@ -306,9 +307,9 @@ Ask the user, one at a time:
 3. > "What signal arrived during this milestone that we ignored — and was that
    > right?"
 
-Record the answers in the release notes and carry question 1's answer into the
-next `/start-milestone` Step 4.4, so the theme is chosen knowing what the last
-one over-built.
+Write the answers to `docs/plans/releases/<version>-retro.md`. The next
+`/start-milestone` Step 4.4 reads that file, so the theme is chosen knowing
+what the last one over-built.
 
 ### Step 6.6: Render the deploy sheet for review
 
