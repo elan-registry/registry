@@ -35,16 +35,13 @@ in the verification email.
 - [#2259](https://github.com/elan-registry/registry/issues/2259) — Commands and agents use the model each step needs (workflow only).
 - [#2268](https://github.com/elan-registry/registry/issues/2268) — `scripts/versatiles-style-options.js` sets `projection: 'mercator'`, checked in CI.
 - [#2271](https://github.com/elan-registry/registry/issues/2271) — Cleanup-ledger items are checked before the PR is pushed (workflow only).
-
-## Carried from the Dev Environment milestone
-
-That milestone merged to `main` with no release. v2.30.4 is the first tagged
-release that ships its production-affecting changes:
-
-- [#2228](https://github.com/elan-registry/registry/issues/2228) — Generated links have no `:80` or `:443` behind Cloudflare.
-- [#2212](https://github.com/elan-registry/registry/pull/2212) — `.htaccess` blocks `/.git/` with a 403.
-- [#2121](https://github.com/elan-registry/registry/pull/2121) — `.htaccess` denies `docker-compose*.yml`, and `index.php` sends no bytes before its headers.
-- [#2123](https://github.com/elan-registry/registry/pull/2123), [#2229](https://github.com/elan-registry/registry/pull/2229) —
-  `.deployignore` keeps `docker/` and `docker-compose.yml` off the server.
-- [#2130](https://github.com/elan-registry/registry/pull/2130) — Brevo cron clients honor `BREVO_API_HOST` only when `US_ENVIRONMENT` is `development`.
-- [#2232](https://github.com/elan-registry/registry/pull/2232) — `getBaseUrl()` returns `https://elanregistry.org`, not an empty string, with no request.
+- [#2228](https://github.com/elan-registry/registry/issues/2228) — Generated links have no `:80` or `:443` behind Cloudflare. Carried from Dev Environment.
+- [#2212](https://github.com/elan-registry/registry/pull/2212) — `.htaccess` blocks `/.git/` with a 403. Carried from Dev Environment.
+- [#2121](https://github.com/elan-registry/registry/pull/2121) —
+  `.htaccess` denies `docker-compose*.yml`, and `index.php` sends no bytes before its headers. Carried from Dev Environment.
+- [#2123](https://github.com/elan-registry/registry/pull/2123), [#2229](https://github.com/elan-registry/registry/pull/2229) —. Carried from Dev Environment.
+  `.deployignore` keeps `docker/` and `docker-compose.yml` off the server. Carried from Dev Environment.
+- [#2130](https://github.com/elan-registry/registry/pull/2130) —
+  Brevo cron clients honor `BREVO_API_HOST` only when `US_ENVIRONMENT` is `development`. Carried from Dev Environment.
+- [#2232](https://github.com/elan-registry/registry/pull/2232) —
+  `getBaseUrl()` returns `https://elanregistry.org`, not an empty string, with no request. Carried from Dev Environment.
