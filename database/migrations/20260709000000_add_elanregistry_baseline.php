@@ -304,10 +304,9 @@ final class AddElanregistryBaseline extends AbstractMigration
              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
 
-        // REVIEW (out of scope): `country` is dead code. usersc/join.php and
-        // usersc/user_settings.php both SELECT from it into $countrylist and
-        // then never read the variable. Created here for schema fidelity, left
-        // unseeded, and slated for removal in a follow-up issue.
+        // REVIEW (out of scope): `country` is dead code. usersc/join.php
+        // SELECTs from it into $countrylist and then never reads the variable.
+        // Created here for schema fidelity, left unseeded. Removal is #2304.
         $this->execute(
             "CREATE TABLE `country` (
                `id` int NOT NULL AUTO_INCREMENT,

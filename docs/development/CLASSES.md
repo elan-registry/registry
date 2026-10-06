@@ -370,13 +370,16 @@ a car the owner no longer owns isn't actionable for them; this is intentional
 divergence, not drift. Callers with a real failure build their own message
 from `failedCarsPhrase()` instead.
 
-`updateProfileAndSync(array $fields): OwnerSyncResult` is the write path for
-an owner's name, location, website, and email, with one known exception: it
-cannot clear the website to empty, because `update()` drops empty values.
-`usersc/user_settings.php` works around that one case with its own direct
-write, then calls `syncOwnerFieldsToCars()` to push the clear onto the
-owner's cars. For every other field, write through this method, not
-directly, or the cars keep stale copies.
+`updateProfileAndSync(array $fields): OwnerSyncResult` writes an owner's
+name, location, website, and email, then pushes them onto the owner's cars.
+Its caller is `usersc/user_settings.php`. It cannot clear the website to
+empty, because `update()` drops empty values. `user_settings.php` handles
+that one case with its own direct write, then calls
+`syncOwnerFieldsToCars()`. `app/admin/includes/process-owner-update.php`
+does not use this method yet. It calls `update()` and then
+`syncOwnerFieldsToCars()` itself, with the same effect. Any new write to
+these fields must also sync the cars, through this method or the same two
+calls, or the cars keep stale copies.
 
 It calls `update($fields)`, then `syncOwnerFieldsToCars()`, and returns that
 call's `OwnerSyncResult`. The owner ID comes from the already-loaded `Owner`,
@@ -398,7 +401,10 @@ pre-update values into the sync, below. `updateProfileAndSync()` clears
 cars the owner has, not their contact fields), so a failed reload leaves
 `_data` null, and `syncOwnerFieldsToCars()`'s own "not loaded" guard turns
 that into a thrown `OwnerDatabaseException` instead of silently syncing
-stale values while reporting success.
+stale values while reporting success. When `update()` fails before the
+commit, nothing was written, so the method restores the old `_data` before
+it throws. A caller can then still call `syncOwnerFieldsToCars()` on the
+same `Owner`, as `user_settings.php` does for a website clear.
 
 `ownerContactFields()` is the single definition of the nine denormalized
 owner-contact columns (`fname`, `lname`, `email` from `users`; `city`,
