@@ -31,6 +31,7 @@ use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
 use ElanRegistry\Input;
+use ElanRegistry\InputSanitizer;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 
@@ -60,8 +61,7 @@ $userId = (int)$user->data()->id;
 
 $validation = new Validate();
 $userdetails = $user->data();
-// Get User Profile Information
-// This is a hack and should be fixed - Get the Profile ID
+// Get the profile ID for the direct website-clear write further down.
 $profileQ = $db->query("SELECT id FROM profiles WHERE user_id = ?", [$userId]);
 $profileId = (int)$profileQ->results()[0]->id;
 // USER ID is in $user_id .  Use the USER ID to get the users Profile information
@@ -83,12 +83,6 @@ if ($userQ->count() > 0) {
     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "USER_SETTING(59) something is wrong with the user profile ");
     echo "<h2>An error occurred loading your account. Please contact the registry.</h2>";
     exit;
-}
-
-// Get the country list
-$countryQ = $db->query("SELECT name FROM country");
-if ($countryQ->count() > 0) {
-    $countrylist = $countryQ->results();
 }
 
 
@@ -390,7 +384,11 @@ if (!empty($_POST)) {
                                 if ($body !== '') {
                                     $email_sent = email($email, $subject, $body);
                                     if ($email_sent !== true) {
-                                        $safeToLog = preg_replace('/[\r\n\t]/', '', $email);
+                                        try {
+                                            $safeToLog = InputSanitizer::stripHeaderInjectionChars($email);
+                                        } catch (\RuntimeException $sanitizeException) {
+                                            $safeToLog = '(unloggable address — ' . $sanitizeException->getMessage() . ')';
+                                        }
                                         logger($userId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
                                             'user_settings.php: verify-email SEND FAILED for user ' . $userId . ' to ' . $safeToLog);
                                         $errors[] = 'Email NOT sent due to error. Please contact site administrator.';
@@ -633,7 +631,6 @@ if (!empty($_POST)) {
         }
     }
 
-    // Convert error/success arrays to UserSpice session messages (Issue #237)
     if (!empty($errors)) {
         foreach ($errors as $error) {
             usError($error);
@@ -651,18 +648,17 @@ if (!empty($_POST)) {
         Redirect::to($us_url_root . 'usersc/account.php');
     }
 }
-// mod to allow edited values to be shown in form after update
+// Re-fetch so the re-rendered form (see the fall-through above) shows the
+// just-written values, not the stale pre-update ones still in $userdetails.
 $user2 = new User();
 $userdetails = $user2->data();
 
-// Extend for profile
 $userQ2 = $db->query('SELECT * FROM profiles LEFT JOIN users ON user_id = users.id WHERE user_id = ?', [$userId]);
 if ($userQ2->count() > 0) {
     $profiledetails = $userQ2->first();
 } else {
     echo 'USER_SETTING(390) something is wrong with the user profile <br>';
 }
-// End Extend
 
 ?>
 <div id="page-wrapper">
@@ -671,7 +667,6 @@ if ($userQ2->count() > 0) {
             <div class="row">
                 <div class="col-12 col-md-10">
                     <h1>Update your user settings</h1> <br>
-                    <!-- Messages now handled by UserSpice session system in template (Issue #237) -->
 
                     <form name='updateAccount' action='user_settings.php' method='post'>
 

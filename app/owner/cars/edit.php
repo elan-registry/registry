@@ -70,7 +70,6 @@ if (Input::existsPost()) {
         }
     } // End Post with data
     
-    // Convert errors to UserSpice session messages (Issue #237)
     if (!empty($errors)) {
         foreach ($errors as $error) {
             usError($error);
