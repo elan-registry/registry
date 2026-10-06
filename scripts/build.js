@@ -7,6 +7,7 @@
 // devDependencies entirely.
 const esbuild = require('esbuild');
 const fs = require('fs');
+const { versatilesStyleOptions } = require('./versatiles-style-options.js');
 
 const jsFiles = [
   'app/assets/js/api-client.js',
@@ -191,7 +192,7 @@ Promise.all([
     signal: AbortSignal.timeout(10000),
   }).then((r) => r.json());
   osmTileJson.tiles = osmTileJson.tiles.map((t) => (/^https?:\/\//.test(t) ? t : VERSATILES_BASE + t));
-  const style = osm({ urls: { base: VERSATILES_BASE, osm: osmTileJson }, text: { language: 'en' }, theme: 'colorful' });
+  const style = osm(versatilesStyleOptions(VERSATILES_BASE, osmTileJson));
   fs.writeFileSync('usersc/js/versatiles-colorful.json', JSON.stringify(style));
   console.log('Generated usersc/js/versatiles-colorful.json');
 }).catch((err) => {
