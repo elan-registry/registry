@@ -39,7 +39,7 @@ in the verification email.
 - [#2212](https://github.com/elan-registry/registry/pull/2212) — `.htaccess` blocks `/.git/` with a 403. Carried from Dev Environment.
 - [#2121](https://github.com/elan-registry/registry/pull/2121) —
   `.htaccess` denies `docker-compose*.yml`, and `index.php` sends no bytes before its headers. Carried from Dev Environment.
-- [#2123](https://github.com/elan-registry/registry/pull/2123), [#2229](https://github.com/elan-registry/registry/pull/2229) —. Carried from Dev Environment.
+- [#2123](https://github.com/elan-registry/registry/pull/2123), [#2229](https://github.com/elan-registry/registry/pull/2229) —
   `.deployignore` keeps `docker/` and `docker-compose.yml` off the server. Carried from Dev Environment.
 - [#2130](https://github.com/elan-registry/registry/pull/2130) —
   Brevo cron clients honor `BREVO_API_HOST` only when `US_ENVIRONMENT` is `development`. Carried from Dev Environment.
