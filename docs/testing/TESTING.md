@@ -50,7 +50,7 @@ npm run test:functionality # Core functionality
 npm run test:ui           # UI consistency
 npm run test:debug        # Debug mode
 
-# Node unit tests for the Playwright helpers and docker-compose.yml (CI runs them in the eslint job)
+# Node unit tests for the Playwright helpers, docker-compose.yml, and the map style options (CI runs them in the eslint job)
 npm run test:js-unit
 ```
 

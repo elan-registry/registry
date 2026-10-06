@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
+use DateTimeImmutable;
 use ElanRegistry\AppConstants;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -830,14 +831,13 @@ class CarRepository
      * @param string|null $lastVerified      Datetime string, or null if never verified
      * @param string      $ownerLastUpdated  Datetime string (NOT NULL by schema)
      * @return bool True when the car counts as fresh
-     * @throws CarValidationException If either argument is an empty or unparseable date string
+     * @throws CarValidationException If either argument is an empty or unparseable date string,
+     *                                or if PHP cannot calculate the freshness cutoff
      */
     public static function isFresh(?string $lastVerified, string $ownerLastUpdated): bool
     {
-        $cutoff = strtotime('-1 year');
-
-        // Both operands are validated BEFORE either comparison, deliberately not
-        // short-circuiting on a fresh owner_last_updated. A malformed value is a
+        // Both operands are always parsed before the method returns. It does not
+        // short-circuit on a fresh owner_last_updated. A malformed value is a
         // programming error or data corruption, and it must surface whichever
         // operand carries it — a caller whose last_verified is garbage would
         // otherwise get a silent `true` for as long as the owner timestamp happened
@@ -845,12 +845,60 @@ class CarRepository
         // one place the PHP form intentionally diverges from the SQL form's OR
         // short-circuit: SQL cannot raise on a malformed DATETIME because the
         // column type makes one unrepresentable.
-        $ownerTs      = self::parseTimestamp($ownerLastUpdated, 'owner_last_updated');
-        $verifiedTs   = $lastVerified === null
+        $ownerDate    = self::parseTimestamp($ownerLastUpdated, 'owner_last_updated');
+        $verifiedDate = $lastVerified === null
             ? null
             : self::parseTimestamp($lastVerified, 'last_verified');
 
-        return $ownerTs >= $cutoff || ($verifiedTs !== null && $verifiedTs >= $cutoff);
+        // Read the clock once, so both operands are compared to the same second.
+        $cutoff = self::freshnessCutoff();
+
+        return $ownerDate->getTimestamp() >= $cutoff
+            || ($verifiedDate !== null && $verifiedDate->getTimestamp() >= $cutoff);
+    }
+
+    /**
+     * Decide if one datetime string is inside the 1-year freshness window.
+     *
+     * This is the window that isFresh() applies to each operand.
+     *
+     * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
+     *
+     * @param string $timestamp Datetime string in `Y-m-d H:i:s` format (a `T` separator is also accepted)
+     * @param string $column    Column name for the exception message
+     * @return bool True when $timestamp is on or after the time one year ago
+     * @throws CarValidationException If $timestamp is empty, malformed, or not a real calendar date,
+     *                                or if PHP cannot calculate the freshness cutoff
+     */
+    public static function isWithinFreshnessWindow(string $timestamp, string $column): bool
+    {
+        return self::parseTimestamp($timestamp, $column)->getTimestamp() >= self::freshnessCutoff();
+    }
+
+    /**
+     * Get the start of the 1-year freshness window as a Unix timestamp.
+     *
+     * This is the one PHP definition of the window. isFresh() and
+     * isWithinFreshnessWindow() compare parsed dates to it. isFresh() reads it
+     * once, so both of its comparisons use the same second. Each call reads the
+     * clock again, so two calls can return different values.
+     *
+     * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
+     *
+     * @return int Unix timestamp of the time one year ago
+     * @throws CarValidationException If strtotime() cannot calculate the time one year ago
+     */
+    public static function freshnessCutoff(): int
+    {
+        $cutoff = strtotime('-1 year');
+        // A cast would turn false into 0, the Unix epoch, and every car would be fresh.
+        if ($cutoff === false) {
+            throw new CarValidationException(
+                'CarRepository freshness check could not calculate the cutoff: strtotime(\'-1 year\') returned false.'
+            );
+        }
+
+        return $cutoff;
     }
 
     /**
@@ -870,23 +918,28 @@ class CarRepository
     }
 
     /**
-     * Parse a datetime string to a Unix timestamp, rejecting empty or malformed input.
+     * Parse a freshness datetime string, rejecting empty or malformed input.
      *
      * Validates the calendar, not merely the shape: a well-formed but
      * impossible date such as '2026-02-30 12:00:00' is rejected rather than
      * silently rolled over to 2026-03-02.
      *
-     * @param string $value  Datetime string to parse
+     * This is the one parser for `last_verified` and `owner_last_updated`.
+     * isFresh() and isWithinFreshnessWindow() use it. A caller that shows the
+     * date (for example CarBadges::verifiedStatus()) uses the returned object,
+     * so the shown date is the date that this method validated.
+     *
+     * @param string $value  Datetime string to parse (a `T` separator is also accepted)
      * @param string $column Column name, for the exception message
-     * @return int Unix timestamp
+     * @return DateTimeImmutable The parsed datetime
      * @throws CarValidationException If $value is empty, malformed, or not a
      *                                real calendar date
      */
-    private static function parseTimestamp(string $value, string $column): int
+    public static function parseTimestamp(string $value, string $column): DateTimeImmutable
     {
         if ($value === '') {
             throw new CarValidationException(
-                "CarRepository::isFresh received an empty {$column} value; "
+                "CarRepository freshness check received an empty {$column} value; "
                 . 'the column is NOT NULL by schema, so this indicates corrupt data or a caller bug.'
             );
         }
@@ -913,8 +966,8 @@ class CarRepository
         // reports rollovers through getLastErrors(), which is what makes the
         // calendar — not merely the shape — the thing being validated.
         $normalized = str_replace('T', ' ', $value);
-        $parsed     = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $normalized);
-        $errors     = \DateTimeImmutable::getLastErrors();
+        $parsed     = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $normalized);
+        $errors     = DateTimeImmutable::getLastErrors();
 
         if (
             $parsed === false
@@ -922,12 +975,12 @@ class CarRepository
                 && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0))
         ) {
             throw new CarValidationException(
-                "CarRepository::isFresh received a malformed {$column} value: '{$value}'. "
+                "CarRepository freshness check received a malformed {$column} value: '{$value}'. "
                 . 'Expected a valid Y-m-d H:i:s datetime as stored by the column.'
             );
         }
 
-        return $parsed->getTimestamp();
+        return $parsed;
     }
 
     /**
@@ -1119,20 +1172,38 @@ class CarRepository
      *                                  stored (CAS guard); null matches a NULL
      *                                  column, which is the state of a car that
      *                                  has never had an image
+     * @param string|null $ownerLastUpdated When set, the same UPDATE also writes
+     *                                  this value to owner_last_updated (an
+     *                                  owner removed a photo). It is one UPDATE,
+     *                                  not two, so the cars_update trigger writes
+     *                                  one cars_hist row and the CAS guard also
+     *                                  protects the timestamp. Null leaves
+     *                                  owner_last_updated unchanged.
      * @return bool True if the row was updated, false on concurrent modification
      * @throws CarDatabaseException If the query itself fails
      */
-    public function updateImage(int $carId, string $newJson, ?string $expectedJson): bool
-    {
+    public function updateImage(
+        int $carId,
+        string $newJson,
+        ?string $expectedJson,
+        ?string $ownerLastUpdated = null
+    ): bool {
         // `<=>` is MySQL's null-safe equality. Plain `=` is never true against a
         // NULL column, and cars.image is nullable with no default, so a car that
         // has never had an image cannot be matched by `image = ''` — the CAS
         // would reject every such update. `<=>` matches NULL to NULL and behaves
         // identically to `=` for non-NULL values.
-        $this->db->query(
-            'UPDATE cars SET image = ? WHERE id = ? AND image <=> ?',
-            [$newJson, $carId, $expectedJson]
-        );
+        if ($ownerLastUpdated === null) {
+            $this->db->query(
+                'UPDATE cars SET image = ? WHERE id = ? AND image <=> ?',
+                [$newJson, $carId, $expectedJson]
+            );
+        } else {
+            $this->db->query(
+                'UPDATE cars SET image = ?, owner_last_updated = ? WHERE id = ? AND image <=> ?',
+                [$newJson, $ownerLastUpdated, $carId, $expectedJson]
+            );
+        }
         if ($this->db->error()) {
             throw new CarDatabaseException('Image update query failed');
         }

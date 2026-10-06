@@ -18,6 +18,10 @@
       "Bash(composer test:integration *)",
       "Bash(composer check:docs *)",
       "Bash(gh label list *)"
+    ],
+    "deny": [
+      "Skill(commit-commands:commit-push-pr)",
+      "Skill(commit-commands:commit-push-pr:*)"
     ]
   },
   "hooks": {

@@ -1018,8 +1018,12 @@ function removeImage(int $carID, string $file): void
                 ->send();
         }
 
-        // Use Car class method to remove image
-        $imageRemoved = $car->removeImage($file);
+        // Only the car's owner resets the owner_last_updated freshness clock.
+        // Admins and editors also reach this path for someone else's car and
+        // must leave the clock untouched (same rule as updateCar()).
+        $isOwnerInitiated = (int) $car->data()->user_id === (int) $user->data()->id;
+
+        $imageRemoved = $car->removeImage($file, $isOwnerInitiated);
 
         if ($imageRemoved) {
             // Log successful removal
@@ -1029,7 +1033,8 @@ function removeImage(int $carID, string $file): void
                 ->withLogging(
                     $user->data()->id,
                     LogCategories::LOG_CATEGORY_CAR_ACTIONS,
-                    "Image removed: carId: {$carID}, image: {$file}"
+                    "Image removed: carId: {$carID}, image: {$file}, ownerInitiated="
+                        . ($isOwnerInitiated ? 'yes' : 'no')
                 )->send();
         } else {
             // Image not found in car's image list

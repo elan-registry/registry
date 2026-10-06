@@ -151,6 +151,37 @@ final class CarActionsSaveWiringTest extends TestCase
         );
     }
 
+    /**
+     * removeImage() must pass an owner-initiated flag to Car::removeImage(),
+     * derived from the car row's owner against the authenticated user
+     * (issue #1929). An admin or editor on another owner's car must get
+     * false, so the owner_last_updated freshness clock is not reset.
+     *
+     * Source inspection, for the same reason as the updateCar() test above.
+     */
+    public function testRemoveImageDerivesOwnerInitiatedFlagFromCarOwnerComparison(): void
+    {
+        $content = $this->readEndpointSource(self::SAVE_ENDPOINT);
+
+        $functionStart = strpos($content, 'function removeImage(');
+        $this->assertIsInt($functionStart, 'Could not locate the removeImage() function');
+
+        $nextFunctionStart = strpos($content, "\nfunction ", $functionStart + 1);
+        $this->assertIsInt($nextFunctionStart, 'Could not locate the end of the removeImage() function body');
+        $functionBody = substr($content, $functionStart, $nextFunctionStart - $functionStart);
+
+        $this->assertStringContainsString(
+            '$isOwnerInitiated = (int) $car->data()->user_id === (int) $user->data()->id;',
+            $functionBody,
+            'removeImage() must derive $isOwnerInitiated by comparing the car row\'s user_id to the authenticated user id'
+        );
+        $this->assertStringContainsString(
+            '$car->removeImage($file, $isOwnerInitiated);',
+            $functionBody,
+            'removeImage() must pass the derived $isOwnerInitiated flag to Car::removeImage()'
+        );
+    }
+
     // =========================================================================
     // save.php — buildCarDetails() owner-refresh security ordering (source inspection)
     // =========================================================================

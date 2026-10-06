@@ -51,7 +51,7 @@ gh issue list --label "gate-critical" --state open --json number,title
 ```
 
 `gate-critical` issues (per `docs/development/ISSUE_WORKFLOW.md`, currently
-#1752 and #1843) are load-bearing for a standing gate — never a closure
+issues #1752 and #1843) are load-bearing for a standing gate — never a closure
 candidate regardless of signal/workaround/breakage answers. Mark them
 **KEEP, gate-critical — exempt** in Step 4's table, not run through the
 three questions below. `signal:forced` issues also skip the gate; mark them

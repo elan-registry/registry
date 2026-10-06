@@ -17,11 +17,21 @@ use ElanRegistry\EmailTemplate;
  *   $vericode            — raw plaintext token; rawurlencode() is applied in this template
  *   $user_id             — user ID integer
  *   $join_vericode_expiry — verification link expiry in hours
+ *
+ * @var string $fname
+ * @var string $email
+ * @var string $vericode
+ * @var int|string $user_id
+ * @var int|string $join_vericode_expiry
  */
 
 $emailTemplate = new EmailTemplate();
 
 $verifyUrl = getBaseUrl() . '/users/verify.php?email=' . rawurlencode($email) . '&vericode=' . rawurlencode($vericode) . '&user_id=' . (int)$user_id;
+
+// Brevo rewrites every http link through its tracking domain, so the fallback is a
+// mailto contact, not a printed URL (#2147).
+$safeContact = htmlspecialchars(getFeedbackEmail(), ENT_QUOTES, 'UTF-8');
 
 $content = "
     <p>Hello <strong>" . htmlspecialchars($fname, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
@@ -30,8 +40,7 @@ $content = "
 
     " . $emailTemplate->createButton('Verify My Email Address', $verifyUrl, 'primary') . "
 
-    <p>Or copy and paste this link into your browser:</p>
-    <p style=\"word-break:break-all;font-size:13px;color:#6c757d;\">" . htmlspecialchars($verifyUrl, ENT_QUOTES, 'UTF-8') . "</p>
+    <p>If the button above does not work, contact <a href=\"mailto:" . $safeContact . "\">" . $safeContact . "</a>.</p>
 
     <p>This verification link expires in <strong>" . htmlspecialchars((string)$join_vericode_expiry, ENT_QUOTES, 'UTF-8') . " hours</strong>.</p>
 

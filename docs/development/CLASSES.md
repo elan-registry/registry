@@ -26,8 +26,9 @@ Use this table to choose the right class for your task:
 | Verification codes, verification timestamps, email-bounce tracking | CarVerificationManager | Business-logic layer over CarRepository; validates and throws rather than returning falsy on failure | `(new CarVerificationManager($repo))->generateVerificationCode()` |
 | Create database backups | BackupManager | SQL dump creation, verification, and retention cleanup | `$backup = new BackupManager(...)` |
 | Decode car images | CarImageProcessor | Decodes the `cars.image` JSON array into usable entries | `$processor->decodeAndProcessImages($car->image, ...)` |
-| Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification | `$car->removeImage($filename)` |
+| Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification. Pass `true` when the owner removes it, to reset `owner_last_updated` | `$car->removeImage($filename, $isOwnerInitiated)` |
 | Remove multiple images from a car | Car / CarImageProcessor | CAS-guarded bulk removal; returns `['updated' => bool, 'casConflict' => bool]` instead of throwing, for callers (e.g. `mvTmpImages()`'s move-failure cleanup) that already have their own error-reporting path | `$car->removeImages($filenames)` |
+| Decide which status badges (Sold, Verified, New) a car shows | CarBadges | One definition of the badges and the rule that picks them, for the account page and the cars list | `CarBadges::forCar($car->data())` |
 | Query car models by year/series | CarModel | Reference data for model filtering | `$models = (new CarModel())->getAvailableInYear(1970)` |
 
 ---
@@ -631,6 +632,13 @@ to provide a focused, testable data access layer wrapping the `cars`,
   to prevent SQL injection. Compares against MySQL's `NOW()`.
 - `stalenessSql(string $alias = 'cars'): string` - Static; returns
   `'NOT ' . freshnessSql($alias)` — the exact boolean negation of freshness.
+  The statistics page's "Fresh (12 mo)" figure (`verified_cars` from
+  `StatisticsDataService::getDataCompleteness()`) counts every car that is
+  fresh by `freshnessSql()`. Sold cars are included, so the figure and the
+  stale count add up to the total. The figure does not match the Verified
+  badge, because `CarBadges::resolve()` hides Verified on a sold car. The
+  label says "Fresh", not "Verified", for this reason. The response key stays
+  `verified_cars` because it is the API contract.
 - `isFresh(?string $lastVerified, string $ownerLastUpdated): bool` - PHP
   equivalent of `freshnessSql()` for in-code freshness checks, using PHP's clock
   where the SQL form uses MySQL's `NOW()`. First production caller is the admin
@@ -645,8 +653,30 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `CarValidationException` if either is empty, malformed, or not a real
   calendar date (`2026-02-30` is rejected rather than rolled over to March 2),
   because a malformed value there is a programming error, not a data state.
-  The hook catches this per-car and renders an isolated "Unknown" badge for
+  It reads `freshnessCutoff()` one time and compares both parsed operands to
+  that one value, so both comparisons use the same second. The hook catches this per-car and renders an isolated "Unknown" badge for
   that row rather than failing the whole panel.
+- `isWithinFreshnessWindow(string $timestamp, string $column): bool` -
+  Decide if one datetime string is inside the 1-year freshness window. It
+  compares the result of `parseTimestamp()` with `freshnessCutoff()`. Throws
+  `CarValidationException` if $timestamp is empty, malformed, or not a real
+  calendar date. The required `$column` parameter names the column in the
+  exception message. `CarBadges::verifiedStatus()` uses it to pick the shown
+  date after `isFresh()` says the car is fresh. Uses PHP's clock (see the
+  timezone note on `isFresh()`).
+- `parseTimestamp(string $value, string $column): DateTimeImmutable` - The one
+  parser for `last_verified` and `owner_last_updated`. Accepts `Y-m-d H:i:s`
+  (a `T` separator is also accepted) and rejects an empty value, a relative
+  value such as `'now'`, and a date that is not real (`2026-02-30`,
+  `0000-00-00`) with `CarValidationException`. `isFresh()` and
+  `isWithinFreshnessWindow()` use it. A caller that shows the date (for
+  example `CarBadges::verifiedStatus()`) shows the returned object, so the
+  shown date is the validated date.
+- `freshnessCutoff(): int` - The one PHP definition of the window start: the
+  Unix timestamp of one year ago, from PHP's clock. Each call reads the clock
+  again. `isFresh()` reads it one time for both of its comparisons. Throws
+  `CarValidationException` if `strtotime('-1 year')` returns false, because a
+  cast to 0 would make every car fresh.
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
   bounce/suppression state for every car a user owns (`id`, `model`, `series`,
   `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
@@ -668,7 +698,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `updateSoldDate(int $carId, string $soldDate): bool` - **Deprecated** (#2107), no
   production callers — `CarVerificationManager::markSold()` writes `solddate` via
   `updateCar()` directly to set `owner_last_updated` atomically alongside it
-- `updateImage(int $carId, string $newJson, string $expectedJson): bool` - Compare-and-swap update of the image JSON column; returns `false` on concurrent modification
+- `updateImage(int $carId, string $newJson, ?string $expectedJson, ?string $ownerLastUpdated = null): bool` -
+  Compare-and-swap update of the image JSON column; returns `false` on
+  concurrent modification. A non-null `$ownerLastUpdated` also writes that
+  column (see the method's PHPDoc and "What resets `owner_last_updated`" below)
 - `findByChassisKey(string $year, string $type, string $chassis): ?object` -
   Find a car by its composite chassis key (year, type, chassis); used by
   `chassis-availability.php` and `transfer-request.php` to check chassis
@@ -693,6 +726,37 @@ to provide a focused, testable data access layer wrapping the `cars`,
 
 - `CarDatabaseException` - Query failure
 - `CarNotFoundException` - `deleteCar()` when no row matched
+
+**What resets `owner_last_updated`** (#1929):
+
+`owner_last_updated` records the last *owner action*: something the car's
+owner does to their own car that shows the record is being kept current.
+`freshnessSql()`, `stalenessSql()` and `isFresh()` read it, so every
+freshness badge, the statistics vector and the verification-eligibility
+query depend on this list. "Owner" means the current user's ID equals the
+car's `user_id` (`app/api/cars/save.php`). An admin or editor acting on
+another owner's car is never an owner action.
+
+| Action | Code path | Resets | Test |
+| --- | --- | --- | --- |
+| Owner edit, including image upload and reorder | `Car::update($fields, true)` | Yes | `CarEditOwnerColumnRefreshTest::testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot`, `CarImageOwnerFreshnessTest::testOwnerEditThatChangesImagesResetsOwnerLastUpdated` |
+| Owner removes a photo | `Car::removeImage($file, true)` → `CarRepository::updateImage(..., $ownerLastUpdated)` | Yes | `CarImageOwnerFreshnessTest::testOwnerRemovalResetsOwnerLastUpdatedAndWritesOneHistoryRow` |
+| Verify link | `CarVerificationManager::markVerified()` | Yes | `CarVerificationTest::testMarkVerifiedResetsOwnerLastUpdatedWithOneHistoryRow` |
+| Sold link | `CarVerificationManager::markSold()` | Yes | `CarVerificationTest::testMarkSoldResetsOwnerLastUpdatedWithOneHistoryRow` |
+| Car creation | column default (`NOT NULL`, `CURRENT_TIMESTAMP`), set by migration `20260905172137` | Set, not reset | Not an owner action, so no reset test. `OwnerSyncOwnerFieldsToCarsTest::testNullOwnerLastUpdatedNoLongerReachableAfterSchemaChange` checks that the column is `NOT NULL` |
+| Opt-out link | `CarVerificationManager::setSuppressedForOwner()` | No: opting out confirms nothing | `CarVerificationManagerSuppressForOwnerTest::testOptOutDoesNotChangeOwnerLastUpdated` |
+| Owner email or profile change, synced to cars | `Owner::syncOwnerFieldsToCars()` | No: it would mark every car fresh | `OwnerSyncOwnerFieldsToCarsTest::testOwnerLastUpdatedUnchangedAndCarStaysVerificationEligible` |
+| Ownership transfer | `CarAdministrationService::transfer()` | No: a transfer is not a re-attestation (#1878) | `CarTransferTest::testTransferDoesNotChangeOwnerLastUpdated` |
+| Admin or editor edits another owner's car | `Car::update($fields, false)` | No | `CarEditOwnerColumnRefreshTest::testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` |
+| Admin or editor removes a photo on another owner's car | `Car::removeImage($file, false)` | No | `CarImageOwnerFreshnessTest::testNonOwnerRemovalDoesNotResetOwnerLastUpdated` |
+| Clean-up after a failed upload | `Car::removeImages()` | No | `CarImageOwnerFreshnessTest::testRemoveImagesCleanupDoesNotResetOwnerLastUpdated` |
+| Car merge | `CarAdministrationService::merge()` | No | `CarMergeTest::testMergeDoesNotChangeOwnerLastUpdatedOnSurvivingCar` |
+| Reconcile owner fields (maintenance script 26) | `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` | No | `ReconcileOwnerFieldsExecuteTest::testOwnerLastUpdatedNeverTouched` |
+
+A new action that resets the date must write `owner_last_updated` in the
+same UPDATE as its other columns (`Car::update()`'s `$isOwnerInitiated`, or
+`updateImage()`'s `$ownerLastUpdated`), so the change makes one `cars_hist`
+row. Add a row and a test here when you add one.
 
 **Used By**:
 
@@ -880,6 +944,149 @@ on success.
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
 - [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`,
   `cars.vericode_sent_at`, `cars.email_bounced`, `cars.email_bounced_address`, `cars.email_suppressed`, `cars.solddate`
+
+---
+
+### CarBadges
+
+**Location**: `/usersc/classes/Car/CarBadges.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: One definition of the status badges a car can show (#1900). The
+account page hero and the cars list get badge keys from this class. The rule
+that picks the badges is in `resolve()` only. `html()` is the only badge renderer. Pages
+call it directly, and the cars list gets its output from `decorateRows()`.
+The class is final, has a private constructor, and has only static methods.
+
+The Vehicle Information card (`app/views/cars/_vehicle_info_card.php`) does
+not call `forCar()` or `resolve()`. It draws two stamps: a Sold stamp in its
+Sold row (from `isSold()` and `soldDate()`), and a Verified stamp in its
+Verified row (from `verifiedStatus()`). The card is on the account page, the
+car details page, and the public vericode landing page, so all three show
+these stamps.
+
+**Badges**:
+
+| Key | Label | Shows when |
+| --- | --- | --- |
+| `new` | New | The car is new (cars list only) |
+| `sold` | Sold | The car is sold |
+| `verified` | Verified (with a check mark icon) | The car is fresh, not sold, and not new |
+
+The display order is New, Sold, Verified. Each definition also has `tooltip`
+and `tone` (the CSS tone, `er-badge--<tone>`). The `verified` tooltip is
+"The owner confirmed, added, or updated this car's record in the last 12
+months." The Verified row help button on the Vehicle Information card uses
+the same sentence. The `new` tooltip gets its
+numbers (90 days, 5 newest) from `CarShowcaseService::NEW_DAYS` and
+`CarShowcaseService::NEW_FLOOR`, the same constants that
+`getNewCarIds()` uses.
+
+**Methods**:
+
+```php
+public static function resolve(bool $sold, bool $fresh, bool $isNew): array
+public static function forCar(object $car): array
+public static function decorateRows(array $rows, array $newIds): array
+public static function html(array $keys, string $style = 'flat'): string
+public static function isSold(mixed $solddate): bool
+public static function soldDate(mixed $solddate, int|string|null $carId = null): ?DateTimeImmutable
+public static function verifiedStatus(object $car): ?array
+```
+
+- `resolve()` is a pure function. It applies the "Shows when" rule in the
+  table above and returns the badge keys in display order.
+- `forCar()` takes a car record (for example `Car::data()`). Sold comes
+  from `isSold()`. Fresh comes from `CarRepository::isFresh()` with
+  `last_verified` and `owner_last_updated`. It never adds the `new` badge,
+  because New is for the cars list only (`decorateRows()`).
+- `decorateRows()` adds a `badges` key and a `badges_html` key to each cars
+  DataTables row. `badges_html` is the flat badges from `html()` in a
+  `<div class="er-badges ...">` row, or `''` when the car has no badges.
+  `car-list.js` puts it after the Details link. The method reads
+  `solddate`, the `is_fresh` column (from `CarRepository::freshnessSql()`),
+  and `id`. A row without `is_fresh` is not fresh, and the method writes one
+  log entry per call for those rows. It removes `is_fresh` from the row, so
+  the API response does not expose it. Rows are objects (the
+  `Database::results()` shape). Each row is cloned, so the input does not
+  change. `$newIds` comes from
+  `CarShowcaseService::getNewCarIds()`.
+- `html()` returns one `<span class="er-badge er-badge--<tone>">` per known
+  key, in the order of `$keys`. `$style` is `'flat'` (pill) or `'stamp'`
+  (adds `er-badge--stamp`). Each span has a Bootstrap tooltip and
+  `tabindex="0"`. The icon goes in an `aria-hidden="true"` span. Unknown keys
+  give nothing. An empty result is `''`. There is no wrapper, so the caller
+  owns the container. All values are escaped with `htmlspecialchars()`.
+- `isSold()` is the sold rule for all pages: a `solddate` that is not null
+  and not `''`. The save paths (`app/api/cars/save.php`, `CarValidator`)
+  accept only a real `Y-m-d` date, so `isSold()` does not check the value
+  again. `forCar()`, `decorateRows()`, and the vericode pages use it.
+- `soldDate()` returns the sold date at midnight for display, or null when
+  the car is not sold or the value is not a valid `Y-m-d` date. The account
+  page, the car details page, and the vericode landing page use it for the
+  Vehicle Information card. The vericode "already sold" notice also uses it.
+  A sold car with a bad value (for example a zero date or `2024-02-30`) logs
+  one entry to `LOG_CATEGORY_CAR_ERRORS`, with the car ID from `$carId` or
+  `unknown`. `isSold()` is still true for that car, so the account hero and
+  the cars list show Sold. The vericode landing page disables its sold button,
+  and the "already sold" notice leaves out the date. The Vehicle Information
+  card has no Sold row.
+- `verifiedStatus()` returns the Verified row status for one car record. Returns
+  an array with `source` and `date` keys when: the car is not sold, the car is
+  fresh (verified or updated by its owner within the last 12 months), and the
+  freshness dates are valid strings. Returns null otherwise (sold car, stale car,
+  or missing/malformed dates). On malformed dates it logs one entry to the car
+  errors category. It never reads `mtime`. `CarRepository::isFresh()` decides
+  if the car is fresh, so the rule is not copied here. For a fresh car, the
+  source is `'confirmed'` when `last_verified` is not null and
+  `CarRepository::isWithinFreshnessWindow()` is true for it, else `'current'`.
+  The date is the `CarRepository::parseTimestamp()` result for the column of
+  that source, so it is the validated date. The return shape is `array{source: 'confirmed'|'current', date: DateTimeImmutable}`.
+  Used by the Vehicle Information card.
+
+**Behavior on bad date data**: `forCar()` does not throw. When
+`owner_last_updated` is missing or is not a string, `last_verified` is not
+a string or null, or `CarRepository::isFresh()` throws
+`CarValidationException`, the method writes one entry to the log
+(`LogCategories::LOG_CATEGORY_CAR_ERRORS`) and treats the car as not fresh.
+The Verified badge does not show. Sold still shows. `verifiedStatus()` does
+the same and returns null. The log message names the method
+(`CarBadges::forCar` or `CarBadges::verifiedStatus`), so the log shows which
+page part has no Verified status.
+
+**Usage**:
+
+```php
+use ElanRegistry\Car\CarBadges;
+
+// Account page hero (in the template: <?= ... ?>)
+echo CarBadges::html(CarBadges::forCar($carData), 'stamp');
+
+// Cars list API (app/api/cars/list.php)
+$response['data'] = CarBadges::decorateRows(
+    $response['data'],
+    (new CarShowcaseService())->getNewCarIds()
+);
+```
+
+**How to add a badge**:
+
+1. Add one entry to `CarBadges::BADGES`. Set `label`, `icon`, `tooltip`,
+   and `tone`.
+2. Add one line for the new key in `resolve()`, in display order, and a
+   parameter if the rule needs new input.
+3. Add a `--er-badge-<tone>` token and an `.er-badge--<tone>` rule in
+   `usersc/templates/customizer.css`.
+4. Add a case to `CarBadgesTest`, and add the badge to the Car status badges
+   section of `app/admin/design-system.php`.
+
+Do not add the new rules to a template or to `car-list.js`. `html()` draws
+any key in `BADGES`, and the cars list JS needs no change.
+
+**See Also**:
+
+- [UI_STANDARDS.md](UI_STANDARDS.md#car-status-badges) - Tokens, classes, and accessibility rules
 
 ---
 

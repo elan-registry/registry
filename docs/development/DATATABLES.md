@@ -56,6 +56,11 @@ const table = $("#cartable").DataTable({
 - Sortable by year, type, chassis
 - Image carousel rendering in "Image" column
 - Details button with link to car details page
+- Status badges (New, Sold, Verified) in a row under the Details button.
+  `list.php` adds `badges` (keys) and `badges_html` (escaped HTML) to each
+  row with `CarBadges::decorateRows()` and removes `is_fresh`. The JS adds
+  `badges_html` after the Details link and starts the tooltips in
+  `drawCallback`. See `CLASSES.md` (CarBadges).
 
 ### Factory Information Page
 

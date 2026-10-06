@@ -221,6 +221,26 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
+     * #1929 (decided on #1878): a transfer is not a re-attestation, so it
+     * must leave owner_last_updated exactly as it was.
+     */
+    #[Group('fast')]
+    public function testTransferDoesNotChangeOwnerLastUpdated(): void
+    {
+        $old = date('Y-m-d H:i:s', strtotime('-2 years'));
+        $this->seedOwnerLastUpdated($this->testCarId, $old);
+
+        $before = $this->getOwnerLastUpdated($this->testCarId);
+        $this->assertSame($old, $before, 'Precondition: the seeded value must be stored as written');
+
+        (new Car($this->testCarId))->transfer($this->targetUserId, 'Test transfer freshness', 'NEWOWNER', $this->testUserId);
+
+        $after = $this->db->query('SELECT user_id, owner_last_updated FROM cars WHERE id = ?', [$this->testCarId])->first();
+        $this->assertSame($this->targetUserId, (int) $after->user_id, 'Precondition: the transfer must have happened');
+        $this->assertSame($before, (string) $after->owner_last_updated, 'transfer() must not change owner_last_updated');
+    }
+
+    /**
      * Test car transfer updates location data if available
      */
     #[Group('fast')]

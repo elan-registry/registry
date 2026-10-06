@@ -47,23 +47,15 @@
 // own guard) — the fixture refuses to run against a deployed environment.
 
 const { test, expect } = require('@playwright/test');
-const { execFileSync } = require('node:child_process');
-const path = require('node:path');
+const { runPhpFixture } = require('./fixture-runner.js');
 const { ensureLoggedIn } = require('./auth-helper.js');
 
 let bouncedUserId;
 let cleanUserId;
 
 test.beforeAll(() => {
-    const fixturePath = path.join(__dirname, 'local', 'fixtures', 'seed-bounced-car.php');
-    // execFileSync (not execSync) — no shell involved, matching this repo's
-    // existing PHP-fixture-invocation precedent in
-    // local/email-button-row-responsive.spec.js. The plan's Test Plan
-    // section says "via execSync"; execFileSync here achieves the same
-    // effect (run the fixture, capture stdout) without shelling out, which
-    // this project's own tooling flags as unnecessary risk even though
-    // fixturePath is a fixed, non-user-controlled path.
-    const output = execFileSync('php', [fixturePath], { encoding: 'utf8' });
+    // The fixture needs the database, which is reachable only in the app container.
+    const output = runPhpFixture('tests/playwright/local/fixtures/seed-bounced-car.php');
 
     const seeded = JSON.parse(output.trim());
     bouncedUserId = seeded.bouncedUserId;

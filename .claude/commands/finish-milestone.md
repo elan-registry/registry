@@ -292,8 +292,9 @@ since they touch different files.
 
 ### Step 6.5: Release retrospective — three questions
 
-Five minutes, appended to the release notes under a `## Retrospective`
-heading. One line each is enough.
+Five minutes. One line each is enough. The release notes template has no
+retrospective section, so the answers go to the gitignored
+`docs/plans/releases/<version>-retro.md`, not to the release notes.
 
 Ask the user, one at a time:
 
@@ -306,9 +307,9 @@ Ask the user, one at a time:
 3. > "What signal arrived during this milestone that we ignored — and was that
    > right?"
 
-Record the answers in the release notes and carry question 1's answer into the
-next `/start-milestone` Step 4.4, so the theme is chosen knowing what the last
-one over-built.
+Write the answers to `docs/plans/releases/<version>-retro.md`. The next
+`/start-milestone` Step 4.4 reads that file, so the theme is chosen knowing
+what the last one over-built.
 
 ### Step 6.6: Render the deploy sheet for review
 
@@ -326,7 +327,10 @@ not at `/release-milestone` time.
    contains `CREATE TRIGGER`, a changed `scripts/server-hooks/post-receive`,
    new `securePage(`-calling pages needing `21-Fix-Page-Permissions.php`
    registration, new `app/admin/scripts/fix/` or `maintenance/` files, and
-   `.env.example` additions). Exit 2 means it could not diff — fix the
+   `.env.example` additions). It also prints `migration-modified: CHECK`
+   when the milestone edits an existing migration. Confirm that the edit
+   changes no schema (see `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md`).
+   Exit 2 means it could not diff — fix the
    branch reference and re-run. It cannot detect the `release-actions`
    condition: read each merged issue PR's own body (Step 4's list) for a
    documented manual verification procedure (e.g. a webhook registration/
@@ -611,14 +615,11 @@ Then summarize:
 - Remind: if wiki pages were updated, confirm they were published via
   `/publish-wiki` in the wiki clone — this repo's PR does not carry them
 
-Use AskUserQuestion for the next step:
-
-- Question: "Milestone gated and documented. Run `/review-milestone $ARGUMENTS` now?"
-- Options: `Run /review-milestone $ARGUMENTS` (recommended — opens the PR,
-  verifies CI review posted, confirms green), `Ask more questions first`
-- If the user picks `/review-milestone`, invoke it immediately via the
-  Skill tool. If they pick the discuss option, drop into normal
-  conversation and don't re-offer until they ask what's next.
+End by telling the user to type `/review-milestone $ARGUMENTS` (it opens
+the PR, verifies that the CI review posted, and confirms green). Do not start
+it through the Skill tool: it declares `model: sonnet`, and a Skill-tool
+start runs it on this command's model (CLAUDE.md, "Hand-offs between
+commands").
 
 ## Important
 

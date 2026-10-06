@@ -361,6 +361,90 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Evaluate a datetime expression on the MySQL server and return the result.
+     *
+     * Freshness fixtures must come from MySQL's clock, not PHP's.
+     * `CarRepository::freshnessSql()` compares against MySQL's `NOW()`, and the
+     * two clocks can differ. On the reference dev box PHP is UTC and MySQL is
+     * Pacific, 7 hours apart, which would swamp a 60-second boundary offset.
+     *
+     * @param string $expression A trusted SQL datetime expression, e.g. 'NOW() - INTERVAL 30 DAY'
+     * @return string The value as MySQL formats it
+     */
+    protected function mysqlDatetime(string $expression): string
+    {
+        $row = $this->db->query("SELECT {$expression} AS t")->first();
+
+        return (string) $row->t;
+    }
+
+    /**
+     * Seed a car's owner_last_updated to a known value, so a test can later
+     * assert whether an operation changed it. Pins the #1929 freshness
+     * contract's precondition.
+     *
+     * @param int $carId The car ID to update
+     * @param string $when The value to store (e.g. an old timestamp string)
+     */
+    protected function seedOwnerLastUpdated(int $carId, string $when): void
+    {
+        $result = $this->db->query('UPDATE cars SET owner_last_updated = ? WHERE id = ?', [$when, $carId]);
+        $this->assertFalse($result->error(), 'Test setup: seeding owner_last_updated must succeed: ' . $result->errorString());
+        // Read back, so a seed that wrote nothing cannot leave the creation-time
+        // default ("now") in place and let a reset test pass without a reset.
+        $this->assertSame(
+            $when,
+            $this->getOwnerLastUpdated($carId),
+            'Test setup: owner_last_updated must read back as seeded (pass a Y-m-d H:i:s value)'
+        );
+    }
+
+    /**
+     * Read a car's current owner_last_updated. Pins the #1929 freshness
+     * contract's read side.
+     *
+     * @param int $carId The car ID to read
+     * @return string The stored owner_last_updated value
+     */
+    protected function getOwnerLastUpdated(int $carId): string
+    {
+        $row = $this->db->query('SELECT owner_last_updated FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertIsObject($row, "Car {$carId} must exist");
+
+        return (string) $row->owner_last_updated;
+    }
+
+    /**
+     * Count a car's cars_hist audit rows, so a test can assert an operation
+     * wrote exactly one row. Pins the #1929 freshness contract's one-UPDATE
+     * guarantee (image and owner_last_updated change together).
+     *
+     * @param int $carId The car ID to count history rows for
+     * @return int The number of cars_hist rows for this car
+     */
+    protected function countCarsHistRows(int $carId): int
+    {
+        $row = $this->db->query('SELECT COUNT(*) AS cnt FROM cars_hist WHERE car_id = ?', [$carId])->first();
+        $this->assertIsObject($row, "Expected a cars_hist count row for car {$carId}");
+
+        return (int) $row->cnt;
+    }
+
+    /**
+     * Ids of every car findVerificationEligible() returns, in one unbounded call.
+     * A fixed window is not enough: a new fixture car sorts with the
+     * never-verified cars, so on a large test schema it can fall outside the window.
+     *
+     * @return list<int>
+     */
+    protected function allVerificationEligibleCarIds(): array
+    {
+        $rows = (new \ElanRegistry\Car\CarRepository($this->db))->findVerificationEligible(PHP_INT_MAX, 0);
+
+        return array_map(static fn (object $row): int => (int) $row->id, $rows);
+    }
+
+    /**
      * Delete a test user from database
      *
      * @param int $userId The user ID to delete
@@ -415,19 +499,21 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Delete a car's `cars` and `cars_hist` rows, in the order required to avoid
      * orphaning the cars_delete trigger's own history row (#1503, #1551): cars
-     * must go first, then cars_hist.
+     * must go first, then cars_hist. er_email_events has no foreign key to cars,
+     * so its rows are deleted first, as CarAdministrationService does.
      *
      * @param int $carId The car ID to delete
      */
     private function deleteCarRows(int $carId): void
     {
+        $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
         $this->db->delete('cars', ['id', '=', $carId]);
         $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
     }
 
     /**
-     * Delete a car's `cars` and `cars_hist` rows (see deleteCarRows()) and self-verify
-     * both are actually gone afterward. DB::query() never throws on an execute-time
+     * Delete a car's `er_email_events`, `cars` and `cars_hist` rows (see deleteCarRows())
+     * and self-verify the `cars` and `cars_hist` rows are actually gone afterward. DB::query() never throws on an execute-time
      * failure (see countMatchingLogs() below), so the verification queries check
      * error() explicitly — otherwise a failed verification SELECT would return zero
      * rows and the assertion would pass vacuously, "confirming" a deletion that may

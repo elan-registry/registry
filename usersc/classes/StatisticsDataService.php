@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ElanRegistry;
 
+use ElanRegistry\Car\CarRepository;
+
 /**
  * StatisticsDataService.php
  * Centralized data service for statistics
@@ -297,6 +299,13 @@ class StatisticsDataService {
      * @return object|null Data completeness metrics
      */
     public function getDataCompleteness(): object|null {
+        // verified_cars counts every car that is fresh by CarRepository::freshnessSql(), the SQL
+        // form of isFresh(). Sold cars are included. It is the exact complement of stalenessSql().
+        // It does not match CarBadges, which hides Verified on sold cars, so the chart label is
+        // "Fresh (12 mo)". The key name stays verified_cars because it is the API contract. It is
+        // SUM(CASE ...), not COUNT(CASE ... ELSE 0 END): COUNT counts non-NULL values, so it
+        // would count every row. COALESCE keeps an empty registry at 0, because
+        // SUM over zero rows returns NULL.
         return $this->executeQuery(
             "SELECT
                 COUNT(*) as total_cars,
@@ -307,7 +316,7 @@ class StatisticsDataService {
                 COUNT(solddate) as has_sold_date,
                 COUNT(image) as has_image,
                 COUNT(lat) as has_location,
-                COUNT(last_verified) as verified_cars
+                COALESCE(SUM(CASE WHEN " . CarRepository::freshnessSql() . " THEN 1 ELSE 0 END), 0) as verified_cars
              FROM cars",
             true
         );

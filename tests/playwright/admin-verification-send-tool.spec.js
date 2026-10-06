@@ -102,8 +102,7 @@
 // which would be the observable signal that the send path had in fact run.
 
 const { test, expect } = require('@playwright/test');
-const { execFileSync } = require('node:child_process');
-const path = require('node:path');
+const { runPhpFixture } = require('./fixture-runner.js');
 const { ensureLoggedIn, login, logout } = require('./auth-helper.js');
 
 let eligibleCarId;
@@ -125,8 +124,8 @@ let suppressedCarId;
 let _suppressedUserId;
 
 test.beforeAll(() => {
-    const fixturePath = path.join(__dirname, 'local', 'fixtures', 'seed-verification-send-tool.php');
-    const output = execFileSync('php', [fixturePath], { encoding: 'utf8' });
+    // The fixture needs the database, which is reachable only in the app container.
+    const output = runPhpFixture('tests/playwright/local/fixtures/seed-verification-send-tool.php');
 
     const seeded = JSON.parse(output.trim());
     eligibleCarId = seeded.eligibleCarId;

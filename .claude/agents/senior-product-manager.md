@@ -1,7 +1,7 @@
 ---
 name: senior-product-manager
 description: "Use this agent proactively for GitHub issue creation and refinement, backlog prioritization, milestone planning, and feature scoping — invoke it as soon as these topics come up, without waiting for the user to ask. It sets scope, writes testable acceptance criteria, and recommends milestone and priority."
-model: opus
+model: sonnet
 color: orange
 ---
 

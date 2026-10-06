@@ -73,6 +73,17 @@ test.describe('Maps and Charts', () => {
     ).toHaveLength(0);
   });
 
+  // The render tests pass for a globe and a flat map alike. Check the built
+  // style, so a library default that turns the maps back into a globe fails
+  // here. The style file is git-ignored build output: without a run of
+  // `npm run build`, the server returns 404 and this test fails.
+  test('generated map style uses the flat Mercator projection', async ({ request }) => {
+    const response = await request.get('usersc/js/versatiles-colorful.json');
+    expect(response.status()).toBe(200);
+    const style = await response.json();
+    expect(style.projection?.type).toBe('mercator');
+  });
+
   test('statistics page marker data is inlined as JSON', async ({ page }) => {
     await page.goto('app/owner/reports/statistics.php');
     await page.waitForLoadState('networkidle');
@@ -235,6 +246,81 @@ test.describe('Maps and Charts', () => {
       ).length
     );
     expect(visibleAfterRecheck).toBe(initialR26Count);
+  });
+
+  // The Data Quality tab loads its numbers with a POST to statistics.php, so the
+  // route below serves fixed JSON. The assertions then test the rendering only:
+  // the radar field for "Fresh (12 mo)" and the division guard.
+  const SAMPLE_COMPLETENESS = {
+    total_cars: 10,
+    has_chassis: 8,
+    has_color: 7,
+    has_engine: 6,
+    has_purchase_date: 5,
+    has_sold_date: 2,
+    has_image: 4,
+    has_location: 3,
+    verified_cars: 0,
+  };
+
+  async function openQualityTab(page, completeness) {
+    await page.route('**/app/api/shared/statistics.php*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          message: 'Statistics data loaded',
+          tab: 'quality',
+          data: { completeness },
+        }),
+      });
+    });
+
+    await page.goto('app/owner/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#quality-tab').click();
+    await page.waitForFunction(() => !!(window.statisticsCharts && window.statisticsCharts.dataCompleteness), null, { timeout: 15000 });
+
+    return page.evaluate(() => {
+      const chart = window.statisticsCharts.dataCompleteness;
+      return {
+        labels: chart.data.labels,
+        values: chart.data.datasets[0].data,
+      };
+    });
+  }
+
+  test('data quality radar shows a Fresh (12 mo) field at 0 when no car is fresh', async ({ page }) => {
+    const { labels, values } = await openQualityTab(page, { ...SAMPLE_COMPLETENESS, verified_cars: 0 });
+
+    expect(labels).toHaveLength(7);
+    expect(labels[6]).toBe('Fresh (12 mo)');
+    expect(values).toHaveLength(7);
+    // Every value is checked, so a swapped prop in COMPLETENESS_FIELDS fails the test.
+    expect(values).toEqual([80, 70, 60, 50, 40, 30, 0]);
+
+    await expect(page.locator('[data-metric="verified"]')).toHaveText('0%');
+  });
+
+  test('data quality radar shows Fresh (12 mo) as a percentage of all cars', async ({ page }) => {
+    const { values } = await openQualityTab(page, { ...SAMPLE_COMPLETENESS, verified_cars: 9 });
+
+    expect(values[6]).toBe(90);
+    await expect(page.locator('[data-metric="verified"]')).toHaveText('90%');
+  });
+
+  test('data quality radar shows 0 for every field, not NaN, when the registry is empty', async ({ page }) => {
+    const { labels, values } = await openQualityTab(
+      page,
+      Object.fromEntries(Object.keys(SAMPLE_COMPLETENESS).map((k) => [k, 0]))
+    );
+
+    expect(labels).toHaveLength(7);
+    expect(values).toHaveLength(7);
+    for (const v of values) {
+      expect(v).toBe(0);
+    }
   });
 
   test('no requests to Google Maps domains on statistics page', async ({ page }) => {

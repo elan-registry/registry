@@ -601,6 +601,70 @@ final class CarRepositoryTest extends TestCase
     }
 
     // =========================================================================
+    // updateImage() owner_last_updated tests (issue #1929)
+    // =========================================================================
+
+    /**
+     * An owner photo removal writes owner_last_updated in the same UPDATE as
+     * the image, so the cars_update trigger writes one cars_hist row. The CAS
+     * guard stays on the WHERE clause.
+     */
+    public function testUpdateImageWithTimestampIncludesOwnerLastUpdatedInSql(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET image = ?, owner_last_updated = ? WHERE id = ? AND image <=> ?',
+                ['["new.jpg"]', '2026-09-29 10:00:00', 1, '["old.jpg"]']
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+
+        $this->assertTrue($repo->updateImage(1, '["new.jpg"]', '["old.jpg"]', '2026-09-29 10:00:00'));
+    }
+
+    /**
+     * Without a timestamp, the query must not touch owner_last_updated.
+     */
+    public function testUpdateImageWithoutTimestampSqlUnchanged(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET image = ? WHERE id = ? AND image <=> ?',
+                ['["new.jpg"]', 1, '["old.jpg"]']
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+
+        $this->assertTrue($repo->updateImage(1, '["new.jpg"]', '["old.jpg"]'));
+    }
+
+    /**
+     * The timestamp does not weaken the CAS guard: 0 rows changed still
+     * returns false.
+     */
+    public function testUpdateImageCasFailureReturnsFalseWithTimestampArgSet(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+
+        $this->assertFalse($repo->updateImage(1, '["new.jpg"]', '["old.jpg"]', '2026-09-29 10:00:00'));
+    }
+
+    // =========================================================================
     // deleteCar() rows-affected guard tests (issue #1311)
     // =========================================================================
 

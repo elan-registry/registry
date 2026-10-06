@@ -79,18 +79,6 @@ parameters:
 			path: app/views/cars/_factory_data_card.php
 
 		-
-			message: '#^Variable \$carData might not be defined\.$#'
-			identifier: variable.undefined
-			count: 8
-			path: app/views/cars/_vehicle_info_card.php
-
-		-
-			message: '#^Variable \$headingTag might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/views/cars/_vehicle_info_card.php
-
-		-
 			message: '#^Variable \$from might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
@@ -307,12 +295,6 @@ parameters:
 			path: tests/unit/location/LocationServiceCacheTest.php
 
 		-
-			message: '#^Using nullsafe property access "\?\-\>website" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: usersc/account.php
-
-		-
 			message: '#^File ends with a trailing whitespace\. This may cause problems when running the code in the web browser\. Remove the closing \?\> mark or remove the whitespace\.$#'
 			identifier: whitespace.fileEnd
 			count: 1
@@ -413,108 +395,6 @@ parameters:
 			identifier: variable.undefined
 			count: 5
 			path: usersc/scripts/during_user_creation.php
-
-		-
-			message: '#^Variable \$email might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_forgot_password.php
-
-		-
-			message: '#^Variable \$fname might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_forgot_password.php
-
-		-
-			message: '#^Variable \$reset_vericode_expiry might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_forgot_password.php
-
-		-
-			message: '#^Variable \$user_id might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_forgot_password.php
-
-		-
-			message: '#^Variable \$vericode might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_forgot_password.php
-
-		-
-			message: '#^Variable \$email might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_registration_attempt.php
-
-		-
-			message: '#^Variable \$fname might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_registration_attempt.php
-
-		-
-			message: '#^Variable \$reset_vericode_expiry might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_registration_attempt.php
-
-		-
-			message: '#^Variable \$user_id might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_registration_attempt.php
-
-		-
-			message: '#^Variable \$vericode might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_registration_attempt.php
-
-		-
-			message: '#^Variable \$email might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_verify.php
-
-		-
-			message: '#^Variable \$fname might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_verify.php
-
-		-
-			message: '#^Variable \$join_vericode_expiry might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_verify.php
-
-		-
-			message: '#^Variable \$user_id might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_verify.php
-
-		-
-			message: '#^Variable \$vericode might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_verify.php
-
-		-
-			message: '#^Variable \$fname might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_verify_new.php
-
-		-
-			message: '#^Variable \$join_vericode_expiry might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_email_template_verify_new.php
 
 		-
 			message: '#^Variable \$errors might not be defined\.$#'

@@ -29,6 +29,13 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     /** @var list<string> */
     private const DB_ENV_VARS = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS'];
 
+    // Composer URL <-> landing-page contract: one marker per confirm view.
+    private const MARKER_VERIFY = 'Yes, this is still accurate';
+    private const MARKER_SOLD = 'When was the car sold?';
+    private const MARKER_OPTOUT = 'Stop verification emails';
+    private const CONFIRM_MARKERS = [self::MARKER_VERIFY, self::MARKER_SOLD, self::MARKER_OPTOUT];
+    private const MARKER_LANDING = 'registry entry still correct?';
+
     private static ?PhpBuiltinServer $server = null;
     private static string $projectRoot = '';
 
@@ -987,6 +994,52 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         );
     }
 
+    public function testLandingPageShowsSecondPhotoWhenTheFirstListedFileIsMissing(): void
+    {
+        // decodeAndProcessImages() drops entries whose base file is missing and
+        // re-indexes with array_values(), so element 0 is the first photo on
+        // disk. This pins that rule, which the verification email's
+        // primaryPhoto() copies.
+        $dir = self::$projectRoot . '/userimages/' . $this->testCarId;
+        // userimages/ is shared with the dev database. A folder that is already
+        // there can hold a real car's photos, so the test must not touch it.
+        if (is_dir($dir)) {
+            $this->markTestSkipped("{$dir} already exists. Remove it if a stopped test run left it.");
+        }
+        $this->db->query(
+            'UPDATE cars SET image = ? WHERE id = ?',
+            [json_encode(['first-missing.jpg', 'second-present.jpg']), $this->testCarId]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed cars.image');
+        $code = $this->issueVericode();
+        $files = [$dir . '/second-present.jpg', $dir . '/second-present-resized-300.jpg'];
+
+        try {
+            mkdir($dir, 0775, true);
+            foreach ($files as $file) {
+                file_put_contents($file, '');
+            }
+
+            $result = $this->get('vericode=' . $code);
+        } finally {
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+            if (is_dir($dir)) {
+                rmdir($dir);
+            }
+        }
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(
+            'userimages/' . $this->testCarId . '/second-present-resized-300.jpg',
+            $result['body']
+        );
+        $this->assertStringNotContainsString('first-missing', $result['body']);
+    }
+
     // ------------------------------------------------------------------
     // action=optout (#1883 — one-click verification-email opt-out)
     // ------------------------------------------------------------------
@@ -1297,6 +1350,107 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
             $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED'),
             'No EMAIL SUPPRESSED cars_hist row may survive for the second car'
         );
+    }
+
+    // ------------------------------------------------------------------
+    // Composer URL <-> landing-page parser contract
+    // ------------------------------------------------------------------
+
+    /**
+     * Each case names the composer method that builds the URL and the one view
+     * marker that URL must produce. _verify_landing.php links to action=verify
+     * and action=sold, so the markers come from the confirm views instead.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function composerUrlProvider(): array
+    {
+        return [
+            'verify' => ['verifyUrl', self::MARKER_VERIFY],
+            'sold' => ['soldUrl', self::MARKER_SOLD],
+            'optout' => ['optOutUrl', self::MARKER_OPTOUT],
+        ];
+    }
+
+    /**
+     * The URL the email composer builds must reach the matching view on the
+     * landing page. A rename of an action string on either side breaks it.
+     */
+    #[DataProvider('composerUrlProvider')]
+    public function testComposerUrlRendersMatchingConfirmView(string $urlMethod, string $expectedMarker): void
+    {
+        $code = $this->issueVericode();
+        $composer = new \ElanRegistry\Car\CarVerificationEmailComposer();
+
+        $url = $composer->{$urlMethod}($code);
+        $this->assertStringEndsWith(
+            '/app/verify/verify_car.php',
+            (string) parse_url($url, PHP_URL_PATH),
+            "Composer {$urlMethod}() must point at the landing page"
+        );
+        $query = parse_url($url, PHP_URL_QUERY);
+        $this->assertIsString($query, "Composer {$urlMethod}() must return a URL with a query string");
+
+        $result = $this->get($query);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString($expectedMarker, $result['body'], "{$urlMethod}() URL must render its own view");
+        foreach (array_diff(self::CONFIRM_MARKERS, [$expectedMarker]) as $marker) {
+            $this->assertStringNotContainsString($marker, $result['body'], "{$urlMethod}() URL must not render another view ({$marker})");
+        }
+    }
+
+    /**
+     * Control for the marker test: the markers must belong to the confirm views
+     * only, so the plain landing page must show none of them.
+     */
+    public function testLandingPageWithNoActionRendersNoConfirmView(): void
+    {
+        $code = $this->issueVericode();
+
+        $result = $this->get('vericode=' . $code);
+
+        $this->assertSame(200, $result['status']);
+        // Without this, an error page would also pass the absence checks below.
+        $this->assertStringContainsString(self::MARKER_LANDING, $result['body'], 'Plain vericode URL must render the landing view');
+        foreach (self::CONFIRM_MARKERS as $marker) {
+            $this->assertStringNotContainsString($marker, $result['body'], "Plain landing page must not render a confirm view ({$marker})");
+        }
+    }
+
+    /**
+     * Journey: a car the nightly batch would email, opened with the composer's
+     * own opt-out link, must drop out of findVerificationEligible().
+     */
+    public function testOptOutLinkFromComposerRemovesCarFromEligibleSet(): void
+    {
+        $stale = date('Y-m-d H:i:s', strtotime('-2 years'));
+        // vericode_sent_at NULL: a car emailed within 60 days is on cooldown and
+        // would be excluded for that reason, not because of the opt-out.
+        $this->db->query(
+            'UPDATE cars SET email = ?, last_verified = NULL, vericode_sent_at = NULL WHERE id = ?',
+            ['optout-' . uniqid() . '@example.test', $this->testCarId]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: failed to make the fixture car eligible');
+        $this->seedOwnerLastUpdated($this->testCarId, $stale);
+
+        $this->assertContains($this->testCarId, $this->allVerificationEligibleCarIds(), 'Test setup: fixture car must start in the eligible set');
+
+        $code = $this->issueVericode();
+        $query = parse_url((new \ElanRegistry\Car\CarVerificationEmailComposer())->optOutUrl($code), PHP_URL_QUERY);
+        $this->assertIsString($query);
+
+        $result = $this->post($query, ['vericode' => $code]);
+
+        $this->assertSame(303, $result['status'], 'POST of the composer opt-out link must redirect');
+        // An unknown action also redirects 303, so pin the cause to the opt-out write.
+        $this->assertSame(1, $this->emailSuppressed($this->testCarId), 'Opt-out must set cars.email_suppressed');
+        $this->assertSame(1, $this->profileEmailSuppressed($this->testUserId), 'Opt-out must set profiles.email_suppressed');
+
+        // Clear the send timestamp again so only the opt-out can explain exclusion.
+        $this->db->query('UPDATE cars SET vericode_sent_at = NULL WHERE id = ?', [$this->testCarId]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to clear vericode_sent_at after the opt-out');
+        $this->assertNotContains($this->testCarId, $this->allVerificationEligibleCarIds(), 'Opted-out car must leave the eligible set');
     }
 
     /**

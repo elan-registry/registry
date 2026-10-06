@@ -46,6 +46,14 @@
   --er-on-primary: #ffffff;
   --er-on-accent: #010101;
 
+  /* Status badges (issue #1900). Sold has its own alias because
+     --er-danger is reserved for destructive actions. */
+  --er-badge-sold: #a52218;
+  --er-badge-verified: var(--er-primary);
+  --er-badge-verified-bg: var(--er-primary-light);
+  --er-badge-verified-fg: var(--er-primary-dark);
+  --er-badge-new: var(--er-accent);
+
   /* Bootstrap 5.3 cascade overrides — let `text-primary`, `bg-primary`,
        `bg-info`, `link-primary` etc. inherit without per-file edits.
        Both hex and -rgb pairs are required (Bootstrap utilities use -rgb). */
@@ -274,6 +282,64 @@
 .er-badge-yellow {
   background-color: var(--er-accent);
   color: var(--er-on-accent);
+}
+
+/* Status badges (issue #1900). Sold is a red sign with white text. New is
+   yellow with black text (white on #fff200 is 1.2:1). Verified is a light
+   green tag with dark green text, so it does not look like the dark green
+   Details button, stays visible on the dark green account hero, and differs
+   from Sold in lightness for colour-blind readers. Flat badges are pills;
+   .er-badge--stamp keeps a small corner radius and adds the rotated stamp look. */
+.er-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 50rem;
+}
+.er-badge--sold {
+  background-color: var(--er-badge-sold);
+  border-color: var(--er-badge-sold);
+  color: #fff;
+}
+.er-badge--verified {
+  background-color: var(--er-badge-verified-bg);
+  border-color: var(--er-badge-verified);
+  color: var(--er-badge-verified-fg);
+}
+.er-badge--new {
+  background-color: var(--er-badge-new);
+  border-color: var(--er-badge-new);
+  color: var(--er-on-accent);
+}
+.er-badge--stamp {
+  border-width: 2.5px;
+  border-radius: 0.25rem;
+  font-weight: 800;
+  transform: rotate(-6deg);
+}
+/* On the dark green account hero, the sold red against the hero green is
+   only 1.2:1, so the stamp edge shows white there. Stamps on white pages keep
+   their own colour edge. */
+.card-header-er-primary-text .er-badge--stamp {
+  border-color: #fff;
+}
+/* Badges carry tabindex="0" so keyboard users can reach the tooltip. The
+   white inner ring keeps the dark green ring visible on the dark green hero.
+   The transparent outline shows in Windows forced-colours mode, which removes
+   box-shadow. */
+.er-badge:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--er-primary-dark);
+}
+/* On the hero the stamp edge is white, so a white inner ring merges with it: put the white ring outside. */
+.card-header-er-primary-text .er-badge:focus-visible {
+  box-shadow: 0 0 0 2px var(--er-primary-dark), 0 0 0 4px #fff;
 }
 
 /* Compact alert variant */

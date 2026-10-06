@@ -20,6 +20,16 @@ model: opus
 > code, run `git add`/`git commit`/`git push`, or launch software-developer
 > agents for implementation from within this command.
 
+## Context check
+
+Do this before Step 0. If this conversation already holds work on a
+different issue or milestone, ask via AskUserQuestion: "This conversation
+holds earlier work. Clear the context first?" Options: `Clear first`
+(recommended), `Continue here`. For `Clear first`, tell the user to run
+`/clear` and then type `/start-issue $ARGUMENTS` again, and stop. The reason
+is in CLAUDE.md, "Hand-offs between commands". If the conversation holds no
+earlier work, do not ask.
+
 ---
 
 ## Step 0: Defer TaskList Until Tier Is Known
@@ -56,7 +66,7 @@ used here. See `/execute-plan`'s own agent table for those.
 | --- | --- | --- | --- |
 | Explore | `Explore` | `haiku` | Codebase research |
 | Plan | `Plan` | `sonnet` | Implementation strategy |
-| Senior Product Manager | `senior-product-manager` | `sonnet` | Issue refinement, scope, criteria |
+| Senior Product Manager | `senior-product-manager` | agent default (`sonnet`) — pass no `model` | Issue refinement, scope, criteria |
 | Senior Test Engineer | `senior-test-engineer` | `sonnet` | Test strategy for the plan's Test Plan section |
 | Technical Documentation Writer | `technical-documentation-writer` | `haiku` | Documentation-plan scoping |
 | General Purpose | `general-purpose` | `haiku` | Multi-step research |
@@ -244,8 +254,11 @@ issue, add the ledger item, or note it in the plan — before continuing.
 issue (`/found`, "Ledger"). For each file this plan will edit, copy that
 file's open items into the plan under **Ledger items** (Step 9 template), and
 add each one to the Implementation Checklist so `/execute-plan` does it. The
-plan gate then approves or removes them with the rest of the plan. `/finish-issue` Step 6.5
-ticks the done items on the ledger after the merge. Do not pull items for
+plan gate then approves or removes them with the rest of the plan.
+`/review-pr` compares this section with the open items for the changed files.
+`/commit-push-pr` shows these items first when it asks the user which items
+the PR completes. It records the user's choice in the PR body. `/finish-issue`
+Step 6.5 ticks only the items in that PR body section. Do not pull items for
 files the plan does not already edit.
 
 ### Step 6: Interview Mode - Issue Refinement and Questions
@@ -457,8 +470,9 @@ agent can re-check completion against actual repo state.
 
 Copy each open ledger item for a file this plan edits, word for word, as
 `- [ ] <item> — `path/to/file`` (ledger #NNNN). Add each approved item to the
-Implementation Checklist too, so `/execute-plan` does it. `/finish-issue`
-Step 6.5 ticks the ledger lines that this section lists.
+Implementation Checklist too, so `/execute-plan` does it. `/review-pr` and
+`/commit-push-pr` read this section. `/finish-issue` does not read it. It ticks
+only the items that the user confirms in `/commit-push-pr`.
 
 ## Test Plan
 <!-- from senior-test-engineer, if consulted -->

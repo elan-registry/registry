@@ -2,6 +2,8 @@
     'use strict';
 
     const textRender = $.fn.dataTable.render.text();
+    let badgeTooltips = [];
+
     const table = $('#cartable').DataTable({
         fixedHeader: true,
         responsive: true,
@@ -42,18 +44,32 @@
         columnDefs: [
             { visible: false, targets: [12] }
         ],
+        // The footer starts tooltips once, on page load. Each draw replaces the
+        // rows, so dispose the tooltips of the old rows (their nodes are already
+        // out of the table, and an open tooltip stays in <body> until disposed)
+        // and start tooltips on the new badges.
+        drawCallback: function() {
+            badgeTooltips.forEach(function(tooltip) { tooltip.dispose(); });
+            badgeTooltips = Array.from(
+                this.api().table().node().querySelectorAll('[data-bs-toggle="tooltip"]'),
+                function(el) { return bootstrap.Tooltip.getOrCreateInstance(el); }
+            );
+        },
         columns: [{
             data: 'id',
             searchable: false,
             orderable: false,
             responsivePriority: 1,
             render: function(data, type, row) {
+                if (type !== 'display') { return data; }
                 const carId = parseInt(data, 10);
                 if (!Number.isFinite(carId) || carId <= 0) { return ''; }
-                const isNew = window.carListConfig.newCarIds?.includes(carId);
-                const badge = isNew ? ' <span class="badge er-badge-yellow badge-sm">NEW</span>' : '';
                 // carId is a validated integer; urlRoot is a system-controlled path — concatenation is safe
-                return '<a class="btn btn-primary btn-sm" href="' + window.carListConfig.urlRoot + 'app/owner/cars/details.php?car_id=' + carId + '"><i class="fas fa-eye"></i> Details' + badge + '</a>';
+                const link = '<a class="btn btn-primary btn-sm" href="' + window.carListConfig.urlRoot + 'app/owner/cars/details.php?car_id=' + carId + '"><i class="fas fa-eye"></i> Details</a>';
+                // badges_html is escaped server HTML from CarBadges::html(). It goes after
+                // the link, not inside it: a focusable badge inside <a> is a nested
+                // interactive element (WCAG 4.1.2).
+                return link + (row.badges_html || '');
             }
         }, {
             data: 'year',

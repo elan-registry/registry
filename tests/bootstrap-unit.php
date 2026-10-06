@@ -137,6 +137,7 @@ if (!function_exists('logger')) {
             'user_id' => $userId,
             'category' => $category,
             'message' => $message,
+            'metadata' => $metadata,
         ];
     }
 }

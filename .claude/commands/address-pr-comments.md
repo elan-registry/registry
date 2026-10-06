@@ -247,18 +247,11 @@ Next step: /finish-issue [NNN] — mark ready for review, squash-merge, and
 close the issue
 ```
 
-Then use AskUserQuestion:
-
-- Question: "PR is clean. What next?"
-- Options: `Run /finish-issue` (recommended), `Compact context first`
-  (recommended before a long next step — blocking/advisory items are
-  resolved and pushed, so compacting here is safe and won't lose that
-  state), `Ask more questions / discuss first`
-- If the user picks `/finish-issue`, invoke it immediately via the Skill
-  tool rather than telling them to type it.
-- If the user picks `Compact context first`, tell them to run `/compact`
-  themselves — it's a client-level operation, not something this command can
-  trigger via a tool.
+Then tell the user to type `/finish-issue <issue-number>`. Do not start it
+through the Skill tool and do not ask a next-step question. `/finish-issue`
+declares `model: sonnet`, and a Skill-tool start runs it on this command's
+model (CLAUDE.md, "Hand-offs between commands"). `/finish-issue` needs only
+the issue number, so the user can run `/clear` first.
 
 ## Important
 

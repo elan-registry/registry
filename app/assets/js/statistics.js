@@ -474,6 +474,24 @@ function renderColorsTab(container, data) {
   createColorBySeriesChart(data.colorBySeries);
 }
 
+// One list builds both the Quality Metrics rows and the radar chart, so a field
+// cannot be shown in one place and left out of the other.
+const COMPLETENESS_FIELDS = [
+  { key: 'chassis',       prop: 'has_chassis',       label: 'Chassis Numbers' },
+  { key: 'color',         prop: 'has_color',         label: 'Color Info' },
+  { key: 'engine',        prop: 'has_engine',        label: 'Engine Details' },
+  { key: 'purchase_date', prop: 'has_purchase_date', label: 'Purchase Dates' },
+  { key: 'image',         prop: 'has_image',         label: 'Photos' },
+  { key: 'location',      prop: 'has_location',      label: 'Location Data' },
+  // Not "Verified": this figure counts sold cars, and the Verified badge does not.
+  { key: 'verified',      prop: 'verified_cars',     label: 'Fresh (12 mo)' },
+];
+
+/**
+ * Percentage of all cars, rounded. An empty registry gives 0, not NaN.
+ */
+const completenessPct = (value, total) => (total > 0 ? Math.round((value / total) * 100) : 0);
+
 /**
  * Render Quality Tab Content
  */
@@ -482,7 +500,7 @@ function renderQualityTab(container, data) {
   const totalCars = completeness.total_cars;
 
   const wrapper = document.createElement('div');
-  // No ${...} interpolation — numeric values are set via textContent using data-metric selectors below.
+  // No ${...} interpolation. The rows and values below are built with DOM APIs and textContent.
   wrapper.innerHTML = `
         <div class="row">
             <div class="col-lg-8 mb-4">
@@ -506,32 +524,8 @@ function renderQualityTab(container, data) {
                             <h3 class="mb-0 text-primary" data-metric="total"></h3>
                         </div>
                         <hr>
-                        <div class="small">
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Chassis Numbers:</span>
-                                <span class="fw-bold" data-metric="chassis"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Color Information:</span>
-                                <span class="fw-bold" data-metric="color"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Engine Details:</span>
-                                <span class="fw-bold" data-metric="engine"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Purchase Dates:</span>
-                                <span class="fw-bold" data-metric="purchase_date"></span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Photos:</span>
-                                <span class="fw-bold" data-metric="image"></span>
-                            </div>
-                            <div class="d-flex justify-content-between">
-                                <span>Location Data:</span>
-                                <span class="fw-bold" data-metric="location"></span>
-                            </div>
-                        </div>
+                        <div class="small" data-metric-rows></div>
+                        <p class="small text-muted mt-3 mb-0">Fresh (12 mo): the share of cars whose owner confirmed, added, or updated the record in the last 12 months. Sold cars are included.</p>
                     </div>
                 </div>
             </div>
@@ -539,17 +533,19 @@ function renderQualityTab(container, data) {
     `;
 
   wrapper.querySelector('[data-metric="total"]').textContent = totalCars.toLocaleString();
-  [
-    ['chassis',       completeness.has_chassis],
-    ['color',         completeness.has_color],
-    ['engine',        completeness.has_engine],
-    ['purchase_date', completeness.has_purchase_date],
-    ['image',         completeness.has_image],
-    ['location',      completeness.has_location],
-  ].forEach(([key, value]) => {
-      const pct = totalCars > 0 ? Math.round((value / totalCars) * 100) : 0;
-      wrapper.querySelector(`[data-metric="${key}"]`).textContent = pct + '%';
-    });
+  const rows = wrapper.querySelector('[data-metric-rows]');
+  COMPLETENESS_FIELDS.forEach(({ key, prop, label }, i) => {
+    const row = document.createElement('div');
+    row.className = 'd-flex justify-content-between' + (i < COMPLETENESS_FIELDS.length - 1 ? ' mb-2' : '');
+    const name = document.createElement('span');
+    name.textContent = label + ':';
+    const value = document.createElement('span');
+    value.className = 'fw-bold';
+    value.dataset.metric = key;
+    value.textContent = completenessPct(completeness[prop], totalCars) + '%';
+    row.append(name, value);
+    rows.append(row);
+  });
 
   container.empty().append(...Array.from(wrapper.childNodes));
 
@@ -1269,18 +1265,8 @@ function createColorBySeriesChart(data) {
  * Create Data Completeness Chart (Radar)
  */
 function createDataCompletenessChart(data) {
-  const total = data.total_cars;
-  const fields = [
-    { label: "Chassis Numbers", value: data.has_chassis },
-    { label: "Color Info", value: data.has_color },
-    { label: "Engine Details", value: data.has_engine },
-    { label: "Purchase Dates", value: data.has_purchase_date },
-    { label: "Photos", value: data.has_image },
-    { label: "Location Data", value: data.has_location }
-  ];
-
-  const labels = fields.map((f) => f.label);
-  const percentages = fields.map((f) => Math.round((f.value / total) * 100));
+  const labels = COMPLETENESS_FIELDS.map((f) => f.label);
+  const percentages = COMPLETENESS_FIELDS.map((f) => completenessPct(data[f.prop], data.total_cars));
 
   const canvasEl = document.getElementById("dataCompletenessChart");
   if (!canvasEl) { return; }

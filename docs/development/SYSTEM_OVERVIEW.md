@@ -196,6 +196,8 @@ shipped in v2.30.3 — a real, working, unattended cron send exists — but the
 job ships paused (`er_cron_job_runs.enabled = 0`) and the site-wide feature
 switch defaults off; an admin must explicitly turn both on before any real
 verification email goes out. See [§6](#6-what-is-deliberately-not-built).
+Which owner actions count toward a car's freshness is listed in
+[CLASSES.md § CarRepository, "What resets `owner_last_updated`"](CLASSES.md#carrepository).
 
 ### 3.4. System — runs without a person
 
@@ -376,14 +378,13 @@ Verified against code. Each of these is a real gap, not a documentation error.
   `TODO: Move to database table`.
 - **`CLAUDE.md`'s `userimages/orphan/` claim looks stale** — no live code path
   writing there was found; the only reference is in an archived README.
-- **The Data Quality dashboard computes a "% verified" figure and throws it
+- **The Data Quality dashboard computes `has_sold_date` and throws it
   away.** `StatisticsDataService::getDataCompleteness()` selects
-  `COUNT(last_verified) AS verified_cars` (and `has_sold_date`) on every
-  request and ships both to the browser; the frontend reads a hard-coded
-  allowlist of six fields that excludes them. Nothing in
-  `app/assets/js/statistics.js` references `verified_cars`. The registry
-  measures how much of its data has been verified, on every page load, and
-  never shows the answer — which is consistent with the answer being ~zero.
+  `COUNT(solddate) AS has_sold_date` on every request and ships it to the
+  browser, but nothing in `app/assets/js/statistics.js` reads it. Its
+  `verified_cars` field is shown as "Fresh (12 mo)", the seventh vector on
+  the radar chart. It counts sold cars, so it does not match the Verified
+  badge. See [CLASSES.md § CarRepository](CLASSES.md#carrepository).
 
 ## 8. Where to read more
 

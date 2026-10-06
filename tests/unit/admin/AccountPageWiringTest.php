@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Admin;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -13,6 +14,8 @@ use PHPUnit\Framework\TestCase;
  *
  * Covers:
  * - usersc/account.php (the try/catch around Owner construction/find())
+ * - usersc/account.php, app/owner/cars/details.php, and
+ *   app/views/cars/_verify_landing.php (solddate through CarBadges::soldDate() and isSold())
  *
  * The page cannot be require()'d from PHPUnit for a full behavioral test:
  * it renders a complete HTML page inline (no isolated return path), and
@@ -134,5 +137,122 @@ final class AccountPageWiringTest extends TestCase
             $catchBody,
             'The catch block must set $ownerData to null so the existing null-guard degrades the page'
         );
+    }
+
+    // =========================================================================
+    // account.php — status badges in the hero <h3> (#1900, source inspection)
+    // =========================================================================
+
+    /**
+     * The account page cannot be required from PHPUnit (see class docblock), so
+     * the wiring is checked in the source text. The badge markup and the key
+     * logic are covered by tests/unit/cars/CarBadgesTest.php.
+     *
+     * The assertions are scoped to the hero heading, so a badge call moved
+     * out of the <h3>, a changed key source, or a changed style fails here.
+     */
+    public function testHeroHeadingDrawsStatusBadgesWithStampStyle(): void
+    {
+        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+
+        $this->assertStringContainsString('use ElanRegistry\\Car\\CarBadges;', $content);
+
+        $matched = preg_match(
+            '/<h3 class="mb-2 card-header-er-primary-text">(.*?)<\/h3>/s',
+            $content,
+            $matches
+        );
+        $this->assertSame(1, $matched, 'The hero <h3> must exist in account.php');
+        $heading = $matches[1];
+
+        $this->assertMatchesRegularExpression(
+            "/<\\?=\\s*CarBadges::html\\(CarBadges::forCar\\(\\\$carData\\),\\s*'stamp'\\)\\s*\\?>/",
+            $heading,
+            "The hero heading must draw CarBadges::html(CarBadges::forCar(\$carData), 'stamp')"
+        );
+    }
+
+    public function testStatusBadgesAppearOnlyInsideHeroHeading(): void
+    {
+        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+
+        $this->assertSame(
+            1,
+            substr_count($content, 'CarBadges::html('),
+            'The account.php source must call CarBadges::html() once, in the hero <h3>. '
+            . 'The Vehicle Information card calls it again at render time for its Sold row.'
+        );
+    }
+
+    /**
+     * A bad purchasedate or builddate must not fail silently: each catch logs
+     * the value, like app/owner/cars/details.php does. solddate does not use
+     * a try/catch: see testSoldDateUsesCarBadgesParseSoldDate().
+     *
+     * @return array<string, array{string, string}>
+     */
+    public static function dateParseCatchProvider(): array
+    {
+        return [
+            'purchasedate' => ['$purchaseDate = new DateTime($carData->purchasedate);', 'Invalid purchase date format'],
+            'builddate'    => ['$buildDate = new DateTime($factoryData->builddate);', 'Invalid build date format'],
+        ];
+    }
+
+    #[DataProvider('dateParseCatchProvider')]
+    public function testDateParseCatchLogs(string $tryStatement, string $logMessage): void
+    {
+        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+
+        $matched = preg_match(
+            '/' . preg_quote($tryStatement, '/') . '\s*\}\s*catch\s*\(\\\\Exception\)\s*\{(.*?)\}/s',
+            $content,
+            $matches
+        );
+        $this->assertSame(1, $matched, "account.php must wrap {$tryStatement} in a try/catch");
+        $this->assertMatchesRegularExpression(
+            '/logger\(\$ownerId,\s*LogCategories::LOG_CATEGORY_SYSTEM_ERROR,\s*"' . preg_quote($logMessage, '/') . '/',
+            $matches[1],
+            "The catch for {$tryStatement} must log, not swallow the error"
+        );
+    }
+
+    /**
+     * Every page that sets $soldDate for the Vehicle Information card must
+     * use CarBadges::soldDate(), so the card and the Sold badge share
+     * CarBadges::isSold().
+     *
+     * @return array<string, array{string, string}>
+     */
+    public static function soldDateProducerProvider(): array
+    {
+        return [
+            'account.php'         => [self::ACCOUNT_ENDPOINT, '$carData'],
+            'details.php'         => ['app/owner/cars/details.php', '$carData'],
+            '_verify_landing.php' => ['app/views/cars/_verify_landing.php', '$verifyCar'],
+        ];
+    }
+
+    #[DataProvider('soldDateProducerProvider')]
+    public function testSoldDateUsesCarBadgesSoldDate(string $relativePath, string $carVar): void
+    {
+        $content = $this->readEndpointSource($relativePath);
+
+        $this->assertMatchesRegularExpression(
+            '/\$soldDate\s*=\s*(?:ElanRegistry\\\\Car\\\\)?CarBadges::soldDate\(\s*'
+                . preg_quote($carVar, '/') . '->solddate\b/',
+            $content,
+            "{$relativePath} must set \$soldDate from CarBadges::soldDate()"
+        );
+    }
+
+    public function testVerifyPagesUseCarBadgesIsSold(): void
+    {
+        // The landing page and the sold action must use the same rule.
+        $landing = $this->readEndpointSource('app/views/cars/_verify_landing.php');
+        $this->assertMatchesRegularExpression('/\$alreadySold\s*=\s*(?:ElanRegistry\\\\Car\\\\)?CarBadges::isSold\(/', $landing);
+
+        $dispatcher = $this->readEndpointSource('app/verify/verify_car.php');
+        $this->assertMatchesRegularExpression('/\$isSold\s*=\s*CarBadges::isSold\(\s*\$verifyCar->solddate\b/', $dispatcher);
     }
 }

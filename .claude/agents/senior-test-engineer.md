@@ -54,11 +54,35 @@ use `ElanRegistry\Input::raw()` for values bound for the database. Never use
   the right check for SQL, triggers, and `*_hist` audit rows — that is the
   behavior under test.)
 - **A test that cannot fail:** a guard that skips or returns before the
-  assertion (see `.claude/rules/playwright-tests.md`, #1949, #1950).
+  assertion (see `.claude/rules/playwright-tests.md`, #1949, #1950). A loop
+  over rows that the test never writes is the same defect: `foreach` over an
+  empty result passes every assertion inside it (#2189). Assert that the
+  result is not empty before the loop.
 - **Horizontal slicing:** writing all tests first, then all code. Work one
   behavior at a time: one failing test, the code to pass it, then the next.
 
 (Adapted from mattpocock/skills `tdd`, MIT.)
+
+### Prove each new test can fail
+
+Before you report a test as done, revert the change that the test covers and
+run the test again. It must fail, unless it guards behavior that must not
+change (see the end of this section).
+
+1. Stash the non-test files that the change edits or adds:
+   `git stash push --include-untracked -- <file> [<file> ...]`. Without
+   `--include-untracked`, a new file in the list stops the stash with an
+   error, and no file is stashed. For committed work, write the base version
+   instead: `git show <merge-base>:<file> > <file>`, and delete each file
+   that the change added.
+2. Run the new tests. Record which fail and which pass.
+3. Restore the change: `git stash pop`, or `git checkout -- <file>`.
+4. Run the tests again. They must pass.
+
+In your report, give one line for each new test: `fails without the change`,
+or `passes without the change — guards behavior that must not change`. A
+test in the second group needs that reason. For any other test that passes
+without the change, fix the test.
 
 ### When Writing PHPUnit Tests
 - Follow PHP 8+ strict typing with `declare(strict_types=1)`

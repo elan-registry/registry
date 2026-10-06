@@ -182,6 +182,10 @@ Not a category. "Photo improvements" has no audience, no outcome and no finish
 line — and a milestone without a finish line drifts until the list is empty
 rather than until the work is done.
 
+First read the previous release's retrospective, if present:
+`ls docs/plans/releases/*-retro.md`. Its "Shipped but not needed" line names
+what the last milestone over-built. Quote it before you ask for the theme.
+
 Ask the user:
 
 > "State this milestone's theme in one sentence — who it's for, and what they
