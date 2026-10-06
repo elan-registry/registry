@@ -1031,6 +1031,207 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             'Saved model in the save POST must match the car\'s saved model value'
         ).toBe(expectedModel);
     });
+
+    // -----------------------------------------------------------------------
+    // Regression test for issue #2295 (failure path): ModelLoader swallows a
+    // models.php error and resolves with an empty model list rather than
+    // rejecting (model-loader.js's loadAllModels() catches every error and
+    // returns {}). So onYearChange() never rejects on a real models.php
+    // failure, and the naive fix (await the call, then always unblock
+    // #submit) silently re-enables Save with #model left empty — reproducing
+    // the exact "Please select Model" save.php rejection #2295 set out to fix.
+    //
+    // The fix in edit.php checks, after awaiting onYearChange(), that #model
+    // was actually set to the saved value. On mismatch it throws so the
+    // .catch() keeps blockSubmit('models') in effect and shows a warning.
+    //
+    // This test routes models.php to a 500 and verifies #submit stays
+    // disabled and #model is not left holding a value the dropdown doesn't
+    // contain. It waits for #message's text (set by the .catch() branch)
+    // rather than its visibility: the pre-existing pond.on('addfile', ...)
+    // handler (car-edit.js) hides #message unconditionally whenever a photo
+    // finishes hydrating, which can race the warning this fix shows and hide
+    // it again — a separate, pre-existing cross-feature interaction, not
+    // something this fix changes. Content set by .html() survives that hide.
+    // Waiting for the text (not just "disabled at this instant") also proves
+    // the failure actually landed — blockSubmit('models') already disables
+    // #submit at document ready, before models.php answers, so a bare
+    // toBeDisabled() check right after navigation would pass even without
+    // this fix.
+    // -----------------------------------------------------------------------
+    test('update mode: #submit stays disabled when the model dropdown fails to load', async ({ page }) => {
+        await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
+
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
+
+        const csrfToken = await page.locator('#csrf').inputValue();
+        expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
+
+        await page.route('**/app/api/cars/models.php', async (route) => {
+            await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false }) });
+        });
+
+        await Promise.all([
+            page.waitForLoadState('domcontentloaded'),
+            page.evaluate(({ csrf, carId }) => {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = window.location.pathname;
+                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
+                for (const [name, value] of Object.entries(fields)) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = name;
+                    input.value = value;
+                    form.appendChild(input);
+                }
+                document.body.appendChild(form);
+                form.submit();
+            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
+        ]);
+
+        await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
+
+        const isUpdateMode = await page.evaluate(() => window.editCarConfig?.isUpdate === true);
+        expect(
+            isUpdateMode,
+            'POST with action=updateCar must render edit.php in real update mode'
+        ).toBe(true);
+
+        const submitBtn = page.locator('#submit');
+        await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
+
+        // Wait for the failure to actually land before checking #submit —
+        // otherwise this would pass on the pre-fix code too, since
+        // blockSubmit('models') already disables #submit before models.php
+        // answers (see comment above).
+        await expect(
+            page.locator('#message'),
+            'onYearChange() must settle into the models.php failure branch (regression #2295)'
+        ).toContainText('model list could not be loaded', { timeout: 10000 });
+
+        await expect(
+            submitBtn,
+            '#submit must stay disabled when models.php fails — a failed load must not be mistaken for a load that never started (regression #2295)'
+        ).toBeDisabled();
+
+        const modelValue = await page.locator('#model').inputValue();
+        expect(
+            modelValue,
+            '#model must not silently hold the saved value when its own option list failed to load'
+        ).toBe('');
+    });
+
+    // -----------------------------------------------------------------------
+    // Regression test for issue #2295 (model not valid for year): the saved
+    // model can load the model list successfully yet not appear among this
+    // year's options — a real pre-existing data case (some cars.model values
+    // don't match any car_models row for their year). #submit must still
+    // re-enable: the list loaded, so this is not the models.php-failure case
+    // above, and Save must not be locked forever on a condition that already
+    // resolved. The fix tells the two cases apart by checking whether any
+    // non-placeholder option exists, not by checking the selected value.
+    //
+    // Drives the real code path: models.php is left live, and its response
+    // is rewritten in-flight to drop the option matching the saved model, so
+    // onYearChange() genuinely populates #model with a list that excludes it.
+    // -----------------------------------------------------------------------
+    test('update mode: #submit re-enables when the saved model is not valid for its year', async ({ page }) => {
+        await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
+
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
+
+        const csrfToken = await page.locator('#csrf').inputValue();
+        expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
+
+        await Promise.all([
+            page.waitForLoadState('domcontentloaded'),
+            page.evaluate(({ csrf, carId }) => {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = window.location.pathname;
+                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
+                for (const [name, value] of Object.entries(fields)) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = name;
+                    input.value = value;
+                    form.appendChild(input);
+                }
+                document.body.appendChild(form);
+                form.submit();
+            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
+        ]);
+
+        await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
+
+        const isUpdateMode = await page.evaluate(() => window.editCarConfig?.isUpdate === true);
+        expect(
+            isUpdateMode,
+            'POST with action=updateCar must render edit.php in real update mode'
+        ).toBe(true);
+
+        const savedModel = await page.evaluate(() => window.editCarConfig?.model);
+        expect(savedModel, 'window.editCarConfig.model must be a non-empty saved value for CAR_ID_WITH_HISTORY').toBeTruthy();
+
+        // Reload with the real models.php response rewritten to drop the
+        // option matching this car's saved model — so the list genuinely
+        // loads (not empty) but genuinely excludes the saved value.
+        await page.route('**/app/api/cars/models.php', async (route) => {
+            const response = await route.fetch();
+            const body = await response.json();
+            if (body && body.yearModels) {
+                for (const year of Object.keys(body.yearModels)) {
+                    body.yearModels[year] = body.yearModels[year].filter((m) => m.value !== savedModel);
+                }
+            }
+            await route.fulfill({ response, json: body });
+        });
+
+        await Promise.all([
+            page.waitForLoadState('domcontentloaded'),
+            page.evaluate(({ csrf, carId }) => {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = window.location.pathname;
+                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
+                for (const [name, value] of Object.entries(fields)) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = name;
+                    input.value = value;
+                    form.appendChild(input);
+                }
+                document.body.appendChild(form);
+                form.submit();
+            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
+        ]);
+
+        await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
+
+        const submitBtn = page.locator('#submit');
+        const modelSelect = page.locator('#model');
+        await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
+
+        // The list did load (more than just the placeholder), so #submit must
+        // re-enable — proving the fix doesn't conflate "list loaded but
+        // excludes the saved value" with "list failed to load".
+        await expect(
+            submitBtn,
+            '#submit must not be permanently locked when the saved model is not in a successfully-loaded list (regression: over-broad error check)'
+        ).toBeEnabled({ timeout: 10000 });
+
+        const modelValue = await modelSelect.inputValue();
+        expect(
+            modelValue,
+            '#model must not silently hold a value that is not one of its own options'
+        ).toBe('');
+
+        await expect(
+            modelSelect.locator('option'),
+            'the model list must have genuinely loaded (more than just the placeholder)'
+        ).not.toHaveCount(1);
+    });
 });
 
 // ---------------------------------------------------------------------------

@@ -351,15 +351,43 @@
 
             // Await the model list instead of guessing its load time: a slow
             // models.php left #model empty and save.php rejected the form (#2295).
+            // ModelLoader swallows a models.php failure and resolves with an empty
+            // list rather than rejecting, so a failed load must be detected here by
+            // checking the option list, not by catching a rejection.
             blockSubmit('models');
             $('#year').val(year);
             onYearChange().then(function() {
+                // Only the placeholder option means the list for this year never
+                // loaded — ModelLoader swallowed the failure. A saved model that is
+                // simply not valid for this year is a different, recoverable case:
+                // the list did load, so #model stays enabled for the owner to pick
+                // a model, rather than locking Save with no way out.
+                if ($('#model option').length <= 1) {
+                    throw new Error('Model list for year ' + year + ' failed to load');
+                }
                 $('#model').val(modelValue).trigger('change');
+                if ($('#model').val() !== modelValue) {
+                    console.warn('[edit.php] Saved model "' + modelValue + '" is not valid for year ' + year);
+                    // .val(modelValue) with no matching option leaves selectedIndex
+                    // -1, so .val() reads back null and a later save would send the
+                    // string "null" instead of an empty selection. Clear it explicitly
+                    // so the owner sees an unselected dropdown, not a stuck one.
+                    $('#model').val('').trigger('change');
+                    $('#message').removeClass('d-none').html(
+                        '<div class="alert alert-warning">The saved model is not valid for this year. ' +
+                        'Please select a model.</div>'
+                    );
+                }
                 $('#chassis').trigger('blur');
+                unblockSubmit('models');
             }).catch(function(err) {
                 console.error('[edit.php] Model repopulation failed:', err);
-            }).finally(function() {
-                unblockSubmit('models');
+                $('#message').removeClass('d-none').html(
+                    '<div class="alert alert-warning">The model list could not be loaded. ' +
+                    'Please refresh the page before making changes to avoid losing your saved model.</div>'
+                );
+                // 'models' blocker stays set on purpose: saving now would send an
+                // empty model, which save.php rejects.
             });
 
             // Show all fields
