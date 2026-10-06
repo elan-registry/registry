@@ -994,6 +994,52 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         );
     }
 
+    public function testLandingPageShowsSecondPhotoWhenTheFirstListedFileIsMissing(): void
+    {
+        // decodeAndProcessImages() drops entries whose base file is missing and
+        // re-indexes with array_values(), so element 0 is the first photo on
+        // disk. This pins that rule, which the verification email's
+        // primaryPhoto() copies.
+        $dir = self::$projectRoot . '/userimages/' . $this->testCarId;
+        // userimages/ is shared with the dev database. A folder that is already
+        // there can hold a real car's photos, so the test must not touch it.
+        if (is_dir($dir)) {
+            $this->markTestSkipped("{$dir} already exists. Remove it if a stopped test run left it.");
+        }
+        $this->db->query(
+            'UPDATE cars SET image = ? WHERE id = ?',
+            [json_encode(['first-missing.jpg', 'second-present.jpg']), $this->testCarId]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed cars.image');
+        $code = $this->issueVericode();
+        $files = [$dir . '/second-present.jpg', $dir . '/second-present-resized-300.jpg'];
+
+        try {
+            mkdir($dir, 0775, true);
+            foreach ($files as $file) {
+                file_put_contents($file, '');
+            }
+
+            $result = $this->get('vericode=' . $code);
+        } finally {
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+            if (is_dir($dir)) {
+                rmdir($dir);
+            }
+        }
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(
+            'userimages/' . $this->testCarId . '/second-present-resized-300.jpg',
+            $result['body']
+        );
+        $this->assertStringNotContainsString('first-missing', $result['body']);
+    }
+
     // ------------------------------------------------------------------
     // action=optout (#1883 — one-click verification-email opt-out)
     // ------------------------------------------------------------------

@@ -22,6 +22,8 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 - The Vehicle Information card on the car details page, your account page, and the vericode page has a Verified row.
   It shows "Last confirmed" or "Current since" with a date, or "Not specified" when the record is more than 12 months
   old. A help button explains what Verified means. ([#1897](https://github.com/elan-registry/registry/issues/1897))
+- The verification email shows a photo of your car with a link to all its photos. If no photo is on file, the email
+  asks you to add one. ([#1894](https://github.com/elan-registry/registry/issues/1894))
 - The password reset, registration attempt, and email verification emails no longer show a long link as text. If the
   button does not work, the email gives a contact address. ([#2147](https://github.com/elan-registry/registry/issues/2147))
 
@@ -54,8 +56,13 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - [#1898](https://github.com/elan-registry/registry/issues/1898) — Verified vector on the statistics page's
   data-completeness radar chart. `verified_cars` now uses the shared freshness rule, not a count of non-null
   `last_verified`. The chart no longer shows `NaN` when the registry has no cars.
-- WIP: [#1894](https://github.com/elan-registry/registry/issues/1894) — Verification email photo thumbnail at 300px with
-  descriptive alt text, and a highlighted fallback when a car has no photo (includes the remaining gap from #1892)
+- [#1894](https://github.com/elan-registry/registry/issues/1894) — The verification email's Photos row links the
+  primary photo's `-resized-300` file by absolute URL, with escaped alt text that names the car. It has three states:
+  thumbnail, plain "N photos on file" when the primary photo has no `-resized-300` file, and a highlighted
+  "Not yet provided" when no listed photo is on disk. Only the last state is named in the blank-field callout. A listed
+  photo that cannot be shown is logged once under `FileError`. `CarVerificationEmailComposer` takes an optional image root and
+  reads legacy comma-separated `cars.image` values. `EMAIL_SYSTEM.md` no longer says the composer is not wired to a send
+  path (includes the remaining gap from #1892)
 - [#2147](https://github.com/elan-registry/registry/issues/2147) — The password reset, registration attempt, and
   email verification emails no longer print the link as text. Brevo rewrites that link to its tracking domain, so it
   looked like a phishing link. A contact address replaces it. The unused `NO_TRACK_LINK_CLASS` is removed, and
