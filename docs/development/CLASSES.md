@@ -965,6 +965,12 @@ on success.
 - `clearSuppressedForOwner(int $ownerId): array` -
   Owner-level Clear Suppression action: clears `profiles.email_suppressed` and fans out to clear
   `email_suppressed` on every car owned by that user (#1884). Returns array of pre-change car snapshots.
+- `clearSuppressedForOwnerByOwner(int $ownerId): array` -
+  Owner self-service reversal of suppression via Account Settings. Clears `profiles.email_suppressed`
+  (skips the write if already 0) and calls `clearSuppressed()` on every car from `findByOwner()`
+  (sold included, skips cars already 0). Returns pre-change car snapshots for `cars_hist`. Throws
+  `CarDatabaseException` when the owner has no profiles row. Never touches bounce columns. Separate
+  from the admin method so logs and `cars_hist` separate the two paths. Used by `usersc/user_settings.php`.
 - `markSold(object $carData, ?string $soldDate): bool` - Record a car as sold (`null` defaults to today)
 
 **Exceptions**:

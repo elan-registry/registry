@@ -396,6 +396,22 @@ converted to a UserSpice session flash message (`usError()`/`usSuccess()`) and t
 page renders normally (standard POST-then-render pattern, no redirect). On success,
 the flash message names the owner and affected car count.
 
+### Resume Verification Emails (Owner Self-Service)
+
+The Account Settings page shows a control (anchor id `resume-emails`) only when
+`profiles.email_suppressed = 1`. It displays "Verification emails are currently
+paused for {N} of your cars." where N is every owned car, because the profile
+flag blocks all cars, including cars added after the opt-out whose own
+`cars.email_suppressed` is still 0. The `findVerificationEligible()` query
+excludes a car when either flag is 1.
+
+The button POSTs with CSRF. The handler clears both `profiles.email_suppressed`
+and every owned car's `cars.email_suppressed` in one transaction (mirrors the admin
+action), via `CarVerificationManager::clearSuppressedForOwnerByOwner()`. It writes
+one `cars_hist` row per car with operation `'SUPPRESSION CLEARED BY OWNER'` and does
+not touch bounce state. Resumed cars go back into the normal cron schedule. There
+is no immediate send.
+
 ### The Shared Send Service
 
 **Class:** `CarVerificationSendService` (`usersc/classes/Car/CarVerificationSendService.php`)

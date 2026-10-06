@@ -26,7 +26,10 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 <?php
 use ElanRegistry\AppConstants;
+use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
@@ -59,6 +62,80 @@ $errors = [];
 $successes = [];
 $userId = (int)$user->data()->id;
 
+// Built once for both the resume-verification-emails POST branch and the
+// GET-time visibility/count logic below, as in app/admin/index.php.
+$repo = new CarRepository(dbi());
+$verifier = new CarVerificationManager($repo);
+
+if (!function_exists('userSettingsHistoryFields')) {
+    /**
+     * Build a cars_hist snapshot row for an owner self-service action on this
+     * page (Resume verification emails, #1895).
+     *
+     * The third copy of the same snapshot shape: verifyHistoryFields() in
+     * app/verify/verify_car.php (owner actions from an email link, with a
+     * $soldDate parameter) and verifyHistoryFieldsForAdminAction() in
+     * app/admin/index.php (admin actions, no $soldDate). This copy has no
+     * $soldDate either, because this action never sets a sale date. The three
+     * are kept separate until a refactor merges them.
+     *
+     * @param object $carData   PRE-CHANGE car snapshot returned by the CarVerificationManager
+     * @param string $operation cars_hist.operation value (varchar(32))
+     * @param string $comments  Free-text audit note
+     * @return array<string, mixed> Field map for CarRepository::insertHistory()
+     * @throws OwnerDatabaseException If the car's owner cannot be loaded
+     */
+    function userSettingsHistoryFields(object $carData, string $operation, string $comments): array
+    {
+        $owner = (new Owner((int) $carData->user_id))->data();
+
+        // A half-populated audit row is worse than no change: fail and let the
+        // caller's transaction roll the car mutation back too.
+        if ($owner === null) {
+            throw new OwnerDatabaseException(
+                'user_settings.php: owner ' . (int) $carData->user_id
+                . " could not be loaded while building the {$operation} history snapshot for car "
+                . (int) $carData->id
+            );
+        }
+
+        return [
+            'operation'             => $operation,
+            'car_id'                => (int) $carData->id,
+            'comments'              => $comments,
+            'ctime'                 => $carData->ctime ?? date(AppConstants::DATETIME_FORMAT),
+            'mtime'                 => date(AppConstants::DATETIME_FORMAT),
+            'model'                 => $carData->model ?? '',
+            'series'                => $carData->series ?? '',
+            'variant'               => $carData->variant ?? '',
+            'year'                  => $carData->year ?? '',
+            'type'                  => $carData->type ?? '',
+            'chassis'               => $carData->chassis ?? '',
+            'color'                 => $carData->color ?? '',
+            'engine'                => $carData->engine ?? '',
+            'purchasedate'          => $carData->purchasedate ?? null,
+            'solddate'              => $carData->solddate ?? null,
+            'email_bounced'         => $carData->email_bounced ?? 0,
+            'email_bounced_address' => $carData->email_bounced_address ?? null,
+            'email_suppressed'      => $carData->email_suppressed ?? 0,
+            'verification_attempts'       => $carData->verification_attempts ?? 0,
+            'verification_attempts_since' => $carData->verification_attempts_since ?? null,
+            'image'                 => $carData->image ?? '',
+            'user_id'               => (int) $carData->user_id,
+            'email'                 => $carData->email ?? ($owner->email ?? ''),
+            'fname'                 => $owner->fname ?? '',
+            'lname'                 => $owner->lname ?? '',
+            'join_date'             => $owner->join_date ?? null,
+            'city'                  => $owner->city ?? '',
+            'state'                 => $owner->state ?? '',
+            'country'               => $owner->country ?? '',
+            'lat'                   => $owner->lat ?? null,
+            'lon'                   => $owner->lon ?? null,
+            'website'               => $owner->website ?? '',
+        ];
+    }
+}
+
 $validation = new Validate();
 $userdetails = $user->data();
 // Get the profile ID for the direct website-clear write further down.
@@ -88,9 +165,61 @@ if ($userQ->count() > 0) {
 
 //Forms posted
 if (!empty($_POST)) {
-    $token = $_POST['csrf'];
+    $token = $_POST['csrf'] ?? '';
     if (!Token::check($token)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+    } elseif (isset($_POST['resume_verification_emails'])) {
+        // Owner self-service resume (#1895). This branch owns the whole
+        // request: the profile-update logic in the else branch never runs
+        // with it. The owner is $userId from the session only. No id from
+        // the POST body is read.
+        //
+        // One transaction covers the fan-out and every audit row, so a car
+        // never ends up cleared with no cars_hist record of who asked.
+        $repo->beginTransaction();
+        try {
+            $resumedCars = $verifier->clearSuppressedForOwnerByOwner($userId);
+            foreach ($resumedCars as $beforeCar) {
+                if (!$repo->insertHistory(userSettingsHistoryFields(
+                    $beforeCar,
+                    'SUPPRESSION CLEARED BY OWNER',
+                    'Owner action via Account Settings (Resume verification emails)'
+                ))) {
+                    throw new CarDatabaseException(
+                        'user_settings.php: audit trail insert failed for SUPPRESSION CLEARED BY OWNER on car '
+                        . (int) $beforeCar->id . " for owner {$userId}"
+                    );
+                }
+            }
+            $repo->commit();
+
+            logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
+                'user_settings.php: SUPPRESSION CLEARED BY OWNER applied for owner %d (%d cars changed)',
+                $userId,
+                count($resumedCars)
+            ));
+            usSuccess('Verification emails have been resumed for your cars.');
+            Redirect::to($us_url_root . 'usersc/user_settings.php');
+            exit;
+        } catch (ElanRegistryException $e) {
+            // CarDatabaseException from the manager or the audit insert, and
+            // OwnerDatabaseException from the history snapshot.
+            $repo->rollback();
+            logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+                "user_settings.php: SUPPRESSION CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage());
+            $errors[] = 'Verification emails could not be resumed. Nothing was changed. Please try again or contact support.';
+        } catch (\Throwable $e) {
+            // A narrower catch would leave the transaction open for the rest
+            // of the request on a fault that is not an ElanRegistryException.
+            $repo->rollback();
+            logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                'user_settings.php: SUPPRESSION CLEARED BY OWNER unexpected error [%s] for owner %d: %s',
+                get_class($e),
+                $userId,
+                $e->getMessage()
+            ));
+            $errors[] = 'Verification emails could not be resumed. Nothing was changed. Please try again or contact support.';
+        }
     } else {
         // Owner-contact fields (fname, lname, email, city, state, country, lat,
         // lon, website) that passed validation below. They are written and
@@ -660,6 +789,24 @@ if ($userQ2->count() > 0) {
     echo 'USER_SETTING(390) something is wrong with the user profile <br>';
 }
 
+// Keyed on the owner-level flag, not on per-car flags: a car added after the
+// owner opted out keeps cars.email_suppressed = 0 but is still blocked by
+// profiles.email_suppressed (see CarRepository::findVerificationEligible()).
+// For the same reason the count is every owned car. PDO returns the column as
+// int|string, so cast before the strict comparison.
+$emailSuppressed = (int) ($profiledetails->email_suppressed ?? 0) === 1;
+$pausedCarCount = null;
+if ($emailSuppressed) {
+    try {
+        $pausedCarCount = count($repo->findByOwner($userId));
+    } catch (ElanRegistryException $e) {
+        // The count is copy, not a gate. Keep the control available and show
+        // generic text instead of a number we do not have.
+        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+            "user_settings.php: owner car count failed for owner {$userId}: " . $e->getMessage());
+    }
+}
+
 ?>
 <div id="page-wrapper">
     <div class="container">
@@ -667,6 +814,22 @@ if ($userQ2->count() > 0) {
             <div class="row">
                 <div class="col-12 col-md-10">
                     <h1>Update your user settings</h1> <br>
+
+                    <?php if ($emailSuppressed): ?>
+                        <section id="resume-emails" class="mb-4">
+                            <p>
+                                <?php if ($pausedCarCount !== null): ?>
+                                    Verification emails are currently paused for <?= htmlspecialchars((string) $pausedCarCount, ENT_QUOTES, 'UTF-8') ?> of your cars.
+                                <?php else: ?>
+                                    Verification emails are currently paused for your cars.
+                                <?php endif; ?>
+                            </p>
+                            <form name='resumeVerificationEmails' action='user_settings.php' method='post'>
+                                <input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8') ?>" />
+                                <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume verification emails</button>
+                            </form>
+                        </section>
+                    <?php endif; ?>
 
                     <form name='updateAccount' action='user_settings.php' method='post'>
 

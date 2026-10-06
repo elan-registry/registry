@@ -187,7 +187,9 @@ test.describe('Email on file row: admin', () => {
         await expect(value).not.toContainText('Bounced');
 
         await page.getByRole('button', { name: 'What Suppressed means' }).focus();
-        await expect(page.getByRole('tooltip')).toContainText('Clear Suppression on the Verification System tab.');
+        const tooltip = page.getByRole('tooltip');
+        await expect(tooltip).toContainText('Clear Suppression on the Verification System tab');
+        await expect(tooltip).toContainText('Resume verification emails');
     });
 
     test('bounced car shows "Bounced" and never prints the bounced address', async ({ page }) => {

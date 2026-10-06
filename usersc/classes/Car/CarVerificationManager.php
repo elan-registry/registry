@@ -756,17 +756,96 @@ class CarVerificationManager
      */
     public function clearSuppressedForOwner(int $ownerId): array
     {
+        return $this->clearSuppressedForOwnerShared(
+            $ownerId,
+            'clearSuppressedForOwner',
+            'opt-out reversal',
+            'The opt-out could not be cleared. Please try again or contact support.'
+        );
+    }
+
+    /**
+     * Clear the suppressed flag on an owner's profile and on every car they have
+     * (owner self-service "Resume verification emails" on Account Settings,
+     * #1895). Runs no transaction of its own — the caller wraps this and the
+     * per-car cars_hist inserts in one transaction, matching
+     * setSuppressedForOwner()'s contract.
+     *
+     * The owner-initiated inverse of {@see setSuppressedForOwner()}. The admin
+     * reversal is {@see clearSuppressedForOwner()}. Both call the same shared
+     * body, {@see clearSuppressedForOwnerShared()} — the database behavior is
+     * identical by design — with their own log prefix and exception text, so
+     * log greps and tests still separate the two call paths.
+     *
+     * SUPPRESSION ONLY. This method never reads or writes the bounce columns
+     * (`email_bounced`, `email_bounced_address`) on the profile or on any car.
+     * A bounce is a deliverability fact that only an admin can clear.
+     *
+     * TWO WRITES, TWO MEANINGS, as in setSuppressedForOwner(): the profile flag
+     * is the authoritative owner-level record, the per-car flags are the fan-out
+     * target. The profile write happens FIRST, so an owner with no profiles row
+     * fails the whole reversal cleanly rather than part-way through the fan-out.
+     * The two writes are independently idempotent: a profile flag already at 0
+     * is skipped without skipping the fan-out, so per-car flags that have
+     * drifted out of step with the profile are still cleared.
+     *
+     * @param int $ownerId Owner user ID (the logged-in user, from the session)
+     * @return array<object> PRE-CHANGE snapshots of the car rows actually
+     *                        changed — each is a clone taken before
+     *                        clearSuppressed() wrote email_suppressed=0 onto it,
+     *                        so the caller's cars_hist row records the OLD value
+     *                        (matching the cars_update trigger's OLD.*
+     *                        convention). Cars that are not suppressed are
+     *                        skipped. An empty array does NOT mean nothing
+     *                        happened: the owner-level profile flag may still
+     *                        have been cleared.
+     * @throws CarDatabaseException If a database update fails, or if the owner
+     *                              has no `profiles` row (nothing is written in
+     *                              that case — the check runs before the fan-out)
+     */
+    public function clearSuppressedForOwnerByOwner(int $ownerId): array
+    {
+        return $this->clearSuppressedForOwnerShared(
+            $ownerId,
+            'clearSuppressedForOwnerByOwner',
+            'owner resume',
+            'Verification emails could not be resumed. Please try again or contact support.'
+        );
+    }
+
+    /**
+     * Shared body of {@see clearSuppressedForOwner()} (admin path) and
+     * {@see clearSuppressedForOwnerByOwner()} (owner self-service path,
+     * #1895). The two public methods differ only in which caller may invoke
+     * them, their log prefix, and the exception text a user may see — the
+     * database behavior is identical by design, so it lives once here.
+     *
+     * @param string $logPrefix Method name used in every logger() line, so
+     *                          log greps separate the admin and owner paths.
+     * @param string $logContext Short phrase describing the action in log
+     *                           text (e.g. "opt-out reversal", "owner resume").
+     * @param string $userMessage Exception message shown to the caller on
+     *                            failure.
+     * @return array<object> See {@see clearSuppressedForOwner()}'s return doc.
+     * @throws CarDatabaseException See {@see clearSuppressedForOwner()}'s throws doc.
+     */
+    private function clearSuppressedForOwnerShared(
+        int $ownerId,
+        string $logPrefix,
+        string $logContext,
+        string $userMessage
+    ): array {
         $currentFlag = $this->repo->findProfileEmailSuppressed($ownerId);
 
         if ($currentFlag === null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::clearSuppressedForOwner: owner %d has no profiles row; '
-                . 'opt-out reversal aborted before any car was cleared',
-                $ownerId
+                'CarVerificationManager::%s: owner %d has no profiles row; '
+                . '%s aborted before any car was cleared',
+                $logPrefix,
+                $ownerId,
+                $logContext
             ));
-            throw new CarDatabaseException(
-                'The opt-out could not be cleared. Please try again or contact support.'
-            );
+            throw new CarDatabaseException($userMessage);
         }
 
         // Skipped when already 0 — both to keep a repeat reversal a true no-op
@@ -775,15 +854,14 @@ class CarVerificationManager
         // either way.
         if ($currentFlag === 1 && !$this->repo->updateProfileEmailSuppressed($ownerId, false)) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::clearSuppressedForOwner: profiles.email_suppressed update '
+                'CarVerificationManager::%s: profiles.email_suppressed update '
                 . 'affected 0 rows for owner %d (row read as %d moments earlier): %s',
+                $logPrefix,
                 $ownerId,
                 $currentFlag,
                 $this->repo->errorString() ?: 'unknown'
             ));
-            throw new CarDatabaseException(
-                'The opt-out could not be cleared. Please try again or contact support.'
-            );
+            throw new CarDatabaseException($userMessage);
         }
 
         $changed = [];
@@ -795,10 +873,12 @@ class CarVerificationManager
                 // findByOwner() listed this id moments ago — see the same case
                 // in setSuppressedForOwner(). Skipping is correct, but never silent.
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                    'CarVerificationManager::clearSuppressedForOwner: car %d listed for owner %d '
-                    . 'but no longer readable; skipped from opt-out-reversal fan-out',
+                    'CarVerificationManager::%s: car %d listed for owner %d '
+                    . 'but no longer readable; skipped from %s fan-out',
+                    $logPrefix,
                     (int) $carRef->id,
-                    $ownerId
+                    $ownerId,
+                    $logContext
                 ));
                 continue;
             }
