@@ -14,6 +14,17 @@ after editing any source file under `app/assets/js/`, `app/assets/css/`, or
 npm run build
 ```
 
+### build-summary-index.py
+
+Rebuilds `docs/plans/summaries/index.html` from the `/summary` skill's dated
+status pages and their regenerate prompts. Run after any summary page is
+added or deleted. The pages themselves are gitignored build output under
+`docs/plans/`; only the script is tracked.
+
+```bash
+python3 scripts/build-summary-index.py
+```
+
 ## Version Management
 
 ### update-version.sh
