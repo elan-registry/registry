@@ -99,6 +99,21 @@ git checkout -q main >/dev/null 2>&1
 git branch -D issue/501-widget >/dev/null 2>&1
 rm -f docs/plans/issues/issue-501-widget.md
 
+# --- Scenario 1b: an item marked N/A counts as done --------------------------
+git checkout -q -b issue/502-widget >/dev/null 2>&1
+write_plan docs/plans/issues/issue-502-widget.md \
+    "Approved — ready for /execute-plan" 1 1
+echo "- [ ] not needed item — N/A: covered by the existing guard" >> docs/plans/issues/issue-502-widget.md
+OUT1B="$("$SCRIPT" 2>/dev/null)"
+if printf '%s' "$OUT1B" | grep -q "checklist: 2/3"; then
+    pass "Scenario 1b: an N/A item counts as done -> checklist 2/3"
+else
+    fail "Scenario 1b: an N/A item counts as done -> checklist 2/3" "output: [$OUT1B]"
+fi
+git checkout -q main >/dev/null 2>&1
+git branch -D issue/502-widget >/dev/null 2>&1
+rm -f docs/plans/issues/issue-502-widget.md
+
 # --- Scenario 2: draft (not approved) plan, explicit issue number -----------
 write_plan docs/plans/issues/issue-502-gadget.md "Draft — pending approval" 0 4
 OUT2="$("$SCRIPT" 502 2>/dev/null)"

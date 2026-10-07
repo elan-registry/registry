@@ -7,7 +7,7 @@ documents for details.
 
 ### Testing
 
-See the Quick Start Commands section in [CLAUDE.md](../../CLAUDE.md) for the
+See the "Development Setup" section in [CLAUDE.md](../../CLAUDE.md) for the
 full testing and build commands.
 
 ### Pre-commit Quality Checks

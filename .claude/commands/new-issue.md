@@ -25,13 +25,60 @@ ask: "What problem or idea do you want to record?"
 ## Step 2: Search for Duplicates
 
 ```bash
-gh issue list -R elan-registry/registry --state all --search "KEYWORDS" --limit 10
+gh issue list -R elan-registry/registry --state all --search "KEYWORDS" --limit 10 \
+  --json number,title,state,labels \
+  --jq '.[] | "#\(.number) \(.state) [\([.labels[].name] | join(", "))] \(.title)"'
 ```
 
 If an open issue already covers it, show it and ask with AskUserQuestion:
 `Add a comment to #NNN instead` (recommended when the new text is evidence
 for that issue) or `Create a new issue`. On the comment option, post the
-quote or evidence with `gh issue comment` and stop.
+quote or evidence with `gh issue comment`. Then say: "Evidence added
+to #NNN: URL. No command to type now." Stop.
+
+If a closed issue with the `stale-no-demand` label covers it, the new text
+is a rescue (`docs/development/ISSUE_WORKFLOW.md`, "Age-out with evidence
+rescue"). Show the issue and ask with AskUserQuestion:
+`Reopen #NNN with this evidence` (recommended) or `Create a new issue`. On
+the reopen option, go to Step 2.1.
+
+A closed issue without `stale-no-demand` is not a rescue. Show it as
+context and continue to Step 3.
+
+### Step 2.1: Reopen an aged-out issue
+
+1. Get the new signal and the quote or evidence. Use the **Signal** and
+   **Quote or evidence** rules in Step 3. Ask only for what you cannot
+   find, in one AskUserQuestion round.
+2. Read the current signal label:
+
+   ```bash
+   gh issue view NNN -R elan-registry/registry --json labels \
+     --jq '[.labels[].name | select(startswith("signal:"))] | join(",")'
+   ```
+
+3. Reopen the issue with the evidence as the comment:
+
+   ```bash
+   gh issue reopen NNN -R elan-registry/registry --comment "$(cat <<'EOF'
+   Reopened: new signal:X.
+
+   > Verbatim words, or the measurement or error.
+   EOF
+   )"
+   ```
+
+4. Remove the age-out labels. Replace the old signal label with the new
+   one. Name in `--remove-label` only the labels the issue has now (from
+   the Step 2 search output). If the old and new signal labels are the
+   same, leave out `signal:OLD` and `--add-label "signal:X"`.
+
+   ```bash
+   gh issue edit NNN -R elan-registry/registry \
+     --remove-label "stale,stale-no-demand,signal:OLD" --add-label "signal:X"
+   ```
+
+5. Go to Step 5. Use the reopen wording there.
 
 ## Step 3: Draft the Issue
 
@@ -84,7 +131,10 @@ EOF
 End with plain text, not a menu:
 
 "Issue #NUMBER created: URL. It has no milestone. The next
-`/plan-milestone` weighs it."
+`/plan-milestone` weighs it. No command to type now."
+
+After Step 2.1, say instead: "Issue #NUMBER reopened: URL. It is in the
+backlog. The next `/plan-milestone` weighs it. No command to type now."
 
 Do not offer `/start-issue`. With no milestone, `/start-issue` would put the
 issue on whichever milestone branch is checked out and skip the planning

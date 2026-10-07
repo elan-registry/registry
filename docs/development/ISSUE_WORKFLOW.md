@@ -75,19 +75,21 @@ declare the same `model:` (`CLAUDE.md`, "Hand-offs between commands").
 | `/address-pr-comments` stopped (CI still red, or the checks were still running) | Fix the cause, then `/address-pr-comments` | No |
 | PR clean | `/finish-issue <N>` (the issue number, not the PR number) | Yes |
 | `/finish-issue` stopped (CI red, risk flag, a failed step) | Fix the cause, then `/finish-issue <N>`. If the PR already merged, it continues at the close step. | No |
-| Hotfix merged | The patch release in `DEPLOYMENT.md`. Then `/start-issue <paused-N>` if `/finish-issue` named a paused issue. Otherwise `/start-issue <next>`. | Yes |
+| You answered `Stop` at the merge confirmation (Step 4.8) | `/finish-issue <N>` when you are ready to merge. Nothing merged. | No |
+| Hotfix merged | The patch release in `DEPLOYMENT.md`. Then the command that `/finish-issue` names: `/address-pr-comments <paused-PR>` for a paused issue with an open PR, `/start-issue <paused-N>` for a paused issue with no open PR, otherwise `/start-issue <next>`. | Yes |
 | Issue merged, open issues remain | `/start-issue <next>` | Yes |
+| Issue merged, every open issue is blocked | Remove `status:blocked` from an issue whose blocker closed, then `/start-issue <N>`. If the blocked issues can wait, `/finish-milestone <version>`. | Yes |
 | Issue merged, no open issues remain | `/finish-milestone <version>` | Yes |
 | `/finish-milestone` stopped, or the branch changed | `/finish-milestone <version>`. It skips each step whose result still matches the branch tip. | No |
 | `/finish-milestone` done | `/review-milestone <version>` | Yes |
 | `/review-milestone` says the review marker is old | `/finish-milestone <version>` | No |
 | `/review-milestone` stopped after the PR opened | `/review-milestone <version>`. It reuses the open PR. | No |
-| Milestone PR green | `/release-milestone` | No. `/review-milestone` can start it. |
+| Milestone PR green | `/release-milestone` | No. `/review-milestone` can start it. If the deploy sheet is stale, refresh it by hand first. Then `/clear`, then `/release-milestone`. |
 | `/release-milestone` stopped before the merge | Fix the cause, then `/release-milestone <version>`. The script skips the steps that are done. | No |
 | `/release-milestone` stopped after the merge | `/release-milestone <version>`. It finds the merged PR and resumes at the tag step. | No |
 | Release created | Deploy from the deploy sheet. Then `/plan-milestone` for the next release. | Yes |
 | Production broken, no issue in progress | `/new-issue` (`signal:defect`). Its last step names `/start-issue <N> --hotfix`. | Yes |
-| Production broken, an issue in progress | Commit the paused work on its branch. Then `/found`, then `/start-issue <N> --hotfix`. | Yes |
+| Production broken, an issue in progress | `/found`. Then save the paused work (commit it on its branch). Then `/clear`. Then `/start-issue <N> --hotfix`. | After you save the work |
 
 ---
 
@@ -297,10 +299,19 @@ review the diff by default.
 
 Before it plans, `/start-issue` checks that the issue is ready. The issue
 needs three marks: a milestone, the `status:ready` label, and an
-`## Acceptance criteria` section in the body. If the milestone or the label is
-missing, the command stops and names `/plan-milestone`. If only the section is
-missing, you choose: stop and scope the issue with `/plan-milestone`, or
-write the criteria at the plan gate. A hotfix skips this check.
+`## Acceptance criteria` section in the body. Three cases fail the check:
+
+- **No milestone, or the `Backlog` milestone.** The command stops and names
+  `/plan-milestone <version>`.
+- **A release milestone, but no `status:ready`.** `/plan-milestone` does not
+  take an issue that is already in a release. You choose: stop and run
+  `/start-milestone <milestone>`, which scopes the unsealed issues, or write
+  the criteria at the plan gate.
+- **Only the section is missing.** The issue already has `status:ready`. You
+  choose: write the criteria at the plan gate, or stop and add the section to
+  the issue body.
+
+A hotfix skips this check.
 
 The plan names the problem, the approach, the files, the tests, the database
 and security considerations, and the checklist of actions. Its section list is
@@ -321,10 +332,10 @@ enforces each one:
   sessions or permissions, a database migration, an API endpoint contract, or
   payments.
 - **A `yes` flag gets a human diff review before merge.** `/commit-push-pr`
-  copies the flag into the PR body. `/finish-issue` reads it there, before the
-  merge question. When the flag is `yes`, `unknown`, or missing, it asks you to
-  confirm that you reviewed the diff (`I reviewed the diff` or `Stop`). This is
-  the one exception to "you do not review the diff."
+  copies the flag into the PR body. `/finish-issue` reads it there (Step 4.7),
+  before the merge confirmation. When the flag is `yes`, `unknown`, or missing,
+  it asks you to confirm that you reviewed the diff (`I reviewed the diff` or
+  `Stop`). This is the one exception to "you do not review the diff."
 
 If the issue is in a combine group, `/start-issue` asks whether to plan the
 combined scope. One branch, one plan and one PR then cover all the issues.
@@ -351,12 +362,21 @@ refuses uncommitted changes, so `/commit` comes first.
 **Deviation rule.** If the work needs anything outside the approved plan (a
 file the plan does not list, a different approach, a dropped requirement, a new
 dependency), `/execute-plan` stops. It adds a `## Deviation` section to the
-plan, posts a comment on the issue that states the deviation and asks for
-re-approval, and sets the plan status back to `Draft — pending approval`. It
-leaves the work done so far uncommitted. You type `/start-issue <N>`. That
-command finds the plan and the branch, shows the deviation first, and resumes
-at the approval step. Then you type `/execute-plan <N>`. Nothing absorbs the
-change silently.
+plan. It writes each added checklist item in the item form, but it does not
+edit the checklist. It posts a comment on the issue that states the deviation
+and asks for re-approval, and sets the plan status back to
+`Draft — pending approval`. It leaves the work done so far uncommitted. You
+type `/start-issue <N>`. That command finds the plan and the branch, shows the
+deviation first, and resumes at the approval step. At that step, `/start-issue`
+Step 9 ("Merge a deviation"):
+
+1. Merges the deviation items into the `## Implementation Checklist`.
+2. Runs the ledger pull again, for the files that the deviation adds.
+3. Sets the risk flag again over every file in the checklist. It does not
+   change `yes` to `no` without your answer.
+4. Renames the heading to `## Approved deviation` when you approve.
+
+Then you type `/execute-plan <N>`. Nothing absorbs the change silently.
 
 **The PR body shows the difference.** `/commit-push-pr` writes
 `## Delta from plan` in the PR body: files that changed but the plan did not
@@ -367,6 +387,29 @@ keeps its `[ ]` and ends with a fixed marker. `/review-pr` and
 ```text
 - [ ] <item> — N/A: <reason>
 ```
+
+### The merge step
+
+`/finish-issue` runs its steps in a fixed order. It never skips a step:
+
+| Step | What it does |
+| --- | --- |
+| 4 | Reads the CI results. A red check stops the command. |
+| 4.5 | Checks PHPStan baseline hygiene. |
+| 4.6 | Checks out the PR branch, then runs `composer check:docs` and the doc-drift table. A doc fix goes in this PR. |
+| 4.7 | Reads the risk flag. A `yes`, `unknown`, or missing flag needs your answer. |
+| 4.8 | Asks for the merge confirmation: `Merge` or `Stop`. |
+| 5 | Squash-merges the PR. It runs only after you answer `Merge` in the same run. |
+
+If a PR changes `.github/workflows/claude-code-review.yml`, the review action
+cannot post before the merge to `main`. `/finish-issue` then asks you to
+choose `Proceed without the CI review` or `Stop`. Without your explicit
+approval, the PR does not merge.
+
+After the merge, Step 9 picks the next command. When every open issue is
+blocked, it names two paths: remove `status:blocked` from an issue whose
+blocker closed, then `/start-issue <N>`, or run `/finish-milestone <version>`
+if the blocked issues can wait.
 
 ### Discoveries mid-issue
 
@@ -431,9 +474,12 @@ Each command touches the ledger at one step:
 | `/address-pr-comments` Steps 6 and 7 | Deletes the line of an item that one of its fixes completes. A deferred Advisory item goes to a new issue if it is a defect, or to the ledger if it is cleanup. It commits the file edit with the fixes. |
 | `/finish-issue` Step 6.5 | Information only. It reports the open items that remain in the files the PR edited. |
 
-A hotfix plan takes no ledger items. `/start-issue`, `/execute-plan`
-Step 6.6, and `/review-pr` Step 5 each skip the ledger for a hotfix. A hotfix
-changes only what the emergency needs.
+A hotfix takes no ledger edits anywhere. `/start-issue`, `/execute-plan`
+Step 6.6, and `/review-pr` Step 5 each skip the ledger for a hotfix. A
+deferred finding on a hotfix PR has two outcomes only: a new issue (a defect
+only), or skip. `/found` offers `Drop` or a new issue. `/execute-plan` Step 7,
+`/review-pr` Step 6, and `/address-pr-comments` Step 6 offer a new issue or
+skip. A hotfix changes only what the emergency needs.
 
 See "Cleanup ledger" in `scripts/README.md` for the reader script.
 
@@ -607,8 +653,10 @@ false, the milestone is not done.
    - renders the deploy sheet.
    - updates the wiki and `CLAUDE.md` when the change needs it.
    - runs the cross-PR security check, the local multi-agent review, and the
-     milestone-level deep review. Step 9.9 adds a fresh-checkout smoke test
-     when build or install tooling changed.
+     milestone-level deep review. Each Medium or Low finding goes to the
+     cleanup ledger (no change in behavior) or to a new issue (a defect). Step
+     9.9 adds a fresh-checkout smoke test when build or install tooling
+     changed.
    - pushes `milestone/<version>` to `origin`, and writes the completion
      marker `docs/plans/releases/<version>-review.done`. The marker records
      the pushed commit.
@@ -617,13 +665,17 @@ false, the milestone is not done.
    missing, or when the marker's commit is not the branch tip. In each case you
    type `/finish-milestone <version>`. When the checks pass, it opens the PR
    to `main`, or reuses the PR that is already open. It confirms that the CI
-   review posted and CI is green. It fixes a Blocking or Important finding on
+   review posted and CI is green. `scripts/verify-ci-review.sh` accepts only a
+   review that was posted after the latest push. It fixes a Blocking or Important finding on
    the milestone branch, because `/release-milestone` fixes nothing. After each
    fix that passes `scripts/run-verification-suite.sh` and is pushed, its
    Step 4 moves the marker's `sha:` line to the pushed commit. A commit that
    did not go through this loop needs `/finish-milestone`.
 4. `/release-milestone` checks again that no Blocking or Important finding is
-   open, that the milestone scope matches the release notes, and that the
+   open. If one is open, it fixes nothing. It sends you to `/clear` and
+   `/review-milestone <version>`, because only that command fixes a finding,
+   runs the verification suite, and moves the marker. It also checks that the
+   milestone scope matches the release notes, and that the
    version is newer than the last tag. It also checks that the deploy sheet
    is fresh. After you confirm, `scripts/release-milestone.sh` merges the PR,
    tags the merge commit, and creates a draft GitHub release. The release
@@ -701,15 +753,20 @@ The hotfix sequence, for both entry points:
    plan and opens the PR against `main`.
 3. `/finish-issue <N>` sees the `main` base and runs its hotfix mode. It
    merges into `main`. It skips the release-notes update. If the PR base is
-   wrong, it asks you to retarget the PR or proceed as a hotfix.
+   wrong, it asks you to retarget the PR or proceed as a hotfix. A hotfix PR
+   takes no ledger edits (see "The cleanup ledger").
 4. Do the patch release in `DEPLOYMENT.md`,
    [Patch Release from main](DEPLOYMENT.md#patch-release-from-main). It ends
    with a merge of `main` into the open milestone branch.
 5. Run `/clear`. Then type the command that `/finish-issue` names. If the
-   hotfix issue has a `Paused for hotfix:` line, that command is
-   `/start-issue <paused-N>`. It resumes the paused issue at its approval step,
-   or tells you to type `/execute-plan`. Otherwise the command is
-   `/start-issue <next>`.
+   hotfix issue has a `Paused for hotfix:` line, the command depends on the
+   paused issue:
+   - It has an open PR: `/address-pr-comments <paused-PR>`. The
+     implementation is done, so `/start-issue` must not run again.
+   - It has no open PR: `/start-issue <paused-N>`. It resumes the plan at its
+     approval step, or tells you to type `/execute-plan`.
+
+   With no `Paused for hotfix:` line, the command is `/start-issue <next>`.
 
 The milestone work resumes after the patch release.
 
@@ -740,7 +797,10 @@ The command proposes. It changes nothing until you approve.
   does not exempt an issue.
 - **Rescue:** a new signal reopens the issue with the new evidence attached.
   An owner asks, or analytics show the gap. The issue takes the new signal's
-  label.
+  label. `/new-issue` Step 2 finds a closed `stale-no-demand` match and offers
+  the rescue. Step 2.1 reopens the issue with the evidence as the comment,
+  swaps the old signal label for the new one, and removes the `stale` and
+  `stale-no-demand` labels. The issue is back in the backlog.
 
 ### Age from creation, not from last activity
 
@@ -766,8 +826,14 @@ repairs are never "someday".
 
 `/groom-backlog` sweeps open issues on demand. It applies the three planning
 questions from Step 2, skips the exempt issues, recommends closures and
-milestone placement, proposes the age-out actions, and acts on one approval.
-It does not sweep the cleanup ledger. `composer check:docs` catches a ledger
+target milestones, proposes the age-out actions, and acts on one approval.
+It moves an issue only into `Backlog`, and never into a release milestone.
+Only `/plan-milestone` adds an issue to a release, after its gate. For an
+issue in the backlog, `/groom-backlog` suggests a target milestone and ends
+with a pointer to `/plan-milestone <version>`. It moves an issue out of a
+release milestone only when the issue has no branch, no open PR, and a
+milestone that is not active. The move also removes `status:ready`. It does
+not sweep the cleanup ledger. `composer check:docs` catches a ledger
 group whose file is gone.
 
 ---

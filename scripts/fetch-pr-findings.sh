@@ -38,9 +38,14 @@ fail() {
 REVIEWS_COMMENTS="$(gh pr view "$PR_NUM" --repo "$REPO" --json reviews,comments 2>/tmp/fetch-pr-findings.err)" \
   || fail "gh pr view failed for PR #${PR_NUM}: $(cat /tmp/fetch-pr-findings.err)"
 
-INLINE_COMMENTS="$(gh api "repos/${REPO}/pulls/${PR_NUM}/comments" \
-  --jq '[.[] | {path, line, body, user: .user.login}]' 2>/tmp/fetch-pr-findings.err)" \
+# --paginate runs --jq once per page, so emit one object per line and join
+# the pages with jq -s. Without it, a PR with more than 30 inline comments
+# would lose the newest ones.
+INLINE_RAW="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUM}/comments" \
+  --jq '.[] | {path, line, body, user: .user.login}' 2>/tmp/fetch-pr-findings.err)" \
   || fail "gh api pulls/comments failed for PR #${PR_NUM}: $(cat /tmp/fetch-pr-findings.err)"
+INLINE_COMMENTS="$(printf '%s' "$INLINE_RAW" | jq -s '.')" \
+  || fail "could not combine the inline comment pages for PR #${PR_NUM}"
 
 HEAD_SHA="$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefOid --jq .headRefOid 2>/tmp/fetch-pr-findings.err)" \
   || fail "gh pr view (headRefOid) failed for PR #${PR_NUM}: $(cat /tmp/fetch-pr-findings.err)"

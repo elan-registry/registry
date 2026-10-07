@@ -195,7 +195,11 @@ fi
 scripts/review-fingerprint.sh "origin/$BASE"
 ```
 
-Then read the plan file (`scripts/check-plan-state.sh` gives its path). If
+Then read the plan file. `scripts/check-plan-state.sh` gives its path on
+the `path:` line. Its exit codes `1` (no plan), `2` (plan not approved) and
+`3` (no issue number) are normal results, not errors. This applies to every
+call in this command. If there is no `path:` line, or it is `(none)`, there
+is no plan. If the line lists more than one file, use the first one. If
 the plan file has a `Review fingerprint:` line with the same hash, skip each
 lane that the line names. These are the skippable lanes:
 
@@ -328,9 +332,9 @@ true. So this check runs as a separate lane, and its findings stay separate.
 1. Find the spec. Run `scripts/check-plan-state.sh`. It derives the issue
    number from the branch and finds the plan file. Then read the issue with
    `gh issue view <N> -R elan-registry/registry --json title,body` and read
-   the plan file's Implementation Checklist and acceptance criteria. If no
-   issue maps to the branch, skip this step and write "Spec: no issue found"
-   in Step 5.
+   the plan file's Implementation Checklist and acceptance criteria. Exits
+   `1` and `2` are normal (Step 3). If it exits `3`, no issue maps to the
+   branch. Skip this step and write "Spec: no issue found" in Step 5.
 
    If the plan has a line that starts `**Combine group:** combined with`,
    this branch also implements each issue in that line. List them:
@@ -490,8 +494,15 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
      heading too. Then re-run the `code-reviewer` agent on the full branch
      diff + changed files to confirm clean before continuing to the next
      item.
-   - **Defer** — a `ledger` row is already in the ledger. Do not ask a
-     follow-up question for it. Record the decision as `Deferred: ledger`.
+   - **Defer** on a hotfix branch (Step 5, "Ledger check", says how to
+     tell) — a hotfix takes no ledger edits. Ask a follow-up
+     `AskUserQuestion` with options `New GitHub issue` and `Skip entirely`.
+     Offer `New GitHub issue` only for a defect. For `New GitHub issue`, do
+     the *New GitHub issue* item below. For `Skip entirely`, do the
+     **Skip entirely** item below.
+   - **Defer** on any other branch — a `ledger` row is already in the
+     ledger. Do not ask a follow-up question for it. Record the decision as
+     `Deferred: ledger`.
      For every other row, ask a follow-up `AskUserQuestion` (options
      `Cleanup ledger`, `New GitHub issue`) to pick the destination, same
      distinction `/found` uses between cleanup and defect:

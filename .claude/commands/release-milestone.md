@@ -94,12 +94,13 @@ scripts/check-blocking-findings.sh <number> --include-important
 - **Exit 0** — clean, proceed.
 - **Exit 1** — an unresolved Blocking or Important finding exists. **Stop.**
   Do not proceed to Step 5 and do not fix it here. This command's next steps
-  are irreversible merge/tag/publish actions. The PR is still open. Tell the
-  user to fix each finding as a commit on the milestone branch, push, and
-  start a new milestone CI review (a push alone does not start one: see
-  `/review-milestone` Step 4, exit 2). After the new review posts, type
-  `/release-milestone <version>`. Do not send the user to `/finish-milestone`:
-  it ends before a PR exists.
+  are irreversible merge/tag/publish actions. The PR is still open. Do not
+  tell the user to fix the finding by hand and push: that skips the
+  verification suite, and the review marker no longer matches the branch.
+  End with plain text: run `/clear`, then type
+  `/review-milestone <version>`. Its Step 4 fixes each finding, runs the
+  verification suite, pushes, moves the marker, and starts a new CI review.
+  After it ends, type `/release-milestone <version>`.
 - **Exit 2** — can't verify: no posted review comment was found, the `gh`
   call failed, or a grep failed while it scanned the review. Treat as "can't
   verify," not "clean." Stop and report the error. If no review comment
@@ -139,10 +140,17 @@ the check against a stale or wrong checkout.
   `/finish-milestone <version>`.
 
   For each other line, ask the user whether the mismatch is intended. If the
-  user confirms every line, go to Step 3. Otherwise stop. Tell the user to fix
-  the "Issues Resolved" section of `docs/releases/RELEASE_NOTES_<version>.md`
-  on the milestone branch, commit, push, and type `/release-milestone
-  <version>` again. That push does not re-run the milestone CI review.
+  user confirms every line, go to Step 3. Otherwise stop. Do not fix the
+  release notes here, and do not tell the user to fix them by hand and
+  push. A hand push skips the verification suite, and the review marker's
+  `sha:` line no longer matches the branch, so `/review-milestone` Step 1
+  stops. End with plain text: list the lines to fix in the "Issues
+  Resolved" section of `docs/releases/RELEASE_NOTES_<version>.md`. Then
+  tell the user to run `/clear` and type `/finish-milestone <version>`. Its
+  Step 5.5 runs the same check and fixes the notes as a commit, it skips
+  the steps whose results are still current, and its Step 10 pushes and
+  writes a new marker. Then type `/review-milestone <version>` (it reuses
+  the open PR), then `/release-milestone <version>`.
 - **Exit 1 with no issue lines printed** — treat as exit 2.
 - **Exit 2 with "No release notes"** — check whether an earlier run of
   the script already removed the file:
@@ -270,11 +278,11 @@ Run it with the Bash tool `timeout: 600000`:
 scripts/release-milestone.sh <version> <pr-number> <milestone-number>
 ```
 
-This runs, in order: save the release notes to
+This runs, in order: refuse to continue if local `main` carries commits
+that `origin/main` does not have; save the release notes to
 `docs/plans/releases/<version>-release-notes.md`, remove the release-notes
 file as a commit on the milestone branch and push it (so it lands inside the PR, never as a bare
-push to `main` after merge); sync local `main` to `origin/main` and refuse to
-proceed if local `main` carries commits `origin/main` doesn't have; merge the
+push to `main` after merge); sync local `main` to `origin/main`; merge the
 PR (regular merge, `--delete-branch`); pull the merge commit; delete the
 local milestone branch; tag the PR's merge commit (from `gh pr view
 --json mergeCommit`, not `HEAD`) `<version>` and verify the tag points at
@@ -284,8 +292,10 @@ GitHub milestone.
 
 The script refuses any remote argument named `prod` or `test` — it only ever
 pushes to `origin`. Exit 0 means every step above completed. Exit 1 means a
-check stopped the run (bad args, closed PR, missing release notes, stray
-local commits on `main` — the script's own output says which). Every pull is
+check stopped the run before it changed anything (bad args, closed PR,
+missing release notes, stray local commits on `main` — the script's own
+output says which). The script checks local `main` before it pushes the
+notes removal. Every pull is
 `--ff-only`. Exit 2 means
 a step failed (merge conflict, push rejected, tag on the wrong commit).
 

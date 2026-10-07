@@ -11,8 +11,9 @@ An on-demand audit of open issues: find low-value, make-work, trivial-test,
 or extreme-edge-case candidates for closure, and recommend a milestone (or a
 new milestone) for everything worth keeping that has no clear release target.
 Unlike `/plan-milestone`, this does not seal a milestone or write acceptance
-criteria — it only closes, moves, and creates milestones, and ages out
-stale issues, then stops.
+criteria. It closes issues, moves issues out of a release milestone into
+`Backlog`, creates milestones, and ages out stale issues. Then it stops.
+It never moves an issue into a release milestone (Step 3).
 
 Orphaned cleanup-ledger groups need no sweep here: `composer check:docs`
 fails when a `CLEANUP_LEDGER.md` heading names a path that does not exist.
@@ -112,21 +113,48 @@ untouched. Still list each one in Step 4's table, as
 **KEEP, gate-critical/signal:forced — exempt, no placement change**, so a
 future run doesn't silently drop them from the output.
 
+This command never moves an issue into a release milestone. Only
+`/plan-milestone` adds issues to a release, after its gate. Its "Candidate
+filter" reads only unmilestoned and `Backlog` issues. An issue that this
+command put in a release milestone would skip that gate. The only move is
+out of a release milestone, into `Backlog`.
+
 For each other issue that passes the gate:
 
-- **Already in a themed release milestone** (not Backlog) whose theme it
-  clearly serves → leave it, no action.
-- **In Backlog, unmilestoned, or in a release milestone it doesn't actually
-  serve** → find the closest existing open milestone by theme match (read
-  each milestone's description). If none fits within reason, propose a new
-  milestone.
+- **Already in a release milestone** (not Backlog) whose theme it clearly
+  serves → leave it, no action.
+- **In a release milestone it does not serve** → recommend a move to
+  `Backlog`, but only when all three checks below pass. If a check fails,
+  list the issue as **no move** with the reason. The user de-scopes it by
+  hand, in the milestone's own workflow.
+- **In Backlog or unmilestoned** → do not move it. Recommend a target: the
+  closest open milestone by theme (read each milestone's description), or a
+  new milestone. `/plan-milestone <version>` gates it from the backlog.
 - **Explicitly structured to ride along with other work** (e.g. a grab-bag
   issue that says "pull a group in when that file is next touched") →
-  leave in Backlog. Don't force placement that defeats the issue's own
-  design.
+  leave in Backlog, with no target.
 
-A recommended move names the target milestone by its full title from
-Step 1, not the version alone.
+Checks before a move to `Backlog`. Empty output passes the check:
+
+```bash
+# 1. The issue has no branch
+git ls-remote --heads origin '*/<n>-*'
+git branch --list '*/<n>-*'
+
+# 2. The issue has no open PR
+gh pr list --repo elan-registry/registry --state open --limit 500 \
+  --json number,headRefName --jq '.[] | select(.headRefName | test("/<n>-")) | "#\(.number) \(.headRefName)"'
+
+# 3. The milestone is not active (exit 1 and no branch name means no branch)
+scripts/find-milestone-branch.sh <version>
+```
+
+`<version>` is the `vX.Y.Z` part of the milestone's full title. A move
+also removes `status:ready`, because a backlog issue is not ready
+(`docs/development/ISSUE_WORKFLOW.md`, "Tracking").
+
+A recommended target names the milestone by its full title from Step 1,
+not the version alone.
 
 For a new milestone, pick the version number by the existing scheme: the
 highest major version in use, and the next minor after the highest minor of
@@ -227,13 +255,21 @@ Produce one table before taking any action:
 | # | Title | Reason (signal / workaround / edge-case / make-work) |
 |---|-------|--------------------------------------------------------|
 
-## Recommended milestone moves
-| # | Title | Current (full title) | Recommended (full title) | Why |
-|---|-------|----------------------|--------------------------|-----|
+## Recommended moves to Backlog
+| # | Title | Current (full title) | Why it does not serve that milestone |
+|---|-------|----------------------|--------------------------------------|
+
+## No move (failed a Step 3 check)
+| # | Title | Current (full title) | Failed check (branch / open PR / active milestone) |
+|---|-------|----------------------|----------------------------------------------------|
+
+## Targets for /plan-milestone (no change on GitHub)
+| # | Title | Target (full title) | Why |
+|---|-------|---------------------|-----|
 
 ## Recommended new milestone(s)
-| Full title | Theme sentence | Issues |
-|------------|----------------|--------|
+| Full title | Theme sentence | Target issues (they stay in Backlog) |
+|------------|----------------|--------------------------------------|
 
 ## Age-out
 | # | Title | Action (warn / close / remove stale) | Created or stale since | Last human comment |
@@ -257,8 +293,8 @@ gh issue close NNN --repo elan-registry/registry --comment "<one-line reason, ma
 # New milestone(s): the full title from the Step 4 table
 gh api repos/elan-registry/registry/milestones -f title="<full title>" -f description="<theme sentence>"
 
-# Moves: the full title of the target milestone, never the version alone
-gh issue edit NNN --repo elan-registry/registry --milestone "<full title>"
+# Moves: into Backlog only. Leave out --remove-label when the issue has no status:ready
+gh issue edit NNN --repo elan-registry/registry --milestone "Backlog" --remove-label "status:ready"
 
 # Age-out: warn
 gh issue edit NNN --repo elan-registry/registry --add-label "stale"
@@ -284,11 +320,20 @@ hasn't actually happened.
 ## Step 6: Output summary
 
 - Closed: list with reasons
-- Moved: list with old → new milestone
+- Moved to Backlog: list with the old milestone
+- No move: list with the failed check
+- Targets: each target milestone with its issues
 - Created: new milestone(s) with full title and theme
 - Age-out: issues warned, closed with `stale-no-demand`, and `stale`
   removed
 - Left unchanged: Backlog grab-bag items and anything the user declined
+
+End with the next step, as plain text, not a menu:
+
+- If there is a target milestone, say: "Run `/clear`, then type
+  `/plan-milestone <version>` for the milestone you want to plan next."
+  List the target versions.
+- Otherwise, say: "No command to type now."
 
 ## Important
 

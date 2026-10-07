@@ -154,9 +154,16 @@ Step 3.5 writes when the user accepts the tags:
   PR body.
 - Otherwise a tag appeared or changed since that decision. Present the list
   and ask the user to (a) resolve first, (b) proceed with this explicitly
-  accepted, or (c) stop here. Do not proceed without an explicit answer. On
-  (b), write the file in the same format: a first line
-  `decision: accepted`, then the script's output rows unchanged.
+  accepted, or (c) stop here. Do not proceed without an explicit answer.
+  - On (a), stop. A fix is a new commit, and Step 1 accepts only reviewed
+    commits. End with plain text: fix each test and remove its tag as a
+    commit on `milestone/$ARGUMENTS`. Then run `/clear` and type
+    `/finish-milestone $ARGUMENTS`. It reviews the new commit and skips the
+    steps whose results still match.
+  - On (b), write the file in the same format: a first line
+    `decision: accepted`, then the script's output rows unchanged.
+  - On (c), stop. End with plain text: nothing changed. When ready, type
+    `/review-milestone $ARGUMENTS`.
 
 On exit 2, a row reading `(lookup-failed)` means the issue's state couldn't
 be confirmed — resolve that before treating the row as accepted or not.
@@ -211,11 +218,12 @@ were explicitly accepted as a known gap for this release (see Step 2):
 - `<test name>` (`<file path>`) — tracked by #`<issue number>` (`<open/closed>`)
 
 <!-- Include this section ONLY if docs/plans/releases/$ARGUMENTS-accepted-risks.md
-     exists (written by /finish-milestone Step 9.8). Copy its lines. -->
+     exists (written by /finish-milestone Step 9.8). Copy its lines unchanged.
+     Each line has the form below. <follow-up> is #<N> or "no follow-up". -->
 
 ## Accepted Risks
 
-- <finding> — <reason> (<follow-up issue, if any>)
+- <finding> — <reason> (<follow-up>)
 
 ## Test Plan
 
@@ -300,22 +308,55 @@ scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=label \
 
   Wait for the `milestone-review` check to finish
   (`gh pr checks <pr-number> --watch`, run with the Bash tool
-  `timeout: 600000`), then run this script again. Until
-  the new review posts, the script still reads the old comment. Repeat
-  until it exits 0. If a finding needs user judgment or access only they
+  `timeout: 600000`), then run this script again. The script accepts only
+  a review comment created after the head commit reached the branch. It
+  waits for that comment, and it ignores the old one. Repeat until it
+  exits 0. If a finding needs user judgment or access only they
   have (e.g. a prod-host check), use AskUserQuestion — "defer to a tracked
   follow-up" is acceptable, but must be an explicit recorded choice, never
   a silent skip.
 - **Exit 3** — PR title carries `[skip-review]`; no comment is the correct,
   by-design outcome. Report "review intentionally skipped per title tag"
   and proceed to Step 5.
-- **Exit 4** — no comment even after the script's one recovery attempt (or
-  recovery couldn't apply — see its stderr). Report to the user; do not
-  proceed to Step 5 without an explicit reason recovery doesn't apply here.
+- **Exit 4** — no review comment for the head commit, even after the
+  script's one recovery attempt. Show the script's stderr. Then check
+  whether the PR changes the review workflow itself:
 
-Also confirm all CI checks are green at this point, not just the review:
-`gh pr checks <pr-number>` (skipped-by-design checks are fine; an actual
-failure or pending required check is not).
+  ```bash
+  gh api "repos/elan-registry/registry/pulls/<pr-number>/files" --paginate \
+    --jq '.[].filename' | grep -Fx .github/workflows/claude-code-review.yml
+  ```
+
+  - **A line prints** — the action's workflow-file guard skips the review
+    until this change is on `main`. No new run can post one. Ask with
+    AskUserQuestion: `Proceed without the CI review` or `Stop`. On
+    `Proceed without the CI review`, go to Step 5. Its CI review line
+    records this choice. On `Stop`, end with plain text: when ready, type
+    `/review-milestone $ARGUMENTS`.
+  - **Nothing prints** — stop. Show the latest `milestone-review` run:
+    `gh run list --workflow claude-code-review.yml --branch milestone/$ARGUMENTS --limit 3`.
+    End with plain text: wait until that run finishes, or fix the cause
+    that its log shows. Then type `/review-milestone $ARGUMENTS`. Step 3
+    reuses the open PR, and Step 4 tries the recovery again.
+
+**All CI checks must be green, not only the review.** Run
+`gh pr checks <pr-number>`. A check skipped by design is fine.
+
+- **A required check is pending** — wait for it:
+  `gh pr checks <pr-number> --watch`, run with the Bash tool
+  `timeout: 600000`. Then run `gh pr checks <pr-number>` again.
+- **A check failed** — read its log:
+  `gh run view <run-id> --repo elan-registry/registry --log-failed`.
+  - The failure needs a code change: fix it with items 1–4 of the exit 2
+    loop above. Then start a new review with the `deep-review` label, as
+    that loop does. Run `scripts/verify-ci-review.sh` again: the fix
+    commit is a new head, and it needs its own review.
+  - The failure is not in the code (a runner or network error): run the
+    failed jobs again with
+    `gh run rerun <run-id> --failed --repo elan-registry/registry`.
+    Then wait for the check as for a pending check.
+
+  Do not go to Step 5 until every check is green or skipped by design.
 
 **The bar for calling this command complete:** the milestone branch, as it
 sits on `main`'s target commit right now, needs zero further code changes
@@ -336,9 +377,9 @@ refresh. Step 5 then does not offer `/release-milestone`.
 - List of merged issue PRs included
 - Known-broken test exclusions status (none found, or resolved, or explicitly accepted with issue references)
 - CI milestone review status (from Step 4): "posted normally" / "no run was
-  triggered — re-triggered via deep-review label, now posted" / "ran but
-  posted nothing — self-referential workflow-file change, requires merge to
-  main first" / etc. — never omit this line
+  triggered — re-triggered via deep-review label, now posted" / "no review
+  — self-referential workflow-file change, user chose to proceed without
+  the CI review" / etc. — never omit this line
 - Note as plain text (informational, not a runnable choice): "To re-run the
   deep review later, label the PR `deep-review` or comment `@claude
   deep-review`", "Deploy sheet is at `docs/plans/releases/$ARGUMENTS-deploy.md`

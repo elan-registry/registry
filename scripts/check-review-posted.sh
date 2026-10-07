@@ -39,12 +39,21 @@ PR_NUM="${1:?Usage: check-review-posted.sh <pr-number>}"
 GH_ERR="$(mktemp)"
 trap 'rm -f "$GH_ERR"' EXIT
 
-if ! COUNT=$(gh api "repos/elan-registry/registry/issues/${PR_NUM}/comments" \
-    --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length' \
+# --paginate: one page holds only 30 comments, and a review can be on a
+# later page. gh runs the --jq filter on each page separately, so a
+# `length` filter would print one count per page. The filter prints one ID
+# per review comment instead, and the shell counts the lines.
+if ! REVIEW_IDS=$(gh api "repos/elan-registry/registry/issues/${PR_NUM}/comments" --paginate \
+    --jq '.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*")) | .id' \
     2>"$GH_ERR"); then
   echo "gh api call failed for PR #${PR_NUM} — cannot verify review status (this is NOT the same as 'no review posted'):" >&2
   cat "$GH_ERR" >&2
   exit 1
 fi
+
+COUNT=0
+while IFS= read -r review_id; do
+  [ -n "$review_id" ] && COUNT=$((COUNT + 1))
+done <<< "$REVIEW_IDS"
 
 echo "$COUNT"

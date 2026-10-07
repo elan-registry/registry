@@ -334,11 +334,16 @@ git clone -q "$ORIGIN" "$OTHER" 2>/dev/null
 ) || exit 1
 OUT9="$(run_release "$VERSION" "$PR" "$MS" 2>&1)"
 STATUS9=$?
+# Exit 1 means "nothing changed", so the check must run before Step 6
+# removes the notes and pushes the milestone branch.
+NOTES_ON_ORIGIN9=0
+git -C "$ORIGIN" cat-file -e "milestone/${VERSION}:${NOTES_REL}" 2>/dev/null && NOTES_ON_ORIGIN9=1
 if [ "$STATUS9" -eq 1 ] && printf '%s' "$OUT9" | grep -q 'commit(s) not on origin/main' \
-    && ! grep -q '^pr merge' "$STATE/calls"; then
-    pass "Case 9: diverged local main -> exit 1 with the stray-commit message, no merge"
+    && ! grep -q '^pr merge' "$STATE/calls" && [ "$NOTES_ON_ORIGIN9" -eq 1 ]; then
+    pass "Case 9: diverged local main -> exit 1 with the stray-commit message, no push, no merge"
 else
-    fail "Case 9: diverged local main -> exit 1" "exit: $STATUS9 (want 1)" "output: [$OUT9]"
+    fail "Case 9: diverged local main -> exit 1, no push" "exit: $STATUS9 (want 1)" \
+        "notes still on origin milestone branch: $NOTES_ON_ORIGIN9 (want 1)" "output: [$OUT9]"
 fi
 
 # --- Case 10: notes restore fails -> 2, no empty notes copy --------------
@@ -350,8 +355,9 @@ OUT10="$(cd "$WORK" && PATH="$GITSTUBDIR:$STUBDIR:$PATH" FAIL_GIT_SHOW=1 STUB_ST
     STUB_ORIGIN="$ORIGIN" "$SCRIPT" "$VERSION" "$PR" "$MS" 2>&1)"
 STATUS10=$?
 LEFTOVER="$(find "$WORK/docs/plans/releases" -name "${VERSION}-release-notes.md*" 2>/dev/null)"
-if [ "$STATUS10" -eq 2 ] && [ -z "$LEFTOVER" ] && [ ! -f "$STATE/release_notes" ]; then
-    pass "Case 10: git show fails during restore -> exit 2, no notes copy left behind"
+if [ "$STATUS10" -eq 2 ] && [ -z "$LEFTOVER" ] && [ ! -f "$STATE/release_notes" ] \
+    && printf '%s' "$OUT10" | grep -q 'Could not restore'; then
+    pass "Case 10: git show fails during restore -> exit 2 with the restore message, no notes copy left behind"
 else
     fail "Case 10: git show fails during restore -> exit 2" "exit: $STATUS10 (want 2)" \
         "left behind: [$LEFTOVER]" "output: [$OUT10]"

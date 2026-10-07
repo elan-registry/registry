@@ -313,6 +313,60 @@ scripts/check-deploy-sheet-fresh.sh v2.30.5
 
 The hermetic test is `tests/hooks/test-check-deploy-sheet-fresh.sh`.
 
+### verify-ci-review.sh
+
+Confirms that a CI code review posted on a PR, and recovers once if it did
+not. Then it checks the review for unresolved findings. A successful
+`claude-code-review.yml` run is not proof of a review: the run can succeed
+with no comment. The comment with the `Strengths` heading is the only proof.
+`/finish-issue` Step 2.5 and `/review-milestone` Step 4 call this script.
+
+```bash
+scripts/verify-ci-review.sh <pr-number> <interval-s> <timeout-s> \
+    --trigger=<workflow|label|none> [--include-important] [--check-skip-tag]
+```
+
+- **`--trigger`.** Sets the one recovery attempt. `workflow` runs
+  `gh workflow run claude-code-review.yml`. `label` adds the `deep-review`
+  label. `none` makes no recovery attempt.
+- **`--include-important`.** Also fails on an unresolved `Important` finding.
+- **`--check-skip-tag`.** Treats a `[skip-review]` PR title as a correct
+  outcome (exit 3).
+- **Head-commit freshness.** A review counts only when its comment was
+  created at or after the time that the head commit reached the branch. The
+  script reads that time from the repository activity API (the newest entry
+  whose `after` is the head SHA). A committer date is not used, because it
+  can be older than the push. The script uses the newest review comment, on
+  all comment pages. An older comment reviewed an earlier head. The script
+  waits for a newer one, and then recovers, as it does when no comment
+  exists. For a PR from a fork, the check does not apply and the script
+  prints a warning.
+- **Label recovery.** Adding a label that the PR already has sends no
+  `labeled` event. With `--trigger=label`, the script removes `deep-review`
+  first when the PR has it, then adds it.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | A review for the head commit posted. No unresolved `Blocking` finding (and no unresolved `Important` finding with `--include-important`). |
+| 1 | Cannot verify: a `gh` call failed, a time or the head commit could not be read, or the arguments are not valid. This is not "no review posted". |
+| 2 | A review posted, but an unresolved `Blocking` or `Important` finding remains. |
+| 3 | No review, and the PR title has `[skip-review]` (only with `--check-skip-tag`). |
+| 4 | No review for the head commit after the poll and one recovery attempt. |
+
+The hermetic test is `tests/hooks/test-check-blocking-findings.sh`.
+
+### Other PR review readers
+
+These scripts read every page of PR comments (`gh api --paginate`), so a PR
+with more than 30 comments still returns its newest review:
+
+- `check-blocking-findings.sh` checks the same newest review that
+  `verify-ci-review.sh` picks. Test: `tests/hooks/test-check-blocking-findings.sh`.
+- `check-review-posted.sh` counts the review comments. Test:
+  `tests/hooks/test-check-review-posted.sh`.
+- `fetch-pr-findings.sh` returns the reviews, inline comments and failed
+  checks as one JSON object. Test: `tests/hooks/test-fetch-pr-findings.sh`.
+
 ### release-milestone.sh
 
 Runs the merge, tag and publish sequence for `/release-milestone` Step 6.
@@ -323,16 +377,17 @@ pushes to a remote named `prod` or `test`.
 scripts/release-milestone.sh [--dry-run] v2.30.5 <pr-number> <milestone-number>
 ```
 
-In order: it saves the release notes, removes the notes file in a commit on
-the milestone branch and pushes it, syncs local `main`, merges the PR, tags
+In order: it fetches `origin` and checks local `main`, saves the release notes, removes the notes file in a commit on
+the milestone branch and pushes it, pulls `main`, merges the PR, tags
 the merge commit, pushes the tag, creates a draft GitHub release, and closes
 the GitHub milestone. `--dry-run` prints each command and changes nothing.
 
 - **Fast-forward pulls.** Every pull is `--ff-only`. The script never
   creates a merge commit when it pulls.
-- **Stray commits.** Before it pulls `main`, the script counts the local
-  commits that `origin/main` does not have. If the count is not `0`, it
-  stops. Move those commits to a side branch first.
+- **Stray commits.** The script fetches `origin`, then counts the local
+  commits that `origin/main` does not have. This check runs before Step 6
+  pushes anything. If the count is not `0`, it stops with exit 1 and nothing
+  has changed. Move those commits to a side branch first.
 - **The tag.** The script reads the merge commit of the PR (`gh pr view
   --json mergeCommit`). It tags that SHA, not `HEAD`. Then it checks that the
   tag points at the SHA. An existing tag on another commit stops the run.
@@ -354,6 +409,35 @@ the GitHub milestone. `--dry-run` prints each command and changes nothing.
 
 The hermetic test is `tests/hooks/test-release-milestone.sh`.
 
+## Commit and PR
+
+### commit-push-pr.sh
+
+Runs the mechanical part of `/commit-push-pr`: branch checks, staging, the
+commit, the push, and PR create or reuse. The command writes the commit
+message and the PR title and body first.
+
+```bash
+scripts/commit-push-pr.sh [--dry-run] --message-file <f> --title <t> \
+    --body-file <f> [--base <ref>] [--branch <name>]
+```
+
+- **Refusals.** The script exits 1 on `main`, `master`, or `milestone/*`, and
+  when a path is under `docs/plans/` or `_noupload/`.
+- **PR reuse.** The script reuses only an open PR. It runs
+  `gh pr list --head <branch> --state open`. It does not use `gh pr view`,
+  which also returns a merged or closed PR for the same branch name. When
+  no open PR exists, it opens a new one.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Done: commit created, branch pushed, PR created or reused. |
+| 1 | Refused by a branch rule or a forbidden path. |
+| 2 | A `git` or `gh` command failed. This includes a failed `gh pr list`. |
+| 3 | The base branch did not resolve. Ask the user. |
+
+The hermetic test is `tests/hooks/test-commit-push-pr.sh`.
+
 ## Plan state
 
 ### check-plan-state.sh
@@ -370,7 +454,8 @@ It looks in `docs/plans/issues/issue-<N>-*.md`. If that has no match, it looks
 in the older `docs/plans/issue-<N>-*.md`. The branch must match `issue/`,
 `bug/` or `feature/` when no number is given. Stdout has three lines:
 `path:` (or `(none)`, and a comma-separated list when more than one file
-matches), `approved: yes|no`, and `checklist: <done>/<total>`.
+matches), `approved: yes|no`, and `checklist: <done>/<total>`. An item
+marked `- [ ] <item> — N/A: <reason>` counts as done in the `<done>` count.
 
 | Code | Meaning |
 | --- | --- |

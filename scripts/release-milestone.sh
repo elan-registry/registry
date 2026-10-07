@@ -97,6 +97,22 @@ esac
 
 trap 'echo "release-milestone: a command failed at line ${LINENO}. Fix the cause, then run the script again. It skips the steps that already completed." >&2; exit 2' ERR
 
+# --- Check local main before Step 6 pushes anything ---
+# Exit 1 promises that nothing changed, so this check runs before Step 6
+# pushes the notes removal. On a diverged main, Step 7's pull would also
+# fail with a less clear message.
+step "Check local main"
+run git fetch origin --prune
+if [ "$DRY_RUN" -eq 0 ]; then
+  AHEAD="$(git rev-list --count origin/main..main)"
+  if [ "$AHEAD" != "0" ]; then
+    echo "Local main has ${AHEAD} commit(s) not on origin/main. Stop — park them on a side branch first." >&2
+    exit 1
+  fi
+else
+  echo "[dry-run] git rev-list --count origin/main..main  # expect: 0"
+fi
+
 # --- Step 6: save release notes, delete the file, push to the milestone branch ---
 step "Step 6: remove release notes from milestone branch"
 if [ "$PR_STATE" = "MERGED" ]; then
@@ -130,22 +146,9 @@ else
   fi
 fi
 
-# --- Step 7: switch to main, pull, verify clean local state ---
+# --- Step 7: switch to main and pull ---
 step "Step 7: sync main"
 run git checkout main
-run git fetch origin --prune
-
-# Check before the pull: on a diverged main, the pull fails with a less
-# clear message.
-if [ "$DRY_RUN" -eq 0 ]; then
-  AHEAD="$(git rev-list --count origin/main..main)"
-  if [ "$AHEAD" != "0" ]; then
-    echo "Local main has ${AHEAD} commit(s) not on origin/main. Stop — park them on a side branch first." >&2
-    exit 1
-  fi
-else
-  echo "[dry-run] git rev-list --count origin/main..main  # expect: 0"
-fi
 run git pull --ff-only origin main
 
 # --- Step 8: merge the PR ---

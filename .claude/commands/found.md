@@ -31,11 +31,23 @@ git branch --show-current
 scripts/check-plan-state.sh
 ```
 
-The issue number in the branch name is `CURRENT_ISSUE`. Read the plan file
-that the `path:` line names. The files that its Implementation Checklist
-lists are the files in scope for the current PR. If the `path:` line is
-`(none)`, the plan is still a draft in `/start-issue`: the files in scope
-are the files that the draft plan lists.
+The issue number in the branch name is `CURRENT_ISSUE`. Exits 1, 2 and 3
+are normal states, not errors. Read the exit code:
+
+- **0 or 2** — the `path:` line names the plan file. Read it. The files
+  that its Implementation Checklist lists are the files in scope for the
+  current PR. Exit 2 means that the plan is not approved yet. A
+  `**Status:** Draft — pending approval` line means that the plan is still
+  a draft in `/start-issue`.
+- **1** — no plan file yet. `/start-issue` has not reached its Step 9. The
+  files in scope are the files that the planning so far names.
+- **3** — the branch name gives no issue number. Ask the user for the
+  issue number, and run `scripts/check-plan-state.sh <number>`. If no issue
+  is in progress, stop. Tell the user to type `/new-issue`, as the
+  introduction says.
+
+The plan is a **hotfix plan** when it has the line ``**PR base:** `main` ``.
+A hotfix plan takes no cleanup-ledger edits (see "Ledger").
 
 ### Step 2: Classify — Containment
 
@@ -152,10 +164,18 @@ body --jq .body`, add the line, and write it back with `gh pr edit
 #### Deviation
 
 The fix is needed for the acceptance criteria, but it touches a file that
-the plan does not list. Do not make the fix. Follow `/execute-plan` Step 5,
-"Deviation rule": record the change in the plan, ask for re-approval on the
-issue, and stop. If the plan is still a draft in `/start-issue`, add the
-file to the draft plan instead.
+the plan does not list. Do not make the fix.
+
+If the plan is still a draft in `/start-issue` (Step 1), add the file to
+the draft plan instead. Then resume, as in Step 5.
+
+Otherwise, follow `/execute-plan` Step 5, "Deviation rule", items 1 to 3:
+add a `## Deviation` section to the plan, ask for re-approval on the issue,
+and set the plan status to `Draft — pending approval`. Then stop, and tell
+the user as plain text: "The plan needs re-approval. The plan file holds
+the state, so you may run `/clear` first. Type
+`/start-issue CURRENT_ISSUE`. It continues at its approval step. Then type
+`/execute-plan CURRENT_ISSUE`."
 
 #### Hotfix track
 
@@ -214,6 +234,13 @@ EOF
 
 #### Ledger
 
+**On a hotfix plan (Step 1), do not edit the ledger.** A hotfix PR merges
+into `main` and changes only what the emergency needs. A cleanup find
+on a hotfix is dropped: do "Fix in current PR and Dropped" with the
+Dropped line, then go to Step 5. This is the same rule as `/review-pr`,
+`/address-pr-comments` and `/execute-plan`: on a hotfix, only a defect
+becomes a new issue, and cleanup is skipped.
+
 The cleanup ledger is `docs/development/CLEANUP_LEDGER.md`. Its "Rules"
 section sets the format. Add the item with the Edit tool. Do not use a
 script.
@@ -252,8 +279,8 @@ name the branch.
 For Fix in current PR, Defer, Ledger and Dropped: state what action was taken in one sentence,
 then immediately return to the current task. Do not interrupt the flow further.
 
-For a Deviation, do not resume. `/execute-plan` Step 5, "Deviation rule",
-tells the user the next command.
+For a Deviation on an approved plan, do not resume. "Deviation" above
+tells the user the next command. For a Deviation on a draft plan, resume.
 
 For the **Hotfix track**, do not resume. This is the one finding that
 interrupts a milestone (see `docs/development/ISSUE_WORKFLOW.md`, "Interrupts
@@ -279,8 +306,9 @@ Then give the user the hotfix sequence as plain text. Tell them to run
    the milestone-only steps.
 4. The patch release: `docs/development/DEPLOYMENT.md`, "Patch Release from
    main". It ends with a merge of `main` into the open milestone branch.
-5. `/clear`, then `/start-issue CURRENT_ISSUE` — resumes the paused issue.
-   It continues at its approval step, or tells you to type `/execute-plan`.
+5. Resume the paused issue. `/finish-issue` (Step 9, hotfix end) names
+   the command: `/address-pr-comments` if the paused issue already has an
+   open PR, otherwise `/start-issue CURRENT_ISSUE`. Run `/clear` first.
 
 ## Quick reference
 

@@ -220,8 +220,18 @@ on any recommendations.
 ## Step 6: Commit and Push Fixes
 
 After all blocking items are fixed and the user has decided on any local
-review recommendations, check whether a fix in this run resolved a
-cleanup-ledger item. Run:
+review recommendations, get the PR base. Run:
+
+```bash
+gh pr view <pr-number> --repo elan-registry/registry --json baseRefName --jq .baseRefName
+```
+
+If it prints `main`, this is a hotfix PR (`/start-issue --hotfix`). A
+hotfix takes no ledger edits. Skip the ledger check below and go to the
+commit.
+
+Otherwise, check whether a fix in this run resolved a cleanup-ledger item.
+Run:
 
 ```bash
 BASE=$(gh pr view <pr-number> --repo elan-registry/registry --json baseRefName --jq .baseRefName)
@@ -243,6 +253,9 @@ git add <changed-files>
 git commit -m "fix: address PR review comments (#<pr-number>)"
 git push origin "$(git branch --show-current)"
 ```
+
+The fixes can change which files the branch touches. Do "Delta and risk
+flag" in "PR body records" below.
 
 Wait for the checks to re-run. Run this with the Bash tool
 `timeout: 600000`. It polls every 60 seconds until all checks end:
@@ -271,8 +284,14 @@ disappears with no record of the decision. For each item, in order:
 3. Act on the answer:
    - **Fix now** — follow the fix-commit-push pattern from Steps 5–6,
      including the ledger check in Step 6.
-   - **Defer** — ask a follow-up `AskUserQuestion` (options `Cleanup ledger`,
-     `New GitHub issue`) — same distinction `/review-pr` Step 6 uses:
+   - **Defer** on a hotfix PR (Step 6: the PR base is `main`) — a hotfix
+     takes no ledger edits. Ask a follow-up `AskUserQuestion` with options
+     `New GitHub issue` and `Skip entirely`. Offer `New GitHub issue` only
+     for a defect. For `New GitHub issue`, do the *New GitHub issue* item
+     below. For `Skip entirely`, do the **Skip entirely** item below.
+   - **Defer** on any other PR — ask a follow-up `AskUserQuestion` (options
+     `Cleanup ledger`, `New GitHub issue`) — same distinction `/review-pr`
+     Step 6 uses:
      - *Cleanup ledger* — edit `docs/development/CLEANUP_LEDGER.md` with
        the Edit tool, in the form `/review-pr` Step 6 gives. Use the file
        path without its `:line` part, and the issue number in
@@ -339,6 +358,42 @@ and line form:
 ```
 
 If the heading is not there, add it at the end of the body.
+
+**Delta and risk flag.** Step 6 does this after each push of fixes. Find
+the plan. Run:
+
+```bash
+scripts/check-plan-state.sh
+```
+
+Exit codes `1` (no plan), `2` (plan not approved) and `3` (no issue number)
+are normal results, not errors. Use only the `path:` line. If there is no
+`path:` line, or it is `(none)`, there is no plan. Do not change the PR
+body. If the line lists more than one file, use the first one.
+
+List the files that the branch changes. Run:
+
+```bash
+BASE=$(gh pr view <pr-number> --repo elan-registry/registry --json baseRefName --jq .baseRefName)
+git diff --name-only --merge-base "origin/$BASE"
+```
+
+Copy the body to `<new-body-file>`. Then:
+
+1. Write a new bullet list under `## Delta from plan`. Use the rules in
+   `/commit-push-pr` step 5 (the `## Delta from plan` item) with this file
+   list. Replace the old bullets. If the heading is not there, add it with
+   the list at the end of the body.
+2. Set the risk flag again over every file in this list. Use the rule in
+   `/start-issue` Step 9 ("Set the header lines"): `yes` when the change
+   touches auth, sessions or permissions, a database migration, an API
+   endpoint contract, or payments. Otherwise `no`. Do not change `yes` to
+   `no` without the user's answer. Ask with AskUserQuestion: `Keep yes` or
+   `Change to no`.
+3. Replace the `**Risk flag:**` line with `**Risk flag:** yes` or
+   `**Risk flag:** no`, at the start of its own line. `/finish-issue`
+   matches `^**Risk flag:**`. If the body has no such line, add it as the
+   first line of the body.
 
 Send the new body:
 

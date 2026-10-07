@@ -88,14 +88,17 @@ which to use.
 
 ### Step 2: Validate Approval Status
 
-On exit 2 from Step 1, the plan file's `**Status:**` line is not
-`Approved — ready for /execute-plan`. Read it directly to see what it is:
+Do this step on exit 2 from Step 1, and when `$ARGUMENTS` is a plan file
+path. Read the plan file's `**Status:**` line directly to see what it is:
 
+- **`Approved — ready for /execute-plan`** (a path argument only): go to
+  Step 3.
 - **`Draft — pending approval`**: stop. Tell the user: "This plan is not
   approved yet. Type `/start-issue <NUMBER>`. It finds the existing branch
   and plan and continues at its approval step (Step 9)."
 - **`Implemented — pending commit/PR`**: a previous run reached Step 8.
-  Run Step 3. If every item is verified done and the release notes have this
+  Run Step 3. If every item is verified done or marked N/A (Step 8, "The
+  N/A marker"), and the release notes have this
   issue's entry (Step 6.7), go to Step 9. A hotfix plan (it has the line
   ``**PR base:** `main` ``) has no release-notes entry, so for a hotfix plan
   check only the items. If not, set the status line back to
@@ -112,6 +115,9 @@ reality; confirm each one against the actual repository.
 
 For each checklist item:
 
+- **N/A items** (the line ends with `— N/A: <reason>`, Step 8): count the
+  item as done. Do not do it, and do not tick it. Step 4 does not schedule
+  it.
 - **File-creation/modification items** ("Add X to file.php"): check whether
   the described change is actually present in the file (grep for the
   function/method/class name, or read the relevant section).
@@ -147,7 +153,8 @@ Update the plan file's checkboxes to match verified reality before continuing.
 
 ### Step 4: Determine Fan-Out from Plan Annotations
 
-Group the remaining (`[ ]`) checklist items by their annotations:
+Group the remaining (`[ ]`) checklist items by their annotations. Leave
+out the N/A items (Step 3).
 
 - Items marked `(parallel-safe)` with no unresolved `(depends on: ...)` can
   run concurrently — launch one `software-developer` agent per independent
@@ -193,12 +200,17 @@ change. Then:
 
 1. Add a `## Deviation` section to the plan file, below the header. State
    the change, why the plan cannot work without it, and the checklist items
-   it adds or changes.
+   it adds or changes. Write each added item in the checklist item form,
+   with its file and its parallel-safety annotation. Do not edit the
+   Implementation Checklist. `/start-issue` Step 9 ("Merge a deviation")
+   merges these items into it, pulls the ledger items for the new files,
+   and sets the risk flag again. Then the user approves the merged plan.
 2. Post a comment on the issue that states the deviation and asks for
    re-approval:
    `gh issue comment <NUMBER> -R elan-registry/registry --body "<text>"`.
 3. Set the plan's status line to `**Status:** Draft — pending approval`.
-4. Tell the user as plain text: "The plan needs re-approval. Type
+4. Tell the user as plain text: "The plan needs re-approval. The plan file
+   holds the state, so you may run `/clear` first. Type
    `/start-issue <NUMBER>`. It continues at its approval step. Then type
    `/execute-plan <NUMBER>`." Then stop. Leave the work done so far
    uncommitted.
@@ -480,7 +492,11 @@ heading if it is not there. Use the line forms of `/review-pr` Step 6
 ```
 
 - **Advisory** — `/found` sends it to a new issue or to the cleanup ledger.
-  Write `Deferred: issue #<n>` or `Deferred: ledger`.
+  Write `Deferred: issue #<n>` or `Deferred: ledger`. A hotfix plan
+  (Step 6.4) takes no ledger edits. For a hotfix plan: a defect (a user
+  or an operator sees a wrong result) becomes a new issue through `/found`'s
+  "Defer" steps; cleanup is skipped. Write `Deferred: issue #<n>` or
+  `Skipped: <reason>`.
 - **Note** that you do not fix — write `Skipped: <reason>`.
 - A finding that is not real (the code, a query, or a test result
   contradicts it) — write `False positive: <reason>`.
@@ -552,7 +568,8 @@ branch still has the same fingerprint (its Step 3).
 ### Step 8: Confirm Plan Completeness
 
 Before moving to hand-off, re-scan the plan file: every checklist item should
-now be `[x]`. If any remain `[ ]`, use AskUserQuestion rather than deciding
+now be `[x]` or carry the N/A marker below. If any other item remains `[ ]`,
+use AskUserQuestion rather than deciding
 yourself — even when it looks like the item turned out to be unnecessary:
 
 - Question: "'`<item>`' is still unchecked. How should I handle it?"

@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git ls-files:*), Bash(git merge-base:*), Bash(git fetch --prune origin), Bash(gh pr view:*), Bash(mktemp:*), Write, Read, AskUserQuestion, Bash(scripts/commit-push-pr.sh:*), Bash(scripts/resolve-base-branch.sh:*), Bash(scripts/check-plan-state.sh:*), Bash(scripts/ledger-items-for-files.sh:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git ls-files:*), Bash(git merge-base:*), Bash(git fetch --prune origin), Bash(gh pr list:*), Bash(mktemp:*), Write, Read, AskUserQuestion, Bash(scripts/commit-push-pr.sh:*), Bash(scripts/resolve-base-branch.sh:*), Bash(scripts/check-plan-state.sh:*), Bash(scripts/ledger-items-for-files.sh:*)
 description: Commit, push, and open a draft PR
 model: sonnet
 ---
@@ -32,7 +32,12 @@ prose.
    ad-hoc branch. Go to step 3. If the line lists more than one file, use the
    first one. This is "the plan" in the steps below.
 
-   Read the plan's `**Status:**` line. If it is
+   Check for a hotfix first. If the plan has the line
+   ``**PR base:** `main` ``, this is a hotfix (`/start-issue --hotfix`). The
+   base is `main`. Do step 3.1. Then skip step 3.2, and use `origin/main` in
+   step 3.3 even if step 3.1 found a PR. Pass `--base main` in step 6.
+
+   Then read the plan's `**Status:**` line. If it is
    `**Status:** Implemented — pending commit/PR`, go to step 3. Otherwise,
    use AskUserQuestion: "The plan status is `<status>`, not `Implemented —
    pending commit/PR`. Commit anyway?" Options: `Commit anyway`, `Stop`. On
@@ -43,11 +48,6 @@ prose.
    - Otherwise, type `/execute-plan <N>`.
 
    `<N>` is the issue number in the plan file name.
-
-   If the plan has the line ``**PR base:** `main` ``, this is a hotfix
-   (`/start-issue --hotfix`). The base is `main`. Do step 3.1. Then skip
-   step 3.2, and use `origin/main` in step 3.3 even if step 3.1 found a PR.
-   Pass `--base main` in step 6.
 3. List the files that this branch changes. First update the remote
    branches. Run:
 
@@ -57,11 +57,18 @@ prose.
 
    If the exit code is not `0`, show the stderr. Write `- unknown (file list
    failed)` in `## Delta from plan` in step 5. Go to step 5.
-   1. Find out if a PR for this branch exists. Run:
+   1. Find out if an open PR for this branch exists. Put the current branch
+      in place of `<branch>`. Run:
 
       ```bash
-      gh pr view --json url,baseRefName --jq '.url + " " + .baseRefName'
+      gh pr list --head <branch> --state open --json url,baseRefName --jq '.[0] | select(. != null) | .url + " " + .baseRefName'
       ```
+
+      Do not use `gh pr view`. It also finds a merged or closed PR for the
+      same branch name.
+
+      If the exit code is not `0`, show the stderr. Write `- unknown (file
+      list failed)` in `## Delta from plan` in step 5. Go to step 5.
 
       If it prints a URL and a branch name, the PR exists. The base ref is
       `origin/<branch name>`. Go to step 3.3. If it prints no URL, there is

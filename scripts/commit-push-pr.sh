@@ -258,7 +258,14 @@ fi
 
 # --- Create or reuse PR -------------------------------------------------
 
-EXISTING_PR_URL="$(gh pr view "$CURRENT_BRANCH" --json url --jq .url 2>/dev/null)"
+# Reuse only an OPEN PR. `gh pr view <branch>` also returns a merged or
+# closed PR, so a reused branch name would report that old PR and open none.
+# `gh pr list` exits 0 with no output when there is no open PR, so a nonzero
+# exit is a real failure.
+if ! EXISTING_PR_URL="$(gh pr list --head "$CURRENT_BRANCH" --state open --json url --jq '.[0].url // empty')"; then
+    echo "gh pr list failed" >&2
+    exit 2
+fi
 
 if [ -n "$EXISTING_PR_URL" ]; then
     echo "$EXISTING_PR_URL"

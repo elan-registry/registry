@@ -174,16 +174,27 @@ plan file for this issue already exists (Step 2.5) and has an
 it again.
 
 - **All three are present** — continue.
-- **`milestone` is `none`, or `status_ready` is `false`** — stop. Tell the
-  user: "Issue #ISSUE_NUMBER is not admitted to a milestone. Type
-  `/plan-milestone` to scope it, or type `/start-issue ISSUE_NUMBER
-  --hotfix` if it is an emergency."
-- **Only `acceptance_criteria` is `false`** — ask with AskUserQuestion:
-  `Stop — scope it with /plan-milestone` (recommended) or `Write the
-  acceptance criteria at the plan gate`. On the first option, stop and
-  tell the user to type `/plan-milestone`. On the second option, continue.
-  Step 9 writes the criteria in the plan, and posts them to the issue body
-  when the user approves the plan.
+- **`milestone` is `none` or `Backlog`** — stop. Tell the user: "Issue
+  #ISSUE_NUMBER is not admitted to a milestone. Type
+  `/plan-milestone <version>` to scope it, or type `/start-issue
+  ISSUE_NUMBER --hotfix` if it is an emergency."
+- **`milestone` is a release, and `status_ready` is `false`** —
+  `/plan-milestone` does not take an issue that is already in a release
+  milestone. `/start-milestone` scopes the unsealed issues of a milestone
+  (its Step 4.5). Ask with AskUserQuestion:
+  `Stop — scope it with /start-milestone <milestone>` (recommended) or
+  `Write the acceptance criteria at the plan gate`. On the first option,
+  stop. Tell the user: "Type `/start-milestone <milestone>`. Then type
+  `/start-issue ISSUE_NUMBER`." Put the `milestone` value in place of
+  `<milestone>`. On the second option, continue as for the next case.
+- **Only `acceptance_criteria` is `false`** — the issue has `status:ready`,
+  so `/plan-milestone` and `/start-milestone` do not scope it again. Ask
+  with AskUserQuestion: `Write the acceptance criteria at the plan gate`
+  (recommended) or `Stop`. On `Stop`, tell the user: "Add an
+  `## Acceptance criteria` section to the issue body. Then type
+  `/start-issue ISSUE_NUMBER`." On the first option, continue. Step 9
+  writes the criteria in the plan, and posts them to the issue body when
+  the user approves the plan.
 
 In hotfix mode, do not do this check. A hotfix has no milestone by design.
 Step 9 writes the acceptance criteria in the plan, and posts them to the
@@ -208,7 +219,9 @@ git ls-remote --heads origin '*/ISSUE_NUMBER-*'
   2. Run `git status --porcelain`. If it prints anything, stop, as in
      Step 3. Check out the branch. If it is only on `origin`, run
      `git checkout -b BRANCH_NAME origin/BRANCH_NAME`.
-  3. Go to Step 5. Use this branch name in the plan (Step 9). Hotfix mode
+  3. Do Step 4.5. The earlier run may have stopped before it. Its commands
+     are safe to run again.
+  4. Go to Step 5. Use this branch name in the plan (Step 9). Hotfix mode
      comes from `--hotfix` in `$ARGUMENTS`, as on a new start.
 - **A plan file, and an issue branch locally or on `origin`** — resume. Do
   these steps:
@@ -223,8 +236,10 @@ git ls-remote --heads origin '*/ISSUE_NUMBER-*'
      ISSUE_NUMBER` and stop.
   4. Otherwise (`Draft — pending approval`), do not do Steps 3 to 8 again.
      Go to Step 9 and present the existing plan file for approval. Keep its
-     content. If the plan has a `## Deviation` section, show it first: it
-     is the change that `/execute-plan` asks you to approve.
+     content. Step 9 changes only these parts: the deviation merge, the
+     ledger items, the risk flag, and the gate checks. If the plan has a
+     `## Deviation` section, show it first: it is the change that
+     `/execute-plan` asks you to approve.
 - **A plan file, but no issue branch** — tell the user that the plan file
   exists. Ask with AskUserQuestion: `Use the existing plan` or `Replace the
   plan`. Then go to Step 3. On `Use the existing plan`, create the branch
@@ -607,8 +622,10 @@ directly below the `**Milestone:**` line, so the PR opens and merges against
 Write this line only in hotfix mode. `/execute-plan`, `/commit-push-pr` and
 `/finish-issue` treat a plan that has it as a hotfix plan.
 
-If the plan file already exists (Step 2.5), write it only when the user
-chose `Replace the plan`.
+If the plan file already exists (Step 2.5), write a new file only when the
+user chose `Replace the plan`. Otherwise edit the existing file only as
+this step says: "Merge a deviation", "Pull ledger items", the risk flag,
+the acceptance criteria, and the plan gate checks.
 
 Set the header lines:
 
@@ -710,6 +727,24 @@ no ordering dependency on another item's output. Mark true dependencies with
 `(depends on: ...)` costs a little serialized time; a false `(parallel-safe)`
 risks two agents corrupting the same file.
 
+**Merge a deviation.** Do this when the plan has a `## Deviation` section
+(Step 2.5, a resumed plan). `/execute-plan` Step 5 ("Deviation rule")
+wrote it. `/execute-plan` does only the work in the Implementation
+Checklist, so the deviation must go into the checklist before approval:
+
+1. Add each checklist item that the deviation adds to
+   `## Implementation Checklist`, in the checklist item form, with its
+   file and its parallel-safety annotation.
+2. Change each checklist item that the deviation changes, in place.
+3. Keep the `## Deviation` section. The user sees it first at the plan
+   gate.
+
+Then do "Pull ledger items" below. It covers the files that the deviation
+added. Then set the `**Risk flag:**` line again, by the rule in "Set the
+header lines", over every file that the Implementation Checklist names. A
+new file can change the flag from `no` to `yes`. Do not change the flag
+from `yes` to `no` without the user's answer.
+
 **Pull ledger items.** Do this after you write the Implementation
 Checklist, also for a resumed plan (Step 2.5). In hotfix mode, do not do
 it: a hotfix changes only what the emergency needs. List each file that the
@@ -758,6 +793,9 @@ criteria that the plan must meet:
   Step 6 and Step 7 decisions. If you cannot name one, ask the user in a
   round. Never mark a plan approved with an empty `## Not doing`.
 - The `**Risk flag:**` line exists and is `yes` or `no`, by the rule above.
+  The rule covers every file that the Implementation Checklist names.
+- A `## Deviation` section has each of its items in the Implementation
+  Checklist ("Merge a deviation").
 
 After writing the file, present it for approval:
 
@@ -777,7 +815,10 @@ the artifact of record; chat-only revisions that never make it into the file
 are exactly the drift this plan-file workflow exists to prevent.
 
 Once approved, update the file's status line to `**Status:** Approved —
-ready for /execute-plan`.
+ready for /execute-plan`. If the plan has a `## Deviation` section, change
+its heading to `## Approved deviation`. Its items are already in the
+Implementation Checklist ("Merge a deviation"). A later deviation then gets
+a new `## Deviation` section.
 
 If the plan's acceptance criteria were written at the plan gate (the
 section has the `written at the plan gate` comment), post them to the issue

@@ -16,7 +16,8 @@
 # On stdout, one line per field:
 #   path: <file path, or (none)>
 #   approved: yes|no
-#   checklist: <done>/<total>
+#   checklist: <done>/<total>   (an item marked `- [ ] <item> — N/A: <reason>`
+#                                counts as done)
 #
 # Exit codes:
 #   0  Plan file found and its Status line is exactly
@@ -92,8 +93,9 @@ echo "approved: ${approved}"
 
 total="$(grep -c -E '^- \[[ xX]\]' "$plan_file" 2>/dev/null || true)"
 done_count="$(grep -c -E '^- \[[xX]\]' "$plan_file" 2>/dev/null || true)"
+na_count="$(grep -c -E '^- \[ \] .* — N/A: ' "$plan_file" 2>/dev/null || true)"
 total="${total:-0}"
-done_count="${done_count:-0}"
+done_count=$(( ${done_count:-0} + ${na_count:-0} ))
 echo "checklist: ${done_count}/${total}"
 
 if [ "$approved" = "yes" ]; then
