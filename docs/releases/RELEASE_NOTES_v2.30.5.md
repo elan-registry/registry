@@ -27,3 +27,7 @@
   through `/start-issue --hotfix`, every command can resume after a stop, and
   `/finish-issue` asks for your confirmation before it merges.
   Developer-only; no deploy step.
+- [#2324](https://github.com/elan-registry/registry/issues/2324) — The
+  summary index (`scripts/build-summary-index.py`) now groups pages by series
+  and category and has four new series. Added `scripts/project-health.py`.
+  Developer-only; no deploy step.
