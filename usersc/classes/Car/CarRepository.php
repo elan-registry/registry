@@ -1150,7 +1150,7 @@ class CarRepository
      * The one definition of eligibility. findVerificationEligible() selects
      * rows with it, and countVerificationSummary() counts rows with it, so the
      * Eligible card and the batch preview cannot disagree. The clause binds no
-     * parameters. It uses the aliases `cars`, `users` and `profiles`.
+     * parameters. It uses the aliases `cars` and `users`.
      *
      * @return string SQL that starts with `FROM cars` and ends with the last WHERE condition
      * @throws CarValidationException If the freshness alias is rejected (unreachable — literal)
@@ -1188,17 +1188,22 @@ class CarRepository
         // own header ("could become eligible again despite this flag being
         // set... tracked as a follow-up"); this clause closes it.
         //
-        // LEFT JOIN with COALESCE, NOT the INNER JOIN used for users below,
-        // and the difference is deliberate. For `users` a missing row means the
-        // owner is gone and the car MUST be excluded, so INNER JOIN's implicit
-        // rejection is the wanted behaviour. For `profiles` a missing row means
-        // only that the owner never filled in a profile: `users` and `profiles`
-        // are NOT 1:1 in this schema (see findProfileEmailSuppressed()'s
-        // docblock, which returns null precisely to distinguish the two cases,
-        // and updateProfileEmailSuppressed(), which deliberately refuses to
+        // profileEmailSuppressedSql()'s correlated subquery, NOT a join, and
+        // NOT the INNER JOIN used for users below — the difference is
+        // deliberate twice over. First, `users` vs `profiles`: for `users` a
+        // missing row means the owner is gone and the car MUST be excluded,
+        // so INNER JOIN's implicit rejection is the wanted behaviour. For
+        // `profiles` a missing row means only that the owner never filled in
+        // a profile: `users` and `profiles` are NOT 1:1 in this schema (see
+        // findProfileEmailSuppressed()'s docblock, which returns null
+        // precisely to distinguish the two cases, and
+        // updateProfileEmailSuppressed(), which deliberately refuses to
         // synthesise a row). An INNER JOIN here would silently make every
-        // profile-less owner permanently un-emailable — a far larger behaviour
-        // change than the consent fix, and one no opt-out ever asked for.
+        // profile-less owner permanently un-emailable — a far larger
+        // behaviour change than the consent fix, and one no opt-out ever
+        // asked for. Second, subquery vs LEFT JOIN: `profiles.user_id` has no
+        // UNIQUE index, so a LEFT JOIN can match more than one row and
+        // duplicate the car row in a list result; the scalar subquery cannot.
         // COALESCE(..., 0) then supplies the column's own DEFAULT 0 for the
         // no-row case, matching the null-safety reasoning behind the explicit
         // `cars.email IS NOT NULL` clause above: absence is treated as the
@@ -1247,11 +1252,10 @@ class CarRepository
 
         return "FROM cars
               INNER JOIN users ON users.id = cars.user_id
-              LEFT JOIN profiles ON profiles.user_id = cars.user_id
               WHERE cars.solddate IS NULL
                 AND cars.email_bounced = 0
                 AND cars.email_suppressed = 0
-                AND COALESCE(profiles.email_suppressed, 0) = 0
+                AND " . self::profileEmailSuppressedSql() . " = 0
                 AND cars.email IS NOT NULL AND cars.email != ''
                 AND cars.user_id IS NOT NULL
                 AND users.username != 'noowner'
@@ -1277,10 +1281,26 @@ class CarRepository
      * - The car is not Bounced and not Suppressed (car flag or profile flag).
      *   Those cars show under their own pill.
      *
-     * The condition binds no parameters. It needs the aliases `cars` and `profiles`.
+     * The condition binds no parameters. It needs only the `cars` alias.
      *
      * @return string SQL boolean expression
      */
+    /**
+     * Build the scalar expression for an owner's profile-level suppression flag
+     *
+     * A correlated subquery, not a `LEFT JOIN profiles`: `profiles.user_id`
+     * has no UNIQUE index, so a join can match more than one profile row and
+     * silently duplicate the car row in a list result (the count methods
+     * dodge this with `COUNT(DISTINCT cars.id)`, which a list cannot use).
+     * This expression needs only the `cars` alias — no `profiles` join.
+     *
+     * @return string SQL scalar expression, 0 or 1
+     */
+    private static function profileEmailSuppressedSql(): string
+    {
+        return 'COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0)';
+    }
+
     private static function verificationPendingWhereSql(): string
     {
         $ttlDays = CarVerificationEmailComposer::LINK_TTL_DAYS;
@@ -1292,21 +1312,21 @@ class CarRepository
                  AND cars.solddate IS NULL
                  AND cars.email_bounced = 0
                  AND cars.email_suppressed = 0
-                 AND COALESCE(profiles.email_suppressed, 0) = 0)";
+                 AND " . self::profileEmailSuppressedSql() . ' = 0)';
     }
 
     /**
      * Build the WHERE condition for a Suppressed car (car flag or owner profile flag)
      *
      * Either flag stops a send (see verificationEligibleFromSql()), so either
-     * flag puts the car under the Suppressed pill. The condition needs the
-     * aliases `cars` and `profiles`.
+     * flag puts the car under the Suppressed pill. The condition needs only
+     * the `cars` alias.
      *
      * @return string SQL boolean expression
      */
     private static function verificationSuppressedWhereSql(): string
     {
-        return '(cars.email_suppressed = 1 OR COALESCE(profiles.email_suppressed, 0) = 1)';
+        return '(cars.email_suppressed = 1 OR ' . self::profileEmailSuppressedSql() . ' = 1)';
     }
 
     /**
@@ -1354,8 +1374,6 @@ class CarRepository
      *   Verified and Sold are history, not a queue state, so they are not in `all`.
      *
      * Bounced and Suppressed can overlap, so `all` can be less than the sum.
-     * Counts use COUNT(DISTINCT cars.id): profiles.user_id has no UNIQUE
-     * index, so the LEFT JOIN could repeat a car.
      *
      * @param int|null $windowDays Window for `verified` and `sold`, in days back from now. Null = all time.
      * @return array{all: int, eligible: int, pending: int, bounced: int, suppressed: int, verified: int, sold: int}
@@ -1371,18 +1389,18 @@ class CarRepository
         $suppressed   = self::verificationSuppressedWhereSql();
         [$window, $windowParams] = self::windowSql('h.timestamp', $windowDays);
 
-        $carsFrom = 'FROM cars LEFT JOIN profiles ON profiles.user_id = cars.user_id';
+        $carsFrom = 'FROM cars';
         $histFrom = 'FROM cars_hist h INNER JOIN cars ON cars.id = h.car_id';
 
         $this->db->query(
             "SELECT
-                (SELECT COUNT(DISTINCT cars.id) {$eligibleFrom}) AS eligible,
-                (SELECT COUNT(DISTINCT cars.id) {$carsFrom} WHERE {$pending}) AS pending,
-                (SELECT COUNT(DISTINCT cars.id) {$carsFrom} WHERE cars.email_bounced = 1) AS bounced,
-                (SELECT COUNT(DISTINCT cars.id) {$carsFrom} WHERE {$suppressed}) AS suppressed,
+                (SELECT COUNT(*) {$eligibleFrom}) AS eligible,
+                (SELECT COUNT(*) {$carsFrom} WHERE {$pending}) AS pending,
+                (SELECT COUNT(*) {$carsFrom} WHERE cars.email_bounced = 1) AS bounced,
+                (SELECT COUNT(*) {$carsFrom} WHERE {$suppressed}) AS suppressed,
                 (SELECT COUNT(DISTINCT h.car_id) {$histFrom} WHERE h.operation = ?{$window}) AS verified,
                 (SELECT COUNT(DISTINCT h.car_id) {$histFrom} WHERE h.operation = ?{$window}) AS sold,
-                (SELECT COUNT(DISTINCT cars.id) {$carsFrom}
+                (SELECT COUNT(*) {$carsFrom}
                   WHERE cars.id IN (SELECT cars.id {$eligibleFrom})
                      OR {$pending}
                      OR cars.email_bounced = 1
@@ -1464,8 +1482,8 @@ class CarRepository
         $columns = 'cars.id, cars.year, cars.chassis, cars.fname, cars.lname, cars.user_id,
                     cars.vericode_sent_at, cars.last_verified, cars.solddate,
                     cars.email_bounced, cars.email_suppressed,
-                    COALESCE(profiles.email_suppressed, 0) AS profile_email_suppressed';
-        $carsFrom   = 'FROM cars LEFT JOIN profiles ON profiles.user_id = cars.user_id';
+                    ' . self::profileEmailSuppressedSql() . ' AS profile_email_suppressed';
+        $carsFrom   = 'FROM cars';
         $pending    = self::verificationPendingWhereSql();
         $suppressed = self::verificationSuppressedWhereSql();
         $params     = [];
@@ -1502,7 +1520,6 @@ class CarRepository
                                  WHERE operation = ?{$window}
                                  GROUP BY car_id
                                ) h ON h.car_id = cars.id
-                          LEFT JOIN profiles ON profiles.user_id = cars.user_id
                          ORDER BY h.hist_timestamp DESC, cars.id DESC";
                 break;
             default: // 'all'
