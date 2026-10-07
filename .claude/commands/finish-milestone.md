@@ -27,6 +27,7 @@ Before any other action, create one TaskCreate task per step below:
 3. Switch to milestone branch and ensure up to date
 3.5. Check for known-broken test exclusions still present
 3.6. Check for leftover plan files
+3.7. Run the verification suite on the merged tree
 4. Gather all merged PRs targeting the milestone branch
 5. Get the full diff against main
 5.5. Verify milestone scope vs. release notes
@@ -38,7 +39,7 @@ Before any other action, create one TaskCreate task per step below:
 9. Security review (Step 9.5) + local multi-agent review (Step 9.7)
 9.8. Local milestone-level deep review (Fable) — mirrors CI, runs pre-PR
 9.9. Fresh-checkout smoke test (if build/install steps changed)
-10. Output summary and hand off to /review-milestone
+10. Push the milestone branch, output summary, and hand off to /review-milestone
 
 Set each task to `in_progress` when you begin it and `completed` on success.
 
@@ -46,11 +47,21 @@ Set each task to `in_progress` when you begin it and `completed` on success.
 
 - Check `git branch -a | grep "milestone/$ARGUMENTS"`
 - If not found, stop and report error.
+- Get the GitHub milestone number. Find the open milestone whose title
+  starts with the version:
+
+  ```bash
+  gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" \
+    --jq '.[] | select(.title | test("^$ARGUMENTS([: ]|$)")) | .number'
+  ```
+
+  Exactly one number → record it as `MILESTONE_NUM`. Zero or more than one →
+  stop and ask the user. Steps 2 and 5.5 use it.
 
 ### Step 2: Check for open issues still in the milestone
 
 Use the direct API, not `gh issue list --milestone` (see CLAUDE.md's `gh` CLI
-gotchas). The milestone number is already recorded from Step 1:
+gotchas). Use `MILESTONE_NUM` from Step 1:
 
 ```bash
 gh api "repos/elan-registry/registry/issues?milestone=<MILESTONE_NUM>&state=open&per_page=20" \
@@ -62,10 +73,21 @@ gh api "repos/elan-registry/registry/issues?milestone=<MILESTONE_NUM>&state=open
 
 ### Step 3: Switch to milestone branch and ensure up to date
 
+Check for uncommitted changes first:
+
+```bash
+git status --porcelain
+```
+
+If it prints anything, stop. Show the list and ask the user to commit or
+stash the changes. A checkout carries them onto the milestone branch.
+
 ```bash
 git checkout milestone/$ARGUMENTS
-git pull origin milestone/$ARGUMENTS
+git pull --ff-only origin milestone/$ARGUMENTS
 ```
+
+If the checkout or the pull fails, stop and report the error.
 
 ### Step 3.5: Check for known-broken test exclusions still present
 
@@ -138,6 +160,28 @@ unfinished work that never went through `/finish-issue` at all.
 
 **If none found:** proceed silently — this is the expected state.
 
+### Step 3.7: Run the verification suite on the merged tree
+
+CI runs unit tests only, and each issue ran integration tests on its own
+branch. This is the one run of integration tests on the merged milestone
+tree. Integration tests run in this checkout's Docker `app` container, so
+start the stack first (`docker compose up -d`).
+
+```bash
+scripts/run-verification-suite.sh
+```
+
+- **Exit 0** — all four components passed. Proceed to Step 4.
+- **Exit 1** — at least one component failed (see the `RESULT` lines).
+  Blocking. Fix the failure as a commit on the milestone branch, then run
+  the script again.
+- **Exit 2** — the integration suite could not run (Docker stack stopped,
+  `docker` or `composer` missing). This is not a clean result. Fix the
+  environment and run the script again. Do not continue until it exits 0.
+
+If a later step commits a code change (not only docs), Step 10 runs the
+script again.
+
 ### Step 4: Gather all merged PRs targeting the milestone branch
 
 ```bash
@@ -163,25 +207,25 @@ note that credits work to the wrong milestone (or omits real work) is wrong
 in a way none of the later review steps are positioned to catch, since they
 all take the release notes' existing content as ground truth.
 
-1. Get the milestone's current membership, **all states** (a closed issue
-   can still be reassigned to a different milestone afterward):
+1. Compare the milestone's current membership (all states) with the
+   "Issues Resolved" entries. Use `MILESTONE_NUM` from Step 1:
 
    ```bash
-   MILESTONE_NUM=<from Step 1/2>
-   gh api "repos/elan-registry/registry/issues?milestone=${MILESTONE_NUM}&state=all&per_page=100" \
-     --jq '.[] | "\(.number)\t\(.title)\t\(.state)"'
+   scripts/check-milestone-scope-drift.sh $ARGUMENTS <MILESTONE_NUM>
    ```
 
-2. Extract the issue numbers currently listed in the release notes' "Issues
-   Resolved" section:
+   - **Exit 0** — scope matches. Go to the last paragraph of this step.
+   - **Exit 1** — the script printed one or more mismatched issues, each
+     with its direction. Investigate each one (item 2). Exit 1 with no
+     issue lines printed counts as exit 2.
+   - **Exit 2** — can't verify: no release-notes file, no "Issues Resolved"
+     entries, a milestone with no issues (usually a wrong milestone
+     number), or a `gh` or tool failure. This is not "scope matches". Stop
+     and fix the cause, then run the script again.
 
-   ```bash
-   grep -oP '(?<=issues/)\d+' docs/releases/RELEASE_NOTES_$ARGUMENTS.md | sort -un
-   ```
+2. Investigate every mismatch:
 
-3. Diff the two number sets and investigate every mismatch:
-
-   - **In release notes, NOT in current milestone membership** — this issue
+   - **"moved out of milestone since release notes were written"** — this issue
      was moved elsewhere after its entry was written. Confirm where it lives
      now:
 
@@ -194,10 +238,13 @@ all take the release notes' existing content as ground truth.
      Features/Improvements/Bug Fixes) — that work no longer ships in this
      release. Also re-check whether the release's headline "Type" line and
      summary still make sense without it (a moved-out issue can invalidate
-     the release's stated theme, not just one bullet).
+     the release's stated theme, not just one bullet). An entry marked
+     "Carried from …" (work carried from a different milestone) also shows
+     here. It is intended. Keep it.
 
-   - **In current milestone membership (closed), NOT in release notes** — a
-     real gap. Check why it has no entry:
+   - **"added to milestone, missing from release notes"** — if the issue is
+     still open, Step 2 already covers it. If it is closed, it is a real
+     gap. Check why it has no entry:
 
      ```bash
      gh issue view <N> --repo elan-registry/registry --json state,stateReason,comments \
@@ -225,20 +272,24 @@ all take the release notes' existing content as ground truth.
        Resolved but may not need its own user-facing changelog bullet) from
        the issue's title, body, and closing comment.
 
-4. **Present every discrepancy found to the user before editing anything.**
+3. **Present every discrepancy found to the user before editing anything.**
    Unambiguous cases (confirmed moved to another milestone; confirmed
    consolidated with an entry already present) can be applied directly and
    just noted in the summary. Ambiguous cases (the superseded-elsewhere
    pattern above) require the user's explicit decision — do not proceed on
    your own judgment.
 
-5. Apply the agreed changes to `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`.
-   If a GitHub milestone reassignment was part of the resolution (e.g.
-   moving an issue to match where its superseding issue actually lives):
+4. Apply the agreed changes to `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`
+   and commit them. If a GitHub milestone reassignment was part of the
+   resolution (e.g. moving an issue to match where its superseding issue
+   actually lives):
 
    ```bash
    gh issue edit <N> --repo elan-registry/registry --milestone "<target milestone title>"
    ```
+
+   Run the script again. Each line it still prints must be one the user
+   confirmed as intended.
 
 If no discrepancies are found, note that in the summary and continue — this
 step doesn't need to slow down a milestone where nothing moved.
@@ -288,7 +339,8 @@ since they touch different files.
     registration, manual verification procedures) do **not** belong in this
     file — they go in the deploy sheet, rendered in Step 6.6 below
 - Commit the finalized release notes if changes were made (or amend the
-  Step 5.5 commit if it hasn't been pushed yet, to keep history clean)
+  Step 5.5 commit, to keep history clean — nothing is pushed before
+  Step 10)
 
 ### Step 6.5: Release retrospective — three questions
 
@@ -367,9 +419,11 @@ not at `/release-milestone` time.
    Notes per the template's own formatting rules.
 
 `/release-milestone` reuses this same file at actual release time rather than
-generating its own — if anything changed on the milestone branch between now
-and then (e.g. a fix from Step 9.8 or 11.5), re-run this step to refresh it,
-don't hand-edit the deploy sheet directly.
+generating its own. If a fix in Steps 9.7–9.9 changes the deploy inputs, do
+this step again before Step 10. If the branch changes after this command
+ends, refresh the sheet by hand from this step's instructions, or type
+`/finish-milestone $ARGUMENTS` to run the whole command again. Never edit
+the rendered sheet piecemeal.
 
 ### Step 7: Update wiki documentation
 
@@ -433,7 +487,7 @@ If no updates needed, skip.
 ### Step 9.5: Cross-PR Security Integration Check
 
 By the time this step runs, every individual issue PR has already passed:
-security-reviewer in `/start-issue`, CodeQL CI, and Claude Code Review CI.
+security-reviewer in `/execute-plan`, CodeQL CI, and Claude Code Review CI.
 Do **not** re-run a full OWASP pass over already-reviewed files.
 
 Instead, run a targeted cross-PR integration check. Get the full diff:
@@ -531,8 +585,10 @@ Ask it to perform the same five checks the CI job does:
 **This step blocks on any finding, not just Critical/High.** Present every
 finding to the user regardless of severity. For each one: **fix it** (apply
 the fix, re-run this step's agent on the corrected diff), or **user
-explicitly accepts the risk** (record the decision in the plan/PR
-description so it is auditable). Do not proceed to Step 9.9 until every
+explicitly accepts the risk**. No PR exists yet, so record each accepted
+finding as one line in `docs/plans/releases/$ARGUMENTS-accepted-risks.md`
+(finding, reason, follow-up issue if any). `/review-milestone` Step 3 copies
+that file into the PR body. Do not proceed to Step 9.9 until every
 finding is resolved or explicitly accepted — the CI job (`/review-milestone`
 Step 4) is a backstop/audit trail, not a substitute decision point.
 
@@ -581,7 +637,25 @@ git worktree remove /tmp/milestone-smoke-$ARGUMENTS
 
 Once clean, proceed to Step 10.
 
-### Step 10: Output summary and hand off to `/review-milestone`
+### Step 10: Push the milestone branch, output summary, and hand off to `/review-milestone`
+
+If any step after Step 3.7 committed a code change (not only docs), run
+`scripts/run-verification-suite.sh` again. Handle its exit codes as in
+Step 3.7.
+
+Push the milestone branch. This command's commits (Steps 3.7–9.9) are local
+until now, and `/review-milestone` opens the PR with
+`gh pr create --head`, which does not push:
+
+```bash
+git status --porcelain
+git push origin milestone/$ARGUMENTS
+git rev-list --count origin/milestone/$ARGUMENTS..milestone/$ARGUMENTS
+```
+
+The status must print nothing and the count must be `0`. If the push is
+rejected or either check fails, stop and report the error. Do not write the
+marker below.
 
 Write a completion marker before summarizing — `/review-milestone` Step 1
 checks for this rather than trusting that this command actually reached
@@ -592,6 +666,7 @@ run):
 
 ```bash
 cat > docs/plans/releases/$ARGUMENTS-review.done <<EOF
+3.7: ran-clean
 9.5: <clean|findings-fixed>
 9.7: <clean|findings-fixed>
 9.8: <clean|findings-fixed>
@@ -606,20 +681,25 @@ not as a stand-in for skipping it when it should have run.
 Then summarize:
 
 - Known-broken test exclusions status (none found, or resolved, or explicitly accepted with issue references)
+- Verification suite (Step 3.7): passed on the merged tree
 - Milestone-scope corrections from Step 5.5 (none found, or list issues added/removed/reassigned and why)
 - Release notes status (finalized or needs attention)
 - Deploy sheet status (rendered at `docs/plans/releases/$ARGUMENTS-deploy.md`, ready for review)
 - Wiki updates status (updated, committed, or skipped)
 - CLAUDE.md update status (updated or skipped)
 - Review results (Steps 9.5, 9.7, 9.8, 9.9): clean, or list what was found and fixed
+- Accepted risks from Step 9.8 (none, or the path of the accepted-risks file)
+- Push status: `milestone/$ARGUMENTS` is on `origin` at `<short sha>`
 - Remind: if wiki pages were updated, confirm they were published via
   `/publish-wiki` in the wiki clone — this repo's PR does not carry them
 
-End by telling the user to type `/review-milestone $ARGUMENTS` (it opens
-the PR, verifies that the CI review posted, and confirms green). Do not start
-it through the Skill tool: it declares `model: sonnet`, and a Skill-tool
-start runs it on this command's model (CLAUDE.md, "Hand-offs between
-commands").
+End with plain text, not a menu. Tell the user to run `/clear` first, then
+type `/review-milestone $ARGUMENTS` (it opens the PR, verifies that the CI
+review posted, and confirms green). This context is very large, and
+`/review-milestone` reads everything it needs from the repo and the marker
+file. Do not start it through the Skill tool: it declares `model: sonnet`,
+and a Skill-tool start runs it on this command's model (CLAUDE.md,
+"Hand-offs between commands").
 
 ## Important
 
@@ -627,7 +707,9 @@ commands").
   local clone (path in `.claude.local.md`), on `master-upload`, and published
   via that repo's `/publish-wiki` command — never staged or committed in
   this repo
-- Do not push to any remote, and do not create a PR — that's `/review-milestone`'s job
+- Push only `milestone/$ARGUMENTS`, only to `origin`, and only in Step 10.
+  Never push to `prod` or `test`. Do not create a PR — that's
+  `/review-milestone`'s job
 - If release notes still have WIP markers, flag this prominently before
   handing off
 - The deploy sheet lives at `docs/plans/releases/<version>-deploy.md` —

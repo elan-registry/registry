@@ -12,8 +12,9 @@ review actually posted a comment, and drive any Blocking/Important findings
 to resolution before the branch is handed off to `/release-milestone`.
 
 This command picks up where `/finish-milestone` left off — after the
-milestone branch has been reviewed (Steps 9.5–9.9 there) and its
-documentation finalized (Steps 5.5–8 there), but before any PR exists.
+milestone branch has been tested (Step 3.7 there), reviewed (Steps 9.5–9.9
+there), documented (Steps 5.5–8 there), and pushed (Step 10 there), but
+before any PR exists.
 
 ## Arguments
 
@@ -39,11 +40,19 @@ Set each task to `in_progress` when you begin it and `completed` on success.
 
 ```bash
 git branch -a | grep "milestone/$ARGUMENTS"
-git checkout milestone/$ARGUMENTS
-git pull origin milestone/$ARGUMENTS
+git status --porcelain
 ```
 
-If the branch doesn't exist, stop and report the error.
+If the branch doesn't exist, stop and report the error. If `git status`
+prints anything, stop. Show the list and ask the user to commit or stash
+the changes. A checkout carries them onto the milestone branch.
+
+```bash
+git checkout milestone/$ARGUMENTS
+git pull --ff-only origin milestone/$ARGUMENTS
+```
+
+If the checkout or the pull fails, stop and report the error.
 
 **Do not trust that `/finish-milestone` actually finished** — verify against
 repo state rather than assume the handoff was clean (same principle
@@ -56,8 +65,8 @@ repo state rather than assume the handoff was clean (same principle
   ```
 
   Exit 1 means one or more markers remain (see stdout). Stop. Tell the user
-  `/finish-milestone` Step 6 hasn't actually finished — re-run
-  `/finish-milestone $ARGUMENTS` before continuing. Exit 2 means the
+  `/finish-milestone` Step 6 hasn't actually finished — type
+  `/finish-milestone $ARGUMENTS` to run it again before continuing. Exit 2 means the
   release notes file is missing entirely — same stop, same instruction.
 
 - The deploy sheet exists:
@@ -66,12 +75,14 @@ repo state rather than assume the handoff was clean (same principle
   ls docs/plans/releases/$ARGUMENTS-deploy.md
   ```
 
-  If missing, stop. Tell the user: "No deploy sheet found — run
-  `/finish-milestone`'s Step 6.6 (or re-run `/finish-milestone $ARGUMENTS`)
-  to generate one first." Do not render it yourself here — that
-  responsibility belongs to `/finish-milestone`.
+  If missing, stop. Tell the user: "No deploy sheet found. Render it by hand
+  from `/finish-milestone` Step 6.6's instructions, or type
+  `/finish-milestone $ARGUMENTS` to run the whole command again." Do not
+  render it yourself here — that responsibility belongs to
+  `/finish-milestone`.
 
-- **The review steps (9.5, 9.7, 9.8, 9.9) actually ran** — the deploy sheet
+- **The verification and review steps (3.7, 9.5, 9.7, 9.8, 9.9) actually
+  ran** — the deploy sheet
   and clean release notes only prove Steps 6/6.6 finished; they say nothing
   about whether review happened, since those steps run later. An
   interrupted `/finish-milestone` run (crash, cancelled session, context
@@ -84,11 +95,24 @@ repo state rather than assume the handoff was clean (same principle
 
   If missing, or if any line reads anything other than `clean`,
   `findings-fixed`, `ran-clean`, or `not-applicable` (e.g. it's absent
-  entirely, or a step's line is missing), stop. Tell the user:
+  entirely, or a line for one of the five steps is missing), stop. Tell the user:
   "`/finish-milestone` doesn't show as having completed its review steps —
-  re-run `/finish-milestone $ARGUMENTS` to finish Steps 9.5–9.9 before
-  opening a PR." Do not proceed on the assumption that review "probably"
+  type `/finish-milestone $ARGUMENTS` to run it again before opening a
+  PR." Do not proceed on the assumption that review "probably"
   happened — this check exists specifically for the case where it didn't.
+
+- **Every local commit is on `origin`.** `gh pr create --head` (Step 3)
+  does not push, so a commit that is only local is not in the PR:
+
+  ```bash
+  git rev-list --count origin/milestone/$ARGUMENTS..milestone/$ARGUMENTS
+  ```
+
+  `/finish-milestone` Step 10 pushes the branch, so expect `0`. If the
+  count is not `0`, show the commits
+  (`git log --oneline origin/milestone/$ARGUMENTS..milestone/$ARGUMENTS`)
+  and push them with `git push origin milestone/$ARGUMENTS`. If the push is
+  rejected, stop and report the error.
 
 ### Step 2: Re-derive merged-PR list, diff, and known-broken-test status
 
@@ -153,12 +177,19 @@ were explicitly accepted as a known gap for this release (see Step 2):
 
 - `<test name>` (`<file path>`) — tracked by #`<issue number>` (`<open/closed>`)
 
+<!-- Include this section ONLY if docs/plans/releases/$ARGUMENTS-accepted-risks.md
+     exists (written by /finish-milestone Step 9.8). Copy its lines. -->
+
+## Accepted Risks
+
+- <finding> — <reason> (<follow-up issue, if any>)
+
 ## Test Plan
 
 - [ ] All issue PRs were reviewed and merged into milestone branch
 - [ ] Pre-commit hooks pass on all changed files
-- [ ] Unit tests pass (`composer test:quick`)
-- [ ] Integration tests pass (`composer test:medium`)
+- [ ] Verification suite (unit + integration + docs + PHPStan) passed on the
+      merged tree (`scripts/run-verification-suite.sh`, `/finish-milestone` Step 3.7)
 - [ ] Browser tests pass where applicable (`npm run playwright:test`)
 - [ ] Manual verification of key user flows
 - [ ] Security review completed (run before this PR was created)
@@ -196,15 +227,32 @@ scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=label \
 - **Exit 1** — could not verify (`gh` auth/network/rate-limit). Report the
   error and resolve it before re-running; do not treat as "no review."
 - **Exit 2** — comment confirmed, but an unresolved Blocking or Important
-  finding remains (see stdout for the heading(s)). This is the case that
-  burned v2.29.4: a review posted, 3 Important findings went unfixed, and
-  they surfaced later mid-`/release-milestone`, forcing a second review
-  round there — strictly worse than fixing them here. Fix each finding as a
-  commit on the milestone branch, push (re-triggers `pr-to-milestone-review`
-  or needs a fresh `deep-review` label), and re-run this script until it
-  exits 0. If a finding needs user judgment or access only they have (e.g. a
-  prod-host check), use AskUserQuestion — "defer to a tracked follow-up" is
-  acceptable, but must be an explicit recorded choice, never a silent skip.
+  finding remains (see stdout for the heading(s)). Fix it here:
+  `/release-milestone` does not fix findings. For each fix:
+
+  1. Commit it on the milestone branch.
+  2. Run `scripts/run-verification-suite.sh`. Exit 1 blocks the push. Exit
+     2 means the integration suite could not run — fix the environment and
+     run it again. Do not push until it exits 0.
+  3. Push it: `git push origin milestone/$ARGUMENTS`.
+
+  A push does not start a new review. Neither review job runs on a
+  `synchronize` event for a `milestone/*` → `main` PR. Start one with a
+  fresh `deep-review` label. Remove it first, so the add fires a new
+  `labeled` event. If the PR does not have the label, skip the remove:
+
+  ```bash
+  gh pr edit <pr-number> --remove-label deep-review --repo elan-registry/registry
+  gh pr edit <pr-number> --add-label deep-review --repo elan-registry/registry
+  ```
+
+  Wait for the `milestone-review` check to finish
+  (`gh pr checks <pr-number> --watch`), then run this script again. Until
+  the new review posts, the script still reads the old comment. Repeat
+  until it exits 0. If a finding needs user judgment or access only they
+  have (e.g. a prod-host check), use AskUserQuestion — "defer to a tracked
+  follow-up" is acceptable, but must be an explicit recorded choice, never
+  a silent skip.
 - **Exit 3** — PR title carries `[skip-review]`; no comment is the correct,
   by-design outcome. Report "review intentionally skipped per title tag"
   and proceed to Step 5.
@@ -220,8 +268,9 @@ failure or pending required check is not).
 sits on `main`'s target commit right now, needs zero further code changes
 before `/release-milestone` runs — that command merges, tags, and publishes;
 it is not a place to discover or fix problems. If a fix here changed deploy
-inputs (new migration, admin script, env var), tell the user to re-run
-`/finish-milestone` Step 6.6 to refresh the deploy sheet first.
+inputs (new migration, admin script, env var), tell the user to refresh the
+deploy sheet by hand from `/finish-milestone` Step 6.6's instructions before
+`/release-milestone`.
 
 ### Step 5: Output summary
 
@@ -237,7 +286,7 @@ inputs (new migration, admin script, env var), tell the user to re-run
   deep-review`", "Deploy sheet is at `docs/plans/releases/$ARGUMENTS-deploy.md`
   — `/release-milestone` reuses this file rather than generating its own"
 - Use AskUserQuestion for the actual next step, since `/release-milestone`
-  is runnable right now — it merges the PR itself (that's its Step 8), it
+  is runnable right now — it merges the PR itself (that's its Step 6), it
   does not wait for a human to merge on GitHub first:
   - Question: "Milestone PR ready. What next?"
   - Options: `Run /release-milestone $ARGUMENTS` (recommended — merges the
@@ -252,7 +301,8 @@ inputs (new migration, admin script, env var), tell the user to re-run
 - **Closing keywords are critical** — without them in the PR body, issues
   won't auto-close on merge
 - The PR MUST target `main`, not any other branch
-- Do not push to any remote — this command only creates the PR on GitHub
+- Push only `milestone/$ARGUMENTS`, only to `origin`: unpushed commits in
+  Step 1 and finding fixes in Step 4. Never push `main`, `prod`, or `test`
 - The deploy sheet lives at `docs/plans/releases/<version>-deploy.md` —
   gitignored, never committed or printed in full to the conversation (it
   names ssh hosts and docroots)

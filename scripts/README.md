@@ -169,12 +169,12 @@ The cleanup ledger is the one open GitHub issue with the `cleanup-ledger`
 label. It holds small cleanup finds, grouped under a level-3 (`###`) heading for each
 file. See `docs/development/ISSUE_WORKFLOW.md` for the workflow. These scripts
 read, add, and tick ledger items. `ledger-items-for-files.sh`,
-`ledger-tick-items.sh` and `ledger-add-item.sh` need the `gh` CLI, signed in
-(`gh auth status`). `ledger-tick-items.sh` and `ledger-add-item.sh` also need
+`ledger-orphans.sh`, `ledger-tick-items.sh` and `ledger-add-item.sh` need the
+`gh` CLI, signed in (`gh auth status`). `ledger-tick-items.sh` and `ledger-add-item.sh` also need
 `jq`. `ledger-pr-body-items.sh` makes no `gh` call.
 
-`ledger-items-for-files.sh`, `ledger-tick-items.sh` and `ledger-add-item.sh`
-source `scripts/lib/ledger.sh`. That library finds the ledger issue, fetches its body
+`ledger-items-for-files.sh`, `ledger-orphans.sh`, `ledger-tick-items.sh` and
+`ledger-add-item.sh` source `scripts/lib/ledger.sh`. That library finds the ledger issue, fetches its body
 and comments, and parses the items.
 
 **Comment authors.** The scripts read only the comments whose
@@ -193,7 +193,7 @@ blank lines are removed), the script makes no `gh` call, exits 0, and writes
 one note to stderr, for example
 `ledger-items-for-files.sh: no input paths, no query made`.
 
-**Control characters.** Both scripts remove control characters (other than
+**Control characters.** The read and tick scripts remove control characters (other than
 TAB) from the text that they print. The text that they match and write back
 keeps every byte.
 
@@ -205,12 +205,12 @@ level-3 heading. An item is a line at column 0 that starts with `- [ ]` (open)
 or `- [x]` (ticked), then a space. The item text is the rest of the line,
 without trailing spaces and TABs.
 
-**Exit codes (`ledger-items-for-files.sh`, `ledger-tick-items.sh` and `ledger-add-item.sh`).**
+**Exit codes (`ledger-items-for-files.sh`, `ledger-orphans.sh`, `ledger-tick-items.sh` and `ledger-add-item.sh`).**
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The script ran. For the two read and tick scripts, empty output means no match. |
-| 1 | Usage error. |
+| 0 | The script ran. For the read and tick scripts, empty output means no match. |
+| 1 | Usage error. `ledger-orphans.sh` also exits 1 outside a git repository with a HEAD commit. |
 | 2 | A `gh` call failed, `gh` output was truncated, or there is not exactly one open `cleanup-ledger` issue. `ledger-add-item.sh` also exits 2 when `jq` or another tool fails. |
 
 ### ledger-items-for-files.sh
@@ -230,6 +230,30 @@ echo "usersc/join.php" | scripts/ledger-items-for-files.sh
 
 The `/review-pr` and `/commit-push-pr` commands run this script. `/finish-issue`
 runs it to report the items that remain.
+
+### ledger-orphans.sh
+
+Lists the open ledger items whose files are gone. A rename or a delete leaves
+an item under a heading that no diff matches again, so
+`ledger-items-for-files.sh` never shows it. The script takes no arguments,
+does not read stdin, and makes no write. Run it inside the repository.
+
+- An item is an orphan when each backticked token in its heading names a path
+  that is not in the tree at HEAD (`git ls-tree -r HEAD`). Uncommitted changes
+  do not count.
+- A token that ends in `/` exists when HEAD has a file under it. Any other
+  token exists when HEAD has that file, or a directory with that name.
+- A heading with no backticked token is never an orphan.
+- stdout: one `path: item text` line for each orphan, in ledger order. `path`
+  is the first token of the heading. For a token that ends in `/`, add a file
+  name after the `/` before you pipe the line into `ledger-tick-items.sh`.
+
+```bash
+scripts/ledger-orphans.sh
+```
+
+`/groom-backlog` runs this script and proposes, for each orphan, a re-file
+under the new path or a tick as obsolete.
 
 ### ledger-tick-items.sh
 
@@ -324,18 +348,42 @@ stdin is the PR body. The script takes no arguments and makes no `gh` call.
 | 1 | Usage error. |
 | 3 | The PR body has no `## Ledger items` section. A note goes to stderr. |
 
+### ledger-pr-body-add.sh
+
+Adds ledger items to the `## Ledger items` section of a PR body. Usage:
+`scripts/ledger-pr-body-add.sh <items-file> < <body-file> > <new-body-file>`.
+The items file has one `path: item text` line for each item. A leading dash-and-space
+is removed. The script makes no `gh` call. `/commit-push-pr` (on an existing
+PR) and `/address-pr-comments` run it before `gh pr edit --body-file`, so
+`/finish-issue` also ticks items fixed after the PR opened.
+
+- It adds new `- path: item text` bullets to the end of the first section,
+  or adds the section at the end of the body.
+- It does not add an item that is already a bullet in a section.
+- When it adds an item, it removes each `- none` and `- none (...)` bullet.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Done. stderr gives the number of added items. |
+| 1 | Usage error. |
+| Other | A command failed. Do not use the output. |
+
 The hermetic tests are `tests/hooks/test-ledger-items-for-files.sh`,
+`tests/hooks/test-ledger-orphans.sh`,
 `tests/hooks/test-ledger-tick-items.sh`,
-`tests/hooks/test-ledger-add-item.sh` and
-`tests/hooks/test-ledger-pr-body-items.sh`. They use a stub `gh`.
+`tests/hooks/test-ledger-add-item.sh`,
+`tests/hooks/test-ledger-pr-body-items.sh` and
+`tests/hooks/test-ledger-pr-body-add.sh`. All but the last two use a stub
+`gh`; those two make no `gh` call.
 
 ## Milestone release checks
 
 ### check-milestone-scope-drift.sh
 
 Compares a milestone's current issue membership with the issues in the
-"Issues Resolved" section of its release notes. `/release-milestone` Step 2
-runs it on the up-to-date milestone branch, just before the merge to `main`.
+"Issues Resolved" section of its release notes. `/finish-milestone` Step 5.5
+runs it, and `/release-milestone` Step 2 runs it again on the up-to-date
+milestone branch, just before the merge to `main`.
 
 ```bash
 scripts/check-milestone-scope-drift.sh v2.30.5 107

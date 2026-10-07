@@ -38,7 +38,7 @@ STAMPED_SHA="$(tr -d '[:space:]' < "$STAMP_FILE")"
 
 if ! printf '%s' "$STAMPED_SHA" | grep -qE '^[0-9a-f]{40}$'; then
   echo "Stamp file $STAMP_FILE does not contain a single valid 40-char SHA (got: '${STAMPED_SHA}')." >&2
-  echo "Cannot verify freshness — re-run /finish-milestone Step 6.6 to re-render the sheet and its stamp." >&2
+  echo "Cannot verify freshness. Re-render the sheet and its stamp by hand from /finish-milestone Step 6.6, or type /finish-milestone ${VERSION} to run the whole command again." >&2
   exit 2
 fi
 

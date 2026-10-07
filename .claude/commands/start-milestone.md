@@ -51,8 +51,8 @@ ls docs/plans/sprints/$ARGUMENTS.md
   regenerate from scratch. Carry forward any rationale/context notes it
   contains (dependencies, split candidates, sequencing constraints) into
   Step 5's synthesis and into the release notes summary in Step 6.
-- **If not found**: skip silently, continue to Step 2. Sprint plans are
-  optional — fall back to a fully agent-generated order in Step 5.
+- **If not found**: continue to Step 2. Step 5 generates the order from
+  scratch and creates the sprint file.
 
 ### Step 2: Ensure clean working tree
 
@@ -363,13 +363,34 @@ Ask the user to approve the order:
 
 > "Approve this issue order? Reply yes to continue, or list changes."
 
-If a sprint plan file exists (Step 1.5), once the user approves the final
-order, update `docs/plans/sprints/$ARGUMENTS.md` in place so its sequence line
-matches the approved order (same format the file already uses, e.g.
-`**#NNN → #NNN → ...**`). There is nothing to commit — `docs/plans/` is
-gitignored local scratch space. Do not touch
-`docs/plans/sprints/README.md` — it is only removed/updated when the milestone is
-released, not here.
+Once the user approves the order, save it in
+`docs/plans/sprints/$ARGUMENTS.md`. Always do this. `/finish-issue` reads
+the sequence line to mark each issue done and to recommend the next issue.
+Without it, the approved order is lost.
+
+- **The file exists** (Step 1.5) — change its sequence line in place to
+  match the approved order.
+- **The file does not exist** — create `docs/plans/sprints/` if needed and
+  write the file:
+
+  ```markdown
+  # Sprint plan: $ARGUMENTS
+
+  **#NNN → #NNN → #NNN**
+
+  Theme: <theme sentence from Step 4.4>
+
+  ## Order rationale
+
+  1. #NNN — <reason for its position>
+  ```
+
+The sequence line is one bold line of `#NNN` tokens joined by ` → `.
+`scripts/mark-sprint-issue-done.sh` edits the first line that contains the
+issue number, so the sequence line must come before any other mention of an
+issue number. There is nothing to commit — `docs/plans/` is gitignored local
+scratch space. Do not touch `docs/plans/sprints/README.md` — it is only
+removed/updated when the milestone is released, not here.
 
 ### Step 6: Create draft release notes
 
@@ -405,13 +426,17 @@ Display:
   seed the order
 - How many issues were closed in the quality review (if any)
 - Any consolidation opportunities flagged (if not already addressed by the user)
-- The approved issue order (from step 5)
-- Whether `docs/plans/sprints/$ARGUMENTS.md` was updated to match (if applicable)
+- The approved issue order (from Step 5)
+- Whether `docs/plans/sprints/$ARGUMENTS.md` was created or updated (Step 5)
 - Which issues are expected to require wiki/architecture updates
 - Note that draft release notes were created at
   `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`
-- Instructions: "Use `/start-issue <number>` to plan the first issue, then
-  `/execute-plan` to implement it once the plan is approved"
+
+End with the next command as plain text, not a question. The sprint file
+and the release notes hold the state, so tell the user to run `/clear`
+first and then type `/start-issue <first-issue>`. Do not start it through
+the Skill tool. This is a context boundary (CLAUDE.md, "Hand-offs between
+commands").
 
 ## Important
 
@@ -430,4 +455,4 @@ Display:
   notes).
 - `docs/plans/` is gitignored local scratch space, never committed (see
   `.claude/rules/planning-docs.md`). Sprint plan files are deleted once a
-  milestone is released — do not treat a missing file as an error.
+  milestone is released. Step 5 always writes this milestone's file.

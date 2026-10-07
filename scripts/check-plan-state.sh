@@ -21,7 +21,8 @@
 # Exit codes:
 #   0  Plan file found and its Status line is exactly
 #      "Approved — ready for /execute-plan".
-#   1  No plan file found for the issue.
+#   1  No plan file found for the issue. A note on stderr names the
+#      directory searched and the wrong-clone-or-worktree cause.
 #   2  Plan file found but not approved (any other Status line value).
 #   3  No issue number given and none could be derived from the branch name.
 #
@@ -69,6 +70,7 @@ if [ "${#candidates[@]}" -eq 0 ]; then
     echo "path: (none)"
     echo "approved: no"
     echo "checklist: 0/0"
+    echo "check-plan-state.sh: no plan file for issue #${issue_number} under $(pwd)/docs/plans/. docs/plans/ is gitignored, so each clone and worktree has its own copy: check that this is the clone or worktree where the issue was planned." >&2
     exit 1
 fi
 

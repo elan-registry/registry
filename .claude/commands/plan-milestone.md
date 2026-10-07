@@ -190,8 +190,10 @@ gh api repos/elan-registry/registry/milestones/<NUMBER> -X PATCH \
   housekeeping issue separately
 - Cut candidates and why
 - Any issues closed outright
-- Next step: "Run `/start-milestone $ARGUMENTS` to create the branch and
-  begin building."
+- Next step, as plain text: "Run `/clear`, then type
+  `/start-milestone $ARGUMENTS` to create the branch and begin building."
+  The sealed milestone on GitHub holds the result, so the next command does
+  not need this planning context. Do not start it through the Skill tool.
 
 ## Important
 

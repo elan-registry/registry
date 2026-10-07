@@ -11,7 +11,8 @@ An on-demand audit of open issues: find low-value, make-work, trivial-test,
 or extreme-edge-case candidates for closure, and recommend a milestone (or a
 new milestone) for everything worth keeping that has no clear release target.
 Unlike `/plan-milestone`, this does not seal a milestone or write acceptance
-criteria — it only closes, moves, and creates milestones, then stops.
+criteria — it only closes, moves, and creates milestones, and re-files or
+ticks orphaned cleanup-ledger items, then stops.
 
 This reuses `/plan-milestone` Step 3's three-question gate. If that gate's
 criteria change, check whether this command needs the same change — they
@@ -46,13 +47,14 @@ First, carve out the issues this gate never applies to, the same two
 categories `/plan-milestone` Step 3 exempts:
 
 ```bash
-gh issue list --label "signal:forced" --state open --json number,title
-gh issue list --label "gate-critical" --state open --json number,title
+gh issue list --repo elan-registry/registry --label "signal:forced" --state open --json number,title
+gh issue list --repo elan-registry/registry --label "gate-critical" --state open --json number,title
 ```
 
-`gate-critical` issues (per `docs/development/ISSUE_WORKFLOW.md`, currently
-issues #1752 and #1843) are load-bearing for a standing gate — never a closure
-candidate regardless of signal/workaround/breakage answers. Mark them
+The label is the list. Do not keep issue numbers here. `gate-critical`
+issues (see `docs/development/ISSUE_WORKFLOW.md`) are load-bearing for a
+standing gate — never a closure candidate regardless of
+signal/workaround/breakage answers. Mark them
 **KEEP, gate-critical — exempt** in Step 4's table, not run through the
 three questions below. `signal:forced` issues also skip the gate; mark them
 **KEEP, signal:forced — exempt**.
@@ -110,26 +112,62 @@ For each other issue that passes the gate:
   design.
 
 For a new milestone, pick the version number by the existing scheme: the
-next integer after the highest `vX.Y.0` currently in use across all
-milestones (open or closed), open or closed state. Check both:
+highest major version in use, and the next minor after the highest minor of
+that major, across all milestones, open or closed. This prints the highest
+`<major> <minor>` pair. The new milestone is `v<major>.<minor + 1>.0`:
 
 ```bash
 gh api "repos/elan-registry/registry/milestones?state=all&per_page=100" --paginate \
-  --jq '.[].title' | grep -oE 'v2\.[0-9]+' | sort -t. -k2 -n | tail -1
+  --jq '.[].title' | sed -nE 's/^v([0-9]+)\.([0-9]+).*/\1 \2/p' \
+  | sort -k1,1n -k2,2n | tail -1
 ```
 
-Numbered milestones in this project are not strictly chronological (e.g.
-v2.30.x–v2.31.x are a verification-system sub-sequence) — a new,
-unsequenced theme takes the next open integer, not a slot inside an
-existing sub-sequence.
+Numbered milestones in this project are not strictly chronological. A run
+of minors can be one theme's sub-sequence. A new, unsequenced theme takes
+the next open minor, not a slot inside an existing sub-sequence.
 
 This grep-and-sort is the only place in the project's commands that derives
 a milestone version automatically rather than taking it as an argument.
 Before creating the milestone, state the computed number and cross-check it
 by eye against the full title list the command just printed — confirm the
 highest existing number really is what it looks like, not an
-off-by-one from a sub-sequence like v2.30–v2.31. Don't skip this check to
+off-by-one from a sub-sequence. Don't skip this check to
 save a step.
+
+## Step 3.5: Sweep the cleanup ledger
+
+A rename or a delete orphans the ledger items filed under the old path. No
+diff matches them again, so no other command shows them.
+
+```bash
+scripts/ledger-orphans.sh
+```
+
+Each line is `path: item text`, for an open item whose heading paths are
+all gone at HEAD. Empty output means no orphans. Exit 1 means a wrong
+working directory: run it from the repository root. Exit 2 means `gh`
+failed or there is not exactly one open `cleanup-ledger` issue: report it,
+skip this step, and continue.
+
+For each orphan, find where the path went. The rename is in the last
+commit that touched the old path. For a path that ends in `/`, this prints
+each rename under that directory:
+
+```bash
+OLD="<path>"
+C=$(git log --no-merges --format=%H -1 -- "$OLD")
+git show -M --name-status --format= --diff-filter=R "$C" \
+  | awk -F'\t' -v p="$OLD" '$2 == p || (substr(p, length(p)) == "/" && index($2, p) == 1) { print $2 " -> " $3 }'
+```
+
+The heading can name more paths than the first one. Read it in the ledger
+issue and check each path. Then recommend one action per orphan:
+
+- **Re-file** — a new path exists at HEAD (`git cat-file -e HEAD:<new path>`)
+  and the item still applies to it. Read the new file to confirm.
+- **Tick as obsolete** — no rename was found, or the item no longer applies.
+
+Do not change the ledger in this step. Step 5 acts only on approval.
 
 ## Step 4: Present and confirm once
 
@@ -147,6 +185,10 @@ Produce one table before taking any action:
 ## Recommended new milestone(s)
 | Version | Theme | Issues |
 |---------|-------|--------|
+
+## Ledger orphans
+| Old path | Item | Action (re-file to <new path> / tick as obsolete) | Why |
+|----------|------|---------------------------------------------------|-----|
 ```
 
 Ask the user to approve, adjust, or reject each section — one round, not
@@ -165,7 +207,18 @@ gh api repos/elan-registry/registry/milestones -f title="vX.Y.0: Theme" -f descr
 
 # Moves
 gh issue edit NNN --milestone "vX.Y.0: Theme"
+
+# Ledger orphans: re-file (add first, so a failed tick loses nothing)
+scripts/ledger-add-item.sh "<new path>" "<item text>"
+echo "<old path>: <item text>" | scripts/ledger-tick-items.sh
+
+# Ledger orphans: tick as obsolete
+echo "<old path>: <item text>" | scripts/ledger-tick-items.sh
 ```
+
+A tick of an item under a directory heading (`<old path>` ends in `/`)
+needs a file name after the `/`, for example `scripts/spike-1871/x`. A
+directory token matches only paths under it.
 
 Closure comments state the reason plainly and note it can be reopened if
 circumstances change — never imply an action (like an upstream filing) that
@@ -176,6 +229,7 @@ hasn't actually happened.
 - Closed: list with reasons
 - Moved: list with old → new milestone
 - Created: new milestone(s) with version and theme
+- Ledger: items re-filed (old → new path) and items ticked as obsolete
 - Left unchanged: Backlog grab-bag items and anything the user declined
 
 ## Important

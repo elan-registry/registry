@@ -28,6 +28,7 @@ if [ ! -x "$SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
+# shellcheck disable=SC2329 # called only through the EXIT trap below
 cleanup() {
     cd / || true
     [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
@@ -113,13 +114,22 @@ fi
 rm -f docs/plans/issues/issue-502-gadget.md
 
 # --- Scenario 3: no plan file at all -----------------------------------------
-OUT3="$("$SCRIPT" 777 2>/dev/null)"
+OUT3="$("$SCRIPT" 777 2>"$TMPROOT/err3")"
 STATUS3=$?
-if [ "$STATUS3" -eq 1 ] && printf '%s' "$OUT3" | grep -q "path: (none)"; then
-    pass "Scenario 3: no matching plan file -> exit 1"
+ERR3="$(cat "$TMPROOT/err3")"
+if [ "$STATUS3" -eq 1 ] && printf '%s' "$OUT3" | grep -q "path: (none)" \
+    && ! printf '%s' "$OUT3" | grep -q "worktree"; then
+    pass "Scenario 3: no matching plan file -> exit 1, stdout fields only"
 else
-    fail "Scenario 3: no matching plan file -> exit 1" \
+    fail "Scenario 3: no matching plan file -> exit 1, stdout fields only" \
         "exit: $STATUS3 (want 1)" "output: [$OUT3]"
+fi
+if printf '%s' "$ERR3" | grep -q "clone or worktree" \
+    && printf '%s' "$ERR3" | grep -q "$REPO/docs/plans/"; then
+    pass "Scenario 3b: no plan file -> stderr names the directory and the wrong-checkout cause"
+else
+    fail "Scenario 3b: no plan file -> stderr names the directory and the wrong-checkout cause" \
+        "stderr: [$ERR3]"
 fi
 
 # --- Scenario 4: cannot derive issue number from a non-issue branch ---------

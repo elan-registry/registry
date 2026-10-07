@@ -74,8 +74,10 @@ current issue is complete without the fix) or **No** for an out-of-scope find
 Wait for the answer.
 
 For cleanup, also ask yourself: what gets better when this is fixed? If you
-cannot name one thing, record nothing. Report `Dropped: <one-line reason>`
-and resume.
+cannot name one thing, do not add it to the ledger. Drop it, and leave a
+one-line record so a later review does not raise it again: see "Fix in
+current PR and Dropped" below. Report `Dropped: <one-line reason>` and
+resume.
 
 ### Step 4: Apply the decision matrix and act
 
@@ -84,7 +86,7 @@ and resume.
 | In scope | Needed for the acceptance criteria | **Fix in current PR** |
 | In scope | Not needed, defect | **Defer** — new issue, however small the fix looks |
 | In scope | Not needed, cleanup | **Ledger** — one item on the cleanup ledger, no new issue |
-| Out of scope | Production broken / data at risk / security exposure | **Hotfix track** — branch from `main`, patch release outside the milestone |
+| Out of scope | Production broken / data at risk / security exposure | **Hotfix track** — new issue, then `/start-issue <N> --hotfix`; patch release from `main` outside the milestone |
 | Out of scope | Anything else, defect | **Defer** — new issue with `triage` label, no milestone |
 | Out of scope | Anything else, cleanup | **Ledger** — one item on the cleanup ledger, no new issue |
 
@@ -106,19 +108,32 @@ when a change already has the file open. The ledger keeps these items in one
 place, grouped by file, and `/start-issue` pulls a file's items into a plan
 when that plan touches the file.
 
-#### Fix in current PR
+#### Fix in current PR and Dropped
 
 > "I'll fold this into the current PR. I'll note it in the plan and PR
 > description under 'Found in passing'."
 
-No new issue needed. Add a "Found in passing" item to the plan and PR body.
+No new issue needed. Add one line under the **Found in passing** heading of
+the plan file (`/start-issue` Step 9 template). Add the heading if the plan
+has none. Use the first form for Fix in current PR and the second for
+Dropped:
+
+```markdown
+- Fixed in this PR: <one line> — `path/to/file`
+- Considered, dropped: <one-line reason>
+```
+
+If the PR is already open, also add the line to a `## Found in passing`
+section of the PR body. Save the body with `gh pr view <pr-number> --json
+body --jq .body`, add the line, and write it back with `gh pr edit
+<pr-number> --body-file <file>`.
 
 #### Hotfix track
 
-Only for production being broken, data at risk, or a security exposure. Branch
-from `main`, not from the milestone branch, and ship as a patch release
-outside the current milestone — do **not** add the issue to the open
-milestone, which stays sealed at its planned scope.
+Only for production being broken, data at risk, or a security exposure. The
+fix branches from `main`, not from the milestone branch, and ships as a
+patch release outside the current milestone — do **not** add the issue to
+the open milestone, which stays sealed at its planned scope.
 
 Prefix `CONCISE_TITLE` with `bug:` (or the closest matching type if this
 isn't actually a defect — e.g. `security:`) — this issue has no acceptance
@@ -195,35 +210,22 @@ For the **Hotfix track**, do not resume. This is the one finding that
 interrupts a milestone (see `docs/development/ISSUE_WORKFLOW.md`, "Interrupts
 and the hotfix track"): report the new issue number and tell the user the
 current task is paused so they can commit or stash the in-progress work.
+`/start-issue` stops while uncommitted changes exist.
 
-**No command runs the hotfix track from start to finish.** Do not send the
-user to `/start-issue` or `/finish-issue` for it:
+Then give the user the hotfix sequence as plain text. Tell them to run
+`/clear` first, because the hotfix is a new issue:
 
-- `/start-issue` Step 3 needs a `milestone/*` branch. When exactly one
-  exists, it switches to it, so the hotfix would branch from the milestone,
-  not from `main`.
-- `/finish-issue` Steps 7, 8 and 8.5 get the version from a
-  `milestone/vX.Y.Z` branch name. A PR based on `main` has none, so those
-  steps fail or commit to `main`.
+1. `/start-issue NNN --hotfix` — branches from `origin/main` and writes the
+   plan. The plan gate applies.
+2. `/execute-plan`, then `/commit-push-pr`. `/commit-push-pr` can choose a
+   milestone branch as the PR base. If it does, set the base to `main`:
+   `gh pr edit <pr-number> --repo elan-registry/registry --base main`.
+3. `/finish-issue NNN` — sees the `main` base, merges into `main`, and skips
+   the milestone-only steps.
+4. The patch release: `docs/development/DEPLOYMENT.md`, "Patch Release from
+   main". It ends with a merge of `main` into the open milestone branch.
 
-Tell the user these steps instead:
-
-```bash
-git checkout main && git pull --ff-only origin main
-git checkout -b bug/NNN-short-description
-# implement and commit, then open the PR with /commit-push-pr.
-# Its base resolver can pick an open milestone branch, and it opens a draft,
-# so retarget the PR to main and mark it ready before the merge:
-gh pr edit <pr-number> --repo elan-registry/registry --base main
-gh pr ready <pr-number> --repo elan-registry/registry
-gh pr merge <pr-number> --squash --delete-branch   # after CI and review
-gh issue close NNN --comment "Resolved via PR #<pr-number>."
-```
-
-No document describes a patch release from `main` yet. Tag and deploy it
-by hand with the tag rules in `DEPLOYMENT.md`, and confirm the version with
-the user. Then merge `main` into the open milestone branch so the fix is
-not lost there. The milestone work resumes after the hotfix is released.
+The milestone work resumes after the patch release.
 
 ## Quick reference
 

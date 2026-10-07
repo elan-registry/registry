@@ -8,14 +8,11 @@
 # release notes record scope at the time each issue was worked, so they can
 # drift from the milestone's current membership.
 #
-# /finish-milestone Step 5.5 investigates the same kind of drift by hand,
-# with its own inline grep over the whole release-notes file — that is a
-# narrower, less careful version of this script's check (it does not
-# exclude a same-bullet cross-reference), not the same check. Treat the two
-# as independent, possibly-disagreeing gates, not duplicates.
-# /release-milestone Step 2 calls this script just before its irreversible
-# merge, because the milestone PR can stay open for hours or days after
-# /finish-milestone ran and an issue's milestone can change in that window.
+# /finish-milestone Step 5.5 runs this script and investigates each
+# mismatch. /release-milestone Step 2 runs it again just before its
+# irreversible merge, because the milestone PR can stay open for hours or
+# days after /finish-milestone ran and an issue's milestone can change in
+# that window.
 #
 # Usage: scripts/check-milestone-scope-drift.sh <version> <milestone-number>
 #

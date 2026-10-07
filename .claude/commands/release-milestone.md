@@ -68,8 +68,9 @@ scripts/check-blocking-findings.sh <number> --include-important
 - **Exit 1** — an unresolved Blocking or Important finding exists. **Stop.**
   Do not proceed to Step 5 and do not fix it here. This command's next steps
   are irreversible merge/tag/publish actions. The PR is still open. Tell the
-  user to fix each finding as a commit on the milestone branch, push, wait
-  for the milestone CI review to post again, and then type
+  user to fix each finding as a commit on the milestone branch, push, and
+  start a new milestone CI review (a push alone does not start one: see
+  `/review-milestone` Step 4, exit 2). After the new review posts, type
   `/release-milestone <version>`. Do not send the user to `/finish-milestone`:
   it ends before a PR exists.
 - **Exit 2** — can't verify: no posted review comment was found, the `gh`
@@ -77,7 +78,7 @@ scripts/check-blocking-findings.sh <number> --include-important
   verify," not "clean." Stop and investigate.
 
 This is a second, independent check on the same requirement
-`/review-milestone` Step 5 already enforces — it exists so a PR that sat open
+`/review-milestone` Step 4 already enforces — it exists so a PR that sat open
 a while, or reached this command by another path, still gets caught.
 
 **The milestone scope must still match the release notes.** The script
@@ -115,12 +116,10 @@ the check against a stale or wrong checkout.
   wrong milestone number), the `gh` call failed, or a tool failed
   mid-check. Treat as "can't verify," not "clean." Stop and investigate.
 
-`/finish-milestone` Step 5.5 compares the same two sets by hand earlier,
-with its own inline grep. The two can disagree: Step 5.5 reads every
-`issues/N` link in the file, and this script reads only the leading link
-of each "Issues Resolved" bullet. This check runs again here because the
-milestone PR can stay open for a while after `/finish-milestone`, and an
-issue's milestone assignment can change in that window.
+`/finish-milestone` Step 5.5 calls the same script earlier. This check runs
+again here because the milestone PR can stay open for a while after
+`/finish-milestone`, and an issue's milestone assignment can change in that
+window.
 
 ### Step 3: Check version consistency
 

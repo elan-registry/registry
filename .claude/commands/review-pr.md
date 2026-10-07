@@ -79,6 +79,7 @@ if [ -z "$BASE" ]; then
   BASE=${BASE#origin/}
 fi
 MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
+[ -n "$MERGE_BASE" ] || { echo "no merge base with $BASE" >&2; exit 1; }
 
 git diff --name-only $MERGE_BASE..HEAD | scripts/check-baseline-hygiene.sh
 ```
@@ -134,6 +135,7 @@ if [ -z "$BASE" ]; then
 fi
 
 MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
+[ -n "$MERGE_BASE" ] || { echo "no merge base with $BASE" >&2; exit 1; }
 git diff $MERGE_BASE..HEAD
 ```
 
@@ -444,8 +446,31 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
        flight. If `scripts/check-plan-state.sh` found no issue for this
        branch, reference the PR instead: "Pre-existing issue found while
        reviewing PR #`<pr-number>`."
-   - **Skip entirely** — no action. Note it was declined in the summary.
+   - **Skip entirely** — no code change. Ask for a one-line reason, or use
+     the con from item 2.
+   - After a **Defer** or **Skip entirely**, record the decision (see
+     "Record each decision" below).
 5. Continue to the next Recommendation item.
+
+**Record each decision.** A Deferred or Skipped Recommendation needs a
+record that outlives this chat. Write one line for it:
+
+```text
+- `<file:line>` — <suggestion> — Skipped: <reason>
+- `<file:line>` — <suggestion> — Deferred: ledger #<n> | issue #<n>
+```
+
+- If a plan file exists (`scripts/check-plan-state.sh` gives its path), add
+  the line under a `## Review decisions` heading at the end of the plan.
+  Create the heading if it is not there. `/commit-push-pr` copies this
+  section into the PR body.
+- If a PR for this branch exists, also add the line to the PR body under the
+  same `## Review decisions` heading. Save the body with
+  `gh pr view --json body --jq .body`, add the line (create the heading at
+  the end of the body if it is not there), and send it back with
+  `gh pr edit --body-file <file>`. `/commit-push-pr` copies the plan
+  section only into a new PR.
+- If neither exists, the summary below is the only record. Say so in it.
 
 This mirrors `/found`'s classification steps rather than inventing a new
 one — the same defect-vs-cleanup question, asked at a different point in
@@ -462,7 +487,8 @@ telling the user to proceed:
 
 `Decision` is `Fixed`, `Deferred` or `Skipped`; `Where` is the commit (for
 Fixed), the ledger issue number or new issue number (for Deferred), or
-blank (for Skipped). Then proceed the same way as the clean-review branch
+where the decision is recorded (for Skipped: plan, PR body, or "summary
+only"). Then proceed the same way as the clean-review branch
 below: report the Suites executed table and tell the user to type
 `/commit-push-pr`.
 

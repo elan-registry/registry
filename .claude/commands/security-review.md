@@ -18,18 +18,36 @@ rest of `/execute-plan`'s review round.
 
 ## Steps
 
-1. **Identify changed files**: Run `git diff --name-only` to find modified
-   files (both staged and unstaged). If no uncommitted changes exist, compare
-   the current branch against its **actual base branch** — not always `main`:
+1. **Identify changed files**: Review the whole branch, not only the
+   uncommitted part. The scope is every commit since the branch left its
+   base, plus staged, unstaged and untracked changes. Use the PR's base
+   branch when a PR exists. Otherwise resolve the base with
+   `scripts/resolve-base-branch.sh`. Issue branches start from
+   `milestone/vX.Y.Z`, so a diff against `main` adds the whole milestone.
 
    ```bash
-   BASE=$(scripts/resolve-base-branch.sh) || BASE="origin/main"
-   git diff --name-only "$BASE...HEAD"
+   # An empty --head lists every open PR, so skip the lookup on a detached HEAD.
+   BRANCH=$(git branch --show-current)
+   BASE=
+   [ -n "$BRANCH" ] && BASE=$(gh pr list --head "$BRANCH" --state open \
+     --json baseRefName --jq '.[0].baseRefName // empty' \
+     --repo elan-registry/registry 2>/dev/null)
+   if [ -z "$BASE" ]; then
+     BASE=$(scripts/resolve-base-branch.sh) || { echo "could not resolve a base branch (detached HEAD?)" >&2; exit 1; }
+     BASE=${BASE#origin/}
+   fi
+   MERGE_BASE=$(git merge-base HEAD "origin/$BASE" 2>/dev/null || git merge-base HEAD "$BASE") \
+     || { echo "no merge base with $BASE" >&2; exit 1; }
+   echo "BASE=$BASE MERGE_BASE=$MERGE_BASE"
+   # Committed, staged and unstaged changes since the merge base
+   git diff --name-only "$MERGE_BASE"
+   # Untracked files
+   git ls-files --others --exclude-standard
    ```
 
-   This matters because issue branches are based on `milestone/vX.Y.Z`, not
-   `main` — comparing against `main` includes the entire milestone's prior
-   work and floods the review with already-reviewed code.
+   Exit 1 means that no base or merge base was found, for example on a
+   detached HEAD. Stop and report the message. Do not fall back to
+   `origin/main`. Check out the branch, then run `/security-review` again.
 
 2. **Filter to relevant files**: Focus on `.php` and `.js` files. Skip
    documentation, tests, and static assets unless they contain security-relevant
@@ -37,13 +55,20 @@ rest of `/execute-plan`'s review round.
 
 3. **Launch the security-reviewer agent** via the Agent tool with
    `subagent_type: "security-reviewer"`. Provide it with:
-   - The list of changed files
-   - The full diff (`git diff` output or `git diff "$BASE...HEAD"` from step 1)
-   - Instructions to read and review each changed file completely
+   - The list of changed files and untracked files from step 1
+   - The full diff: `git diff <MERGE_BASE>`, with the SHA that step 1
+     printed
+   - Instructions to read and review each changed file completely, and each
+     untracked file, which the diff does not show
 
 4. **Report results**: Present the security-reviewer agent's findings to the
    user. If critical or high severity issues are found, recommend fixing them
    before proceeding.
+
+5. **Next step**: Tell the user in plain text. Fix Critical and High
+   findings first. Then recommend `/clear` and the next command of the
+   workflow, usually `/commit` or `/commit-push-pr`. The next command does not
+   need this review's context. This command does not start it.
 
 ## When to Use
 

@@ -143,6 +143,11 @@ Other: /new-issue, /found, /security-review, /sprint-status, /groom-backlog,
 `/finish-milestone` runs its own review of the milestone diff (Steps 9.5 to
 9.8), so do not run `/review-pr` at the milestone boundary.
 
+Hotfix (production broken, data at risk, or a security exposure): `/start-issue
+<N> --hotfix` branches from `main`; the per-issue commands then run as usual
+with PR base `main`; then do the patch release in `DEPLOYMENT.md`, "Patch
+Release from main".
+
 `/commit` is the plugin skill `commit-commands:commit`; this project has no
 `/commit` command. `.claude/settings.json` denies the plugin skill
 `commit-commands:commit-push-pr`, so `/commit-push-pr` is always this

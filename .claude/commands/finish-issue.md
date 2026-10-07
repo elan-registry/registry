@@ -1,5 +1,5 @@
 ---
-description: Monitor CI, squash-merge an issue PR into the milestone branch, and close the issue
+description: Monitor CI, squash-merge an issue PR into the milestone branch (or main for a hotfix), and close the issue
 model: sonnet
 ---
 
@@ -15,7 +15,9 @@ This is a CI-polling workflow that can take 10+ minutes — visible progress
 matters.
 
 Monitor a PR's CI checks, then squash-merge into the milestone branch, close
-the issue, delete the branch, and return to the milestone branch.
+the issue, delete the branch, and return to the milestone branch. A hotfix PR
+(base `main`, from `/start-issue <N> --hotfix`) merges into `main` instead.
+Step 2 sets the mode.
 
 ## Arguments
 
@@ -71,14 +73,38 @@ gh pr list --repo elan-registry/registry --state open --limit 200 \
   are ticked, or the release-notes entry has no `WIP:` prefix. If no merged
   PR exists either, stop and tell the user to run `/commit-push-pr` first.
 
-### Step 2: Identify the target (base) branch
+### Step 2: Identify the base branch and the mode
 
-The PR's `baseRefName` should be a `milestone/*` branch. Record it — this is
-where we'll return after merging.
+Record the PR's `baseRefName` from Step 1 as `<base-branch>`. This is where
+the PR merges and where Step 7 returns.
 
-If the PR targets `main` instead of a milestone branch, **warn the user** —
-issue PRs should always target the milestone branch per the git workflow. Ask
-if they want to proceed or retarget the PR.
+- **`milestone/*`** — milestone mode. Run every step.
+- **`main`** — check the plan file:
+
+  ```bash
+  scripts/check-plan-state.sh <issue-number>
+  ```
+
+  If the `path:` line names a file, look for the hotfix line in it:
+
+  ```bash
+  grep -F '**PR base:** `main`' <plan-file>
+  ```
+
+  Exit `0` means hotfix mode (`/start-issue <N> --hotfix`). On any other
+  result, or if the `path:` line is `(none)`, warn the user: an issue PR
+  targets a milestone branch, and only a hotfix targets `main`. Ask with
+  AskUserQuestion:
+  `Retarget to the milestone branch` (stop, and tell the user to run
+  `gh pr edit <pr-number> --base milestone/<version>`, then type
+  `/finish-issue <issue-number>` again) or `Proceed as a hotfix`.
+- **Any other branch** — stop and ask the user which branch the PR must
+  target.
+
+In hotfix mode, skip Step 8's release-notes update and Step 8.5. They need a
+`milestone/vX.Y.Z` branch, and a hotfix is not in the milestone. Step 7
+returns to `main`. This command never commits to `main` or pushes it. The
+only change to `main` is the squash merge in Step 5, which GitHub does.
 
 ### Step 2.5: Handle draft PRs — trigger review, then mark ready
 
@@ -143,7 +169,7 @@ keep waiting.
 **If all checks pass** → run the PHPStan baseline hygiene check (Step 4.5)
 first, then report results to the user and **ask for explicit confirmation
 before merging**: "All CI checks passed. Ready to squash-merge PR #NNN into
-`MILESTONE_BRANCH` and close issue #NNN. Shall I proceed?"
+`<base-branch>` and close issue #NNN. Shall I proceed?"
 Do NOT merge until the user confirms.
 
 **If any check fails:**
@@ -226,8 +252,8 @@ published with `/publish-wiki`.
 gh pr merge <pr-number> --squash --delete-branch
 ```
 
-This squash-merges into the milestone branch and deletes the issue branch
-(both local and remote).
+This squash-merges into `<base-branch>` and deletes the issue branch (both
+local and remote).
 
 ### Step 6: Close the GitHub issue
 
@@ -299,7 +325,7 @@ plan file.
    items. Put them in the report. A non-zero exit code means that the query
    failed. Write "Ledger: could not query" and the stderr in the report.
 
-### Step 7: Return to the milestone branch
+### Step 7: Return to the base branch
 
 Do this **before** any local commit below (Step 8) — `gh pr merge` in Step 5
 operates via the GitHub API and does not change what's checked out locally,
@@ -318,9 +344,19 @@ or block the checkout. Tell the user to commit or stash them, then type
 `/finish-issue <issue-number>` again. Step 1 finds the merged PR and resumes
 at Step 6.
 
+In milestone mode:
+
 ```bash
 git checkout <milestone-branch>
 git pull origin <milestone-branch>
+```
+
+In hotfix mode, return to `main`. `--ff-only` refuses a merge commit, so
+nothing is committed on `main`:
+
+```bash
+git checkout main
+git pull --ff-only origin main
 ```
 
 Clean up the local issue branch if it still exists:
@@ -331,8 +367,12 @@ git branch -d <issue-branch> 2>/dev/null
 
 ### Step 8: Update draft release notes and delete the plan file
 
-The milestone branch is now checked out (Step 7). The plan file, if any, is
+The base branch is now checked out (Step 7). The plan file, if any, is
 a local file in the gitignored `docs/plans/`; the merge did not touch it.
+
+In hotfix mode, skip the release-notes update and its commit. Delete the
+plan file only. The patch release gets its notes from the procedure in
+`docs/development/DEPLOYMENT.md`, "Patch Release from main".
 
 **Release notes:** read the draft release notes at
 `docs/releases/RELEASE_NOTES_<version>.md` (where `<version>` is extracted
@@ -375,6 +415,8 @@ git push origin <milestone-branch>
 
 ### Step 8.5: Mark the issue complete in the sprint plan
 
+Skip this step in hotfix mode. A hotfix is not in the sprint sequence.
+
 Mark this issue done in the sprint plan under `docs/plans/sprints/`
 (gitignored local working documents — see `.claude/rules/planning-docs.md`):
 
@@ -385,8 +427,9 @@ scripts/mark-sprint-issue-done.sh <version> <issue-number>
 (where `<version>` is the same one used in Step 8, e.g. `v2.29.3`.)
 
 - **Exit 0** — marked done (or was already marked done). Nothing further to do.
-- **Exit 1** — no sprint file for this version. Normal — skip this step
-  silently; not every milestone has one.
+- **Exit 1** — no sprint file for this version in this clone.
+  `/start-milestone` writes one, but an older milestone or another clone
+  may not have it. Make no edit. Step 9 says that it uses API order.
 - **Exit 2** — sprint file exists, but issue `#<issue-number>` doesn't appear in
   its sequence line (e.g. an unplanned bugfix not part of the tracked
   sprint). Make no edit. Note in the Step 9 summary that this issue wasn't
@@ -401,7 +444,7 @@ there is nothing to stage or commit (same convention as the
 Output a summary:
 
 - Issue #`<number>` — closed
-- PR #`<pr-number>` — squash-merged into `<milestone-branch>`
+- PR #`<pr-number>` — squash-merged into `<base-branch>`
 - CI review status (from Step 2.5): "posted normally" / "no run was
   triggered — re-triggered, now posted" / "ran but posted nothing —
   self-referential workflow-file change" / etc. — never omit this line
@@ -418,7 +461,21 @@ Output a summary:
 - Release notes updated at `docs/releases/RELEASE_NOTES_<version>.md`
 - Now on `<milestone-branch>`
 
-List remaining open issues in the milestone. Use the direct API, not
+In hotfix mode, replace the last two lines with:
+
+- Hotfix mode — skipped the release-notes update (Step 8) and the sprint
+  plan (Step 8.5)
+- Now on `main`
+
+Then end with plain text, not a question. The fix is on `main` but not in
+production. Tell the user to do the patch release in
+`docs/development/DEPLOYMENT.md`, "Patch Release from main". That procedure
+also merges `main` into the open milestone branch. The milestone work
+resumes after it: tell the user to run `/clear` first and then type
+`/start-issue <next-issue>` for the next milestone issue (`/sprint-status`
+shows the order). Do not list the milestone issues. Stop here.
+
+In milestone mode, list remaining open issues in the milestone. Use the direct API, not
 `gh issue list --milestone` (see CLAUDE.md's `gh` CLI gotchas):
 
 ```bash
@@ -440,11 +497,12 @@ Determine the recommended next issue:
   open issues remain (untracked by the plan), note those separately.
 - **If no sprint plan was found/used, or the finished issue wasn't in its
   sequence:** the recommended next issue is just the next open one from the
-  API list above, if any.
+  API list above, if any. Say so: "No sprint plan sequence — next issue in
+  API order, not the approved order."
 
 End with the next command as plain text, not a question: `/start-issue
-<next-issue>` (say "next in sprint plan sequence" when that is the reason),
-or `/finish-milestone <version>` when no open issues remain. Tell the user
+<next-issue>` (say "next in sprint plan sequence" or "API order" to give
+the reason), or `/finish-milestone <version>` when no open issues remain. Tell the user
 to run `/clear` first and then type the command. Do not start it through
 the Skill tool. This is an issue boundary, and both commands declare a
 different model from this one (CLAUDE.md, "Hand-offs between commands").
@@ -460,8 +518,9 @@ different model from this one (CLAUDE.md, "Hand-offs between commands").
   4.5 checks for this explicitly.
 - The squash merge keeps the milestone branch history clean — one commit per
   issue.
-- If the PR targets `main` instead of a milestone branch, warn the user.
-  Issue PRs should always target the milestone branch.
+- An issue PR targets the milestone branch. Only a hotfix PR targets `main`
+  (Step 2). In hotfix mode, this command never commits to `main` or pushes
+  it.
 - If the local branch can't be deleted (e.g., you're still on it), switch to
   the milestone branch first.
 - This command closes the issue directly. The `Closes #NNN` keyword in the
