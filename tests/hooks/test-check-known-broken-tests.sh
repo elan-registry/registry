@@ -1,44 +1,32 @@
 #!/bin/bash
 #
-# Regression test for scripts/check-known-broken-tests.sh.
+# Regression test for scripts/check-known-broken-tests.sh. finish-milestone.md
+# and review-milestone.md branch on its exit code and per-match issue state.
 #
-# finish-milestone.md Step 3.5 and review-milestone.md Step 2 both need this
-# script's exit code and per-match issue-state lookup to agree — this test
-# pins the three cases those callers branch on: no tags present, a tag
-# citing an issue, and a tag with no issue number in it.
+# The script greps a relative `tests/` directory, so each scenario runs it
+# from a scratch directory, never from this repo's real tests/ tree.
 #
-# The script greps a relative `tests/` directory, so this test builds a
-# throwaway scratch directory with its own tests/ subtree and runs the
-# script with that directory as the working directory — it never touches
-# this repo's real tests/ tree. Always cleaned up via a trap.
-#
-# Hermetic: a stub `gh` is put first on PATH before any scenario runs, so
-# every `gh issue view` call in this test is answered locally — none reaches
-# the real GitHub API. A GitHub-hosted CI runner has no gh credentials, so a
-# real call would fail there. The stub answers issue 1 as closed, issue 2 as
-# open, and issue 999999 as a lookup failure (exit 1, no output), matching
-# the shape scripts/check-known-broken-tests.sh expects from
-# `gh issue view <n> --repo elan-registry/registry --json state --jq .state`.
+# Hermetic: a stub `gh` is first on PATH, so no call reaches GitHub (CI has
+# no gh credentials). Stub: issue 1 closed, 2 open, 999999 lookup failure.
 #
 # Usage: bash tests/hooks/test-check-known-broken-tests.sh
-# Exit code: 0 if all scenarios pass, 1 otherwise.
 
 set -u
+
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SCRIPT="$REPO_ROOT/scripts/check-known-broken-tests.sh"
 
-TESTS_RUN=0
-TESTS_FAILED=0
-
 SCRATCH_DIR="$(mktemp -d)"
 STUB_BIN_DIR=""
 
+# shellcheck disable=SC2329 # called only through the EXIT trap in lib/harness.sh
 cleanup() {
     rm -rf "$SCRATCH_DIR"
     [ -n "$STUB_BIN_DIR" ] && rm -rf "$STUB_BIN_DIR"
 }
-trap cleanup EXIT
 
 mkdir -p "$SCRATCH_DIR/tests"
 
@@ -65,12 +53,10 @@ export PATH="$STUB_BIN_DIR:$PATH"
 
 assert() {
     local desc="$1" expected_exit="$2" actual_exit="$3"
-    TESTS_RUN=$((TESTS_RUN + 1))
     if [ "$expected_exit" -eq "$actual_exit" ]; then
-        echo "PASS: $desc"
+        pass "$desc"
     else
-        echo "FAIL: $desc (expected exit $expected_exit, got $actual_exit)"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        fail "$desc" "expected exit $expected_exit, got $actual_exit"
     fi
 }
 
@@ -80,12 +66,10 @@ OUTPUT="$(cd "$SCRATCH_DIR" && "$SCRIPT" 2>/dev/null)"
 EXIT_CODE=$?
 assert "no known-broken tags exits 0" 0 "$EXIT_CODE"
 
-TESTS_RUN=$((TESTS_RUN + 1))
 if [ -z "$OUTPUT" ]; then
-    echo "PASS: no tags produces no output"
+    pass "no tags produces no output"
 else
-    echo "FAIL: expected no output, got: $OUTPUT"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "no tags produces no output" "expected no output, got: $OUTPUT"
 fi
 
 # --- Scenario 2: tag citing an issue number -> exit 1, state looked up ------
@@ -100,12 +84,10 @@ OUTPUT="$(cd "$SCRATCH_DIR" && "$SCRIPT" 2>/dev/null)"
 EXIT_CODE=$?
 assert "tagged test citing an issue exits 1" 1 "$EXIT_CODE"
 
-TESTS_RUN=$((TESTS_RUN + 1))
 if printf '%s' "$OUTPUT" | grep -qEi $'^tests/TaggedTest\\.php\t[0-9]+\t1\tclosed$'; then
-    echo "PASS: match line reports file, line, issue number, and looked-up state"
+    pass "match line reports file, line, issue number, and looked-up state"
 else
-    echo "FAIL: unexpected match line format: $OUTPUT"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "match line reports file, line, issue number, and looked-up state" "unexpected match line format: $OUTPUT"
 fi
 
 # --- Scenario 3: tag with no issue number cited -----------------------------
@@ -120,12 +102,10 @@ OUTPUT="$(cd "$SCRATCH_DIR" && "$SCRIPT" 2>/dev/null)"
 EXIT_CODE=$?
 assert "tagged test with no issue number exits 1" 1 "$EXIT_CODE"
 
-TESTS_RUN=$((TESTS_RUN + 1))
 if printf '%s' "$OUTPUT" | grep -qE $'^tests/UncitedTest\\.php\t[0-9]+\t\\(none\\)\t\\(unknown\\)$'; then
-    echo "PASS: uncited match reports (none)/(unknown)"
+    pass "uncited match reports (none)/(unknown)"
 else
-    echo "FAIL: unexpected match line format: $OUTPUT"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "uncited match reports (none)/(unknown)" "unexpected match line format: $OUTPUT"
 fi
 
 # --- Scenario 4: gh lookup fails -> exit 2, state (lookup-failed) -----------
@@ -142,20 +122,10 @@ OUTPUT="$(cd "$SCRATCH_DIR" && "$SCRIPT" 2>/dev/null)"
 EXIT_CODE=$?
 assert "gh lookup failure exits 2" 2 "$EXIT_CODE"
 
-TESTS_RUN=$((TESTS_RUN + 1))
 if printf '%s' "$OUTPUT" | grep -qE $'^tests/LookupFailedTest\\.php\t[0-9]+\t999999\t\\(lookup-failed\\)$'; then
-    echo "PASS: failed lookup reports (lookup-failed)"
+    pass "failed lookup reports (lookup-failed)"
 else
-    echo "FAIL: unexpected match line format: $OUTPUT"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "failed lookup reports (lookup-failed)" "unexpected match line format: $OUTPUT"
 fi
 
-# --- Report ------------------------------------------------------------
-
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

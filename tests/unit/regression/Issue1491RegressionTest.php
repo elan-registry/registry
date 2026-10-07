@@ -8,20 +8,10 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Regression test for Issue #1491: fname/lname not trimmed by CarValidator
- *
- * CarValidator::validateAndSanitizeFields() had no case for 'fname'/'lname',
- * so those fields fell through to the default handling and passed through
- * unmodified — leading/trailing whitespace was never trimmed, unlike the
- * sibling 'city'/'state'/'country' fields which were already normalized.
- *
- * Fix: Added a dedicated case 'fname': case 'lname': block (mirroring the
- * existing city/state/country case) guarded by if (!empty($value)), calling
- * InputSanitizer::normalize($value, 100).
+ * Issue #1491: CarValidator did not trim fname/lname, unlike city/state/country.
  *
  * @issue 1491
  * @link https://github.com/elan-registry/registry/issues/1491
- * @category regression
  */
 #[Group('regression')]
 final class Issue1491RegressionTest extends TestCase
@@ -54,10 +44,6 @@ final class Issue1491RegressionTest extends TestCase
         $this->assertSame($expected, $result[$field]);
     }
 
-    /**
-     * Empty fname/lname must not be stored — matches the !empty($value) guard
-     * shared with city/state/country.
-     */
     public function testValidateAndSanitizeFieldsDropsEmptyFname(): void
     {
         $result = $this->validator->validateAndSanitizeFields(['fname' => ''], false);
@@ -73,10 +59,8 @@ final class Issue1491RegressionTest extends TestCase
     }
 
     /**
-     * fname/lname share the 100-char cap InputSanitizer::normalize() applies
-     * to city/state/country, even though the underlying cars.fname/lname
-     * columns are varchar(155) — inherited from the sibling case, not
-     * re-derived from this column's own width.
+     * The 100-char cap is inherited from city/state/country, although the
+     * cars.fname/lname columns are varchar(155).
      */
     #[DataProvider('longNameFieldProvider')]
     public function testValidateAndSanitizeFieldsTruncatesLongNameField(string $field, string $input, int $expectedLength): void

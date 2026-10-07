@@ -7,24 +7,10 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration 20260817035200_register_noowner_account
- *
- * The `noowner` account is the GDPR reassignment target: when an owner deletes
- * their account, `usersc/scripts/after_user_deletion.php` moves their cars to
- * this user so the registry records survive while the PII goes away. That makes
- * it a permanently-live account nobody may ever authenticate as.
- *
- * The migration's own `assertInvariants()` enforces the security columns at
- * write time, but only on the environment where the migration actually runs.
- * These tests are the standing guard: they re-verify the same invariants against
- * whatever state the database is in now, so drift introduced by a later
- * migration, a manual production edit, or an edit to the migration's `EMAIL`
- * const fails the suite rather than silently opening a login path.
- *
- * Each assertion below maps to a numbered gate in the migration's SECURITY MODEL
- * docblock — read that first if one of these fails.
- *
- * Issue #1679.
+ * #1679: the `noowner` account (GDPR reassignment target) must never allow a
+ * login. The migration's assertInvariants() runs only where it runs; these
+ * tests re-check the current database. Each test maps to a numbered gate in
+ * the migration's SECURITY MODEL docblock.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -33,10 +19,8 @@ final class RegisterNoownerAccountMigrationTest extends IntegrationTestCase
     private const USERNAME = 'noowner';
 
     /**
-     * Must match RegisterNoownerAccount::EMAIL. Deliberately duplicated rather
-     * than imported: Phinx migration classes are not Composer-autoloaded, and
-     * a literal here means changing the migration's const without updating this
-     * test breaks the build — which is the point.
+     * Must match RegisterNoownerAccount::EMAIL. Duplicated on purpose (Phinx
+     * classes are not autoloaded), so a change to the const breaks the build.
      */
     private const EXPECTED_EMAIL = 'noowner@invalid';
 
@@ -92,20 +76,10 @@ final class RegisterNoownerAccountMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Gates 2 and 3 — both recovery paths depend on this exact address, for
-     * two *different* reasons:
-     *
-     *   - Password reset is closed by validation: `forgot_password.php` requires
-     *     the submitted address to clear Validate's `valid_email` rule
-     *     (FILTER_VALIDATE_EMAIL), which a bare-label domain fails.
-     *   - Passwordless login is closed by delivery: `passwordless.php` applies
-     *     no format check, so this address *does* match and *does* create a
-     *     pending `us_email_logins` row. That row is inert only because
-     *     `.invalid` (RFC 2606) cannot resolve, so the emailed code reaches
-     *     nobody and the row expires after 15 minutes.
-     *
-     * Any routable address here re-opens the passwordless path. This test is the
-     * only automated thing standing between that and production.
+     * Gates 2 and 3. Password reset is closed because the address fails
+     * FILTER_VALIDATE_EMAIL. Passwordless login does create a pending row, but
+     * `.invalid` (RFC 2606) cannot resolve, so the code reaches nobody. Any
+     * routable address here re-opens the passwordless path.
      */
     #[Group('integration')]
     public function test_noownerEmailIsUnroutableSoNeitherRecoveryPathCanReachIt(): void

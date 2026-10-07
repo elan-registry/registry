@@ -42,10 +42,10 @@ Three tiers, each with a distinct purpose and a hard boundary:
   only that method (returning `simulateFailure()` to report a database error
   without reaching MySQL) — see
   `tests/integration/OwnerSyncOwnerFieldsToCarsTest.php`'s `db*()` factories.
-  There is no shared global `DB` mock shell — a regression guardrail
-  (`tests/unit/regression/DatabaseInterfaceUsageRegressionTest.php`) fails CI
-  if one, or a concrete `\DB` type-hint in production code, or a call to a
-  `\DB` method that isn't on `DatabaseInterface`, ever reappears (#1585).
+  There is no shared global `DB` mock shell. PHPStan fails CI if one
+  reappears or if production code uses a concrete `\DB` type
+  (`DatabaseInterfaceUsageRule`). PHPStan reports a call to a `\DB` method that
+  is not on `DatabaseInterface` as `method.notFound` (#1585).
 
   Model-combination existence is proven against the real `car_models` table in
   `tests/integration/cars/services/CarValidatorModelTest.php` (#1446) — that
@@ -235,6 +235,44 @@ response headers, and status codes. **Never hand-roll `proc_open('php -S …')` 
 [`tests/README.md`'s "Test Support Helpers"
 section](../../tests/README.md#test-support-helpers-testssupport)
 for usage and leak recovery of both.
+
+## PHPStan Rule Tests
+
+Rules that were once source-scanning tests now run as custom PHPStan rules in
+`tools/phpstan/Rules/`. Examples are the log category, `serialize()`,
+`DatabaseInterface`, raw lookup, and page metadata checks. Prefer a rule to a
+test that reads source text. A rule checks every analysed file, and a source
+test checks only the files it names. The rule list is in
+[CODING_STANDARDS.md](CODING_STANDARDS.md), "Project PHPStan Rules".
+
+Each rule has a `RuleTestCase` in `tests/unit/phpstan/` and fixtures in
+`tests/unit/phpstan/fixtures/`. The fixtures hold deliberate violations. Run
+the tests with:
+
+```bash
+vendor/bin/phpunit -c phpunit-unit.xml tests/unit/phpstan
+```
+
+## Shell Tests for Git Hooks (`tests/hooks/`)
+
+`tests/hooks/test-*.sh` test `scripts/` and the git hooks. Run one file with
+`bash tests/hooks/test-<name>.sh` from the repo root. CI runs every
+`tests/hooks/test-*.sh` file. Some tests depend on the current directory, so
+run them from the repo root.
+
+`tests/hooks/lib/harness.sh` is the shared harness. A test sources it. It
+provides:
+
+- `pass <label>` and `fail <label> [detail ...]` to record a scenario
+- `TESTS_RUN` and `TESTS_FAILED` counters
+- `harness_report`, which prints "N scenario(s) run, N failed." and exits 1
+  when a scenario failed
+- an `EXIT` trap that calls `cleanup()`, which removes `$TMPROOT`
+
+A test that must clean up more than `$TMPROOT` defines its own `cleanup()`
+after it sources the harness. The harness is in `lib/`, so the CI glob
+`tests/hooks/test-*.sh` skips it. Do not write a new `PASS`/`FAIL` counter in
+a test file.
 
 ## Related Work
 

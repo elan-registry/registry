@@ -13,6 +13,9 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 REAL_REPO="$(git rev-parse --show-toplevel)" || exit 1
 SCRIPT="$REAL_REPO/scripts/check-version-newer.sh"
 if [ ! -x "$SCRIPT" ]; then
@@ -21,28 +24,16 @@ if [ ! -x "$SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
-# shellcheck disable=SC2329 # called only through the EXIT trap below
-cleanup() {
-    cd / || true
-    [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
 
 # expect <want-exit> <candidate> <last-tag>
 expect() {
     local want="$1" candidate="$2" last="$3" out status
     out="$("$SCRIPT" "$candidate" "$last" 2>&1)"
     status=$?
-    TESTS_RUN=$((TESTS_RUN + 1))
     if [ "$status" -eq "$want" ]; then
-        echo "PASS: $candidate vs $last -> exit $want"
+        pass "$candidate vs $last -> exit $want"
     else
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        echo "FAIL: $candidate vs $last -> exit $want"
-        echo "      exit: $status" "output: [$out]"
+        fail "$candidate vs $last -> exit $want" "exit: $status output: [$out]"
     fi
 }
 
@@ -87,19 +78,10 @@ mkdir -p "$REPO"
 ) || exit 1
 OUT="$(cd "$REPO" && "$SCRIPT" v2.30.5 2>&1)"
 STATUS=$?
-TESTS_RUN=$((TESTS_RUN + 1))
 if [ "$STATUS" -eq 0 ] && printf '%s' "$OUT" | grep -q 'v2.30.5 is newer than v2.30.4.1'; then
-    echo "PASS: last tag from git describe is v2.30.4.1 -> exit 0"
+    pass "last tag from git describe is v2.30.4.1 -> exit 0"
 else
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: last tag from git describe is v2.30.4.1 -> exit 0"
-    echo "      exit: $STATUS" "output: [$OUT]"
+    fail "last tag from git describe is v2.30.4.1 -> exit 0" "exit: $STATUS output: [$OUT]"
 fi
 
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

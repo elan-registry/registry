@@ -199,18 +199,7 @@ test.describe('CSP Validation Tests', () => {
     expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
   });
 
-  test('no requests to Google Maps domains on statistics or details pages', async ({ page }) => {
-    // Check statistics page
-    await assertNoGoogleMapsRequests(page, 'app/owner/reports/statistics.php', 'statistics page');
-
-    // Check a car details page (use a stable car ID or skip if none)
-    try {
-      await assertNoGoogleMapsRequests(page, `app/owner/cars/details.php?car_id=${CAR_ID_STANDARD}`, 'car details page');
-    } catch (navError) {
-      // page.goto throws on timeout/crash, not on auth redirects;
-      // log so navigation failures are diagnosable. CSP prohibition is still
-      // verified via the statistics page assertion above.
-      console.warn('car details CSP check skipped (navigation error):', navError.message);
-    }
+  test('no requests to Google Maps domains on car details page', async ({ page }) => {
+    await assertNoGoogleMapsRequests(page, `app/owner/cars/details.php?car_id=${CAR_ID_STANDARD}`, 'car details page');
   });
 });

@@ -1,5 +1,3 @@
-// tests/playwright/user-settings-resume-emails.spec.js
-//
 // Coverage for the "Resume verification emails" control (#resume-emails) on
 // usersc/user_settings.php (issue #1895).
 //
@@ -7,10 +5,6 @@
 // profile and car email_suppressed flags set, and one with both flags clear.
 // The fixture needs the application database. The local stack is Docker only,
 // so the spec runs the fixture in the app container through fixture-runner.js.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see
-// tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see
-// docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { login, isLoggedIn } = require('./auth-helper.js');

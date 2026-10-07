@@ -9,12 +9,8 @@ use ElanRegistry\Car\EmailNoticeBuilder;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration (real MySQL) test wiring real cars_hist/er_email_events rows
- * through EmailNoticeBuilder::buildForOwner() end-to-end. Unit tests
- * (tests/unit/cars/EmailNoticeBuilderTest.php) mock CarRepository entirely,
- * so they never exercise the real self-join queries this class depends on;
- * this file proves the whole pipeline — real cars row, real cars_hist row,
- * real er_email_events row — produces the documented output.
+ * EmailNoticeBuilder::buildForOwner() end to end with real rows; the unit
+ * tests mock CarRepository and never run its self-join queries.
  */
 #[Group('integration')]
 final class EmailNoticeBuilderIntegrationTest extends IntegrationTestCase

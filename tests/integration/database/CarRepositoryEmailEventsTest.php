@@ -8,24 +8,8 @@ use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration (real MySQL) tests for CarRepository's er_email_events methods
- * that a mocked unit test cannot meaningfully cover — the SQL itself is the
- * thing under test.
- *
- * countSoftBouncesSinceLastDelivered() is the query that decides whether a
- * car gets escalated to bounced (#1887's BrevoWebhookEventProcessor unit
- * tests only stub its return value, so a regression in the SQL itself — e.g.
- * COUNT(*) instead of COUNT(DISTINCT brevo_message_id), or a boundary error
- * in the "since last delivered" window — would ship undetected without this
- * file).
- *
- * insertEmailEvent()'s ON DUPLICATE KEY UPDATE clause is hand-written
- * specifically to avoid DB::insert()'s indiscriminate update mode (see that
- * method's own docblock) — a test that only sends identical payloads twice
- * cannot distinguish this from the simpler, wrong implementation it exists to
- * avoid, so this file sends a duplicate delivery with DIFFERENT reason/
- * occurred_at values and asserts those update while the identity columns do
- * not move.
+ * Real-SQL tests for CarRepository's er_email_events methods; unit tests only
+ * stub their return values.
  */
 #[Group('integration')]
 final class CarRepositoryEmailEventsTest extends IntegrationTestCase
@@ -159,12 +143,9 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         );
         $this->assertSame(1, $firstCount, 'A fresh insert must report rowCount() == 1');
 
-        // Same car_id + brevo_message_id + event (the unique key) — a real
-        // Brevo retry — but with DIFFERENT reason/occurred_at, so this test
-        // can tell the ON DUPLICATE KEY UPDATE clause apart from a naive
-        // re-insert: if it were DB::insert($table, $fields, true) instead
-        // (the mode this method's docblock says NOT to use), car_id/email/
-        // event/brevo_message_id would also be reassigned on conflict.
+        // Same unique key (a Brevo retry) with DIFFERENT reason/occurred_at:
+        // proves the hand-written ON DUPLICATE KEY UPDATE does not reassign
+        // the identity columns, as DB::insert(..., true) would.
         $secondCount = $this->repo->insertEmailEvent(
             $this->carId,
             $email,
@@ -223,9 +204,7 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     #[Group('fast')]
     public function testEmptyArrayIsANoOpAndDoesNotThrow(): void
     {
-        // The empty-array guard must never reach a "DELETE ... IN ()" query,
-        // which is a fatal SQL syntax error — this is the account-deletion
-        // path exercised whenever a car-less user is deleted.
+        // An empty array must never reach "DELETE ... IN ()" (account deletion of a car-less user).
         $result = $this->repo->deleteEmailEventsForCarIds([]);
 
         $this->assertSame(0, $result);
@@ -291,13 +270,6 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     }
 
     // --- findLatestEmailEventsByCarIds() ------------------------------------
-    //
-    // This method's correctness lives entirely in a hand-written self-join
-    // (INNER JOIN against a MAX(occurred_at) GROUP BY subquery, with the
-    // doubled IN({$placeholders}) parameter binding via array_merge($ids,
-    // $ids)). Every unit test for it mocks DatabaseInterface::results() to
-    // hand back the answer the join was supposed to compute, so the actual
-    // SQL has never executed anywhere but here.
 
     #[Group('fast')]
     public function testReturnsOnlyTheMaxDatedRowForACarWithMultipleEvents(): void
@@ -328,17 +300,8 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         ]);
         $otherEmail = (string) $this->db->query('SELECT email FROM cars WHERE id = ?', [$otherCarId])->first()->email;
 
-        // The two cars' latest events deliberately share an identical
-        // occurred_at (2026-01-05). This is the hardest case for per-car
-        // attribution: each car must still get its own event despite the tie.
-        //
-        // Note on what this does NOT prove. Dropping the JOIN's
-        // `latest.car_id = e.car_id` predicate does not fail this test, and no
-        // fixture can make it: the result is keyed by `e.car_id` and the query
-        // also carries `WHERE e.car_id IN (...)`, so an unconstrained join only
-        // yields duplicate rows (4 instead of 2) that collapse onto the same
-        // correct key. That predicate is a redundancy/performance guard here,
-        // not the thing standing between this test and a wrong answer.
+        // Both cars' latest events share one occurred_at: the hardest case
+        // for per-car attribution.
         $this->insertRawEvent('delivered', 'car-a-old', '2026-01-01 08:00:00');
         $this->insertRawEvent('hard_bounce', 'car-a-new', '2026-01-05 08:00:00');
 
@@ -370,8 +333,6 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     #[Group('fast')]
     public function testCarIdWithNoEventsIsAbsentFromTheResultNotNull(): void
     {
-        // $this->carId has zero rows in er_email_events for this test — no
-        // insertRawEvent() call precedes this assertion.
         $latest = $this->repo->findLatestEmailEventsByCarIds([$this->carId]);
 
         $this->assertArrayNotHasKey(
@@ -390,24 +351,15 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     }
 
     // --- findLatestEmailEventsByCarIdsAndEvents() ---------------------------
-    //
-    // Sibling of findLatestEmailEventsByCarIds() above, but the `event`
-    // filter also appears in the self-join's subquery AND the outer query
-    // (see that method's own docblock for why both are needed — the same
-    // reasoning CarRepositoryHistoryOperationTest::
-    // testOperationFilterExcludesANewerButNonMatchingRow() exercises for
-    // findLatestHistoryOperationByCarIds()). This is the exact query
-    // EmailNoticeBuilder::buildForOwner() now depends on to avoid
-    // misattributing a suppression/bounce cause to a later, unrelated event.
+        //
+        // The `event` filter must be in the subquery and the outer query;
+        // EmailNoticeBuilder::buildForOwner() depends on it.
 
     #[Group('fast')]
     public function testEventFilterExcludesANewerButNonMatchingRow(): void
     {
-        // The newest event for this car is 'opened', which is NOT in the
-        // requested event list — the method must return the earlier 'spam'
-        // row instead of the overall-latest row regardless of event. This
-        // reproduces the exact round-one defect: an unfiltered "latest event
-        // of any type" lookup would see 'opened' and miss the suppression.
+        // The newest event, 'opened', is not requested: the earlier 'spam'
+        // row must be returned, not the overall latest.
         $this->insertRawEvent('spam', 'filter-1', '2026-04-01 09:00:00');
         $this->insertRawEvent('opened', 'filter-2', '2026-04-02 09:00:00');
 

@@ -1,65 +1,14 @@
-// tests/playwright/e2e/car-edit-workflow.spec.js
+// Car edit year/model and chassis-validation flows in real UPDATE mode
+// (#1949). Read-only: neither test clicks #submit.
 //
-// Replacement coverage for two tests removed from
-// tests/playwright/functionality.spec.js (#1949), each of which passed
-// while asserting nothing real:
-//
-// - "car edit form workflow functions" gated its assertions behind
-//   #editCarAccordion, which app/owner/cars/edit.php no longer renders (the
-//   form is a flat, single-page layout now) — so it early-returned on every
-//   run, on every tier, forever.
-// - "chassis validation works" ran unauthenticated, so it always landed on
-//   edit.php's "Add Car" fallback rather than genuine UPDATE mode. #year
-//   exists in both modes so its guard opened, but chassis-validate.php's
-//   real validation requires a valid year AND model (see car-edit.js's
-//   #chassis blur handler), and Add Car mode starts with no model selected
-//   — so its `#chassis_icon` assertion was trivially true regardless of
-//   whether real validation logic ran.
-//
-// These two tests instead authenticate, discover a genuinely owned car in
-// real edit mode (window.editCarConfig.isUpdate === true), and exercise the
-// #year -> #model repopulation and chassis-validate.php AJAX flow for real.
-// See each test body below for its specific assertions and the mechanisms
-// behind them.
-//
-// Both are deliberately READ-ONLY against the database — neither clicks
-// #submit. Unlike car-edit-owner-refresh.spec.js (whose entire purpose is
-// exercising the real save.php path), this file's scope is client-side form
-// interactions only, so it doesn't inherit that file's write-safety
-// concerns (#2014).
-//
-// Runs against Local/Dev only: the local Docker site, default
-// http://localhost:$APP_HOST_PORT/ (see tests/playwright/base-url.js).
-// Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md.
-// Requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in .env.local.
-//
-// NOT enrolled on Test or Production (see playwright.config.test.js /
-// playwright.config.prod.js testMatch, which excludes this file). The
-// SUBMIT-time #model race that blocked enrollment (#2045) is fixed by #2295.
-// Enrollment on Test/Production is tracked separately in #2301.
-//
-// The target car is discovered dynamically via usersc/account.php's "Update
-// Car" button rather than a hardcoded fixture id, and the credential gate
-// below is tier-aware (E2E_AUTH_TIER), both for the reasons documented at
-// length in car-edit-owner-refresh.spec.js — kept here so this file is ready
-// for enrollment (#2301).
+// Local/Dev only for now; Test/Production enrollment is #2301.
 
 const { test, expect } = require('@playwright/test');
 
 test.describe('Car edit — year/model form workflow (#1949)', () => {
-  // Skip unless running in the authenticated `admin` project AND, for
-  // Local/Dev only, real credentials are configured. On Local/Dev, per
-  // playwright.config.js's own `hasCredentials` guard, missing credentials
-  // make auth.setup.js skip cleanly (no storageState) while `admin`
-  // still runs unauthenticated (see CLAUDE.md's "Local Playwright tests"
-  // note) — without this check, this test's precondition (an owned car
-  // reachable from account.php) would fail rather than skip, misreporting a
-  // missing local credential as a real regression. Test/Production instead
-  // authenticate via a saved storageState and are already gated by
-  // check-auth-admin failing loudly beforehand (docs/testing/PLAYWRIGHT_E2E.md),
-  // so the credential check only applies when E2E_AUTH_TIER is unset
-  // (Local/Dev) — kept here in preparation for #2301 enrollment (see file
-  // header) so an unconditional gate doesn't incorrectly skip it there.
+  // Skip outside the admin project. On Local/Dev without credentials,
+  // auth.setup.js skips but `admin` still runs unauthenticated, so skip here
+  // rather than report a false failure. E2E_AUTH_TIER tiers use storageState.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'admin') {
       testInfo.skip(true, 'Only runs under the admin project');
@@ -70,19 +19,8 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
     }
   });
 
-  // Discover a car the logged-in account actually owns via
-  // usersc/account.php's per-car "Update Car" button (same pattern as
-  // tests/playwright/e2e/admin.spec.js's "Update Car" test and
-  // car-edit-owner-refresh.spec.js) rather than a hardcoded
-  // CAR_ID_STANDARD fixture — car ownership on Local/Dev differs from
-  // Test/Production, and CAR_ID_STANDARD (fixtures.js, defaults to 1) is
-  // not guaranteed to belong to whichever account each tier's
-  // storageState/credentials authenticate as. This matters more here than
-  // it looks: edit.php silently falls back to "Add Car" mode for an
-  // unowned/nonexistent id, and both tests below need genuine UPDATE-mode
-  // behavior — reaching it via the account's own button is the only way to
-  // guarantee that mode without a DB fixture. Shared by both tests in this
-  // file since they need the identical precondition.
+  // Find an owned car from account.php, not a fixture id: ownership differs
+  // per tier, and edit.php falls back to "Add Car" mode for an unowned id.
   async function openOwnedCarInEditMode(page) {
     await page.goto('usersc/account.php');
     await page.waitForLoadState('domcontentloaded');
@@ -94,20 +32,10 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
     await updateCarButton.first().click();
     await page.waitForLoadState('domcontentloaded');
 
-    // Capture the actual car id the edit page loaded (edit.php's hidden
-    // #car_id field — app/owner/cars/edit.php:157) rather than assuming
-    // CAR_ID_STANDARD, since the button above may resolve to any car the
-    // account owns.
     const editedCarId = await page.locator('#car_id').inputValue();
     expect(editedCarId, 'Precondition: edit.php must render a car_id for the discovered car').not.toBe('');
 
-    // Assert genuine edit mode rather than the Add Car fallback. edit.php
-    // emits window.editCarConfig in an inline nonce'd <script> (edit.php:634)
-    // and sets isUpdate from `$action === 'updateCar'` — car-edit.js reads it
-    // as `cfg.isUpdate` (car-edit.js:5, :334) to decide whether to
-    // pre-populate the dropdowns at all. If this is false, the interaction
-    // under test is a different code path and the assertions below would be
-    // testing the wrong thing, so fail here with a clear message instead.
+    // Fail fast if edit.php fell back to Add Car mode: that is a different code path.
     const isUpdateMode = await page.evaluate(() => window.editCarConfig && window.editCarConfig.isUpdate);
     expect(
       isUpdateMode,
@@ -115,58 +43,28 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
       `a false value means it fell back to Add Car mode for car ${editedCarId}`
     ).toBe(true);
 
-    // Returned for future callers that need it; neither current test uses it.
     return editedCarId;
   }
 
-  // Drives a genuine year change and waits for #model to repopulate for
-  // real — shared by both tests below since each needs a valid year+model
-  // pair before its own assertions (year->model repopulation itself; a
-  // real chassis-validate.php call, which requires both to be set). See
-  // the individual comments at each call site's original location for the
-  // full "why" — kept once here rather than duplicated to avoid the two
-  // copies drifting.
   async function selectYearAndAwaitModels(page) {
     const yearSelect = page.locator('#year');
     const modelSelect = page.locator('#model');
     const modelOptions = page.locator('#model option');
 
-    // In update mode car-edit.js repopulates #model for the car's own year at
-    // load, awaits that call, and then selects the saved model. #submit stays
-    // disabled until this is done (#2295). Wait for that state first, so the
-    // load-time repopulation cannot finish after the baseline below and be
-    // mistaken for the repopulation that this helper's year change causes.
+    // car-edit.js repopulates #model for the saved year at load and keeps
+    // #submit disabled until done (#2295). Wait for that, so the load-time
+    // repopulation is not mistaken for the one this year change causes.
     await expect(modelSelect).not.toHaveValue('');
     await expect(page.locator('#submit')).toBeEnabled();
 
-    // Baseline the model dropdown. #model already carries the options for the
-    // car's own year, so recording the pre-change option list lets the
-    // assertion below key off an observed change rather than an assumed
-    // empty starting state.
     const optionsBeforeChange = await modelOptions.allTextContents();
 
-    // Pick a year different from whatever is currently selected so the change
-    // event genuinely fires — selectOption() with the already-selected value
-    // does not dispatch `change` in jQuery's handler, which would make the
-    // wait below hang on a repopulate that never started. 1973 and 1971 are
-    // both real <option> values in edit.php's hardcoded year list
-    // (edit.php:190-194), so either choice is always selectable.
+    // selectOption() with the current value fires no `change` event.
     const currentYear = await yearSelect.inputValue();
     const targetYear = currentYear === '1973' ? '1971' : '1973';
     await yearSelect.selectOption(targetYear);
 
-    // Wait for a REAL signal that the async repopulate finished, not a fixed
-    // timeout. car-edit.js binds `$('#year').change(onYearChange)`, and the
-    // async onYearChange() awaits
-    // ModelLoader.populateModelDropdown(validYear, $('#model')), which fetches
-    // app/api/cars/models.php, strips every option but the placeholder, then
-    // appends one <option> per model for the year (model-loader.js:73-97).
-    // A `page.waitForTimeout()` guess here is the same mistake as the blind
-    // 500ms setTimeout that car-edit.js used before #2295 (#2045) —
-    // it races the network and passes or fails on machine speed. Polling for
-    // "more than just the placeholder option, and a different list than
-    // before" observes the completed DOM write instead, so this is
-    // deterministic on any tier whenever it is eventually enrolled.
+    // Poll the DOM, not a fixed timeout: a blind wait raced the network (#2045).
     await expect.poll(
       async () => modelOptions.allTextContents(),
       {
@@ -189,81 +87,36 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
   test('selecting a year repopulates the model dropdown on a real edit-mode page', async ({ page }) => {
     await openOwnedCarInEditMode(page);
 
-    // The replaced test gated this field behind an accordion expand step
-    // ('#heading-section2 button'). There is no accordion: #year sits in the
-    // flat form body and is visible and enabled on load, with no reveal
-    // interaction required. Asserting that directly is the regression guard
-    // against the layout silently regressing back to a gated field.
+    // Regression guard: #year was once gated behind an accordion.
     const yearSelectPreCheck = page.locator('#year');
     await expect(yearSelectPreCheck, '#year must be visible on load with no expand step').toBeVisible();
     await expect(yearSelectPreCheck, '#year must be interactive on load').toBeEnabled();
 
     const { modelSelect } = await selectYearAndAwaitModels(page);
 
-    // populateModelDropdown() enables the dropdown only when the year yielded
-    // at least one model (model-loader.js:93). Having just asserted the year
-    // did yield models, #model must now be interactive — this catches a
-    // repopulate that added options but left the control disabled, which
-    // would look correct in the option list yet be unusable by an owner.
+    // Catches a repopulate that adds options but leaves the control disabled.
     await expect(
       modelSelect,
       '#model must be enabled once its year yields models'
     ).toBeEnabled();
-
-    // Deliberately NO #submit click — see the file header. This test verifies
-    // the year->model interaction only and leaves the car row untouched.
   });
 
   test('entering a chassis number triggers real validation on a real edit-mode page', async ({ page }) => {
     await openOwnedCarInEditMode(page);
 
-    // car-edit.js's #chassis blur handler (car-edit.js:448-473) only calls
-    // the real chassis-validate.php endpoint when BOTH a valid year and a
-    // valid model are set (line 452: `if (!_chassis || !validYear ||
-    // !validModel) { ...skip AJAX, call updateChassisUI(false, '')... }`) —
-    // so, like the year->model test above, this must first drive a genuine
-    // year selection and wait for the model to repopulate before touching
-    // #chassis at all. The replaced test's unauthenticated "Add Car" run
-    // started with an empty, unselected model, so its chassis assertion
-    // below ran without ever satisfying this precondition — meaning it
-    // could only ever observe the SKIP branch, not real
-    // chassis-validate.php validation. Note the skip branch is not
-    // invisible: updateChassisUI(false, '') sets fa-thumbs-down
-    // unconditionally, so a naive "some thumbs class is present" check
-    // cannot distinguish it from a real validation response — see the
-    // waitForResponse() assertion below, which is what actually does.
+    // The blur handler calls chassis-validate.php only when year and model
+    // are both set; otherwise it shows fa-thumbs-down without a request.
     const { modelSelect } = await selectYearAndAwaitModels(page);
 
-    // Select the first real model (index 0 is the "--Please Select
-    // Model--" placeholder — see model-loader.js:78-82).
+    // Index 0 is the placeholder.
     await modelSelect.selectOption({ index: 1 });
 
     const chassisField = page.locator('#chassis');
     await expect(chassisField, '#chassis must be enabled once year and model are set').toBeEnabled();
 
-    // A distinctive, syntactically plausible chassis number — this test
-    // does not assert a specific valid/invalid outcome (whether THIS
-    // number is taken is real registry data this test has no control
-    // over), only that real validation genuinely ran against THIS input.
-    //
-    // Two things this assertion must NOT rely on alone:
-    // - #chassis_icon's resulting class alone: the skip branch (taken when
-    //   year/model aren't both set) calls updateChassisUI(false, '')
-    //   unconditionally, which sets fa-thumbs-down just as validly as a
-    //   real "invalid chassis" response would — a "some thumbs class is
-    //   present" check can't tell the two apart.
-    // - waitForResponse() matched on the endpoint URL alone: edit.php's own
-    //   page-load sequence independently fires #chassis's blur handler
-    //   twice on load (car-edit.js's isUpdate pre-population block, for the
-    //   car's ALREADY-SAVED chassis value, and again from the #year change
-    //   handler's re-validation) — either can produce an unrelated
-    //   chassis-validate.php response that a URL-only matcher can't
-    //   distinguish from this test's own request.
-    //
-    // So: match on the actual POST body containing THIS test's distinctive
-    // chassis value (server receives it as FormData's `chassis` field —
-    // see car-edit.js's ElanRegistryAPI.post() call), which only the
-    // response to this exact request can satisfy.
+    // Match on this test's own chassis value in the POST body: the icon class
+    // cannot tell the skip branch from a real response, and the page fires
+    // its own chassis-validate.php requests on load and on year change.
     const chassisMarker = `TEST${Date.now()}`;
     const validateResponse = page.waitForResponse(
       async (response) => {
@@ -279,11 +132,7 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
     await chassisField.blur();
     await validateResponse;
 
-    // Secondary check: the response was actually applied to the DOM.
-    // updateChassisUI() (car-edit.js:481-507) toggles fa-thumbs-up XOR
-    // fa-thumbs-down based on chassis-validate.php's response — assert
-    // exactly one is present rather than either specific class, since which
-    // one depends on live registry data this test doesn't control.
+    // Exactly one thumbs class; which one depends on live registry data.
     const chassisIcon = page.locator('#chassis_icon');
     await expect
       .poll(

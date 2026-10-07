@@ -18,9 +18,10 @@ use PHPUnit\Framework\TestCase;
  * hand-encoded sitemap path publishes a 404 URL in sitemap.xml (the exact
  * class of problem this issue exists to fix).
  *
- * Pure static-text scan (file_get_contents() + regex, same approach as
- * PageMetadataCompletenessTest): no database, no bootstrapped UserSpice
- * environment, so it can't accidentally pass by executing the page.
+ * Pure static-text scan (file_get_contents() + regex): no database, no
+ * bootstrapped UserSpice environment, so it can't accidentally pass by
+ * executing the page. The PageMetadataBeforeInitRule PHPStan rule checks
+ * that every page sets its metadata.
  */
 #[Group('system')]
 #[Group('fast')]

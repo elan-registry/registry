@@ -8,20 +8,8 @@ use ElanRegistry\Car\CarShowcaseService;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for CarShowcaseService::buildShowcasePool()
- *
- * Verifies that:
- * - The pool is always an array (even on an empty registry)
- * - The pool contains at most 12 items (RECENT_LIMIT + RANDOM_LIMIT)
- * - Every item in the pool carries the expected scalar fields
- * - The `is_new` property is present and typed as bool on every item
- *
- * Requires a live database connection (tests are skipped gracefully when
- * unavailable). Every other precondition — at least one image-eligible car,
- * a controlled top-5-by-recency ordering — is established by the tests
- * themselves via createShowcaseEligibleCar() / clearAmbientCars(), not assumed
- * from ambient database state; a test is responsible for the data it needs,
- * not for skipping when the database doesn't happen to already have it.
+ * CarShowcaseService against a real database. Each test creates the data it
+ * needs instead of relying on ambient rows.
  */
 #[Group('integration')]
 final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
@@ -33,13 +21,8 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
     }
 
     /**
-     * Create a fixture car with a minimal valid image payload, so it's eligible
-     * for buildShowcasePool()'s IMAGE_CONDITION. Cleaned up by tearDown() like
-     * any other createTestCar() row.
-     *
-     * `cars.image` is a JSON array of bare filenames (CLAUDE.md) — not an array
-     * of {path,name} objects, which IMAGE_CONDITION's JSON_VALID()/JSON_LENGTH()
-     * checks would accept but no production code ever writes.
+     * Create a car that passes IMAGE_CONDITION. `cars.image` is a JSON array
+     * of bare filenames, the shape production writes.
      *
      * @return int The created car's id
      */
@@ -58,21 +41,11 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
     }
 
     /**
-     * Delete any pre-existing `cars` rows (and their car_transfer_requests /
-     * cars_hist rows) before establishing this test's own fixtures.
-     *
-     * getNewCarIds() ranks the WHOLE cars table with no per-test scoping, so
-     * proving floor/tie-break behavior deterministically requires a known
-     * starting point. Any row present here is, by construction of this schema
-     * (never seeded with cars, never production data — see
-     * tests/bootstrap-integration.php's hard guard against the dev database),
-     * leaked debris from an earlier test run whose own cleanup didn't complete
-     * (e.g. a killed process) — safe and correct to delete outright rather than
-     * mutate-and-restore: deleting genuine debris has no "original state" to
-     * preserve, unlike an earlier version of this helper that temporarily
-     * backdated ambient ctimes and tried to restore them, which left `mtime`
-     * permanently rewritten (ON UPDATE CURRENT_TIMESTAMP) and orphaned
-     * cars_hist audit rows behind on every run.
+     * Delete leftover cars (and their transfer/history rows). getNewCarIds()
+     * ranks the whole table, so floor and tie-break tests need a known start.
+     * Any row here is debris from an interrupted run; the test schema is never
+     * seeded with cars. Do not backdate and restore instead: that rewrote mtime
+     * (ON UPDATE) and orphaned cars_hist rows.
      *
      * @return void
      */
@@ -99,19 +72,13 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
             $this->fail('Failed to delete ambient cars: ' . $delCars->errorString());
         }
 
-        // The cars_delete trigger just wrote fresh audit rows for the deletions
-        // above, on top of whatever history the leaked rows already had — clean
-        // up both in one pass, after the cars delete (not before), so the
-        // trigger-written rows are included.
+        // After the cars delete, so the trigger's new audit rows are included.
         $delHist = $this->db->query("DELETE FROM cars_hist WHERE car_id IN ({$idList})");
         if ($delHist->error()) {
             $this->fail('Failed to delete ambient cars_hist rows: ' . $delHist->errorString());
         }
     }
 
-    /**
-     * buildShowcasePool() must always return an array — never null or false.
-     */
     public function testBuildShowcasePoolReturnsArray(): void
     {
         $pool = (new CarShowcaseService($this->db))->buildShowcasePool();
@@ -119,9 +86,7 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         $this->assertIsArray($pool);
     }
 
-    /**
-     * The pool must contain at most 12 items (6 recent + 6 random).
-     */
+    /** At most 12 items (6 recent + 6 random). */
     public function testBuildShowcasePoolMaxSize(): void
     {
         $pool = (new CarShowcaseService($this->db))->buildShowcasePool();
@@ -129,9 +94,6 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         $this->assertLessThanOrEqual(12, count($pool));
     }
 
-    /**
-     * Every item must have an `is_new` property typed as bool.
-     */
     public function testBuildShowcasePoolItemsHaveIsNewProperty(): void
     {
         $this->createShowcaseEligibleCar();
@@ -145,9 +107,7 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * Every item must expose the scalar fields the home-page template relies on.
-     */
+    /** Fields the home-page template relies on. */
     public function testBuildShowcasePoolItemsHaveRequiredFields(): void
     {
         $this->createShowcaseEligibleCar();
@@ -164,19 +124,11 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         $this->assertObjectHasProperty('ctime', $car);
     }
 
-    /**
-     * Pool size must never exceed 12 even when the registry has more eligible cars.
-     * Also verifies no car appears twice (recent and random pools are mutually exclusive).
-     *
-     * Creates 13 cars with a synthetic image payload and asserts the cap holds.
-     * Test rows are cleaned up by IntegrationTestCase::tearDown().
-     */
+    /** The 12-item cap holds with 13 eligible cars, and no car appears twice. */
     public function testBuildShowcasePoolCapAt12WhenManyEligibleCarsExist(): void
     {
         $userId = $this->createTestUser();
 
-        // cars.image is a JSON array of bare filenames (CLAUDE.md) — one shared
-        // filename is fine here since the test only cares about pool cap/uniqueness.
         $imageJson = json_encode(['img_test_showcase_fixture.jpg']);
 
         for ($i = 0; $i < 13; $i++) {
@@ -195,12 +147,7 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         $this->assertSame(count($ids), count(array_unique($ids)), 'Pool must not contain duplicate car IDs');
     }
 
-    /**
-     * Cars added within NEW_DAYS (90 days) are stamped is_new = true.
-     *
-     * Creates 13 fixture cars with ctime = NOW() so they dominate the recent-6
-     * query (most-recently-added). All are within 90 days, so Condition A fires.
-     */
+    /** Cars added within NEW_DAYS (90) are stamped is_new = true. */
     public function testIsNewTrueForCarsWithinRecentWindow(): void
     {
         $userId = $this->createTestUser();
@@ -231,13 +178,7 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         }
     }
 
-    // -----------------------------------------------------------------------
-    // getNewCarIds() — floor and tie-breaking coverage
-    // -----------------------------------------------------------------------
 
-    /**
-     * getNewCarIds() must return a list of ints — never null, false, or mixed types.
-     */
     public function testGetNewCarIdsReturnsArrayOfIntegers(): void
     {
         $userId = $this->createTestUser();
@@ -251,9 +192,6 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * A car added within 90 days is always included — the date rule fires.
-     */
     public function testGetNewCarIdsIncludesCarWithinNinetyDays(): void
     {
         $userId = $this->createTestUser();
@@ -264,13 +202,7 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         $this->assertContains($carId, $ids, 'Car with ctime=NOW() must appear in getNewCarIds() via the 90-day rule');
     }
 
-    /**
-     * A car outside 90 days and outside the top-5 must not be included.
-     *
-     * Five helper cars (ctime=NOW()) occupy the global top-5 floor slots,
-     * guaranteeing the backdated fixture sits at position 6+. Works on any
-     * database — no skip needed.
-     */
+    /** A car outside 90 days and outside the top 5 is excluded. */
     public function testGetNewCarIdsOldCarOutsideTopFiveIsExcluded(): void
     {
         $userId = $this->createTestUser();
@@ -295,14 +227,7 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * A car outside the 90-day window but among the top-5 most-recently-added
-     * must still be included — the floor guarantee fires.
-     *
-     * Deletes ambient cars first (see clearAmbientCars()) so this test's own
-     * fixtures deterministically occupy the global top-5 positions, regardless
-     * of what a prior run's leaked fixtures may have left in the shared schema.
-     */
+    /** A car outside 90 days but in the top 5 is included (the floor). */
     public function testGetNewCarIdsFloorIncludesOldCarInTopFive(): void
     {
         $this->clearAmbientCars();
@@ -335,15 +260,7 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * When multiple cars share the same ctime, the top-5 is broken by id DESC.
-     *
-     * Six cars with identical ctimes 91 days ago: the 5 with highest IDs must be
-     * included (floor) and the lowest-ID car must be excluded (position 6 of 6).
-     *
-     * Deletes ambient cars first for the same reason as the floor-inclusion
-     * test above.
-     */
+    /** Equal ctimes: the top 5 is chosen by id DESC. */
     public function testGetNewCarIdsTieBrokenByIdDesc(): void
     {
         $this->clearAmbientCars();

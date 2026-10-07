@@ -1,5 +1,3 @@
-// tests/playwright/login-failure-diagnostic.spec.js
-//
 // Coverage for the diagnostic-on-failure path added to login() in
 // tests/playwright/auth-helper.js (issue #1935).
 //

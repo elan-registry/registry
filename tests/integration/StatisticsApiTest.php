@@ -8,50 +8,27 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\StatisticsDataService;
 
 /**
- * Integration tests for StatisticsDataService, the data layer behind the
- * statistics.php API endpoint, run against real database fixtures.
- *
- * The endpoint's `tab` parameter validation (empty tab and unknown tab both
- * rejected with 400) is pinned at source level in
- * tests/unit/api/StatisticsEndpointValidationTest.php.
- *
- * @author Elan Registry Development Team
- * @copyright 2025
+ * StatisticsDataService (behind the statistics.php endpoint) against real
+ * fixtures. Tab validation: tests/unit/api/StatisticsEndpointValidationTest.php.
  */
 class StatisticsApiTest extends IntegrationTestCase
 {
     private $testUserId;
 
-    /**
-     * Set up test database connection and create test fixture data
-     */
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
 
-        // Create the fixture the statistics assertions rely on, so registry-wide
-        // aggregate queries are true by construction rather than by ambient data.
+        // Registry-wide aggregates must be true by construction, not by ambient data.
         $this->testUserId = $this->createTestUser();
 
-        // The car ID is not needed by any assertion — the service calls below
-        // return registry-wide aggregates. Creating it is what matters; the ID is
-        // tracked by createTestCar() for tearDown() cleanup.
         $this->createTestCar($this->testUserId, [
             'country' => 'United States',
             'state'   => 'California',
         ]);
     }
 
-    // =========================================================================
-    // StatisticsDataService behavioral tests
-    // =========================================================================
-
-    /**
-     * StatisticsDataService::getCountryData() returns rows with country and count keys.
-     *
-     * Replaced a tautological test that only asserted empty('') === true.
-     */
     public function testGetCountryDataReturnsRowsWithExpectedShape(): void
     {
         $service = new StatisticsDataService($this->db);
@@ -65,12 +42,6 @@ class StatisticsApiTest extends IntegrationTestCase
         $this->assertObjectHasProperty('count', $row);
     }
 
-    /**
-     * StatisticsDataService::getTypeData() returns rows with type and count keys.
-     *
-     * Replaced a tautological test that only compared a literal string against
-     * a hardcoded array built in the same test.
-     */
     public function testGetTypeDataReturnsRowsWithExpectedShape(): void
     {
         $service = new StatisticsDataService($this->db);
@@ -84,11 +55,6 @@ class StatisticsApiTest extends IntegrationTestCase
         $this->assertObjectHasProperty('count', $row);
     }
 
-    /**
-     * StatisticsDataService::getSeriesCounts() returns all six expected series keys.
-     *
-     * Replaced a tautological test that asserted keys in a locally-constructed array.
-     */
     public function testGetSeriesCountsReturnsAllSixKeys(): void
     {
         $service = new StatisticsDataService($this->db);
@@ -100,9 +66,6 @@ class StatisticsApiTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * StatisticsDataService::getMapPins() returns an array; each row has required fields.
-     */
     public function testGetMapPinsReturnsRowsWithRequiredFields(): void
     {
         $service = new StatisticsDataService($this->db);
@@ -122,11 +85,6 @@ class StatisticsApiTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * StatisticsDataService::getDataCompleteness() returns an object with required fields.
-     *
-     * Replaced a tautological test that asserted a locally-constructed error array.
-     */
     public function testGetDataCompletenessReturnsObjectWithRequiredFields(): void
     {
         $service    = new StatisticsDataService($this->db);
@@ -140,11 +98,8 @@ class StatisticsApiTest extends IntegrationTestCase
     }
 
     /**
-     * verified_cars (fresh) and the stale count partition the registry: every car
-     * is one or the other, so the two add up to total_cars.
-     *
-     * The stale count comes from CarRepository::stalenessSql(), the negation of
-     * the rule getDataCompleteness() uses, not from a copy of that SQL.
+     * Fresh and stale counts partition the registry. The stale count uses
+     * CarRepository::stalenessSql(), not a copy of the SQL.
      */
     public function testGetDataCompletenessFreshPlusStaleEqualsTotal(): void
     {
@@ -164,11 +119,8 @@ class StatisticsApiTest extends IntegrationTestCase
     }
 
     /**
-     * Adding one fresh car and one stale car raises verified_cars by exactly 1
-     * and total_cars by exactly 2.
-     *
-     * The stale car has last_verified and owner_last_updated both two years old.
-     * Under COUNT(last_verified) this car would count, so it pins the old defect.
+     * One fresh and one stale car: verified_cars +1, total_cars +2. Pins the
+     * old COUNT(last_verified) defect.
      */
     public function testGetDataCompletenessCountsOnlyFreshCars(): void
     {
@@ -198,11 +150,8 @@ class StatisticsApiTest extends IntegrationTestCase
     }
 
     /**
-     * A sold car with a fresh owner_last_updated counts in verified_cars.
-     *
-     * The statistics figure follows the freshness rule only. It does not follow
-     * CarBadges, which hides Verified on a sold car. That is why the chart label
-     * is "Fresh (12 mo)", not "Verified".
+     * A sold car with a fresh owner_last_updated counts: the figure follows
+     * freshness only, not CarBadges. Hence the label "Fresh (12 mo)".
      */
     public function testGetDataCompletenessCountsFreshSoldCar(): void
     {

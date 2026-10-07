@@ -3,21 +3,12 @@ const { CAR_ID_STANDARD, CAR_ID_REDIRECT_TEST } = require('../fixtures.js');
 const { assertPageTitle } = require('../auth-helper.js');
 const { assertValidTier } = require('./auth-staleness-tier.js');
 
-// True when running against the local Docker stack rather than a deployed
-// Test/Prod environment. Only playwright.config.test.js/.prod.js set
-// E2E_AUTH_TIER to 'test'/'prod'. The local configs leave it unset. One
-// test uses this to skip a check that needs a case-sensitive filesystem
-// (see its call site below).
-//
-// assertValidTier() rejects any value other than 'test', 'prod', or unset.
-// E2E_AUTH_TIER is a plain env var, so a stray export in a developer's shell
-// must fail loudly instead of silently picking the wrong tier.
+// True on the local stack (E2E_AUTH_TIER unset). assertValidTier() makes a
+// stray shell export fail loudly instead of picking the wrong tier.
 assertValidTier(process.env.E2E_AUTH_TIER, { allowUnset: true }, 'not-logged-in.spec.js');
 const IS_LOCAL_DEV_TIER = process.env.E2E_AUTH_TIER === undefined;
 
-// Helper: strip leading slash from a path before resolving against baseURL
-// (new URL() joining a leading-slash path against baseURL discards
-// baseURL's own path segment under a non-root mount, the exact bug fixed in #2055)
+// A leading slash would drop baseURL's path under a non-root mount (#2055).
 const stripLeadingSlash = (path) => path.replace(/^\//, '');
 
 // Helper: normalize Location headers (absolute URLs or relative paths) to
@@ -179,10 +170,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       path: `docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('All Elan and Elan Plus 2 Paint Codes.pdf')}`,
       name: 'PDF Viewer — Paint Codes',
       selector: 'h1',
-      // h1 renders the metadata-map title when the doc/subdir resolve to a
-      // known reference PDF (#1538) — not the raw filename, which is what
-      // pathinfo()['filename'] would give (no ".pdf" extension, unlike this
-      // string).
+      // h1 shows the metadata-map title for a known reference PDF (#1538).
       expectedText: 'Lotus Elan Paint Codes PDF — Official Factory Reference',
       expectedTitle: 'Lotus Elan Paint Codes PDF — Official Factory Reference',
       expectedDescription: 'Official factory paint codes for all Elan and Plus 2 models — downloadable PDF for offline reference.',
@@ -242,13 +230,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
   });
 });
 
-// paint-colors.php's page-specific <title>/meta description assertions
-// (#1372) are now covered by the table-driven pages[] array above via
-// expectedTitle/expectedDescription (#1432). The regression guard below
-// (confirming the generic site-wide title/description still renders on
-// pages outside #1432's scope) is retained, retargeted at
-// car-transfer-faq.php since identification-guide.php now has a
-// page-specific title of its own.
+// Pages without $pageTitle still render the generic site title (#1432).
 test('docs/guides/car-transfer-faq.php still renders the generic site title/description (regression guard) (#1432)', async ({ page }, testInfo) => {
   if (testInfo.project.name !== 'not-logged-in') {
     testInfo.skip(true, 'Only runs under the not-logged-in project');
@@ -263,27 +245,15 @@ test('docs/guides/car-transfer-faq.php still renders the generic site title/desc
     .getAttribute('content');
   expect(description).toContain('Registry for the Lotus Elan (1963-1973) and Elan Plus 2 (1967-1974)');
 
-  // og:title/twitter:title must still fall back to $site_title (the generic
-  // site name) on pages that don't set $pageTitle — this is the actual new
-  // conditional in usersc/includes/head_tags.php ($og_title) introduced by
-  // #1432, and this is its only regression coverage.
+  // og:title falls back to $site_title ($og_title in head_tags.php, #1432).
   const ogTitle = await page.locator('meta[property="og:title"]').getAttribute('content');
   expect(ogTitle).toBe('Lotus Elan Registry');
   const twitterTitle = await page.locator('meta[name="twitter:title"]').getAttribute('content');
   expect(twitterTitle).toBe('Lotus Elan Registry');
 });
 
-// app/verify/verify_car.php (#1881) is a public, unauthenticated page — but
-// unlike every other entry in the pages[] table above, it deliberately
-// responds with a non-2xx status (404) for a request that lacks a valid
-// vericode, precisely to give no enumeration signal to a prober (see its own
-// docblock). That makes it structurally incompatible with the shared loop's
-// "status < 400" assertion, so it gets its own smoke test here instead. A
-// real vericode fixture isn't available to this suite (local/prod Playwright
-// runs have no seeded verification code), so the smoke assertion is
-// necessarily narrower: confirm the page is reachable and renders its
-// generic invalid-link message for an unauthenticated visitor with no
-// vericode, rather than crashing (PHP fatal) or hanging.
+// verify_car.php (#1881) answers 404 for a missing vericode (no enumeration
+// signal), so it cannot use the shared "status < 400" loop.
 test('app/verify/verify_car.php reaches the invalid-link page for a missing vericode without a fatal error', async ({ page }, testInfo) => {
   if (testInfo.project.name !== 'not-logged-in') {
     testInfo.skip(true, 'Only runs under the not-logged-in project');
@@ -291,9 +261,6 @@ test('app/verify/verify_car.php reaches the invalid-link page for a missing veri
 
   const response = await page.goto('app/verify/verify_car.php');
 
-  // 404 is the deliberate, documented response for a missing/malformed
-  // vericode — asserting it directly (not just "< 500") pins the page's own
-  // no-enumeration-signal contract rather than merely proving it didn't crash.
   expect(response.status()).toBe(404);
 
   await page.waitForLoadState('domcontentloaded');
@@ -344,17 +311,8 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
         }
 
         if (isInternalLink) {
-          // Convert to relative path if it's a full URL. A root-relative
-          // href (e.g. '/docs/...') is NOT stripped of its leading slash
-          // like the literals fixed elsewhere in this file for #2055 —
-          // these are scraped from the app's own rendered markup, which
-          // UserSpice's $us_url_root already mount-prefixes (e.g.
-          // '/ElanRegistry/Registry2/docs/...'), so re-resolving against a
-          // non-root baseURL at line ~450/~507 below is a correct no-op,
-          // not the leading-slash bug. This only holds because every href
-          // the app emits is mount-prefixed — a hand-written or
-          // third-party partial emitting a genuinely origin-root href
-          // would silently navigate to the wrong mount here.
+          // App hrefs are already mount-prefixed by $us_url_root, so keeping
+          // the leading slash is correct here, unlike the #2055 literals.
           const relativePath = href.startsWith('http')
             ? new URL(href).pathname
             : href;
@@ -681,9 +639,7 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
       label: 'docs/stories/ bare-directory 403 → car-stories.php',
     },
     {
-      // The exact URL GSC originally flagged (Context section of #1539) — the
-      // legacy #1040 bare-directory rule must land in a single hop, not chain
-      // through /app/owner/reports/ first.
+      // The URL GSC flagged (#1539): must land in one hop.
       from: 'app/reports/',
       to: '/app/owner/reports/statistics.php',
       label: 'app/reports/ (legacy, GSC-flagged) → statistics.php, single hop',
@@ -698,32 +654,20 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
       const locationPath = toLocationPath(location);
       expect(locationPath, `Expected Location: ${to} for ${from}`).toBe(to);
 
-      // Follow through to the destination — a redirect to a page that's been
-      // locked down to authenticated-only would silently send anonymous
-      // visitors/crawlers into a login wall instead of the intended content,
-      // and the assertions above alone wouldn't catch that regression. `to`
-      // is an absolute path (asserted against the server's Location header
-      // above) — strip its leading slash before resolving against baseURL (#2055).
+      // Follow through: a redirect into a login wall would pass the checks above (#2055 for the slash).
       const followed = await request.get(new URL(stripLeadingSlash(to), baseURL).href);
       expect(followed.status(), `Expected 200 for redirect target ${to}`).toBe(200);
     });
   });
 
   test('regression guard: /app/owner/reports/statistics.php requested directly is NOT redirected (mod_alias prefix-match trap)', async ({ request }) => {
-    // The bare-directory RedirectMatch above is anchored (^...$), but a naive
-    // unanchored Redirect on /app/owner/reports/ would also prefix-match this
-    // exact file path and mangle it into .../statistics.phpstatistics.php.
-    // This guards that the anchored rule does NOT catch the file itself.
+    // An unanchored rule would mangle this into .../statistics.phpstatistics.php.
     const response = await request.get(`app/owner/reports/statistics.php`, { maxRedirects: 0 });
     expect(response.status()).toBe(200);
   });
 
   test('regression guard: /app/reports/statistics.php redirects in a single hop, not a 301->301 chain', async ({ request }) => {
-    // Before this fix, the bare-directory rule for /app/reports/ could catch
-    // this specific-file path first depending on rule order, chaining through
-    // /app/owner/reports/ (itself now a 403->redirect) before finally landing
-    // on statistics.php. The specific-file rule must be matched first so this
-    // resolves in exactly one hop.
+    // The specific-file rule must match first, so this resolves in one hop.
     const response = await request.get(`app/reports/statistics.php`, { maxRedirects: 0 });
     expect(response.status()).toBe(301);
     const location = response.headers()['location'] ?? '';
@@ -732,16 +676,7 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 
   test('GET /app/ bare directory renders the branded error/500.php handler, not a raw server 403', async ({ request }) => {
-    // Options -Indexes with no index.php in app/ produces a genuine 403, but
-    // .htaccess's ErrorDocument 403 (line 5) already routes that to the
-    // branded handler — this is existing behavior, locked in as a regression
-    // guard rather than new behavior from this PR. Status 403 alone would
-    // also pass for Apache's bare default error page, so the body is checked
-    // for the handler's known markup (title "Access Forbidden" + its
-    // error-card wrapper class) to actually distinguish "branded" from
-    // "raw" — this couples the test to error/500.php's copy, which is an
-    // accepted, maintainable trade-off since that text is stable, non-dynamic
-    // page chrome, not user data.
+    // Status 403 alone also matches Apache's default page, so check the branded markup.
     const response = await request.get(`app/`, { maxRedirects: 0 });
     expect(response.status()).toBe(403);
     const body = await response.text();
@@ -750,23 +685,14 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 
   test('GET /docs/assets/document-content.css (old path) redirects to docs/reference/assets/, which 404s — the file was moved, not copied', async ({ request, baseURL }) => {
-    // document-content.css was relocated to app/assets/css/, not copied. The
-    // pre-existing blanket rule (Redirect 301 /docs/assets/ /docs/reference/assets/,
-    // #1369) still fires for this now-nonexistent old path, since the rule
-    // itself was untouched by this fix — it just no longer matters for this
-    // file. This test locks in that the old path still 301s (unchanged
-    // legacy behavior) rather than asserting a direct 404, which would be
-    // incorrect given the blanket rule is still in place.
+    // The #1369 blanket rule still 301s this old path.
     const response = await request.get(`docs/assets/document-content.css`, { maxRedirects: 0 });
     expect(response.status()).toBe(301);
     const location = response.headers()['location'] ?? '';
     const locationPath = toLocationPath(location);
     expect(locationPath).toBe('/docs/reference/assets/document-content.css');
 
-    // Follow the redirect: nothing was ever copied to docs/reference/assets/,
-    // so the chain terminates in a 404, not a working asset. locationPath is
-    // an absolute path (parsed from the server's Location header above) —
-    // strip its leading slash before resolving against baseURL (#2055).
+    // Nothing was copied to the new path, so the chain ends in 404 (#2055 for the slash).
     const followed = await request.get(new URL(stripLeadingSlash(locationPath), baseURL).href);
     expect(followed.status()).toBe(404);
   });
@@ -854,21 +780,13 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
     expect(page.url()).toContain('/docs/pdf-viewer.php');
     expect(page.url()).not.toContain('login.php');
 
-    // Regression guard: the pre-fix redirect used an invalid `subdir` value,
-    // which pdf-viewer.php rejected with this exact error text (#1409). Also
-    // checked against the extension-allowlist error text for the same reason
-    // as the sibling test below (#1473).
+    // #1409 / #1473 error texts must be absent.
     const bodyText = await page.locator('body').innerText();
     expect(bodyText).not.toContain('Invalid document path.');
     expect(bodyText).not.toContain('Invalid document type');
 
-    // Positive assertion (#1648): the iframe actually renders the requested
-    // document, from the correct subdir. Scoped by `title` (pdf-viewer.php
-    // sets it to the document filename) so this locator can't match
-    // Cloudflare Turnstile's injected, untitled 1x1 iframe. The src regex
-    // asserts the full reference/assets path, not just the filename suffix
-    // — a bare filename match would also pass for a wrong-subdir src (the
-    // #1594 bug class the sibling redirect tests above guard against).
+    // #1648: scoped by title so it cannot match Turnstile's untitled iframe;
+    // the full-path regex catches a wrong-subdir src (#1594).
     await expect(
       page.locator('iframe[title="elan_s1_s2_coupe_masterpartslist.pdf"]')
     ).toHaveAttribute('src', /\/docs\/reference\/assets\/elan_s1_s2_coupe_masterpartslist\.pdf$/);
@@ -895,12 +813,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
       to: `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
       label: 'pdf-viewer.php legacy subdir=stories/assets → subdir=stories',
     },
-    // #1594: case-insensitive, cross-subdir document resolution. An orphaned
-    // docs/embed.php still lives on production disk (deleted from git) and
-    // always links with subdir=reference, without normalizing filename case —
-    // so requests can arrive with the right filename but wrong subdir, the
-    // right subdir but wrong case, or both wrong at once. All three should
-    // 301 to the canonical subdir + on-disk exact case.
+    // #1594: wrong subdir, wrong case, or both must 301 to the canonical path.
     {
       from: `docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
       to: `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
@@ -910,11 +823,8 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
       from: 'docs/pdf-viewer.php?subdir=reference&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
       label: 'pdf-viewer.php #1594 correct subdir but wrong filename case',
-      // The local Docker stack serves the repo from a macOS bind mount, which
-      // stays case-insensitive inside the container. The mismatched filename
-      // resolves directly (200) and never reaches the case-normalization
-      // redirect. Test/Prod use a case-sensitive filesystem, so the redirect
-      // is real there.
+      // The local macOS bind mount is case-insensitive, so this resolves
+      // directly (200) there.
       caseSensitiveFsOnly: true,
     },
     {
@@ -933,12 +843,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
       const location = response.headers()['location'] ?? '';
-      // pdf-viewer.php builds its own redirect target via UserSpice's
-      // $us_url_root, so under a non-root mount the real Location header is
-      // itself mount-prefixed (e.g. /ElanRegistry/Registry2/docs/...), unlike
-      // the .htaccess-driven redirects elsewhere in this file, which are
-      // origin-root absolute. Resolve both sides against baseURL rather than
-      // comparing `to` as a bare absolute string (#2055).
+      // pdf-viewer.php's Location is mount-prefixed, so resolve both sides against baseURL (#2055).
       const actual = new URL(location, baseURL);
       const expected = new URL(stripLeadingSlash(to), baseURL);
       expect(
@@ -953,31 +858,16 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
     const response = await page.goto(targetPath, { waitUntil: 'networkidle' });
     expect(response?.status()).toBe(200);
 
-    // #1594 regression: the case-insensitive/cross-subdir resolution step
-    // only runs when the direct subdir+doc path does not exist on disk — an
-    // already-canonical request like this one must never be bounced through
-    // the glob/301 path. Compare against the absolute URL targetPath resolves
-    // to (not the bare relative string) — page.url() is always absolute
-    // (#2055).
+    // #1594: an already-canonical request must not go through the glob/301 path.
     const landed = new URL(page.url());
     const target = new URL(targetPath, baseURL);
     expect(landed.pathname + landed.search).toBe(target.pathname + target.search);
 
-    // Also discriminate on the error text, not just the status: a real render
-    // and any 200-status error branch would both pass a bare status check
-    // alone (there's no 200-status error branch left as of #1538, but this
-    // keeps the assertion meaningful if that ever changes again).
     const bodyText = await page.locator('body').innerText();
     expect(bodyText).not.toContain('Invalid document path.');
     expect(bodyText).not.toContain('Invalid document type');
 
-    // Positive assertion (#1648): the iframe actually renders the requested
-    // document, from the correct subdir. Scoped by `title` (pdf-viewer.php
-    // sets it to the document filename) so this locator can't match
-    // Cloudflare Turnstile's injected, untitled 1x1 iframe. The src regex
-    // asserts the full reference/assets path, not just the filename suffix
-    // — a bare filename match would also pass for a wrong-subdir src (the
-    // #1594 bug class the sibling redirect tests above guard against).
+    // #1648: see the sibling test for the title scope and full-path regex.
     await expect(
       page.locator('iframe[title="elan_s1_s2_coupe_masterpartslist.pdf"]')
     ).toHaveAttribute('src', /\/docs\/reference\/assets\/elan_s1_s2_coupe_masterpartslist\.pdf$/);
@@ -1014,21 +904,13 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
     );
     expect(response?.status()).toBe(404);
 
-    // #1594: this filename matches nothing in the case-insensitive glob scan
-    // across allowlisted subdirs either, so this also proves the new
-    // resolution loop falls through cleanly to the original 404 rather than
-    // erroring out along the way.
+    // #1594: proves the resolution loop falls through cleanly to 404.
     const bodyText = await page.locator('body').innerText();
     expect(bodyText).toContain('Document not found.');
   });
 
   test('404: pdf-viewer.php omitted subdir with existing document — regression for wrong-directory file_exists() fallback', async ({ page }) => {
-    // Replicates the real malformed-URL shape from the issue's log analysis: an
-    // unescaped &amp; HTML entity produces ?amp&doc=X.pdf, which PHP parses as
-    // $_GET = ['amp' => '', 'doc' => 'X.pdf'] — subdir is never set. Deliberately
-    // NOT ?doc=X.pdf alone: that bare single-param shape is already caught and
-    // 301'd by the existing .htaccess rule (#1369), which would mask this
-    // regression by never reaching PHP with subdir omitted.
+    // ?amp&doc=X.pdf is the real malformed shape; ?doc=X.pdf alone is caught by .htaccess (#1369).
     const response = await page.goto(
       `docs/pdf-viewer.php?amp&doc=${encodeURIComponent('Lotus Elan Plus 2 serial numbers.pdf')}`,
       { waitUntil: 'networkidle' }
@@ -1037,10 +919,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
   });
 
   test('200: pdf-viewer.php array-valued doc param does not crash (regression for TypeError on strpos())', async ({ page }) => {
-    // Before this fix, ?doc[]=x made $_GET['doc'] an array; strpos() on an array
-    // throws an uncaught TypeError under declare(strict_types=1) — a fatal 500,
-    // not a soft failure. An array-valued doc is now coerced to '' and falls
-    // through to the unchanged "No document specified" branch.
+    // An array doc once threw a TypeError (fatal 500) under strict_types.
     const response = await page.goto(`docs/pdf-viewer.php?doc[]=x`, {
       waitUntil: 'networkidle',
     });
@@ -1050,9 +929,7 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
   });
 
   test('404: pdf-viewer.php array-valued subdir param does not crash, treated as omitted', async ({ page }) => {
-    // Without the is_string() guard, the str_ends_with()/strpos() calls this PR
-    // adds for subdir validation would throw a TypeError on an array value — a
-    // real doc value is required to reach that branch at all.
+    // A real doc value is needed to reach the subdir is_string() guard.
     const response = await page.goto(
       `docs/pdf-viewer.php?subdir[]=x&doc=elan_s1_s2_coupe_masterpartslist.pdf`,
       { waitUntil: 'networkidle' }
@@ -1135,10 +1012,7 @@ test.describe('llms.txt AI crawler guidance (#1413)', () => {
     const contentType = response.headers()['content-type'] ?? '';
     expect(contentType.toLowerCase()).toContain('text/plain');
 
-    // Layer 3: Must be the real llms.txt content, not an error page. The
-    // deploy hook swaps in llms-test.txt on test.elanregistry.org (a
-    // Disallow-everything policy), so accept either policy section heading
-    // rather than the prod-only "## Allow".
+    // Layer 3: test.elanregistry.org serves llms-test.txt, so accept either policy heading.
     const body = await response.text();
     expect(body).toMatch(/^## (Allow|Disallow)$/m);
   });
@@ -1152,12 +1026,8 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
   });
 
   test('GET /app/owner/cars/details.php for the first listed car renders a Schema.org Car JSON-LD block', async ({ page }) => {
-    // Discover a real car ID from the list page rather than assuming a fixed
-    // one — CAR_ID_STANDARD (default 1) exists on prod but not on every test
-    // DB snapshot, where details.php 302s back to index.php and this test
-    // failed on the environment, not the feature. The list's Details links
-    // are rendered client-side by DataTables (car-list.js), so wait for the
-    // first one to appear instead of reading server HTML.
+    // CAR_ID_STANDARD is missing on some test DBs, so discover a car. Details
+    // links are rendered by DataTables, so wait for one.
     await page.goto('app/owner/cars/index.php');
     const firstDetailsLink = page.locator('a[href*="details.php?car_id="]').first();
     await firstDetailsLink.waitFor();
@@ -1175,10 +1045,7 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
     expect(page.url()).not.toContain('login.php');
     expect(page.url()).toContain(`car_id=${carId}`);
 
-    // Layer 3: Body must contain a JSON-LD script block declaring the
-    // Schema.org Car type. json_encode() (with JSON_UNESCAPED_SLASHES) emits
-    // compact, unspaced JSON, so "@type":"Car" appears literally adjacent —
-    // see app/owner/cars/details.php.
+    // Layer 3: compact json_encode() output puts "@type":"Car" adjacent.
     const body = await response.text();
     expect(body).toContain('application/ld+json');
     expect(body).toContain('"@type":"Car"');
@@ -1187,9 +1054,7 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
     // record's chassis number.
     expect(body).toContain('vehicleIdentificationNumber');
 
-    // Layer 5: details.php doesn't set $pageRobots, so it must still render
-    // the site-wide default (index, follow) — confirms head_tags.php's
-    // fallback still works, not just the two noindex overrides below.
+    // Layer 5: the site-wide robots default (no $pageRobots).
     expect(body).toContain('<meta name="robots" content="index, follow">');
   });
 
@@ -1235,14 +1100,8 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
 });
 
 test.describe('Issue #2144 — anonymous visitor sees a login prompt, not car history', () => {
-  // history.php now requires login (#2144), because each history row carries
-  // a past owner's first name, location and website. details.php's guest
-  // branch must show only a login prompt in #historyCard — no toggle, no
-  // table, no summary — and must not load the history-only assets
-  // (DataTables, highlightDifferences.min.js, car_details.min.js).
-  //
-  // This file also runs against production via `npm run test:e2e`, so these
-  // tests are the production guard that history stays members-only.
+  // history.php requires login (#2144). Guests see only a login prompt and no
+  // history assets. This file also runs against production.
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip(true, 'Only runs under the not-logged-in project');
@@ -1250,10 +1109,7 @@ test.describe('Issue #2144 — anonymous visitor sees a login prompt, not car hi
   });
 
   /**
-   * Discover a real car id from the list page rather than assuming a fixed
-   * one — mirrors the JSON-LD test above's approach, since a fixed id
-   * (e.g. CAR_ID_STANDARD's default of 1) doesn't exist on every test DB
-   * snapshot.
+   * Discover a real car id from the list page; fixed ids differ per DB.
    * @param {import('@playwright/test').Page} page
    * @returns {Promise<string>} a car id, asserted to be numeric
    */
@@ -1268,11 +1124,8 @@ test.describe('Issue #2144 — anonymous visitor sees a login prompt, not car hi
   }
 
   test('anonymous details.php shows a login prompt in #historyCard, with no table, toggle or summary', async ({ page }) => {
-    // Registered only after the discovery navigation settles — index.php's
-    // own DataTable (car-list.js) is still finishing its own asset/ajax
-    // requests when firstDetailsLink resolves, and a collector attached
-    // before this point would wrongly attribute those in-flight requests to
-    // the details.php navigation that follows.
+    // Register the collector after discovery, so index.php's in-flight
+    // DataTable requests are not counted.
     const carId = await discoverCarId(page);
 
     const consoleErrors = [];
@@ -1295,13 +1148,8 @@ test.describe('Issue #2144 — anonymous visitor sees a login prompt, not car hi
     await expect(page.locator('#historyToggleBtn')).toHaveCount(0);
     await expect(page.locator('#historySummary')).toHaveCount(0);
 
-    // A car with a map (lat/lon) can 404 on a third-party map tile sprite
-    // (tiles.versatiles.org) in a test environment. That happens for every
-    // visitor, logged in or not, and has nothing to do with history. Only
-    // errors from that one host are ignored; any other console error,
-    // including a 404 for one of this site's own assets, still fails. The
-    // check compares the parsed hostname, so a URL that only contains the
-    // name elsewhere (path, query, another host) is not ignored.
+    // A third-party tile sprite can 404 in test environments for every
+    // visitor. Ignore only that parsed hostname.
     const isVersatilesHost = (url) => {
       try {
         return new URL(url).hostname === 'tiles.versatiles.org';
@@ -1314,9 +1162,7 @@ test.describe('Issue #2144 — anonymous visitor sees a login prompt, not car hi
   });
 
   test('anonymous details.php does not request history-only assets, but does request imagedisplay.min.js', async ({ page }) => {
-    // Registered only after the discovery navigation settles — see the
-    // comment in the previous test for why (index.php's own DataTable is
-    // still finishing requests when firstDetailsLink resolves).
+    // Register after discovery (see the previous test).
     const carId = await discoverCarId(page);
 
     const requestUrls = [];
@@ -1352,19 +1198,9 @@ test.describe('Location picker city disambiguation (#1400)', () => {
     }
   });
 
-  // This test needs live Nominatim/Photon results. It runs only under the e2e
-  // configs (playwright.config.dev.js, .test.js, .prod.js), because
-  // playwright.config.js ignores '**/e2e/**'.
-  //
-  // This is an integration smoke check, not the primary regression guard for
-  // the dedupe-key fix itself — see tests/playwright/location-picker-dedupe.spec.js
-  // for a deterministic, mock-data test of filterAndRankResults() directly.
-  // A plain "more than one result" count would pass even without the fix,
-  // since Photon/Nominatim already returns Springfields from *different
-  // countries* as distinct entries under the old city|country key too — the
-  // bug was specifically about same-country, different-state collisions. So
-  // this asserts on distinct *same-country* (United States) result text
-  // instead of a raw count.
+  // Needs live geocoding; e2e configs only. location-picker-dedupe.spec.js is
+  // the deterministic guard. Asserts distinct same-country results, because
+  // a raw count passes without the fix.
   test('searching an ambiguous city name shows multiple distinct same-country results (regression guard)', async ({ page }) => {
     await page.goto('users/join.php');
 
@@ -1373,13 +1209,9 @@ test.describe('Location picker city disambiguation (#1400)', () => {
 
     await input.fill('Springfield');
 
-    // The picker debounces input by 300ms before firing the search request;
-    // wait for the results list to actually populate rather than a fixed
-    // sleep, since the live geocoding API latency varies.
+    // Input is debounced 300ms and API latency varies, so poll.
     await expect(async () => {
-      // Query <small> elements directly rather than iterating .list-group-item
-      // and locating a child inside each — the "No locations found" fallback
-      // item has no <small> child, so this avoids a throw on that render.
+      // The "No locations found" item has no <small>, so query <small> directly.
       const texts = await resultsContainer.locator('.list-group-item small').allTextContents();
       const distinctUsResults = new Set(texts.map(t => t.trim()).filter(t => t.includes('United States')));
       expect(distinctUsResults.size).toBeGreaterThan(1);

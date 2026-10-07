@@ -9,13 +9,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 
 use PHPUnit\Framework\Attributes\Group;
 
-/**
- * Test cases for Car deletion functionality
- *
- * Tests cover car deletion operations, transaction handling, audit trail
- * creation, and error scenarios. CSRF protection is validated at the HTTP
- * layer (app/admin/index.php), not inside Car::delete() — see #1519, #1829.
- */
+/** CSRF is checked in app/admin/index.php, not in Car::delete() (#1519, #1829). */
 #[Group('integration')]
 final class CarDeletionTest extends IntegrationTestCase
 {
@@ -29,10 +23,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
         $this->testUserId = $this->createTestUser();
 
-        // Set up authenticated user context for deletion operations
         $this->loginAsTestUser($this->testUserId);
 
-        // Create unique test car for this test
         try {
             $this->testCarId = $this->createTestCar($this->testUserId, [
                 'chassis' => 'DEL' . uniqid()
@@ -42,9 +34,6 @@ final class CarDeletionTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * Test successful car deletion
-     */
     #[Group('fast')]
     public function testDeleteCarSucceeds(): void
     {
@@ -57,9 +46,6 @@ final class CarDeletionTest extends IntegrationTestCase
         $this->assertFalse($car->exists());
     }
 
-    /**
-     * Test car deletion fails when car does not exist
-     */
     #[Group('fast')]
     public function testDeleteCarFailsWhenCarNotExists(): void
     {
@@ -70,10 +56,8 @@ final class CarDeletionTest extends IntegrationTestCase
     }
 
     /**
-     * er_email_events (#1887) has no FK/cascade on car_id, so a deleted
-     * car's Brevo event history would otherwise survive the delete
-     * permanently — CarAdministrationService::delete() must clean it up in
-     * the same transaction as the car row.
+     * #1887: er_email_events has no FK cascade on car_id, so delete() must remove
+     * the rows in the same transaction.
      */
     #[Group('fast')]
     public function testDeleteCarRemovesEmailEventHistory(): void
@@ -96,17 +80,8 @@ final class CarDeletionTest extends IntegrationTestCase
     }
 
     /**
-     * Test car deletion creates exactly one audit trail row in cars_hist
-     *
-     * Verifies the trigger-only write path introduced in #593: the DELETE trigger
-     * must fire once and no application-level pre-delete insert must add a second row.
-     *
-     * Also the regression guard for the admin deletion path in app/admin/index.php:
-     * prior to #956 that page issued raw DELETE statements directly against cars;
-     * #956 routed it through Car::delete() / CarAdministrationService::delete(),
-     * which handles the transaction, cars cleanup, and audit trail. A second
-     * DELETE row would indicate an accidental application-layer re-introduction
-     * of a pre-delete INSERT.
+     * #593, #956: the DELETE trigger writes the only audit row. A second row means
+     * an application-level pre-delete insert came back.
      *
      * @see #593, #930, #931, #956
      */
@@ -132,38 +107,25 @@ final class CarDeletionTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * Test that deleting an already-deleted car throws CarNotFoundException.
-     *
-     * This exercises the path added in issue #1311: when the first deletion
-     * succeeds, the car row is gone.  A second delete attempt on the same ID
-     * must throw CarNotFoundException rather than silently returning true.
-     */
+    /** #1311: a second delete of the same ID throws, not returns true. */
     #[Group('fast')]
     public function testDeleteAlreadyDeletedCarThrowsCarNotFoundException(): void
     {
-        // First deletion — must succeed
         $car = new Car($this->testCarId);
         $car->delete('First deletion', $this->testUserId);
 
-        // tearDown will attempt to clean up $this->testCarId; if the car is
-        // already gone the cleanup silently ignores the missing row.
+        // tearDown ignores the missing row.
 
-        // Second deletion on the same ID — car no longer exists
         $this->expectException(CarNotFoundException::class);
         $car2 = new Car($this->testCarId);
         $car2->delete('Second deletion', $this->testUserId);
     }
 
-    /**
-     * Test delete works with an explicit actingUserId even when global $user is unset.
-     * Verifies that Car::delete() does not fall back to currentUserId() internally.
-     */
+    /** delete() must not fall back to a global $user. */
     #[Group('fast')]
     public function testDeleteHonorsExplicitActingUserIdWithoutGlobalUser(): void
     {
-        // Car::__construct() needs a global $user (via getSettings()), so construct before
-        // unsetting it — only delete() itself must not fall back to a global $user internally.
+        // Car::__construct() needs global $user (getSettings()), so construct first.
         $car = new Car($this->testCarId);
 
         $savedUser = $GLOBALS['user'] ?? null;

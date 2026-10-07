@@ -9,12 +9,6 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\Attributes\Group;
 
-/**
- * Test cases for Car DataTables functionality
- *
- * Tests cover server-side DataTables data processing including searching,
- * sorting, pagination, and security validation.
- */
 #[Group('integration')]
 final class CarDataTablesTest extends IntegrationTestCase
 {
@@ -29,9 +23,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    /**
-     * Test getDataTablesData for cars table
-     */
     #[Group('fast')]
     public function testGetDataTablesDataForCarsTable(): void
     {
@@ -59,9 +50,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertArrayHasKey('data', $result);
     }
 
-    /**
-     * Test getDataTablesData for factory table
-     */
     #[Group('fast')]
     public function testGetDataTablesDataForFactoryTable(): void
     {
@@ -85,9 +73,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertArrayHasKey('data', $result);
     }
 
-    /**
-     * Test getDataTablesData with search filter
-     */
     #[Group('fast')]
     public function testGetDataTablesDataWithSearch(): void
     {
@@ -109,13 +94,9 @@ final class CarDataTablesTest extends IntegrationTestCase
 
         $this->assertIsArray($result);
         $this->assertArrayHasKey('data', $result);
-        // Filtered results should be less than or equal to total
         $this->assertLessThanOrEqual($result['recordsTotal'], $result['recordsFiltered']);
     }
 
-    /**
-     * Test getDataTablesData with sorting
-     */
     #[Group('fast')]
     public function testGetDataTablesDataWithSorting(): void
     {
@@ -139,15 +120,10 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertArrayHasKey('data', $result);
 
         if (count($result['data']) > 1) {
-            // Verify descending sort (if data exists)
-            // This is a basic check - full verification would require more data
             $this->assertIsArray($result['data']);
         }
     }
 
-    /**
-     * Test getDataTablesData with pagination
-     */
     #[Group('fast')]
     public function testGetDataTablesDataWithPagination(): void
     {
@@ -168,13 +144,9 @@ final class CarDataTablesTest extends IntegrationTestCase
 
         $this->assertIsArray($result);
         $this->assertEquals(2, $result['draw']);
-        // Result should have no more than 5 rows
         $this->assertLessThanOrEqual(5, count($result['data']));
     }
 
-    /**
-     * Test getDataTablesData validates column names
-     */
     #[Group('fast')]
     public function testGetDataTablesDataValidatesColumnNames(): void
     {
@@ -191,11 +163,9 @@ final class CarDataTablesTest extends IntegrationTestCase
             ]
         ];
 
-        // Invalid columns are silently skipped, not rejected with exception
-        // This is the current behavior of getDataTablesData()
+        // Invalid columns are skipped, not rejected.
         $result = $car->getDataTablesData($request, 'cars');
 
-        // Verify result structure is valid even with invalid columns
         $this->assertIsArray($result);
         $this->assertArrayHasKey('draw', $result);
         $this->assertArrayHasKey('recordsTotal', $result);
@@ -203,9 +173,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertArrayHasKey('data', $result);
     }
 
-    /**
-     * Test getDataTablesData prevents SQL injection
-     */
     #[Group('fast')]
     public function testGetDataTablesDataPreventsInjection(): void
     {
@@ -222,17 +189,12 @@ final class CarDataTablesTest extends IntegrationTestCase
             ]
         ];
 
-        // Should not throw exception and should safely handle injection attempt
         $result = $car->getDataTablesData($request, 'cars');
 
-        // Verify table still exists
         $tableCheck = $this->db->query("SHOW TABLES LIKE 'cars'");
         $this->assertGreaterThan(0, $tableCheck->count());
     }
 
-    /**
-     * Test getDataTablesData fails with invalid table
-     */
     #[Group('fast')]
     public function testGetDataTablesDataFailsWithInvalidTable(): void
     {
@@ -254,9 +216,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $result = $car->getDataTablesData($request, 'invalid_table');
     }
 
-    /**
-     * Test getDataTablesData returns correct record counts
-     */
     #[Group('fast')]
     public function testGetDataTablesDataReturnsCorrectRecordCounts(): void
     {
@@ -303,9 +262,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         ], $overrides);
     }
 
-    /**
-     * Test that an oversized search value (100KB+) does not crash the service
-     */
     #[Group('fast')]
     public function testOversizedSearchValueDoesNotCrash(): void
     {
@@ -326,9 +282,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertEquals(0, $result['recordsFiltered']);
     }
 
-    /**
-     * Test that length=-1 (former DataTables "All" option) is rejected as invalid
-     */
     #[Group('fast')]
     public function testNegativeLengthParameter(): void
     {
@@ -338,9 +291,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $car->getDataTablesData($this->buildDataTablesRequest(['length' => -1]), 'cars');
     }
 
-    /**
-     * Test that length=0 is rejected as invalid
-     */
     #[Group('fast')]
     public function testZeroLengthParameter(): void
     {
@@ -350,16 +300,12 @@ final class CarDataTablesTest extends IntegrationTestCase
         $car->getDataTablesData($this->buildDataTablesRequest(['length' => 0]), 'cars');
     }
 
-    /**
-     * Test that a non-integer start value is cast safely to an integer
-     */
     #[Group('fast')]
     public function testNonIntegerStartIsCastSafely(): void
     {
         $car = new Car();
 
-        // Pass 0 (the result of casting a non-numeric string to int) to verify
-        // the service handles an offset of 0 correctly.
+        // 0 is what a non-numeric string casts to.
         $request = $this->buildDataTablesRequest(['start' => (int) 'abc']);
 
         $result = $car->getDataTablesData($request, 'cars');
@@ -371,9 +317,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertArrayHasKey('data', $result);
     }
 
-    /**
-     * Test that 500+ unrecognized column names do not crash the service and return the full record count
-     */
     #[Group('fast')]
     public function testExcessiveColumnCountDoesNotCrash(): void
     {
@@ -397,15 +340,7 @@ final class CarDataTablesTest extends IntegrationTestCase
     }
 
     /**
-     * DataTables response for the cars table must not expose email, lname, vericode,
-     * last_verified, user_id, lat, or lon, even when those fields are populated in the
-     * database.
-     *
-     * Pins the explicit SELECT column list in CarDataTablesService::getDataTablesData()
-     * that replaces SELECT * to prevent owner PII (email, lname), precise owner
-     * coordinates (lat, lon), internal user IDs (user_id), and internal fields (vericode,
-     * last_verified) from leaking to callers who should not see them. lat/lon/user_id
-     * added for #1501.
+     * Pins the explicit SELECT list that keeps owner PII out of the response (#1501).
      */
     #[Group('fast')]
     public function testCarDataTablesResponseExcludesPII(): void
@@ -453,24 +388,16 @@ final class CarDataTablesTest extends IntegrationTestCase
         }
     }
 
-    // =========================================================================
-    // Per-column search tests (#907 — added in v2.24.0 #763)
-    // =========================================================================
+    // Per-column search (#907)
 
     /**
-     * Per-column search for series='S4' returns only S4 rows and
-     * recordsFiltered is less than recordsTotal.
-     *
-     * Pins the $columnSearchClauses path in CarDataTablesService::processRequest()
-     * (lines 104–121). A missing space or broken AND concatenation in
-     * $combinedWhere would silently return wrong results.
+     * A broken AND concatenation in $combinedWhere would silently return wrong rows.
      */
     #[Group('fast')]
     public function testPerColumnSeriesSearchFiltersResults(): void
     {
         $userId = $this->createTestUser();
         $this->createTestCar($userId, ['series' => 'S4']);
-        // A second car with a different series ensures recordsTotal > recordsFiltered
         $this->createTestCar($userId, ['series' => 'Sprint']);
 
         $car     = new Car();
@@ -499,12 +426,7 @@ final class CarDataTablesTest extends IntegrationTestCase
     }
 
     /**
-     * Combining a global search with a per-column search returns only rows
-     * satisfying BOTH constraints.
-     *
-     * Pins the $searchWhere . ' ' . $columnWhere concatenation in
-     * CarDataTablesService::processRequest() (line 123). If the space is
-     * dropped or the AND keyword is lost, this test returns wrong rows.
+     * Pins the $searchWhere . ' ' . $columnWhere concatenation.
      */
     #[Group('fast')]
     public function testCombinedGlobalAndPerColumnSearchIntersectsConstraints(): void
@@ -518,8 +440,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->createTestCar($userId, ['color' => $uniqueColor, 'series' => 'Sprint']);
 
         $car     = new Car();
-        // Include 'color' as a searchable column so the global search can match it.
-        // The per-column 'series' filter is applied on top, reducing the result set.
         $request = $this->buildDataTablesRequest(
             ['search' => ['value' => $uniqueColor], 'length' => 50],
             [
@@ -542,15 +462,8 @@ final class CarDataTablesTest extends IntegrationTestCase
     }
 
     /**
-     * History rows returned by getHistory() must not expose email, lname, user_id, lat,
-     * or lon, even when those fields are populated in cars_hist.
-     *
-     * Anchors the behavioral contract independently of the SQL-capture unit test in
-     * CarRepositoryTest — if getHistory() is refactored to use a query builder or
-     * SELECT *, this test catches the PII regression at the return-value level.
-     * user_id/lat/lon added for #1501 — getHistory() backs the
-     * app/api/cars/history.php endpoint, which any logged-in member can call
-     * (since #2144; before that, anyone).
+     * #1501: getHistory() backs app/api/cars/history.php, which any member can call.
+     * Checks return values, so a SELECT * refactor is caught.
      */
     #[Group('fast')]
     public function testGetHistoryExcludesPIIFromReturnedRows(): void
@@ -562,7 +475,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         ]);
         $carId = $this->createTestCar($userId, ['chassis' => 'H' . substr($uniqueSuffix, -8)]);
 
-        // Seed a history row with PII values to confirm they are stripped on retrieval.
         $this->db->insert('cars_hist', [
             'operation' => 'TEST',
             'car_id'    => $carId,
@@ -598,13 +510,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * A per-column search value that matches no rows returns recordsFiltered = 0
-     * and data = [].
-     *
-     * Pins the COUNT(*) query built from $combinedWhere when the column filter
-     * selects nothing.
-     */
     #[Group('fast')]
     public function testPerColumnSearchWithNoMatchReturnsZeroResults(): void
     {

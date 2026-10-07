@@ -9,26 +9,11 @@ use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BrevoOverrideStub;
 
 /**
- * Behavioral (real-process, real-DB, real-HTTP-shaped-request) tests for
- * app/api/admin/verification-toggle.php (#1926).
+ * #1926: app/api/admin/verification-toggle.php at the HTTP layer. The key
+ * case: disabling must succeed while Brevo is broken.
  *
- * Complements VerificationSettingsTest's exhaustive class-level (unit tier)
- * coverage of the asymmetric gate with the actual runtime behavior the
- * plan's Test Plan calls for, exercised at the HTTP layer: a genuine
- * non-admin 403 with the setting left unchanged, a genuine 422 naming Brevo
- * when enabling while unready, and — the single most important
- * non-inversion case — a genuine success response when disabling while
- * Brevo is broken. It also covers the endpoint's wrong-typed-value handling
- * at the HTTP layer (see the section below).
- *
- * Invoked in-process via require (not a separate subprocess per call): the
- * endpoint file's own `require_once '../../../users/init.php'` is executed
- * once up front so Token::generate()/session state is available to seed a
- * real CSRF token and a real logged-in user before each `require` of the
- * endpoint itself. Each request still runs as its own `php -r` subprocess
- * (one per test method) because ApiResponse::send() is a hard `exit` that
- * would terminate the PHPUnit process if reached in-process — same
- * constraint documented on ErrorPageHeadersTest::renderErrorPage().
+ * Each request runs in its own `php -r` subprocess because
+ * ApiResponse::send() calls exit.
  */
 #[Group('integration')]
 final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
@@ -56,8 +41,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
             foreach ($this->createdPermissionMatchIds as $id) {
                 $this->db->query('DELETE FROM user_permission_matches WHERE id = ?', [$id]);
             }
-            // Restore the switch to its safe default so this test never
-            // leaks an "enabled" state into whichever test runs next.
+            // Restore the safe default so no later test sees "enabled".
             $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
         }
 
@@ -207,12 +191,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
     // Admin POST enabling while brevoReady() false -> 422 naming the reason
     // =========================================================================
 
-    /**
-     * The integration test database never has Brevo configured (no
-     * plg_sendinblue key, no override.php in this checkout) — brevoReady()
-     * is false by construction in this environment, which is exactly the
-     * state this test needs.
-     */
+    /** brevoReady() is false by construction in the integration test database. */
     public function testAdminEnablingWhileBrevoNotReadyGetsValidationErrorNamingBrevo(): void
     {
         $adminUserId = $this->createTestUser();
@@ -238,9 +217,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         $adminUserId = $this->createTestUser();
         $this->grantPermission($adminUserId, 2);
 
-        // Force the switch on directly at the DB layer (bypassing the gate,
-        // since the point of this test is that disabling must work
-        // regardless of how the switch got turned on).
+        // Force the switch on directly, bypassing the gate.
         $this->setSwitchEnabled(true);
 
         $result = $this->invokeToggleEndpoint($adminUserId, '0');
@@ -255,9 +232,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 
     public function testAdminCanEnableWhenBrevoIsReady(): void
     {
-        // Simulate a ready Brevo by inserting a plg_sendinblue row with a
-        // non-empty key and creating the override file at the real path for
-        // the duration of this test only, with guaranteed cleanup.
+        // Simulate a ready Brevo for this test only, with guaranteed cleanup.
         $overridePath = dirname(__DIR__, 2) . '/usersc/plugins/sendinblue/override.php';
         $overrideCreatedByThisTest = !file_exists($overridePath);
 

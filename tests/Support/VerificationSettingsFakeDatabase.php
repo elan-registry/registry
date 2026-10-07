@@ -7,49 +7,15 @@ namespace Tests\Support;
 /**
  * VerificationSettingsFakeDatabase - FakeDatabase double for VerificationSettingsTest
  *
- * VerificationSettings issues several distinct query shapes against this double
- * (`er_verification_settings`'s `enabled` column, `plg_sendinblue`, and — since
- * #1974 — `er_verification_settings`'s `last_cron_request_at` column), and each
- * unit test needs to control the row/error state seen by one or more of them
- * independently — canned via constructor flags rather than a single static
- * `first()`/`error()` override.
+ * VerificationSettings issues several query shapes on one connection. This
+ * double classifies each query() by its SQL text, so each shape has its own
+ * row, error and count controls: a test can make one statement fail and leave
+ * the others healthy. The shapes are the `enabled` SELECT and UPDATE, the
+ * post-UPDATE `SELECT id` confirmation (#1926), the `plg_sendinblue` SELECT,
+ * the `last_cron_request_at` SELECT and UPDATE (#1974), and the
+ * `unmatched_recipient_count` SELECT and UPDATE (#2085).
  *
- * Deliberately a *named* class rather than `new class extends FakeDatabase { ... }`:
- * PHPStan reports `impureMethod.pure` when an anonymous class overrides one of
- * DatabaseInterface's `@phpstan-impure` methods (`query()`, `first()`, `error()` here)
- * with a body that doesn't depend on mutable state, because an anonymous class can
- * never be extended later to add one. A named class with real constructor-driven
- * state is exempt from that check. See SqlRecordingFakeDatabase's docblock for the
- * same rationale, established first for a different test.
- *
- * Query-dispatch note: `setEnabled()` now issues a follow-up
- * `SELECT id FROM er_verification_settings ...` after its `UPDATE` to confirm the
- * row still exists (replacing an earlier, incorrect `count() === 0` check — see
- * #1926 review). This double tracks "which query is `first()`/`error()` about to
- * answer for" by SQL sniffing, the same way it already tracks `wasUpdateCalled()`,
- * so `$confirmSelectRowValue`/`$confirmSelectErrors` can be set independently of
- * whatever `$firstRowValue`/`$queryErrors` say about the *other* queries
- * (`er_verification_settings` SELECT, `plg_sendinblue` SELECT) this class also issues.
- *
- * Query-dispatch note (#1974): `lastCronRequestAt()`'s `SELECT
- * last_cron_request_at FROM er_verification_settings WHERE id = ?` and
- * `isEnabled()`'s `SELECT enabled FROM er_verification_settings WHERE id = ?`
- * share a table but read different columns, so they need independent control
- * the same way the confirmation SELECT does — sniffed by column name, same
- * pattern as `isConfirmSelect()`. `recordCronRequest()`'s `UPDATE ...
- * last_cron_request_at = NOW() ...` is tracked the same way `wasUpdateCalled()`
- * already tracks the `enabled` UPDATE, via a dedicated flag rather than
- * overloading `updateQueryWasIssued` (the two UPDATEs must be distinguishable
- * so a test can simulate one write failing without affecting the other).
- *
- * Query-dispatch note (#2085): `incrementUnmatchedRecipientCounter()`'s
- * `UPDATE ... unmatched_recipient_count = unmatched_recipient_count + 1 ...`
- * and `unmatchedRecipientCount()`'s `SELECT unmatched_recipient_count FROM
- * er_verification_settings ...` are tracked the same independent way as the
- * cron-request pair above — a dedicated flag per statement, with its own
- * row/error/count controls, so a test can simulate the increment succeeding
- * while the read fails (or vice versa) without disturbing any other query
- * shape this double answers.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2
@@ -96,22 +62,17 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
      *                                   specifically for the post-UPDATE `SELECT id FROM
      *                                   er_verification_settings ...` confirmation query. Null
      *                                   (the default) means "the row is confirmed present" —
-     *                                   i.e. `(object) ['id' => 1]` — since a successful UPDATE
-     *                                   finding the row gone is the rare case under test, not the
-     *                                   default assumption; this is what every pre-existing test
-     *                                   (written before this parameter existed) implicitly expects.
-     *                                   Pass `[]` explicitly to simulate the row confirmed missing.
+     *                                   i.e. `(object) ['id' => 1]`. Pass `[]` to simulate the
+     *                                   row confirmed missing.
      * @param bool $confirmSelectErrors When true, the post-UPDATE confirmation SELECT itself
      *                                   fails (independent of $queryErrors/$errorAfterUpdateOnly).
      * @param array<int, mixed>|null $errorInfoValue PDO errorInfo() triple to report while
      *                                   error() is true (e.g. `['42S02', 1146, "Table '...'
      *                                   doesn't exist"]` for "table missing", or a different
-     *                                   SQLSTATE for a genuine fault). Null (the default) keeps
-     *                                   FakeDatabase's real-\DB-shaped `[0, null, null]` no-error
-     *                                   triple, EXCEPT while error() is true and no override was
-     *                                   given, in which case a generic non-"table missing" triple
-     *                                   is reported so tests written before this parameter existed
-     *                                   keep exercising the "genuine fault" branch they always did.
+     *                                   SQLSTATE for a genuine fault). Null (the default) reports
+     *                                   `[0, null, null]` while error() is false, and a generic
+     *                                   non-"table missing" triple (the "genuine fault" branch)
+     *                                   while error() is true.
      * @param array<string, mixed>|object $cronRequestRowValue Row handed back by first()
      *                                   specifically for `lastCronRequestAt()`'s `SELECT
      *                                   last_cron_request_at FROM er_verification_settings ...`.
@@ -124,10 +85,8 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
      *                                   NOW() ...`, independent of every other error flag.
      * @param int $cronRequestUpdateCount Value count() reports specifically after
      *                                   `recordCronRequest()`'s UPDATE. Defaults to 1 (the row
-     *                                   matched and changed) — matching every other write-related
-     *                                   default in this fake, which represents the successful case
-     *                                   pre-existing tests implicitly expect. Pass 0 to simulate the
-     *                                   `id = 1` settings row being absent.
+     *                                   matched and changed). Pass 0 to simulate the `id = 1`
+     *                                   settings row being absent.
      * @param array<string, mixed>|object $unmatchedCounterRowValue Row handed back by first()
      *                                   specifically for `unmatchedRecipientCount()`'s `SELECT
      *                                   unmatched_recipient_count FROM er_verification_settings ...`.
@@ -177,10 +136,8 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
 
     private function isCronRequestUpdate(string $sql): bool
     {
-        // Anchored, matching isConfirmSelect()/isCronRequestSelect()'s style —
-        // unanchored substring checks would misclassify any future statement
-        // that merely mentions last_cron_request_at (e.g. a combined UPDATE
-        // touching both `enabled` and this column) as this specific write.
+        // Anchored: a substring check would misclassify any statement that
+        // only mentions last_cron_request_at as this write.
         return (bool) preg_match(
             '/^\s*UPDATE\s+er_verification_settings\s+SET\s+last_cron_request_at\b/i',
             $sql
@@ -261,12 +218,9 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
         if ($this->cronRequestUpdateWasIssued) {
             return $this->cronRequestUpdateCount;
         }
-        // Hardcoded 0 (not constructor-driven, unlike error()/first()'s
-        // fallthroughs) because setEnabled() deliberately does not use
-        // count() at all — it abandoned that approach for a confirmation
-        // SELECT after #1926's review found count() ambiguous for its own
-        // write shape. If a future method here needs a count()-dependent
-        // path, add a dedicated constructor param rather than reusing this.
+        // Hardcoded 0: setEnabled() does not use count(), because count() is
+        // ambiguous for its write (#1926). A new count()-dependent path needs
+        // its own constructor param.
         return 0;
     }
 

@@ -8,27 +8,13 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for getBaseUrl() (usersc/includes/custom_functions.php).
+ * Real getBaseUrl() (usersc/includes/custom_functions.php); the unit
+ * bootstrap mocks it. Request-path tests run the real server_globals.php
+ * (#2228).
  *
- * The unit-test bootstrap defines a mock getBaseUrl() that always returns
- * 'https://test.elanregistry.org'. To exercise the real implementation we
- * use the integration bootstrap, which loads UserSpice and the real
- * custom_functions.php.
- *
- * Request-path tests seed $_SERVER and run the real server_globals.php
- * (see applyServerGlobals()), so they prove that getBaseUrl() follows
- * $current_origin, port rule included (#2228).
- *
- * Caching notes:
- *  - Server::$cache memoises sanitized $_SERVER values per key. setUp() and
- *    tearDown() clear it via reflection so each test sees the $_SERVER
- *    values it sets, and later tests do not see them.
- *  - getBaseUrl() caches its FALLBACK result in a function-level
- *    `static $baseUrl` variable that PHP does not expose to reflection.
- *    The request-path branch returns before reaching the static variable,
- *    so request-path tests neither read nor write the cache. The fallback
- *    test asserts only on properties of the cached value (non-empty, valid
- *    absolute URL) so it passes whether the cache was warm or cold.
+ * setUp()/tearDown() clear Server::$cache. getBaseUrl() caches its fallback
+ * in a function-level static that reflection cannot reset, so the fallback
+ * tests assert only properties that hold whether the cache is warm or cold.
  */
 #[Group('integration')]
 #[Group('email')]
@@ -214,17 +200,8 @@ final class GetBaseUrlTest extends IntegrationTestCase
     }
 
     /**
-     * Test that getBaseUrl() falls back to a usable URL when the server
-     * globals are empty (CLI / early-boot context).
-     *
-     * The function attempts to read the `verify_url` column from the `email`
-     * table and, if unavailable, falls back to the hardcoded production URL. Either
-     * way the result must be a non-empty, well-formed absolute URL with no
-     * trailing slash.
-     *
-     * Asserts only on properties that hold whether or not the function-level
-     * static cache has been populated by a prior call in this process, so
-     * test-order independence is preserved.
+     * With empty server globals (CLI), the result falls back to a non-empty,
+     * absolute URL with no trailing slash.
      *
      * @return void
      */

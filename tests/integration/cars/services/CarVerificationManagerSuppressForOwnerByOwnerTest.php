@@ -11,22 +11,8 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB integration tests for
- * CarVerificationManager::clearSuppressedForOwnerByOwner() (#1895 — owner
- * self-service "Resume verification emails").
- *
- * Unit coverage (tests/unit/cars/services/CarVerificationManagerTest.php)
- * exercises the method against a mocked CarRepository; this file proves the
- * same behavior against a real database and database schema: every one of an
- * owner's cars (sold included) ends up unsuppressed, a different owner's car
- * is untouched, a genuine database failure propagates CarDatabaseException,
- * the bounce columns are never touched even on a car that has both flags
- * set, and clearing via this method produces the same
- * findVerificationEligible() membership as clearing via the admin
- * clearSuppressedForOwner() method (AC 9 parity).
- *
- * @see usersc/classes/Car/CarVerificationManager.php
- * @see https://github.com/elan-registry/registry/issues/1895
+ * #1895: CarVerificationManager::clearSuppressedForOwnerByOwner() (owner
+ * self-service "Resume verification emails") against real SQL.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -87,9 +73,7 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     }
 
     /**
-     * A car that is stale (so freshness never gates it), has no sale date,
-     * has a real email, is not bounced and is suppressed — i.e. one that
-     * only the suppression flags keep out of findVerificationEligible().
+     * Only the suppression flags keep this car out of findVerificationEligible().
      */
     private function createEligibleSuppressedCar(int $ownerId, array $overrides = []): int
     {
@@ -180,13 +164,7 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     }
 
     /**
-     * A DatabaseInterface proxy backed by the real connection, except that
-     * update('cars', ...) always reports failure — forcing
-     * CarRepository::updateEmailSuppressed() to return false, which
-     * CarVerificationManager::clearSuppressed()'s persist() helper turns
-     * into a thrown CarDatabaseException, exactly as a genuine deadlock or
-     * constraint violation would. Mirrors
-     * CarVerificationManagerSuppressForOwnerTest::dbFailingUpdateCar().
+     * Real connection, except update('cars', ...) reports failure.
      */
     private function dbFailingUpdateCar(): DatabaseInterface
     {
@@ -307,13 +285,7 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         }
     }
 
-    /**
-     * AC 9: clearing via the owner self-service path must produce the exact
-     * same findVerificationEligible() membership as clearing via the
-     * existing admin clearSuppressedForOwner() path — no special-cased
-     * "send immediately" or other divergent behavior hides behind the new
-     * method.
-     */
+    /** #1895 AC 9: same eligibility result as the admin clearSuppressedForOwner(). */
     #[Group('fast')]
     public function testEligibilityParityWithAdminClearSuppressedForOwner(): void
     {
@@ -325,7 +297,6 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         $carOneId = $this->createEligibleSuppressedCar($ownerOneId);
         $carTwoId = $this->createEligibleSuppressedCar($ownerTwoId);
 
-        // Neither car is eligible before either clear.
         $before = $this->allVerificationEligibleCarIds();
         $this->assertNotContains($carOneId, $before);
         $this->assertNotContains($carTwoId, $before);
@@ -340,12 +311,8 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     }
 
     /**
-     * Double-submit race (#1895 review). Request B reads the profile flag as
-     * 1 with a plain read, so its transaction holds a snapshot. Request A, on
-     * another connection, then clears the flag and commits. B must still
-     * succeed: the manager's locking read sees A's committed 0 and skips the
-     * profile write. Before the fix, B's plain read returned the snapshot's
-     * 1, its UPDATE affected 0 rows, and B threw CarDatabaseException.
+     * #1895 double-submit race: B holds a snapshot, A clears the flag and commits.
+     * B's locking read must see A's 0 and skip the profile write, not throw.
      */
     #[Group('fast')]
     public function testConcurrentResumeAfterOtherRequestCommittedSucceeds(): void
@@ -381,10 +348,6 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         $this->assertSame(0, $this->emailSuppressed($carId));
     }
 
-    /**
-     * A second connection to the test database, so a test can commit a
-     * write that the connection under test did not make.
-     */
     private function secondConnection(): \PDO
     {
         $host = (string) ($_ENV['DB_HOST'] ?? getenv('DB_HOST'));

@@ -8,9 +8,7 @@ require_once __DIR__ . '/../../app/admin/includes/account-cleanup-helpers.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for archiveAccounts() and restoreArchivedAccount().
- *
- * All fixtures are cleaned up in tearDown().
+ * archiveAccounts() and restoreArchivedAccount() against the real database.
  *
  * @see ArchiveAccountsTest        (unit tests)
  * @see RestoreArchivedAccountTest (unit tests)
@@ -70,10 +68,6 @@ final class ArchiveAndRestoreIntegrationTest extends IntegrationTestCase
         return array_map(fn($r) => (int) $r->id, $rows);
     }
 
-    // -------------------------------------------------------------------------
-    // archiveAccounts() integration tests
-    // -------------------------------------------------------------------------
-
     public function testArchiveAccountsCreatesArchiveRows(): void
     {
         $userId1 = $this->createTestUser(['join_date' => $this->daysAgo(31)]);
@@ -128,10 +122,6 @@ final class ArchiveAndRestoreIntegrationTest extends IntegrationTestCase
         $this->assertSame('unverified', $row1->deletion_type);
         $this->assertSame('verified', $row2->deletion_type);
     }
-
-    // -------------------------------------------------------------------------
-    // restoreArchivedAccount() integration tests
-    // -------------------------------------------------------------------------
 
     public function testRestoreArchivedAccountCreatesUserAndPermission(): void
     {

@@ -8,24 +8,9 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Noindex gate for Issue #1371.
- *
- * Per the ElanRegistry `$pageRobots` convention (introduced alongside the
- * `$pageTitle`/`$pageDescription` convention — see
- * usersc/plugins/ai_prompts/custom_prompts/elanregistry_overrides.md.php,
- * section 6), pages that should be excluded from search-engine indexing
- * must set `$pageRobots = 'noindex, follow';` BEFORE their
- * `require_once '.../init.php'` call, mirroring the timing requirement for
- * `$pageTitle`. usersc/includes/head_tags.php only falls back to the
- * site-wide default (`index, follow`) when `$pageRobots` is empty, so a
- * page that never sets it — or sets it too late — is silently indexable.
- *
- * This test is a pure static-text scan: it reads each file's raw source
- * via file_get_contents() and never requires/executes it, so it needs no
- * database and no bootstrapped UserSpice environment. It covers the 2
- * pages given noindex treatment under #1371 (the factory build records
- * list and the privacy policy), so a future regression on either file is
- * caught immediately.
+ * #1371: a page that does not set $pageRobots before init.php is silently
+ * indexable, because head_tags.php falls back to 'index, follow'. The
+ * convention is in elanregistry_overrides.md.php section 6.
  */
 #[Group('system')]
 #[Group('page-metadata')]
@@ -51,9 +36,7 @@ class PageRobotsTest extends TestCase
     public function testPageHasPageRobotsAssignment(string $relativePath): void
     {
         $filePath = $this->rootDir . '/' . $relativePath;
-        // A hard failure here (not markTestSkipped) is deliberate: if one of these
-        // pages is ever moved or renamed without updating this list, the
-        // noindex gate must go red, not silently green.
+        // Fail, not skip: a renamed page must turn this gate red.
         $this->assertFileExists($filePath, "$relativePath must exist (Issue #1371)");
 
         $content = (string)file_get_contents($filePath);
@@ -65,14 +48,7 @@ class PageRobotsTest extends TestCase
         );
     }
 
-    /**
-     * Critical timing check — see class docblock for the full rationale.
-     * head_tags.php's fallback (`!empty($pageRobots) ? $pageRobots : 'index, follow'`)
-     * reads whatever value is in scope when it renders, but the convention
-     * requires $pageRobots to be assigned before init.php for consistency
-     * with $pageTitle/$pageDescription (matching PageMetadataCompletenessTest),
-     * so this test enforces the same ordering here.
-     */
+    /** Same before-init.php order as PageMetadataBeforeInitRule. */
     #[DataProvider('pagesProvider')]
     public function testPageRobotsAssignmentPrecedesInitRequire(string $relativePath): void
     {
@@ -88,9 +64,7 @@ class PageRobotsTest extends TestCase
             "$relativePath must contain a \$pageRobots assignment to check its position (Issue #1371)"
         );
 
-        // Anchor to the require_once statement itself, not a bare 'init.php' substring —
-        // a docblock or comment mentioning "init.php" earlier in the file would otherwise
-        // give a false-negative position and fail this test on correct code.
+        // Anchored to require_once: a comment that names init.php comes earlier.
         $initMatches = [];
         preg_match('/require_once[^\n]*init\.php/', $content, $initMatches, PREG_OFFSET_CAPTURE);
         $this->assertNotEmpty(
@@ -127,8 +101,6 @@ class PageRobotsTest extends TestCase
 
         $content = (string)file_get_contents($filePath);
 
-        // Guards against a future edit reverting the meta tag to a hardcoded
-        // 'index, follow' string, which would silently break noindex pages.
         $this->assertStringContainsString(
             '<meta name="robots" content="<?= htmlspecialchars($pageRobots,',
             $content,

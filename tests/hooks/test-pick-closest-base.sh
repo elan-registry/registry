@@ -1,36 +1,25 @@
 #!/bin/bash
 #
-# Regression test for .githooks/pre-push's _pick_closest_base() function.
+# Regression test for _pick_closest_base() in scripts/lib/pick-closest-base.sh
+# (used by .githooks/pre-push and scripts/resolve-base-branch.sh). It
+# regressed three times in review (#1751, #1767, #2029) before this test.
 #
-# This function has regressed three times across separate PRs (#1751,
-# #1767, #2029) with zero automated coverage — each regression was only
-# caught by a reviewer hand-building synthetic git topology during review.
-# This script pins the same four scenarios verified manually during #2024
-# so a future change that breaks any of them fails loudly here instead of
-# silently shipping a broken pre-push gate.
-#
-# Runs against the CURRENT repo's real origin/main and (if present) real
-# milestone/* branches, plus synthetic commits/branches/tags it creates and
-# always cleans up (even on failure, via a trap). Does not modify any
-# existing ref. Safe to run repeatedly; does not require a specific branch
-# to be checked out.
+# Uses this repo's real origin/main plus synthetic commits, branches and refs
+# that cleanup() removes. It never changes an existing ref.
 #
 # Usage: bash tests/hooks/test-pick-closest-base.sh
-# Exit code: 0 if all scenarios pass, 1 otherwise.
 
 set -u
+
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
 
 # Run from inside a hook or rebase, these would redirect every git command
 # below (including the synthetic ref creation and cleanup) to another repo.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
-# git commit-tree requires a resolvable author/committer identity. A
-# developer's machine has one configured, but a fresh CI runner does not —
-# confirmed live in CI (#2024 review): commit-tree fails with "Please tell
-# me who you are", leaving $TARGET_TIP empty and cascading a bogus failure
-# into an otherwise-unrelated scenario. Exporting these only for this
-# script's own process (not `git config`, global or local) avoids touching
-# any real identity or leaving repo/global config mutated.
+# A fresh CI runner has no git identity, and git commit-tree fails without
+# one. Set it for this process only, never in git config.
 export GIT_AUTHOR_NAME="test-pick-closest-base"
 export GIT_AUTHOR_EMAIL="test-pick-closest-base@localhost"
 export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
@@ -39,12 +28,8 @@ export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT" || exit 1
 
-# --- Load the function under test in isolation ------------------------------
-# _pick_closest_base() lives in scripts/lib/pick-closest-base.sh (extracted
-# from .githooks/pre-push so scripts/resolve-base-branch.sh can share it —
-# see that file's header). Source it directly, rather than sourcing
-# .githooks/pre-push itself, which would execute its main body (that body
-# reads from stdin and expects git's pre-push argument protocol).
+# Source the library, not .githooks/pre-push: sourcing the hook runs its
+# main body, which reads git's pre-push protocol from stdin.
 LIB_FILE="scripts/lib/pick-closest-base.sh"
 if [ ! -s "$LIB_FILE" ]; then
     echo "FAIL: $LIB_FILE not found or empty" >&2
@@ -53,11 +38,6 @@ fi
 # shellcheck source=/dev/null
 source "$LIB_FILE"
 
-# --- Test scaffolding ---------------------------------------------------
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
 # Synthetic refs this script creates, tracked for cleanup.
 SYNTH_TAGS=()
 SYNTH_BRANCHES=()
@@ -65,6 +45,7 @@ SYNTH_BRANCHES=()
 # with `git update-ref -d` rather than `git branch -D`.
 SYNTH_REFS=()
 
+# shellcheck disable=SC2329 # called only through the EXIT trap in lib/harness.sh
 cleanup() {
     local ref
     for ref in "${SYNTH_TAGS[@]:-}"; do
@@ -77,17 +58,10 @@ cleanup() {
         [ -n "$ref" ] && git update-ref -d "$ref" >/dev/null 2>&1
     done
 }
-trap cleanup EXIT
 
-# make_commit_on <parent-commit-ish> <message> — creates a new commit with
-# the same tree as its parent (no actual file changes needed for these
-# topology tests) and echoes its SHA. Fails loudly (script exit, via the
-# `set -u`-safe guard below) rather than letting a git-commit-tree failure
-# silently propagate an empty SHA into a downstream scenario as a
-# misleading assertion failure — this exact failure mode was hit in CI
-# (#2024 review) when commit-tree failed for an unrelated reason (no
-# author identity configured) and produced a confusing "expected: <sha>,
-# actual: <empty>" instead of a clear "could not construct test fixture."
+# make_commit_on <parent-commit-ish> <message>: echoes a new commit with the
+# parent's tree. Exits on failure, so an empty SHA cannot show up later as a
+# misleading assertion failure.
 make_commit_on() {
     local parent="$1" message="$2" sha
     sha="$(git commit-tree "${parent}^{tree}" -p "$parent" -m "$message")" || {
@@ -107,16 +81,12 @@ assert_resolves_to() {
     local description="$1" target="$2" expected="$3"
     local self_remote="${4:-}" self_local="${5:-}"
     local actual
-    TESTS_RUN=$((TESTS_RUN + 1))
     actual="$(_pick_closest_base "$target" "$self_remote" "$self_local" 2>/dev/null)"
     if [ "$actual" = "$expected" ]; then
-        echo "PASS: $description"
+        pass "$description"
     else
-        echo "FAIL: $description"
-        echo "      target:   $target"
-        echo "      expected: $expected"
-        echo "      actual:   ${actual:-<empty/failed>}"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        fail "$description" "target:   $target" "expected: $expected" \
+            "actual:   ${actual:-<empty/failed>}"
     fi
 }
 
@@ -129,17 +99,12 @@ assert_resolves_to() {
 assert_not_resolving_to() {
     local description="$1" target="$2" self_branch="$3" forbidden="$4"
     local actual
-    TESTS_RUN=$((TESTS_RUN + 1))
     actual="$(_pick_closest_base "$target" "$self_branch" 2>/dev/null)"
     if [ -n "$actual" ] && [ "$actual" != "$forbidden" ]; then
-        echo "PASS: $description"
+        pass "$description"
     else
-        echo "FAIL: $description"
-        echo "      target:    $target"
-        echo "      self:      $self_branch"
-        echo "      forbidden: $forbidden"
-        echo "      actual:    ${actual:-<empty/failed>}"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        fail "$description" "target:    $target" "self:      $self_branch" \
+            "forbidden: $forbidden" "actual:    ${actual:-<empty/failed>}"
     fi
 }
 
@@ -207,7 +172,6 @@ assert_resolves_to \
 # remote milestone branch whose tip IS the target's tip (e.g. fast-forwarded
 # to the issue branch) would otherwise win with 0 commits ahead, give an
 # empty diff and silently skip the gate. It must fall through to main.
-# (Before #2160 this scenario asserted the opposite.)
 MS_TIP_2="$(make_commit_on "$MAIN_TIP" "synthetic: another milestone branch")"
 git branch -f milestone/__test_equality "$MS_TIP_2" >/dev/null 2>&1
 SYNTH_BRANCHES+=("milestone/__test_equality")
@@ -225,11 +189,9 @@ assert_resolves_to \
 
 # --- Scenario 5 (#2160): remote-only milestone branch is a candidate --------
 # A milestone branch that exists only as refs/remotes/origin/milestone/* —
-# no local branch of that name — must be rankable. Before #2160 the
-# candidate list was local refs/heads/milestone/* plus origin/main only, so
-# an issue branch cut from a teammate's (or a not-yet-checked-out) milestone
-# branch fell all the way back to main and gated on the milestone's entire
-# accumulated diff.
+# no local branch of that name — must be rankable. Otherwise an issue branch
+# cut from a teammate's milestone branch falls back to main and gates on the
+# milestone's entire diff.
 REMOTE_MS_TIP="$(make_commit_on "$MAIN_TIP" "synthetic: remote-only milestone branch")"
 git update-ref refs/remotes/origin/milestone/__test_remote "$REMOTE_MS_TIP" >/dev/null 2>&1
 SYNTH_REFS+=("refs/remotes/origin/milestone/__test_remote")
@@ -261,12 +223,4 @@ assert_resolves_to \
     "milestone/__test_elsewhere" \
     "milestone/__test_active"
 
-# --- Report ---------------------------------------------------
-
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

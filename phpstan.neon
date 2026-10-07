@@ -45,6 +45,7 @@ parameters:
         - phinx.php
         - scripts
         - tests
+        - tools/phpstan
         - z_us_root.php
         # UserSpice customizations (project-owned)
         - usersc/account.php
@@ -135,6 +136,8 @@ parameters:
             # 2-method surface as the definition of \User project-wide — see the file's
             # own docblock for the full leak mechanism this prevents.
             - tests/unit/auth/_User_test_double.php
+            # Deliberate violations that the custom rule tests analyse.
+            - tests/unit/phpstan/fixtures/*
 
     treatPhpDocTypesAsCertain: false
     checkMissingTypehints: true
@@ -149,6 +152,12 @@ parameters:
     reportUnmatchedIgnoredErrors: true
 
     ignoreErrors:
+        # The #1014 IDOR guard is the one raw cars lookup allowed in this file.
+        -
+            identifier: elanRegistry.rawDomainLookup
+            path: app/api/contact/send-owner-email.php
+            count: 1
+
         # UserSpice framework classes loaded at runtime via init.php — not autoloadable
         -
             message: '#(unknown|Instantiated) class (DB|Token|Input|User|Redirect|Session|Cookie|Server|Validate|TOTPHandler|Config|Menu|RateLimit)#'
@@ -213,3 +222,47 @@ parameters:
 
     bootstrapFiles:
         - phpstan-bootstrap.php
+
+# Project coding rules. Each rule has a RuleTestCase in tests/unit/phpstan/.
+services:
+    -
+        class: ElanRegistry\PHPStan\Rules\LogCategoryArgumentRule
+        tags: [phpstan.rules.rule]
+    -
+        class: ElanRegistry\PHPStan\Rules\NoSerializeCallRule
+        tags: [phpstan.rules.rule]
+    -
+        class: ElanRegistry\PHPStan\Rules\DatabaseInterfaceUsageRule
+        arguments:
+            projectRoot: %currentWorkingDirectory%
+        tags: [phpstan.rules.rule]
+    -
+        class: ElanRegistry\PHPStan\Rules\RouteLookupRawSqlRule
+        arguments:
+            projectRoot: %currentWorkingDirectory%
+            files:
+                - app/admin/includes/process-admin-contact.php
+                - app/admin/includes/process-car-details.php
+                - app/admin/includes/process-transfer-approve.php
+                - app/admin/includes/process-user-details.php
+                - app/api/contact/send-owner-email.php
+        tags: [phpstan.rules.rule]
+    -
+        class: ElanRegistry\PHPStan\Rules\PageMetadataBeforeInitRule
+        arguments:
+            projectRoot: %currentWorkingDirectory%
+            # Pages that do not set $pageTitle yet. Add the convention to a
+            # page, then remove it here. The rule reports a stale entry.
+            exemptPages:
+                - app/owner/cars/edit.php
+                - app/owner/contact/index.php
+                - app/owner/contact/owner.php
+                - app/owner/privacy.php
+                - docs/guides/car-transfer-faq.php
+                - docs/stories/brian_walton/index.php
+                - docs/stories/SGO_2F/index.php
+                - docs/stories/type26register.php
+                - index.php
+                - usersc/account.php
+                - usersc/user_settings.php
+        tags: [phpstan.rules.rule]

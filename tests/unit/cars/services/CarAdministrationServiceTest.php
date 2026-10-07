@@ -15,14 +15,8 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Unit tests for CarAdministrationService service class
- *
- * These tests exercise the REAL CarRepository against a DatabaseInterface double.
- * Mocking the framework boundary (the database) is the project convention; mocking our own
- * CarRepository would hide real repository behaviour such as the
- * CarNotFoundException thrown on 0-row deletes.
- *
- * @see docs/development/TESTING_STRATEGY.md
+ * Uses the real CarRepository over a DatabaseInterface double: a mocked
+ * repository would hide behavior such as CarNotFoundException on 0-row deletes.
  */
 #[Group('fast')]
 final class CarAdministrationServiceTest extends TestCase
@@ -37,20 +31,8 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * Configure $db's transaction-lifecycle expectations for one begin/end cycle.
-     *
-     * Models actual inTransaction() state via a closure-captured flag, rather than
-     * assuming a fixed call count/order (a prior willReturnOnConsecutiveCalls(false, true)
-     * version was one extra inTransaction() call away from a confusing null-return
-     * TypeError instead of a clear assertion failure). beginTransaction() flips the
-     * flag true; whichever of commit()/rollBack() actually runs flips it back false —
-     * matching CarRepository's real transactionOwner bookkeeping exactly, regardless
-     * of how many times inTransaction() happens to be called.
-     *
-     * The callbacks return true because DatabaseInterface declares beginTransaction(),
-     * commit() and rollBack() as `bool` (the real PDO-backed methods return true on
-     * success); a void callback would make the double return null and fail its own
-     * return type.
+     * Models inTransaction() state with a flag, not a fixed call sequence.
+     * The callbacks return true because the interface methods return bool.
      */
     private function configureTransaction(MockObject $db, bool $expectCommit): void
     {
@@ -76,29 +58,9 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * Build the DatabaseInterface double that transfer() hands to Owner.
-     *
-     * Owner::find() runs a single `users LEFT JOIN profiles WHERE u.id = ?`
-     * query and reads count()/first() back off the same instance, so the stub
-     * mirrors that: query() returns itself, one row is found, and first()
-     * returns a complete user row.
-     */
-    /**
-     * @param bool $blankLocation When true the target owner carries no location
-     *                            or website data at all — the shape of the
-     *                            `noowner` system account, and the case where
-     *                            CarValidator drops the keys entirely rather
-     *                            than passing the blanks through. fname/lname
-     *                            are NOT blanked by this flag — they are not
-     *                            location data, and the real `noowner` account
-     *                            carries a non-blank 'No'/'Owner' name (see
-     *                            UserDeletionReassignmentTest), so a blanked
-     *                            fixture here would assert behavior the real
-     *                            system doesn't have.
-     * @param string $username Target owner's username. transfer() treats a
-     *                         target with username 'noowner' as the system
-     *                         account for `solddate` handling — see
-     *                         testTransferToSystemAccountPreservesSoldDate().
+     * @param bool $blankLocation No location or website, like `noowner`. The name stays
+     *                            set: the real `noowner` is 'No'/'Owner'.
+     * @param string $username 'noowner' selects the system-account solddate path
      */
     private function createOwnerDb(
         int $userId = 1,
@@ -132,8 +94,6 @@ final class CarAdministrationServiceTest extends TestCase
         $carData = (object) ['id' => 999, 'chassis' => 'TEST99999'];
         $db = $this->createMock(DatabaseInterface::class);
         $this->configureTransaction($db, expectCommit: true);
-        // query() returns the database object itself for chaining; the result of the
-        // DELETE is read back off the same double via error()/count().
         $db->method('query')->willReturn($db);
         $db->method('error')->willReturn(false);
         $db->method('count')->willReturn(1); // deleteCar(): count()>0 -> true, no CarNotFoundException
@@ -166,9 +126,7 @@ final class CarAdministrationServiceTest extends TestCase
 
     public function testTransferSucceeds(): void
     {
-        // transfer() looks the target owner up via (new Owner($newUserId, $db))->data(),
-        // using the DatabaseInterface passed as its last argument. A dedicated owner
-        // double keeps that lookup separate from $db's repository expectations below.
+        // A separate owner double keeps the Owner lookup apart from $db's expectations.
         $carData = (object) ['id' => 999, 'chassis' => 'TEST99999'];
         $db = $this->createMock(DatabaseInterface::class);
         $this->configureTransaction($db, expectCommit: true);
@@ -176,17 +134,11 @@ final class CarAdministrationServiceTest extends TestCase
         $db->method('insert')->willReturn(true);  // CarRepository::insertHistory() -> $this->db->insert(...)
         $repo = new CarRepository($db);
 
-        // transfer()'s return type is literal `true` (throws on any failure), so no
-        // assertion is needed on the return value itself — the mock's beginTransaction/
-        // commit expectations above (verified in tearDown) are what this test proves.
+        // Returns literal true; the transaction expectations are the assertion.
         $this->service->transfer($carData, 1, 'Test transfer reason', 'NEWOWNER', 1, $repo, $this->createOwnerDb());
     }
 
-    /**
-     * Issue #1878: transferring a car to a real owner must clear `solddate`
-     * on both the live `cars` row and the audit history row it writes —
-     * a sale does not survive a change of owner.
-     */
+    /** A sale does not survive a change of owner (#1878). */
     public function testTransferClearsSoldDateOnCarsAndHistoryRow(): void
     {
         $carData = (object) ['id' => 999, 'chassis' => 'TEST99999', 'solddate' => '2020-01-01'];
@@ -218,13 +170,8 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * Issue #1878: the solddate decision is keyed on the target's username,
-     * not on the unroutable SYSTEM_ACCOUNT_EMAIL sentinel. A real owner who
-     * happens to carry that email (or no username at all in the row) is still
-     * a change of owner and must have solddate cleared — otherwise a refactor
-     * that "simplifies" the check to the email would silently preserve
-     * solddate on any real owner with a malformed address, the same class of
-     * bug #1878 fixed.
+     * The solddate check uses the username, not SYSTEM_ACCOUNT_EMAIL: a real
+     * owner with that email is still a change of owner (#1878).
      */
     public function testTransferClearsSoldDateIsKeyedOnUsernameNotEmail(): void
     {
@@ -279,12 +226,7 @@ final class CarAdministrationServiceTest extends TestCase
         $this->assertNull($updateFields['solddate']);
     }
 
-    /**
-     * Issue #1878: transferring to the `noowner` system account (the GDPR
-     * account-deletion and admin "no owner" paths) must NOT clear `solddate`
-     * — reassignment to the system account is not a change of owner, so the
-     * sold state is preserved on both the live row and the history row.
-     */
+    /** Reassignment to `noowner` is not a change of owner, so solddate stays (#1878). */
     public function testTransferToSystemAccountPreservesSoldDate(): void
     {
         $carData = (object) ['id' => 999, 'chassis' => 'TEST99999', 'solddate' => '2020-01-01'];
@@ -330,11 +272,8 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * email_bounced is a property of the previous owner's address, not the car:
-     * carrying it forward would permanently exclude the car from
-     * CarRepository::findVerificationEligible() (`AND email_bounced = 0`) once
-     * the address that caused the bounce is gone. A transfer to a real owner
-     * must clear it on both the live `cars` row and the audit history row.
+     * email_bounced describes the old address. Kept, it would exclude the car
+     * from findVerificationEligible() for good.
      */
     public function testTransferClearsEmailBouncedOnCarsAndHistoryRow(): void
     {
@@ -366,13 +305,7 @@ final class CarAdministrationServiceTest extends TestCase
         $this->assertSame(0, $historyFields['email_bounced'], 'history email_bounced must be cleared on an ordinary transfer');
     }
 
-    /**
-     * Reassignment to the `noowner` system account is not a change of owner
-     * (#1878), so email_bounced — like solddate — must be preserved rather than
-     * cleared: it still describes the previous (real) owner's address, and the
-     * car remains excluded from verification eligibility until a real owner
-     * with a working address is assigned again.
-     */
+    /** `noowner` is not a change of owner, so email_bounced stays (#1878). */
     public function testTransferToSystemAccountPreservesEmailBounced(): void
     {
         $carData = (object) ['id' => 999, 'chassis' => 'TEST99999', 'email_bounced' => 1];
@@ -418,17 +351,8 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * Regression (#1679): transferring to a system account whose email is
-     * deliberately unroutable must succeed, storing an empty owner email rather
-     * than aborting or denormalizing the sentinel address.
-     *
-     * The `noowner` account created by RegisterNoownerAccount carries
-     * `noowner@invalid` precisely so password reset and passwordless login can
-     * never reach it. That address fails CarValidator's FILTER_VALIDATE_EMAIL
-     * check, so copying it onto the car threw CarValidationException and rolled
-     * back the transfer — which silently broke GDPR account deletion, since
-     * after_user_deletion.php reassigns every car through this exact path and
-     * would leave the deleted owner's PII in place.
+     * `noowner@invalid` fails FILTER_VALIDATE_EMAIL. It once rolled back the
+     * transfer and broke GDPR account deletion, which reassigns cars here (#1679).
      */
     public function testTransferToUnroutableSystemAccountBlanksEmailInsteadOfFailing(): void
     {
@@ -467,14 +391,8 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * A *real* account carrying a malformed `users.email` must also blank rather
-     * than abort — the transfer still has to complete, since this path runs
-     * inside after_user_deletion.php's single reassignment transaction.
-     *
-     * The distinction from the sentinel case above is visibility, not behavior:
-     * blanking `noowner@invalid` is expected and silent, but silently erasing a
-     * legitimate owner's contact address would hide a data-quality problem, so
-     * contactableEmail() logs that case. Both still write ''.
+     * This runs inside the deletion transaction, so it must not abort.
+     * Unlike the sentinel case, contactableEmail() logs it.
      */
     public function testTransferBlanksMalformedEmailOnRealAccountWithoutFailing(): void
     {
@@ -513,12 +431,9 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * Guards every field in CarAdministrationService::OWNER_IDENTITY_FIELDS, not
-     * just `email`. CarValidator omits any empty-valued key from its result, so
-     * without withBlankedFieldsRestored() a transfer to an owner with no
-     * location or website would leave the *previous* owner's city/state/country/
-     * website sitting on the car — PII the GDPR deletion path must clear.
-     * Dropping any field from OWNER_IDENTITY_FIELDS regresses this silently.
+     * CarValidator drops empty keys, so without withBlankedFieldsRestored() the
+     * previous owner's location and website stay on the car. That is PII the
+     * GDPR deletion path must clear.
      */
     public function testTransferClearsAllOwnerIdentityFieldsWhenTargetHasNone(): void
     {
@@ -565,20 +480,13 @@ final class CarAdministrationServiceTest extends TestCase
             );
         }
 
-        // fname/lname are NOT blanked — the real `noowner` account (and any real
-        // target owner) has a non-blank name, so the guarantee here is that the
-        // target's own name correctly overwrites the previous owner's, not that it
-        // goes blank. createOwnerDb() always returns 'Test'/'User' regardless of
-        // blankLocation (see its docblock).
+        // The name is overwritten by the target's own name, not blanked.
         $this->assertArrayHasKey('fname', $updateFields, 'cars.fname must be written on transfer, not dropped by CarValidator');
         $this->assertSame('Test', $updateFields['fname'], "cars.fname must be the target owner's own name, overwriting the previous owner's");
         $this->assertArrayHasKey('lname', $updateFields, 'cars.lname must be written on transfer, not dropped by CarValidator');
         $this->assertSame('User', $updateFields['lname'], "cars.lname must be the target owner's own name, overwriting the previous owner's");
 
-        // website is cleared to null, not '', since #1448 made CarValidator's
-        // website case null-passthrough (CLEARABLE_FIELDS) rather than
-        // dropping the key — see #1448 for why '' and null aren't yet a
-        // consistent "cleared" signal across all OWNER_IDENTITY_FIELDS.
+        // website clears to null, not '' (#1448).
         $this->assertArrayHasKey(
             'website',
             $updateFields,
@@ -639,18 +547,12 @@ final class CarAdministrationServiceTest extends TestCase
         $this->service->transfer($carData, 1, 'Test transfer reason', 'NEWOWNER', 1, $repo, $this->createOwnerDb());
     }
 
-    // =========================================================================
-    // delete() + merge() propagation tests (issue #1311)
-    // =========================================================================
+    // delete() + merge() propagation (#1311)
 
-    /**
-     * delete() must re-throw CarNotFoundException when deleteCar() discovers the
-     * car was already deleted (0 rows affected).  The service catch block must
-     * not swallow CarException subclasses.
-     */
+    /** The service must not swallow CarException subclasses. */
     public function testDeletePropagatesCarNotFoundExceptionFromDeleteCar(): void
     {
-        // deleteCar(): error()=false, count()=0 -> throws CarNotFoundException (real CarRepository behavior)
+        // error()=false, count()=0: deleteCar() throws CarNotFoundException.
         $carData = (object) ['id' => 999, 'chassis' => 'GHOST01'];
         $db = $this->createMock(DatabaseInterface::class);
         $this->configureTransaction($db, expectCommit: false);
@@ -663,14 +565,9 @@ final class CarAdministrationServiceTest extends TestCase
         $this->service->delete($carData, 'Test deletion', 1, $repo);
     }
 
-    /**
-     * delete() must wrap a false return from deleteCar() in CarDatabaseException.
-     * This is the DB-level error path, distinct from the CarNotFoundException
-     * thrown when 0 rows are affected.
-     */
     public function testDeleteThrowsCarDatabaseExceptionWhenDeleteCarReturnsFalse(): void
     {
-        // deleteCar(): error()=true -> returns false BEFORE checking count (real CarRepository behavior)
+        // error()=true: deleteCar() returns false before it reads count().
         $carData = (object) ['id' => 999, 'chassis' => 'GHOST02'];
         $db = $this->createMock(DatabaseInterface::class);
         $this->configureTransaction($db, expectCommit: false);
@@ -682,14 +579,9 @@ final class CarAdministrationServiceTest extends TestCase
         $this->service->delete($carData, 'Test deletion', 1, $repo);
     }
 
-    /**
-     * merge() must throw CarNotFoundException when findByIdForUpdate() returns
-     * null, indicating the source car was deleted between the caller's initial
-     * check and the locked re-read inside the transaction.
-     */
+    /** The source car was deleted between the caller's check and the locked read. */
     public function testMergePropagatesCarNotFoundExceptionWhenSourceCarGone(): void
     {
-        // findByIdForUpdate(999): error()=false, count()=0 -> returns null -> merge() throws CarNotFoundException itself
         $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
         $db = $this->createMock(DatabaseInterface::class);
         $this->configureTransaction($db, expectCommit: false);
@@ -702,17 +594,9 @@ final class CarAdministrationServiceTest extends TestCase
         $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);
     }
 
-    /**
-     * merge() must wrap a false return from transferHistory() in CarDatabaseException.
-     * This covers the DB-level failure path during the history-transfer step.
-     */
     public function testMergeThrowsCarDatabaseExceptionWhenTransferHistoryFails(): void
     {
-        // error() called 3x in sequence since #1867 added target-row locking:
-        // 1st by findByIdForUpdate(oldCarId) (false=ok), 2nd by
-        // findByIdForUpdate(newCarId) (false=ok, both rows are now locked in
-        // ascending-ID order before any other step), 3rd by transferHistory
-        // (true=failure, since transferHistory() returns !error()).
+        // error() order: lock old car, lock new car, transferHistory (fails).
         $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
         $sourceData = (object) ['id' => 999, 'chassis' => 'SOURCE01'];
         $db = $this->createMock(DatabaseInterface::class);
@@ -729,12 +613,7 @@ final class CarAdministrationServiceTest extends TestCase
 
     public function testMergeThrowsCarDatabaseExceptionWhenDeleteCarFails(): void
     {
-        // error() called 4x in sequence since #1867 added target-row locking:
-        // findByIdForUpdate(oldCarId) (false=ok), findByIdForUpdate(newCarId)
-        // (false=ok), transferHistory (false=ok via !error()), deleteCar
-        // (true=fails, returns false before checking count). count() is used by
-        // both findByIdForUpdate calls only — deleteCar's failure short-circuits
-        // before it would check count().
+        // error() order: lock old, lock new, transferHistory, deleteCar (fails).
         $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
         $sourceData = (object) ['id' => 999, 'chassis' => 'SOURCE01'];
         $db = $this->createMock(DatabaseInterface::class);
@@ -751,9 +630,6 @@ final class CarAdministrationServiceTest extends TestCase
 
     public function testMergeThrowsCarDatabaseExceptionWhenInsertHistoryFails(): void
     {
-        // error() called 3x, all false (findByIdForUpdate ok, transferHistory ok, deleteCar ok).
-        // count() called 2x, both >0 (findByIdForUpdate finds the row, deleteCar affects a row).
-        // insert() (insertHistory) fails.
         $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
         $sourceData = (object) ['id' => 999, 'chassis' => 'SOURCE01'];
         $db = $this->createMock(DatabaseInterface::class);
@@ -769,19 +645,7 @@ final class CarAdministrationServiceTest extends TestCase
         $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);
     }
 
-    /**
-     * merge() succeeds end-to-end: source car found, history transferred, source
-     * car deleted, audit trail inserted, transaction commits. Success-path
-     * counterpart to the four failure-path tests above.
-     *
-     * Also asserts updateImage() is actually called — a loose ->method('query')
-     * stub here would stay green even if the #1867 image-relocation write were
-     * dropped entirely, which is exactly the weakness that let the underlying
-     * bug (merge never moved userimages/ files) go untested for as long as it
-     * did. updateImage() issues a raw `UPDATE cars SET image = ? WHERE id = ?
-     * AND image <=> ?` through query(), so the CAS write is observed by
-     * recording every query() call and asserting one matches that shape.
-     */
+    /** Records query() calls to prove the #1867 updateImage() CAS write happens. */
     public function testMergeSucceeds(): void
     {
         $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
@@ -802,17 +666,11 @@ final class CarAdministrationServiceTest extends TestCase
             $call++;
             return $call === 1 ? $lockedTargetData : $sourceData;
         });
-        // Must actually assert the audit-trail insert happens — a loose ->method('insert')
-        // stub would leave this test green even if merge() stopped calling insertHistory().
         $db->expects($this->once())->method('insert')->with('cars_hist', $this->anything())->willReturn(true);
 
         $repo = new CarRepository($db);
         $service = new CarAdministrationService();
 
-        // merge()'s return type is literal `true` (throws on any failure), so no
-        // assertion is needed on the return value itself — the mock's beginTransaction/
-        // commit expectations above (verified via PHPUnit's mock-expectation checks after
-        // the test method completes) are what this test proves for the DB lifecycle.
         $service->merge($targetCarData, 999, 'Test merge', 1, $repo);
 
         $updateImageCalls = array_values(array_filter(
@@ -827,12 +685,6 @@ final class CarAdministrationServiceTest extends TestCase
         $this->assertSame([1], array_slice($updateImageCalls[0]['params'], 1, 1), 'updateImage() must target the surviving car by id');
     }
 
-    /**
-     * merge() must relocate the source car's image files into the target
-     * car's directory, append the relocator's returned (post-rename)
-     * filenames after the target's own existing images, and write that
-     * combined list via updateImage() — all before the audit-trail insert.
-     */
     public function testMergeCallsRelocatorAndAppendsRenamedFilenamesAfterTargetsExisting(): void
     {
         $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
@@ -865,20 +717,8 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * Regression guard for the merge() image-ordering bug caught only by
-     * mutation testing: reversing the array_merge() argument order in
-     * merge() (target existing images, then the relocator's post-rename
-     * values) leaves every other unit test green because they only assert
-     * on relocate()/restore() call shape, never on the literal JSON written
-     * to cars.image. Because the FIRST entry of cars.image renders as the
-     * surviving car's public card thumbnail, an order regression here
-     * silently changes what every merged car displays.
-     *
-     * This test records the raw `UPDATE cars SET image` query (the same
-     * pattern testMergeSucceeds uses) and asserts the exact written JSON:
-     * target's existing entries first, then the source's POST-RENAME names
-     * (the rename map's VALUES, not its keys) — via assertSame on the
-     * decoded array, not set-equality.
+     * The first cars.image entry is the public thumbnail, so the order is
+     * pinned: target images first, then the source's post-rename names.
      */
     public function testMergeWritesImageColumnWithTargetImagesFirstThenRenamedSourceImages(): void
     {
@@ -905,9 +745,7 @@ final class CarAdministrationServiceTest extends TestCase
         $relocator = $this->createMock(CarImageRelocator::class);
         $relocator->method('relocate')
             ->with(999, 1, ['src_a.jpg', 'src_b.jpg'])
-            // Deliberately renamed key != value on the FIRST entry, so a
-            // mutation that swaps in the rename map's KEYS instead of its
-            // VALUES is also caught by this assertion.
+            // key != value on the first entry catches a swap of keys for values.
             ->willReturn(['src_a.jpg' => 'src_a_renamed.jpg', 'src_b.jpg' => 'src_b.jpg']);
 
         $repo = new CarRepository($db);
@@ -936,19 +774,9 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * A throw from inside commit() must NOT compensate.
-     *
-     * CarRepository::commit() clears transactionOwner before delegating to the
-     * driver, so a driver-level throw leaves rollback() a no-op over a
-     * transaction the server may already have committed durably. Moving the
-     * files back in that state would restore them to a source car the database
-     * says is deleted — worse than the original failure.
-     *
-     * Regression test: the $committed flag was originally assigned on the line
-     * AFTER $repo->commit(), so a throw from inside the call skipped it and
-     * left the flag false — sending merge() down the compensating branch in
-     * exactly the scenario the flag exists to exclude. No test covered a
-     * throwing commit(), which is why it survived.
+     * A throw from inside commit() must not compensate: the server may have
+     * committed, so moving files back would point them at a deleted car.
+     * $committed was once set after commit(), so a throw skipped it.
      */
     public function testMergeDoesNotRestoreFilesWhenCommitItselfThrows(): void
     {
@@ -966,7 +794,6 @@ final class CarAdministrationServiceTest extends TestCase
                 $inTransaction = true;
                 return true;
             });
-        // The driver throws from inside commit() — a dropped connection mid-commit.
         $db->expects($this->once())->method('commit')
             ->willThrowException(new \PDOException('server has gone away during commit'));
         $db->method('query')->willReturn($db);
@@ -981,7 +808,6 @@ final class CarAdministrationServiceTest extends TestCase
 
         $relocator = $this->createMock(CarImageRelocator::class);
         $relocator->method('relocate')->willReturn(['src_a.jpg' => 'src_a.jpg']);
-        // The assertion that matters: compensation must never run here.
         $relocator->expects($this->never())->method('restore');
 
         $repo = new CarRepository($db);
@@ -997,14 +823,7 @@ final class CarAdministrationServiceTest extends TestCase
         $this->assertTrue($threw, 'merge() must surface the commit failure');
     }
 
-    /**
-     * A `false` return from updateImage() means the CAS `WHERE image <=> ?`
-     * guard matched no row — another writer changed the target's image
-     * column between the lock and the write. merge() must treat this as a
-     * failure (throwing CarDatabaseException) and must run the relocator's
-     * compensating restore() before rollback, since the files were already
-     * physically moved by relocate() at that point.
-     */
+    /** A CAS miss after relocate() must run restore() before rollback. */
     public function testMergeThrowsAndRestoresWhenUpdateImageCasConflicts(): void
     {
         $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
@@ -1015,8 +834,7 @@ final class CarAdministrationServiceTest extends TestCase
         $this->configureTransaction($db, expectCommit: false);
         $db->method('query')->willReturn($db);
         $db->method('error')->willReturn(false);
-        // count() sequence: findByIdForUpdate(target)=1, findByIdForUpdate(source)=1,
-        // deleteCar=1, updateImage=0 (CAS conflict — no row matched the WHERE).
+        // count(): lock target, lock source, deleteCar, updateImage = 0 (CAS miss).
         $countValues = [1, 1, 1, 0];
         $db->method('count')->willReturnCallback(function () use (&$countValues) {
             return array_shift($countValues) ?? 0;
@@ -1032,9 +850,7 @@ final class CarAdministrationServiceTest extends TestCase
             ->method('relocate')
             ->with(999, 1, ['src_a.jpg'])
             ->willReturn(['src_a.jpg' => 'src_a.jpg']);
-        // restore() must run on the failure path, before rollback, with exactly
-        // the map relocate() returned — that is the whole compensating-saga
-        // contract #1867 introduced.
+        // restore() gets the exact map relocate() returned (#1867).
         $relocator->expects($this->once())
             ->method('restore')
             ->with(999, 1, ['src_a.jpg' => 'src_a.jpg']);

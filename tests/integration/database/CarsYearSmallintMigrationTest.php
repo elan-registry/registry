@@ -8,16 +8,7 @@ use ElanRegistry\Car\Car;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration 20260710120000_change_cars_year_and_drop_modifiedby
- *
- * Verifies the post-migration state of:
- * - cars.year and cars_hist.year changed from varchar(4) NOT NULL to SMALLINT UNSIGNED NULL
- * - ModifiedBy column removed from both cars and cars_hist
- * - All three cars triggers (cars_insert, cars_update, cars_delete) rebuilt without ModifiedBy
- * - Trigger INSERT/UPDATE/DELETE behaviour including the @disable_triggers guard on cars_update
- *
- * These are schema-level integration tests: they query information_schema to verify
- * column types and trigger definitions, and exercise the triggers via real DML.
+ * Post-migration state of 20260710120000_change_cars_year_and_drop_modifiedby.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -33,9 +24,7 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        // Verify the migration has been applied by checking that cars.year is SMALLINT.
-        // If the column is still VARCHAR the migration has not run — skip the suite rather
-        // than failing with misleading assertion errors.
+        // Skip, not fail, when the migration has not run: the failures would mislead.
         $yearType = $this->db->query(
             "SELECT COLUMN_TYPE
              FROM information_schema.COLUMNS
@@ -54,7 +43,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
 
         $this->testUserId = $this->createTestUser();
 
-        // Mirror the authenticated-user context required by Car::update() / Car::delete().
         $this->loginAsTestUser($this->testUserId);
 
         $this->localCarIds = [];
@@ -63,18 +51,13 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     protected function tearDown(): void
     {
         try {
-            // Clean up cars_hist for any car deleted mid-test (localCarIds) — the
-            // cars_delete trigger's own DELETE-operation row still needs removing
-            // (#1551). Running this here, not at the end of the test body, means
-            // cleanup still happens even if the test's own assertions fail.
+            // #1551: the cars_delete trigger's own hist row still needs removing.
             foreach ($this->localCarIds as $carId) {
                 $this->deleteCarWithHistory($carId);
                 $this->untrackCarId($carId);
             }
         } finally {
-            // Run even if deleteCarWithHistory() throws (a verification failure must
-            // still fail the test, but must not skip the base class's own user/car
-            // cleanup for the rest of this test's fixtures).
+            // Base cleanup must run even if deleteCarWithHistory() throws.
             parent::tearDown();
         }
     }
@@ -83,9 +66,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     // Schema checks
     // -------------------------------------------------------------------------
 
-    /**
-     * cars.year must be smallint unsigned nullable after the migration.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_schema_carsYear_isSmallintUnsignedNullable(): void
@@ -117,9 +97,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * cars_hist.year must be smallint unsigned nullable after the migration.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_schema_carsHistYear_isSmallintUnsignedNullable(): void
@@ -151,9 +128,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * The ModifiedBy column must not exist on cars after the migration.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_schema_carsModifiedBy_isAbsent(): void
@@ -174,9 +148,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * The ModifiedBy column must not exist on cars_hist after the migration.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_schema_carsHistModifiedBy_isAbsent(): void
@@ -197,9 +168,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * All three cars triggers must exist after the migration.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_schema_allThreeCarsTriggersExist(): void
@@ -225,10 +193,7 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * No trigger's ACTION_STATEMENT must reference ModifiedBy.
-     *
-     * The migration rebuilds all three triggers without the ModifiedBy column; any
-     * remaining reference would cause DML errors on cars (since the column was dropped).
+     * A remaining ModifiedBy reference would break DML on cars, since the column is gone.
      */
     #[Group('integration')]
     #[Group('migration')]
@@ -259,14 +224,7 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     // -------------------------------------------------------------------------
 
     /**
-     * Inserting a car must produce one cars_hist row with operation='INSERT' and
-     * the correct integer year value. cars_hist must also not have a ModifiedBy column.
-     *
-     * NOTE: createTestCar() purges stale cars_hist rows for new car IDs after the
-     * INSERT (to avoid pollution from recycled AUTO_INCREMENT values). To observe
-     * the INSERT trigger output we must do a direct raw INSERT on the cars table —
-     * the trigger fires synchronously before createTestCar()'s cleanup DELETE.
-     * We track the car ID manually for tearDown cleanup.
+     * Raw INSERT, not createTestCar(): that helper purges the new car's hist rows.
      */
     #[Group('integration')]
     #[Group('migration')]
@@ -274,7 +232,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     {
         $chassis = 'MIGT' . substr(uniqid(), -8);
 
-        // Insert directly so we can read cars_hist before any cleanup sweep.
         $this->db->query(
             "INSERT INTO cars (year, model, series, variant, type, chassis, mtime, user_id)
              VALUES (1966, 'Elan S3', 'S3', 'FHC', '36', ?, NOW(), ?)",
@@ -284,10 +241,8 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
         $carId = (int) $this->db->lastId();
         $this->assertGreaterThan(0, $carId, 'Direct INSERT must return a valid car ID');
 
-        // Register with IntegrationTestCase so tearDown cleans up.
         $this->trackCarId($carId);
 
-        // The cars_insert trigger must have fired and written to cars_hist.
         $histQuery = $this->db->query(
             "SELECT operation, year
              FROM cars_hist
@@ -315,8 +270,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
             'cars_hist.year must store the integer year value inserted into cars'
         );
 
-        // Confirm ModifiedBy is absent from cars_hist at the schema level (once is enough,
-        // but guard it here as a belt-and-suspenders check inside the trigger test).
         $modifiedByCheck = $this->db->query(
             "SELECT 1
              FROM information_schema.COLUMNS
@@ -338,18 +291,12 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     // -------------------------------------------------------------------------
 
     /**
-     * Updating a car's year must produce one cars_hist row with operation='UPDATE'
-     * containing OLD.year (the pre-update value).
-     *
-     * The cars_update trigger is intentionally asymmetric: it captures OLD values
-     * for most columns but uses NEW.chassis_override. This test exercises the year
-     * path only and verifies the OLD-year snapshot in history.
+     * cars_update captures OLD values except NEW.chassis_override; this checks year only.
      */
     #[Group('integration')]
     #[Group('migration')]
     public function test_updateTrigger_capturesOldYearInHistory(): void
     {
-        // Create a car with a known year so we can assert the OLD value in history.
         $carId = $this->createTestCar($this->testUserId, ['year' => 1969]);
 
         $car = new Car($carId);
@@ -384,7 +331,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
             'cars_hist must capture OLD.year (pre-update value) in the UPDATE trigger row'
         );
 
-        // Verify the cars row itself has the NEW year.
         $carsRow = $this->db->query(
             'SELECT year FROM cars WHERE id = ?',
             [$carId]
@@ -401,17 +347,12 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     // Trigger behaviour: @disable_triggers guard
     // -------------------------------------------------------------------------
 
-    /**
-     * Wrapping an UPDATE in SET @disable_triggers = 1 / SET @disable_triggers = NULL
-     * must prevent the cars_update trigger from inserting a cars_hist row.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_disableTriggersGuard_suppressesUpdateHistory(): void
     {
         $carId = $this->createTestCar($this->testUserId, ['year' => 1971]);
 
-        // Count UPDATE history rows before the guarded DML.
         $beforeCount = $this->db->query(
             "SELECT COUNT(*) AS cnt
              FROM cars_hist
@@ -420,7 +361,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
             [$carId]
         )->first()->cnt;
 
-        // Execute a raw UPDATE wrapped in the disable-triggers guard.
         $this->db->query("SET @disable_triggers = 1");
         $this->db->query(
             "UPDATE cars SET year = 1972, mtime = NOW() WHERE id = ?",
@@ -442,7 +382,7 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
             '@disable_triggers guard must prevent the cars_update trigger from firing'
         );
 
-        // Confirm cars.year was actually changed (i.e. the UPDATE ran, only the trigger was suppressed).
+        // The UPDATE itself must still run; only the trigger is suppressed.
         $carsRow = $this->db->query(
             'SELECT year FROM cars WHERE id = ?',
             [$carId]
@@ -459,20 +399,12 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     // Trigger behaviour: DELETE
     // -------------------------------------------------------------------------
 
-    /**
-     * Deleting a car must produce a cars_hist row with operation='DELETE' containing
-     * the car's year at the time of deletion.
-     *
-     * The test deletes via Car::delete() (which calls the application layer)
-     * and then inspects cars_hist directly.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_deleteTrigger_createsHistRowWithOperation(): void
     {
         $carId = $this->createTestCar($this->testUserId, ['year' => 1973]);
 
-        // Track locally so tearDown doesn't try to clean up an already-deleted car.
         $this->localCarIds[] = $carId;
 
         $car    = new Car($carId);
@@ -480,7 +412,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
 
         $this->assertTrue($result, 'Car::delete() must return true on success');
 
-        // cars row must be gone.
         $carsResult = $this->db->query(
             'SELECT id FROM cars WHERE id = ?',
             [$carId]
@@ -492,7 +423,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
             'cars row must not exist after Car::delete()'
         );
 
-        // cars_hist must have a DELETE row from the trigger.
         $histQuery = $this->db->query(
             "SELECT operation, year
              FROM cars_hist

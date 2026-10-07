@@ -8,16 +8,7 @@ use ElanRegistry\Transfer\TransferStatus;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for car transfer workflow
- *
- * Tests the complete car transfer process:
- * - Transfer request creation
- * - Transfer approval (ownership change)
- * - Transfer denial (ownership preservation)
- * - Error handling and validation
- * - Audit trail verification
- *
- * Requires database connection and real tables.
+ * Car transfer workflow: request, approve, deny, errors, and audit trail.
  */
 #[Group('integration')]
 #[Group('transfer')]
@@ -40,9 +31,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
     // Transfer Request Creation Tests
     // =========================================================================
 
-    /**
-     * Test transfer request creation with valid data
-     */
     public function testCreateTransferRequest(): void
     {
         if (!$this->databaseConnected || !$this->testCarId || !$this->testUserId) {
@@ -78,9 +66,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
         $this->assertEquals('pending', $request->status, "Request should be in pending status");
     }
 
-    /**
-     * Test duplicate transfer request prevention
-     */
     public function testPreventDuplicateTransferRequests(): void
     {
         if (!$this->databaseConnected || !$this->testCarId || !$this->testUserId) {
@@ -102,9 +87,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
     // Transfer Approval Tests
     // =========================================================================
 
-    /**
-     * Test transfer approval updates status and audit trail
-     */
     public function testTransferApprovalUpdatesStatus(): void
     {
         if (!$this->databaseConnected || !$this->testCarId || !$this->testUserId) {
@@ -129,9 +111,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
         $this->assertNotNull($request->completed_date, "Completion date should be set");
     }
 
-    /**
-     * Test that approval only works for pending requests
-     */
     public function testApprovalRequiresPendingStatus(): void
     {
         if (!$this->databaseConnected) {
@@ -152,9 +131,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
     // Transfer Denial Tests
     // =========================================================================
 
-    /**
-     * Test transfer denial updates status without changing ownership
-     */
     public function testTransferDenialUpdatesStatus(): void
     {
         if (!$this->databaseConnected || !$this->testCarId) {
@@ -187,9 +163,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
     // Error Handling Tests
     // =========================================================================
 
-    /**
-     * Test that non-existent transfer request returns proper error
-     */
     public function testNonExistentTransferReturns404(): void
     {
         if (!$this->databaseConnected) {
@@ -209,11 +182,7 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
     // =========================================================================
 
     /**
-     * Test that a second concurrent approval attempt is rejected by the atomic claim.
-     *
-     * The TOCTOU gate is an UPDATE with AND status = 'pending' in the WHERE clause.
-     * Only the first admin's UPDATE matches the pending row; a subsequent UPDATE finds
-     * no pending row and returns 0 affected rows — the duplicate is detected atomically.
+     * #1175: `AND status = 'pending'` in the claim UPDATE lets only one admin claim the request.
      */
     public function testConcurrentApprovalIsRejectedByAtomicClaim(): void
     {
@@ -223,23 +192,19 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
 
         $requestId = $this->createTransferRequest($this->testCarId, $this->testUserId);
 
-        // First admin claims the request atomically.
-        // AND status = 'pending' is the TOCTOU gate: only a pending row matches.
         $first = $this->db->query(
             "UPDATE car_transfer_requests SET status = 'completed', completed_date = NOW(), admin_notes = ? WHERE id = ? AND status = 'pending'",
             ['First admin', $requestId]
         );
         $this->assertEquals(1, $first->count(), 'First admin should claim the pending row (1 row affected)');
 
-        // Second admin attempts the same claim on the same row.
-        // The row is now 'completed', so AND status = 'pending' matches 0 rows.
+        // The row is now 'completed', so the pending gate matches 0 rows.
         $second = $this->db->query(
             "UPDATE car_transfer_requests SET status = 'completed', completed_date = NOW(), admin_notes = ? WHERE id = ? AND status = 'pending'",
             ['Second admin', $requestId]
         );
         $this->assertEquals(0, $second->count(), 'Second admin should find no pending row (TOCTOU detected: 0 rows affected)');
 
-        // The row must still reflect the first admin's claim, not the second admin's.
         $row = $this->db->query(
             'SELECT status, admin_notes FROM car_transfer_requests WHERE id = ?',
             [$requestId]
@@ -251,12 +216,7 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
     }
 
     /**
-     * Test that CarTransferRepository::updateStatus() returns false for an already-processed request.
-     *
-     * updateStatus() uses AND status = 'pending' in its WHERE clause for terminal
-     * transitions. This means attempting to mark an already-completed request as
-     * completed a second time matches 0 rows and returns false — the correct TOCTOU
-     * signal that process-transfer-approve.php uses to detect and reject duplicates.
+     * updateStatus() returning false is the duplicate signal process-transfer-approve.php uses.
      */
     public function testUpdateStatusReturnsFalseForAlreadyProcessedRequest(): void
     {
@@ -264,28 +224,20 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
             $this->markTestSkipped('Database or test data not available');
         }
 
-        // Insert the request already in 'completed' state to simulate a row that
-        // has already been approved by another admin.
+        // Already approved by another admin.
         $requestId = $this->createTransferRequest($this->testCarId, $this->testUserId, [
             'status'         => 'completed',
             'completed_date' => date('Y-m-d H:i:s'),
             'admin_notes'    => 'First admin',
         ]);
 
-        // A second admin attempting to approve the same request calls updateStatus().
-        // Because the WHERE clause includes AND status = 'pending', no row matches,
-        // and the method returns false — the correct TOCTOU signal.
         $result = $this->repo->updateStatus($requestId, TransferStatus::Completed, 'Second admin');
 
         $this->assertFalse($result, 'updateStatus() must return false when the row is already in a terminal status (TOCTOU gate)');
     }
 
     /**
-     * Test that a failed transfer rolls back the status claim atomically.
-     *
-     * This is the partial-state test for #1175: if the car ownership transfer
-     * fails after the status has been claimed, the outer transaction rollback
-     * must leave the request in 'pending' — not 'completed'.
+     * #1175: if the car transfer fails after the claim, the rollback must leave the request 'pending'.
      */
     public function testStatusClaimRollsBackIfTransferFails(): void
     {
@@ -295,19 +247,15 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
 
         $requestId = $this->createTransferRequest($this->testCarId, $this->testUserId);
 
-        // Simulate the outer transaction that process-transfer-approve.php begins.
+        // The outer transaction that process-transfer-approve.php begins.
         $this->db->beginTransaction();
 
-        // Step 1: claim the request (TOCTOU gate succeeds).
         $claimed = $this->repo->updateStatus($requestId, TransferStatus::Completed, 'Admin claim');
         $this->assertTrue($claimed, 'Precondition: initial claim must succeed');
 
-        // Step 2: simulate a failed car transfer by rolling back the outer transaction
-        // (mirrors what the catch block in process-transfer-approve.php does when
-        // $car->transfer() throws).
+        // As the catch block in process-transfer-approve.php does when $car->transfer() throws.
         $this->db->rollBack();
 
-        // The rollback must have reverted the status claim: the row is still 'pending'.
         $row = $this->db->query(
             "SELECT status FROM car_transfer_requests WHERE id = ?",
             [$requestId]
@@ -317,9 +265,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
         $this->assertEquals('pending', $row->status, 'Status must revert to pending when the outer transaction is rolled back');
     }
 
-    /**
-     * Test that already-processed requests cannot be re-processed
-     */
     public function testCannotProcessAlreadyProcessedRequest(): void
     {
         if (!$this->databaseConnected || !$this->testCarId) {

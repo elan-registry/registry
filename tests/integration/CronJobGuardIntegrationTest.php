@@ -8,29 +8,13 @@ use ElanRegistry\Cron\CronJobGuard;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB behavioral test for CronJobGuard::claim() against the
- * `er_cron_job_runs` table (#2034).
+ * #2034: CronJobGuard::claim() against real MySQL types and the job_name key.
+ * Logic is unit-tested in tests/unit/cron/CronJobGuardTest.php. The
+ * "Integration" suffix avoids a "Cannot redeclare class" fatal when phpunit.xml
+ * loads both suites in one process.
  *
- * Named CronJobGuardIntegrationTest, not CronJobGuardTest, to avoid
- * duplicating tests/unit/cron/CronJobGuardTest.php's global class name — the
- * two are only ever loaded together by phpunit.xml's default (no -c flag)
- * config, which combines the Unit and Integration testsuites into a single
- * process and previously fataled with "Cannot redeclare class" the moment
- * both files were parsed. composer test:full's split -c phpunit-unit.xml /
- * -c phpunit-integration.xml invocations run each suite as a separate
- * process and never hit this, which is why it went unnoticed.
- *
- * tests/unit/cron/CronJobGuardTest.php already covers claim()'s logic
- * against a fake database — this file exists to prove the real SQL actually
- * behaves as expected against real MySQL boolean/datetime column types and
- * the `job_name` primary key, which a mocked-DB unit test cannot fully prove
- * (this repo's own convention for new SQL: execute it, don't just read it).
- *
- * Uses the seeded `brevo_reconciliation` row (originally 'reconciliation',
- * renamed by migration 20260918133038_rename_reconciliation_job, #2129) as
- * its fixture, snapshotting and restoring its `enabled`/`last_run_at`
- * columns the same way VerificationSettingsCronReadyTest.php handles
- * er_verification_settings.last_cron_request_at.
+ * Fixture: the seeded `brevo_reconciliation` row (#2129), with `enabled` and
+ * `last_run_at` restored in tearDown().
  */
 #[Group('integration')]
 final class CronJobGuardIntegrationTest extends IntegrationTestCase
@@ -109,8 +93,7 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
 
     public function testClaimNoOpsWhenJobDisabled(): void
     {
-        // Claimable interval-wise (NULL last_run_at), but disabled — the
-        // `enabled = 1` clause in claim()'s WHERE must still block it.
+        // Disabled with NULL last_run_at: `enabled = 1` must still block it.
         $this->setFixtureState(enabled: false, lastRunAt: null);
 
         $guard = new CronJobGuard($this->db);
@@ -138,14 +121,8 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
     }
 
     /**
-     * The `< NOW() - INTERVAL ? HOUR` comparison in claim()'s WHERE clause is
-     * strictly exclusive: a last_run_at exactly `$intervalHours` old does NOT
-     * count as elapsed, only one strictly older does. This can only be
-     * proven against real MySQL datetime arithmetic — a fake database has no
-     * actual notion of elapsed time to get right or wrong, so this boundary
-     * was previously asserted only via a unit test checking the SQL text
-     * contains `< NOW() - INTERVAL ? HOUR` (a string, not a behavior) — a
-     * change from `<` to `<=` would have passed every existing test.
+     * The interval comparison is strictly `<`: exactly $intervalHours old is not
+     * elapsed. Only real MySQL datetime math can catch a change to `<=`.
      */
     public function testClaimBoundaryIsStrictlyExclusive(): void
     {
@@ -168,13 +145,8 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
     }
 
     /**
-     * Two sequential claim()s against the real connection: the atomic
-     * conditional UPDATE must self-guard even without an interval elapsing
-     * between them, proving the single-statement UPDATE (not just PHP-level
-     * logic) is what enforces one winner. True concurrent-connection racing
-     * isn't practical in PHPUnit; sequential calls against the real DB are
-     * the closest available proxy for the atomicity property this class
-     * exists to provide.
+     * The single-statement conditional UPDATE allows only one winner. Sequential
+     * calls are the closest practical proxy for concurrency in PHPUnit.
      */
     public function testSequentialClaimsOnlyFirstSucceeds(): void
     {
@@ -191,14 +163,8 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
     // --- send_verification_batch (#1885) -----------------------------------
 
     /**
-     * A real claim() round-trip against the 'send_verification_batch' row
-     * seeded by 20260916000001_seed_send_verification_batch_cron.php, proving
-     * both that the allowlist entry (CronJobGuardTest's unit coverage) and the
-     * seeded row agree — a name present in only one of the two silently never
-     * claims, per CronJobGuard's own class docblock.
-     *
-     * Uses its own fixture snapshot/restore (distinct from the class-level
-     * 'brevo_reconciliation' fixture above) since this is a different row.
+     * The send_verification_batch allowlist entry and its seeded row agree: a
+     * name present in only one of them never claims.
      */
     public function testClaimRoundTripAgainstSeededSendVerificationBatchRow(): void
     {
@@ -217,9 +183,7 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
         $originalLastRunAt = !empty($row->last_run_at) ? (string) $row->last_run_at : null;
 
         try {
-            // The row is seeded enabled=0 (paused) in every environment —
-            // enable it for the duration of this claim test, matching how the
-            // class-level 'brevo_reconciliation' fixture is manipulated above.
+            // Seeded enabled=0 (paused) in every environment.
             $this->db->query(
                 'UPDATE er_cron_job_runs SET enabled = 1, last_run_at = NULL WHERE job_name = ?',
                 [$jobName]

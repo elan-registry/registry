@@ -8,23 +8,13 @@ use ElanRegistry\Transfer\TransferStatus;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for CarTransferRepository against the real database.
- *
- * Verifies that repository methods produce correct SQL results — column names,
- * WHERE clauses, JOINs, status filters, and round-trip reads. Mock-backed unit
- * smoke tests live in tests/unit/transfer/CarTransferRepositoryTest.php.
+ * CarTransferRepository against the real database. Mock-backed unit tests:
+ * tests/unit/transfer/CarTransferRepositoryTest.php.
  */
 #[Group('integration')]
 #[Group('transfer')]
 final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTestCase
 {
-    // =========================================================================
-    // Tests
-    // =========================================================================
-
-    /**
-     * create() + findById() round-trip: the full row is persisted and retrieved.
-     */
     public function testCreateAndFindByIdRoundTrip(): void
     {
         $ownerId     = $this->createTestUser();
@@ -40,17 +30,11 @@ final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTest
         $this->assertSame('pending', $row->status, 'Schema DEFAULT must set status to pending');
     }
 
-    /**
-     * findById() returns null for a non-existent ID.
-     */
     public function testFindByIdReturnsNullForMissingId(): void
     {
         $this->assertNull($this->repo->findById(PHP_INT_MAX));
     }
 
-    /**
-     * hasPendingForCar() returns true once a pending request exists.
-     */
     public function testHasPendingForCarReturnsTrueWhenPendingExists(): void
     {
         $ownerId     = $this->createTestUser();
@@ -62,18 +46,11 @@ final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTest
         $this->assertTrue($this->repo->hasPendingForCar($carId, $requesterId));
     }
 
-    /**
-     * hasPendingForCar() returns false when no pending request exists.
-     */
     public function testHasPendingForCarReturnsFalseWhenNoneExists(): void
     {
         $this->assertFalse($this->repo->hasPendingForCar(PHP_INT_MAX, PHP_INT_MAX));
     }
 
-    /**
-     * findPendingById() returns the row while status is pending, and returns
-     * null after updateStatus() changes it to denied.
-     */
     public function testFindPendingByIdBeforeAndAfterStatusChange(): void
     {
         $ownerId     = $this->createTestUser();
@@ -94,9 +71,6 @@ final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTest
         );
     }
 
-    /**
-     * updateStatus() persists the new status: read-back via raw query confirms the write.
-     */
     public function testUpdateStatusPersistsChange(): void
     {
         $ownerId     = $this->createTestUser();
@@ -115,9 +89,6 @@ final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTest
         $this->assertSame('Audit note', $row->admin_notes);
     }
 
-    /**
-     * findPendingWithCarById() returns joined car_id and current_owner_id fields.
-     */
     public function testFindPendingWithCarByIdReturnsJoinedFields(): void
     {
         $ownerId     = $this->createTestUser();
@@ -132,9 +103,6 @@ final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTest
         $this->assertSame((string) $ownerId, (string) $row->current_owner_id, 'current_owner_id must match car owner');
     }
 
-    /**
-     * countPending() increments when a new pending request is created.
-     */
     public function testCountPendingIncreasesAfterCreate(): void
     {
         $before = $this->repo->countPending();
@@ -149,8 +117,7 @@ final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTest
     }
 
     /**
-     * hasPendingForCar() returns false after the pending request is resolved —
-     * verifying the re-submission guard lifts once a request is no longer pending.
+     * The re-submission guard lifts once the request is no longer pending.
      */
     public function testHasPendingForCarReturnsFalseAfterStatusChange(): void
     {
@@ -169,9 +136,6 @@ final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTest
         );
     }
 
-    /**
-     * getTodayStatusCounts() returns a row with the correct count after a denial.
-     */
     public function testGetTodayStatusCountsReturnsCountAfterDenial(): void
     {
         $ownerId     = $this->createTestUser();

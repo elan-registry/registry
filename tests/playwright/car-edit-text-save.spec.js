@@ -1,39 +1,13 @@
-// tests/playwright/car-edit-text-save.test.js
-//
-// Regression test for issue #796: FilePond processes all existing images on
-// every save, causing slow text-only saves.
-//
-// Fix: pond.processFiles() now filters to new (non-LOCAL) files only.
-// On a text-only save, newFileIds is empty so processFiles() is skipped and
-// submitCarForm() is called directly.
-//
-// What this test verifies:
-//   - The POST to edit.php includes a `filenames=` field (existing order preserved)
-//   - The POST includes a `file[]` field whose filename is "blob" (sentinel for
-//     no new uploads — only present when no new files were added)
-//   - The POST does NOT include binary image data in any `file[]` field beyond
-//     the sentinel (i.e., existing LOCAL images were not re-processed)
-//   - The form submit completes successfully (mocked 200 response)
-//
-// All server calls are intercepted with page.route() so no local DB row is needed.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
+// Car edit form save payloads. Most tests mock the server with page.route(),
+// so no DB row is needed. #796: a text-only save must not re-process
+// existing (LOCAL) FilePond images; it sends only a sentinel `blob` file.
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
 const { CAR_ID_STANDARD, CAR_ID_WITH_SPECIAL_CHARS, CAR_ID_WITH_HISTORY } = require('./fixtures.js');
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /**
- * Parse a multipart/form-data body captured from a Playwright request.
- * Returns a map of field name -> array of entries, where each entry is
- * { value, filename, size } for file parts and { value } for text parts.
- *
- * This is a minimal parser sufficient for the assertions in this test.
- * It handles the subset of RFC 2046 produced by the browser FormData API.
+ * Minimal multipart/form-data parser for browser FormData bodies.
  *
  * @param {Buffer} body - Raw request body
  * @param {string} boundary - Boundary string from Content-Type header
@@ -100,17 +74,10 @@ function parseMultipart(body, boundary) {
     return fields;
 }
 
-// ---------------------------------------------------------------------------
-// Test suite
-// ---------------------------------------------------------------------------
-
 test.describe('Car edit form — text-only save (regression #796)', () => {
 
     test.beforeEach(async ({ page }) => {
-        // Every test here needs an authenticated session against the local
-        // Docker DB. Without credentials the login helper falls back to a
-        // placeholder account that cannot exist, so skip on the real cause
-        // rather than letting each test guard on "did we land on login.php".
+        // Without credentials login() uses a placeholder account; skip on the real cause.
         test.skip(
             !process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD,
             'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests'
@@ -119,10 +86,6 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
     });
 
     test('text-only save sends sentinel blob and no binary image data', async ({ page }) => {
-        // ------------------------------------------------------------------
-        // 1. Mock fetchImages so FilePond hydrates one existing (LOCAL) image
-        //    without hitting the real database.
-        // ------------------------------------------------------------------
         await page.route(
             '**/app/api/cars/save.php',
             async (route, request) => {
@@ -147,18 +110,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                     return;
                 }
 
-                // The submit-capture route registered later (Playwright evaluates
-                // the most recently registered handler first — LIFO) intercepts
-                // the form POST before this handler sees it. Non-fetchImages
-                // requests that reach here are passed through unchanged.
+                // The later submit-capture route runs first (LIFO).
                 await route.fallback();
             }
         );
 
-        // ------------------------------------------------------------------
-        // 2. Navigate to the car edit form for a fake car ID.
-        //    The page loads PHP server-side, but all JS API calls are mocked.
-        // ------------------------------------------------------------------
         await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
 
         // beforeEach has established an authenticated session, so edit.php must
@@ -171,31 +127,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             { timeout: 15000 }
         );
 
-        // ------------------------------------------------------------------
-        // 3. NOTE (issue #1846): this test previously waited here for FilePond
-        //    to hydrate the mocked existing image via fetchImages. That wait
-        //    can never succeed via this navigation: fetchImages only fires
-        //    when edit.php renders with $action === 'updateCar'
-        //    (window.editCarConfig.isUpdate), which is only ever set from a
-        //    real POST — never from the car_id GET query param used above.
-        //    So #car_id stays empty and fetchImages never fires, regardless
-        //    of whether the car exists. The wait always timed out (silently,
-        //    via .catch()), and combined with earlier step overhead this
-        //    pushed the test close enough to Playwright's default 30s
-        //    timeout that the test runner's own teardown raced the test body
-        //    — producing the "page.route: Target page ... has been closed"
-        //    error this issue reports, rather than a real failure in the
-        //    save flow. Removed: the sentinel-blob assertions below hold
-        //    identically whether the pond starts empty or hydrated, since a
-        //    text-only save with zero LOCAL files must still produce the
-        //    sentinel and no binary data.
-        // ------------------------------------------------------------------
+        // fetchImages fires only in update mode, which a GET never sets
+        // (#1846), so the pond starts empty. The sentinel assertions hold
+        // either way.
 
-        // ------------------------------------------------------------------
-        // 4. Capture the submit POST payload via a second, higher-priority route.
-        //    We register it after the fetchImages route so Playwright evaluates
-        //    it first (LIFO order).
-        // ------------------------------------------------------------------
+        // Registered after the fetchImages route so it runs first (LIFO).
         let capturedRequest = null;
 
         await page.route('**/app/api/cars/save.php', async (route, request) => {
@@ -226,11 +162,6 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fallback();
         });
 
-        // ------------------------------------------------------------------
-        // 5. Click the submit button to trigger a text-only save.
-        //    No image changes have been made — only LOCAL (existing) files are
-        //    present in FilePond at this point.
-        // ------------------------------------------------------------------
         const submitBtn = page.locator('#submit');
         await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
@@ -242,9 +173,6 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await page.waitForTimeout(100);
         }
 
-        // ------------------------------------------------------------------
-        // 6. Assert the captured request payload.
-        // ------------------------------------------------------------------
         expect(capturedRequest, 'Form submit POST was not captured — did the submit button fire?').not.toBeNull();
 
         const contentType = capturedRequest.contentType;
@@ -275,10 +203,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         const fileEntries = fields.get('file[]');
 
-        // --- Assertion C: sentinel blob is present ---
-        // When no new files are uploaded, submitCarForm() appends:
-        //   formData.append('file[]', new Blob([]), 'blob')
-        // This signals the server that no new image data was sent.
+        // submitCarForm() appends an empty 'blob' when there are no new files.
         const sentinelEntry = fileEntries.find(e => e.filename === 'blob');
         expect(
             sentinelEntry,
@@ -291,10 +216,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             'Sentinel blob must be empty (0 bytes) — it is a marker, not image data'
         ).toBe(0);
 
-        // --- Assertion D: no binary image data in file[] ---
-        // Before the fix, LOCAL files were run through processFiles() and their
-        // transformed blobs were appended as file[] entries with non-zero size.
-        // After the fix, the only file[] entry for a text-only save is the sentinel.
+        // Before the fix, LOCAL files were re-processed into non-empty file[] entries.
         const nonSentinelFileEntries = fileEntries.filter(e => e.filename !== 'blob');
         expect(
             nonSentinelFileEntries.length,
@@ -303,10 +225,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBe(0);
     });
 
-    // -----------------------------------------------------------------------
-    // Guard test: verify the sentinel is NOT present when new files ARE added.
-    // This ensures the sentinel-detection logic is not trivially always-true.
-    // -----------------------------------------------------------------------
+    // Guard: proves the sentinel check is not always true.
     test('sentinel blob absent when new file is queued for upload', async ({ page }) => {
         // Mock fetchImages to return no existing images (clean pond)
         await page.route('**/app/api/cars/save.php', async (route, request) => {
@@ -414,9 +333,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         expect(fileAdded, 'Could not add a synthetic file to FilePond').toBe(true);
 
-        // Wait for FilePond to register the synthetic file. This must succeed —
-        // a rejected synthetic file would leave the pond empty and make the
-        // sentinel assertion below vacuously true.
+        // Must succeed: a rejected file would make the sentinel assertion vacuous.
         await page.waitForFunction(
             () => {
                 const root = document.querySelector('.filepond--root');
@@ -477,32 +394,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBeUndefined();
     });
 
-    // -----------------------------------------------------------------------
-    // Regression test for issue #838: owner comments double-encoded on save.
-    //
-    // Before the fix, updateComments() called \Input::get('comments') which
-    // runs htmlspecialchars() on the raw POST value.  Special characters like
-    // é, ´, &, ñ were stored as &eacute;, &#039;, &amp;, &ntilde; in the DB.
-    // The display layer then ran htmlspecialchars() again at render time,
-    // producing literal entity text visible to users.
-    //
-    // After the fix, updateComments() calls ElanRegistry\Input::raw('comments')
-    // which returns the decoded POST value without any HTML encoding.
-    //
-    // This test verifies two things:
-    //   A. The captured POST body `comments` field equals the raw Unicode string
-    //      (no HTML entities in what is transmitted to the server).
-    //   B. When the server responds with the same plain-text value (simulating
-    //      the stored and then returned DB row), the textarea displays the
-    //      unencoded Unicode characters — not entity strings like &amp;#180;s.
-    // -----------------------------------------------------------------------
+    // #838: comments were double-encoded on save (\Input::get()). Checks the
+    // POST sends raw Unicode and the textarea shows it unencoded.
     test('comments with special characters save and reload as plain text', async ({ page }) => {
         const SPECIAL_CHARS_INPUT = "it´s original registration — é & ñ";
 
-        // ------------------------------------------------------------------
-        // 1. Mock fetchImages (empty pond — not relevant to this test) and
-        //    capture the form-submit POST.
-        // ------------------------------------------------------------------
         await page.route('**/app/api/cars/save.php', async (route, request) => {
             const postData = request.postData() || '';
             if (postData.includes('action=fetchImages')) {
@@ -516,10 +412,6 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fallback();
         });
 
-        // ------------------------------------------------------------------
-        // 2. Navigate to the car edit form (car 650 from the bug report).
-        //    The PHP page renders server-side; we only mock the JS API calls.
-        // ------------------------------------------------------------------
         await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, { waitUntil: 'domcontentloaded' });
 
         expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
@@ -534,14 +426,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         const commentsTextarea = page.locator('#comments');
         await expect(commentsTextarea, 'edit.php must render a #comments textarea').toBeVisible();
 
-        // ------------------------------------------------------------------
-        // 3. Fill the comments textarea with the special-character string and
-        //    register a higher-priority route (LIFO) that:
-        //      - Captures the raw POST body for Assertion A
-        //      - Returns a mocked cardetails response that echoes the same
-        //        plain-text value back (simulating the fixed DB round-trip)
-        //        for Assertion B.
-        // ------------------------------------------------------------------
+        // A higher-priority route (LIFO) captures the POST and echoes the value back.
         await commentsTextarea.fill(SPECIAL_CHARS_INPUT);
 
         let capturedComments = null;
@@ -550,9 +435,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             if (request.method() === 'POST') {
                 const postData = request.postData() || '';
                 if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
-                    // Parse multipart to extract the comments text field.
-                    // Fail loudly if Content-Type or postDataBuffer() is unexpected —
-                    // silent nulls here would produce a misleading 8s timeout below.
+                    // Fail loudly here; a silent null shows as a misleading 8s timeout below.
                     const contentType = request.headers()['content-type'] || '';
                     const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
                     if (!boundaryMatch) {
@@ -593,9 +476,6 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fallback();
         });
 
-        // ------------------------------------------------------------------
-        // 4. Click submit to trigger the form save.
-        // ------------------------------------------------------------------
         const submitBtn = page.locator('#submit');
         await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
@@ -607,22 +487,12 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await page.waitForTimeout(100);
         }
 
-        // ------------------------------------------------------------------
-        // 5. Assertion A: the POST body transmitted the raw Unicode string,
-        //    not HTML-encoded entities.
-        //    Before the fix the browser FormData would still send the raw
-        //    value (encoding happens server-side), so this assertion confirms
-        //    the client is not pre-encoding the value.  It also serves as a
-        //    baseline that our multipart parser correctly reads text fields.
-        // ------------------------------------------------------------------
+        // Assertion A: the client does not pre-encode the value.
         expect(
             capturedComments,
             'POST body must contain the comments field — was the form submitted?'
         ).not.toBeNull();
 
-        // Ensure none of the common entity patterns produced by htmlspecialchars()
-        // appear in the transmitted value.  If they do, something is encoding
-        // before the POST (not the expected server-side regression, but still wrong).
         expect(
             capturedComments,
             'POST comments must not contain HTML entity &amp; — value should be raw Unicode'
@@ -649,18 +519,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             'POST comments must equal the raw Unicode input exactly (regression #838)'
         ).toBe(SPECIAL_CHARS_INPUT);
 
-        // ------------------------------------------------------------------
-        // 6. Assertion B: after the mocked server response, submitCarForm()
-        //    calls $('#comments').val(data.cardetails.comments) with the
-        //    plain-text value returned by the server.  The textarea must show
-        //    the same unencoded string — not entity-escaped text like
-        //    "it&amp;#180;s..." that would appear if the server returned a
-        //    double-encoded value and jQuery set it verbatim into the DOM.
-        // ------------------------------------------------------------------
-
-        // Wait for submitCarForm() to process the mock response and update the textarea.
-        // The JS path is: fetch → response.json() → $('#comments').val(data.cardetails.comments).
-        // We poll the textarea value until it changes or the timeout expires.
+        // Assertion B: a double-encoded value would show entity text in the textarea.
         await page.waitForFunction(
             (expected) => {
                 const el = document.getElementById('comments');
@@ -693,27 +552,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBe(SPECIAL_CHARS_INPUT);
     });
 
-    // -----------------------------------------------------------------------
-    // Mixed scenario: one existing (LOCAL) image + one new upload.
-    // This is the most common real-world path: adding a photo to a car that
-    // already has images. Verifies that:
-    //   - Only the new file appears in file[] (not the LOCAL one)
-    //   - The existing filename is preserved in filenames=
-    //   - No sentinel blob is sent (hasNewFiles is true)
-    // -----------------------------------------------------------------------
+    // Existing LOCAL image plus one new upload: only the new file is in
+    // file[], the existing name is in filenames=, and no sentinel is sent.
     test('mixed save: existing image preserved in filenames, only new file in file[]', async ({ page }) => {
-        // This test specifically verifies that an existing (hydrated) image
-        // survives a save alongside a newly-added file — it requires real
-        // update-mode (window.editCarConfig.isUpdate). edit.php only ever
-        // sets that via a real POST with action=updateCar (see issue #1846
-        // — a plain car_id GET query param never triggers it). Reproduce
-        // the real "Update Car" button's POST directly (mirrors
-        // app/views/cars/_car_hero_actions.php and the precedent in
-        // car-edit-missing-car.spec.js) using CAR_ID_WITH_HISTORY — a real,
-        // existing car. E2E_DEV_ADMIN_USERNAME is provisioned as an Administrator
-        // (permission_id=2), so updateCarDetails()'s admin/editor bypass
-        // (edit.php's hasPerm([2,3]) check) grants access regardless of
-        // whether E2E_DEV_ADMIN_USERNAME owns this specific car.
+        // Needs real update mode, which only a POST with action=updateCar sets
+        // (#1846). The admin account bypasses the ownership check.
         await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
         expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
@@ -721,13 +564,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         const csrfToken = await page.locator('#csrf').inputValue();
         expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
 
-        // Do NOT mock fetchImages here — CAR_ID_WITH_HISTORY is a real car
-        // with real existing photo(s) already in the DB, so fetchImages
-        // returns genuine data once update mode is reached below. Asserting
-        // against the real returned filename(s) (captured after hydration)
-        // is more robust than hardcoding an assumed name, and avoids a mock
-        // losing a timing race against the POST-triggered page reload.
-
+        // Do not mock fetchImages: a mock can lose the race with the POST reload.
         await Promise.all([
             page.waitForLoadState('domcontentloaded'),
             page.evaluate(({ csrf, carId }) => {
@@ -813,10 +650,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         expect(fileAdded, 'Could not add a synthetic file to FilePond').toBe(true);
 
-        // Wait for new file to register (pond should now have 2 items: LOCAL + new).
-        // This must succeed — if the synthetic file were rejected the pond would
-        // hold only the LOCAL image, and the "exactly one new upload" assertion
-        // below would fail confusingly rather than reporting the real cause.
+        // Must succeed: otherwise the "exactly one new upload" assertion fails confusingly.
         await page.waitForFunction(
             () => {
                 const root = document.querySelector('.filepond--root');
@@ -873,23 +707,8 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         expect(realUploads[0].filename).toBe('new-photo.jpg');
     });
 
-    // -----------------------------------------------------------------------
-    // Regression test for issue #2295: update mode set the saved model value
-    // before the model dropdown had finished loading, so a slow models.php
-    // left #model empty and save.php rejected the form.
-    //
-    // Fix: edit.php now awaits the named onYearChange() function — which
-    // calls ModelLoader.populateModelDropdown() against
-    // app/api/cars/models.php — before setting the saved model value, and
-    // keeps #submit disabled via blockSubmit('models')/unblockSubmit('models')
-    // while waiting.
-    //
-    // This test delays models.php by 1.5s and verifies:
-    //   - #submit is disabled while models.php is still pending
-    //   - #model is populated with the saved value once models.php resolves
-    //   - #submit is enabled once models.php resolves
-    //   - the eventual save POST carries the correct, non-empty model
-    // -----------------------------------------------------------------------
+    // #2295: a slow models.php left #model empty in update mode. Delays
+    // models.php by 1.5s and checks #submit stays disabled until #model is set.
     test('update mode: #submit stays disabled until the model dropdown finishes loading', async ({ page }) => {
         // Reproduce the real "Update Car" POST, as in the mixed-save test above —
         // this is the only way to reach real update mode (window.editCarConfig.isUpdate).
@@ -900,9 +719,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         const csrfToken = await page.locator('#csrf').inputValue();
         expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
 
-        // Delay models.php by 1.5s before the update-mode POST navigation, so
-        // the delay is already in effect the moment edit.php's ready handler
-        // calls onYearChange() during cfg.isUpdate pre-population.
+        // Set the delay before the POST, so it is in effect when the ready handler runs.
         await page.route('**/app/api/cars/models.php', async (route) => {
             await new Promise((resolve) => setTimeout(resolve, 1500));
             await route.fallback();
@@ -929,9 +746,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
         ]);
 
-        // Wait for the post-navigation document to settle before reading
-        // window.editCarConfig — a bare evaluate() right after the POST can
-        // race the navigation and throw "Execution context was destroyed".
+        // A bare evaluate() right after the POST can hit "Execution context was destroyed".
         await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
 
         const isUpdateMode = await page.evaluate(() => window.editCarConfig?.isUpdate === true);
@@ -944,8 +759,6 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
         // --- Assertion A: #submit must still be disabled while models.php is held ---
-        // The 1.5s route delay started before the POST above, so as long as we
-        // check well inside that window, the models request is still pending.
         const elapsedBeforeCheck = Date.now() - navigationStart;
         expect(
             elapsedBeforeCheck,
@@ -1032,33 +845,10 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBe(expectedModel);
     });
 
-    // -----------------------------------------------------------------------
-    // Regression test for issue #2295 (failure path): ModelLoader swallows a
-    // models.php error and resolves with an empty model list rather than
-    // rejecting (model-loader.js's loadAllModels() catches every error and
-    // returns {}). So onYearChange() never rejects on a real models.php
-    // failure, and the naive fix (await the call, then always unblock
-    // #submit) silently re-enables Save with #model left empty — reproducing
-    // the exact "Please select Model" save.php rejection #2295 set out to fix.
-    //
-    // The fix in edit.php checks, after awaiting onYearChange(), that #model
-    // was actually set to the saved value. On mismatch it throws so the
-    // .catch() keeps blockSubmit('models') in effect and shows a warning.
-    //
-    // This test routes models.php to a 500 and verifies #submit stays
-    // disabled and #model is not left holding a value the dropdown doesn't
-    // contain. It waits for #message's text (set by the .catch() branch)
-    // rather than its visibility: the pre-existing pond.on('addfile', ...)
-    // handler (car-edit.js) hides #message unconditionally whenever a photo
-    // finishes hydrating, which can race the warning this fix shows and hide
-    // it again — a separate, pre-existing cross-feature interaction, not
-    // something this fix changes. Content set by .html() survives that hide.
-    // Waiting for the text (not just "disabled at this instant") also proves
-    // the failure actually landed — blockSubmit('models') already disables
-    // #submit at document ready, before models.php answers, so a bare
-    // toBeDisabled() check right after navigation would pass even without
-    // this fix.
-    // -----------------------------------------------------------------------
+    // #2295 failure path: ModelLoader swallows a models.php error and returns
+    // an empty list, so #submit must stay blocked. Waits for #message text,
+    // not visibility: the pond 'addfile' handler can hide #message. A bare
+    // toBeDisabled() would pass without the fix (#submit starts disabled).
     test('update mode: #submit stays disabled when the model dropdown fails to load', async ({ page }) => {
         await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
@@ -1101,10 +891,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         const submitBtn = page.locator('#submit');
         await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
-        // Wait for the failure to actually land before checking #submit —
-        // otherwise this would pass on the pre-fix code too, since
-        // blockSubmit('models') already disables #submit before models.php
-        // answers (see comment above).
+        // Wait for the failure to land; #submit is disabled before models.php answers.
         await expect(
             page.locator('#message'),
             'onYearChange() must settle into the models.php failure branch (regression #2295)'
@@ -1122,20 +909,9 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBe('');
     });
 
-    // -----------------------------------------------------------------------
-    // Regression test for issue #2295 (model not valid for year): the saved
-    // model can load the model list successfully yet not appear among this
-    // year's options — a real pre-existing data case (some cars.model values
-    // don't match any car_models row for their year). #submit must still
-    // re-enable: the list loaded, so this is not the models.php-failure case
-    // above, and Save must not be locked forever on a condition that already
-    // resolved. The fix tells the two cases apart by checking whether any
-    // non-placeholder option exists, not by checking the selected value.
-    //
-    // Drives the real code path: models.php is left live, and its response
-    // is rewritten in-flight to drop the option matching the saved model, so
-    // onYearChange() genuinely populates #model with a list that excludes it.
-    // -----------------------------------------------------------------------
+    // #2295: the list loads but excludes the saved model (real data case).
+    // #submit must re-enable. The live models.php response is rewritten to
+    // drop the saved model.
     test('update mode: #submit re-enables when the saved model is not valid for its year', async ({ page }) => {
         await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
@@ -1174,9 +950,6 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         const savedModel = await page.evaluate(() => window.editCarConfig?.model);
         expect(savedModel, 'window.editCarConfig.model must be a non-empty saved value for CAR_ID_WITH_HISTORY').toBeTruthy();
 
-        // Reload with the real models.php response rewritten to drop the
-        // option matching this car's saved model — so the list genuinely
-        // loads (not empty) but genuinely excludes the saved value.
         await page.route('**/app/api/cars/models.php', async (route) => {
             const response = await route.fetch();
             const body = await response.json();
@@ -1213,9 +986,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         const modelSelect = page.locator('#model');
         await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
-        // The list did load (more than just the placeholder), so #submit must
-        // re-enable — proving the fix doesn't conflate "list loaded but
-        // excludes the saved value" with "list failed to load".
+        // Proves "loaded without the saved value" is not treated as "failed to load".
         await expect(
             submitBtn,
             '#submit must not be permanently locked when the saved model is not in a successfully-loaded list (regression: over-broad error check)'
@@ -1234,19 +1005,8 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// Encode-at-output regression — issue #844
-// ---------------------------------------------------------------------------
-//
-// Verifies that the v2.23.0 encode-at-output reform cannot silently regress.
-// Three scenarios:
-//   1. Form submission sends plain text (not entity-encoded) in the POST body
-//   2. Details page renders special chars as readable text (requires the local DB)
-//   3. Edit form textarea pre-fills with plain text on next load (requires the local DB)
-//
-// Test 1 mocks edit.php and passes anywhere; tests 2 and 3 require a
-// local database with car_id=650 having special chars in the comments field
-// (after the migration script has been run).
+// Encode-at-output regression (#844). Tests 2 and 3 need CAR_ID_WITH_SPECIAL_CHARS
+// in the local DB with special characters in comments.
 
 test.describe('encode-at-output regression — special chars in car text fields (#844)', () => {
     const SPECIAL_CHARS = "O'Brien & Co <é> \"test\"";
@@ -1325,10 +1085,7 @@ test.describe('encode-at-output regression — special chars in car text fields 
 
         expect(page.url(), 'details.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
-        // CAR_ID_WITH_SPECIAL_CHARS is a required fixture (see fixtures.js) —
-        // if the row is missing the page renders a not-found message with no
-        // special characters in it, and the entity assertions below would pass
-        // vacuously. Fail loudly instead.
+        // A missing fixture row would make the entity assertions vacuous.
         const bodyText = await page.locator('body').textContent();
         expect(
             bodyText,

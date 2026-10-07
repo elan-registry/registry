@@ -31,3 +31,9 @@
   summary index (`scripts/build-summary-index.py`) now groups pages by series
   and category and has four new series. Added `scripts/project-health.py`.
   Developer-only; no deploy step.
+- [#2327](https://github.com/elan-registry/registry/issues/2327) — Cut about
+  13,400 lines from `tests/` with no lost coverage. Removed duplicate tests
+  and long test comments. Five PHPStan rules in `tools/phpstan/Rules/` replace
+  text-scan tests. `tools/` is excluded from the deploy package and blocked in
+  `.htaccess`. The product refactors that some removed tests pointed to moved
+  to #2329 to #2334. Developer-only; no deploy step.

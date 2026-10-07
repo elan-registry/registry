@@ -7,33 +7,13 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for database/seeds/PageRegistrationSeed.php (#1671).
+ * #1671: database/seeds/PageRegistrationSeed.php. A Phinx seed cannot be
+ * instantiated from PHPUnit, so it runs as `vendor/bin/phinx seed:run`
+ * against the test schema.
  *
- * PageRegistrationSeed is a Phinx `AbstractSeed` subclass, discovered by
- * filename glob and executed under Phinx's own CLI runtime (adapter,
- * input/output) — it is not autoloaded by Composer and cannot be
- * instantiated directly from PHPUnit. This test therefore runs it the same
- * way `scripts/provision-schema.sh` does: as a real `vendor/bin/phinx
- * seed:run` subprocess against the dedicated integration test schema. This
- * mirrors `LogDeploymentScriptTest`'s subprocess pattern, including
- * propagating this run's DB_* env vars via putenv() so the subprocess
- * connects to the same test schema instead of falling back to the project's
- * real .env.
- *
- * `pages` and `permission_page_matches` are truncated in setUp() so every
- * test starts from the empty-table state a fresh install actually has, and
- * restored from a snapshot in tearDown() so this suite never leaves the
- * shared integration schema missing its real page inventory for other tests.
- *
- * `permissions` id=3 is no longer deleted/recreated by this suite: the row
- * is now created once by the `RegisterBaselinePermissions` migration
- * (`database/migrations/20260817035422_register_baseline_permissions.php`),
- * not a repeatable seed, so it's simply expected to already exist on any
- * schema this test runs against (same assumption `PageRegistrationSeed`
- * itself now makes in practice). The ordering dependency the previous
- * version of this suite exercised end-to-end (BaselinePermissionsSeed must
- * run before PageRegistrationSeed) is now structural — migrations always
- * run before seeds — rather than something a test needs to prove.
+ * `pages` and `permission_page_matches` are truncated in setUp() and
+ * restored in tearDown(), so other tests keep the real page inventory.
+ * Permission id=3 comes from the RegisterBaselinePermissions migration.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -94,19 +74,16 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
         [$returnCode, $output] = $this->runSeed();
         $this->assertSame(0, $returnCode, 'Seeds must exit 0. Output: ' . implode("\n", $output));
 
-        // RegisterBaselinePermissions migration must already have created the
-        // Editor row PageRegistrationSeed depends on (checked in setUp()).
         $editorPermission = $this->fetchAllRows('SELECT * FROM `permissions` WHERE id = 3');
         $this->assertCount(1, $editorPermission, 'permissions id=3 must exist');
         $this->assertSame('Editor', $editorPermission[0]['name'], 'permissions id=3 must be named Editor');
 
-        // ROOT_PAGES special case: z_us_root.php must be registered core=1 to match dev/prod (#1671).
+        // #1671: z_us_root.php must be core=1, as on dev and prod.
         $rootPage = $this->fetchAllRows("SELECT * FROM `pages` WHERE `page` = 'z_us_root.php'");
         $this->assertCount(1, $rootPage, 'z_us_root.php must be registered exactly once');
         $this->assertSame(1, (int) $rootPage[0]['core'], 'z_us_root.php must be registered with core=1');
 
-        // EXPLICIT_PAGES: login/join are public despite not matching the directory-based
-        // classifier rules — must be registered private=0 with no permission rows.
+        // login/join match no directory rule but must be public with no permissions.
         foreach (['usersc/login.php', 'usersc/join.php'] as $explicitPublicPage) {
             $page = $this->fetchAllRows('SELECT * FROM `pages` WHERE `page` = ?', [$explicitPublicPage]);
             $this->assertCount(1, $page, "{$explicitPublicPage} must be registered exactly once");
@@ -120,7 +97,6 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
             $this->assertCount(0, $permissions, "{$explicitPublicPage} must have no permission rows");
         }
 
-        // Admin-only page: private=1, exactly one permission_page_matches row (Administrator = 2).
         $adminPage = $this->fetchAllRows(
             "SELECT * FROM `pages` WHERE `page` = 'app/admin/scripts/maintenance/21-Fix-Page-Permissions.php'"
         );
@@ -135,9 +111,7 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
         $this->assertCount(1, $adminPermissions, 'Admin-only page must have exactly one permission row');
         $this->assertSame(2, (int) $adminPermissions[0]['permission_id'], 'Admin-only page must grant Administrator (2)');
 
-        // Public page: private=0, zero permission rows. docs/pdf-viewer.php calls
-        // securePage() only for permission-table registration consistency, not to
-        // require login (see that file's own header comment).
+        // docs/pdf-viewer.php calls securePage() only to register, not to require login.
         $publicPage = $this->fetchAllRows("SELECT * FROM `pages` WHERE `page` = 'docs/pdf-viewer.php'");
         $this->assertCount(1, $publicPage, 'Public page must be registered exactly once');
         $this->assertSame(0, (int) $publicPage[0]['private'], 'Public page must not be private');
@@ -149,9 +123,7 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
         );
         $this->assertCount(0, $publicPermissions, 'Public page must have no permission rows');
 
-        // users/* page: a distinct code path (getUserSpiceInstallerSpec()) from the
-        // app/usersc/docs branch exercised above. users/account.php is a known
-        // UserSpice installer default: private=1, User permission only.
+        // users/* takes a different code path (getUserSpiceInstallerSpec()).
         $usersPage = $this->fetchAllRows("SELECT * FROM `pages` WHERE `page` = 'users/account.php'");
         $this->assertCount(1, $usersPage, 'users/account.php must be registered exactly once');
         $this->assertSame(1, (int) $usersPage[0]['private'], 'users/account.php must be private');
@@ -168,7 +140,6 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
         $matchesCountAfterFirstRun = $this->countRows('permission_page_matches');
         $this->assertGreaterThan(0, $pagesCountAfterFirstRun, 'Seed must have registered at least one page');
 
-        // Re-running must be a no-op.
         [$secondReturnCode, $secondOutput] = $this->runSeed();
         $this->assertSame(
             0,
@@ -189,11 +160,8 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
     }
 
     /**
-     * Covers the healing path `isRegistrationComplete()` exists for: a `pages` row that already
-     * exists (simulating one left behind by UserSpice's lazy `createPages()`, or a pre-#1671
-     * seed run) with an incomplete `permission_page_matches` set. The seed's own transaction
-     * can't produce this state itself (see PageRegistrationSeed's class docblock) — this
-     * reproduces the external-drift scenario directly by pre-seeding the row by hand.
+     * The healing path for isRegistrationComplete(): a `pages` row with an
+     * incomplete permission set (left by UserSpice createPages() or an old seed).
      */
     public function testSeedHealsIncompletePermissionMatchesOnExistingPage(): void
     {
@@ -209,8 +177,6 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
         ]);
         $preExistingPageId = (int) $this->db->lastId();
 
-        // Zero permission_page_matches rows — classification expects exactly one
-        // (Administrator = 2) for this admin-only page, so this is incomplete.
         $matchesBeforeSeed = $this->fetchAllRows(
             'SELECT * FROM `permission_page_matches` WHERE `page_id` = ?',
             [$preExistingPageId]
@@ -250,10 +216,6 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
         $phinxBinary = __DIR__ . '/../../../vendor/bin/phinx';
         $phinxConfig = __DIR__ . '/../../../phinx.php';
 
-        // permissions id=3 (Editor) is now created once by the
-        // RegisterBaselinePermissions migration, not a seed — setUp()
-        // already verified it exists, so only PageRegistrationSeed needs
-        // to run here.
         $command = 'php ' . escapeshellarg($phinxBinary)
             . ' seed:run'
             . ' -c ' . escapeshellarg($phinxConfig)
@@ -267,11 +229,7 @@ final class PageRegistrationSeedTest extends IntegrationTestCase
         return [$returnCode, $output];
     }
 
-    /**
-     * Propagate this test run's DB credentials into the process environment so the
-     * `phinx` subprocess connects to the same dedicated test schema instead of
-     * falling back to the project's real .env. Mirrors LogDeploymentScriptTest.
-     */
+    /** Without these the phinx subprocess falls back to the real .env. */
     private function exposeTestDatabaseToSubprocess(): void
     {
         foreach (self::DB_ENV_VARS as $var) {

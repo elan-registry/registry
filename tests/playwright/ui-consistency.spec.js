@@ -1,4 +1,3 @@
-// tests/playwright/ui-consistency.test.js
 const { test, expect } = require('@playwright/test');
 const { navigateAndWait, validateCardStructure, NO_CARDS_ERROR, waitForDataTables, assertNoConsoleErrors } = require('./auth-helper.js');
 const { CAR_ID_STANDARD } = require('./fixtures.js');

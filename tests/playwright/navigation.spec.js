@@ -1,4 +1,3 @@
-// tests/playwright/navigation.test.js
 const { test, expect } = require('@playwright/test');
 const { navigateAndWait, testRedirect, handleAuthRequired } = require('./auth-helper.js');
 const { CAR_ID_STANDARD } = require('./fixtures.js');

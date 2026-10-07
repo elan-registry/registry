@@ -19,6 +19,9 @@
 # shellcheck disable=SC2016
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 REPO_ROOT="$(git rev-parse --show-toplevel)" || exit 1
 SCRIPT="${LEDGER_SCRIPT:-$REPO_ROOT/scripts/ledger-items-for-files.sh}"
 if [ ! -x "$SCRIPT" ]; then
@@ -27,24 +30,13 @@ if [ ! -x "$SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
+
+# Some cases remove permissions in $TMPROOT; restore them so rm -rf works.
+# shellcheck disable=SC2329 # called only through the EXIT trap in lib/harness.sh
 cleanup() {
     cd / || true
     [ -n "${TMPROOT:-}" ] && chmod -R u+rwx "$TMPROOT" 2>/dev/null
     [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
 }
 
 # --- Fixture repository -------------------------------------------------------
@@ -322,6 +314,4 @@ RC=$?
 check_rc "18 not in a git work tree: exit 2" 2
 check_err_has "18 not in a git work tree: stderr says so" "not in a git work tree"
 
-echo
-echo "Ran $TESTS_RUN checks, $TESTS_FAILED failed."
-[ "$TESTS_FAILED" -eq 0 ]
+harness_report

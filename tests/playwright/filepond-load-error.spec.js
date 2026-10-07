@@ -1,5 +1,3 @@
-// tests/playwright/filepond-load-error.spec.js
-//
 // Regression tests for issue #755: FilePond image load errors during edit-mode
 // hydration caused a full-form lockout (submit disabled, no per-file feedback).
 //
@@ -21,8 +19,6 @@
 // Strategy: page.route() intercepts the edit.php HTML response to inject a
 // fake car_id (no real local car required), mocks the fetchImages API to return
 // one fake image path, and aborts the image fetch so FilePond gets a LOAD_ERROR.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

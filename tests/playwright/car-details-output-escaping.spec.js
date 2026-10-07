@@ -1,13 +1,9 @@
-// tests/playwright/car-details-output-escaping.test.js
-//
 // Regression test for issue #840: missing htmlspecialchars() on car detail fields.
 //
 // Verifies that car field display areas in details.php and usersc/account.php
 // render as plain text without raw HTML characters that would indicate unescaped
 // output. These fields were "accidentally safe" before the encode-at-output reform
 // because Input::sanitize() pre-encoded values at storage time.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const {
