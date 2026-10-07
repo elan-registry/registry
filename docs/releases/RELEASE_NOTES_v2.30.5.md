@@ -9,8 +9,18 @@
   notice on Account Settings naming the affected addresses, the reason, and
   links to fix it. ([#1899](https://github.com/elan-registry/registry/issues/1899))
 
+## Admin-Facing Changes
+
+- The Verification tab has a new dashboard: summary counts, a filterable
+  queue, a recent-activity feed, and per-row status chips.
+  ([#1896](https://github.com/elan-registry/registry/issues/1896))
+
 ## Issues Resolved
 
+- [#1896](https://github.com/elan-registry/registry/issues/1896) — Rebuilt
+  the admin Verification tab's dashboard, with per-row status chips that
+  share suppression-cause logic with the owner-facing notice and a guard
+  against applying owner-level actions to the `noowner` system account.
 - [#1899](https://github.com/elan-registry/registry/issues/1899) — Added an
   email-paused notice to account.php for owners with suppressed or bounced car
   emails. The same change fixes the Uncloak button on account.php, which
