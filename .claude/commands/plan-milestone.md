@@ -25,12 +25,12 @@ building.
 ## Context check
 
 Do this before Step 0. If this conversation already holds work on an earlier
-milestone or issue, ask via AskUserQuestion: "This conversation holds earlier
-work. Clear the context first?" Options: `Clear first` (recommended),
-`Continue here`. For `Clear first`, tell the user to run `/clear` and then
-type `/plan-milestone $ARGUMENTS` again, and stop. The reason is in
-CLAUDE.md, "Hand-offs between commands". If the conversation holds no
-earlier work, do not ask.
+milestone or issue, say so as plain text and recommend: "Run `/clear`, then
+type `/plan-milestone $ARGUMENTS` again." Then stop. Continue here only if
+the user replies that they want to. Do not use a menu: no option can run
+`/clear` for the user. The reason is in CLAUDE.md, "Hand-offs between
+commands". If the conversation holds no earlier work, say nothing and
+continue.
 
 ## Step 0: Initialize TaskList
 

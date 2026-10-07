@@ -451,6 +451,10 @@ for step in list view comments patch; do
     STUB_FAIL="$step" run_add "app/one.php" "x"
     check_rc "8 gh $step failure: exit 2" 2
     check_out_empty "8 gh $step failure: no 'added:' line"
+    check_log_lacks "8 gh $step failure: no new comment" "issue comment"
+    if [ "$step" != patch ]; then
+        check_patches "8 gh $step failure: no write" 0
+    fi
 done
 STUB_FAIL=comment run_add "app/none.php" "x"
 check_rc "8 gh comment failure: exit 2" 2
@@ -501,6 +505,50 @@ check_rc "9 CR in item: exit 1" 1
 run_add 'app/`x`.php' "x"
 check_rc "9 backtick in path: exit 1" 1
 check_no_gh "9 backtick in path: no gh call"
+
+# --- Case 10: a path that heading tokens could never match -> exit 1 ----------
+for bad in "app/one.php:42" "./app/one.php" "/app/one.php"; do
+    run_add "$bad" "x"
+    check_rc "10 path '$bad': exit 1" 1
+    check_no_gh "10 path '$bad': no gh call"
+done
+run_add "app/v2:x.php" "colon not followed by only digits"
+check_rc "10 path with a non-line colon: allowed, exit 0" 0
+
+# --- Case 11: the same open item already in the group -> no write ------------
+reset_env
+run_add "app/one.php" "one-open: first item"
+check_rc "11 duplicate open item: exit 0" 0
+check_patches "11 duplicate open item: no write" 0
+check_log_lacks "11 duplicate open item: no new comment" "issue comment"
+expect_lines "already present in #2208: app/one.php: one-open: first item"
+check_out "11 duplicate open item: stdout says already present"
+run_add "app/one.php" "one-ticked item"
+check_rc "11 same text as a ticked item: exit 0" 0
+check_patches "11 same text as a ticked item: one write" 1
+
+# --- Case 12: two matching headings in one source -> the first wins ----------
+reset_env
+cat > "$STUB_BODY" <<'EOF'
+### `scripts/`
+- [ ] dir level item
+
+### `scripts/foo.sh`
+- [ ] file level item
+EOF
+cat > "$EXP.first" <<'EOF'
+### `scripts/`
+- [ ] dir level item
+- [ ] first wins
+
+### `scripts/foo.sh`
+- [ ] file level item
+EOF
+run_add "scripts/foo.sh" "first wins"
+check_rc "12 two matching headings: exit 0" 0
+check_patches "12 two matching headings: one write" 1
+check_patch "12 two matching headings: item goes under the first" "$EXP.first" "$(patch_file 1 issue 2208)"
+reset_env
 
 echo
 echo "Ran $TESTS_RUN checks, $TESTS_FAILED failed."

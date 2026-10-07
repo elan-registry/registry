@@ -168,13 +168,13 @@ Requires `gh` CLI authenticated (`gh auth status`). Creates at most one open
 The cleanup ledger is the one open GitHub issue with the `cleanup-ledger`
 label. It holds small cleanup finds, grouped under a level-3 (`###`) heading for each
 file. See `docs/development/ISSUE_WORKFLOW.md` for the workflow. These scripts
-read and tick ledger items. `ledger-items-for-files.sh` and
-`ledger-tick-items.sh` need the `gh` CLI, signed in (`gh auth status`).
-`ledger-tick-items.sh` also needs `jq`. `ledger-pr-body-items.sh` makes no
-`gh` call.
+read, add, and tick ledger items. `ledger-items-for-files.sh`,
+`ledger-tick-items.sh` and `ledger-add-item.sh` need the `gh` CLI, signed in
+(`gh auth status`). `ledger-tick-items.sh` and `ledger-add-item.sh` also need
+`jq`. `ledger-pr-body-items.sh` makes no `gh` call.
 
-`ledger-items-for-files.sh` and `ledger-tick-items.sh` source
-`scripts/lib/ledger.sh`. That library finds the ledger issue, fetches its body
+`ledger-items-for-files.sh`, `ledger-tick-items.sh` and `ledger-add-item.sh`
+source `scripts/lib/ledger.sh`. That library finds the ledger issue, fetches its body
 and comments, and parses the items.
 
 **Comment authors.** The scripts read only the comments whose
@@ -205,13 +205,13 @@ level-3 heading. An item is a line at column 0 that starts with `- [ ]` (open)
 or `- [x]` (ticked), then a space. The item text is the rest of the line,
 without trailing spaces and TABs.
 
-**Exit codes (`ledger-items-for-files.sh` and `ledger-tick-items.sh`).**
+**Exit codes (`ledger-items-for-files.sh`, `ledger-tick-items.sh` and `ledger-add-item.sh`).**
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The query ran. Empty output means no match. |
+| 0 | The script ran. For the two read and tick scripts, empty output means no match. |
 | 1 | Usage error. |
-| 2 | A `gh` call failed, `gh` output was truncated, or there is not exactly one open `cleanup-ledger` issue. |
+| 2 | A `gh` call failed, `gh` output was truncated, or there is not exactly one open `cleanup-ledger` issue. `ledger-add-item.sh` also exits 2 when `jq` or another tool fails. |
 
 ### ledger-items-for-files.sh
 
@@ -274,6 +274,31 @@ set -o pipefail
 scripts/ledger-pr-body-items.sh < "$body_file" | scripts/ledger-tick-items.sh
 ```
 
+### ledger-add-item.sh
+
+Adds one item to the ledger. Usage:
+`scripts/ledger-add-item.sh <file-path> <item-text>`. `/found` and
+`/review-pr` (Step 6, "Defer" to the ledger) run it.
+
+- `<file-path>` is repo-relative, with no `:line` suffix and no leading `./`
+  or `/`. Heading tokens match paths exactly, so those forms would file an
+  item that `ledger-items-for-files.sh` never finds. Exit 1.
+- The script uses the first heading that matches the path: the issue body
+  first, then the comments in API order. It adds `- [ ] <item-text>` after the
+  last non-blank line of that heading's group, with one `PATCH`. All other
+  bytes stay the same.
+- If the group already has an open item with the same text, it writes
+  nothing and prints `already present in #<issue>: path: item text`.
+- If no heading matches, it posts a new comment with a new heading.
+- stdout on a write: `added to #<issue>: path: item text (existing heading)`
+  or `(new heading)`.
+- Exit 2 after a failed write call: GitHub may still have saved it. Check the
+  ledger issue before you run the script again.
+
+```bash
+scripts/ledger-add-item.sh "usersc/join.php" "remove the unused \$legacy variable (found while working on #2314)"
+```
+
 ### ledger-pr-body-items.sh
 
 Prints the bullets of the `## Ledger items` section of a PR body. Input on
@@ -300,8 +325,38 @@ stdin is the PR body. The script takes no arguments and makes no `gh` call.
 | 3 | The PR body has no `## Ledger items` section. A note goes to stderr. |
 
 The hermetic tests are `tests/hooks/test-ledger-items-for-files.sh`,
-`tests/hooks/test-ledger-tick-items.sh` and
+`tests/hooks/test-ledger-tick-items.sh`,
+`tests/hooks/test-ledger-add-item.sh` and
 `tests/hooks/test-ledger-pr-body-items.sh`. They use a stub `gh`.
+
+## Milestone release checks
+
+### check-milestone-scope-drift.sh
+
+Compares a milestone's current issue membership with the issues in the
+"Issues Resolved" section of its release notes. `/release-milestone` Step 2
+runs it on the up-to-date milestone branch, just before the merge to `main`.
+
+```bash
+scripts/check-milestone-scope-drift.sh v2.30.5 107
+```
+
+- Reads `docs/releases/RELEASE_NOTES_<version>.md` from the working tree, so
+  run it from the repo root on the milestone branch.
+- Counts only the leading `- [#N](https://github.com/elan-registry/registry/issues/N)`
+  link of each bullet under `## Issues Resolved`. A cross-reference later in
+  a bullet does not count.
+- Counts milestone issues in every state and skips pull requests.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The two sets match. |
+| 1 | Mismatch. One line per issue says "moved out of milestone" or "added to milestone, missing from release notes". |
+| 2 | Can't verify: bad arguments, no notes file, no entries, a milestone with no issues, a `gh` failure, or a tool failure. |
+
+The hermetic test is `tests/hooks/test-check-milestone-scope-drift.sh`. Its
+stub `gh` accepts only the exact API call and runs the script's own `--jq`
+filter.
 
 ## Database
 

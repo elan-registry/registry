@@ -249,12 +249,15 @@ growth after edge cases.
 A **cleanup** find — dead code, duplication, naming, comments, type
 annotations, or anything else with no change in behavior — does not get its
 own issue. `/found` adds it to the one open issue labelled `cleanup-ledger`,
-under a heading for its file. `/start-issue` copies a file's ledger items into
+under a heading for its file, with `scripts/ledger-add-item.sh`. `/review-pr`
+Step 6 uses the same script when you defer a Recommendation to the ledger. `/start-issue` copies a file's ledger items into
 a plan when that plan already edits the file, so the plan gate approves them.
 A cleanup find with no named benefit is dropped, not recorded.
 
-Three commands check the ledger before and after the PR:
+Four commands check the ledger before and after the PR:
 
+- `/execute-plan` Step 6.6 checks the files it edits for items added after
+  the plan was approved.
 - `/review-pr` reports each open item for a changed file that the plan does
   not list. Each one is a Recommendation.
 - `/commit-push-pr` asks you which items the PR completes. It records them in

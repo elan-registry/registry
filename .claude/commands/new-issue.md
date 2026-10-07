@@ -222,17 +222,20 @@ EOF
 
 After creation, display the issue URL and number.
 
-### Step 8: Offer Next Steps
+### Step 8: State the next step
 
-After creating the issue, ask:
+After creating the issue, end with plain text, not a menu:
 
-"Issue #NUMBER created: URL
+"Issue #NUMBER created: URL"
 
-Would you like to:
+Then give one next step:
 
-1. Start working on it now? (`/start-issue NUMBER`)
-2. Create another related issue?
-3. That's all for now."
+- **The issue has a milestone** — "To start it, run `/clear`, then type
+  `/start-issue NUMBER`."
+- **No milestone** (the usual case) — "It is unmilestoned. The next
+  `/plan-milestone` weighs it." Do not offer `/start-issue`: with no
+  milestone, `/start-issue` would put it on whichever milestone branch is
+  checked out and skip the planning gate.
 
 ## Critical Rules
 

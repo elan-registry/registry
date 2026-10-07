@@ -23,6 +23,19 @@ Available: `code` | `errors` | `comments` | `tests` | `spec` | `simplify` | `all
 
 ---
 
+## Step 0: Refuse uncommitted changes
+
+```bash
+git status --porcelain
+```
+
+If this prints anything, stop: "N uncommitted files are not in this review.
+Commit them (`/commit`), then run `/review-pr` again." The review reads only
+committed history (Step 2), and the fingerprint in Step 3 and Step 6 hashes
+the working tree, so uncommitted changes make both wrong.
+
+---
+
 ## Step 1: Run the verification suite
 
 Run this **first**, before launching any agent — a failing suite short-circuits
@@ -167,11 +180,11 @@ a lane in these cases:
 
 - The hashes differ, or the plan file has no `Review fingerprint:` line.
 - `$ARGUMENTS` names the aspect.
-- The lane is `comments`, `spec` or `simplify`. `/execute-plan` does not run
-  them.
+- The lane is `comments`, `spec` or `simplify`. These always run.
 
-In the Step 5 triage output, list each skipped lane as "skipped — clean in
-/execute-plan at fingerprint `<first 12 characters>`". Step 1 always runs.
+In the Step 5 triage output, list each skipped lane as "skipped — clean at
+fingerprint `<first 12 characters>`". `/execute-plan` Step 7 or an earlier
+`/review-pr` run (Step 6) wrote that line. Step 1 always runs.
 
 The `tests` agent *reads* test files and reasons about coverage; Step 1 is what
 *executes* them. Neither substitutes for the other — a clean test-analyzer
@@ -415,10 +428,14 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
      `New GitHub issue`) to pick the destination, same distinction `/found`
      uses between cleanup and defect:
      - *Cleanup ledger* — run
-       `scripts/ledger-add-item.sh "<path>" "<one-line item>"`. It adds one
-       checkbox line under that file's heading (or a new heading if none
-       exists). On exit 2, report its stderr and stop, as in `/found`'s
-       "Ledger" step.
+       `scripts/ledger-add-item.sh "<path>" "<one-line item>"`. Pass the
+       repo-relative file path only, without the `:line` part of the
+       `File:Line` column. It adds one checkbox line under that file's
+       heading (or a new heading if none exists). Read the exit code as in
+       `/found`'s "Ledger" step. On exit 1, fix the arguments and run it
+       again. On exit 2, report its stderr, record the item as "Deferred —
+       ledger write failed" in the summary below, and continue with the next
+       Recommendation.
      - *New GitHub issue* — follow `/found`'s "Defer" steps: `gh issue
        create` with the `triage` label and a `TYPE:` title prefix matching
        the finding (`bug:` for a defect, `tech-debt:`/`chore:` otherwise).
@@ -456,27 +473,27 @@ every suite — no failures, and no unexpected skips, warnings, incomplete, or
 risky tests. Never report "clean" over a suite that did not run, could not
 start, or skipped.
 
-**Re-stamp the review fingerprint.** `/execute-plan` Step 7 is the only
-place that writes the plan file's `Review fingerprint:` line today, so a
-second `/review-pr` run — after a trivial fix from `/address-pr-comments`,
-for instance — re-reviews every lane from scratch even when this run just
-confirmed the diff clean. Close that gap here the same way: if a plan file
-exists (`scripts/check-plan-state.sh` gives its path) and every lane that
-ran this time (including any skipped per the fingerprint check above)
-reported no Blocking finding, write or replace the plan file's
-`Review fingerprint:` line with the current fingerprint and the full set of
-clean lanes:
+**Re-stamp the review fingerprint.** Without this, only `/execute-plan`
+Step 7 writes the plan file's `Review fingerprint:` line. A fix after that
+stamp changes the fingerprint, so a later `/review-pr` run (for example,
+after a fix commit from a Recommendation) re-runs every lane even when this
+run just confirmed them clean. Re-stamp only when all of these are true:
+
+- A plan file exists (`scripts/check-plan-state.sh` gives its path).
+- No file changed after the review lanes ran in this run. A `Fix now` or a
+  Blocking fix re-runs only `code-reviewer`, so the other lanes did not see
+  the final diff. If any fix was made, do not re-stamp.
+
+Then run `scripts/review-fingerprint.sh "origin/$BASE"` and write or replace
+the plan file's `Review fingerprint:` line with that hash and each lane that
+ran or was skipped as clean in this run:
 
 ```text
-Review fingerprint: <hash> — clean lanes: code-reviewer, silent-failure-hunter, pr-test-analyzer, comment-analyzer
+Review fingerprint: <hash> — clean lanes: code-reviewer, silent-failure-hunter, pr-test-analyzer
 ```
 
-Name every lane from this run's Step 3 table that reported no Blocking
-finding — including `comment-analyzer` when the `comments` aspect ran and
-was clean, which `/execute-plan` never runs and so never stamps. Do not name
-`spec` or `simplify`; `/review-pr`'s own Step 3 excludes them from the skip
-check, so naming them here would have no effect and would misstate what was
-verified. If no plan file exists, skip this — there's nothing to write it to.
+Name only `code-reviewer`, `silent-failure-hunter` and `pr-test-analyzer`.
+Step 3 skips only those three lanes, so any other name has no effect.
 
 - Report: "Local review clean — no blocking issues, no open recommendations."
   Include the Suites executed table so the claim is backed by real counts.

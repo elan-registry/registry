@@ -449,14 +449,17 @@ the `technical-documentation-writer` agent for non-trivial entries.
 
 **Do NOT commit, push, or create PRs.** State plainly that implementation is
 complete and the plan file at `docs/plans/issues/issue-<NUMBER>-<slug>.md`
-shows every item verified complete. Then ask via AskUserQuestion, offering
-only the actual next step, not the full sequence — "Implementation
-complete. What next?" Options: `/simplify` (recommended — the built-in
-Claude Code skill, not a project command), `/commit`,
-`Compact context first` (state is already saved, safe to compact), `Ask
-more questions / discuss first`. Invoke a chosen command immediately via
-the Skill tool. For `Compact context first`, tell the user to run
-`/compact` themselves — this command can't trigger it.
+shows every item verified complete. State as plain text that the plan file
+holds the state, so the user may run `/compact` now and then type
+`/simplify` or `/commit` themselves. No menu option can run `/compact`.
+
+Then ask via AskUserQuestion, offering only the actual next step, not the
+full sequence — "Implementation complete. What next?" Options: `/simplify`
+(recommended — the built-in Claude Code skill, not a project command),
+`/commit` (the plugin skill `commit-commands:commit`), `Ask more questions /
+discuss first`. Invoke a chosen command immediately via the Skill tool, by
+its listed name (`simplify` or `commit-commands:commit`). This command makes
+each later offer itself, after the skill returns.
 
 The full remaining sequence, each step handed off the same way once the
 prior one completes — do not present this whole list to the user at once,

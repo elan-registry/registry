@@ -2,7 +2,8 @@
 #
 # Ticks cleanup-ledger items that a merged PR completed. /finish-issue pipes
 # the lines of the PR body's "## Ledger items" section into it after the
-# merge (#2271). It is the only script that writes to the ledger.
+# merge (#2271). It is the only script that ticks ledger items.
+# scripts/ledger-add-item.sh is the only script that adds them.
 #
 # Usage: <Ledger items section lines> | scripts/ledger-tick-items.sh
 #

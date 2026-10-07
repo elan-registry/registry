@@ -53,7 +53,8 @@ gh pr list --base main --state open \
 
 - The PR must be mergeable (no conflicts, checks passing).
 - The working tree must be clean (`git status --porcelain`).
-- Must be on `main` or the milestone branch.
+- Must be on `main` or the milestone branch. The scope-drift check below
+  switches to the milestone branch.
 - **No unresolved Blocking/Important review findings.** This command does
   not fix problems — it only merges/tags/publishes what `/finish-milestone`
   and `/review-milestone` already fully vetted.
@@ -65,10 +66,12 @@ scripts/check-blocking-findings.sh <number> --include-important
 
 - **Exit 0** — clean, proceed.
 - **Exit 1** — an unresolved Blocking or Important finding exists. **Stop.**
-  Do not proceed to Step 5 and do not fix it here. Send the user back to
-  `/finish-milestone` (or a fix-and-push cycle plus a fresh review) — the PR
-  is still open and reviewable there. This command's next steps are
-  irreversible merge/tag/publish actions.
+  Do not proceed to Step 5 and do not fix it here. This command's next steps
+  are irreversible merge/tag/publish actions. The PR is still open. Tell the
+  user to fix each finding as a commit on the milestone branch, push, wait
+  for the milestone CI review to post again, and then type
+  `/release-milestone <version>`. Do not send the user to `/finish-milestone`:
+  it ends before a PR exists.
 - **Exit 2** — can't verify: no posted review comment was found, the `gh`
   call failed, or a grep failed while it scanned the review. Treat as "can't
   verify," not "clean." Stop and investigate.
@@ -77,30 +80,46 @@ This is a second, independent check on the same requirement
 `/review-milestone` Step 5 already enforces — it exists so a PR that sat open
 a while, or reached this command by another path, still gets caught.
 
-**The milestone scope must still match the release notes.**
+**The milestone scope must still match the release notes.** The script
+reads the release notes from the working tree, and only the milestone
+branch has that file (`main` does not). Check out the milestone branch and
+bring it up to date first, so the check reads the notes that will merge:
 
 ```bash
+git checkout milestone/<version>
+git pull --ff-only origin milestone/<version>
 scripts/check-milestone-scope-drift.sh <version> <milestone-number>
 ```
 
-- **Exit 0** — scope matches, proceed.
-- **Exit 1** — a mismatch exists. **Stop.** Do not proceed to Step 5 or
-  Step 6. Report each mismatched issue the script printed. Tell the user the
-  release notes need an update: remove an issue that moved out of the
-  milestone, or add an issue that moved in. This is the same recovery as
-  `/finish-milestone` Step 5.5. The user can go back to `/finish-milestone`
-  Step 5.5 to fix the release notes, or edit the file by hand, push, and run
-  `/release-milestone` again. Some mismatches are intended, for example an
-  issue carried from a different milestone ("Carried from …" in its entry).
-  Proceed only when the user confirms that each reported mismatch is
-  intended.
-- **Exit 2** — can't verify: no release-notes file, no "Issues Resolved"
-  entries in it, or the `gh` call failed. Treat as "can't verify," not
-  "clean." Stop and investigate.
+If the checkout or the pull fails, stop and report the error. Do not run
+the check against a stale or wrong checkout.
 
-This is deliberately the same check `/finish-milestone` Step 5.5 already
-runs. It runs again here as a second, independent check, because the
-milestone PR can stay open for a while between the two commands, and an
+- **Exit 0** — scope matches, proceed.
+- **Exit 1** — the script printed one or more mismatched issues. Do not go
+  to Step 3 yet. Show each line to the user. Some mismatches are intended:
+  - An issue carried from a different milestone ("Carried from …" in its
+    release-notes entry) shows as "moved out of milestone".
+  - An issue closed as consolidated into or superseded by another issue
+    (see `/finish-milestone` Step 5.5) shows as "added to milestone,
+    missing from release notes".
+
+  For each line, ask the user whether the mismatch is intended. If the user
+  confirms every line, go to Step 3. Otherwise stop. Tell the user to fix
+  the "Issues Resolved" section of `docs/releases/RELEASE_NOTES_<version>.md`
+  on the milestone branch, commit, push, and type `/release-milestone
+  <version>` again. That push makes the deploy sheet stale (Step 4 reports
+  it) and does not re-run the milestone CI review.
+- **Exit 1 with no issue lines printed** — treat as exit 2.
+- **Exit 2** — can't verify: bad arguments, no release-notes file, no
+  "Issues Resolved" entries in it, a milestone with no issues (usually a
+  wrong milestone number), the `gh` call failed, or a tool failed
+  mid-check. Treat as "can't verify," not "clean." Stop and investigate.
+
+`/finish-milestone` Step 5.5 compares the same two sets by hand earlier,
+with its own inline grep. The two can disagree: Step 5.5 reads every
+`issues/N` link in the file, and this script reads only the leading link
+of each "Issues Resolved" bullet. This check runs again here because the
+milestone PR can stay open for a while after `/finish-milestone`, and an
 issue's milestone assignment can change in that window.
 
 ### Step 3: Check version consistency
@@ -122,12 +141,14 @@ scripts/check-version-newer.sh <version>
 ls docs/plans/releases/<version>-deploy.md
 ```
 
-- **Exists** — this is the deploy sheet Step 15's summary points to. Read it
+- **Exists** — this is the deploy sheet Step 7's summary points to. Read it
   now so Step 5 can name what it covers (migrations, new env vars, admin-script
   registration, any manual verification runbook). Do not re-render it.
 - **Missing** — stop and tell the user: "No deploy sheet found at
-  `docs/plans/releases/<version>-deploy.md` — run `/finish-milestone`'s Step
-  6.6 first." Do not render it yourself here.
+  `docs/plans/releases/<version>-deploy.md`. `/finish-milestone` Step 6.6
+  renders it. A command cannot start at one step: render the sheet by hand
+  from that step's instructions, or type `/finish-milestone <version>` to
+  run the whole command again." Do not render it yourself here.
 - **Check staleness mechanically**, not by eyeballing `git log`:
 
   ```bash
@@ -136,11 +157,12 @@ ls docs/plans/releases/<version>-deploy.md
 
   - **Exit 0** — fresh, proceed.
   - **Exit 1** — stale. Warn the user; ask whether to proceed anyway or
-    refresh via `/finish-milestone` Step 6.6 first.
+    stop and refresh the sheet first (by hand from `/finish-milestone`
+    Step 6.6's instructions, or by typing `/finish-milestone <version>`).
   - **Exit 2** — no stamp file — can't verify. Warn rather than assume fresh.
 
 Confirm `.claude.local.md` § "Deployment hosts" is present — the sheet
-already has it baked in, but Step 15's reminder and any ad hoc host lookup
+already has it baked in, but Step 7's reminder and any ad hoc host lookup
 later still need it:
 
 ```bash
@@ -222,6 +244,10 @@ the user runs `git push prod <version>` / `git push prod
 ```bash
 gh release edit <version> --draft=false --repo elan-registry/registry
 ```
+
+End with plain text, not a question: this milestone is done. Tell the user
+to run `/clear` before the next `/plan-milestone`, because this is a
+milestone boundary (CLAUDE.md, "Hand-offs between commands").
 
 ## Important
 

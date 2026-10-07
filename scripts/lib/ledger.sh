@@ -1,9 +1,9 @@
 #!/bin/bash
 #
 # Sourceable library for the cleanup ledger (the open GitHub issue with the
-# `cleanup-ledger` label). scripts/ledger-items-for-files.sh and
-# scripts/ledger-tick-items.sh source it, so the two scripts find the issue,
-# fetch it, and parse it in the same way.
+# `cleanup-ledger` label). scripts/ledger-items-for-files.sh,
+# scripts/ledger-tick-items.sh and scripts/ledger-add-item.sh source it, so
+# the three scripts find the issue, fetch it, and parse it in the same way.
 #
 # This file defines functions and one awk library string. It does not run
 # anything by itself. Source it, then call the functions.
@@ -41,7 +41,9 @@
 LEDGER_REPO="elan-registry/registry"
 
 # The --jq expressions of the two fetch calls. The test stubs accept only
-# these exact strings, so a change here must also change the tests.
+# these exact strings, so a change here must also change the tests
+# (test-ledger-items-for-files.sh, test-ledger-tick-items.sh and
+# test-ledger-add-item.sh).
 # shellcheck disable=SC2016
 LEDGER_BODY_JQ='"\(.body // "" | @base64) END"'
 # shellcheck disable=SC2016

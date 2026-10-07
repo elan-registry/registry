@@ -162,23 +162,29 @@ and the checkbox lines under it. Add the item with the script:
 scripts/ledger-add-item.sh "path/to/file.php" "ONE_LINE_ITEM (found while working on #CURRENT_ISSUE)"
 ```
 
-The script finds the open ledger issue and adds the item as the last checkbox
-line under the heading for the file. If no heading exists for the file, it
-adds a new comment with a new heading. On success it prints one line
-`added to #<issue>: <path>: <item> (existing heading)` or `(new heading)`.
+Pass the repo-relative file path only: no `:line` suffix and no leading
+`./` or `/`. The script finds the open ledger issue and adds the item after
+the last non-blank line of the file's group. If no heading exists for the
+file, it adds a new comment with a new heading. If the group already has an
+open item with the same text, it adds nothing. On success it prints one line
+that starts `added to #<issue>:` and ends `(existing heading)` or
+`(new heading)`, or one line that starts `already present in #<issue>:`.
 
 - **Exit 0** — tell the user, with the issue number and ending from the
   script's output:
 
   > "Added to cleanup ledger #LEDGER_NUMBER under `path/to/file.php` (existing heading)."
 
-- **Exit 1** — the arguments are wrong (the item text must be one line, and
-  the path must not contain a backtick). Correct them and run the script
+- **Exit 1** — the arguments are wrong: not exactly two arguments, an empty
+  argument, a newline or CR in an argument, or a path with a backtick, a
+  `:line` suffix, or a leading `./` or `/`. Correct them and run the script
   again.
 - **Exit 2** — stop. Give the user the script's stderr. If it says that no
   open issue has the `cleanup-ledger` label, tell the user that no open
   ledger issue exists. Do not create a ledger issue and do not create a
-  separate issue.
+  separate issue. If a write failed, the item may or may not be in the
+  ledger. Tell the user to check the ledger issue before running the
+  script again.
 
 ### Step 5: Resume — or hand off, for the hotfix track
 
@@ -190,22 +196,34 @@ interrupts a milestone (see `docs/development/ISSUE_WORKFLOW.md`, "Interrupts
 and the hotfix track"): report the new issue number and tell the user the
 current task is paused so they can commit or stash the in-progress work.
 
-**`/start-issue` has no hotfix mode today** — it requires a `milestone/*`
-branch (Step 3) and stops if none is checked out. Do not tell the user to
-run `/start-issue NNN` on a branch off `main`; that command will refuse.
-Until a hotfix mode exists, tell the user the manual steps instead:
+**No command runs the hotfix track from start to finish.** Do not send the
+user to `/start-issue` or `/finish-issue` for it:
+
+- `/start-issue` Step 3 needs a `milestone/*` branch. When exactly one
+  exists, it switches to it, so the hotfix would branch from the milestone,
+  not from `main`.
+- `/finish-issue` Steps 7, 8 and 8.5 get the version from a
+  `milestone/vX.Y.Z` branch name. A PR based on `main` has none, so those
+  steps fail or commit to `main`.
+
+Tell the user these steps instead:
 
 ```bash
-git checkout main && git pull origin main
+git checkout main && git pull --ff-only origin main
 git checkout -b bug/NNN-short-description
-# implement, commit, push
-gh pr create --base main --title "bug: ..." --body "..."
+# implement and commit, then open the PR with /commit-push-pr.
+# Its base resolver can pick an open milestone branch, and it opens a draft,
+# so retarget the PR to main and mark it ready before the merge:
+gh pr edit <pr-number> --repo elan-registry/registry --base main
+gh pr ready <pr-number> --repo elan-registry/registry
+gh pr merge <pr-number> --squash --delete-branch   # after CI and review
+gh issue close NNN --comment "Resolved via PR #<pr-number>."
 ```
 
-`/finish-issue` already tolerates a PR targeting `main` (it warns, then asks
-whether to proceed), so the merge step works as-is. Release as a patch from
-`main` per `DEPLOYMENT.md`. The milestone work resumes after the hotfix is
-released.
+No document describes a patch release from `main` yet. Tag and deploy it
+by hand with the tag rules in `DEPLOYMENT.md`, and confirm the version with
+the user. Then merge `main` into the open milestone branch so the fix is
+not lost there. The milestone work resumes after the hotfix is released.
 
 ## Quick reference
 

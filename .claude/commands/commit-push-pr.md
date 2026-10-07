@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git ls-files:*), Bash(gh pr view:*), Bash(set -o pipefail:*), Bash(mktemp:*), Write, Read, AskUserQuestion, Bash(scripts/commit-push-pr.sh:*), Bash(scripts/resolve-base-branch.sh:*), Bash(scripts/check-plan-state.sh:*), Bash(scripts/ledger-items-for-files.sh:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git ls-files:*), Bash(git merge-base:*), Bash(git fetch --prune origin), Bash(gh pr view:*), Bash(set -o pipefail:*), Bash(mktemp:*), Write, Read, AskUserQuestion, Bash(scripts/commit-push-pr.sh:*), Bash(scripts/resolve-base-branch.sh:*), Bash(scripts/check-plan-state.sh:*), Bash(scripts/ledger-items-for-files.sh:*)
 description: Commit, push, and open a draft PR
 model: haiku
 ---
@@ -41,6 +41,21 @@ prose.
 
       If the exit code is not `0`, use `- none (ledger query failed)` in
       step 4. Tell the user that the ledger query failed. Go to step 4.
+
+      If it prints `origin/main`, check that this is right. Before the
+      commit, HEAD can still be at the milestone branch tip, and then the
+      resolver picks `origin/main`, which pulls in every file already merged
+      into the milestone. Run:
+
+      ```bash
+      git fetch --prune origin
+      git branch -r --list 'origin/milestone/*'
+      ```
+
+      Keep each listed branch for which
+      `git merge-base --is-ancestor <branch> HEAD` exits `0`. If the plan
+      file's `**Milestone:**` field names one of them, use it. Otherwise use
+      the highest version (`sort -V`). If none is kept, keep `origin/main`.
    3. Query the ledger. Put the printed ref in place of `<base-ref>`. Run:
 
       ```bash
@@ -115,7 +130,11 @@ prose.
    with `--branch`.
 
 6. Read the script's exit code:
-   - `0` — done. Print the PR URL from its stdout.
+   - `0` — done. Print the PR URL from its stdout. Then tell the user, as
+     plain text, the next step: wait for CI and the automated review to
+     post, then type `/address-pr-comments`. Do not start it through the
+     Skill tool: it declares `model: opus` and this command declares
+     `model: haiku` (CLAUDE.md, "Hand-offs between commands").
    - `1` — refused (bad branch or a forbidden path in `docs/plans/` or
      `_noupload/`). Stop and report the reason to the user; do not retry
      with `--branch` unless the reason was the branch check.

@@ -23,12 +23,12 @@ model: opus
 ## Context check
 
 Do this before Step 0. If this conversation already holds work on a
-different issue or milestone, ask via AskUserQuestion: "This conversation
-holds earlier work. Clear the context first?" Options: `Clear first`
-(recommended), `Continue here`. For `Clear first`, tell the user to run
-`/clear` and then type `/start-issue $ARGUMENTS` again, and stop. The reason
-is in CLAUDE.md, "Hand-offs between commands". If the conversation holds no
-earlier work, do not ask.
+different issue or milestone, say so as plain text and recommend: "Run
+`/clear`, then type `/start-issue $ARGUMENTS` again." Then stop. Continue
+here only if the user replies that they want to. Do not use a menu: no
+option can run `/clear` for the user. The reason is in CLAUDE.md,
+"Hand-offs between commands". If the conversation holds no earlier work,
+say nothing and continue.
 
 ---
 
@@ -518,14 +518,16 @@ this command.
 
 This command's work is done once the plan file is approved (Step 9). State
 plainly that the plan is approved and saved at
-`docs/plans/issues/issue-<NUMBER>-<slug>.md`. Then ask via AskUserQuestion —
-"Plan approved. What next?" Options: `Run /execute-plan now` (recommended),
-`Compact context first` (plan is already persisted, safe to compact), `Ask
-more questions / discuss the plan first`. Invoke `/execute-plan` immediately
-via the Skill tool if chosen. For `Compact context first`, tell the user to
-run `/compact` themselves — this command can't trigger it. For the discuss
-option, drop into normal conversation; don't re-offer until the discussion
-reaches a stopping point or the user asks what's next.
+`docs/plans/issues/issue-<NUMBER>-<slug>.md`. State as plain text that the
+plan file holds the state, so the user may run `/compact` now and then type
+`/execute-plan <NUMBER>` themselves. No menu option can run `/compact`.
+
+Then ask via AskUserQuestion — "Plan approved. What next?" Options:
+`Run /execute-plan now` (recommended), `Ask more questions / discuss the
+plan first`. Invoke `/execute-plan` immediately via the Skill tool if
+chosen; both commands declare `model: opus`. For the discuss option, drop
+into normal conversation; don't re-offer until the discussion reaches a
+stopping point or the user asks what's next.
 
 Do not implement anything, and do not update the issue or release notes from
 this command — `/execute-plan` does that once there is actual work done to
@@ -550,9 +552,11 @@ rule — both apply throughout, not only at Step 9.
   each with a recommended answer, then wait for the answers before the next round
 - **Continue asking questions WHILE IN PLAN MODE** - don't wait until
   after plan mode
-- **Use AskUserQuestion tool** for every clarifying question, hand-off choice,
-  and next-step recommendation — this command interviews via that tool, not
-  free-form chat questions, so answers are structured and unambiguous
+- **Use AskUserQuestion tool** for every clarifying question — this command
+  interviews via that tool, not free-form chat questions, so answers are
+  structured and unambiguous. A hand-off menu is allowed only when its "yes"
+  option is run by this command through the Skill tool (Step 10). Advice to
+  run `/clear` or `/compact` is plain text, never a menu option
 - **Follow project conventions** from CLAUDE.md and CODING_STANDARDS.md
 - **Tier agent usage** - assess complexity first; Small issues skip PM and multi-agent Explore
 - **Triage pre-existing issues immediately** (Step 5.5) — never silently note something as "pre-existing"; apply the

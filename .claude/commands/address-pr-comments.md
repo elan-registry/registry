@@ -233,15 +233,16 @@ disappears with no record of the decision. For each item, in order:
    - **Fix now** — follow the fix-commit-push pattern from Steps 5–6.
    - **Defer** — ask a follow-up `AskUserQuestion` (options `Cleanup ledger`,
      `New GitHub issue`), then follow `/found`'s "Ledger" or "Defer" steps —
-     same distinction `/review-pr` Step 6 uses.
+     same distinction `/review-pr` Step 6 uses. For the ledger, pass the
+     file path without its `:line` part.
    - **Skip entirely** — no code change, but still record it: add one line
      to the PR body under a `## Advisory items declined` heading (create the
      heading if absent) with the item's source, file:line, and a one-line
      reason. Use `gh pr edit <pr-number> --body-file <file>` with the full
-     updated body (read the current body first, append, write back). This is
-     the one place in this command where a declined finding must not
-     evaporate — contrast `/review-pr`'s `Skip entirely`, which the PR body
-     already records as part of its own full report.
+     updated body (read the current body first, append, write back). Keep
+     the new heading after the `## Ledger items` section, not inside it.
+     The PR exists at this point, so the decision can be recorded where
+     reviewers see it.
 4. Continue to the next Advisory item.
 
 ## Step 8: Summary

@@ -27,25 +27,49 @@ the issue, delete the branch, and return to the milestone branch.
 
 ### Step 1: Determine the issue number and PR
 
-If no argument is provided, extract the issue number from the current branch
-name:
+Set `<issue-number>` once, here, and use it in every later step. Do not use
+`$ARGUMENTS` after this step: it is empty when the number comes from the
+branch name or from the user.
+
+- If `$ARGUMENTS` is a number, `<issue-number>` is that number.
+- Otherwise, take it from the current branch name:
+
+  ```bash
+  git branch --show-current
+  ```
+
+  The branch must match `issue/<number>-*`, `bug/<number>-*`, or
+  `feature/<number>-*`. If it doesn't, stop and ask the user for the issue
+  number.
+
+Find the open PR for this issue. Match on the branch name, not on the
+current branch, so this works after `/clear` from any branch:
 
 ```bash
-git branch --show-current
+gh pr list --repo elan-registry/registry --state open --limit 200 \
+  --json number,title,url,headRefName,baseRefName,statusCheckRollup \
+  --jq '.[] | select(.headRefName | test("^(issue|bug|feature)/<issue-number>-"))'
 ```
 
-The branch must match `issue/<number>-*`, `bug/<number>-*`, or
-`feature/<number>-*`. If it doesn't, stop and ask the user for the issue
-number.
+`--limit 200` matters: `gh pr list` returns 30 PRs by default, and the
+`--jq` filter runs after that limit.
 
-Find the open PR for this issue branch:
+- **One PR** — use it. `<issue-branch>` is its `headRefName`.
+- **More than one** — stop and ask the user which one.
+- **None** — check whether the merge already happened (a re-run after a
+  later step failed):
 
-```bash
-gh pr list --head "$(git branch --show-current)" --state open \
-  --json number,title,url,baseRefName,statusCheckRollup
-```
+  ```bash
+  gh pr list --repo elan-registry/registry --state merged --limit 200 \
+    --json number,headRefName,baseRefName \
+    --jq '.[] | select(.headRefName | test("^(issue|bug|feature)/<issue-number>-"))'
+  ```
 
-If no PR exists, stop and tell the user to run `/commit-push-pr` first.
+  If a merged PR exists, tell the user that Step 5 already ran, and continue
+  from Step 6 with that PR's number and `baseRefName`. Skip any later step
+  whose result is already in place: the issue is closed, the ledger items
+  are ticked, or the release-notes entry has no `WIP:` prefix. If no merged
+  PR exists either, stop and tell the user to run `/commit-push-pr` first.
 
 ### Step 2: Identify the target (base) branch
 
@@ -208,13 +232,13 @@ This squash-merges into the milestone branch and deletes the issue branch
 ### Step 6: Close the GitHub issue
 
 ```bash
-gh issue close $ARGUMENTS --comment "Resolved via PR #<pr-number>."
+gh issue close <issue-number> --comment "Resolved via PR #<pr-number>."
 ```
 
 Remove the "in progress" label if present:
 
 ```bash
-gh issue edit $ARGUMENTS --remove-label "in progress"
+gh issue edit <issue-number> --remove-label "in progress"
 ```
 
 ### Step 6.5: Tick cleanup ledger items and report open ones
@@ -282,6 +306,18 @@ operates via the GitHub API and does not change what's checked out locally,
 so without this step first, Step 8's commit would land on the deleted issue
 branch instead of the milestone branch.
 
+First check for uncommitted changes:
+
+```bash
+git status --porcelain
+```
+
+If this prints anything, stop. Step 8 runs `git add docs/releases/` and
+commits on the milestone branch, so local changes could go into that commit
+or block the checkout. Tell the user to commit or stash them, then type
+`/finish-issue <issue-number>` again. Step 1 finds the merged PR and resumes
+at Step 6.
+
 ```bash
 git checkout <milestone-branch>
 git pull origin <milestone-branch>
@@ -295,9 +331,8 @@ git branch -d <issue-branch> 2>/dev/null
 
 ### Step 8: Update draft release notes and delete the plan file
 
-The squash-merge in Step 5 already carried the plan file (if this issue went
-through `/start-issue` → `/execute-plan`) onto the milestone branch, now
-checked out per Step 7.
+The milestone branch is now checked out (Step 7). The plan file, if any, is
+a local file in the gitignored `docs/plans/`; the merge did not touch it.
 
 **Release notes:** read the draft release notes at
 `docs/releases/RELEASE_NOTES_<version>.md` (where `<version>` is extracted
@@ -312,7 +347,7 @@ this convention), add the entry now instead — don't skip it.
 **Plan file:** check for one on the milestone branch:
 
 ```bash
-scripts/check-plan-state.sh $ARGUMENTS
+scripts/check-plan-state.sh <issue-number>
 ```
 
 Read the `path:` line. `(none)` means no matching file exists — skip
@@ -327,14 +362,14 @@ plans.
 and nothing to mention in the PR:
 
 ```bash
-rm -f docs/plans/issues/issue-$ARGUMENTS-*.md docs/plans/issue-$ARGUMENTS-*.md
+rm -f docs/plans/issues/issue-<issue-number>-*.md docs/plans/issue-<issue-number>-*.md
 ```
 
 Commit the release notes update:
 
 ```bash
 git add docs/releases/
-git commit -m "docs: mark issue #$ARGUMENTS as resolved in release notes"
+git commit -m "docs: mark issue #<issue-number> as resolved in release notes"
 git push origin <milestone-branch>
 ```
 
@@ -344,7 +379,7 @@ Mark this issue done in the sprint plan under `docs/plans/sprints/`
 (gitignored local working documents — see `.claude/rules/planning-docs.md`):
 
 ```bash
-scripts/mark-sprint-issue-done.sh <version> $ARGUMENTS
+scripts/mark-sprint-issue-done.sh <version> <issue-number>
 ```
 
 (where `<version>` is the same one used in Step 8, e.g. `v2.29.3`.)
@@ -352,7 +387,7 @@ scripts/mark-sprint-issue-done.sh <version> $ARGUMENTS
 - **Exit 0** — marked done (or was already marked done). Nothing further to do.
 - **Exit 1** — no sprint file for this version. Normal — skip this step
   silently; not every milestone has one.
-- **Exit 2** — sprint file exists, but issue `#$ARGUMENTS` doesn't appear in
+- **Exit 2** — sprint file exists, but issue `#<issue-number>` doesn't appear in
   its sequence line (e.g. an unplanned bugfix not part of the tracked
   sprint). Make no edit. Note in the Step 9 summary that this issue wasn't
   part of the tracked sequence.
