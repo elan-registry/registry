@@ -8,8 +8,9 @@ use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB integration tests for CarRepository::findProfileEmailSuppressed()
- * and CarRepository::updateProfileEmailSuppressed() (#1883).
+ * Real-DB integration tests for CarRepository::findProfileEmailSuppressed(),
+ * CarRepository::findProfileEmailSuppressedForUpdate() (#1895) and
+ * CarRepository::updateProfileEmailSuppressed() (#1883).
  *
  * CarVerificationManager::suppressOwnerProfile()'s entire read-then-skip
  * design rests on a specific MySQL/PDO behavior: an UPDATE that sets a
@@ -143,5 +144,27 @@ final class CarRepositoryProfileEmailSuppressedTest extends IntegrationTestCase
             'An UPDATE that actually changes a value on an existing row must report true'
         );
         $this->assertSame(1, $this->repo->findProfileEmailSuppressed($userId));
+    }
+
+    /**
+     * The locking read returns the same null/0/1 values as the plain read.
+     * CarVerificationManagerSuppressForOwnerByOwnerTest covers its
+     * concurrency behavior.
+     */
+    #[Group('fast')]
+    public function testFindForUpdateReturnsNullZeroAndOneInsideTransaction(): void
+    {
+        $noProfileUserId = $this->createTestUser();
+        $userId = $this->createTestUser([], true);
+
+        $this->repo->beginTransaction();
+        try {
+            $this->assertNull($this->repo->findProfileEmailSuppressedForUpdate($noProfileUserId));
+            $this->assertSame(0, $this->repo->findProfileEmailSuppressedForUpdate($userId));
+            $this->assertTrue($this->repo->updateProfileEmailSuppressed($userId, true));
+            $this->assertSame(1, $this->repo->findProfileEmailSuppressedForUpdate($userId));
+        } finally {
+            $this->repo->rollback();
+        }
     }
 }

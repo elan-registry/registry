@@ -319,6 +319,19 @@ final class CarBadgesTest extends TestCase
         }
     }
 
+    public function test_verifiedTooltip_isTheBadgeTooltipBuiltFromTheFreshnessConstant(): void
+    {
+        $this->assertSame(
+            "The owner confirmed, added, or updated this car's record in the last "
+                . CarRepository::FRESHNESS_MONTHS . ' months.',
+            CarBadges::verifiedTooltip()
+        );
+        $this->assertStringContainsString(
+            'data-bs-title="' . htmlspecialchars(CarBadges::verifiedTooltip(), ENT_QUOTES, 'UTF-8') . '"',
+            CarBadges::html(['verified'])
+        );
+    }
+
     // ------------------------------------------------------------------
     // verifiedStatus() (#1897)
     // ------------------------------------------------------------------

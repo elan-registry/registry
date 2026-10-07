@@ -54,22 +54,37 @@ prose.
       - Any other exit code — use `- none (ledger query failed)` in step 4.
         Tell the user that the ledger query failed. Show the stderr. Go to
         step 4.
-3. Ask the user which items this PR completes:
-   - Run `scripts/check-plan-state.sh`. Exit codes `1` (no plan), `2` (plan
-     not approved) and `3` (no issue number) are normal here. Use only the
-     `path:` line. If there is no `path:` line, or it is `(none)`, use no
-     plan. Otherwise, read the plan's **Ledger items** section. If the line
-     lists more than one file, read the first one.
-   - Match each plan item to a query output line by its item text. Put the
-     matched items first. Put the other items after them.
-   - Use AskUserQuestion with `multiSelect: true`. Use one option for each
-     item. The option text is the `path: item text` line.
-   - Put no more than 4 options in one question. Put no more than 4
-     questions in one call. If more items remain, make more calls.
-   - A question must have 2 or more options. If a question has only one
-     item, add the option `None of these`.
-   - Do not decide that an item is done. Only the user decides.
-   - If the user selects no item, use `- none` in step 4.
+3. Sort each query output line into one of two groups, then only ask about
+   the second group:
+   - **This session already fixed it, with evidence** — this turn (or an
+     agent it launched) edited the item's own file to do exactly what the
+     item asks, and ran the test/check that proves it (a specific test
+     name and pass/fail result, a specific command's output — not "looks
+     fixed"). Mark it completed without asking. State in the final summary,
+     per item, the one-line evidence (e.g. "fixed — `CarBadges::resolve()`
+     marked `@internal`, confirmed by grep"). This is the common case right
+     after a fix-the-ledger-items pass (CLAUDE.md, cleanup-ledger policy)
+     — don't make the user re-confirm what they just watched happen.
+   - **Everything else** — a pre-existing item on a touched file that
+     nothing in this session's work addressed, or one you can't point to
+     direct evidence for. Ask the user which of these this PR completes:
+     - Run `scripts/check-plan-state.sh`. Exit codes `1` (no plan), `2`
+       (plan not approved) and `3` (no issue number) are normal here. Use
+       only the `path:` line. If there is no `path:` line, or it is
+       `(none)`, use no plan. Otherwise, read the plan's **Ledger items**
+       section. If the line lists more than one file, read the first one.
+     - Match each plan item to a query output line by its item text. Put
+       the matched items first. Put the other items after them.
+     - Use AskUserQuestion with `multiSelect: true`. Use one option for
+       each item. The option text is the `path: item text` line.
+     - Put no more than 4 options in one question. Put no more than 4
+       questions in one call. If more items remain, make more calls.
+     - A question must have 2 or more options. If a question has only one
+       item, add the option `None of these`.
+     - Do not decide that an item in this group is done on your own — you
+       have no direct evidence for it, so only the user decides.
+   - If the user selects no item from the asked group, and no item fell in
+     the first group either, use `- none` in step 4.
 4. Write the PR body to a second temp file. If step 2.1 found a PR, add no
    **Ledger items** section. Otherwise, add this section to the body:
 
@@ -79,9 +94,10 @@ prose.
    - path/to/file.php: item text, word for word
    ```
 
-   Write one bullet for each item that the user selected. Copy the
-   `path: item text` line exactly. If there are no selected items, write the
-   one line from step 2 or step 3 (`- none` or
+   Write one bullet for each item in step 3's first group (fixed with
+   evidence this session) plus each item the user selected from the second
+   group. Copy the `path: item text` line exactly. If there are none of
+   either kind, write the one line from step 2 or step 3 (`- none` or
    `- none (ledger query failed)`). Write each bullet on one line. Do not
    wrap it.
 5. Run:

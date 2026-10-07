@@ -181,7 +181,7 @@ $_registryDate = static function (object $carData, string $column): string {
 
             <?php if (!$_isSold) { ?>
             <dt class="col-sm-4 text-muted">
-                Verified <?= $_helpButton('What Verified means', "The owner confirmed, added, or updated this car's record in the last 12 months.") ?>
+                Verified <?= $_helpButton('What Verified means', \ElanRegistry\Car\CarBadges::verifiedTooltip()) ?>
             </dt>
             <dd class="col-sm-8">
                 <?php if ($_verifiedStatus !== null) { ?>
@@ -203,7 +203,7 @@ $_registryDate = static function (object $carData, string $column): string {
                 <span class="me-3">Bounced <?= $_helpButton('What Bounced means', 'Email to this owner bounced. Verification emails start again when the owner confirms a different, working address.') ?></span>
                 <?php } ?>
                 <?php if ($_emailSuppressed) { ?>
-                <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab.") ?></span>
+                <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab, or the owner can use Resume verification emails in their Account Settings.") ?></span>
                 <?php } ?>
             </dd>
             <?php } ?>

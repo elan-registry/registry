@@ -24,6 +24,15 @@ use ElanRegistry\LogCategories;
  */
 class CarRepository
 {
+    /**
+     * Length of the freshness window, in months.
+     *
+     * freshnessCutoff() and the Verified badge tooltip (CarBadges) use this
+     * value, so the rule and the text cannot disagree. freshnessSql() writes
+     * the same window as `INTERVAL 1 YEAR`.
+     */
+    public const FRESHNESS_MONTHS = 12;
+
     /** @var array<string, string> Factory suffix code to description mapping */
     private const SUFFIX_MAP = [
         'A' => 'S4 FHC UK Market',
@@ -502,6 +511,40 @@ class CarRepository
     }
 
     /**
+     * Read an owner's profile-level email-suppressed flag and lock the row for
+     * the rest of the current transaction (InnoDB SELECT...FOR UPDATE, #1895).
+     * Call it only inside an active transaction.
+     *
+     * The locking counterpart of {@see findProfileEmailSuppressed()}. A
+     * read-then-write caller needs it so that two concurrent requests cannot
+     * both read the flag as 1. The second request waits for the first to
+     * commit, then reads the committed value. A plain read under REPEATABLE
+     * READ returns the transaction's snapshot, so the second request would
+     * still see 1 and its UPDATE would then affect 0 rows.
+     *
+     * @param int $userId Owner user ID
+     * @return int|null 0 or 1 as stored, or null when the owner has no profiles row
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findProfileEmailSuppressedForUpdate(int $userId): ?int
+    {
+        $result = $this->db->query(
+            'SELECT email_suppressed FROM profiles WHERE user_id = ? FOR UPDATE',
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findProfileEmailSuppressedForUpdate failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+        if ($this->db->count() === 0) {
+            return null;
+        }
+
+        return (int) $result->first()->email_suppressed;
+    }
+
+    /**
      * Set an owner's profile-level email-suppressed flag (#1883)
      *
      * The owner-level counterpart to {@see updateEmailSuppressed()}: that flag
@@ -836,6 +879,31 @@ class CarRepository
      */
     public static function isFresh(?string $lastVerified, string $ownerLastUpdated): bool
     {
+        return self::freshnessSource($lastVerified, $ownerLastUpdated) !== null;
+    }
+
+    /**
+     * Get the operand that makes a car fresh, with its parsed date.
+     *
+     * This is the rule of isFresh(), which calls this method. It reads the
+     * clock one time, so the fresh decision and the source use the same
+     * cutoff second.
+     * - `confirmed`: `last_verified` is not null and is inside the window.
+     *   The date is `last_verified`.
+     * - `current`: `last_verified` is null or outside the window, and
+     *   `owner_last_updated` is inside the window. The date is
+     *   `owner_last_updated`.
+     *
+     * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
+     *
+     * @param string|null $lastVerified     Datetime string, or null if never verified
+     * @param string      $ownerLastUpdated Datetime string (NOT NULL by schema)
+     * @return array{source: 'confirmed'|'current', date: DateTimeImmutable}|null The source and its date, or null when the car is not fresh
+     * @throws CarValidationException If either argument is an empty or unparseable date string,
+     *                                or if PHP cannot calculate the freshness cutoff
+     */
+    public static function freshnessSource(?string $lastVerified, string $ownerLastUpdated): ?array
+    {
         // Both operands are always parsed before the method returns. It does not
         // short-circuit on a fresh owner_last_updated. A malformed value is a
         // programming error or data corruption, and it must surface whichever
@@ -853,8 +921,14 @@ class CarRepository
         // Read the clock once, so both operands are compared to the same second.
         $cutoff = self::freshnessCutoff();
 
-        return $ownerDate->getTimestamp() >= $cutoff
-            || ($verifiedDate !== null && $verifiedDate->getTimestamp() >= $cutoff);
+        if ($verifiedDate !== null && $verifiedDate->getTimestamp() >= $cutoff) {
+            return ['source' => 'confirmed', 'date' => $verifiedDate];
+        }
+        if ($ownerDate->getTimestamp() >= $cutoff) {
+            return ['source' => 'current', 'date' => $ownerDate];
+        }
+
+        return null;
     }
 
     /**
@@ -878,23 +952,25 @@ class CarRepository
     /**
      * Get the start of the 1-year freshness window as a Unix timestamp.
      *
-     * This is the one PHP definition of the window. isFresh() and
-     * isWithinFreshnessWindow() compare parsed dates to it. isFresh() reads it
-     * once, so both of its comparisons use the same second. Each call reads the
+     * This is the one PHP definition of the window. freshnessSource() (and so
+     * isFresh()) and isWithinFreshnessWindow() compare parsed dates to it.
+     * freshnessSource() reads it once, so both of its comparisons use the same
+     * second. Each call reads the
      * clock again, so two calls can return different values.
      *
      * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
      *
-     * @return int Unix timestamp of the time one year ago
-     * @throws CarValidationException If strtotime() cannot calculate the time one year ago
+     * @return int Unix timestamp of the time FRESHNESS_MONTHS months ago
+     * @throws CarValidationException If strtotime() cannot calculate the cutoff
      */
     public static function freshnessCutoff(): int
     {
-        $cutoff = strtotime('-1 year');
+        $relative = '-' . self::FRESHNESS_MONTHS . ' months';
+        $cutoff = strtotime($relative);
         // A cast would turn false into 0, the Unix epoch, and every car would be fresh.
         if ($cutoff === false) {
             throw new CarValidationException(
-                'CarRepository freshness check could not calculate the cutoff: strtotime(\'-1 year\') returned false.'
+                "CarRepository freshness check could not calculate the cutoff: strtotime('{$relative}') returned false."
             );
         }
 
