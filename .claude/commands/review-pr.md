@@ -414,9 +414,11 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
    - **Defer** — ask a follow-up `AskUserQuestion` (options `Cleanup ledger`,
      `New GitHub issue`) to pick the destination, same distinction `/found`
      uses between cleanup and defect:
-     - *Cleanup ledger* — follow `/found`'s "Ledger" steps: find the open
-       `cleanup-ledger` issue, add one checkbox line under that file's
-       heading (or a new heading if none exists for the file).
+     - *Cleanup ledger* — run
+       `scripts/ledger-add-item.sh "<path>" "<one-line item>"`. It adds one
+       checkbox line under that file's heading (or a new heading if none
+       exists). On exit 2, report its stderr and stop, as in `/found`'s
+       "Ledger" step.
      - *New GitHub issue* — follow `/found`'s "Defer" steps: `gh issue
        create` with the `triage` label and a `TYPE:` title prefix matching
        the finding (`bug:` for a defect, `tech-debt:`/`chore:` otherwise).
@@ -453,6 +455,28 @@ This branch is only reachable when Step 1 produced a clean summary line for
 every suite — no failures, and no unexpected skips, warnings, incomplete, or
 risky tests. Never report "clean" over a suite that did not run, could not
 start, or skipped.
+
+**Re-stamp the review fingerprint.** `/execute-plan` Step 7 is the only
+place that writes the plan file's `Review fingerprint:` line today, so a
+second `/review-pr` run — after a trivial fix from `/address-pr-comments`,
+for instance — re-reviews every lane from scratch even when this run just
+confirmed the diff clean. Close that gap here the same way: if a plan file
+exists (`scripts/check-plan-state.sh` gives its path) and every lane that
+ran this time (including any skipped per the fingerprint check above)
+reported no Blocking finding, write or replace the plan file's
+`Review fingerprint:` line with the current fingerprint and the full set of
+clean lanes:
+
+```text
+Review fingerprint: <hash> — clean lanes: code-reviewer, silent-failure-hunter, pr-test-analyzer, comment-analyzer
+```
+
+Name every lane from this run's Step 3 table that reported no Blocking
+finding — including `comment-analyzer` when the `comments` aspect ran and
+was clean, which `/execute-plan` never runs and so never stamps. Do not name
+`spec` or `simplify`; `/review-pr`'s own Step 3 excludes them from the skip
+check, so naming them here would have no effect and would misstate what was
+verified. If no plan file exists, skip this — there's nothing to write it to.
 
 - Report: "Local review clean — no blocking issues, no open recommendations."
   Include the Suites executed table so the claim is backed by real counts.

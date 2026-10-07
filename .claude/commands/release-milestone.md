@@ -37,6 +37,17 @@ gh pr list --base main --state open \
 - Exactly one match → use it. Zero or multiple → stop and ask the user.
 - Extract the version from the branch name (e.g., `milestone/v2.17.0` →
   `v2.17.0`) and the milestone number from the PR's milestone field.
+- The milestone PR often has no milestone set (`milestone: null`). If so,
+  find the number from the open milestone whose title starts with the
+  version:
+
+  ```bash
+  gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" \
+    --jq '.[] | select(.title | test("^<version>([: ]|$)")) | .number'
+  ```
+
+  Exactly one number → use it. Zero or more than one → stop and ask the
+  user. Steps 2 and 6 use this `<milestone-number>`.
 
 ### Step 2: Verify preconditions
 
@@ -65,6 +76,32 @@ scripts/check-blocking-findings.sh <number> --include-important
 This is a second, independent check on the same requirement
 `/review-milestone` Step 5 already enforces — it exists so a PR that sat open
 a while, or reached this command by another path, still gets caught.
+
+**The milestone scope must still match the release notes.**
+
+```bash
+scripts/check-milestone-scope-drift.sh <version> <milestone-number>
+```
+
+- **Exit 0** — scope matches, proceed.
+- **Exit 1** — a mismatch exists. **Stop.** Do not proceed to Step 5 or
+  Step 6. Report each mismatched issue the script printed. Tell the user the
+  release notes need an update: remove an issue that moved out of the
+  milestone, or add an issue that moved in. This is the same recovery as
+  `/finish-milestone` Step 5.5. The user can go back to `/finish-milestone`
+  Step 5.5 to fix the release notes, or edit the file by hand, push, and run
+  `/release-milestone` again. Some mismatches are intended, for example an
+  issue carried from a different milestone ("Carried from …" in its entry).
+  Proceed only when the user confirms that each reported mismatch is
+  intended.
+- **Exit 2** — can't verify: no release-notes file, no "Issues Resolved"
+  entries in it, or the `gh` call failed. Treat as "can't verify," not
+  "clean." Stop and investigate.
+
+This is deliberately the same check `/finish-milestone` Step 5.5 already
+runs. It runs again here as a second, independent check, because the
+milestone PR can stay open for a while between the two commands, and an
+issue's milestone assignment can change in that window.
 
 ### Step 3: Check version consistency
 

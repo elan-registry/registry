@@ -154,53 +154,31 @@ gh issue create \
 
 #### Ledger
 
-The cleanup ledger is the one open issue with the `cleanup-ledger` label.
-Find it:
+The cleanup ledger is the one open issue with the `cleanup-ledger` label. It
+keeps one group per file: a level-3 heading that names the file in backticks,
+and the checkbox lines under it. Add the item with the script:
 
 ```bash
-gh issue list --repo elan-registry/registry --label cleanup-ledger \
-  --state open --json number --jq '.[0].number'
+scripts/ledger-add-item.sh "path/to/file.php" "ONE_LINE_ITEM (found while working on #CURRENT_ISSUE)"
 ```
 
-If the command returns nothing, stop. Tell the user that no open ledger issue
-exists. Do not create a ledger issue and do not create a separate issue.
+The script finds the open ledger issue and adds the item as the last checkbox
+line under the heading for the file. If no heading exists for the file, it
+adds a new comment with a new heading. On success it prints one line
+`added to #<issue>: <path>: <item> (existing heading)` or `(new heading)`.
 
-Keep one group per file. A group is a heading line that starts with
-``### `path/to/file.php` `` (some headings name more than one file), and the
-checkbox lines under it, up to the next `###` heading. Groups sit in the
-ledger issue body and in its comments, often several to a comment, after some
-intro text. Look for a heading line for this file:
+- **Exit 0** — tell the user, with the issue number and ending from the
+  script's output:
 
-```bash
-F='path/to/file.php'
-gh api "repos/elan-registry/registry/issues/LEDGER_NUMBER/comments" --paginate \
-  | jq -r --arg h "### \`$F\`" \
-    '.[] | select(.body | split("\n") | any(startswith($h))) | .id' | head -1
-gh issue view LEDGER_NUMBER --repo elan-registry/registry --json body \
-  --jq '.body' | grep -n "^### \`$F\`"
-```
+  > "Added to cleanup ledger #LEDGER_NUMBER under `path/to/file.php` (existing heading)."
 
-- **A heading is found** — insert the new item as the last checkbox line of
-  that file's group (before the next `###` heading, or at the end). Change
-  nothing else. Write the whole body back:
-
-  ```bash
-  # comment:
-  gh api -X PATCH "repos/elan-registry/registry/issues/comments/COMMENT_ID" \
-    -f body="$NEW_BODY"
-  # issue body:
-  gh issue edit LEDGER_NUMBER --repo elan-registry/registry --body-file <file>
-  ```
-
-- **No heading is found** — add one comment with the file path as the
-  heading:
-
-  ```bash
-  gh issue comment LEDGER_NUMBER --repo elan-registry/registry --body "### \`path/to/file.php\`
-  - [ ] ONE_LINE_ITEM (found while working on #CURRENT_ISSUE)"
-  ```
-
-> "Added to cleanup ledger #LEDGER_NUMBER under `path/to/file.php`."
+- **Exit 1** — the arguments are wrong (the item text must be one line, and
+  the path must not contain a backtick). Correct them and run the script
+  again.
+- **Exit 2** — stop. Give the user the script's stderr. If it says that no
+  open issue has the `cleanup-ledger` label, tell the user that no open
+  ledger issue exists. Do not create a ledger issue and do not create a
+  separate issue.
 
 ### Step 5: Resume — or hand off, for the hotfix track
 
@@ -209,10 +187,24 @@ then immediately return to the current task. Do not interrupt the flow further.
 
 For the **Hotfix track**, do not resume. This is the one finding that
 interrupts a milestone (see `docs/development/ISSUE_WORKFLOW.md`, "Interrupts
-and the hotfix track"): report the new issue number, tell the user the current
-task is paused, and stop so they can commit or stash the in-progress work and
-start the hotfix from `main` (`/start-issue NNN` on a branch off `main`,
-shipped as a patch release). The milestone work resumes after the hotfix is
+and the hotfix track"): report the new issue number and tell the user the
+current task is paused so they can commit or stash the in-progress work.
+
+**`/start-issue` has no hotfix mode today** — it requires a `milestone/*`
+branch (Step 3) and stops if none is checked out. Do not tell the user to
+run `/start-issue NNN` on a branch off `main`; that command will refuse.
+Until a hotfix mode exists, tell the user the manual steps instead:
+
+```bash
+git checkout main && git pull origin main
+git checkout -b bug/NNN-short-description
+# implement, commit, push
+gh pr create --base main --title "bug: ..." --body "..."
+```
+
+`/finish-issue` already tolerates a PR targeting `main` (it warns, then asks
+whether to proceed), so the merge step works as-is. Release as a patch from
+`main` per `DEPLOYMENT.md`. The milestone work resumes after the hotfix is
 released.
 
 ## Quick reference

@@ -223,14 +223,26 @@ proceed to Step 7 until all blocking items and CI checks are clean.
 
 ## Step 7: Present Advisory Items
 
-If there are Advisory items, list them and ask:
+If there are Advisory items, walk them one at a time — same pattern
+`/review-pr` Step 6 uses for Recommendation items, so a finding never
+disappears with no record of the decision. For each item, in order:
 
-> "Blocking items are resolved and CI is clean. Here are advisory suggestions
-> from the review. Would you like to address any of these before merging?"
-
-Present each advisory item with a one-line summary. Wait for the user's
-response. For each item the user wants to address, follow the same
-fix-commit-push pattern from Steps 5–6.
+1. State the item (source, file:line, suggestion).
+2. Ask via `AskUserQuestion`, options `Fix now`, `Defer`, `Skip entirely`.
+3. Act on the answer:
+   - **Fix now** — follow the fix-commit-push pattern from Steps 5–6.
+   - **Defer** — ask a follow-up `AskUserQuestion` (options `Cleanup ledger`,
+     `New GitHub issue`), then follow `/found`'s "Ledger" or "Defer" steps —
+     same distinction `/review-pr` Step 6 uses.
+   - **Skip entirely** — no code change, but still record it: add one line
+     to the PR body under a `## Advisory items declined` heading (create the
+     heading if absent) with the item's source, file:line, and a one-line
+     reason. Use `gh pr edit <pr-number> --body-file <file>` with the full
+     updated body (read the current body first, append, write back). This is
+     the one place in this command where a declined finding must not
+     evaporate — contrast `/review-pr`'s `Skip entirely`, which the PR body
+     already records as part of its own full report.
+4. Continue to the next Advisory item.
 
 ## Step 8: Summary
 
@@ -240,18 +252,20 @@ Output:
 PR #NNN is clean and ready to merge.
 
 - Blocking items fixed: N
-- Advisory items reviewed: N (M addressed, K deferred)
+- Advisory items reviewed: N (M fixed, K deferred, J skipped — logged in PR body)
 - CI status: all checks passing
 
-Next step: /finish-issue [NNN] — mark ready for review, squash-merge, and
-close the issue
+Next step: /finish-issue <issue-number> — mark ready for review,
+squash-merge, and close the issue (the GitHub issue number, not PR #NNN above)
 ```
 
-Then tell the user to type `/finish-issue <issue-number>`. Do not start it
-through the Skill tool and do not ask a next-step question. `/finish-issue`
-declares `model: sonnet`, and a Skill-tool start runs it on this command's
-model (CLAUDE.md, "Hand-offs between commands"). `/finish-issue` needs only
-the issue number, so the user can run `/clear` first.
+Then tell the user to type `/finish-issue <issue-number>`, filling in the
+actual GitHub issue number — not the PR number used elsewhere in this
+report. Do not start it through the Skill tool and do not ask a next-step
+question. `/finish-issue` declares `model: sonnet`, and a Skill-tool start
+runs it on this command's model (CLAUDE.md, "Hand-offs between commands").
+`/finish-issue` needs only the issue number, so the user can run `/clear`
+first.
 
 ## Important
 

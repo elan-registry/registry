@@ -135,10 +135,23 @@ targeting the milestone branch. Each command describes its own steps.
 /plan-milestone → /start-milestone
   per issue: /start-issue → /execute-plan → /simplify → /commit → /review-pr
              → /commit-push-pr → /address-pr-comments → /finish-issue
-/finish-milestone → /review-pr → /review-milestone → /release-milestone
+/finish-milestone → /review-milestone → /release-milestone
 Other: /new-issue, /found, /security-review, /sprint-status, /groom-backlog,
        /revise-claude-md, /clean_gone
 ```
+
+`/finish-milestone` Step 9.7 already runs the full-branch review; do not run
+`/review-pr` again at the milestone boundary. `/finish-milestone` Step 10
+hands off straight to `/review-milestone`.
+
+**`/commit-push-pr` name collision.** A plugin also defines a command named
+`commit-push-pr` (`commit-commands:commit-push-pr`). Its behavior differs
+from this project's own `.claude/commands/commit-push-pr.md` — the plugin
+version skips the `docs/plans/`/`_noupload/` staging guard, the draft-PR
+setting, and the ledger-items step. Typing `/commit-push-pr` runs whichever
+one the harness resolves first; if unsure which one ran, check the output
+against this project's command (it writes a `## Ledger items` section into
+the PR body and opens the PR as a draft — the plugin version does neither).
 
 **Hand-offs between commands.** A command's `model:` frontmatter applies
 only when the user types the command. A command that another command starts
