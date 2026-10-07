@@ -164,29 +164,38 @@ test.describe('Admin Verification Send Tool', () => {
         expect(response.status()).toBe(200);
         expect(await page.locator('body').textContent()).not.toContain('Fatal error');
 
-        const heading = page.getByRole('heading', { name: 'Send Verification Emails', level: 5 });
-        await expect(heading).toBeVisible();
-        const card = page.locator('div.card', { has: heading });
+        // The batch-send section lives in the Eligible pill view, not the
+        // default (All) view this GET lands on. Click the pill, the way a
+        // real admin reaches it, rather than hand-building the URL — this
+        // also proves the pill itself works.
+        await page.locator('a.filter-pill[data-status="eligible"]').click();
+        await page.waitForLoadState('networkidle');
 
-        await expect(card.locator('table tbody tr').first()).toBeVisible();
-        await expect(card.locator('.alert-info', { hasText: 'No cars are currently due' })).toHaveCount(0);
+        const queueCard = page.locator('#verificationQueue');
+        const heading = queueCard.getByRole('heading', { name: 'Send Verification Emails', level: 6 });
+        await expect(heading).toBeVisible();
+
+        await expect(queueCard.locator('table tbody tr').first()).toBeVisible();
+        await expect(queueCard.locator('.alert-info', { hasText: 'No cars are currently due' })).toHaveCount(0);
     });
 
     // AC5/AC6 (partial — presence/wiring only, not full state-change
-    // assertions, which need DB-row inspection no locator can make): Mark
-    // Bounced / Clear Bounced / Clear Suppression buttons are present with
-    // form= attributes pointing at a matching sibling form carrying the
-    // right car_id. Asserted against the first row actually rendered in the
+    // assertions, which need DB-row inspection no locator can make): the
+    // row's single contextual action button (Mark Bounced / Clear Bounced /
+    // Clear Suppression, chosen by the car's own state — see
+    // tab-verification.php's $queueAction logic) is present with a form=
+    // attribute pointing at a matching sibling form carrying the right
+    // car_id. Asserted against the first row actually rendered in the
     // preview (real, pre-existing local data — see the file header's
     // environment-limitation note for why the fixture's own seeded car
     // cannot be relied on to appear here), since the wiring contract being
     // tested (button form= -> matching sibling <form id> -> matching hidden
-    // car_id) is identical for every row regardless of which car occupies it.
-    test('owner-action buttons are wired to their sibling forms via form=', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
+    // car_id) is identical for every row regardless of which car occupies it
+    // or which of the three contextual buttons it renders.
+    test('owner-action button is wired to its sibling form via form=', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification&status=eligible', { waitUntil: 'networkidle' });
 
-        const heading = page.getByRole('heading', { name: 'Send Verification Emails', level: 5 });
-        const card = page.locator('div.card', { has: heading });
+        const card = page.locator('#verificationQueue');
 
         const firstRow = card.locator('table tbody tr').first();
         await expect(firstRow).toBeVisible();
@@ -194,18 +203,16 @@ test.describe('Admin Verification Send Tool', () => {
         const carId = rowCarId.trim();
         expect(carId).toMatch(/^\d+$/);
 
-        const markBouncedBtn = firstRow.locator('button', { hasText: 'Mark Bounced' });
-        const clearBouncedBtn = firstRow.locator('button', { hasText: 'Clear Bounced' });
-        const clearSuppressionBtn = firstRow.locator('button', { hasText: 'Clear Suppression' });
+        // Exactly one action button per row now — not three. Each row shows
+        // whichever single button matches the car's own state.
+        const actionButtons = firstRow.locator('td').last().locator('button');
+        await expect(actionButtons).toHaveCount(1);
 
-        await expect(markBouncedBtn).toBeVisible();
-        await expect(clearBouncedBtn).toBeVisible();
-        await expect(clearSuppressionBtn).toBeVisible();
+        const actionBtn = actionButtons.first();
+        await expect(actionBtn).toHaveText(/^(Mark Bounced|Clear Bounced|Clear Suppression)$/);
 
         const expectedFormId = `owner-action-${carId}`;
-        await expect(markBouncedBtn).toHaveAttribute('form', expectedFormId);
-        await expect(clearBouncedBtn).toHaveAttribute('form', expectedFormId);
-        await expect(clearSuppressionBtn).toHaveAttribute('form', expectedFormId);
+        await expect(actionBtn).toHaveAttribute('form', expectedFormId);
 
         // The sibling form itself: correct id, correct hidden car_id, and a
         // non-empty CSRF token (AC2's presence half — see the CSRF test
@@ -221,10 +228,9 @@ test.describe('Admin Verification Send Tool', () => {
     // least one hidden car_ids[] input (proving the preview rows actually
     // feed the batch form, not just render inert text).
     test('batch send form carries a non-empty CSRF token and at least one car_ids[] entry', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/index.php?tab=verification&status=eligible', { waitUntil: 'networkidle' });
 
-        const heading = page.getByRole('heading', { name: 'Send Verification Emails', level: 5 });
-        const card = page.locator('div.card', { has: heading });
+        const card = page.locator('#verificationQueue');
 
         const batchForm = card.locator('form', { has: page.locator('input[name="command"][value="verification_send_batch"]') });
         await expect(batchForm).toBeAttached();
@@ -278,10 +284,9 @@ test.describe('Admin Verification Send Tool', () => {
     // the eligible preview table, since findVerificationEligible() excludes
     // email_bounced = 1 / email_suppressed = 1 rows.
     test('bounced and suppressed cars are excluded from the eligible preview', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/index.php?tab=verification&status=eligible', { waitUntil: 'networkidle' });
 
-        const heading = page.getByRole('heading', { name: 'Send Verification Emails', level: 5 });
-        const card = page.locator('div.card', { has: heading });
+        const card = page.locator('#verificationQueue');
 
         await expect(card.locator('td', { hasText: String(bouncedCarId) })).toHaveCount(0);
         await expect(card.locator('td', { hasText: String(suppressedCarId) })).toHaveCount(0);
@@ -319,8 +324,11 @@ test.describe('Admin Verification Automatic Sending panel', () => {
      * "Send Verification Emails" card.
      */
     function autoSendCard(page) {
+        // app/admin/index.php wraps every tab in an outer `div.card`, so
+        // `div.card` plus `has: heading` matches two elements. The nearest
+        // `.card` ancestor of the heading is the panel's own card.
         const heading = page.getByRole('heading', { name: 'Automatic Sending', level: 5 });
-        return page.locator('div.card', { has: heading });
+        return heading.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " card ")][1]');
     }
 
     /**
@@ -523,8 +531,12 @@ test.describe('Admin Verification Automatic Sending panel', () => {
         });
 
         await test.step('submit the batch form and assert it was refused', async () => {
-            const sendHeading = page.getByRole('heading', { name: 'Send Verification Emails', level: 5 });
-            const sendCard = page.locator('div.card', { has: sendHeading });
+            // The batch form lives in the Eligible pill view, not the
+            // default (All) view ensurePaused()/readPanelState() leave the
+            // page on.
+            await page.goto('app/admin/index.php?tab=verification&status=eligible', { waitUntil: 'networkidle' });
+
+            const sendCard = page.locator('#verificationQueue');
             const batchForm = sendCard.locator('form', {
                 has: page.locator('input[name="command"][value="verification_send_batch"]'),
             });
@@ -540,7 +552,10 @@ test.describe('Admin Verification Automatic Sending panel', () => {
                 .then(() => errorToast.textContent())
                 .catch(() => '');
 
-            await batchForm.locator('button[type="submit"]').click();
+            // The per-row owner-action buttons sit inside this form in the DOM
+            // but submit their own sibling forms through form=. The batch
+            // submit is the only submit button with no form= attribute.
+            await batchForm.locator('button[type="submit"]:not([form])').click();
             const flash = (await errorText || '').trim();
             await page.waitForLoadState('networkidle');
 
@@ -639,77 +654,47 @@ test.describe('Admin Verification non-admin access (#1885 commands)', () => {
         await login(page, process.env.E2E_DEV_NONADMIN_USERNAME, process.env.E2E_DEV_NONADMIN_PASSWORD);
     });
 
-    test('verification_toggle_cron is refused for a non-admin session', async ({ page }) => {
+    // securePage($php_self) in app/admin/index.php runs before the command
+    // switch. It redirects a plain owner (permission_id=1) to the site root,
+    // so a POST from this account never reaches the commands' own
+    // hasPerm([2], ...) gate (that gate only matters for an editor, who passes
+    // securePage()). Both asserts below check what this account can observe:
+    // the redirect away from the admin page, and no success text in the
+    // final response. page.request follows the redirect, so response.url()
+    // shows where the POST ended.
+    async function postAsNonAdmin(page, form) {
         await page.goto(TAB_URL, { waitUntil: 'domcontentloaded' });
-        const preUrl = page.url();
-        // A non-admin may still be able to view the tab (securePage() admits
-        // editors too, per tab-verification.php's own docblock) — this test
-        // only cares about the command's own hasPerm([2], ...) gate, so it
-        // does not require the tab itself to have rendered a token; it POSTs
-        // directly with a synthetic CSRF value obtained the same way the
-        // existing CSRF-rejection test above does, via page.request sharing
-        // the session's cookie jar.
-        test.skip(
-            preUrl.includes('login') || preUrl.includes('Please Log In'),
-            'Non-admin session could not reach the verification tab at all — cannot exercise the command gate'
-        );
-
-        const csrfToken = await page.locator('input[name="csrf"]').first().getAttribute('value').catch(() => null);
+        expect(
+            new URL(page.url()).pathname,
+            'a non-admin owner must be redirected away from the admin page'
+        ).not.toContain('/app/admin/');
 
         const response = await page.request.post(TAB_URL, {
-            form: {
-                csrf: csrfToken || '',
-                command: 'verification_toggle_cron',
-                desired_state: 'enable',
-            },
+            form: { csrf: 'not-a-real-token', ...form },
         });
-
-        const body = await response.text();
-
-        // Two possible legitimate rejection shapes depending on whether the
-        // CSRF token was obtainable: token_error.php's plain-text response
-        // (if the token was missing/invalid) or, if a valid token WAS
-        // obtained, the page re-rendering with the admin-only error message
-        // this command's hasPerm([2], ...) gate raises. Either is an
-        // acceptable proof of refusal; what must NEVER happen is the
-        // "Automatic sending resumed."/"...paused." success flash.
-        const rejectedByCsrf = body.includes('There was an error with your form');
-        const rejectedByPermission = body.includes('Administrator access is required for this action.');
         expect(
-            rejectedByCsrf || rejectedByPermission,
-            'A non-admin POST to verification_toggle_cron must be rejected either by CSRF or by the admin-only gate'
-        ).toBe(true);
+            new URL(response.url()).pathname,
+            'a non-admin POST must not end on the admin page'
+        ).not.toContain('/app/admin/');
+
+        return response.text();
+    }
+
+    test('verification_toggle_cron is refused for a non-admin session', async ({ page }) => {
+        const body = await postAsNonAdmin(page, {
+            command: 'verification_toggle_cron',
+            desired_state: 'enable',
+        });
 
         expect(body).not.toContain('Automatic sending resumed.');
         expect(body).not.toContain('Automatic sending paused.');
     });
 
     test('verification_set_batch_size is refused for a non-admin session', async ({ page }) => {
-        await page.goto(TAB_URL, { waitUntil: 'domcontentloaded' });
-        const preUrl = page.url();
-        test.skip(
-            preUrl.includes('login') || preUrl.includes('Please Log In'),
-            'Non-admin session could not reach the verification tab at all — cannot exercise the command gate'
-        );
-
-        const csrfToken = await page.locator('input[name="csrf"]').first().getAttribute('value').catch(() => null);
-
-        const response = await page.request.post(TAB_URL, {
-            form: {
-                csrf: csrfToken || '',
-                command: 'verification_set_batch_size',
-                batch_size: '10',
-            },
+        const body = await postAsNonAdmin(page, {
+            command: 'verification_set_batch_size',
+            batch_size: '10',
         });
-
-        const body = await response.text();
-
-        const rejectedByCsrf = body.includes('There was an error with your form');
-        const rejectedByPermission = body.includes('Administrator access is required for this action.');
-        expect(
-            rejectedByCsrf || rejectedByPermission,
-            'A non-admin POST to verification_set_batch_size must be rejected either by CSRF or by the admin-only gate'
-        ).toBe(true);
 
         expect(body).not.toContain('Batch size updated to');
     });

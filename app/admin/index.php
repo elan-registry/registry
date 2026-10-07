@@ -225,6 +225,46 @@ $verificationSendSvc = new CarVerificationSendService(
     new CarVerificationEmailComposer()
 );
 
+// ---------------------------------------------------------------------------
+// Verification dashboard URL state (?status=&window=&show=&activity_window=),
+// read here so the Verification System tab's GET-time render
+// (includes/tab-verification.php) gets pre-validated values. An unrecognized
+// value for any of the four falls back to that param's default rather than
+// reaching SQL or being rendered as-is.
+// ---------------------------------------------------------------------------
+if (!function_exists('verificationGetMappedChoice')) {
+    /**
+     * Read a GET param that selects a value from an int-keyed allow-list map
+     *
+     * Used for `window` and `activity_window`, which both pick a day count
+     * from CarRepository::QUEUE_WINDOW_CHOICES by its array key. An
+     * unrecognized or non-numeric value falls back to $default rather than
+     * reaching SQL.
+     *
+     * @param array<int, int|null> $choices
+     */
+    function verificationGetMappedChoice(string $param, array $choices, ?int $default): ?int
+    {
+        $value = $_GET[$param] ?? null;
+
+        return is_string($value) && (string) (int) $value === $value && array_key_exists((int) $value, $choices)
+            ? $choices[(int) $value] : $default;
+    }
+}
+
+$queueStatus = isset($_GET['status']) && is_string($_GET['status'])
+    && in_array($_GET['status'], CarRepository::QUEUE_STATUSES, true)
+    ? $_GET['status'] : 'all';
+
+$queueWindowDays = verificationGetMappedChoice('window', CarRepository::QUEUE_WINDOW_CHOICES, 30);
+
+$queueShowLimit = isset($_GET['show']) && is_string($_GET['show'])
+    && in_array((int) $_GET['show'], CarRepository::QUEUE_SHOW_CHOICES, true)
+    && (string) (int) $_GET['show'] === $_GET['show']
+    ? (int) $_GET['show'] : 25;
+
+$activityWindowDays = verificationGetMappedChoice('activity_window', CarRepository::QUEUE_WINDOW_CHOICES, 30);
+
 if (!function_exists('verifyHistoryFieldsForAdminAction')) {
     /**
      * Build a cars_hist snapshot row for an admin bounce/suppression action.
@@ -271,7 +311,7 @@ if (!function_exists('verifyHistoryFieldsForAdminAction')) {
             'model'                 => $carData->model ?? '',
             'series'                => $carData->series ?? '',
             'variant'               => $carData->variant ?? '',
-            'year'                  => $carData->year ?? '',
+            'year'                  => $carData->year ?? null,
             'type'                  => $carData->type ?? '',
             'chassis'               => $carData->chassis ?? '',
             'color'                 => $carData->color ?? '',
@@ -1149,12 +1189,7 @@ if (ElanInput::existsPost()) {
                                 $tabFile = 'includes/tab-' . str_replace('-', '_', $activeTab) . '.php'; // $activeTab already whitelist-validated above
                                 $tabPath = __DIR__ . '/' . $tabFile;
 
-                                if (file_exists($tabPath)) {
-                                    include $tabPath;
-                                } else {
-                                    // Fallback placeholder content
-                                    include 'includes/tab-placeholder.php';
-                                }
+                                include $tabPath;
                                 ?>
 
                             </div>

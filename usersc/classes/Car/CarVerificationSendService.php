@@ -421,32 +421,4 @@ final class CarVerificationSendService
             ));
         }
     }
-
-    /**
-     * Send verification emails for a list of cars
-     *
-     * Each car is sent independently — one car's failure neither aborts the batch
-     * nor affects any other car's result, which is what lets the admin page render
-     * a per-car report and lets the cron job work through a run to completion.
-     *
-     * NO CALLER TODAY. The admin batch-send handler (app/admin/index.php's
-     * verification_send_batch case) calls sendOne() directly in its own
-     * per-car loop instead, because it needs to bucket each result into its
-     * own report table (sent/unrecorded/skipped/failed) alongside the car
-     * row itself — this method's flat array<SendResult> return drops that.
-     * #1885's cron job (SendVerificationBatchJob) ended up needing the same
-     * per-car bucketing and calls VerificationBatchSender::processBatch()
-     * instead, which this method predates — so this remains genuinely
-     * uncalled rather than serving the caller it was written for. Kept for
-     * the simpler run-to-completion shape a future caller with no bucketing
-     * need might still want; if one never arrives, this is a fair tech-debt
-     * removal candidate (see #1930 for the precedent).
-     *
-     * @param array<object> $cars Eligible car rows, typically from {@see self::findEligible()}
-     * @return array<SendResult> One result per input car, in the same order
-     */
-    public function sendBatch(array $cars): array
-    {
-        return array_map(fn (object $c) => $this->sendOne($c), $cars);
-    }
 }

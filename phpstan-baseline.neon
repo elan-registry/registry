@@ -37,18 +37,6 @@ parameters:
 			path: app/admin/includes/partials/maintenance-scripts.php
 
 		-
-			message: '#^Variable \$activeTab might not be defined\.$#'
-			identifier: variable.undefined
-			count: 5
-			path: app/admin/includes/tab-placeholder.php
-
-		-
-			message: '#^Variable \$validTabs might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/includes/tab-placeholder.php
-
-		-
 			message: '#^Unreachable statement \- code above always terminates\.$#'
 			identifier: deadCode.unreachable
 			count: 2

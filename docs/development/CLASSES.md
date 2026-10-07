@@ -736,6 +736,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   window. `freshnessCutoff()` and the Verified badge tooltip
   (`CarBadges::verifiedTooltip()`) use it. `freshnessSql()` writes the same
   window as `INTERVAL 1 YEAR`; a unit test pins the two together.
+- `QUEUE_STATUSES` - Public constant, `['all', 'eligible', 'pending',
+  'bounced', 'suppressed', 'verified', 'sold']`. The statuses
+  `findVerificationQueue()` accepts. Public so the admin dashboard can check
+  a `?status=` URL value against the same list (#1896).
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
   bounce/suppression state for every car a user owns (`id`, `model`, `series`,
   `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
@@ -772,6 +776,45 @@ to provide a focused, testable data access layer wrapping the `cars`,
   query for cars eligible for a verification email: not sold, deliverable
   email, and stale — neither verified nor updated by its owner within the last
   year (see `stalenessSql()`). No longer falls back to `cars.mtime`.
+- `countVerificationSummary(?int $windowDays): array` - Count cars in each
+  verification dashboard state: `all`, `eligible`, `pending`, `bounced`,
+  `suppressed`, `verified`, `sold`. Backs the admin dashboard's summary cards
+  and filter-pill counts (#1896). `eligible`, `pending`, `bounced`, and
+  `suppressed` are current state; `verified` and `sold` count distinct
+  existing cars with a matching `cars_hist` row in the `$windowDays` window
+  (`null` for all time). `all` counts distinct cars that are eligible,
+  pending, bounced, or suppressed — it excludes verified and sold, since
+  those are history, not a queue state. Bounced and suppressed can overlap,
+  so `all` can be less than the sum of the four. Throws
+  `CarValidationException` if `$windowDays` is zero or negative, and
+  `CarDatabaseException` on a query failure.
+- `findVerificationQueue(string $status, ?int $windowDays, int $limit): array` -
+  List the cars for one verification queue filter pill. `$status` must be
+  one of `QUEUE_STATUSES`; each status uses the same definition as its count
+  in `countVerificationSummary()`. `$windowDays` applies only to `verified`
+  and `sold`. Row order depends on status: `pending` is longest-waiting
+  first, `eligible` is oldest-verified first, `verified`/`sold` is most
+  recent history row first, and `all`/`bounced`/`suppressed` is car id
+  ascending. Throws `CarValidationException` for an unknown `$status` or an
+  invalid `$windowDays`, and `CarDatabaseException` on a query failure.
+- `findRecentVerificationActivity(?int $windowDays, int $limit = 20): array` -
+  List the most recent `VERIFIED` and `VERIFIED SOLD` `cars_hist` rows,
+  newest first. Backs the dashboard's Recent Activity panel (#1896). Reads
+  `cars_hist` only, with no join to `cars` — a car merged or deleted after
+  the event still appears, with the year/chassis/owner name values recorded
+  at the time of the event. This is why Recent Activity can list a car that
+  no longer exists, while `countVerificationSummary()`'s `verified`/`sold`
+  counts (which join to `cars`) do not. Throws `CarValidationException` if
+  `$windowDays` is zero or negative, and `CarDatabaseException` on a query
+  failure.
+- `findLatestEmailEventPerCarWithPrecedence(array $carIds): array` - Find the
+  `er_email_events` row that sets each car's dashboard Status chip (#1896).
+  Scopes to the car's current send cycle (from its latest `sent` event
+  onward, or all events if it has none); within the cycle, a terminal event
+  (hard bounce or suppression) outranks any later non-terminal event, and
+  otherwise the latest event wins. Keyed by car id; a car with no event in
+  its cycle is absent from the result. Throws `CarValidationException` for a
+  non-positive car id, and `CarDatabaseException` on a query failure.
 - `updateSoldDate(int $carId, string $soldDate): bool` - **Deprecated** (#2107), no
   production callers — `CarVerificationManager::markSold()` writes `solddate` via
   `updateCar()` directly to set `owner_last_updated` atomically alongside it
@@ -845,6 +888,10 @@ row. Add a row and a test here when you add one.
 - Sitemap generation (`getAllForSitemap()`)
 - `BrevoWebhookEventProcessor` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#1887)
 - `BrevoEventReconciliationJob` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`, `deleteEmailEventsOlderThan()`) (#1889)
+- `app/admin/includes/tab-verification.php` (`countVerificationSummary()`,
+  `findVerificationQueue()`, `findRecentVerificationActivity()`,
+  `findLatestEmailEventPerCarWithPrecedence()`, `QUEUE_STATUSES`) — the
+  admin Verification dashboard (#1896)
 
 **See Also**:
 
@@ -1515,7 +1562,7 @@ verification-email send attempt (#1884). Returned by
 
 **Used By**:
 
-- `CarVerificationSendService::sendOne()` and `sendBatch()` (#1884)
+- `CarVerificationSendService::sendOne()` (#1884)
 - `VerificationBatchSender::processBatch()` (Verification System tab in
   `app/admin/index.php`) to build the result report
 
@@ -1558,8 +1605,6 @@ sequences from drifting.
   verification email; delegates to `CarRepository::findVerificationEligible()`
 - `sendOne(object $carData): SendResult` - Send one car's verification email,
   return sent/failed
-- `sendBatch(array $cars): array` - Map `sendOne()` over multiple cars,
-  return array of `SendResult`
 
 **Constructor Dependencies**:
 
@@ -2028,7 +2073,10 @@ handler already calls, so the two paths can never drift apart.
 **Configuration Constants**:
 
 - `JOB_NAME = 'send_verification_batch'` — `er_cron_job_runs.job_name` value
-- `GUARD_INTERVAL_HOURS = 20` — Claim interval (same 20-not-24 rationale as `BrevoEventReconciliationJob`)
+- `GUARD_INTERVAL_HOURS = 20` — **Public.** Claim interval (same 20-not-24
+  rationale as `BrevoEventReconciliationJob`). Public so the admin
+  Verification tab can show the next-eligible time from the same value the
+  guard uses.
 
 **Constructor**:
 
