@@ -60,9 +60,13 @@ jobs:
               - "eslint-rules/**"
               - "docker-compose.yml"
               - "package-lock.json"
+            # Code paths too: check-docs fails when a change deletes or
+            # renames a file that docs or CLEANUP_LEDGER.md still name.
             docs:
               - "**.md"
-              - "scripts/check-docs.php"
+              - "**.php"
+              - "**.js"
+              - "**.sh"
 
   docs:
     name: Documentation Consistency

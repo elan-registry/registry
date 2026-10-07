@@ -302,6 +302,8 @@ until the user asks for that deploy.
 2. **Choose the version.** Add a fourth number to the newest tag, for example
    `v2.30.4` → `v2.30.4.1` (as `v2.30.1.1` did). The next `vX.Y.Z` belongs to
    the open milestone. Confirm the version with the user.
+   `/release-milestone` Step 3 accepts four-part tags
+   (`scripts/check-version-newer.sh`).
 3. **Tag `main` and push the tag to `origin`.** Use an annotated tag, as
    `scripts/release-milestone.sh` does. `git describe HEAD` must print the
    new tag with no suffix:

@@ -30,9 +30,12 @@
 # clean match — it usually means the wrong milestone number was passed.
 #
 # The release-notes side reads only the leading link of each "- [#N](...)"
-# bullet under "## Issues Resolved". A cross-reference later in the same
-# bullet ("deferred to #1895") is not an entry for that issue, so it must
-# not count as one.
+# or "- WIP: [#N](...)" bullet under "## Issues Resolved". A cross-reference
+# later in the same bullet ("deferred to #1895") is not an entry for that
+# issue, so it must not count as one. A WIP entry counts as an entry, so a
+# closed issue that still has its WIP prefix is not reported as missing.
+# The script reports it on its own line instead, because /finish-issue
+# strips the prefix when the issue closes.
 #
 # Number comparison is done on LC_ALL=C-sorted, lexically-ordered input to
 # `comm`, which requires lexical order — `comm` on mismatched-width numeric
@@ -42,10 +45,11 @@
 #
 # Exit codes:
 #   0 = scope matches (same issue set on both sides)
-#   1 = mismatch — prints each issue and which direction it is wrong:
+#   1 = mismatch — prints each issue and what is wrong:
 #       "moved out of milestone since release notes were written" (in the
-#       notes, not in the milestone) or "added to milestone, missing from
-#       release notes" (in the milestone, not in the notes)
+#       notes, not in the milestone), "added to milestone, missing from
+#       release notes" (in the milestone, not in the notes), or "still has
+#       WIP prefix in release notes" (the entry starts with "WIP:")
 #   2 = can't verify — bad arguments, no release-notes file, no "Issues
 #       Resolved" entries found in it, the gh API call failed, the milestone
 #       has no non-PR issues in any state, or an unexpected tool failure
@@ -104,31 +108,40 @@ if [ -z "$MEMBER_NUMS" ]; then
 fi
 
 # grep -E and sed, not `grep -oP`: macOS ships BSD grep, which has no -P.
-NOTES_NUMS=$(awk '/^## Issues Resolved/ { in_section = 1; next } /^## / { in_section = 0 } in_section' "$NOTES_FILE" \
-  | { grep -oE '^- \[#[0-9]+\]\(https://github\.com/elan-registry/registry/issues/[0-9]+\)' || [ $? -eq 1 ]; } \
+ENTRIES=$(awk '/^## Issues Resolved/ { in_section = 1; next } /^## / { in_section = 0 } in_section' "$NOTES_FILE" \
+  | { grep -oE '^- (WIP: )?\[#[0-9]+\]\(https://github\.com/elan-registry/registry/issues/[0-9]+\)' || [ $? -eq 1 ]; })
+NOTES_NUMS=$(printf '%s\n' "$ENTRIES" \
+  | { grep -E '/issues/[0-9]+\)$' || [ $? -eq 1 ]; } \
   | sed -E 's|.*/issues/([0-9]+)\)$|\1|' \
   | LC_ALL=C sort -u)
+WIP_NUMS=$(printf '%s\n' "$ENTRIES" \
+  | { grep -E '^- WIP: ' || [ $? -eq 1 ]; } \
+  | sed -E 's|.*/issues/([0-9]+)\)$|\1|' \
+  | sort -nu)
 
 if [ -z "$NOTES_NUMS" ]; then
-  echo "No \"- [#N](.../issues/N)\" entries found under \"## Issues Resolved\" in $NOTES_FILE — cannot verify milestone scope." >&2
+  echo "No \"- [#N](.../issues/N)\" or \"- WIP: [#N](...)\" entries found under \"## Issues Resolved\" in $NOTES_FILE — cannot verify milestone scope." >&2
   exit 2
 fi
 
 MOVED_OUT=$(LC_ALL=C comm -23 <(printf '%s\n' "$NOTES_NUMS") <(printf '%s\n' "$MEMBER_NUMS") | sed '/^$/d' | sort -n)
 ADDED=$(LC_ALL=C comm -13 <(printf '%s\n' "$NOTES_NUMS") <(printf '%s\n' "$MEMBER_NUMS") | sed '/^$/d' | sort -n)
 
-if [ -z "$MOVED_OUT" ] && [ -z "$ADDED" ]; then
+if [ -z "$MOVED_OUT" ] && [ -z "$ADDED" ] && [ -z "$WIP_NUMS" ]; then
   COUNT=$(printf '%s\n' "$NOTES_NUMS" | wc -l | tr -d '[:space:]')
   echo "Milestone scope matches release notes — ${COUNT} issues."
   exit 0
 fi
 
-echo "Milestone ${MILESTONE_NUM} scope does NOT match $NOTES_FILE:"
+echo "Milestone ${MILESTONE_NUM} and $NOTES_FILE do NOT agree:"
 for n in $MOVED_OUT; do
   echo "  #${n} — moved out of milestone since release notes were written"
 done
 for n in $ADDED; do
   detail=$(printf '%s\n' "$MEMBERS" | awk -F '\t' -v n="$n" '$1 == n { print $2 ": " $3; exit }')
   echo "  #${n} — added to milestone, missing from release notes (${detail})"
+done
+for n in $WIP_NUMS; do
+  echo "  #${n} — still has WIP prefix in release notes"
 done
 exit 1

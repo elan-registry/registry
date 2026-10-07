@@ -1,257 +1,91 @@
 ---
-description: Create a new GitHub issue with PM-driven scope refinement and expert input
+description: Capture a new GitHub issue — title, signal, beneficiary, and evidence only
 model: opus
 ---
 
 # Create Issue Command
 
-Think through scope, acceptance criteria, and decomposition before
-drafting the issue.
-
 Keep output brief — terse status lines, no preamble, no restating of steps.
 
-## Step 0: Initialize TaskList
+This command captures an issue. It does not scope it. Capture records four
+things: a title, one signal label, a one-line beneficiary, and the quote or
+evidence (`docs/development/ISSUE_WORKFLOW.md`, "1. Capture"). Acceptance
+criteria, approach, and estimates are planning work: `/plan-milestone`
+Step 4 writes acceptance criteria for the issues it selects. Never suppress
+a capture. The filter is at planning.
 
-Before any other action, create one tracking task per major step below using
-TaskCreate (existing-issue search, PM scope refinement, expert input from
-architect/test/docs agents, issue body draft, user review, issue creation,
-next-step suggestion).
+Do not launch the PM or expert agents. Do not write acceptance criteria, a
+proposed solution, or a complexity estimate. Do not set a milestone.
 
-This command helps create well-defined GitHub issues by engaging specialized
-agents to refine scope, architecture, testing, and documentation requirements.
+## Step 1: Get the Problem Statement
 
-## Workflow Steps
+If the user gave a problem statement with the command, use it. Otherwise
+ask: "What problem or idea do you want to record?"
 
-### Step 1: Get the Problem Statement
-
-If the user provided a problem statement with the command, use it. Otherwise ask:
-
-"What problem or feature would you like to create an issue for? Describe it in
-your own words — I'll help refine it into a well-structured issue."
-
-Wait for their response before proceeding.
-
-### Step 2: Initial Research
-
-Launch Explore agents to understand the relevant parts of the codebase:
-
-- One agent to find code areas related to the problem statement
-- One agent to check for existing related issues or prior art
+## Step 2: Search for Duplicates
 
 ```bash
-gh issue list --state all --search "RELEVANT_KEYWORDS" --limit 10
+gh issue list -R elan-registry/registry --state all --search "KEYWORDS" --limit 10
 ```
 
-Check for duplicate or related issues. If found, inform the user:
+If an open issue already covers it, show it and ask with AskUserQuestion:
+`Add a comment to #NNN instead` (recommended when the new text is evidence
+for that issue) or `Create a new issue`. On the comment option, post the
+quote or evidence with `gh issue comment` and stop.
 
-"I found these related issues: [list]. Should we continue with a new issue,
-or does one of these already cover your need?"
+## Step 3: Draft the Issue
 
-Wait for confirmation before proceeding.
+Find the facts yourself. Ask the user only for what you cannot find, in one
+AskUserQuestion round (up to 4 questions).
 
-### Step 3: PM-Driven Scope Definition
+- **Title** — a Conventional-Commits preamble (CODING_STANDARDS.md, "Issue
+  & PR Title Conventions"). A defect is `bug:`, because it has no acceptance
+  criteria yet. Otherwise use the closest type: `feat:`, `chore:`, `docs:`,
+  `tech-debt:`, `security:`, `seo:`, `test:`, `refactor:`.
+- **Signal** — exactly one label. Use the table in ISSUE_WORKFLOW.md §1:
+  `signal:owner`, `signal:analytics`, `signal:operator`, `signal:defect`,
+  `signal:forced`, `signal:discovered`. If you cannot tell, ask: "Who
+  noticed this, and what did they say?" "Nobody — I thought of it" is a
+  valid answer and gets `signal:operator`.
+- **Never infer `signal:owner` or `signal:analytics`.** Apply them only
+  with a real message or a real measurement to point at.
+- **Beneficiary** — one sentence: who is worse off today, or better off if
+  this ships. If the user cannot name somebody other than themselves, write
+  the issue anyway.
+- **Quote or evidence** — the requester's words, verbatim, or the
+  measurement, log line, or error. Never paraphrase a quote.
+- **Labels** — the signal label, `triage`, and `bug` for a defect or
+  `enhancement` for a feature.
 
-Launch the **senior-product-manager** agent with:
+Show the draft and ask with AskUserQuestion: `Create it` or `Change it`.
 
-- The user's problem statement
-- The Explore results (codebase context)
-- Any related issues found
-
-Ask the PM agent to produce:
-
-1. A draft issue title (concise, actionable), prefixed with the scoped
-   Conventional-Commits-style type that matches this issue's deliverable
-   (`fix:`, `feat:`, `test:`, `chore:`, `docs:`, `refactor:`, `tech-debt:`,
-   `security:`, `seo:`) — see CODING_STANDARDS.md "Issue & PR Title
-   Conventions". Never `bug:` here: this workflow always fully scopes the
-   issue (acceptance criteria + technical notes) before creating it, so by
-   the time it's created it has graduated past the unscoped `bug:` stage.
-2. A draft description with:
-   - **Signal**: who noticed this, and how. One of `signal:owner` (a named
-     owner asked — email, contact form, club conversation),
-     `signal:analytics` (behaviour in logs or usage data — failed searches,
-     error rates, abandoned flows), `signal:operator` (your own friction
-     running the site), `signal:defect` (broken against its own stated
-     behaviour), `signal:forced` (security advisory, dependency EOL,
-     platform change), or `signal:discovered` (found while working another
-     issue). Include the requester's **verbatim words** where they exist — a
-     paraphrase always reads more urgent six weeks later than the original
-     did.
-   - **Problem statement**: What's wrong or what's needed
-   - **Proposed solution**: High-level approach
-   - **Acceptance criteria**: Specific, testable conditions for "done"
-   - **Out of scope**: What this issue explicitly does NOT cover
-3. Suggested labels (bug, enhancement, tech-debt, etc.)
-4. Suggested milestone (if applicable)
-5. Questions the PM needs answered to finalize scope
-
-### Step 4: Interview — Ask Questions One at a Time
-
-Present the PM's draft to the user, then ask the PM's questions **one at a
-time** using the following approach:
-
-- Present each question clearly with context for why it matters
-- When providing options, indicate the best known practice or industry standard
-- Wait for each answer before asking the next question
-- After each answer, determine if follow-up questions are needed
-
-**Do NOT batch questions.** Ask them individually and let each answer inform
-the next question.
-
-**The signal question comes first.** If Step 3 could not identify a signal,
-the opening interview question is always:
-
-> "Who noticed this, and what did they say?"
-
-"Nobody — I thought of it" is a perfectly valid answer and gets
-`signal:operator`. It does not block the issue: capture stays free, and the
-filter is milestone planning. What it does is record that the idea has no
-external evidence behind it, which is exactly what planning needs in order to
-weigh it against issues that do.
-
-**Never infer `signal:owner` or `signal:analytics`.** Those two are only ever
-applied when there is a real message or a real measurement to point at.
-Guessing them poisons the one signal the planning gate depends on.
-
-Continue until scope is fully clarified.
-
-### Step 5: Expert Refinement
-
-Based on the PM's complexity estimate from Step 3, launch only the agents
-that add value for this issue's scope:
-
-| Complexity | Agents to launch |
-| --- | --- |
-| **Trivial / Small (S)** | Skip — PM draft is sufficient; proceed to Step 6 |
-| **Medium (M)** | Launch the one agent most relevant to the PM's flagged risk |
-| **Large / XL (L/XL)** | Launch all three in parallel |
-
-**For Medium issues** — pick the most relevant:
-
-- **senior-architect** (when there are technical feasibility concerns, security
-  implications, DB schema impacts, or dependency risks): Review for complexity
-  estimate (S/M/L/XL), architecture risks, security implications, database
-  impacts, and dependencies.
-
-- **senior-test-engineer** (when acceptance criteria have testing complexity or
-  regression risk is flagged): Review testability, test types needed
-  (unit/integration/browser/security), existing coverage gaps.
-
-**For Large/XL issues** — launch all three in parallel:
-
-- **senior-architect**: Technical feasibility, complexity estimate, architecture
-  risks, security implications, DB impacts, dependencies, suggested approach.
-
-- **senior-test-engineer**: Testability of acceptance criteria, test types
-  needed, existing coverage, regression risks.
-
-- **technical-documentation-writer**: Documentation that will need updating,
-  user-facing and developer docs impact.
-
-Wait for all launched agents to complete.
-
-### Step 6: Synthesize and Present Final Draft
-
-Incorporate expert feedback into the issue. Present the final draft to the
-user with:
-
-1. **Title**
-2. **Description** (problem, solution, acceptance criteria, out of scope)
-3. **Labels**
-4. **Milestone** (if applicable)
-5. **Expert Notes** section summarizing key input from agents:
-   - Architecture considerations
-   - Complexity estimate
-   - Test requirements
-   - Documentation impact
-
-Ask: "Here's the refined issue. Would you like to change anything before I
-create it?"
-
-If the user requests changes, update the draft and re-present. If the experts
-raised concerns that the user hasn't addressed, flag them:
-
-"The architect noted [concern]. Should we address this in the issue scope or
-create a separate issue for it?"
-
-### Step 7: Create the Issue
-
-Once the user approves, create the issue on GitHub:
+## Step 4: Create the Issue
 
 ```bash
-gh issue create --title "TITLE" --body "BODY" --label "LABELS" --milestone "MILESTONE"
-```
-
-Use a HEREDOC for the body to preserve formatting:
-
-```bash
-gh issue create --title "Issue title" --body "$(cat <<'EOF'
+gh issue create -R elan-registry/registry --title "TYPE: TITLE" \
+  --label "signal:X,triage,LABEL" --body "$(cat <<'EOF'
 ## Signal
 
-Who noticed this and how. Verbatim quote if there is one.
+signal:X — who noticed this, and how.
 
-## Problem
+## Beneficiary
 
-Description of the problem or need.
+One sentence.
 
-## Proposed Solution
+## Quote / evidence
 
-High-level approach.
-
-## Acceptance Criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
-
-## Out of Scope
-
-- Item 1
-- Item 2
-
-## Technical Notes
-
-- **Complexity:** S/M/L/XL
-- **Architecture:** Key considerations from architect
-- **Testing:** Required test types
-- **Documentation:** Docs that need updating
-- **Security:** Any security considerations
+> Verbatim words, or the measurement or error.
 EOF
 )"
 ```
 
-After creation, display the issue URL and number.
+## Step 5: State the Next Step
 
-### Step 8: State the next step
+End with plain text, not a menu:
 
-After creating the issue, end with plain text, not a menu:
+"Issue #NUMBER created: URL. It has no milestone. The next
+`/plan-milestone` weighs it."
 
-"Issue #NUMBER created: URL"
-
-Then give one next step:
-
-- **The issue has a milestone** — "To start it, run `/clear`, then type
-  `/start-issue NUMBER`."
-- **No milestone** (the usual case) — "It is unmilestoned. The next
-  `/plan-milestone` weighs it." Do not offer `/start-issue`: with no
-  milestone, `/start-issue` would put it on whichever milestone branch is
-  checked out and skip the planning gate.
-
-## Critical Rules
-
-- **Ask questions ONE AT A TIME** — never batch multiple questions
-- **PM agent drives the process** — the PM defines scope, others refine it
-- **Check for duplicates** — always search for related issues first
-- **All acceptance criteria must be testable** — vague criteria get refined
-- **Flag expert concerns** — don't silently drop architect/test/docs concerns
-- **User has final say** — present recommendations but let the user decide
-- **Every issue records a signal** — the `signal:*` label and the Signal
-  section are required; an issue with no recorded signal cannot be weighed at
-  planning, only re-derived from its title weeks later
-- **Never infer `signal:owner` / `signal:analytics`** — apply them only with a
-  real message or a real measurement to point at
-- **Include complexity estimate** — architect should always estimate S/M/L/XL
-- **Use project labels** — check existing labels before suggesting new ones
-- **Title uses a scoped preamble, never bare `bug:`** — `fix:`/`feat:`/`test:`/
-  etc. per CODING_STANDARDS.md "Issue & PR Title Conventions"; this workflow's
-  issues are always fully scoped before creation
+Do not offer `/start-issue`. With no milestone, `/start-issue` would put the
+issue on whichever milestone branch is checked out and skip the planning
+gate.

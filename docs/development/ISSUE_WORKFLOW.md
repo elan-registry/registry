@@ -44,11 +44,44 @@ true. The content decides the date, not the calendar.
 | --- | --- |
 | Capture | `/new-issue`, `/found` (mid-issue finds) |
 | Plan | `/plan-milestone`, `/groom-backlog` (on demand), `/start-milestone` |
-| Build, per issue | `/start-issue` → `/execute-plan` → `/review-pr` → `/commit-push-pr` → `/address-pr-comments` → `/finish-issue` |
+| Build, per issue | `/start-issue` → `/execute-plan` (runs `/simplify` itself, Step 6.8) → `/commit` → `/review-pr` → `/commit-push-pr` → `/address-pr-comments` → `/finish-issue` |
+| Build, hotfix | The same, starting with `/start-issue <N> --hotfix`. Then the patch release in `DEPLOYMENT.md`. |
 | Ship | `/sprint-status` (any time), `/finish-milestone` → `/review-milestone` → `/release-milestone` |
 
 The full command sequence, with hand-offs, is in `CLAUDE.md`, "Developer
 Workflow".
+
+## Where am I? What do I run next?
+
+Every command stores its state in GitHub, in the repo, or in the plan file.
+So you can stop at any point, run `/clear`, and continue. Type the command
+yourself. A command starts the next one itself only when both commands
+declare the same `model:` (`CLAUDE.md`, "Hand-offs between commands").
+
+| State | Run next | `/clear` first? |
+| --- | --- | --- |
+| New release to plan | `/plan-milestone <version>` | Yes |
+| Milestone sealed, no branch | `/start-milestone <version>` | Yes |
+| Milestone branch exists, issue is `status:ready` | `/start-issue <N>` | Yes, at an issue boundary |
+| A plan stopped before approval (plan `Draft`) | `/start-issue <N>`. It resumes at the approval step. | No, unless the session holds another issue |
+| `/execute-plan` stopped on a deviation (plan back to `Draft`) | `/start-issue <N>`, then `/execute-plan <N>` | No |
+| Plan `Approved` | `/execute-plan <N>` | Optional. The plan file holds the state. |
+| `/execute-plan` stopped part way | `/execute-plan <N>`. It re-checks the checklist against the repo. | No |
+| Plan `Implemented`, work uncommitted | `/commit` | Optional |
+| Work committed, not reviewed | `/review-pr` | No. It refuses uncommitted changes. |
+| Review clean | `/commit-push-pr` | Yes |
+| PR open, CI and the automated review running | `/address-pr-comments` after they post | Yes |
+| PR clean | `/finish-issue <N>` (the issue number, not the PR number) | Yes |
+| `/finish-issue` stopped (CI red, risk flag, a failed step) | Fix the cause, then `/finish-issue <N>`. If the PR already merged, it continues at the close step. | No |
+| Issue merged, open issues remain | `/start-issue <next>` | Yes |
+| Issue merged, no open issues remain | `/finish-milestone <version>` | Yes |
+| `/finish-milestone` stopped, or the branch changed | `/finish-milestone <version>`. It skips each step whose result still matches the branch tip. | No |
+| `/finish-milestone` done | `/review-milestone <version>` | Yes |
+| `/review-milestone` says the review marker is old | `/finish-milestone <version>` | No |
+| Milestone PR green | `/release-milestone` | No. `/review-milestone` can start it. |
+| `/release-milestone` stopped | `/release-milestone <version>`. The script skips the steps that are done. | No |
+| Release created | Deploy from the deploy sheet. Then `/plan-milestone` for the next release. | Yes |
+| Production broken | `/found`, then `/start-issue <N> --hotfix` | Yes |
 
 ---
 
@@ -57,7 +90,10 @@ Workflow".
 **Rule: never suppress a capture.** The filter is at planning. Friction at
 capture loses real signals and gains nothing.
 
-`/new-issue` creates the issue. Each issue gets one **signal** label:
+`/new-issue` is capture only. It searches for a duplicate, records the issue,
+and stops. It does not ask a product interview, launch expert agents, write
+acceptance criteria, estimate size, or set a milestone. Each issue gets one
+**signal** label:
 
 | Label | Meaning | Weight at planning |
 | --- | --- | --- |
@@ -89,16 +125,23 @@ which issues evidence produced.
 
 ### What an issue records at capture
 
-Two things belong in the issue at capture, and nothing else:
+`/new-issue` records four things, and nothing else:
 
+- **A title** with a type prefix. A defect gets `bug:`, because it has no
+  acceptance criteria yet.
+- **One signal label.** The issue also gets `triage`, and `bug` or
+  `enhancement`.
 - **The one-line beneficiary.** For example, "Owners with no photos on their
   car cannot…". If you cannot finish the sentence about somebody other than
   yourself, write the issue anyway. Expect it to fail the gate.
-- **A verbatim quote, if there is one.** Paste the owner's actual words. A
-  paraphrase reads more urgent than the original.
+- **A verbatim quote or the evidence, if there is one.** Paste the owner's
+  actual words, or the measurement or error. A paraphrase reads more urgent
+  than the original.
 
 Acceptance criteria, technical approach, and estimates are planning work.
-Do not write them for issues that may never be selected.
+`/plan-milestone` Step 4 writes the acceptance criteria, and only for the
+issues it selects. A captured issue has no milestone. It cannot start through
+`/start-issue` until a planning session seals it into one.
 
 ### The occasional contributor
 
@@ -119,6 +162,12 @@ This is the only real ceremony in the workflow.
 Scan what arrived since the last planning: owner contacts, analytics
 anomalies, error logs, and new backlog issues. Discover the theme in the
 signals. Do not invent it.
+
+`/plan-milestone` also reads the newest release retrospective
+(`docs/plans/releases/<version>-retro.md`, see "4. Ship") and shows its three
+answers before you choose the theme. The first answer, the work that nobody
+needed, raises the bar at Step 2: a candidate of the same kind must show a
+stronger signal to stay.
 
 A theme is one sentence with an audience and an outcome:
 
@@ -167,17 +216,48 @@ A milestone contains:
   test").
 - **Nothing else.** No free slots. No "while we are in there."
 
-Then:
+Then `/plan-milestone` does this:
 
-1. Write the theme sentence into the milestone description. Do not write an
-   issue list. The description is the acceptance criterion for the release.
-2. Write the acceptance criteria for each selected issue now. This is the
-   first time the effort is worth it. Move each issue to `status:ready`.
-3. Leave unselected issues in the backlog, untouched.
+1. Writes the theme sentence into the milestone description. It does not
+   write an issue list. The description is the acceptance criterion for the
+   release.
+2. For each selected issue, writes the acceptance criteria into the issue body
+   as an `## Acceptance criteria` section of `- [ ]` lines. This is the first
+   time the effort is worth it. An issue without this section does not get
+   `status:ready`.
+3. Gives the issue a scoped title. A captured `bug:` prefix means "not yet
+   scoped". The command changes it to the type of work that ships (`fix:`,
+   `feat:`, and so on).
+4. Assigns the milestone, adds `status:ready`, and removes `triage`.
+5. For an issue that the edge-case test scoped down to the guard, posts a
+   comment that states the reduced scope. The criteria cover the guard only.
+6. For issues that touch the same code and must land as one PR, posts
+   `Combine into one PR with #A, #B (planned in <version>).` on each issue of
+   the group. You approve the groups first.
+7. Closes a cut candidate that failed all three questions. Any other cut
+   candidate stays in the backlog with one comment that gives the reason.
 
 `/start-milestone` then creates the milestone branch and the draft release
 notes. If `/start-milestone` runs on a milestone that `/plan-milestone` did
-not seal, its Step 4.4 and Step 4.5 apply a lighter version of the same gate.
+not seal, its Step 4.4 and Step 4.5 apply a lighter version of the same
+gate. It treats a milestone as sealed when the description is a theme
+sentence and every open issue has `status:ready`.
+
+### Issue order and blockers
+
+No file stores the approved issue order. `/start-milestone` Step 5 recommends
+an order for that session, and you approve it. It then writes down only the
+facts that later sessions need, on GitHub:
+
+- **A combine group.** The comment `Combine into one PR with #A, #B`.
+  `/start-issue` reads it and asks whether to start the combined scope.
+- **An order conflict.** The `status:blocked` label and a comment
+  `Blocked by #X (planned in <version>).` on the issue that must wait.
+
+`/finish-issue` Step 9 picks the next issue: the lowest-numbered open issue in
+the milestone without `status:blocked`. It reminds you to remove
+`status:blocked` from an issue whose blocker closed. It never removes the label
+itself, because the issue can have other blockers.
 
 ---
 
@@ -190,30 +270,65 @@ in `docs/plans/issues/`. You approve the plan or send it back. You do not
 review the diff by default.
 
 The plan names the problem, the approach, the files, the tests, the database
-and security considerations, and the checklist of actions. Its section
-list is in `/start-issue` Step 9. Two rules apply to every plan:
+and security considerations, and the checklist of actions. Its section list is
+in `/start-issue` Step 9. Three rules apply to every plan. The command
+enforces each one:
 
-- **The plan names what it chooses not to build.** The edge cases and nearby
-  temptations from the edge-case test are written down and refused. If a plan
-  names nothing it refused, send it back.
-- **A plan that touches auth, a data migration, a public API, or payments
-  gets a human diff review before merge.** This is the one exception to "you
-  do not review the diff."
+- **The plan names what it chooses not to build.** The plan has a
+  `## Not doing` section. The edge cases and nearby temptations from the
+  edge-case test are written down and refused. The section needs at least one
+  line. The command does not mark a plan approved while the section is empty.
+- **The plan carries a risk flag.** The header has `**Risk flag:** yes` or
+  `**Risk flag:** no`. The flag is `yes` when the change touches auth,
+  sessions or permissions, a database migration, an API endpoint contract, or
+  payments.
+- **A `yes` flag gets a human diff review before merge.** `/commit-push-pr`
+  copies the flag into the PR body. `/finish-issue` reads it there, before the
+  merge question. When the flag is `yes`, `unknown`, or missing, it asks you to
+  confirm that you reviewed the diff (`I reviewed the diff` or `Stop`). This is
+  the one exception to "you do not review the diff."
 
-After you approve, `/execute-plan` runs the plan to a PR that is ready to
-commit: it implements, tests, runs the single review round, and stops. It
-never commits, pushes, or opens a PR.
+If the issue is in a combine group, `/start-issue` asks whether to plan the
+combined scope. One branch, one plan and one PR then cover all the issues.
+The plan header records the choice.
+
+After you approve, `/execute-plan` runs the plan to work that is ready to
+commit. In order, it:
+
+1. Re-checks the plan checklist against the repo.
+2. Implements the checklist, in parallel where the plan allows.
+3. Writes and runs the tests. Each new test must fail with the change
+   reverted. The plan file records the result.
+4. Checks PHPStan baseline hygiene, then the cleanup ledger (Step 6.6).
+5. Updates the draft release notes (not for a hotfix).
+6. Runs the `/simplify` pass (Step 6.8). Step 7 then reviews the simplified
+   code, so the review fingerprint stays valid.
+7. Runs the single review round (Step 7) and records the review fingerprint.
+8. Sets the plan status to `Implemented — pending commit/PR`.
+
+It never commits, pushes, or opens a PR. `/commit` is the next step.
 
 **Deviation rule.** If the work needs anything outside the approved plan (a
-new file, a new dependency, a behavior change, an extra branch), stop. Post a
-one-line re-gate request on the issue. Never absorb the change silently.
+file the plan does not list, a different approach, a dropped requirement, a new
+dependency), `/execute-plan` stops. It adds a `## Deviation` section to the
+plan, posts a comment on the issue that states the deviation and asks for
+re-approval, and sets the plan status back to `Draft — pending approval`. It
+leaves the work done so far uncommitted. You type `/start-issue <N>`. That
+command finds the plan and the branch, shows the deviation first, and resumes
+at the approval step. Then you type `/execute-plan <N>`. Nothing absorbs the
+change silently.
+
+**The PR body shows the difference.** `/commit-push-pr` writes
+`## Delta from plan` in the PR body: files that changed but the plan did not
+list, checklist items marked N/A with their reason, or `none`.
 
 ### Discoveries mid-issue
 
 Run `/found <description>` when you find a pre-existing problem during an
 issue. It classifies the find in two steps. First, containment: is the fix in
 a file this PR already edits? Then, for a find that the current issue does not
-need, defect or cleanup.
+need, defect or cleanup. `/start-issue` Step 5.5 applies the same matrix to
+what its exploration finds.
 
 | Containment | Class | Action |
 | --- | --- | --- |
@@ -236,38 +351,46 @@ Two rules sit behind the table:
 
 #### The cleanup ledger
 
-A cleanup find does not get its own issue. The **cleanup ledger** is the one
-open issue with the `cleanup-ledger` label. It has one heading per file, with
-checkbox items under each heading. A cleanup item costs least when a change
-already has the file open.
+A cleanup find does not get its own issue. The **cleanup ledger** is the
+committed file `docs/development/CLEANUP_LEDGER.md`. It has one heading per
+file, with one `- [ ]` line for each open item under the heading. A cleanup
+item costs least when a change already has the file open. The file's "Rules"
+section is the reference for the format.
 
-- `/found` adds an item with `scripts/ledger-add-item.sh`. `/review-pr`
-  Step 6 uses the same script when you defer a Recommendation to the ledger.
+- **Add an item** by editing the file. Put the line under the file's heading.
+  Add the heading in path order if the file has none. Do not add an item whose
+  text is already there. The edit goes in the PR of the branch you are on.
+- **Fix an item** by deleting its line in the same PR that fixes it. Delete
+  the heading too when it has no items left. The file has no `- [x]` lines.
+  Git history is the record.
+- **Find the items for a change** with `scripts/ledger-items-for-files.sh`.
+  It reads one path per line on stdin and prints `path: item text`.
+- **Move or delete a file** only with its ledger group. `composer check:docs`
+  fails when a heading names a path that does not exist.
 - A cleanup find with no named benefit is dropped, not recorded. `/found`
   writes a one-line `Considered, dropped: <reason>` record under **Found in
   passing** in the plan (and in the PR body if a PR is open). A later review
   then does not raise the find again.
-- `/start-issue` copies the ledger items for each file the plan edits into
-  the plan's **Ledger items** section. The plan gate approves them with the
-  rest of the plan.
 
-These commands check the ledger around the PR:
+Each command touches the ledger at one step:
 
 | Command | What it does with the ledger |
 | --- | --- |
-| `/execute-plan` Step 6.6 | Checks the files it edits for items added after you approved the plan. Offers each new item: fix now, add to plan and fix, or leave. |
-| `/review-pr` | Reports each open item for a changed file that the plan does not list. Each one is a Recommendation. |
-| `/commit-push-pr` | Records the items that the PR completes in a `## Ledger items` section of the PR body. It adds an item without asking only when the plan's `## Ledger items` section shows it ticked (`- [x]`). For every other item, you decide. On an existing PR, it adds new items to that section. |
-| `/address-pr-comments` | Adds each ledger item that one of its fixes completes to the same section. |
-| `/finish-issue` Step 6.5 | After the merge, ticks the items in the PR body's `## Ledger items` section. It then reports the open items that remain in the files the PR edited. A PR body with no such section ticks nothing. |
-| `/groom-backlog` | Sweeps orphaned items (headings whose files no longer exist) with `scripts/ledger-orphans.sh`. It re-files or ticks each one. |
+| `/found` | Adds a cleanup find to the file with an edit. |
+| `/start-issue` Step 5.5 | Copies the items for each file the plan edits into the plan's **Ledger items** section and into the checklist. The plan gate approves them with the rest of the plan. |
+| `/execute-plan` Step 5, 6.6, 8 | Deletes the line of each item it fixes, and ticks it in the plan. Step 6.6 checks the files it edited for items that the plan does not list. For each one it offers: fix now, add to plan and fix now, or leave. Step 8 checks that no ticked item is still in the file. |
+| `/review-pr` Steps 5 and 6 | Reports each open item for a changed file as a Recommendation. **Fix now** deletes the line. **Defer** on a ledger item changes nothing and records `Deferred: ledger`. Any other deferred Recommendation goes to the ledger (an edit) or to a new issue. |
+| `/commit-push-pr` | Information only. It lists the open items for the touched files in its final summary. It asks nothing and writes nothing to the PR body. |
+| `/address-pr-comments` Steps 6 and 7 | Deletes the line of an item that one of its fixes completes. A deferred Advisory item goes to the ledger or to a new issue. It commits the file edit with the fixes. |
+| `/finish-issue` Step 6.5 | Information only. It reports the open items that remain in the files the PR edited. |
 
-See "Cleanup ledger" in `scripts/README.md` for the scripts.
+See "Cleanup ledger" in `scripts/README.md` for the reader script.
 
 `.claude/settings.json` denies the plugin skill
 `commit-commands:commit-push-pr`. This makes `/commit-push-pr` always the
-project command, with its ledger step. The plugin skill cannot replace it for
-issue PRs.
+project command. The plugin skill cannot replace it for issue PRs, because it
+does not write the PR body sections that `/finish-issue` reads (risk flag,
+delta from plan, review decisions).
 
 ### Test tier rules
 
@@ -304,27 +427,38 @@ An issue is done when all of these are true:
 - Tests exist per the tier rules, and they pass.
 - CI is green.
 - The change updates the docs that it touches.
-- The PR body states any delta from the approved plan.
+- The PR body has a `## Delta from plan` section.
+- When the plan's risk flag is `yes`, you reviewed the diff.
 
 ---
 
 ## 3b. Review and CI
 
 Review runs once, on a finished artifact, before the push. The reasoning and
-the evidence are in ADR-020.
+the evidence are in ADR-020. Every review pass stays in the workflow. The
+review fingerprint makes sure that no pass runs twice on the same code.
 
 ### Rule 1 — One round, all reviewers at once, before the push
 
-`/execute-plan` Step 7 launches every applicable reviewer in parallel,
-against the same commit, before the push. These are the code review, test
-analysis, silent-failure, type-design, and UX reviewers, and the architecture
-and security reviewers. Collect every finding into one list. Triage it once.
-Fix it in one commit. Then push. Reviewers receive the plan's claims as
-claims to verify, not as facts.
+`/execute-plan` runs the `/simplify` pass first (Step 6.8). Then its Step 7
+launches every applicable reviewer in parallel, against the same commit,
+before the push. These are the code review, test analysis, silent-failure,
+comment, type-design, and UX reviewers, and the architecture and security
+reviewers. Collect every finding into one list. Triage it once. Fix it in one
+commit. Then push. Reviewers receive the plan's claims as claims to verify,
+not as facts.
 
-`/review-pr` runs the same agents on the full branch diff. It skips a lane
-when the branch still has the review fingerprint that `/execute-plan`
-recorded for that lane.
+When the round is clean, Step 7 records a fingerprint of the branch in the
+plan file (`scripts/review-fingerprint.sh`). The line names the lanes that
+reported no Blocking finding: `code-reviewer`, `silent-failure-hunter`,
+`comment-analyzer`, and `pr-test-analyzer`.
+
+`/review-pr` runs the same agents on the full branch diff. It refuses to run
+with uncommitted changes, so run `/commit` first. It skips each lane that the
+plan's fingerprint line names, when the branch still has the same
+fingerprint. The `spec` lane, the `simplify` aspect, and the verification
+suite always run. When the review is clean and no fix changed a file, it
+writes a new fingerprint.
 
 ### Rule 2 — The two-round ceiling
 
@@ -346,14 +480,22 @@ Every reviewer, local or CI, sorts each finding into one of three buckets:
 | **Advisory** | Real, but not this PR's job | New issue (`signal:discovered`) or cleanup ledger. |
 | **Note** | Wording, style, docs nuance | Fix only if the change already touches that line. |
 
-Record each declined finding:
+Record each declined finding in a `## Review decisions` section. Each line
+has one of three forms:
 
-- `/review-pr` Step 6 walks the Recommendations one at a time. For each
-  deferred or skipped one, it writes a line under `## Review decisions` in the
-  plan. `/commit-push-pr` copies that section into a new PR body. When a PR
-  already exists, `/review-pr` also writes the line to the PR body.
-- `/address-pr-comments` writes each declined Advisory item under
-  `## Advisory items declined` in the PR body.
+```text
+- `<file:line>` — <issue> — False positive: <reason>
+- `<file:line>` — <suggestion> — Skipped: <reason>
+- `<file:line>` — <suggestion> — Deferred: ledger | issue #<n>
+```
+
+- `/review-pr` Step 6 asks about one Recommendation at a time. It writes a line
+  for each deferred or skipped one, and for each Blocking item that you decide
+  is a false positive. The line goes under `## Review decisions` in the plan.
+  When a PR already exists, `/review-pr` also writes the line to the PR body.
+  `/commit-push-pr` copies the plan section into a new PR body.
+- `/address-pr-comments` writes the same lines to the PR body, for each
+  Blocking false positive, and each Advisory item that you defer or skip.
 
 ### Rule 4 — The local gate must be the CI gate
 
@@ -364,7 +506,8 @@ The known differences, in `.github/workflows/tests.yml` and `.githooks/`:
 CI runs `composer test:quick:ci`, which excludes the `known-broken`,
 `requires-upstream-install`, and `regression` groups. The integration suite
 and the Playwright suite do not run in CI. CodeQL and Semgrep have no local
-equivalent.
+equivalent. `/review-pr` Step 1 and `/finish-milestone` Step 3.7 run the
+integration suite locally (`scripts/run-verification-suite.sh`).
 
 ### Rule 5 — Treat CI review as a backstop
 
@@ -395,14 +538,53 @@ false, the milestone is not done.
 
 1. `/sprint-status` shows the theme, the issues by derived state, and your
    judgment of whether the theme sentence is true yet.
-2. `/finish-milestone` verifies the branch, finalizes the release notes, and
-   asks the retrospective questions (Step 6.5).
-3. `/review-milestone` opens the PR to `main` and confirms that CI is green.
-4. `/release-milestone` merges, tags, and publishes the release.
+2. `/finish-milestone` gates the branch. In order, it:
+   - lists the issues still open in the milestone. For each, you choose to
+     finish it first or leave it out. A left-out issue loses its milestone
+     and its `WIP:` release-notes entry.
+   - checks for tests still tagged `known-broken`, and for leftover plan
+     files.
+   - runs the verification suite on the merged tree
+     (`scripts/run-verification-suite.sh`).
+   - checks the milestone scope against the release notes
+     (`scripts/check-milestone-scope-drift.sh`).
+   - finalizes the release notes, and asks the retrospective questions
+     (Step 6.5).
+   - renders the deploy sheet.
+   - updates the wiki and `CLAUDE.md` when the change needs it.
+   - runs the cross-PR security check, the local multi-agent review, and the
+     milestone-level deep review. Step 9.9 adds a fresh-checkout smoke test
+     when build or install tooling changed.
+   - pushes `milestone/<version>` to `origin`, and writes the completion
+     marker `docs/plans/releases/<version>-review.done`. The marker records
+     the pushed commit.
+3. `/review-milestone` re-checks the branch. It stops when the release notes
+   have a `WIP:` entry, when the deploy sheet is missing, when the marker is
+   missing, or when the marker's commit is not the branch tip. In each case you
+   type `/finish-milestone <version>`. When the checks pass, it opens the PR
+   to `main` and confirms that the CI review posted and CI is green. It fixes
+   a Blocking or Important finding on the milestone branch, because
+   `/release-milestone` fixes nothing.
+4. `/release-milestone` checks again that no Blocking or Important finding is
+   open, that the milestone scope matches the release notes, and that the
+   version is newer than the last tag. It also checks that the deploy sheet
+   is fresh. After you confirm, `scripts/release-milestone.sh` merges the PR,
+   tags the merge commit, and creates a draft GitHub release. The release
+   stays a draft until you deploy.
+
+**Run `/finish-milestone` again** after it stops, or after the branch
+changes. It starts at the top and skips a step when that step's result
+exists for the current branch tip. A new commit makes the review steps run
+again. The retrospective, and the deploy sheet while it is fresh, are not
+redone.
+
+**Run `/release-milestone` again** after the script stops. Fix the cause
+first. The script skips the work that is done: the merge, the tag, the release.
 
 The retrospective has three questions. One line each is enough. The answers go
-to `docs/plans/releases/<version>-retro.md`, and the next `/start-milestone`
-reads that file.
+to `docs/plans/releases/<version>-retro.md`. `/plan-milestone` reads the
+newest file at its Step 1, and `/start-milestone` reads it too when it has to
+run the gate itself.
 
 1. What did we ship that nobody needed? Name the issue.
 2. What did we learn about this theme's audience?
@@ -430,12 +612,12 @@ The hotfix sequence:
 2. `/start-issue <N> --hotfix` branches from `origin/main`. The plan gate
    applies. The plan records `none (hotfix)` as the milestone and `main` as
    the PR base.
-3. `/execute-plan`, then `/commit-push-pr`. The PR base is `main`. If
-   `/commit-push-pr` picks a milestone branch, change the base with
-   `gh pr edit <pr-number> --repo elan-registry/registry --base main`.
+3. `/execute-plan` → `/commit` → `/review-pr` → `/commit-push-pr` →
+   `/address-pr-comments`. `/commit-push-pr` reads the PR base line in the
+   plan and opens the PR against `main`.
 4. `/finish-issue <N>` sees the `main` base and runs its hotfix mode. It
-   merges into `main`. It skips the release-notes update and the sprint plan
-   update.
+   merges into `main`. It skips the release-notes update. If the PR base is
+   wrong, it asks you to retarget the PR or proceed as a hotfix.
 5. Do the patch release in `DEPLOYMENT.md`,
    [Patch Release from main](DEPLOYMENT.md#patch-release-from-main). It ends
    with a merge of `main` into the open milestone branch.
@@ -451,26 +633,33 @@ old ideas start to read like commitments. These rules keep it small.
 
 ### Age-out with evidence rescue
 
-- An issue **created more than 180 days ago** with no rescuing activity gets a
-  `stale` warning label and a comment.
-- **14 days later**, it closes as `stale-no-demand`. The comment says that
-  silence was treated as a vote against, and that a new signal reopens it.
-- **Exempt:** any issue in a milestone, `signal:forced` issues, security
-  issues, and `gate-critical` issues.
+`/groom-backlog` applies this rule at Step 3.5. No scheduled job applies it.
+The command proposes. It changes nothing until you approve.
+
+- **Warn.** An open issue **created more than 180 days ago**, with no human
+  comment in that time, gets the `stale` label and a comment that starts with
+  `Marked stale:`.
+- **Close.** An issue that has had the `stale` label for 14 days or more,
+  with no human comment since the label, closes as `stale-no-demand`. The
+  comment says that silence was treated as a vote against, and that a new
+  signal reopens it.
+- **Remove the label.** An issue with the `stale` label that is now exempt,
+  or that has a human comment since the label, loses the label.
+- **Exempt:** any issue in a milestone other than `Backlog`, and any issue
+  that has the label `signal:forced`, `component: security`, or
+  `gate-critical`. The `Backlog` milestone is not a release commitment, so it
+  does not exempt an issue.
 - **Rescue:** a new signal reopens the issue with the new evidence attached.
   An owner asks, or analytics show the gap. The issue takes the new signal's
   label.
 
-No scheduled job applies this rule today. Apply it by hand during a
-`/groom-backlog` sweep.
-
 ### Age from creation, not from last activity
 
 - Age an issue from `created_at`.
-- Label-only and milestone-only edits are not activity. Bulk housekeeping
+- Label, milestone, and title changes are not activity. Bulk housekeeping
   resets `updated_at` on every issue that it touches.
 - Only a human comment or a new signal counts as a rescue. A bot comment does
-  not.
+  not. The `Marked stale:` warning does not count either.
 
 ### Gate-critical issues bypass the theme test
 
@@ -488,16 +677,18 @@ repairs are never "someday".
 
 `/groom-backlog` sweeps open issues on demand. It applies the three planning
 questions from Step 2, skips the exempt issues, recommends closures and
-milestone placement, and acts on one approval. It also sweeps orphaned ledger
-items.
+milestone placement, proposes the age-out actions, and acts on one approval.
+It does not sweep the cleanup ledger. `composer check:docs` catches a ledger
+group whose file is gone.
 
 ---
 
 ## Tracking — where sprint state lives
 
 Sprint state is the milestone, derived state, and one manual label. There is
-no project board. A board is a second source of truth that decays when nobody
-maintains it. GitHub already knows most of the state:
+no project board and no sprint file. A board or a file is a second source of
+truth that decays when nobody maintains it. GitHub already knows most of the
+state:
 
 | State | How it is known |
 | --- | --- |
@@ -509,7 +700,9 @@ maintains it. GitHub already knows most of the state:
 | Done | Closed |
 
 Blocked is the only state that git cannot show. "Waiting on an owner to reply"
-leaves no trace in the repo.
+leaves no trace in the repo. The `Blocked by #X` comment names the blocker.
+The `Combine into one PR with #A, #B` comment names a combine group. See
+"Issue order and blockers" in section 2.
 
 Run `/sprint-status [version]` at any time. It prints the theme, the issues by
 derived state, what waits on you, and what is blocked. It adds one line that
@@ -525,15 +718,18 @@ judges whether the theme sentence is true yet. It is read-only.
 | Planning: theme | Can I state an audience and an outcome? | It is a category. Pick again. |
 | Planning: candidate | Who noticed? What do they do today? What breaks if it never ships? | Close it. |
 | Planning: any branch | Few users and fails gracefully? | Do not build it. Record it in the plan. |
-| Plan gate | Does the plan name what it refuses to build? | Send the plan back. |
+| Plan gate | Does `## Not doing` name what the plan refuses to build? Is the risk flag set? | Send the plan back. |
+| The work needs more than the plan | Did the plan approve this? | Stop. `/execute-plan` re-gates the plan. |
 | Mid-issue | Does the acceptance criteria need this? | New issue or ledger. Next planning. |
 | Cleanup find | What gets better if it is fixed? | Nothing: drop it with a `Considered, dropped` line. |
+| Fixing a ledger item | Did I delete its line in this PR? | The ledger keeps a fixed item. Delete it. |
 | Testing | Can a real user reach this branch? | Do not test it. |
 | Before pushing | Did every reviewer see this same commit, at once? | Serial review gives a ladder of rounds. |
 | After a fix commit | Is this the third round? | The plan was wrong. Re-gate it. |
 | Any finding | Verified, in this diff, and this PR's job? | Advisory or Note, not Blocking. |
 | A run measures an old issue | Did this measurement produce the issue? | It corroborates. Comment. Do not relabel. |
 | CI red | Does the failing CI command also fail locally? | The gates differ. Close the gap. |
+| Merge, risk flag is `yes` | Did I review the diff myself? | Review it. `/finish-issue` asks. |
 | Production broken | Is data at risk, or is there a security exposure? | If no: it queues. If yes: hotfix track. |
 | Release | Is the theme sentence true? | Not yet: keep working. Yes: ship. |
 | Retro | What did we ship that nobody needed? | Feed the answer into the gate. |

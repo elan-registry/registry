@@ -11,8 +11,11 @@ An on-demand audit of open issues: find low-value, make-work, trivial-test,
 or extreme-edge-case candidates for closure, and recommend a milestone (or a
 new milestone) for everything worth keeping that has no clear release target.
 Unlike `/plan-milestone`, this does not seal a milestone or write acceptance
-criteria — it only closes, moves, and creates milestones, and re-files or
-ticks orphaned cleanup-ledger items, then stops.
+criteria — it only closes, moves, and creates milestones, and ages out
+stale issues, then stops.
+
+Orphaned cleanup-ledger groups need no sweep here: `composer check:docs`
+fails when a `CLEANUP_LEDGER.md` heading names a path that does not exist.
 
 This reuses `/plan-milestone` Step 3's three-question gate. If that gate's
 criteria change, check whether this command needs the same change — they
@@ -134,40 +137,69 @@ highest existing number really is what it looks like, not an
 off-by-one from a sub-sequence. Don't skip this check to
 save a step.
 
-## Step 3.5: Sweep the cleanup ledger
+## Step 3.5: Age out stale issues
 
-A rename or a delete orphans the ledger items filed under the old path. No
-diff matches them again, so no other command shows them.
+An issue that nobody asked about for 180 days has no demand. Propose a
+`stale` warning first. Propose a close only 14 days after the warning. Do
+not change any issue in this step. Step 5 acts only on approval.
+
+**Exempt issues.** Never age out an issue that has any of these:
+
+- A milestone other than `Backlog`. The `Backlog` milestone is not a
+  release commitment, so it does not exempt an issue.
+- The label `signal:forced`, `component: security`, or `gate-critical`.
+
+**Human comment.** A comment counts only when `user.type` is not `"Bot"`
+and the body does not start with `Marked stale:` (the warning that this
+step posts). Label, milestone, and title changes are events, not comments.
+They do not count. To get the date of the newest human comment on issue
+`<n>` (empty output means none):
 
 ```bash
-scripts/ledger-orphans.sh
+gh api "repos/elan-registry/registry/issues/<n>/comments?per_page=100" --paginate \
+  --jq '.[] | select(.user.type != "Bot") | select(.body | startswith("Marked stale:") | not) | .created_at' \
+  | sort | tail -1
 ```
 
-Each line is `path: item text`, for an open item whose heading paths are
-all gone at HEAD. Empty output means no orphans. Exit 1 means a wrong
-working directory: run it from the repository root. Exit 2 means `gh`
-failed or there is not exactly one open `cleanup-ledger` issue: report it,
-skip this step, and continue.
-
-For each orphan, find where the path went. The rename is in the last
-commit that touched the old path. For a path that ends in `/`, this prints
-each rename under that directory:
+**A. Warn.** Find the open issues created more than 180 days ago that are
+not exempt and not already `stale`:
 
 ```bash
-OLD="<path>"
-C=$(git log --no-merges --format=%H -1 -- "$OLD")
-git show -M --name-status --format= --diff-filter=R "$C" \
-  | awk -F'\t' -v p="$OLD" '$2 == p || (substr(p, length(p)) == "/" && index($2, p) == 1) { print $2 " -> " $3 }'
+CUTOFF=$(date -u -v-180d +%Y-%m-%d)
+gh issue list --repo elan-registry/registry --state open --limit 1000 \
+  --search "created:<$CUTOFF -label:signal:forced -label:\"component: security\" -label:gate-critical -label:stale" \
+  --json number,title,createdAt,milestone \
+  --jq '.[] | select(.milestone == null or .milestone.title == "Backlog") | "#\(.number) \(.createdAt[:10]) \(.title)"'
 ```
 
-The heading can name more paths than the first one. Read it in the ledger
-issue and check each path. Then recommend one action per orphan:
+For each result, get the newest human comment. Propose **Warn** when there
+is none, or when it is older than `$CUTOFF`.
 
-- **Re-file** — a new path exists at HEAD (`git cat-file -e HEAD:<new path>`)
-  and the item still applies to it. Read the new file to confirm.
-- **Tick as obsolete** — no rename was found, or the item no longer applies.
+**B. Close.** Find the open issues that have the `stale` label:
 
-Do not change the ledger in this step. Step 5 acts only on approval.
+```bash
+gh issue list --repo elan-registry/registry --state open --label stale --limit 1000 \
+  --json number,title,milestone,labels \
+  --jq '.[] | "#\(.number) [\(.milestone.title // "no milestone")] [\([.labels[].name] | join(", "))] \(.title)"'
+```
+
+For each result, find when the `stale` label was added. The newest
+`labeled` event for `stale` gives the date:
+
+```bash
+gh api "repos/elan-registry/registry/issues/<n>/events?per_page=100" --paginate \
+  --jq '.[] | select(.event == "labeled" and .label.name == "stale") | .created_at' \
+  | sort | tail -1
+```
+
+Then get the newest human comment. Propose one action:
+
+- **Remove stale** — the issue is now exempt, or it has a human comment
+  after the label date.
+- **Close** — the label date is 14 or more days ago
+  (`date -u -v-14d +%Y-%m-%dT%H:%M:%SZ` prints that limit), and no human
+  comment came after it.
+- Otherwise — no action. The 14 days have not passed.
 
 ## Step 4: Present and confirm once
 
@@ -186,10 +218,13 @@ Produce one table before taking any action:
 | Version | Theme | Issues |
 |---------|-------|--------|
 
-## Ledger orphans
-| Old path | Item | Action (re-file to <new path> / tick as obsolete) | Why |
-|----------|------|---------------------------------------------------|-----|
+## Age-out
+| # | Title | Action (warn / close / remove stale) | Created or stale since | Last human comment |
+|---|-------|--------------------------------------|------------------------|--------------------|
 ```
+
+An issue in the age-out table must not also be in the closures or moves
+tables. Pick one row for it.
 
 Ask the user to approve, adjust, or reject each section — one round, not
 per-item. Wait for approval before Step 5.
@@ -208,17 +243,22 @@ gh api repos/elan-registry/registry/milestones -f title="vX.Y.0: Theme" -f descr
 # Moves
 gh issue edit NNN --milestone "vX.Y.0: Theme"
 
-# Ledger orphans: re-file (add first, so a failed tick loses nothing)
-scripts/ledger-add-item.sh "<new path>" "<item text>"
-echo "<old path>: <item text>" | scripts/ledger-tick-items.sh
+# Age-out: warn
+gh issue edit NNN --repo elan-registry/registry --add-label "stale"
+gh issue comment NNN --repo elan-registry/registry \
+  --body "Marked stale: no activity in 180 days. This issue closes in 14 days unless someone comments with a reason to keep it."
 
-# Ledger orphans: tick as obsolete
-echo "<old path>: <item text>" | scripts/ledger-tick-items.sh
+# Age-out: close
+gh issue edit NNN --repo elan-registry/registry --add-label "stale-no-demand"
+gh issue close NNN --repo elan-registry/registry --reason "not planned" \
+  --comment "Closed: no demand in the 14 days after the stale warning. A new signal reopens it."
+
+# Age-out: remove stale
+gh issue edit NNN --repo elan-registry/registry --remove-label "stale"
 ```
 
-A tick of an item under a directory heading (`<old path>` ends in `/`)
-needs a file name after the `/`, for example `scripts/spike-1871/x`. A
-directory token matches only paths under it.
+The warning comment must start with `Marked stale:`. Step 3.5 ignores
+comments that start with it, so the warning does not count as demand.
 
 Closure comments state the reason plainly and note it can be reopened if
 circumstances change — never imply an action (like an upstream filing) that
@@ -229,7 +269,8 @@ hasn't actually happened.
 - Closed: list with reasons
 - Moved: list with old → new milestone
 - Created: new milestone(s) with version and theme
-- Ledger: items re-filed (old → new path) and items ticked as obsolete
+- Age-out: issues warned, closed with `stale-no-demand`, and `stale`
+  removed
 - Left unchanged: Backlog grab-bag items and anything the user declined
 
 ## Important

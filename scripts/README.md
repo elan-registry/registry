@@ -109,7 +109,7 @@ quality checks. Run once per developer after cloning the repo.
      the host or skips. `INTEGRATION_GATE_RUNNER=host|docker` overrides the
      detection. The detection and run logic (`_integration_runner`,
      `_run_integration_suite`) live in `scripts/lib/integration-runner.sh`,
-     shared with `scripts/run-verification-suite.sh` below.
+     shared with `scripts/run-verification-suite.sh`.
    - **Cache.** `$(git rev-parse --git-path integration-passed)` holds a
      single key — tree, test database name and runner (host or Docker) — for
      the most recent pass, so it only skips a re-push of an identical tree to
@@ -165,60 +165,49 @@ Requires `gh` CLI authenticated (`gh auth status`). Creates at most one open
 
 ## Cleanup ledger
 
-The cleanup ledger is the one open GitHub issue with the `cleanup-ledger`
-label. It holds small cleanup finds, grouped under a level-3 (`###`) heading for each
-file. See `docs/development/ISSUE_WORKFLOW.md` for the workflow. These scripts
-read, add, and tick ledger items. `ledger-items-for-files.sh`,
-`ledger-orphans.sh`, `ledger-tick-items.sh` and `ledger-add-item.sh` need the
-`gh` CLI, signed in (`gh auth status`). `ledger-tick-items.sh` and `ledger-add-item.sh` also need
-`jq`. `ledger-pr-body-items.sh` makes no `gh` call.
+The cleanup ledger is `docs/development/CLEANUP_LEDGER.md`, a committed
+Markdown file. It holds small cleanup finds that change no behaviour,
+grouped under a level-3 (`###`) heading for each file. The file's own
+"Rules" section is the reference for the format. In short:
 
-`ledger-items-for-files.sh`, `ledger-orphans.sh`, `ledger-tick-items.sh` and
-`ledger-add-item.sh` source `scripts/lib/ledger.sh`. That library finds the ledger issue, fetches its body
-and comments, and parses the items.
-
-**Comment authors.** The scripts read only the comments whose
-`author_association` is `OWNER`, `MEMBER` or `COLLABORATOR`. Other comments
-are ignored. The ledger issue is public, so an outside comment could otherwise
-add items that the scripts list and tick.
-
-**Truncated `gh` output.** Each record that `gh` returns ends with a space
-and an `END` marker. When a record has no marker, or has text after it, the
-script stops with exit code 2 and changes nothing. macOS `base64 -d` exits 0 on short
-input, so this check, not the decoder, stops a truncated body from being
-written back.
-
-**Empty input.** When stdin has no paths (or no requests after `none` and
-blank lines are removed), the script makes no `gh` call, exits 0, and writes
-one note to stderr, for example
-`ledger-items-for-files.sh: no input paths, no query made`.
-
-**Control characters.** The read and tick scripts remove control characters (other than
-TAB) from the text that they print. The text that they match and write back
-keeps every byte.
-
-**Heading match rule.** The scripts take each backticked token in a level-3
-(`###`) heading. A token that ends in `/` matches every path under that directory. Any
-other token matches only the exact path. Text after the tokens, such as
-`(est. −960)`, is ignored. A section ends at the next level-2 (`##`) or
-level-3 heading. An item is a line at column 0 that starts with `- [ ]` (open)
-or `- [x]` (ticked), then a space. The item text is the rest of the line,
-without trailing spaces and TABs.
-
-**Exit codes (`ledger-items-for-files.sh`, `ledger-orphans.sh`, `ledger-tick-items.sh` and `ledger-add-item.sh`).**
-
-| Code | Meaning |
-| --- | --- |
-| 0 | The script ran. For the read and tick scripts, empty output means no match. |
-| 1 | Usage error. `ledger-orphans.sh` also exits 1 outside a git repository with a HEAD commit. |
-| 2 | A `gh` call failed, `gh` output was truncated, or there is not exactly one open `cleanup-ledger` issue. `ledger-add-item.sh` also exits 2 when `jq` or another tool fails. |
+- **Format.** A `###` heading names one or more repo-relative paths in
+  backticks. A token that ends in `/` names a directory. Each open item is
+  one line at column 0 that starts with `- [ ]` and a space.
+- **Add an item.** Edit the file. Put the line under the file's heading, or
+  add the heading in path order. Do not add an item whose text is already
+  under that heading.
+- **Fix an item.** Delete its line in the PR that fixes it. Delete the
+  heading too when it has no items left. The file has no `- [x]` lines.
+- **Orphan check.** `composer check:docs` (`scripts/check-docs.php`, rule
+  `ledger-orphan`) fails when a heading names a path that does not exist in
+  the working tree: a file, or a directory for a token that ends in `/`. A
+  PR that deletes or renames a file must move or delete its group.
 
 ### ledger-items-for-files.sh
 
-Lists the open ledger items for a set of files. Input on stdin is one
-repo-relative path per line. Blank lines are ignored. The script takes no
-arguments. Output on stdout is one `path: item text` line for each open item
-under a matching heading. An item prints once.
+Lists the open ledger items for a set of files. It reads
+`docs/development/CLEANUP_LEDGER.md` from the root of the git work tree that
+holds the current directory. It makes no `gh` call and no write.
+
+- stdin: one repo-relative path per line. Blank lines and a trailing CR are
+  ignored. The script takes no arguments.
+- stdout: one `path: item text` line for each open item under a matching
+  heading. An item prints once, with the first input path (in input order)
+  that matches its heading. Control characters other than TAB are removed.
+- Heading match rule: each backticked token in a `###` heading is a path. A
+  token that ends in `/` matches every path under that directory. Any other
+  token matches only the exact path. Other heading text, such as
+  `(est. −960)`, is ignored. A section ends at the next `##` or `###`
+  heading. Indented lines and other lines are ignored.
+- Empty stdin: no output, exit 0, and the note
+  `ledger-items-for-files.sh: no input paths, the ledger was not read` on
+  stderr.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The ledger was read. Empty output means no open items. |
+| 1 | Usage error: an argument was given, or stdin is a TTY. |
+| 2 | The current directory is not in a git work tree, or the ledger file is missing or cannot be read. |
 
 ```bash
 # Open items for every file this branch changes
@@ -228,162 +217,18 @@ git diff --name-only "$(git merge-base HEAD origin/main)"..HEAD | scripts/ledger
 echo "usersc/join.php" | scripts/ledger-items-for-files.sh
 ```
 
-The `/review-pr` and `/commit-push-pr` commands run this script. `/finish-issue`
-runs it to report the items that remain.
-
-### ledger-orphans.sh
-
-Lists the open ledger items whose files are gone. A rename or a delete leaves
-an item under a heading that no diff matches again, so
-`ledger-items-for-files.sh` never shows it. The script takes no arguments,
-does not read stdin, and makes no write. Run it inside the repository.
-
-- An item is an orphan when each backticked token in its heading names a path
-  that is not in the tree at HEAD (`git ls-tree -r HEAD`). Uncommitted changes
-  do not count.
-- A token that ends in `/` exists when HEAD has a file under it. Any other
-  token exists when HEAD has that file, or a directory with that name.
-- A heading with no backticked token is never an orphan.
-- stdout: one `path: item text` line for each orphan, in ledger order. `path`
-  is the first token of the heading. For a token that ends in `/`, add a file
-  name after the `/` before you pipe the line into `ledger-tick-items.sh`.
-
-```bash
-scripts/ledger-orphans.sh
-```
-
-`/groom-backlog` runs this script and proposes, for each orphan, a re-file
-under the new path or a tick as obsolete.
-
-### ledger-tick-items.sh
-
-Ticks ledger items. Input on stdin is `path: item text` lines, the same form
-that `ledger-items-for-files.sh` prints. A leading `-` bullet marker is allowed, so a bullet
-list from a PR body works as-is. `none` lines and blank lines are ignored.
-
-A model types these lines into the PR body, so the script accepts two small
-changes to the text:
-
-- Trailing spaces and TABs on the line are removed. The ledger item text is
-  also compared without its trailing spaces and TABs. The `PATCH` keeps the
-  ledger bytes, trailing whitespace included.
-- A path in one pair of backticks, as in `` `app/a.php`: fix X ``, loses the
-  backticks.
-
-For each line, the script ticks the first open item with exactly that text
-under a heading that matches the path. It changes `[ ]` to `[x]` on that line
-only. It writes each changed ledger source (body or comment) back with one
-`PATCH`. A failed `PATCH` exits with code 2.
-
-- No match: a warning on stderr, and nothing is ticked.
-- Duplicate text under one heading: the first open item is ticked, with a
-  warning on stderr.
-- stdout: one `ticked: path: item text` line for each ticked item.
-- Failed `PATCH`: one `not ticked: path: item text` line on stderr for each
-  item of that source. The other sources are still sent.
-
-The tick reads the whole body and comments, then writes each changed one back
-in full. An edit that someone makes to the same body or comment between the
-read and the `PATCH` is lost. This is an accepted risk: one maintainer edits
-the ledger, and the window is a few seconds.
-
-```bash
-# Tick one item
-echo "usersc/join.php: remove the unused \$legacy variable" | scripts/ledger-tick-items.sh
-
-# Tick the items listed in a PR body (/finish-issue does this after the merge)
-body_file="$(mktemp)"
-gh pr view 2275 --repo elan-registry/registry --json body --jq .body > "$body_file"
-set -o pipefail
-scripts/ledger-pr-body-items.sh < "$body_file" | scripts/ledger-tick-items.sh
-```
-
-### ledger-add-item.sh
-
-Adds one item to the ledger. Usage:
-`scripts/ledger-add-item.sh <file-path> <item-text>`. `/found` and
-`/review-pr` (Step 6, "Defer" to the ledger) run it.
-
-- `<file-path>` is repo-relative, with no `:line` suffix and no leading `./`
-  or `/`. Heading tokens match paths exactly, so those forms would file an
-  item that `ledger-items-for-files.sh` never finds. Exit 1.
-- The script uses the first heading that matches the path: the issue body
-  first, then the comments in API order. It adds `- [ ] <item-text>` after the
-  last non-blank line of that heading's group, with one `PATCH`. All other
-  bytes stay the same.
-- If the group already has an open item with the same text, it writes
-  nothing and prints `already present in #<issue>: path: item text`.
-- If no heading matches, it posts a new comment with a new heading.
-- stdout on a write: `added to #<issue>: path: item text (existing heading)`
-  or `(new heading)`.
-- Exit 2 after a failed write call: GitHub may still have saved it. Check the
-  ledger issue before you run the script again.
-
-```bash
-scripts/ledger-add-item.sh "usersc/join.php" "remove the unused \$legacy variable (found while working on #2314)"
-```
-
-### ledger-pr-body-items.sh
-
-Prints the bullets of the `## Ledger items` section of a PR body. Input on
-stdin is the PR body. The script takes no arguments and makes no `gh` call.
-`/finish-issue` runs it after the merge and pipes its output into
-`ledger-tick-items.sh`.
-
-- A section starts at each line that is exactly `## Ledger items`. A trailing
-  CR and trailing spaces and TABs are permitted. The section ends at the next
-  line that starts with `##` or `#`, then a space. When the heading occurs
-  more than once, each section is read.
-- A bullet is a line with optional leading spaces and TABs, then `-`, `*` or
-  `+`, then one space. Other lines are ignored.
-- stdout: one `- <rest of the line>` line for each bullet, with a trailing CR
-  removed.
-- A `- none (ledger query failed)` line means that `/commit-push-pr` could not
-  query the ledger when the PR was opened. The script writes a warning to
-  stderr and still prints the line. `ledger-tick-items.sh` ignores it.
-
-| Code | Meaning |
-| --- | --- |
-| 0 | At least one section was found. Empty output means no bullets. |
-| 1 | Usage error. |
-| 3 | The PR body has no `## Ledger items` section. A note goes to stderr. |
-
-### ledger-pr-body-add.sh
-
-Adds ledger items to the `## Ledger items` section of a PR body. Usage:
-`scripts/ledger-pr-body-add.sh <items-file> < <body-file> > <new-body-file>`.
-The items file has one `path: item text` line for each item. A leading dash-and-space
-is removed. The script makes no `gh` call. `/commit-push-pr` (on an existing
-PR) and `/address-pr-comments` run it before `gh pr edit --body-file`, so
-`/finish-issue` also ticks items fixed after the PR opened.
-
-- It adds new `- path: item text` bullets to the end of the first section,
-  or adds the section at the end of the body.
-- It does not add an item that is already a bullet in a section.
-- When it adds an item, it removes each `- none` and `- none (...)` bullet.
-
-| Code | Meaning |
-| --- | --- |
-| 0 | Done. stderr gives the number of added items. |
-| 1 | Usage error. |
-| Other | A command failed. Do not use the output. |
-
-The hermetic tests are `tests/hooks/test-ledger-items-for-files.sh`,
-`tests/hooks/test-ledger-orphans.sh`,
-`tests/hooks/test-ledger-tick-items.sh`,
-`tests/hooks/test-ledger-add-item.sh`,
-`tests/hooks/test-ledger-pr-body-items.sh` and
-`tests/hooks/test-ledger-pr-body-add.sh`. All but the last two use a stub
-`gh`; those two make no `gh` call.
+The hermetic test is `tests/hooks/test-ledger-items-for-files.sh`. It runs
+the script in a temporary git repository with a fixture ledger.
 
 ## Milestone release checks
 
 ### check-milestone-scope-drift.sh
 
 Compares a milestone's current issue membership with the issues in the
-"Issues Resolved" section of its release notes. `/finish-milestone` Step 5.5
-runs it, and `/release-milestone` Step 2 runs it again on the up-to-date
-milestone branch, just before the merge to `main`.
+"Issues Resolved" section of its release notes. Both
+`/finish-milestone` Step 5.5 and `/release-milestone` Step 2 call it.
+`/release-milestone` runs it again on the up-to-date milestone branch, just
+before the merge to `main`.
 
 ```bash
 scripts/check-milestone-scope-drift.sh v2.30.5 107
@@ -391,20 +236,140 @@ scripts/check-milestone-scope-drift.sh v2.30.5 107
 
 - Reads `docs/releases/RELEASE_NOTES_<version>.md` from the working tree, so
   run it from the repo root on the milestone branch.
-- Counts only the leading `- [#N](https://github.com/elan-registry/registry/issues/N)`
-  link of each bullet under `## Issues Resolved`. A cross-reference later in
-  a bullet does not count.
+- Counts only the leading link of each `- [#N](https://github.com/elan-registry/registry/issues/N)`
+  or `- WIP: [#N](...)` bullet under `## Issues Resolved`. A `- WIP: [#N]`
+  bullet counts as an entry. A cross-reference later in a bullet does not
+  count.
 - Counts milestone issues in every state and skips pull requests.
 
 | Code | Meaning |
 | --- | --- |
 | 0 | The two sets match. |
-| 1 | Mismatch. One line per issue says "moved out of milestone" or "added to milestone, missing from release notes". |
+| 1 | Mismatch. One line per issue says "moved out of milestone", "added to milestone, missing from release notes", or "still has WIP prefix in release notes". |
 | 2 | Can't verify: bad arguments, no notes file, no entries, a milestone with no issues, a `gh` failure, or a tool failure. |
 
 The hermetic test is `tests/hooks/test-check-milestone-scope-drift.sh`. Its
 stub `gh` accepts only the exact API call and runs the script's own `--jq`
 filter.
+
+### check-version-newer.sh
+
+Checks that a candidate version is strictly newer than the last release tag.
+`/release-milestone` Step 3 runs it. The comparison is numeric, part by
+part, so `v2.9.0` is older than `v2.10.0`.
+
+```bash
+scripts/check-version-newer.sh v2.30.5            # against `git describe --tags --abbrev=0`
+scripts/check-version-newer.sh v2.30.4.1 v2.30.4  # against a given tag
+```
+
+- Accepts `vX.Y.Z` and the four-part patch-release tag `vX.Y.Z.N`
+  (`docs/development/DEPLOYMENT.md`, "Patch Release from main"). The `v`
+  prefix is optional. A missing fourth number counts as 0, so
+  `v2.30.5` > `v2.30.4.1` > `v2.30.4`.
+- The second argument is the last tag. Use it when the clone has no tags.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The candidate is newer than the last tag. |
+| 1 | The candidate is equal or older. |
+| 2 | The script cannot parse a version, or `git describe` failed (tags not fetched). |
+
+The hermetic test is `tests/hooks/test-check-version-newer.sh`.
+
+### check-deploy-sheet-fresh.sh
+
+Checks whether the rendered deploy sheet is stale. `/finish-milestone`
+(Step 6.6 skip rule and Step 10), `/review-milestone` Step 4 and
+`/release-milestone` Step 4 call it.
+
+```bash
+scripts/check-deploy-sheet-fresh.sh v2.30.5
+```
+
+- Reads the stamp `docs/plans/releases/<version>-deploy.md.sha`. It holds the
+  commit that the sheet was rendered against. It compares that commit with
+  the tip of `milestone/<version>`.
+- The sheet is stale only when a **deploy input** changed after the stamp:
+  - `database/migrations/` (any change)
+  - `scripts/server-hooks/post-receive`
+  - `.env.example`
+  - `app/admin/scripts/fix/` and `app/admin/scripts/maintenance/`
+  - `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md`
+  - an added or deleted `.php` file that calls `securePage(`, outside
+    `tests/`, `database/`, `scripts/`, `vendor/` and `users/`
+- Release notes, `CLAUDE.md`, review fixes and other code commits do not make
+  the sheet stale.
+- It cannot see a manual procedure in a merged PR body. A merge of `main` into
+  the milestone branch can report stale because of a `main` migration. Render
+  the sheet again.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Fresh. No deploy input changed since the stamp. |
+| 1 | Stale. Stderr lists the changed paths. |
+| 2 | Cannot verify: no stamp, a bad stamp, or a commit or branch that does not resolve. Never treat it as fresh or stale. |
+
+The hermetic test is `tests/hooks/test-check-deploy-sheet-fresh.sh`.
+
+### release-milestone.sh
+
+Runs the merge, tag and publish sequence for `/release-milestone` Step 6.
+`/release-milestone` Step 5 asks the user to confirm first. The script never
+pushes to a remote named `prod` or `test`.
+
+```bash
+scripts/release-milestone.sh [--dry-run] v2.30.5 <pr-number> <milestone-number>
+```
+
+In order: it saves the release notes, removes the notes file in a commit on
+the milestone branch and pushes it, syncs local `main`, merges the PR, tags
+the merge commit, pushes the tag, creates a draft GitHub release, and closes
+the GitHub milestone. `--dry-run` prints each command and changes nothing.
+
+- **Notes copy.** Before it removes the notes, the script saves them to
+  `docs/plans/releases/<version>-release-notes.md` (gitignored). The release
+  is created from that copy. If the copy is missing, the script restores it
+  from the commit before the removal commit.
+- **Resume.** After a stop, run the script again with the same arguments. It
+  skips each step whose work is done: the notes removal and PR merge, the tag
+  on the merge commit, and the GitHub release. The other steps are safe to
+  repeat.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Every step completed, or `--dry-run` printed the plan. |
+| 1 | A check stopped the run before it changed anything: bad arguments, a deploy remote, a closed PR, missing notes with no removal commit, or stray local commits on `main`. |
+| 2 | A step failed: a merge conflict, a rejected push, or a tag on the wrong commit. |
+
+The hermetic test is `tests/hooks/test-release-milestone.sh`.
+
+## Plan state
+
+### check-plan-state.sh
+
+Reports the state of an issue's plan file. `/execute-plan`, `/review-pr`,
+`/commit-push-pr` and `/finish-issue` use it to find the plan.
+
+```bash
+scripts/check-plan-state.sh        # issue number from the branch name
+scripts/check-plan-state.sh 423
+```
+
+It looks in `docs/plans/issues/issue-<N>-*.md`. If that has no match, it looks
+in the older `docs/plans/issue-<N>-*.md`. The branch must match `issue/`,
+`bug/` or `feature/` when no number is given. Stdout has three lines:
+`path:` (or `(none)`, and a comma-separated list when more than one file
+matches), `approved: yes|no`, and `checklist: <done>/<total>`.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | A plan file exists and its status is `Approved — ready for /execute-plan`. |
+| 1 | No plan file. `docs/plans/` is gitignored, so each clone has its own copy. |
+| 2 | A plan file exists with any other status. |
+| 3 | No issue number was given and none could be derived from the branch. |
+
+The hermetic test is `tests/hooks/test-check-plan-state.sh`.
 
 ## Database
 

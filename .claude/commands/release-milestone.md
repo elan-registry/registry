@@ -104,12 +104,15 @@ the check against a stale or wrong checkout.
     (see `/finish-milestone` Step 5.5) shows as "added to milestone,
     missing from release notes".
 
-  For each line, ask the user whether the mismatch is intended. If the user
-  confirms every line, go to Step 3. Otherwise stop. Tell the user to fix
+  A "still has WIP prefix in release notes" line is never intended here.
+  `/review-milestone` Step 1 stops on it. Stop and tell the user to type
+  `/finish-milestone <version>`.
+
+  For each other line, ask the user whether the mismatch is intended. If the
+  user confirms every line, go to Step 3. Otherwise stop. Tell the user to fix
   the "Issues Resolved" section of `docs/releases/RELEASE_NOTES_<version>.md`
   on the milestone branch, commit, push, and type `/release-milestone
-  <version>` again. That push makes the deploy sheet stale (Step 4 reports
-  it) and does not re-run the milestone CI review.
+  <version>` again. That push does not re-run the milestone CI review.
 - **Exit 1 with no issue lines printed** — treat as exit 2.
 - **Exit 2** — can't verify: bad arguments, no release-notes file, no
   "Issues Resolved" entries in it, a milestone with no issues (usually a
@@ -127,9 +130,27 @@ window.
 scripts/check-version-newer.sh <version>
 ```
 
+The script accepts a three-part version and a four-part patch-release tag
+(`v2.30.4.1`, from `DEPLOYMENT.md`, "Patch Release from main").
+
 - **Exit 0** — newer than the last tag. Proceed.
 - **Exit 1** — not newer. Stop and ask the user.
-- **Exit 2** — couldn't parse semver, or no prior tag. Stop and ask.
+- **Exit 2** — the script could not read a version. Recover in this order:
+  1. If stderr says `git describe` failed, the tags are probably not
+     fetched. Run `git fetch origin --tags`, then run the script again.
+  2. If stderr says it could not parse the candidate version, the version
+     from Step 1 is wrong. Stop and ask the user.
+  3. If stderr says it could not parse the last tag, find the newest
+     release tag and pass it as the second argument:
+
+     ```bash
+     git tag --list 'v*' --sort=-v:refname | head -5
+     scripts/check-version-newer.sh <version> <newest-release-tag>
+     ```
+
+     Use the newest tag in the form `vX.Y.Z` or `vX.Y.Z.N`. Show the user
+     which tag you used. Exit 0 or 1 from this run applies as above. If no
+     tag has that form, stop and ask the user.
 
 ### Step 4: Locate the deploy sheet rendered by `/finish-milestone`
 
@@ -155,9 +176,13 @@ ls docs/plans/releases/<version>-deploy.md
   ```
 
   - **Exit 0** — fresh, proceed.
-  - **Exit 1** — stale. Warn the user; ask whether to proceed anyway or
-    stop and refresh the sheet first (by hand from `/finish-milestone`
-    Step 6.6's instructions, or by typing `/finish-milestone <version>`).
+  - **Exit 1** — stale: a deploy input (migration, env var, admin script,
+    new page, hook, or the sheet template) changed after the sheet was
+    rendered. Commits that change only notes or code do not make it stale.
+    Show the user the changed paths from stderr. Ask whether to proceed
+    anyway or stop and refresh the sheet first (by hand from
+    `/finish-milestone` Step 6.6's instructions, or by typing
+    `/finish-milestone <version>`).
   - **Exit 2** — no stamp file — can't verify. Warn rather than assume fresh.
 
 Confirm `.claude.local.md` § "Deployment hosts" is present — the sheet
@@ -194,25 +219,31 @@ running the merge, which cannot be undone by re-running the command.
 scripts/release-milestone.sh <version> <pr-number> <milestone-number>
 ```
 
-This runs, in order: remove the release-notes file as a commit on the
-milestone branch and push it (so it lands inside the PR, never as a bare
+This runs, in order: save the release notes to
+`docs/plans/releases/<version>-release-notes.md`, remove the release-notes
+file as a commit on the milestone branch and push it (so it lands inside the PR, never as a bare
 push to `main` after merge); sync local `main` to `origin/main` and refuse to
 proceed if local `main` carries commits `origin/main` doesn't have; merge the
 PR (regular merge, `--delete-branch`); pull the merge commit; delete the
 local milestone branch; tag the merge commit `<version>` and verify `git
 describe HEAD` returns it with no suffix; push the tag; create the GitHub
-release as a **draft** with `--verify-tag`; close the GitHub milestone.
+release as a **draft** with `--verify-tag` from the saved notes; close the
+GitHub milestone.
 
 The script refuses any remote argument named `prod` or `test` — it only ever
 pushes to `origin`. Exit 0 means every step above completed. Exit 1 means a
-precondition failed before anything mutated (bad args, dirty state, stray
-local commits — the script's own output says which). Exit 2 means a step
-failed mid-run after mutation began (merge conflict, push rejected, tag
-verification failed) — **stop and investigate by hand; do not re-run the
-script blindly**, since some earlier steps may have already applied.
+check stopped the run (bad args, closed PR, missing release notes, stray
+local commits on `main` — the script's own output says which). Exit 2 means
+a step failed (merge conflict, push rejected, tag on the wrong commit).
 
-If the script exits non-zero, report its exact output and stop — do not
-attempt the remaining steps manually.
+If the script exits non-zero, report its exact output and stop. Do not
+do the remaining steps by hand. Find the cause from the output, and ask the
+user before you change anything to fix it. Then run the same command again.
+The script can resume: it skips each step whose work is already done (notes
+already removed, PR already merged, tag already on the merge commit, release
+already created). If the saved notes copy is missing, it restores the notes
+from the commit before the removal. The confirmation in Step 5 covers the
+resumed run.
 
 ### Step 7: Output summary and point to the deploy sheet
 

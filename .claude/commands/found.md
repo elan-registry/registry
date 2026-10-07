@@ -169,37 +169,33 @@ gh issue create \
 
 #### Ledger
 
-The cleanup ledger is the one open issue with the `cleanup-ledger` label. It
-keeps one group per file: a level-3 heading that names the file in backticks,
-and the checkbox lines under it. Add the item with the script:
+The cleanup ledger is `docs/development/CLEANUP_LEDGER.md`. Its "Rules"
+section sets the format. Add the item with the Edit tool. Do not use a
+script.
 
-```bash
-scripts/ledger-add-item.sh "path/to/file.php" "ONE_LINE_ITEM (found while working on #CURRENT_ISSUE)"
-```
+1. Read `docs/development/CLEANUP_LEDGER.md`.
+2. Find the level-3 heading under `## Items` that names the file in
+   backticks. Use the repo-relative path: no `:line` suffix and no leading
+   `./` or `/`.
+3. If that heading already has an item with the same text, add nothing.
+   Tell the user: "Already in the cleanup ledger under `path/to/file.php`."
+4. If the heading exists, add the item as the last `- [ ]` line under it.
+5. If no heading exists, add `` ### `path/to/file.php` `` with the item under
+   it. Put the new group in path order among the other groups.
+6. Write the item on one line, in this form:
 
-Pass the repo-relative file path only: no `:line` suffix and no leading
-`./` or `/`. The script finds the open ledger issue and adds the item after
-the last non-blank line of the file's group. If no heading exists for the
-file, it adds a new comment with a new heading. If the group already has an
-open item with the same text, it adds nothing. On success it prints one line
-that starts `added to #<issue>:` and ends `(existing heading)` or
-`(new heading)`, or one line that starts `already present in #<issue>:`.
+   ```markdown
+   - [ ] ONE_LINE_ITEM (found in #CURRENT_ISSUE)
+   ```
 
-- **Exit 0** — tell the user, with the issue number and ending from the
-  script's output:
+The edit is a change to a tracked file. On an issue branch, it goes in that
+branch's PR, with the rest of the work. Tell the user:
 
-  > "Added to cleanup ledger #LEDGER_NUMBER under `path/to/file.php` (existing heading)."
+> "Added to the cleanup ledger under `path/to/file.php`. The edit goes in
+> this branch's PR."
 
-- **Exit 1** — the arguments are wrong: not exactly two arguments, an empty
-  argument, a newline or CR in an argument, or a path with a backtick, a
-  `:line` suffix, or a leading `./` or `/`. Correct them and run the script
-  again.
-- **Exit 2** — stop. Give the user the script's stderr. If it says that no
-  open issue has the `cleanup-ledger` label, tell the user that no open
-  ledger issue exists. Do not create a ledger issue and do not create a
-  separate issue. If a write failed, the item may or may not be in the
-  ledger. Tell the user to check the ledger issue before running the
-  script again.
+On any other branch, tell the user that the edit is not committed, and
+name the branch.
 
 ### Step 5: Resume — or hand off, for the hotfix track
 
@@ -217,9 +213,9 @@ Then give the user the hotfix sequence as plain text. Tell them to run
 
 1. `/start-issue NNN --hotfix` — branches from `origin/main` and writes the
    plan. The plan gate applies.
-2. `/execute-plan`, then `/commit-push-pr`. `/commit-push-pr` can choose a
-   milestone branch as the PR base. If it does, set the base to `main`:
-   `gh pr edit <pr-number> --repo elan-registry/registry --base main`.
+2. `/execute-plan` → `/commit` → `/review-pr` →
+   `/commit-push-pr` → `/address-pr-comments`. `/commit-push-pr` reads the
+   plan's PR base line and opens the PR against `main`.
 3. `/finish-issue NNN` — sees the `main` base, merges into `main`, and skips
    the milestone-only steps.
 4. The patch release: `docs/development/DEPLOYMENT.md`, "Patch Release from

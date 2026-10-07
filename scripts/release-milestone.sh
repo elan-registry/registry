@@ -13,16 +13,34 @@
 #
 # --dry-run: print every command this script would run, in order, and exit
 #   0 without running any of them (no git, gh, or filesystem mutation).
+#   Read-only gh calls still run.
+#
+# Resume: run the script again with the same arguments after it stops. Each
+# step checks whether an earlier run already did its work, and skips it:
+#   - Step 6 skips when the PR is merged. When the release-notes file is
+#     already removed by a commit on the milestone branch, it pushes the
+#     branch and continues.
+#   - Step 8 skips when the PR is merged.
+#   - Step 11 skips when the tag exists on the PR's merge commit.
+#   - Step 13 skips when the GitHub release exists.
+#   - Steps 7, 9, 10, 12 and 14 are safe to run again.
+# Step 6 saves the release notes to docs/plans/releases/<version>-release-notes.md
+# (gitignored) before it removes them. Step 13 publishes from that copy. If
+# the copy is missing, Step 13 restores it from the commit before the
+# removal commit.
 #
 # Exit codes:
 #   0 = all steps completed (or --dry-run printed the plan)
-#   1 = a precondition failed (bad args, wrong remote, dirty tree, stray
-#       local commits) — nothing was mutated, or only steps before the
-#       failure point ran
-#   2 = a step itself failed after mutation began (e.g. merge conflict,
-#       push rejected) — stop and investigate by hand; do not re-run blindly
+#   1 = a check stopped the run before the failing step changed anything
+#       (bad args, deploy remote, closed PR, release notes missing with no
+#       removal commit, stray local commits on main). Fix the cause and run
+#       the script again.
+#   2 = a step itself failed (e.g. merge conflict, push rejected, tag on
+#       the wrong commit). Fix the cause and run the script again. It skips
+#       the steps that already completed.
 
-set -euo pipefail
+# -E: the ERR trap below must also fire for a failure inside run().
+set -Eeuo pipefail
 
 DRY_RUN=0
 if [ "${1:-}" = "--dry-run" ]; then
@@ -37,7 +55,7 @@ MILESTONE_NUMBER="${3:?Usage: release-milestone.sh [--dry-run] <version> <pr-num
 REPO="elan-registry/registry"
 BRANCH="milestone/${VERSION}"
 NOTES_FILE="docs/releases/RELEASE_NOTES_${VERSION}.md"
-TMP_NOTES="/tmp/release-notes-${VERSION}.md"
+KEEP_NOTES="docs/plans/releases/${VERSION}-release-notes.md"
 
 run() {
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -61,23 +79,55 @@ done
 
 step() { echo "== $* =="; }
 
-# --- Step 6: stage release notes, delete the file, push to the milestone branch ---
-step "Step 6: remove release notes from milestone branch"
-run git checkout "$BRANCH"
-run git pull origin "$BRANCH"
-run cp "$NOTES_FILE" "$TMP_NOTES"
-run git rm "$NOTES_FILE"
-run git commit -m "chore: remove v${VERSION#v} release notes — published to GitHub Releases"
-run git push origin "$BRANCH"
+# Prints the commit in HEAD's history that removed the release-notes file,
+# or nothing. --full-history: main never had the file, so the default
+# history simplification drops the merged milestone side of the merge.
+notes_removal_commit() {
+  git log -1 --full-history --format=%H --diff-filter=D HEAD -- "$NOTES_FILE"
+}
 
-if [ "$DRY_RUN" -eq 0 ]; then
-  MERGEABLE="$(gh pr view "$PR_NUMBER" --json mergeable --jq '.mergeable')"
-  if [ "$MERGEABLE" != "MERGEABLE" ]; then
-    echo "PR #${PR_NUMBER} is not cleanly mergeable after Step 6's push (state: ${MERGEABLE}). Stop and resolve." >&2
-    exit 2
-  fi
+PR_STATE="$(gh pr view "$PR_NUMBER" --json state --jq '.state')"
+case "$PR_STATE" in
+  OPEN|MERGED) ;;
+  *)
+    echo "PR #${PR_NUMBER} is ${PR_STATE}, not OPEN or MERGED. Stop." >&2
+    exit 1
+    ;;
+esac
+
+trap 'echo "release-milestone: a command failed at line ${LINENO}. Fix the cause, then run the script again. It skips the steps that already completed." >&2; exit 2' ERR
+
+# --- Step 6: save release notes, delete the file, push to the milestone branch ---
+step "Step 6: remove release notes from milestone branch"
+if [ "$PR_STATE" = "MERGED" ]; then
+  echo "PR #${PR_NUMBER} is already merged — skipping."
 else
-  echo "[dry-run] gh pr view $PR_NUMBER --json mergeable --jq '.mergeable'"
+  run git checkout "$BRANCH"
+  run git pull origin "$BRANCH"
+  if [ "$DRY_RUN" -eq 1 ] || [ -f "$NOTES_FILE" ]; then
+    run mkdir -p "$(dirname "$KEEP_NOTES")"
+    run cp "$NOTES_FILE" "$KEEP_NOTES"
+    run git rm "$NOTES_FILE"
+    run git commit -m "chore: remove v${VERSION#v} release notes — published to GitHub Releases"
+  else
+    REMOVED_IN="$(notes_removal_commit)"
+    if [ -z "$REMOVED_IN" ]; then
+      echo "No ${NOTES_FILE} on ${BRANCH}, and no commit on the branch removed it. Stop." >&2
+      exit 1
+    fi
+    echo "${NOTES_FILE} already removed in ${REMOVED_IN} — continuing."
+  fi
+  run git push origin "$BRANCH"
+
+  if [ "$DRY_RUN" -eq 0 ]; then
+    MERGEABLE="$(gh pr view "$PR_NUMBER" --json mergeable --jq '.mergeable')"
+    if [ "$MERGEABLE" != "MERGEABLE" ]; then
+      echo "PR #${PR_NUMBER} is not cleanly mergeable after Step 6's push (state: ${MERGEABLE}). Resolve it, then run the script again." >&2
+      exit 2
+    fi
+  else
+    echo "[dry-run] gh pr view $PR_NUMBER --json mergeable --jq '.mergeable'"
+  fi
 fi
 
 # --- Step 7: switch to main, pull, verify clean local state ---
@@ -99,7 +149,11 @@ fi
 
 # --- Step 8: merge the PR ---
 step "Step 8: merge PR #${PR_NUMBER}"
-run gh pr merge "$PR_NUMBER" --merge --delete-branch
+if [ "$PR_STATE" = "MERGED" ]; then
+  echo "PR #${PR_NUMBER} is already merged — skipping."
+else
+  run gh pr merge "$PR_NUMBER" --merge --delete-branch
+fi
 
 # --- Step 9: pull the merge commit ---
 step "Step 9: pull merge commit"
@@ -115,18 +169,28 @@ fi
 
 # --- Step 11: tag the merge commit ---
 step "Step 11: create annotated tag"
-MILESTONE_TITLE="$(gh api "repos/${REPO}/milestones/${MILESTONE_NUMBER}" --jq .title)"
-run git tag -a "${VERSION}" -m "Release ${VERSION}: ${MILESTONE_TITLE}"
-
-if [ "$DRY_RUN" -eq 0 ]; then
-  DESCRIBED="$(git describe HEAD)"
-  if [ "$DESCRIBED" != "$VERSION" ]; then
-    echo "git describe HEAD returned '${DESCRIBED}', expected '${VERSION}' with no suffix." >&2
-    echo "The tag is not on a clean merge commit — stop and investigate." >&2
+if [ "$DRY_RUN" -eq 0 ] && git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+  MERGE_SHA="$(gh pr view "$PR_NUMBER" --json mergeCommit --jq '.mergeCommit.oid')"
+  TAGGED_SHA="$(git rev-parse "${VERSION}^{commit}")"
+  if [ "$TAGGED_SHA" != "$MERGE_SHA" ]; then
+    echo "Tag ${VERSION} already exists on ${TAGGED_SHA}, not on the merge commit ${MERGE_SHA}. Stop and investigate." >&2
     exit 2
   fi
+  echo "Tag ${VERSION} already exists on the merge commit — skipping."
 else
-  echo "[dry-run] git describe HEAD  # expect: $VERSION"
+  MILESTONE_TITLE="$(gh api "repos/${REPO}/milestones/${MILESTONE_NUMBER}" --jq .title)"
+  run git tag -a "${VERSION}" -m "Release ${VERSION}: ${MILESTONE_TITLE}"
+
+  if [ "$DRY_RUN" -eq 0 ]; then
+    DESCRIBED="$(git describe HEAD)"
+    if [ "$DESCRIBED" != "$VERSION" ]; then
+      echo "git describe HEAD returned '${DESCRIBED}', expected '${VERSION}' with no suffix." >&2
+      echo "The tag is not on a clean merge commit — stop and investigate." >&2
+      exit 2
+    fi
+  else
+    echo "[dry-run] git describe HEAD  # expect: $VERSION"
+  fi
 fi
 
 # --- Step 12: push the tag ---
@@ -135,13 +199,27 @@ run git push origin "${VERSION}"
 
 # --- Step 13: draft GitHub release ---
 step "Step 13: create draft GitHub release"
-run gh release create "${VERSION}" \
-  --repo "$REPO" \
-  --title "Elan Registry ${VERSION}" \
-  --notes-file "$TMP_NOTES" \
-  --verify-tag \
-  --draft
-run rm -f "$TMP_NOTES"
+if [ "$DRY_RUN" -eq 0 ] && gh release view "${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
+  echo "Release ${VERSION} already exists — skipping."
+else
+  if [ "$DRY_RUN" -eq 0 ] && [ ! -f "$KEEP_NOTES" ]; then
+    REMOVED_IN="$(notes_removal_commit)"
+    if [ -z "$REMOVED_IN" ]; then
+      echo "No saved release notes at ${KEEP_NOTES}, and no commit on main removed ${NOTES_FILE}. Stop." >&2
+      exit 2
+    fi
+    mkdir -p "$(dirname "$KEEP_NOTES")"
+    git show "${REMOVED_IN}^:${NOTES_FILE}" > "$KEEP_NOTES"
+    echo "Restored release notes from ${REMOVED_IN}^ to ${KEEP_NOTES}."
+  fi
+  run gh release create "${VERSION}" \
+    --repo "$REPO" \
+    --title "Elan Registry ${VERSION}" \
+    --notes-file "$KEEP_NOTES" \
+    --verify-tag \
+    --draft
+fi
+run rm -f "$KEEP_NOTES"
 
 # --- Step 14: close the GitHub milestone ---
 step "Step 14: close milestone #${MILESTONE_NUMBER}"

@@ -93,26 +93,32 @@ repo state rather than assume the handoff was clean (same principle
   cat docs/plans/releases/$ARGUMENTS-review.done
   ```
 
-  If missing, or if any line reads anything other than `clean`,
-  `findings-fixed`, `ran-clean`, or `not-applicable` (e.g. it's absent
-  entirely, or a line for one of the five steps is missing), stop. Tell the user:
+  If missing, or if any of the five step lines reads anything other than
+  `clean`, `findings-fixed`, `ran-clean`, or `not-applicable` (e.g. it's
+  absent entirely, or a line for one of the five steps is missing), stop.
+  Tell the user:
   "`/finish-milestone` doesn't show as having completed its review steps —
   type `/finish-milestone $ARGUMENTS` to run it again before opening a
   PR." Do not proceed on the assumption that review "probably"
   happened — this check exists specifically for the case where it didn't.
 
-- **Every local commit is on `origin`.** `gh pr create --head` (Step 3)
-  does not push, so a commit that is only local is not in the PR:
+- **The marker covers the branch as it is now.** Its `sha:` line records the
+  tip that `/finish-milestone` Step 10 pushed. A commit after that tip had
+  no review:
 
   ```bash
+  grep '^sha: ' docs/plans/releases/$ARGUMENTS-review.done
+  git rev-parse origin/milestone/$ARGUMENTS
   git rev-list --count origin/milestone/$ARGUMENTS..milestone/$ARGUMENTS
   ```
 
-  `/finish-milestone` Step 10 pushes the branch, so expect `0`. If the
-  count is not `0`, show the commits
-  (`git log --oneline origin/milestone/$ARGUMENTS..milestone/$ARGUMENTS`)
-  and push them with `git push origin milestone/$ARGUMENTS`. If the push is
-  rejected, stop and report the error.
+  The `sha:` value must equal the `origin` tip, and the count must be `0`
+  (`gh pr create --head` in Step 3 does not push, so a local-only commit is
+  not in the PR). If the `sha:` line is missing or differs, or the count is
+  not `0`, stop. Show the commits after the marker
+  (`git log --oneline <sha>..milestone/$ARGUMENTS`). Tell the user to type
+  `/finish-milestone $ARGUMENTS`. It skips the review steps whose results
+  still match the tip, and reviews the new commits.
 
 ### Step 2: Re-derive merged-PR list, diff, and known-broken-test status
 
@@ -134,14 +140,22 @@ scripts/check-known-broken-tests.sh
 **If exit 0 (none found)**, proceed to Step 3.
 
 **If exit 1 or 2 (one or more found — see stdout for file, line, cited
-issue, and that issue's current state)**, this is either a tag
-`/finish-milestone` Step 3.5 already surfaced and the user accepted, or one
-that appeared since. Don't assume which — re-run the same decision live:
-present the list and ask the user to (a) resolve first, (b) proceed with
-this explicitly accepted (record it for Step 3's PR body), or (c) stop
-here. Do not proceed without an explicit answer. On exit 2, a row reading
-`(lookup-failed)` means the issue's state couldn't be confirmed — resolve
-that before treating the row as accepted or not.
+issue, and that issue's current state)**, read
+`docs/plans/releases/$ARGUMENTS-known-broken.md`, which `/finish-milestone`
+Step 3.5 writes when the user accepts the tags:
+
+- The file exists, starts with `decision: accepted`, and its rows have the
+  same file and issue columns as the script's output now — the user already
+  accepted these tags. Do not ask again. Use the current rows for Step 3's
+  PR body.
+- Otherwise a tag appeared or changed since that decision. Present the list
+  and ask the user to (a) resolve first, (b) proceed with this explicitly
+  accepted, or (c) stop here. Do not proceed without an explicit answer. On
+  (b), write the file in the same format: a first line
+  `decision: accepted`, then the script's output rows unchanged.
+
+On exit 2, a row reading `(lookup-failed)` means the issue's state couldn't
+be confirmed — resolve that before treating the row as accepted or not.
 
 ### Step 3: Create the PR targeting main
 
@@ -157,7 +171,7 @@ gh pr create \
 
 ## Issues Resolved
 
-<List each merged PR with closing keywords>
+<One line for each issue that a merged PR resolved>
 
 Closes #NNN — Issue title (PR #NN)
 Closes #NNN — Issue title (PR #NN)
@@ -199,10 +213,13 @@ EOF
 )"
 ```
 
-**CRITICAL**: The PR body MUST include `Closes #NNN` for every issue in the
-milestone. Individual issue PRs target the milestone branch (not main), so
-their closing keywords won't auto-close issues. Only this final PR merged into
-main triggers auto-closure.
+**CRITICAL**: The PR body MUST include `Closes #NNN` for every issue that a
+merged PR in Step 2's list resolved, and for no other issue. Individual
+issue PRs target the milestone branch (not main), so their closing keywords
+won't auto-close issues. Only this final PR merged into main triggers
+auto-closure. An issue with no merged PR is not done. Do not write a
+`Closes` line for it: the merge would close it. `/finish-milestone` Step 2
+already removed such issues from the milestone.
 
 Fill in actual data from Step 2.
 
@@ -267,10 +284,16 @@ failure or pending required check is not).
 **The bar for calling this command complete:** the milestone branch, as it
 sits on `main`'s target commit right now, needs zero further code changes
 before `/release-milestone` runs — that command merges, tags, and publishes;
-it is not a place to discover or fix problems. If a fix here changed deploy
-inputs (new migration, admin script, env var), tell the user to refresh the
-deploy sheet by hand from `/finish-milestone` Step 6.6's instructions before
-`/release-milestone`.
+it is not a place to discover or fix problems. If this step pushed a fix,
+check the deploy sheet:
+
+```bash
+scripts/check-deploy-sheet-fresh.sh $ARGUMENTS
+```
+
+On exit 1 (a deploy input changed) or exit 2, tell the user to refresh the
+deploy sheet by hand from `/finish-milestone` Step 6.6's instructions
+before `/release-milestone`.
 
 ### Step 5: Output summary
 
@@ -299,10 +322,11 @@ deploy sheet by hand from `/finish-milestone` Step 6.6's instructions before
 ## Important
 
 - **Closing keywords are critical** — without them in the PR body, issues
-  won't auto-close on merge
+  won't auto-close on merge. Use them only for issues that a merged PR
+  resolved
 - The PR MUST target `main`, not any other branch
-- Push only `milestone/$ARGUMENTS`, only to `origin`: unpushed commits in
-  Step 1 and finding fixes in Step 4. Never push `main`, `prod`, or `test`
+- Push only `milestone/$ARGUMENTS`, only to `origin`, and only for finding
+  fixes in Step 4. Never push `main`, `prod`, or `test`
 - The deploy sheet lives at `docs/plans/releases/<version>-deploy.md` —
   gitignored, never committed or printed in full to the conversation (it
   names ssh hosts and docroots)

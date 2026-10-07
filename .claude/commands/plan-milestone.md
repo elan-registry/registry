@@ -39,10 +39,31 @@ seal, output) via TaskCreate.
 
 ## Step 1: Read the signals
 
-Pull everything that's arrived since the last planning session:
+Find the milestone number:
 
 ```bash
-# New issues since last milestone was sealed (adjust date to last /plan-milestone run)
+gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" \
+  --jq '.[] | select(.title | test("^$ARGUMENTS([: ]|$)")) | .number'
+```
+
+Exactly one number → record it as `MILESTONE_NUM`. Step 4 uses it. Zero or
+more than one → stop and report the open milestone titles.
+
+Read the newest release retrospective, if one exists:
+
+```bash
+find docs/plans/releases -name '*-retro.md' 2>/dev/null | sort -V | tail -1
+```
+
+`/finish-milestone` Step 6.5 writes this file. It holds three answers, in
+this order: what we shipped that nobody needed, what we learned about the
+theme's audience, and which signal we ignored. Show all three answers to the
+user before Step 2. Step 3 uses the first answer. No file → say "No
+retrospective found." and continue.
+
+Pull every open issue that has no milestone, newest first:
+
+```bash
 gh api "repos/elan-registry/registry/issues?state=open&sort=created&direction=desc&per_page=100" \
   --jq '.[] | select(.milestone == null) | {number, title, labels: [.labels[].name], created_at}'
 ```
@@ -51,14 +72,6 @@ Group by `signal:*` label. Read `signal:owner` and `signal:analytics` issues
 in full — these are the strongest evidence. Note any `signal:operator`
 issues that lack a second reason to exist (per the doc, these carry a higher
 bar).
-
-Also check for a proposed sprint plan, same as `/start-milestone` Step 1.5:
-
-```bash
-ls docs/plans/sprints/$ARGUMENTS.md 2>/dev/null
-```
-
-If found, read it — it may already propose a theme or cluster.
 
 ## Step 2: Pick the theme
 
@@ -106,6 +119,10 @@ For each candidate, apply the three questions:
 3. **What breaks if this never ships?** Nothing → close it, don't just
    leave it.
 
+If the retrospective from Step 1 names work that nobody needed, compare each
+candidate with it. A candidate of the same kind must show a stronger signal
+to survive. Say which candidates this applies to.
+
 Then, for the survivors, apply the edge-case test to the issue itself (and
 flag it for the plan-gate step in `/start-issue` to re-apply per-branch):
 
@@ -113,8 +130,9 @@ flag it for the plan-gate step in `/start-issue` to re-apply per-branch):
 > does it fail gracefully or badly?
 
 - Many users, fails badly → build it.
-- Few users, fails badly → note that only the guard is in scope, not the
-  full feature — the issue can still be included, scoped down.
+- Few users, fails badly → only the guard is in scope, not the full
+  feature. The issue can still be included, scoped down. Step 4 records the
+  reduced scope on the issue.
 - Few users, fails gracefully → **out.** Don't add to the milestone.
 
 Produce two lists:
@@ -151,20 +169,58 @@ remainder stay in the backlog, not force-added.
 
 For each selected issue:
 
-1. Write acceptance criteria now, based on the issue body and Step 3's
-   reasoning — this is the first point it's worth the effort.
-2. Assign the milestone and apply `status:ready`:
+1. Write the acceptance criteria. `/new-issue` only captures an issue. It
+   writes no acceptance criteria, so this step is the first place they are
+   written. Base them on the issue body and Step 3's reasoning. Each
+   criterion is one testable line. If the body already has an
+   `## Acceptance criteria` section, check it against the theme and the
+   Step 3 scope, and correct it.
+2. Add the criteria to the issue body as an `## Acceptance criteria`
+   section of `- [ ]` lines. Keep the rest of the body. Save the body to a
+   file, edit the file, and write it back:
 
    ```bash
-   gh issue edit NNN --repo elan-registry/registry \
-     --milestone "$ARGUMENTS" --add-label "status:ready"
+   gh issue view NNN --repo elan-registry/registry --json body --jq .body > <body-file>
+   gh issue edit NNN --repo elan-registry/registry --body-file <body-file>
    ```
 
-3. If acceptance criteria required editing the issue body, do so:
+   Do not apply `status:ready` to an issue without this section.
+3. Give the title its scoped type. A captured issue can have a `bug:`
+   prefix, which means "not yet scoped". Now it has acceptance criteria, so
+   change the prefix to the type of the work that ships: `fix:`, `feat:`,
+   `test:`, `chore:`, `docs:`, `refactor:`, `tech-debt:`, `security:`, or
+   `seo:` (`docs/development/CODING_STANDARDS.md`, "Issue & PR Title
+   Conventions"). Keep the rest of the title. Then assign the milestone,
+   apply `status:ready`, and remove `triage`:
 
    ```bash
-   gh issue edit NNN --repo elan-registry/registry --body "<updated body>"
+   gh issue edit NNN --repo elan-registry/registry --title "<type>: <description>" \
+     --milestone "$ARGUMENTS" --add-label "status:ready" --remove-label "triage"
    ```
+
+   If the issue does not have the `triage` label, leave out
+   `--remove-label "triage"`. If the title already has the correct scoped
+   type, leave out `--title`.
+
+4. If Step 3 scoped the issue down to the guard only, write acceptance
+   criteria for the guard only. Then add a comment that states the reduced
+   scope:
+
+   ```bash
+   gh issue comment NNN --repo elan-registry/registry \
+     --body "Scope for $ARGUMENTS: <the guard only, one line>. The full feature is out of scope (few owners take this path)."
+   ```
+
+Then find combine groups among the selected issues: issues that touch the
+same code and must land as one PR. Show the groups to the user and ask for
+approval. For each approved group, post one comment on each issue in the
+group. Use exactly this phrase, because `/start-issue` reads it. On each
+issue, list the other issues of the group, not the issue itself:
+
+```bash
+gh issue comment NNN --repo elan-registry/registry \
+  --body "Combine into one PR with #A, #B (planned in $ARGUMENTS)."
+```
 
 For cut candidates: close outright if they failed all three questions, per
 `/start-milestone`'s existing closing pattern:
@@ -174,12 +230,19 @@ gh issue close NNN --repo elan-registry/registry \
   --comment "Closing as low-value / make-work during milestone planning. Can be reopened if prioritized."
 ```
 
-Otherwise leave open, untouched, in the backlog.
+Otherwise leave the issue open in the backlog, with no milestone and no
+label change. Add one comment with the one-line reason from the "Candidates
+cut" table:
+
+```bash
+gh issue comment NNN --repo elan-registry/registry \
+  --body "Not in $ARGUMENTS: <reason from the Step 3 table>."
+```
 
 Set the milestone description to the theme sentence (not an issue list):
 
 ```bash
-gh api repos/elan-registry/registry/milestones/<NUMBER> -X PATCH \
+gh api repos/elan-registry/registry/milestones/<MILESTONE_NUM> -X PATCH \
   -f description="<theme sentence>"
 ```
 
@@ -188,6 +251,7 @@ gh api repos/elan-registry/registry/milestones/<NUMBER> -X PATCH \
 - The theme sentence
 - Sealed issue list (number, title, signal) — theme issues and the
   housekeeping issue separately
+- Combine groups commented on (Step 4), or "none"
 - Cut candidates and why
 - Any issues closed outright
 - Next step, as plain text: "Run `/clear`, then type
@@ -198,8 +262,8 @@ gh api repos/elan-registry/registry/milestones/<NUMBER> -X PATCH \
 ## Important
 
 - This command never creates branches, commits code, or touches release
-  notes — it only changes issue metadata (milestone, labels, body) via the
-  GitHub API.
+  notes — it only changes issue metadata (milestone, labels, body,
+  comments) and the milestone description via the GitHub API.
 - `signal:owner` and `signal:analytics` are never inferred here — if an
   issue's label looks wrong against its actual content, flag it to the user
   rather than silently relabeling (see ISSUE_WORKFLOW.md's "signal records
@@ -208,4 +272,6 @@ gh api repos/elan-registry/registry/milestones/<NUMBER> -X PATCH \
 - If `/start-milestone` is run without this command having sealed anything
   first, its own Step 4.4/4.5 still perform an equivalent (lighter-weight)
   gate — this command is the fuller version, meant to run first in the
-  typical flow.
+  typical flow. `/start-milestone` skips Steps 4.4 and 4.5 when it finds
+  what Step 4 here leaves: a theme-sentence milestone description and
+  `status:ready` on every open issue in the milestone.

@@ -148,6 +148,10 @@ one place, grouped by file, so `/start-issue` can offer them to a plan that
 edits the file. A find with no named benefit is dropped, with a one-line
 record, so that a later review does not raise it again.
 
+The original design kept the ledger in one open GitHub issue. The
+2026-10-06 revision superseded that store. The ledger is now a committed
+file. See "Revisions".
+
 #### The milestone is sealed
 
 A sealed milestone is what makes a release predictable. A fix that "only
@@ -272,6 +276,84 @@ work, and closed the rest as `stale-no-demand`. The cull was finished work. The
 live rules that it used are in the how-to: the three questions, the
 exemptions, and the rescue rule.
 
+## Revisions (2026-10-06, PR #2315)
+
+PR #2315 changed the commands and scripts after the how-to was written. The
+sections above stay as the record of the original decision. Where a section
+conflicts with this one, this one governs.
+
+### The ledger moved from a GitHub issue to a committed file
+
+The original design kept the cleanup ledger in one open issue with the
+`cleanup-ledger` label. Scripts (`scripts/ledger-*.sh` and
+`scripts/lib/ledger.sh`) read and wrote it with `gh`. Items moved through a
+`## Ledger items` section of the PR body, and `/finish-issue` ticked them
+after the merge. The ledger is now `docs/development/CLEANUP_LEDGER.md`, a
+committed file. This supersedes the issue store in "Cleanup finds go to a
+ledger".
+
+Reasons:
+
+- **About 1,100 lines of bash existed only because the store was remote and
+  public.** The scripts added items, ticked them, built PR-body sections, and
+  looked for orphans. A file needs one small reader. An agent adds an item
+  with an edit.
+- **A shell-quoting defect.** Item text went through shell arguments to the
+  add script, and the script had a quoting defect. An edit has no quoting.
+- **The post-merge tick and the PR-body hand-off are gone.** A fix now deletes
+  its ledger line in the same PR. The merge records the fix. No step after
+  the merge has to remember it, and no PR-body section carries it.
+- **Orphans are caught by `composer check:docs`.** A heading that names a file
+  that no longer exists fails the check. The `/groom-backlog` sweep and
+  `scripts/ledger-orphans.sh` are gone.
+
+`scripts/ledger-items-for-files.sh` stays. It now reads the file and makes no
+`gh` call. Issue #2208 held the old ledger. Close it after v2.30.5 ships,
+because other branches still run the old commands.
+
+### The sprint file is gone
+
+`/start-milestone` used to write an approved issue order to
+`docs/plans/sprints/<version>.md`, and `/finish-issue` marked each issue done
+there. The order is now advice for one session, and no file stores it.
+`/finish-issue` picks the next open issue: the lowest-numbered open issue in
+the milestone without `status:blocked`. The facts that a later session needs
+are on GitHub: the comment `Combine into one PR with #A, #B`, and the
+`status:blocked` label with a `Blocked by #X` comment. This removes a second
+store of state and the script that kept it in step with GitHub. It follows the
+reasoning in "Alternatives Considered" for a Projects board.
+
+### Other changes
+
+- **`/commit-push-pr` runs on `model: sonnet`.** A script does the git and
+  `gh` work. The command writes only the commit message and the PR body. The
+  commands before and after it declare `model: opus`, so you type each of
+  those hand-offs.
+- **`/new-issue` is capture only.** It records the title, the signal label,
+  the beneficiary, and the evidence. This is what the how-to always said.
+  `/plan-milestone` Step 4 now writes the acceptance criteria, gives the
+  issue a scoped title, and removes `triage`.
+- **Documented rules are now enforced by commands.** `/start-issue` requires a
+  `## Not doing` section and a `**Risk flag:**` line. `/commit-push-pr`
+  copies the flag into the PR body and writes `## Delta from plan`.
+  `/finish-issue` asks for a human diff review when the flag is `yes`,
+  `unknown`, or missing. `/execute-plan` stops on a deviation: it comments on
+  the issue and sets the plan back to `Draft`. `/groom-backlog` Step 3.5
+  applies the age-out rule. This replaces the earlier note that no command
+  applies it.
+- **All review passes stay, and the fingerprint is fixed.** `/simplify` used
+  to run after `/execute-plan`. It changed files and made the review
+  fingerprint stale, so a later review ran lanes again. `/execute-plan` now
+  runs it at Step 6.8, before the Step 7 review round, so the reviewers see
+  the simplified code. `/review-pr` skips every lane that Step 7 ran clean at
+  the same fingerprint, now including `comment-analyzer`. The `spec` lane
+  and the verification suite always run.
+- **The commands record review decisions and ship state.** `## Review
+  decisions` lines (`Skipped:`, `Deferred:`, `False positive:`) go in the
+  plan and the PR body. `/finish-milestone` pushes the branch, runs the
+  verification suite, and can run again. `/review-milestone` checks that the
+  review marker names the branch tip.
+
 ## Consequences
 
 - A developer has one how-to to follow. Design reasoning does not compete
@@ -280,8 +362,8 @@ exemptions, and the rescue rule.
   command changes, update the how-to in the same PR.
 - The numbered Review Rules keep their numbers in the how-to, so older
   references to "Rule 1" through "Rule 6" still resolve.
-- The age-out rule has no automation. Backlog size depends on regular
-  `/groom-backlog` sweeps.
+- The age-out rule has no scheduled automation. `/groom-backlog` Step 3.5
+  applies it on approval, so backlog size depends on regular sweeps.
 - Rule 4 describes a principle that the repository does not yet meet in full.
   The gaps in the table above can still be reached.
 

@@ -313,6 +313,44 @@ else
         "exit: $STATUS15 (want 2)" "output: [$OUT15]"
 fi
 
+# --- Case 16: closed issue whose entry still has WIP: -> 1, WIP line only -
+# The WIP entry counts as an entry, so #102 is not "added ... missing".
+# The sed drops the "## Deployment Notes" tail, so the appended bullet
+# lands under "## Issues Resolved".
+write_notes 101
+sed -i.bak '/^## Deployment Notes$/,$d' "$NOTES" && rm -f "$NOTES.bak"
+printf '%s\n' "- WIP: [#102](https://github.com/elan-registry/registry/issues/102) — Entry." >> "$NOTES"
+write_members 101 102
+OUT16="$(run_check "$VERSION" 7 2>&1)"
+STATUS16=$?
+if [ "$STATUS16" -eq 1 ] \
+    && printf '%s' "$OUT16" | grep -q '#102 — still has WIP prefix in release notes' \
+    && ! printf '%s' "$OUT16" | grep -q 'added to milestone' \
+    && ! printf '%s' "$OUT16" | grep -q 'moved out' \
+    && [ "$(printf '%s\n' "$OUT16" | grep -c '#102')" -eq 1 ]; then
+    pass "Case 16: closed issue with WIP entry -> exit 1, one WIP line, not reported as missing"
+else
+    fail "Case 16: closed issue with WIP entry -> exit 1, one WIP line, not reported as missing" \
+        "exit: $STATUS16 (want 1)" "output: [$OUT16]"
+fi
+
+# --- Case 17: only WIP entries -> counted as entries, not exit 2 ---------
+write_notes
+sed -i.bak '/^## Deployment Notes$/,$d' "$NOTES" && rm -f "$NOTES.bak"
+printf '%s\n' "- WIP: [#101](https://github.com/elan-registry/registry/issues/101) — Entry." >> "$NOTES"
+write_members 101 103
+OUT17="$(run_check "$VERSION" 7 2>&1)"
+STATUS17=$?
+if [ "$STATUS17" -eq 1 ] \
+    && printf '%s' "$OUT17" | grep -q '#101 — still has WIP prefix' \
+    && printf '%s' "$OUT17" | grep -q '#103 — added to milestone' \
+    && ! printf '%s' "$OUT17" | grep -q '#101 — added'; then
+    pass "Case 17: only WIP entries -> exit 1, WIP and added lines"
+else
+    fail "Case 17: only WIP entries -> exit 1, WIP and added lines" \
+        "exit: $STATUS17 (want 1)" "output: [$OUT17]"
+fi
+
 # --- Report ------------------------------------------------------------
 
 echo ""

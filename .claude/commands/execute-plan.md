@@ -49,8 +49,8 @@ execute before checking the item off.
 Create tasks: locate + validate plan file, re-verify checklist against repo
 state, execute remaining items (fanned out per plan annotations), run
 test/PHPStan-baseline-hygiene/ledger steps, update release notes, run the
-review round and record the fingerprint, confirm the checklist, final
-hand-off summary. Set each `in_progress`/`completed` as you progress.
+simplify pass, run the review round and record the fingerprint, confirm the
+checklist, final hand-off summary. Set each `in_progress`/`completed` as you progress.
 
 ## Workflow
 
@@ -91,12 +91,14 @@ which to use.
 On exit 2 from Step 1, the plan file's `**Status:**` line is not
 `Approved — ready for /execute-plan`. Read it directly to see what it is:
 
-- **`Draft — pending approval`**: stop. Tell the user: "This plan hasn't been
-  approved yet. Return to `/start-issue` to finish the approval step before
-  running `/execute-plan`."
+- **`Draft — pending approval`**: stop. Tell the user: "This plan is not
+  approved yet. Type `/start-issue <NUMBER>`. It finds the existing branch
+  and plan and continues at its approval step (Step 9)."
 - **`Implemented — pending commit/PR`**: a previous run reached Step 8.
   Run Step 3. If every item is verified done and the release notes have this
-  issue's entry (Step 6.7), go to Step 9. If not, set the status line back to
+  issue's entry (Step 6.7), go to Step 9. A hotfix plan (it has the line
+  ``**PR base:** `main` ``) has no release-notes entry, so for a hotfix plan
+  check only the items. If not, set the status line back to
   `**Status:** Approved — ready for /execute-plan` and continue from Step 4.
 - **Anything else** (e.g. already marked complete, or an unrecognized value):
   stop and show the user the actual status line, ask how they want to
@@ -163,6 +165,9 @@ Launch `software-developer` agents per Step 4's grouping. Provide each agent:
 - The specific checklist item(s) it owns, verbatim from the plan file
 - The plan's Architecture & Design section for context
 - Any Database & Security Considerations relevant to its files
+- This instruction: "If the item needs a change the plan does not list (a
+  file outside the plan, a different approach, a dropped requirement), do
+  not make it. Stop and report it." Then apply the deviation rule below.
 
 **Model override by tier** (infer tier from the plan file's scope — number of
 checklist items and files touched, same Small/Medium/Large bands
@@ -173,6 +178,30 @@ As each agent completes, mark its checklist item(s) `[x]` in the plan file
 immediately — do not batch updates to the end. This is what lets a second
 agent or a later session trust the file's state without re-running Step 3
 from scratch.
+
+**Ledger items.** When you fix an item from the plan's `## Ledger items`
+section, in the same branch:
+
+1. Delete the item's line from `docs/development/CLEANUP_LEDGER.md`. If its
+   `###` heading has no items left, delete the heading too.
+2. Tick the item's line in the plan's `## Ledger items` section (`- [x]`).
+
+**Deviation rule.** If the work needs a change that the plan did not
+approve (a file outside the plan, a different approach, a dropped
+requirement, a new dependency), stop all implementation. Do not make the
+change. Then:
+
+1. Add a `## Deviation` section to the plan file, below the header. State
+   the change, why the plan cannot work without it, and the checklist items
+   it adds or changes.
+2. Post a comment on the issue that states the deviation and asks for
+   re-approval:
+   `gh issue comment <NUMBER> -R elan-registry/registry --body "<text>"`.
+3. Set the plan's status line to `**Status:** Draft — pending approval`.
+4. Tell the user as plain text: "The plan needs re-approval. Type
+   `/start-issue <NUMBER>`. It continues at its approval step. Then type
+   `/execute-plan <NUMBER>`." Then stop. Leave the work done so far
+   uncommitted.
 
 ### Step 6: Test, Security, Documentation
 
@@ -229,6 +258,33 @@ defect. Both are cheap to catch here instead of two workflow stages later:
 
 Mark the corresponding checklist items `[x]` as each completes.
 
+### Step 6.4: Resolve the Base Ref
+
+Steps 6.5, 6.6, 6.7 and 7 use one base ref. Resolve it once, here. First
+check for a hotfix plan:
+
+```bash
+grep -F '**PR base:** `main`' docs/plans/issues/issue-<NUMBER>-<slug>.md
+```
+
+- **The line is there** — this is a hotfix plan. The base ref is
+  `origin/main`. Do not read the `**Milestone:**` field. A hotfix plan has
+  `none (hotfix)` there.
+- **The line is not there** — get the milestone branch from the plan's
+  `**Milestone:**` field:
+
+  ```bash
+  sed -n 's/^\*\*Milestone:\*\* `\([^`]*\)`.*/\1/p' docs/plans/issues/issue-<NUMBER>-<slug>.md
+  ```
+
+  The base ref is `origin/<milestone-branch>`. If the field is missing (an
+  older plan file, or one edited by hand), run
+  `git branch --list 'milestone/*'`. If exactly one branch exists, use it.
+  If zero or more than one exist, stop and ask the user which milestone
+  branch this issue belongs to. Do not guess.
+
+The steps below write this value as `<base-ref>`.
+
 ### Step 6.5: PHPStan Baseline Hygiene
 
 Per the fix-when-you-touch-it policy
@@ -237,7 +293,7 @@ same check `/finish-issue` Step 4.5 and `/review-pr` Step 1 use, moved here
 so it's caught right after implementation, while context is fresh:
 
 ```bash
-git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD \
+git diff --name-only $(git merge-base HEAD <base-ref>)..HEAD \
   | scripts/check-baseline-hygiene.sh
 ```
 
@@ -266,70 +322,64 @@ this plan was approved, and a file this implementation ended up touching
 that the plan didn't foresee touching.
 
 ```bash
-git diff --name-only $(git merge-base HEAD origin/<milestone-branch>)..HEAD \
+git diff --name-only $(git merge-base HEAD <base-ref>)..HEAD \
   | scripts/ledger-items-for-files.sh
 ```
 
 (No commits yet? Use `git diff --name-only` or `git status --short` reduced
 to paths, same substitution Step 6.5 uses.)
 
-- **No output** — clean. Proceed to Step 6.7.
-- **Output, and every line already appears in the plan's Ledger items
-  section** — already handled by Step 5/6's implementation. Proceed to
-  Step 6.7.
-- **Output with a line not in the plan** — offer it, don't fix it
+The script reads `docs/development/CLEANUP_LEDGER.md`. Items that Step 5
+fixed are already deleted from it, so they do not show here.
+
+- **Exit 0, no output** — clean. Proceed to Step 6.7.
+- **Exit 0, every line is in the plan's Ledger items section** — the plan
+  approved these items and they are not fixed yet. Fix each one now, as in
+  Step 5 ("Ledger items"), or mark it N/A in Step 8. Proceed to Step 6.7.
+- **Exit 0, a line not in the plan** — offer it, don't fix it
   unconditionally and don't silently skip it. For each new item, in order:
-  state the file:line and item text, then AskUserQuestion: "`<file>` has an
+  state the file and item text, then AskUserQuestion: "`<file>` has an
   open cleanup-ledger item not in this plan: `<item text>`. Fix it in this
   PR?" Options: `Fix now` (recommended only when the fix is small and
   doesn't expand scope beyond the plan's files), `Add to plan and fix now`
   (recommended when it's larger — updates the Implementation Checklist
   first, then fixes), `Leave for its own PR`. Act on the answer: `Fix now`
-  or `Add to plan and fix now` — fix it, then add the item to the plan's
-  `## Ledger items` section as ``- [x] <item text> — `<path>` ``, word for
-  word, if it is not there yet; `Leave for its own PR` — no
-  action here, it stays in the ledger for a future branch that's asked the
-  same way.
-- **A failed query (non-zero exit with no clean "no items" signal)** —
-  treat as "can't verify," not "clean"; tell the user and continue — this
-  check does not block the rest of the workflow.
+  or `Add to plan and fix now` — fix it, delete its line from the ledger
+  file as in Step 5, then add the item to the plan's `## Ledger items`
+  section as ``- [x] <item text> — `<path>` ``, word for word;
+  `Leave for its own PR` — no action here, it stays in the ledger for a
+  future branch that's asked the same way.
+- **Exit 2** — the ledger file is missing or unreadable. Treat it as
+  "can't verify," not "clean". Tell the user and continue. This check does
+  not block the rest of the workflow.
+- **Exit 1** — usage error. Correct the input and run it again.
 
 ### Step 6.7: Update Draft Release Notes
 
 Do this before Step 7, so the reviewers see the release notes and the Step 7
 fingerprint includes them.
 
-**Hotfix plans skip this step.** Check first:
+**Hotfix plans skip this step.** If Step 6.4 found a hotfix plan, the issue
+ships as a patch release from `main`, not with a milestone. Do not touch any
+milestone release notes. Go to Step 7.
 
-```bash
-grep -F '**PR base:** `main`' docs/plans/issues/issue-<NUMBER>-<slug>.md
-```
-
-If the line is there, the issue ships as a patch release from `main`, not
-with a milestone. Do not touch any milestone release notes; go to Step 7.
-
-This command runs on the issue branch, whose name has no version. Get the
-milestone branch from the plan file's `**Milestone:**` field first:
-
-```bash
-sed -n 's/^\*\*Milestone:\*\* `\([^`]*\)`.*/\1/p' docs/plans/issues/issue-<NUMBER>-<slug>.md
-```
-
-**If that field is missing** (an older plan file predating this field, or one
-edited by hand), fall back to resolving it live:
-
-```bash
-git branch --list 'milestone/*'
-```
-
-If exactly one exists, use it. If zero or multiple exist, stop and ask the
-user which milestone branch this issue belongs to — do not guess.
-
-The version is the branch name without `milestone/` (`milestone/v2.17.0` →
-`v2.17.0`). Update `docs/releases/RELEASE_NOTES_<version>.md` (create
+Otherwise, use the milestone branch that Step 6.4 resolved. The version is
+the branch name without `milestone/` (`milestone/v2.17.0` → `v2.17.0`). Update `docs/releases/RELEASE_NOTES_<version>.md` (create
 from `docs/development/RELEASE_NOTES_TEMPLATE.md` if it doesn't exist yet).
 Add this issue's changes to the appropriate section, keep it cumulative, use
 the `technical-documentation-writer` agent for non-trivial entries.
+
+### Step 6.8: Simplify Pass
+
+Invoke the `simplify` skill through the Skill tool. It reviews the changed
+code for reuse, simplification, and efficiency, and edits the files. Run it
+here, before Step 7, so the Step 7 reviewers see the simplified code and the
+Step 7 fingerprint still matches at hand-off.
+
+After the skill returns, run the test suites for the changed files again.
+If a test fails, fix the simplification or revert it. If the skill edited a
+file that the plan does not list, revert that edit (Step 5, "Deviation
+rule").
 
 ### Step 7: The single review round — all reviewers, in parallel, before the push
 
@@ -359,9 +409,14 @@ sequence, and not spread across the push:
   extracts or restructures a shared UI partial (`/app/views/`), or changes
   button hierarchy/placement/visibility rules — not for copy-only or
   styling-only tweaks to an existing, unchanged layout.
+- **comment-analyzer** — if the diff adds or changes PHPDoc, inline
+  comments, or docstrings. Run the independent fact-check of
+  `/review-pr` Step 4.5 with it, so the lane matches the `/review-pr`
+  `comments` lane.
 
-These are the same agents `/review-pr` runs. They run **here**, before the
-push — not after it.
+They run **here**, before the push — not after it. Four of them are also
+`/review-pr` lanes: `code-reviewer`, `silent-failure-hunter`,
+`comment-analyzer` and `pr-test-analyzer`.
 
 **Do not hand reviewers the plan file's own rationale as if it were
 established fact.** The plan file, commit messages, and any in-code comments
@@ -395,8 +450,8 @@ scrutinised code in the PR.
 | **Advisory** | Real, but not this issue's job | New issue via `/found` |
 | **Note** | Wording, style, docs nuance | Fix only if already on that line |
 
-Fix all Blocking findings in **one** commit, then re-check **only that
-commit's diff**, with only the reviewers whose findings it addressed. That is
+Fix all Blocking findings in **one** batch of edits, then re-check **only
+the diff of that batch**, with only the reviewers whose findings it addressed. That is
 round two, it is cheap, and it is exactly where the two self-inflicted
 regressions above would have been caught.
 
@@ -427,23 +482,35 @@ patch:
 
 Mark the corresponding checklist items `[x]` once the round is clean.
 
-**Record the review fingerprint.** Step 6.7 is the last step that edits a
+**Record the review fingerprint.** After Step 6.8, only Step 7 fixes edit a
 tracked file, and the fingerprint excludes the gitignored plan file, so a
 stamp taken here still matches at hand-off. When the round is clean, run
-`scripts/review-fingerprint.sh origin/<milestone-branch>` (the same base ref
-that `/review-pr` passes) and add one line to the plan file, below the
-Implementation Checklist:
+`scripts/review-fingerprint.sh <base-ref>` (the base ref from Step 6.4) and
+add one line to the plan file, below the Implementation Checklist:
 
 ```text
-Review fingerprint: <hash> — clean lanes: code-reviewer, pr-test-analyzer
+Review fingerprint: <hash> — clean lanes: code-reviewer, silent-failure-hunter, comment-analyzer, pr-test-analyzer
 ```
+
+If the script exits 1, it found no base ref or no merge base. Do not record
+a fingerprint. Tell the user that no fingerprint was recorded, and why.
+`/review-pr` then runs all of its lanes.
+
+The line names only lanes that `/review-pr` Step 3 maps to an aspect.
+Name each one that qualifies, in this order:
+
+| Lane name | Ran in | `/review-pr` aspect |
+| --- | --- | --- |
+| `code-reviewer` | Step 7 | `code` |
+| `silent-failure-hunter` | Step 7 | `errors` |
+| `comment-analyzer` | Step 7, with the `/review-pr` Step 4.5 fact-check | `comments` |
+| `pr-test-analyzer` | Step 7 | `tests` |
 
 Name a lane only when its last review saw the diff at this fingerprint and
 reported no Blocking finding. A lane that ran only in round one does not
-qualify when round two changed files. `/review-pr` skips the named lanes when
-the branch still has the same fingerprint (its Step 3). Only
-`code-reviewer`, `silent-failure-hunter` and `pr-test-analyzer` are also
-`/review-pr` lanes, so name no other agent.
+qualify when round two changed files. Do not name a lane that did not run.
+Name no other agent. `/review-pr` skips the named lanes when the
+branch still has the same fingerprint (its Step 3).
 
 ### Step 8: Confirm Plan Completeness
 
@@ -462,10 +529,12 @@ of a plan a later step can trust.
 If `Do the work now` changes a tracked file, delete the plan file's
 `Review fingerprint:` line. The Step 7 lanes did not see that change.
 
-Also check the plan's `## Ledger items` section. Tick a line (`- [x]`) only
-when the item is fixed in this branch. For an item marked N/A, write
-`N/A: <reason>` after the line and leave it `[ ]`. `/commit-push-pr` treats
-a ticked line as done and does not ask the user about it.
+Also check the plan's `## Ledger items` section. Each `- [x]` line must be
+fixed in this branch, and its line must be gone from
+`docs/development/CLEANUP_LEDGER.md`. If the line is still in the ledger
+file, delete it now (Step 5, "Ledger items"). For an item marked N/A, write
+`N/A: <reason>` after the line, leave it `[ ]`, and leave it in the ledger
+file.
 
 Update the plan file's status line to `**Status:** Implemented — pending
 commit/PR`. This is the last edit before hand-off, so a stop after it loses
@@ -477,37 +546,35 @@ no work (Step 2 resumes it).
 complete and the plan file at `docs/plans/issues/issue-<NUMBER>-<slug>.md`
 shows every item verified complete. State as plain text that the plan file
 holds the state, so the user may run `/clear` (or `/compact`) now and then
-type `/simplify` or `/commit` themselves. No menu option can run `/clear` or
-`/compact`.
+type `/commit` themselves. No menu option can run `/clear` or `/compact`.
 
 Then ask via AskUserQuestion, offering only the actual next step, not the
-full sequence — "Implementation complete. What next?" Options: `/simplify`
-(recommended — the built-in Claude Code skill, not a project command),
-`/commit` (the plugin skill `commit-commands:commit`), `Ask more questions /
-discuss first`. Invoke a chosen command immediately via the Skill tool, by
-its listed name (`simplify` or `commit-commands:commit`). This command makes
-each later offer itself, after the skill returns.
+full sequence — "Implementation complete. What next?" Options: `/commit`
+(recommended — the plugin skill `commit-commands:commit`), `Ask more
+questions / discuss first`. Invoke `/commit` immediately via the Skill tool,
+by its listed name (`commit-commands:commit`). This command makes the
+`/review-pr` offer itself, after the skill returns.
 
-The full remaining sequence, each step handed off the same way once the
-prior one completes — do not present this whole list to the user at once,
-re-offer one step at a time as each becomes the actual next action:
+The full remaining sequence, each step handed off once the prior one
+completes — do not present this whole list to the user at once, re-offer
+one step at a time as each becomes the actual next action:
 
-1. `/simplify` (optional; built-in Claude Code skill)
-2. `/commit`
-3. `/review-pr` — **must run after `/commit`, not before.** It reviews only
+1. `/commit`
+2. `/review-pr` — **must run after `/commit`, not before.** It reviews only
    committed history, so its Step 0 stops when the working tree has
    uncommitted changes. It skips the lanes that the Step 7 fingerprint names
    (its Step 3), and re-stamps the fingerprint when its own run is clean
    (its Step 6). After `/commit` completes, offer `/review-pr` as the next
    step, not `/commit-push-pr` directly.
-4. `/commit-push-pr` (only once `/review-pr` reports clean, or the user
+3. `/commit-push-pr` (only once `/review-pr` reports clean, or the user
    explicitly accepts its recommendations as-is)
-5. `/address-pr-comments` (after CI runs on the pushed PR)
-6. `/finish-issue` (once `/address-pr-comments` reports clean)
+4. `/address-pr-comments` (after CI runs on the pushed PR)
+5. `/finish-issue` (once `/address-pr-comments` reports clean)
 
-Steps 1–3 start through the Skill tool. They run on this command's model,
-which is correct for them. Steps 4–6 declare other models, so the user types
-them (CLAUDE.md, "Hand-offs between commands").
+Steps 1–2 start through the Skill tool. `/review-pr` declares `model: opus`,
+the same as this command. Steps 3–5 follow `/review-pr`, which hands off as
+plain text, so the user types them (CLAUDE.md, "Hand-offs between
+commands").
 
 **For bug-fix plans** (plan file has a Bug Escape Analysis section), remind
 the user to include the escape analysis in the PR description.
@@ -516,7 +583,7 @@ the user to include the escape analysis in the PR description.
 issue is closed (typically during/after `/finish-issue`) — its job (a
 verifiable record other agents/sessions could check against) is done once
 the code is merged; the merged diff and closed issue are then the source of
-truth, same lifecycle as milestone sprint plans. `docs/plans/` is gitignored,
+truth. `docs/plans/` is gitignored,
 so that deletion is a plain `rm` with no git operation. Do not delete it from
 within this command — that happens later, at merge time, not here.
 
@@ -530,6 +597,7 @@ within this command — that happens later, at merge time, not here.
 | Technical Documentation Writer | `technical-documentation-writer` | `haiku` | Docs updates from the plan |
 | Security Reviewer | `security-reviewer` | (per agent default) | `/security-review` |
 | Silent Failure Hunter | `silent-failure-hunter` | (per agent default) | Step 7, only when a new structured-input method or new/modified SQL was added |
+| Comment Analyzer | `comment-analyzer` | (per agent default) | Step 7, only when comments or PHPDoc changed |
 
 ## Critical Rules
 
@@ -567,3 +635,7 @@ within this command — that happens later, at merge time, not here.
   unconditionally and never silently skip** (Step 6.6) — a file this plan
   ends up touching may carry an open ledger item the plan never saw. Ask the
   user per item; act on their answer.
+- **A fixed ledger item leaves the ledger in the same branch** — delete its
+  line from `docs/development/CLEANUP_LEDGER.md` (Step 5, "Ledger items").
+- **Never absorb a deviation** — a change the plan did not approve stops
+  the work and goes back to the plan gate (Step 5, "Deviation rule").

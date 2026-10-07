@@ -16,6 +16,28 @@ it opens the PR, verifies CI review posted, and confirms CI is green.
 
 - `$ARGUMENTS` — the milestone version number (e.g., `v2.17.0`)
 
+## Running the command again
+
+The user can type `/finish-milestone $ARGUMENTS` again after a run stops or
+after the branch changes. The new run starts at Step 0 and skips a step when
+that step's result already exists for the current branch tip. The files are
+in `docs/plans/releases/`:
+
+- Steps 3.7, 9.5, 9.7, 9.8 and 9.9 skip when the `sha:` line of
+  `$ARGUMENTS-review.prev` (Step 0 makes it) equals
+  `git rev-parse milestone/$ARGUMENTS` at the start of the step. Step 10
+  copies each skipped step's line from that file. A new commit changes the
+  tip, so these steps run again.
+- Step 3.5 does not ask again when `$ARGUMENTS-known-broken.md` records the
+  same rows (file and issue columns) that the script prints now.
+- Step 6.5 skips when `$ARGUMENTS-retro.md` exists.
+- Step 6.6 skips when `$ARGUMENTS-deploy.md` exists and
+  `scripts/check-deploy-sheet-fresh.sh $ARGUMENTS` exits 0.
+- All other steps run again. They read the current state.
+
+When a step skips, set its task to `completed` and report "skipped — result
+exists for `<short sha>`".
+
 ## Workflow
 
 ### Step 0: Initialize TaskList
@@ -43,6 +65,18 @@ Before any other action, create one TaskCreate task per step below:
 
 Set each task to `in_progress` when you begin it and `completed` on success.
 
+Then move the completion marker of an earlier run out of the way.
+`/review-milestone` trusts only `$ARGUMENTS-review.done`, so a run that
+stops before Step 10 must not leave the old one in place. The `.prev` copy
+keeps the earlier results for the skip rules in "Running the command
+again":
+
+```bash
+if [ -f "docs/plans/releases/$ARGUMENTS-review.done" ]; then
+  mv "docs/plans/releases/$ARGUMENTS-review.done" "docs/plans/releases/$ARGUMENTS-review.prev"
+fi
+```
+
 ### Step 1: Verify the milestone branch exists
 
 - Check `git branch -a | grep "milestone/$ARGUMENTS"`
@@ -68,8 +102,21 @@ gh api "repos/elan-registry/registry/issues?milestone=<MILESTONE_NUM>&state=open
   --jq '.[] | {number, title}'
 ```
 
-- If open issues remain, warn user and list them. Ask if they want to proceed
-  or finish remaining issues first.
+- If open issues remain, warn user and list them. Ask, for each issue,
+  whether to finish it first or leave it out of this release.
+- For each issue the user leaves out, remove its milestone, so
+  `/plan-milestone` sees it again as unplanned work:
+
+  ```bash
+  gh issue edit <N> --repo elan-registry/registry --remove-milestone
+  ```
+
+  After Step 3 checks out the milestone branch, remove the issue's `WIP:`
+  entry from "Issues Resolved" in `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`,
+  and any changelog bullet for it. Commit the change.
+- If the user wants to finish an issue first, stop after the removals
+  above. End with plain text: finish each issue with the per-issue
+  commands, then type `/finish-milestone $ARGUMENTS` again.
 
 ### Step 3: Switch to milestone branch and ensure up to date
 
@@ -106,7 +153,9 @@ scripts/check-known-broken-tests.sh
 It prints one tab-separated line per remaining tag (file, line, cited issue
 number, that issue's current state) and looks up each issue's state itself.
 
-- **Exit 0** — no tags found. Proceed to Step 4.
+- **Exit 0** — no tags found. Delete
+  `docs/plans/releases/$ARGUMENTS-known-broken.md` if it exists. Proceed to
+  Step 3.6.
 - **Exit 1** — one or more tags found (see stdout for the list). Continue
   below.
 - **Exit 2** — one or more tags found, but a `gh issue view` lookup failed
@@ -115,6 +164,10 @@ number, that issue's current state) and looks up each issue's state itself.
   presenting the list.
 
 **If any tags were found (exit 1 or 2):**
+
+If `docs/plans/releases/$ARGUMENTS-known-broken.md` exists and its rows have
+the same file and issue columns as the script's output now, the user already
+accepted these tags. Report that and proceed to Step 3.6. Otherwise:
 
 1. Present the full list to the user — test name, file, cited issue, and
    that issue's current state — and **ask for explicit confirmation**
@@ -126,10 +179,13 @@ number, that issue's current state) and looks up each issue's state itself.
    > explicitly accepted, or (c) stop here?"
 
 2. **Do not proceed past this step without an explicit answer.** If the user chooses to
-   proceed anyway, record that decision — `/review-milestone` includes it in the
-   milestone PR body under a
-   "Known Test Exclusions" note, so it's auditable later — matching Step 9.8's pattern for
-   explicitly-accepted risk.
+   proceed anyway, write the decision to
+   `docs/plans/releases/$ARGUMENTS-known-broken.md`: a first line
+   `decision: accepted`, then the script's output rows unchanged.
+   `/review-milestone` Step 2 reads that file and copies the rows into the
+   milestone PR body under "Known Test Exclusions", so the decision is
+   auditable later. This matches Step 9.8's pattern for explicitly-accepted
+   risk.
 3. If a cited issue's state comes back closed but the tag is still present in code, that's
    likely a forgotten cleanup step, not an accepted risk — flag this distinctly and recommend
    removing the tag now (quick fix) rather than treating it as a risk-acceptance decision.
@@ -161,6 +217,9 @@ unfinished work that never went through `/finish-issue` at all.
 **If none found:** proceed silently — this is the expected state.
 
 ### Step 3.7: Run the verification suite on the merged tree
+
+Skip this step when the `sha:` line of `$ARGUMENTS-review.prev` equals the
+branch tip (see "Running the command again").
 
 CI runs unit tests only, and each issue ran integration tests on its own
 branch. This is the one run of integration tests on the merged milestone
@@ -216,7 +275,7 @@ all take the release notes' existing content as ground truth.
 
    - **Exit 0** — scope matches. Go to the last paragraph of this step.
    - **Exit 1** — the script printed one or more mismatched issues, each
-     with its direction. Investigate each one (item 2). Exit 1 with no
+     with what is wrong. Investigate each one (item 2). Exit 1 with no
      issue lines printed counts as exit 2.
    - **Exit 2** — can't verify: no release-notes file, no "Issues Resolved"
      entries, a milestone with no issues (usually a wrong milestone
@@ -226,21 +285,24 @@ all take the release notes' existing content as ground truth.
 2. Investigate every mismatch:
 
    - **"moved out of milestone since release notes were written"** — this issue
-     was moved elsewhere after its entry was written. Confirm where it lives
-     now:
+     was moved elsewhere after its entry was written, or Step 2 left it out
+     of this release. Confirm where it lives now:
 
      ```bash
      gh issue view <N> --repo elan-registry/registry --json milestone,state
      ```
 
-     If it genuinely moved to a different milestone, remove its "Issues
-     Resolved" entry and any associated changelog bullet (New
+     If it genuinely moved to a different milestone, or has no milestone,
+     remove its "Issues Resolved" entry and any associated changelog bullet (New
      Features/Improvements/Bug Fixes) — that work no longer ships in this
      release. Also re-check whether the release's headline "Type" line and
      summary still make sense without it (a moved-out issue can invalidate
      the release's stated theme, not just one bullet). An entry marked
      "Carried from …" (work carried from a different milestone) also shows
      here. It is intended. Keep it.
+
+   - **"still has WIP prefix in release notes"** — the issue has an entry.
+     Do not draft a new one. Step 6 checks each `WIP:` prefix.
 
    - **"added to milestone, missing from release notes"** — if the issue is
      still open, Step 2 already covers it. If it is closed, it is a real
@@ -344,6 +406,8 @@ since they touch different files.
 
 ### Step 6.5: Release retrospective — three questions
 
+Skip this step when `docs/plans/releases/$ARGUMENTS-retro.md` exists.
+
 Five minutes. One line each is enough. The release notes template has no
 retrospective section, so the answers go to the gitignored
 `docs/plans/releases/<version>-retro.md`, not to the release notes.
@@ -360,14 +424,19 @@ Ask the user, one at a time:
    > right?"
 
 Write the answers to `docs/plans/releases/<version>-retro.md`. The next
-`/start-milestone` Step 4.4 reads that file, so the theme is chosen knowing
-what the last one over-built.
+`/plan-milestone` Step 1 reads that file before it chooses the theme, so the
+theme is chosen knowing what the last one over-built. `/start-milestone`
+Step 4.4 reads it too, but only for a milestone that is not sealed.
 
 ### Step 6.6: Render the deploy sheet for review
 
 Deployment steps live in a standalone deploy sheet, not in the release
 notes. Generate it here, while the milestone branch is still under review,
 not at `/release-milestone` time.
+
+Skip this step when `docs/plans/releases/$ARGUMENTS-deploy.md` exists and
+`scripts/check-deploy-sheet-fresh.sh $ARGUMENTS` exits 0: no deploy input
+changed since the sheet was rendered.
 
 1. Gather the mechanical inputs:
 
@@ -408,8 +477,8 @@ not at `/release-milestone` time.
    git rev-parse "milestone/$ARGUMENTS" > "docs/plans/releases/$ARGUMENTS-deploy.md.sha"
    ```
 
-4. If the file already exists (e.g. this step is being re-run after fixing a
-   Step 9.8 finding that changes the deploy inputs), overwrite both it and
+4. If the file already exists (e.g. Step 10 found it stale after a fix
+   changed the deploy inputs), overwrite both it and
    its `.sha` stamp — it always reflects the milestone branch's current
    state, not a stale earlier draft.
 
@@ -419,8 +488,8 @@ not at `/release-milestone` time.
    Notes per the template's own formatting rules.
 
 `/release-milestone` reuses this same file at actual release time rather than
-generating its own. If a fix in Steps 9.7–9.9 changes the deploy inputs, do
-this step again before Step 10. If the branch changes after this command
+generating its own. Step 10 checks the sheet again after the last commit of
+this command. If the branch changes after this command
 ends, refresh the sheet by hand from this step's instructions, or type
 `/finish-milestone $ARGUMENTS` to run the whole command again. Never edit
 the rendered sheet piecemeal.
@@ -486,6 +555,9 @@ If no updates needed, skip.
 
 ### Step 9.5: Cross-PR Security Integration Check
 
+Skip this step when the `sha:` line of `$ARGUMENTS-review.prev` equals the
+branch tip (see "Running the command again").
+
 By the time this step runs, every individual issue PR has already passed:
 security-reviewer in `/execute-plan`, CodeQL CI, and Claude Code Review CI.
 Do **not** re-run a full OWASP pass over already-reviewed files.
@@ -511,7 +583,12 @@ Launch the `security-reviewer` agent with this scoped prompt:
 
 ### Step 9.7: Local multi-agent review (before opening the PR)
 
-Run a scoped `/review-pr` against `main` on the milestone branch. Scope the agents to the file types changed — don't run all agents unconditionally.
+Skip this step when the `sha:` line of `$ARGUMENTS-review.prev` equals the
+branch tip (see "Running the command again").
+
+Launch the review agents below on the milestone diff against `main`. Do not
+run the `/review-pr` command (CLAUDE.md, "Developer Workflow"). Scope the
+agents to the file types changed — don't run all agents unconditionally.
 
 Determine which agents apply based on `git diff --name-only main...milestone/$ARGUMENTS`:
 
@@ -542,6 +619,9 @@ Proceed to Step 9.8.
 
 ### Step 9.8: Local milestone-level deep review (mirrors CI, runs before the PR exists)
 
+Skip this step when the `sha:` line of `$ARGUMENTS-review.prev` equals the
+branch tip (see "Running the command again").
+
 Step 9.7 reviews individual files by type. This step instead runs the same
 **aggregate, milestone-level** analysis that the CI `milestone-review` job
 (`claude-code-review.yml`) performs — but locally, before the PR is even
@@ -556,6 +636,9 @@ gh pr list --base milestone/$ARGUMENTS --state merged --limit 100 \
   --jq '.[] | "#\(.number) \(.title) (by @\(.author.login))"'
 git diff main...milestone/$ARGUMENTS
 ```
+
+Delete `docs/plans/releases/$ARGUMENTS-accepted-risks.md` if it exists. Its
+findings belong to an earlier branch tip, and this run decides each one again.
 
 Launch a single agent via the Agent tool with `subagent_type: "senior-architect"`
 and `model: "fable"` (matching the CI job's tier — once per milestone, not
@@ -593,6 +676,9 @@ finding is resolved or explicitly accepted — the CI job (`/review-milestone`
 Step 4) is a backstop/audit trail, not a substitute decision point.
 
 ### Step 9.9: Fresh-checkout smoke test (only when build/install steps changed)
+
+Skip this step when the `sha:` line of `$ARGUMENTS-review.prev` equals the
+branch tip (see "Running the command again").
 
 Every review above — Step 9.7, Step 9.8, CI's own diff-based reviews — reads
 diffs and file contents; none *executes* anything against a truly clean
@@ -643,6 +729,15 @@ If any step after Step 3.7 committed a code change (not only docs), run
 `scripts/run-verification-suite.sh` again. Handle its exit codes as in
 Step 3.7.
 
+Check the deploy sheet against the final branch tip:
+
+```bash
+scripts/check-deploy-sheet-fresh.sh $ARGUMENTS
+```
+
+Exit 0 means no deploy input changed after Step 6.6. On exit 1 or 2, do
+Step 6.6 again (render the sheet and its stamp), then continue.
+
 Push the milestone branch. This command's commits (Steps 3.7–9.9) are local
 until now, and `/review-milestone` opens the PR with
 `gh pr create --head`, which does not push:
@@ -666,12 +761,22 @@ run):
 
 ```bash
 cat > docs/plans/releases/$ARGUMENTS-review.done <<EOF
+sha: $(git rev-parse origin/milestone/$ARGUMENTS)
 3.7: ran-clean
 9.5: <clean|findings-fixed>
 9.7: <clean|findings-fixed>
 9.8: <clean|findings-fixed>
 9.9: <ran-clean|not-applicable>
 EOF
+```
+
+The `sha:` line is the pushed tip. `/review-milestone` Step 1 checks that it
+still equals `origin/milestone/$ARGUMENTS`. For a step that skipped under
+"Running the command again", copy its line from
+`$ARGUMENTS-review.prev`. Then delete the old marker:
+
+```bash
+rm -f docs/plans/releases/$ARGUMENTS-review.prev
 ```
 
 Use `not-applicable` for 9.9 only when Step 9.9's own trigger conditions

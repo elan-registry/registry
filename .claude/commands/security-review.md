@@ -66,9 +66,26 @@ rest of `/execute-plan`'s review round.
    before proceeding.
 
 5. **Next step**: Tell the user in plain text. Fix Critical and High
-   findings first. Then recommend `/clear` and the next command of the
-   workflow, usually `/commit` or `/commit-push-pr`. The next command does not
-   need this review's context. This command does not start it.
+   findings first. Then find the state of the branch. Run:
+
+   ```bash
+   git status --porcelain
+   gh pr list --head "$(git branch --show-current)" --state open \
+     --json number --jq '.[0].number // empty' --repo elan-registry/registry
+   ```
+
+   Pick the next command from the state:
+
+   | State | Next command |
+   | --- | --- |
+   | `git status --porcelain` prints a line | `/commit` |
+   | No uncommitted changes and no open PR | `/review-pr` |
+   | An open PR exists | `/address-pr-comments` |
+
+   Use the first row that matches. The order of the workflow is `/commit`,
+   then `/review-pr`, then `/commit-push-pr`. Recommend `/clear` and then
+   that command. The next command does not need this review's context. This
+   command does not start it.
 
 ## When to Use
 
