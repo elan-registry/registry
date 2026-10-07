@@ -5,22 +5,11 @@ declare(strict_types=1);
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Security tests for car verification endpoints
- * 
- * Tests CSRF protection, input validation, and secure handling
- * of car verification operations.
- */
 class VerificationSecurityTest extends TestCase
 {
     /**
-     * Test the unit-tier Token stub's accept/reject contract.
-     *
-     * \Token here is the stub declared in tests/bootstrap-unit.php, not the upstream
-     * UserSpice class (users/ is .gitignore'd and unavailable to the unit tier), so
-     * this asserts only that a generated token is accepted and an unrelated one is
-     * rejected. Real CSRF crypto is covered by
-     * tests/integration/TokenAndInputSecurityTest.php.
+     * \Token is the bootstrap-unit.php stub, not UserSpice's class. Real CSRF
+     * crypto is covered by integration/TokenAndInputSecurityTest.
      */
     public function testCSRFTokenValidation(): void
     {
@@ -31,12 +20,8 @@ class VerificationSecurityTest extends TestCase
         $this->assertFalse(Token::check($invalidToken));
     }
     
-    /**
-     * Test input sanitization for verification code
-     */
     public function testVerificationCodeSanitization(): void
     {
-        // Test basic sanitization - strip_tags removes script tags but leaves content
         $cleanCode = 'abc123def456';
         $dirtyCode = '<script>alert("xss")</script>abc123def456';
         
@@ -44,7 +29,6 @@ class VerificationSecurityTest extends TestCase
         $this->assertStringContainsString($cleanCode, $sanitized);
         $this->assertStringNotContainsString('<script>', $sanitized);
         
-        // Test that HTML entities are properly encoded
         $htmlCode = 'test&<>"\'';
         $sanitized = htmlspecialchars($htmlCode, ENT_QUOTES, 'UTF-8');
         $this->assertStringContainsString('&amp;', $sanitized);
@@ -52,12 +36,7 @@ class VerificationSecurityTest extends TestCase
         $this->assertStringContainsString('&gt;', $sanitized);
     }
     
-    /**
-     * Test that the unit-tier Token stub's generate() produces unique
-     * values across repeated calls. Real CSRF crypto uniqueness is covered
-     * by tests/integration/TokenAndInputSecurityTest.php (see
-     * testCSRFTokenValidation's docblock for the stub-vs-real-crypto scope note).
-     */
+    /** Stub only; see integration/TokenAndInputSecurityTest. */
     public function testCSRFTokenUniqueness(): void
     {
         $tokens = [];
@@ -67,12 +46,7 @@ class VerificationSecurityTest extends TestCase
         $this->assertCount(10, array_unique($tokens));
     }
 
-    // =========================================================================
-    // MD5 allowlist regex tests (issue #1148)
-    //
-    // The allowlist pattern: preg_match('/^[0-9a-f]{32}$/i', $code)
-    // These tests document and protect the allowlist contract.
-    // =========================================================================
+    // MD5 allowlist regex /^[0-9a-f]{32}$/i (#1148)
 
     #[DataProvider('validVerificationCodeProvider')]
     public function testMd5AllowlistAcceptsValidCodes(string $code): void

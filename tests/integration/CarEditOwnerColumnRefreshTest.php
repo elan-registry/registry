@@ -10,24 +10,12 @@ use ElanRegistry\OwnerContactRefresher;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for the #1962 fix: editing a car must refresh the car's
- * denormalized owner-contact columns from the owner's current profile,
- * instead of perpetuating whatever stale snapshot the car row already held.
+ * #1962: editing a car refreshes its denormalized owner-contact columns from
+ * the owner's current profile.
  *
- * `buildCarDetails()` (app/api/cars/save.php) cannot be require()'d under
- * PHPUnit — every branch ends in ApiResponse::send() -> exit (see
- * tests/unit/cars/CarActionsSaveWiringTest.php). The merge it performs was
- * therefore extracted into {@see \ElanRegistry\OwnerContactRefresher}, which
- * these tests call directly. That matters: an earlier revision of this file
- * hand-copied the merge into a private helper, and every test here passed with
- * the production block deleted outright, and passed again with the Owner
- * constructed from the session user instead of the car's owner — the exact PII
- * leak the endpoint's comments warn about. Tests that re-implement the code
- * under test cannot fail when it breaks. Call the real thing.
- *
- * The helpers below still stage what the endpoint stages around that call
- * (load the car row, merge an unrelated edited field, persist via
- * Car::update()), then assert against the database afterward.
+ * save.php cannot be required under PHPUnit (every branch exits), so the tests
+ * call the real {@see \ElanRegistry\OwnerContactRefresher}. Do not hand-copy
+ * the merge: a copy passes even when the endpoint's call is deleted.
  *
  * @see app/api/cars/save.php buildCarDetails()
  * @see usersc/classes/Owner.php Owner::ownerContactFields()
@@ -58,11 +46,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    /**
-     * Create a profile row for a test user with optional overrides.
-     * Tracked for cleanup in tearDown(). Mirrors
-     * OwnerSyncOwnerFieldsToCarsTest::createTestProfile().
-     */
+    /** Create a profile row for a test user; tracked for cleanup in tearDown(). */
     private function createTestProfile(int $userId, array $overrides = []): void
     {
         $defaults = [
@@ -86,25 +70,11 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Reproduce buildCarDetails()'s `if ($carId)` edit-branch refresh sequence
-     * against a real car row and a real Owner, then apply it via Car::update()
-     * exactly as save.php does. $extraFields lets a test simulate "the user
-     * also edited an unrelated field" alongside the refresh.
+     * Run buildCarDetails()'s edit-branch refresh against a real car row and
+     * Owner, then persist via Car::update() as save.php does.
      *
-     * $isOwnerInitiated mirrors save.php's updateCar(): production computes
-     * this as `(int) ($cardetails['user_id'] ?? 0) === (int) $user->data()->id`
-     * (save.php:291) — i.e. true when the person submitting the edit IS the
-     * car's own owner, false for an admin/editor editing someone else's car —
-     * and passes it to Car::update($cardetails, $isOwnerInitiated). It is NOT
-     * part of the #1962 refresh itself; it's a separate flag Car::update() uses
-     * to decide whether to also bump owner_last_updated (see Car.php's
-     * CLEARABLE_FIELDS-adjacent owner_last_updated handling). This parameter
-     * defaults to false (admin-edit shape) to match this class's original
-     * test cases, which all modeled an edit whose $isOwnerInitiated truth
-     * value did not matter to what was being asserted at the time — see
-     * testOwnerSelfEditSetsOwnerLastUpdatedButOrphanEditsDoNotUnlikeAdminEdit()
-     * below for why that distinction DOES matter for owner_last_updated
-     * specifically.
+     * $isOwnerInitiated mirrors save.php's updateCar(): true when the editor is
+     * the car's owner. Car::update() uses it to bump owner_last_updated.
      */
     private function runEditBranchRefresh(int $carId, array $extraFields = [], bool $isOwnerInitiated = false): void
     {
@@ -112,22 +82,14 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         $this->assertNotNull($carRow, 'Precondition: car must exist');
 
         $cardetails = (array) $carRow;
-        // The real edit branch rebuilds `model` from separate series/variant/type
-        // form fields via updateModel() (save.php) into "series|variant|type"
-        // format before Car::update() ever sees it — the raw cars.model column
-        // ("Elan S4") is a display string, not that format. These tests are not
-        // exercising updateModel()/CarValidator's model parsing, so drop the raw
-        // column value rather than fabricate a pipe-delimited string unrelated
-        // to what's under test here.
+        // The raw cars.model display string is not the "series|variant|type"
+        // format Car::update() expects, and model parsing is not under test.
         unset($cardetails['model']);
         foreach ($extraFields as $key => $value) {
             $cardetails[$key] = $value;
         }
 
-        // Load the CAR's owner (never a session/admin user), then run the
-        // production merge itself — the same object app/api/cars/save.php
-        // calls. Do not inline this merge here: a hand-copy passes even when
-        // the endpoint's call is deleted.
+        // Load the CAR's owner, never the session user (PII leak otherwise).
         $carOwner = new Owner((int) $cardetails['user_id']);
         $this->assertNotNull($carOwner->data(), 'Precondition: car owner must load');
 
@@ -144,13 +106,8 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Reproduce buildCarDetails()'s edit-branch `else` (orphan-owner) path
-     * exactly: when `$carOwner->data()` is null, the function logs and
-     * leaves $cardetails untouched for all nine owner-contact fields —
-     * ownerFields are simply never merged in. Mirrors runEditBranchRefresh()
-     * but stops after the "owner failed to load" branch instead of merging
-     * ownerFields, since that merge is precisely what buildCarDetails()
-     * skips in this case.
+     * buildCarDetails()'s orphan-owner branch: when $carOwner->data() is null,
+     * the owner-contact fields are not merged.
      */
     private function runEditBranchRefreshWithOrphanOwner(int $carId, array $extraFields = []): void
     {
@@ -170,11 +127,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'Precondition: this test exercises the orphan-owner branch — the owner must fail to load'
         );
 
-        // The endpoint's `else` branch (owner data() === null) logs and skips
-        // the merge. Run the real refresher anyway and assert it returns
-        // $cardetails untouched — that no-op IS the contract under test, and
-        // asserting it here means a refresher that started blanking columns on
-        // an unloadable owner would fail this test rather than slip through.
+        // A refresher that blanked columns for an unloadable owner must fail here.
         $refresher = new OwnerContactRefresher();
         $this->assertFalse(
             $refresher->hasLoadableOwner($carOwner),
@@ -191,10 +144,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         $this->assertTrue($result, 'Car::update() must succeed even when the owner-contact refresh is skipped');
     }
 
-    /**
-     * Case 1: stale owner columns on the car refresh to the owner's current
-     * profile values when an unrelated field (comments) is edited.
-     */
+    /** Stale owner columns refresh from the profile when an unrelated field is edited. */
     public function testEditRefreshesAllEightOwnerColumnsFromCurrentProfile(): void
     {
         $userId = $this->createTestUser([
@@ -242,24 +192,8 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 2: website now refreshes from the owner's current profile exactly
-     * like the other eight ownerContactFields() columns (issue #1963 — the
-     * PER_CAR_FIELDS carve-out that used to exclude it from this merge is
-     * gone), while owner_last_updated and join_date remain UNCHANGED — those
-     * two are never touched by the #1962 refresh itself, website's inclusion
-     * does not change that.
-     *
-     * This deliberately exercises the ADMIN-EDIT shape ($isOwnerInitiated =
-     * false, runEditBranchRefresh()'s default) — mirroring save.php's
-     * $isOwnerInitiated = (int)($cardetails['user_id'] ?? 0) === (int)$user->data()->id.
-     * owner_last_updated being unchanged here proves only "the refresh doesn't
-     * set it" for a NON-owner-initiated edit. It does NOT prove the refresh
-     * never sets it — Car::update()'s own $isOwnerInitiated branch adds
-     * owner_last_updated independently of anything buildCarDetails() does.
-     * See testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot() below,
-     * which passes $isOwnerInitiated = true and proves the two modes diverge,
-     * distinguishing "the refresh doesn't set it" (this test) from "nothing
-     * ever sets it" (which would be false).
+     * #1963: website refreshes like the other contact columns; owner_last_updated
+     * and join_date stay unchanged for an admin edit ($isOwnerInitiated = false).
      */
     public function testEditRefreshesWebsiteButNotOwnerLastUpdatedOrJoinDate(): void
     {
@@ -285,7 +219,6 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         )->first();
         $this->assertNotNull($before);
 
-        // isOwnerInitiated = false: the admin-edit shape. See docblock above.
         $this->runEditBranchRefresh($carId, ['comments' => 'after'], isOwnerInitiated: false);
 
         $after = $this->db->query(
@@ -294,8 +227,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         )->first();
         $this->assertNotNull($after);
 
-        // Sanity: the refresh did happen (city changed), so the assertions
-        // below are proving exclusion, not that nothing ran at all.
+        // Proves the refresh ran, so the assertions below prove exclusion.
         $this->assertSame('Eugene', $after->city);
         $this->assertSame('after', $after->comments);
 
@@ -309,14 +241,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         $this->assertSame((string) $before->join_date, (string) $after->join_date, 'join_date is creation-time only and must never be touched by the refresh');
     }
 
-    /**
-     * Case 2a (#1963): the profile's website wins over a car's stale per-car
-     * value on the edit-path refresh. Distinct from the previous test's
-     * "did it change at all" check — this asserts the resulting value is
-     * specifically the PROFILE's, proving the merge pulls from
-     * ownerContactFields() rather than, say, leaving the car's own value or
-     * producing some other incidental result.
-     */
+    /** #1963: the profile's website wins over the car's stale per-car value. */
     public function testEditRefreshPrefersProfileWebsiteOverStaleCarWebsite(): void
     {
         $userId = $this->createTestUser();
@@ -342,25 +267,15 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 2d (#1963/#1979 gap): an owner profile website that fails
-     * CarValidator's http(s)-URL validation must be SKIPPED by the refresh,
-     * not merged in. Merging it would reach Car::update() and throw
-     * CarValidationException, blocking every future edit to every car this
-     * owner has — see OwnerContactRefresher::isValidWebsite() and its
-     * class-level docblock. The car must keep its existing, valid website
-     * unchanged — not blanked, and not overwritten with the invalid value.
+     * #1963/#1979: an invalid profile website is skipped. Merging it would make
+     * Car::update() throw and block every later edit of the owner's cars.
      */
     public function testEditSkipsInvalidProfileWebsiteAndKeepsExistingCarWebsite(): void
     {
         $userId = $this->createTestUser();
         $this->createTestProfile($userId, [
             'city'    => 'Eugene',
-            // Neither a well-formed URL nor an allowed scheme — legacy data
-            // or one of #1961's bulk-promoted orphan websites could produce
-            // either shape, so this exercises both failure modes at once:
-            // 'not-a-url' fails FILTER_VALIDATE_URL outright, and even if it
-            // didn't, javascript: is not in isValidWebsite()'s http(s)
-            // scheme whitelist.
+            // Fails FILTER_VALIDATE_URL and the http(s) scheme check.
             'website' => 'not-a-url',
         ]);
 
@@ -374,9 +289,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         $car = $this->db->query("SELECT city, website, comments FROM cars WHERE id = ?", [$carId])->first();
         $this->assertNotNull($car);
 
-        // Sanity: the refresh did run (city changed, unrelated field wrote),
-        // so the website assertion below is proving a targeted skip, not
-        // that the whole refresh silently no-op'd.
+        // Proves the refresh ran, so the website assertion proves a targeted skip.
         $this->assertSame('Eugene', $car->city);
         $this->assertSame('edited', $car->comments);
 
@@ -389,27 +302,9 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 2c (#1963 clear-propagation decision): when the owner's profile
-     * website is empty, the edit-path refresh BLANKS the car's existing
-     * website — website is the one field of the nine in
-     * Car::CLEARABLE_FIELDS (see Car.php), so Car::update()'s array_filter
-     * does NOT strip the empty value for it, unlike the other eight fields.
-     * CarValidator's `case 'website'` (CarValidator.php) sets an empty/null
-     * value to `null` in $validatedFields (not ''), and that null then
-     * survives array_filter because 'website' is in CLEARABLE_FIELDS — so
-     * the persisted value is NULL, not an empty string.
-     *
-     * The same test also asserts `city` (an equally-empty profile value) is
-     * left UNCHANGED on the car. This is NOT a CLEARABLE_FIELDS regression
-     * guard — city's preservation has nothing to do with Car::update()'s
-     * array_filter/CLEARABLE_FIELDS mechanism at all. It is gated one layer
-     * earlier: CarValidator's `case 'city':` (CarValidator.php ~line 225)
-     * only writes to $validatedFields `if (!empty($value))`, with no `else`
-     * branch — so an empty city is dropped from $validatedFields before
-     * Car::update() ever sees it, and CLEARABLE_FIELDS membership (or lack
-     * of it) is never consulted for city. The trailing assertions on
-     * Car::CLEARABLE_FIELDS below pin down that real distinction directly,
-     * rather than relying on this test's behavior to imply it.
+     * #1963: an empty profile website clears the car website to NULL, because
+     * website is in Car::CLEARABLE_FIELDS. An empty city is left unchanged,
+     * because CarValidator drops an empty city before Car::update().
      */
     public function testEditPropagatesBlankWebsiteButNotBlankCityFromEmptyProfile(): void
     {
@@ -444,12 +339,8 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'website-vs-city distinction)'
         );
 
-        // Pin the real distinction between website and city directly against
-        // Car::CLEARABLE_FIELDS (private, read via Reflection), rather than
-        // relying on this test's runtime behavior to imply it. Mutation
-        // testing confirmed adding 'city' to CLEARABLE_FIELDS does NOT make
-        // this test fail — proof the assertions above are not, by themselves,
-        // sensitive to that constant. These assertions are.
+        // Mutation testing showed the assertions above do not catch 'city'
+        // being added to CLEARABLE_FIELDS. These assertions do.
         $clearableFields = (new \ReflectionClassConstant(Car::class, 'CLEARABLE_FIELDS'))->getValue();
         $this->assertContains(
             'website',
@@ -468,20 +359,9 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 2b (#1962 gap): proves the two $isOwnerInitiated modes actually
-     * diverge for owner_last_updated, distinguishing "the #1962 refresh
-     * itself never sets owner_last_updated" (true in both modes) from
-     * "nothing ever sets owner_last_updated" (false — Car::update() sets it
-     * independently when $isOwnerInitiated is true).
-     *
-     * Without this test, the previous test's "owner_last_updated unchanged"
-     * assertion could pass for the WRONG reason: not because the refresh
-     * correctly excludes it, but because nothing in the whole call ever
-     * writes it at all in either mode — a much weaker and easily-broken
-     * property to accidentally rely on.
-     *
-     * Same starting car/profile/edit for both modes; only $isOwnerInitiated
-     * differs, isolating it as the sole cause of the observed difference.
+     * #1962: without this test, the previous test's "owner_last_updated
+     * unchanged" assertion could pass because nothing ever writes it.
+     * Only $isOwnerInitiated differs between the two runs.
      */
     public function testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot(): void
     {
@@ -501,13 +381,8 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'comments' => 'before',
         ]);
 
-        // Admin-edit mode (false): owner_last_updated must stay exactly the
-        // stale pre-existing value — no write to it at all.
         $this->runEditBranchRefresh($adminEditCarId, ['comments' => 'after'], isOwnerInitiated: false);
 
-        // Owner-self-edit mode (true): Car::update() must set
-        // owner_last_updated to "now" — a value strictly newer than the
-        // stale seed — independently of the #1962 refresh logic.
         $this->runEditBranchRefresh($selfEditCarId, ['comments' => 'after'], isOwnerInitiated: true);
 
         $adminEditResult = $this->db->query(
@@ -541,19 +416,8 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 3 (security regression): when an ADMIN edits a MEMBER's car, the
-     * refresh must write the CAR OWNER's (member's) current contact data —
-     * never the admin's. Using the session user instead of the car's
-     * user_id would leak staff contact details onto a public-facing car
-     * record. See Database & Security Considerations in
-     * docs/plans/issue-1962-refresh-owner-columns-on-car-edit.md.
-     *
-     * This test never constructs an Owner from the admin's ID at all —
-     * exactly mirroring buildCarDetails(), which reads
-     * $cardetails['user_id'] from the loaded car row, not from the logged-in
-     * $user global. If a future change accidentally swapped in the session
-     * user, this test would catch it by finding the admin's email/fname/city
-     * on the car instead of the member's.
+     * Security: when an admin edits a member's car, the refresh writes the
+     * member's contact data, never the admin's (staff PII on a public record).
      */
     public function testAdminEditingMembersCarWritesMembersDataNotAdmins(): void
     {
@@ -583,8 +447,6 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'lon'     => -122.3321,
         ]);
 
-        // The car belongs to the member; only its stale snapshot might
-        // coincidentally resemble anyone's data, so seed it distinctly.
         $carId = $this->createTestCar($memberId, [
             'fname' => 'Stale',
             'lname' => 'Snapshot',
@@ -592,11 +454,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'city'  => 'Portland',
         ]);
 
-        // Deliberately do NOT touch a global "logged-in user" — the fix
-        // under test must never consult one. We simulate "an admin is
-        // performing this edit" simply by the admin existing in the system;
-        // the correctness property is that the refresh sequence, driven only
-        // by the car's own user_id, is blind to who initiated it.
+        // No session user is set: the refresh must depend only on the car's user_id.
         $this->runEditBranchRefresh($carId, ['comments' => 'edited by admin']);
 
         $car = $this->db->query(
@@ -623,15 +481,8 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 4: the new-car (add) path must populate all nine
-     * ownerContactFields() columns — including `website` (#1963: the add-car
-     * branch converged onto Owner::ownerContactFields() in the same change
-     * that removed the per-car website form field, so website is no longer
-     * form-driven/null-initialized on this path either) — straight from the
-     * owner's profile, exactly as buildCarDetails()'s `else` branch does.
-     * `user_id` and `join_date` are asserted separately since they are set
-     * explicitly outside ownerContactFields()'s scope, not part of the
-     * nine-field bundle.
+     * #1963: the add-car path fills all nine ownerContactFields() columns,
+     * including website, from the profile.
      */
     public function testNewCarPathStillPopulatesOwnerColumnsFromProfile(): void
     {
@@ -654,10 +505,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         $ownerData = $owner->data();
         $this->assertNotNull($ownerData);
 
-        // Reproduce buildCarDetails()'s `else` (add-car) branch verbatim
-        // (#1963): the nine owner-contact columns come from
-        // ownerContactFields() via a foreach merge, and user_id/join_date are
-        // assigned explicitly outside that set.
+        // Mirrors buildCarDetails()'s add-car branch.
         $cardetails = [];
         foreach ($owner->ownerContactFields() as $key => $value) {
             $cardetails[$key] = $value;
@@ -672,8 +520,6 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         $cardetails['chassis']   = 'NEWCHASSIS01';
         $cardetails['color']     = 'Green';
 
-        // Model the actual add-car insert path via createTestCar() so the
-        // assertions below read from a real row, same as the other cases.
         $carId = $this->createTestCar($userId, $cardetails);
 
         $car = $this->db->query(
@@ -703,19 +549,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 4b (#1963/#1979 gap, add-car path): an owner whose profile website
-     * fails CarValidator's http(s)-URL validation must not block creating a
-     * brand-new car. Before the fix, the add-car (`else`) branch bypassed
-     * website validation entirely by hand-copying ownerContactFields() into
-     * $cardetails without running it through OwnerContactRefresher first —
-     * so an invalid profile website reached Car::create() unfiltered and
-     * threw CarValidationException, blocking the owner from adding ANY car
-     * at all. Now the add-car branch routes through the same
-     * hasValidWebsite()/refresh() pair as the edit branch, so the invalid
-     * value is skipped and the new car simply has no website (there is no
-     * "existing car website" to preserve here, unlike the edit-path case in
-     * testEditSkipsInvalidProfileWebsiteAndKeepsExistingCarWebsite() above —
-     * the owner has no existing car at all).
+     * #1963/#1979: an invalid profile website must not block adding a new car.
      */
     public function testNewCarPathSkipsInvalidProfileWebsiteAndDoesNotThrow(): void
     {
@@ -739,10 +573,6 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'Precondition: this test exercises an invalid profile website'
         );
 
-        // Reproduce buildCarDetails()'s `else` (add-car) branch exactly as
-        // fixed: routed through OwnerContactRefresher::refresh() rather than
-        // a hand-copied ownerContactFields() loop, so the invalid website is
-        // skipped instead of reaching Car::create() and throwing.
         $cardetails = [];
         $cardetails = $refresher->refresh($cardetails, $owner);
         $cardetails['user_id']   = $ownerData->id;
@@ -755,12 +585,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         $cardetails['chassis']   = 'NEWCHASSIS-BADSITE-01';
         $cardetails['color']     = 'Green';
 
-        // The bug this test guards against: Car::create() used to throw
-        // CarValidationException here when the invalid website reached it
-        // unfiltered. createTestCar() calling Car::create() without throwing
-        // is itself part of what is under test — no try/catch is used here
-        // deliberately, so PHPUnit fails loudly (rather than a caught/ignored
-        // exception) if the regression reappears.
+        // No try/catch: Car::create() used to throw here (#1979).
         $carId = $this->createTestCar($userId, $cardetails);
 
         $car = $this->db->query(
@@ -778,14 +603,8 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 5: an owner with empty city and null lat/lon produces a no-op for
-     * those specific fields — Car::update() strips ''/null for any field
-     * outside CLEARABLE_FIELDS (Car.php:43-45,241-247), and city/lat/lon are
-     * not in that allowlist, so an empty/null profile value is simply
-     * dropped from the write rather than blanking the car's existing value.
-     * Must not crash. fname/lname/email are still populated normally by this
-     * test's profile/user data, confirming the refresh is not disabled
-     * wholesale — only the specific empty fields are no-ops.
+     * Empty city and null lat/lon are not in CLEARABLE_FIELDS, so Car::update()
+     * drops them instead of blanking the car's values.
      */
     public function testOwnerWithEmptyCityAndNullLatLonIsNoOpForThoseFieldsWithoutCrashing(): void
     {
@@ -794,8 +613,7 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'lname' => 'Profile',
             'email' => 'sparse-profile@example.com',
         ]);
-        // city/state/country default to '' via Owner::find()'s null-coalesce
-        // when omitted here, and lat/lon stay null (no LEFT JOIN override).
+        // city/state/country default to '' and lat/lon stay null.
         $this->createTestProfile($userId, [
             'city'    => '',
             'state'   => '',
@@ -820,14 +638,11 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         )->first();
         $this->assertNotNull($car);
 
-        // Non-empty fields still refresh normally.
         $this->assertSame('sparse-profile@example.com', $car->email);
         $this->assertSame('Sparse', $car->fname);
         $this->assertSame('Profile', $car->lname);
         $this->assertSame('still edits fine', $car->comments);
 
-        // Empty/null profile values must not overwrite the car's existing
-        // values — Car::update() strips them rather than writing blanks.
         $this->assertSame('Existing City', $car->city);
         $this->assertSame('Existing State', $car->state);
         $this->assertSame('Existing Country', $car->country);
@@ -836,22 +651,11 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 6 (#1962 gap): a car whose user_id points at a non-existent user
-     * (a dangling reference — reachable because migration
-     * 20260719120000_drop_cars_user_id_fk.php removed the FK from
-     * cars.user_id to users.id) must still save successfully, and must leave
-     * the car's EXISTING owner-contact columns alone rather than nulling or
-     * blanking them. This is buildCarDetails()'s
-     * `$carOwner->data() !== null` `else` branch: it logs the orphan and
-     * skips the ownerFields merge entirely, so whatever was already on the
-     * car row before the edit must survive unchanged.
+     * #1962: a dangling user_id (no FK since 20260719120000) must save and
+     * leave the existing owner-contact columns unchanged.
      */
     public function testEditWithDanglingUserIdLeavesExistingOwnerColumnsUntouched(): void
     {
-        // Create a car with a real owner and a real owner-contact snapshot,
-        // then sever the link by pointing user_id at an id that does not
-        // (and, being far outside the auto_increment range this test suite
-        // produces, will not) exist in `users`.
         $userId = $this->createTestUser();
         $this->createTestProfile($userId, ['city' => 'Eugene']);
 
@@ -884,23 +688,13 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         )->first();
         $this->assertNotNull($after);
 
-        // Sanity: the save did happen (comments changed, user_id still dangling).
         $this->assertSame('edited despite orphan owner', $after->comments);
         $this->assertSame($danglingUserId, (int) $after->user_id);
 
         $this->assertOwnerContactColumnsUnchanged($before, $after);
     }
 
-    /**
-     * Case 7 (#1962 gap): same orphan-owner scenario, but with a NULL
-     * user_id rather than a dangling one — the other reachable "no owner"
-     * state buildCarDetails() distinguishes in its log message
-     * ("has no owner (user_id is null)" vs. "owner N could not be loaded").
-     * Owner(null) also fails to load (Owner::find() requires a non-null id),
-     * so this exercises the same `$carOwner->data() === null` branch via a
-     * different route. Existing owner-contact columns must again survive
-     * unchanged.
-     */
+    /** #1962: a NULL user_id must leave the existing owner-contact columns unchanged. */
     public function testEditWithNullUserIdLeavesExistingOwnerColumnsUntouched(): void
     {
         $userId = $this->createTestUser();
@@ -940,13 +734,6 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
         $this->assertOwnerContactColumnsUnchanged($before, $after);
     }
 
-    /**
-     * Shared assertion for cases 6 and 7: the pre-existing owner-contact
-     * snapshot (email, fname, lname, city, state, country, lat, lon) must be
-     * UNCHANGED between $before and $after — not nulled, not blanked —
-     * because ownerContactFields() was never merged in for an orphan-owner
-     * car at all.
-     */
     private function assertOwnerContactColumnsUnchanged(object $before, object $after): void
     {
         $this->assertSame((string) $before->email, (string) $after->email);
@@ -960,58 +747,8 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
     }
 
     /**
-     * Case 8 (#1963): `updateWebsite()` (the per-car website POST-parameter
-     * handler) must be gone from `app/api/cars/save.php`. `save.php` cannot
-     * be `require()`'d under PHPUnit (see class docblock — every branch ends
-     * in `exit`), so this is verified two ways without executing the file:
-     *
-     * 1. `function_exists('updateWebsite')` must be false — a guard against
-     *    the function being silently reintroduced by a later merge/revert.
-     *    This alone is not conclusive by itself (PHP only defines top-level
-     *    functions from a file once that file has been included somewhere in
-     *    the process, which never happens for save.php in this suite), so:
-     * 2. The source of `save.php` is inspected directly via
-     *    `file_get_contents()` to confirm it no longer contains a call to
-     *    `updateWebsite(` — this is the actual proof the call site is gone,
-     *    consistent with how source-inspection assertions elsewhere in this
-     *    test suite verify save.php behavior without loading it.
-     */
-    public function testUpdateWebsiteFunctionAndItsCallSiteAreRemoved(): void
-    {
-        $this->assertFalse(
-            function_exists('updateWebsite'),
-            'updateWebsite() must not exist — the per-car website write path was removed in #1963'
-        );
-
-        $saveDotPhpPath = dirname(__DIR__, 2) . '/app/api/cars/save.php';
-        $this->assertFileExists($saveDotPhpPath, 'Precondition: save.php must exist at the expected path');
-
-        $source = file_get_contents($saveDotPhpPath);
-        $this->assertIsString($source, 'Precondition: save.php source must be readable');
-
-        $this->assertStringNotContainsString(
-            'function updateWebsite',
-            $source,
-            'save.php must no longer define updateWebsite()'
-        );
-        $this->assertStringNotContainsString(
-            'updateWebsite(',
-            $source,
-            'save.php must no longer call updateWebsite() anywhere in buildCarDetails()'
-        );
-    }
-
-    /**
-     * Case 8b (#1963 behavioral proof): the previous test only proves
-     * updateWebsite() is gone from save.php's *source* — it does not prove a
-     * client-supplied website is actually ignored at runtime. This exercises
-     * that directly: simulate a website value arriving in $cardetails via
-     * $extraFields (as if it had come from a POST parameter or any other
-     * source save.php might have read from, the way the removed
-     * updateWebsite() call site once did), and assert the refresh overwrites
-     * it with the OWNER PROFILE's value regardless. The source-grep test
-     * above stays as an additional reintroduction guard — this is additive,
-     * not a replacement.
+     * #1963: the per-car website write path (updateWebsite()) was removed. A
+     * website value in $cardetails, from any source, must not reach the car.
      */
     public function testEditIgnoresClientSuppliedWebsiteAndUsesProfileValueInstead(): void
     {
@@ -1026,9 +763,6 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'website' => 'https://original-per-car-website.example.com',
         ]);
 
-        // Simulate a website value arriving in $cardetails from some source
-        // other than the profile — e.g. a stray POST parameter — exactly the
-        // shape updateWebsite() used to write from before its removal.
         $this->runEditBranchRefresh($carId, ['website' => 'https://attacker-supplied.example.com']);
 
         $car = $this->db->query("SELECT website FROM cars WHERE id = ?", [$carId])->first();
@@ -1045,5 +779,19 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             $car->website,
             'a client-supplied website value must never survive onto the car'
         );
+    }
+
+    /**
+     * #1963: save.php must not write a client-supplied website again. save.php
+     * cannot be loaded under PHPUnit (every branch ends in exit), so this reads
+     * its source. #2333 replaces it with a test of extracted code.
+     */
+    public function testSaveDotPhpNoLongerCallsUpdateWebsite(): void
+    {
+        $source = file_get_contents(dirname(__DIR__, 2) . '/app/api/cars/save.php');
+        $this->assertIsString($source, 'save.php must be readable');
+
+        $this->assertStringNotContainsString('updateWebsite(', $source,
+            'save.php must not call or define updateWebsite() (#1963)');
     }
 }

@@ -12,13 +12,7 @@ namespace Tests\Support;
  * `error()` — canned via constructor flags, following the same shape as
  * VerificationSettingsFakeDatabase.
  *
- * Deliberately a *named* class rather than `new class extends FakeDatabase { ... }`:
- * PHPStan reports `impureMethod.pure` when an anonymous class overrides one of
- * DatabaseInterface's `@phpstan-impure` methods (`query()`, `error()`, `count()`
- * here) with a body that doesn't depend on mutable state, because an anonymous
- * class can never be extended later to add one. A named class with real
- * constructor-driven state is exempt from that check. See
- * VerificationSettingsFakeDatabase's docblock for the same rationale.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2

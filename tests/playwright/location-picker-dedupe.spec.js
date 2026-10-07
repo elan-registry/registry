@@ -1,11 +1,7 @@
-// tests/playwright/location-picker-dedupe.spec.js
-//
 // Regression tests for LocationPicker.filterAndRankResults()'s dedupe key
 // (#1400). Exercises the function directly via page.evaluate() with fixed
 // mock data — deterministic and fast, no live Photon/Nominatim dependency,
 // unlike the integration-level check in tests/playwright/e2e/not-logged-in.spec.js.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js
 
 const { test, expect } = require('@playwright/test');
 

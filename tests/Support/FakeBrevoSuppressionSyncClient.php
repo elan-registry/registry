@@ -10,26 +10,16 @@ use ElanRegistry\Cron\BrevoSuppressionSyncClient;
  * FakeBrevoSuppressionSyncClient - Scripted stand-in for the Brevo suppression
  * list poll, for BrevoSuppressionSyncJobTest
  *
- * Extends the real client so it satisfies the job's constructor type, but
- * overrides fetchBlockedContacts() to return canned pages and record the exact
- * arguments it was called with — which is how the tests assert the window,
- * page size, offset, and the paging loop's stop conditions.
+ * Returns canned pages and records each call's arguments, so tests can assert
+ * the window, page size, offset, and the paging loop's stop conditions. The
+ * parent constructor is skipped: it needs a database only for the API key.
  *
- * The real class's constructor is bypassed entirely (no parent::__construct()
- * call): it takes a DatabaseInterface only to read the Brevo API key, and
- * nothing in the overridden method path touches it.
+ * The real return type is the SDK model
+ * `?\Brevo\Client\Model\GetTransacBlockedContacts`, and PHP enforces it on
+ * every call, so a "page-shaped" class of another name is a TypeError. The
+ * stand-in at the end of this file therefore uses that exact class name.
  *
- * Unlike {@see FakeBrevoEventReconciliationClient}, whose real counterpart
- * returns a bare `array`, this one's real return type is the SDK model
- * `?\Brevo\Client\Model\GetTransacBlockedContacts`. PHP checks return types
- * covariantly at *call* time, so an override cannot hand back an unrelated
- * "page-shaped" class — doing so is a TypeError, not a passing test. The page
- * wrapper below is therefore declared as that very class name (guarded, see
- * its own note), which is the only way a fake can satisfy the inherited
- * signature while the vendored SDK is off the unit suite's autoloader.
- *
- * Deliberately a *named* class rather than an anonymous one, per the
- * `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2
@@ -63,13 +53,9 @@ class FakeBrevoSuppressionSyncClient extends BrevoSuppressionSyncClient
      * single-page case; pass it explicitly to script a multi-page run, where
      * Brevo reports a total larger than the page returned.
      *
-     * Constructed via the associative `$data` array the real generated SDK's
-     * constructor actually takes (confirmed against
-     * usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib/Model/GetTransacBlockedContacts.php)
-     * — not positional args — so this call satisfies both the real class (if
-     * it happens to already be loaded) and the guarded stand-in below, and so
-     * PHPStan (which resolves the class via stubs/brevo-sdk.php, itself
-     * matched to the real constructor) has nothing to flag.
+     * Uses the associative `$data` array the real SDK constructor takes, so the
+     * call works with the real class, the stand-in below, and
+     * stubs/brevo-sdk.php.
      *
      * @param list<FakeBrevoBlockedContact> $contacts
      */
@@ -82,12 +68,9 @@ class FakeBrevoSuppressionSyncClient extends BrevoSuppressionSyncClient
     }
 
     /**
-     * Build a page whose `getContacts()` returns null rather than an empty
-     * array — the real SDK's actual deserialized shape for an
-     * empty/exhausted suppression list, per its own constructor
-     * (`isset($data['contacts']) ? $data['contacts'] : null`), as opposed to
-     * {@see self::page()}'s `page([])`, which stores an empty array and
-     * therefore cannot exercise the null-safety this method is for.
+     * Build a page whose `getContacts()` returns null, not an empty array: the
+     * real SDK's shape for an empty or exhausted list. `page([])` stores an
+     * empty array, so it cannot exercise that null-safety.
      */
     public static function pageWithNullContacts(int $count = 0): \Brevo\Client\Model\GetTransacBlockedContacts
     {
@@ -116,25 +99,16 @@ namespace Brevo\Client\Model;
 /**
  * Minimal runtime stand-in for the SDK's GetTransacBlockedContacts page model.
  *
- * Declared here, under the SDK's own namespace, because
- * FakeBrevoSuppressionSyncClient::fetchBlockedContacts() inherits that return
- * type and PHP enforces it on every call — no separately-named fake can
- * satisfy it. stubs/brevo-sdk.php cannot serve: PHPStan reads it for types and
- * never loads it, and the vendored SDK that would define the real class is not
- * on the unit suite's autoloader.
+ * Declared under the SDK's namespace because the inherited return type of
+ * fetchBlockedContacts() requires this class name. stubs/brevo-sdk.php is
+ * read by PHPStan only and never loaded, and the vendored SDK is not on the
+ * unit suite's autoloader.
  *
- * Guarded by class_exists() because the sendinblue plugin *is* installed on
- * developer machines with email configured. If anything in the same process
- * has already loaded the real SDK, that definition wins and this file adds
- * nothing — without the guard it would be a duplicate-declaration fatal, and
- * the suite would pass in CI while dying locally.
+ * Guarded by class_exists(): developer machines with email configured can
+ * load the real SDK in the same process. Without the guard that is a
+ * duplicate-declaration fatal that passes in CI but fails locally.
  *
- * The constructor takes the same associative `$data` array shape the real
- * generated SDK's constructor does (`?array $data = null`, confirmed against
- * usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib/Model/GetTransacBlockedContacts.php
- * and mirrored in stubs/brevo-sdk.php) rather than positional args, so this
- * stand-in and the real class present an identical constructor call shape to
- * both PHPStan and any caller. Use
+ * The constructor takes the real SDK's `?array $data` shape. Use
  * {@see \Tests\Support\FakeBrevoSuppressionSyncClient::page()} rather than
  * constructing one directly.
  *
@@ -151,13 +125,8 @@ if (!class_exists(\Brevo\Client\Model\GetTransacBlockedContacts::class, false)) 
         private readonly ?array $contacts;
 
         /**
-         * `contacts` is genuinely nullable — matching the real generated
-         * SDK's deserializer, which leaves it null whenever the response
-         * carries no `contacts` key at all (an empty/exhausted result).
-         * Omitting the key entirely from `$data` (rather than passing
-         * `'contacts' => []`) is what this stand-in and
-         * {@see FakeBrevoSuppressionSyncClient::page()} use to script that
-         * exact condition for tests.
+         * `contacts` is null when `$data` has no `contacts` key, as in the
+         * real SDK for an empty or exhausted result.
          *
          * @param array{count?: int, contacts?: list<\Tests\Support\FakeBrevoBlockedContact>}|null $data
          */

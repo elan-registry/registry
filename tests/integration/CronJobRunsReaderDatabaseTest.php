@@ -9,18 +9,9 @@ use ElanRegistry\Cron\CronJobRunsReader;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB behavioral test for CronJobRunsReader::state() / lastRunAt() (#2054).
- *
- * CronJobRunsReaderTest (unit, tests/unit/cron/) covers all four
- * CronJobEnabledState outcomes against a FakeDatabase, including the
- * UNREADABLE case a real connection cannot trigger. This file exercises the
- * same reader against real MySQL: the seeded `brevo_reconciliation` row
- * (originally 'reconciliation', renamed by migration
- * 20260918133038_rename_reconciliation_job, #2129), real `enabled` column
- * round-tripping, and real `datetime` round-tripping through
- * DateTimeImmutable — the kind of detail a mocked-DB unit test cannot prove.
- * Mirrors VerificationSettingsCronReadyTest's snapshot/restore discipline for
- * a shared row.
+ * #2054: CronJobRunsReader against real MySQL (enabled and datetime
+ * round-trips on the seeded brevo_reconciliation row). Outcomes, including
+ * UNREADABLE, are in tests/unit/cron/CronJobRunsReaderTest.php.
  */
 #[Group('integration')]
 final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase

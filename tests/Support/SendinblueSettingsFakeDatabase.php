@@ -14,8 +14,7 @@ namespace Tests\Support;
  * (table absent, plugin never installed) is an expected steady state logged
  * as a skip while any other error is a genuine fault.
  *
- * Deliberately a *named* class rather than `new class extends FakeDatabase { ... }`,
- * per the `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2

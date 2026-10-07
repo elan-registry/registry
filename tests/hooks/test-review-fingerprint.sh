@@ -10,6 +10,9 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 export GIT_AUTHOR_NAME="test-review-fingerprint"
@@ -25,24 +28,6 @@ if [ ! -x "$SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
-cleanup() {
-    cd / || true
-    [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
-}
 
 fp() { "$SCRIPT" base 2>/dev/null; }
 
@@ -130,6 +115,4 @@ else
     fail "too many arguments exit 1" "exit=$rc"
 fi
 
-echo
-echo "$((TESTS_RUN - TESTS_FAILED))/$TESTS_RUN passed"
-[ "$TESTS_FAILED" -eq 0 ]
+harness_report

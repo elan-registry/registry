@@ -13,14 +13,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration Tests for CarValidator Model Validation
- *
- * Tests model validation that requires car_models reference data.
- * These tests verify that CarValidator correctly integrates with the
- * CarModel class to validate model combinations against the database.
- *
- * Not run by CI (tests.yml runs Unit + Regression only) — proven via
- * `composer test:integration`/`test:full` before merge instead.
+ * CarValidator model validation against car_models reference data.
+ * Not run by CI; run `composer test:integration` before merge.
  */
 #[Group('integration')]
 #[Group('reference-data')]
@@ -34,10 +28,8 @@ final class CarValidatorModelTest extends TestCase
     }
 
     /**
-     * @test
-     * Every model combination in the reference-data CSV validates. The
-     * provider reads the same file CarModelsSeed seeds car_models from, so
-     * it can't drift from the database (#1446).
+     * The provider reads the CSV that CarModelsSeed seeds from, so it cannot
+     * drift from the database (#1446).
      */
     #[DataProvider('allReferenceModelCombinationsProvider')]
     public function testValidateModelAcceptsEveryReferenceCombination(
@@ -79,9 +71,8 @@ final class CarValidatorModelTest extends TestCase
         }
         fclose($handle);
 
-        // A truncated/corrupted CSV read must fail loudly, not just silently
-        // run fewer test cases. This 23 must stay in sync with
-        // CarModelsSeed::EXPECTED_ROWS if the reference data set ever changes.
+        // A truncated CSV must fail, not run fewer cases. Keep in step with
+        // CarModelsSeed::EXPECTED_ROWS.
         if (count($cases) !== 23) {
             throw new RuntimeException(
                 'Expected 23 model combinations from ' . $csvPath . ', got ' . count($cases)
@@ -92,13 +83,7 @@ final class CarValidatorModelTest extends TestCase
         return $cases;
     }
 
-    /**
-     * @test
-     * Model validation rejects invalid combinations — each case isolates a
-     * single mismatched field against two otherwise-real ones, so a
-     * regression that stops checking just one column (series, variant, or
-     * type_code) would still fail here.
-     */
+    /** Each case has one mismatched field, so a check that skips one column fails. */
     #[DataProvider('invalidCombinationProvider')]
     public function testValidateModelRejectsInvalidCombination(string $model): void
     {
@@ -120,10 +105,6 @@ final class CarValidatorModelTest extends TestCase
         ];
     }
 
-    /**
-     * @test
-     * Model validation rejects invalid format
-     */
     public function testValidateModelRejectsInvalidFormat(): void
     {
         $this->expectException(CarValidationException::class);
@@ -136,10 +117,6 @@ final class CarValidatorModelTest extends TestCase
         $this->validator->validateAndSanitizeFields($data, false);
     }
 
-    /**
-     * @test
-     * Model validation handles empty model (when not required)
-     */
     public function testValidateModelHandlesEmptyWhenNotRequired(): void
     {
         $data = [
@@ -151,10 +128,6 @@ final class CarValidatorModelTest extends TestCase
         $this->assertArrayNotHasKey('model', $result);
     }
 
-    /**
-     * @test
-     * Model validation requires model when requireAll is true
-     */
     public function testValidateModelRequiredWhenRequireAll(): void
     {
         $this->expectException(CarValidationException::class);
@@ -167,10 +140,6 @@ final class CarValidatorModelTest extends TestCase
         $this->validator->validateAndSanitizeFields($data, true);
     }
 
-    /**
-     * @test
-     * Full positive case with valid model - integration test
-     */
     public function testValidateAndSanitizeFieldsReturnsFullSanitizedArrayWithModel(): void
     {
         $fields = [

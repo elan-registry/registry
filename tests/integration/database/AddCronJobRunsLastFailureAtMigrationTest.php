@@ -7,26 +7,11 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration
- * 20260922171500_add_cron_job_runs_last_failure_at.
+ * Migration 20260922171500_add_cron_job_runs_last_failure_at.
  *
- * The nullability assertions are load-bearing, not cosmetic — the same
- * reasoning AddProfileEmailSuppressedMigrationTest's docblock gives for the
- * opposite requirement on its own column. `CronJobRunsReader::badgeFor()`
- * decides whether a job's most recent run failed by COMPARING
- * `last_failure_at` against `last_run_at`. NULL is the only value that can
- * mean "has never failed": a `0000-00-00` default would parse to a bogus year
- * -1 that silently loses every comparison (hiding real failures behind a green
- * badge), and an epoch default would win none. So "nullable, defaulting to
- * NULL" is what makes the comparison correct, and a later migration quietly
- * adding a default would break failure detection without breaking anything
- * that would look broken.
- *
- * Runs the real migration class directly (constructed and invoked, not driven
- * through a Phinx CLI harness), matching
- * AddProfileEmailSuppressedMigrationTest's precedent for exercising a
- * migration's actual guarded code path — since Phinx does not autoload
- * migration classes via PSR-4, the file is require_once'd directly.
+ * Nullability is load-bearing: CronJobRunsReader::badgeFor() compares
+ * last_failure_at with last_run_at, and only NULL can mean "never failed".
+ * A zero-date or epoch default would silently break failure detection.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -97,11 +82,7 @@ final class AddCronJobRunsLastFailureAtMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Type parity with `last_run_at`, read from information_schema on both
-     * sides rather than hardcoding the expected type twice, so the two columns
-     * cannot silently drift apart from each other. They are compared as
-     * DateTimeImmutable values by badgeFor(), which is only meaningful while
-     * they share a representation.
+     * badgeFor() compares the two columns, which is only valid while they share a type.
      */
     #[Group('fast')]
     public function testColumnTypeMatchesLastRunAtExactly(): void
@@ -122,9 +103,7 @@ final class AddCronJobRunsLastFailureAtMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Every pre-existing row must start NULL rather than being backfilled:
-     * this migration adds no data, and a seeded job that has never failed must
-     * not be reported as having failed the moment the column arrives.
+     * No backfill: a job that never failed must not look failed when the column arrives.
      */
     #[Group('fast')]
     public function testExistingRowsStartNull(): void
@@ -144,10 +123,7 @@ final class AddCronJobRunsLastFailureAtMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * up() is guarded with hasColumn(), so a second call after it has already
-     * applied must be a safe no-op rather than an error (Phinx would otherwise
-     * raise a duplicate-column error). Exercises the real migration class
-     * rather than paraphrasing its logic.
+     * Re-running up() must be a safe no-op (hasColumn() guard).
      */
     #[Group('fast')]
     public function testUpIsIdempotentWhenColumnAlreadyExists(): void
@@ -178,11 +154,6 @@ final class AddCronJobRunsLastFailureAtMigrationTest extends IntegrationTestCase
         return $migration;
     }
 
-    /**
-     * Phinx's Table API needs an Adapter to operate against — build one over a
-     * PDO connection to the same schema this test case already uses, rather
-     * than standing up a full Phinx harness.
-     */
     private function phinxAdapter(): \Phinx\Db\Adapter\MysqlAdapter
     {
         $name = (string) ($_ENV['DB_NAME'] ?? getenv('DB_NAME'));

@@ -16,36 +16,12 @@ use Tests\Support\FakeBrevoBlockedContactReason;
 use Tests\Support\FakeBrevoSuppressionSyncClient;
 
 /**
- * Real-DB proof that BrevoSuppressionSyncJob::runNowWithSummary() runs the
- * import regardless of the state of this job's `er_cron_job_runs` row — the
- * property the manual admin backfill path depends on.
+ * #1923: the manual admin backfill (runNowWithSummary()) must ignore the
+ * er_cron_job_runs row: neither enabled = 0 nor a recent last_run_at stops it,
+ * and it never writes last_run_at. Unlike runNow(), it calls runFullBackfill(),
+ * which reaches neither CronJobGuard::claim() nor the enabled read.
  *
- * The bypass here is structurally different from
- * {@see BrevoEventReconciliationRunNowBypassIntegrationTest}'s, and the
- * difference is why this file exists rather than being a copy of that one.
- * There, `runNow()` bypasses the guard by being a sibling entry point to
- * `run()` that skips the enabled read and the claim before calling the same
- * `execute()`. Here, `runNowWithSummary()` is not `AbstractCronJob::runNow()`
- * at all — `runNow()` is `final` and calls `execute()`, the one-page
- * incremental mode — so the job adds its own method that calls
- * {@see BrevoSuppressionSyncJob::runFullBackfill()} directly. That method is
- * deliberately unreachable from `run()`/`execute()` at any depth, and reaches
- * neither {@see \ElanRegistry\Cron\CronJobGuard::claim()} nor
- * `AbstractCronJob`'s `enabled` read. So the assertion under test is that
- * neither `enabled = 0` nor a last_run_at inside the guard interval stops it,
- * and that `last_run_at` is never written by it.
- *
- * The contrast test at the bottom proves the same fixture state genuinely
- * blocks the guarded `run()` path, so "bypassed" is a real distinction rather
- * than an untested claim about a code path nothing gates.
- *
- * Uses the seeded `brevo_suppression_sync` row, snapshotting and restoring its
- * `enabled`/`last_run_at` columns exactly as
- * BrevoEventReconciliationRunNowBypassIntegrationTest and
- * CronJobGuardIntegrationTest do, since all of these mutate seeded fixture
- * rows in the same shared table.
- *
- * @see https://github.com/elan-registry/registry/issues/1923
+ * Mutates the seeded brevo_suppression_sync row; setUp/tearDown snapshot and restore it.
  */
 #[Group('integration')]
 final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationTestCase
@@ -87,10 +63,7 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
         $this->originalEnabled = (bool) $row->enabled;
         $this->originalLastRunAt = !empty($row->last_run_at) ? (string) $row->last_run_at : null;
 
-        // Both run() and runNowWithSummary() check the site-wide verification
-        // switch first (since v2.30.2) and it ships off by default — force it
-        // on so this file's bypass assertions aren't short-circuited by an
-        // unrelated switch. Restored in tearDown().
+        // The verification switch ships off and would short-circuit both paths.
         $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
@@ -152,11 +125,7 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
     }
 
     /**
-     * One page carrying exactly this test's car email, hard-bounced.
-     *
-     * A single-contact page is shorter than PAGE_SIZE, so runFullBackfill()
-     * stops after it — one poll, one applied suppression, no paging loop to
-     * reason about.
+     * A single-contact page is shorter than PAGE_SIZE, so the backfill stops after one poll.
      */
     private function makeJob(): BrevoSuppressionSyncJob
     {
@@ -179,10 +148,7 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
     }
 
     /**
-     * er_cron_job_runs.enabled = 0 is how an operator pauses the nightly run.
-     * The manual backfill must not be paused with it — an operator who clicks
-     * "run backfill" on the admin page has explicitly asked for this run, and
-     * runFullBackfill() never reads the enabled column at all.
+     * Pausing the nightly run must not pause a backfill the operator asked for.
      */
     public function testRunNowWithSummaryExecutesRealWorkWhenJobIsDisabled(): void
     {
@@ -212,12 +178,6 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
         );
     }
 
-    /**
-     * A last_run_at of "just now" is nowhere near the 20-hour guard interval,
-     * so CronJobGuard::claim() would refuse if run() were used. The manual
-     * backfill never calls claim(), so it must still do the work — and must
-     * leave the timestamp exactly as it found it.
-     */
     public function testRunNowWithSummaryExecutesRealWorkWhenClaimWouldFailDueToRecentRun(): void
     {
         $justClaimed = (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
@@ -243,13 +203,7 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
     }
 
     /**
-     * Control for the two tests above: prove the guarded entry point really is
-     * blocked by the same fixture states the backfill ignores. Without this,
-     * the file would only show that runNowWithSummary() does *something* — not
-     * that it bypasses gates that would otherwise stop a run.
-     *
-     * Both blocked cases are asserted in one method because each leaves the
-     * database untouched, so they cannot contaminate each other.
+     * Control: without it, the tests above would not prove a real bypass.
      */
     public function testRunIsBlockedByTheSameFixtureStatesTheBackfillIgnores(): void
     {

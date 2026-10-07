@@ -8,48 +8,12 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit tests for the "Verification & Email" card in
- * usersc/plugins/hooker/hooks/user_form_hook.php (issue #1924), exercising the
- * hook FILE directly and asserting on the HTML it renders.
+ * Renders the "Verification & Email" card of user_form_hook.php (#1924) with
+ * scripted database doubles. Playwright cannot reach these states: a corrupt
+ * row next to a good one, and a database failure mid-render.
  *
- * Follows the pattern established by
- * tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php: the hook is a plain
- * included script with no enclosing function, and every collaborator it touches
- * is substitutable — it reads `global $userId, $us_url_root, $db` and builds its
- * CarRepository through the `dbi()` seam. So the file can simply be `require`d
- * with those globals set to scripted doubles, and its output captured with an
- * output buffer.
- *
- * Two degradation behaviors are covered here that no other tier can reach.
- * Both are about the hook's own control flow and rendering, not about the
- * repository methods underneath (those are covered by
- * tests/unit/cars/services/CarRepositoryTest.php and
- * tests/integration/database/CarRepositoryEmailEventsTest.php), and neither is
- * reachable from the Playwright spec, which can only render whatever state the
- * local database happens to be in:
- *
- *   * PER-ROW "Unknown" ISOLATION. `$isFreshCar` catches CarValidationException
- *     for ONE car with a corrupt timestamp and renders an "Unknown" badge for
- *     that row alone. The point of catching per row rather than around the whole
- *     panel is that a single corrupt car must not blank out its siblings' rows —
- *     which is the diagnosis an admin opened this panel for in the first place.
- *     Asserting that requires rendering a table with a corrupt row NEXT TO a
- *     good row and checking both, which is what these tests do.
- *   * WHOLE-PANEL DB-FAILURE DEGRADED STATE. The outer catch sets
- *     `$verificationLoadError = true`, rendering a distinct alert instead of
- *     letting the exception escape and fatal the entire admin user-view page
- *     (the hook is included mid-render by includeHook(), which wraps it in no
- *     try/catch of its own). Forcing that state from a real page load would mean
- *     breaking the live database mid-request; here it is one constructor flag.
- *
- * The corrupt-timestamp value used below, '0000-00-00 00:00:00', is not
- * hypothetical: users/classes/DB.php sets `sql_mode = ''` on every application
- * connection, so MySQL both accepts and returns a zero-date in a NOT NULL
- * DATETIME column. See CarRepository::parseTimestamp()'s own comment on exactly
- * this reachability.
- *
- * @see usersc/plugins/hooker/hooks/user_form_hook.php
- * @see tests/playwright/admin-user-view-verification.spec.js
+ * '0000-00-00 00:00:00' is reachable: users/classes/DB.php sets
+ * `sql_mode = ''`, so MySQL stores and returns zero-dates.
  */
 #[Group('fast')]
 #[Group('unit')]
@@ -69,9 +33,6 @@ final class UserFormHookVerificationCardTest extends TestCase
         $mockLogEntries = [];
         $userId         = self::OWNER_ID;
         $us_url_root    = '/';
-        // Replaced per-test with a double scripted for the branch under test.
-        // Set here too so render() always has something to bind, even if a
-        // test's own arrangement throws before reaching its useDb() call.
         $GLOBALS['hookTestDb'] = new VerificationCardTestDb();
     }
 
@@ -82,13 +43,7 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * Installs a scripted database double as BOTH collaborators the hook uses.
-     *
-     * The hook reaches the database two different ways and they must agree: the
-     * inherited `$db` for the profile/car-button queries at the top of the file
-     * (see render() on why that one is a local), and `dbi()` for the
-     * CarRepository that backs the card. Both resolve $GLOBALS['hookTestDb'],
-     * so one assignment here points both at the same instance.
+     * The hook reads both `$db` and `dbi()`; both resolve $GLOBALS['hookTestDb'].
      */
     private function useDb(VerificationCardTestDb $double): void
     {
@@ -96,20 +51,8 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * Renders the hook and returns its HTML.
-     *
-     * `require`, not `require_once` — several tests render more than once in a
-     * single process, and the hook is written to be included per request.
-     *
-     * The hook's first three lines are a `count(get_included_files()) == 1`
-     * direct-access guard. Under PHPUnit dozens of files are already included,
-     * so the guard passes and does not need to be worked around.
-     *
-     * $db is a LOCAL variable here, not a global. The hook declares `global
-     * $userId, $us_url_root` but NOT $db — in production it inherits $db from
-     * the scope of users/admin.php, which included it, and an included file
-     * shares its includer's local scope. So the double has to be a local in
-     * whichever function does the require, which is this one.
+     * $db is a local, not a global: in production the hook inherits it from the
+     * scope of users/admin.php, which includes it.
      */
     private function render(): string
     {
@@ -126,16 +69,8 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * Extracts the single `<tr>` describing a given car from the card's per-car
-     * table, so an assertion about one row cannot be satisfied by content that
-     * actually belongs to a different row — which is the entire point of the
-     * isolation tests below.
-     *
-     * Scoped to the card via cardHtml() rather than searching the whole
-     * document: the profile table ABOVE the card ends with a single `<tr>` that
-     * contains a link for EVERY car at once (the car-button list). That row
-     * matches every car id, so an unscoped search would return it for any
-     * $carId and silently make these assertions meaningless.
+     * Scoped to the card: the profile table above it has one `<tr>` that links
+     * every car, so an unscoped search would match any car id.
      */
     private function rowForCar(string $html, int $carId): string
     {
@@ -150,22 +85,11 @@ final class UserFormHookVerificationCardTest extends TestCase
         $this->fail("No table row rendered for car #{$carId}");
     }
 
-    // =========================================================================
-    // Per-row "Unknown" isolation (the $isFreshCar per-row catch)
-    // =========================================================================
+    // Per-row "Unknown" isolation: the catch in $isFreshCar.
 
     /**
-     * The core isolation case: one car with a zero-date `owner_last_updated`
-     * sitting alongside a sibling with perfectly good timestamps.
-     *
-     * The corrupt row must render the "Unknown" badge and its explanatory
-     * "Unusable timestamps" line, and the sibling row must be completely
-     * unaffected — a normal Verified badge, no Unknown badge of its own.
-     *
-     * If the CarValidationException catch were moved out of `$isFreshCar` and
-     * up to the panel-level try/catch, this test would fail loudly: the whole
-     * per-car table would be replaced by the load-error alert and neither row
-     * would render at all.
+     * One corrupt car must not blank out its siblings, which are what the admin
+     * opened the panel to read.
      */
     public function testCorruptTimestampMarksOnlyItsOwnRowUnknown(): void
     {
@@ -185,18 +109,10 @@ final class UserFormHookVerificationCardTest extends TestCase
         $this->assertStringNotContainsString(
             'Unknown',
             $siblingRow,
-            'A corrupt timestamp on car #101 must not leak an Unknown badge onto car #102 — the '
-            . 'CarValidationException catch is per row precisely so one corrupt car cannot blank '
-            . 'out the sibling rows an admin opened this panel to read'
+            'A corrupt timestamp on car #101 must not leak an Unknown badge onto car #102'
         );
     }
 
-    /**
-     * The corrupt row must not take the rest of the PANEL down with it either:
-     * the per-car table itself still renders (both rows present), and the
-     * whole-panel load-error alert — which belongs to the outer catch, not this
-     * one — must be absent.
-     */
     public function testCorruptTimestampStillRendersTheFullTable(): void
     {
         $this->useDb(new VerificationCardTestDb(cars: [
@@ -213,16 +129,9 @@ final class UserFormHookVerificationCardTest extends TestCase
             $html,
             'A per-row timestamp fault is not a panel-level load failure'
         );
-        // A corrupt timestamp says nothing about deliverability, and neither
-        // seeded car carries a bounce or suppression flag.
         $this->assertStringContainsString('No delivery problems recorded', $html);
     }
 
-    /**
-     * The corruption must be recorded for follow-up, under the validation
-     * category and naming the specific car, since the badge alone tells an
-     * admin only that something is wrong and not which value is unusable.
-     */
     public function testCorruptTimestampIsLoggedAsAValidationErrorNamingTheCar(): void
     {
         global $mockLogEntries;
@@ -245,14 +154,8 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * A corrupt `last_verified` reaches the same per-row handler as a corrupt
-     * `owner_last_updated`, even though `owner_last_updated` is itself fine.
-     *
-     * This is deliberate in CarRepository::isFresh(): it validates BOTH operands
-     * before either comparison rather than short-circuiting on a fresh
-     * `owner_last_updated`, so garbage in `last_verified` surfaces now instead
-     * of a year from now. The hook must therefore render Unknown here too, not
-     * a confident "Verified" derived from the one operand that happens to parse.
+     * CarRepository::isFresh() validates both timestamps before it compares
+     * either, so a bad last_verified is not hidden by a fresh owner_last_updated.
      */
     public function testCorruptLastVerifiedAlsoMarksTheRowUnknown(): void
     {
@@ -272,14 +175,7 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * Guards the boundary between "Unknown" (corrupt) and "Unverified" (merely
-     * old), which the badge colours deliberately distinguish.
-     *
-     * A stale-but-well-formed timestamp is ordinary data, not corruption, so it
-     * must render the Unverified badge — if a future change widened the
-     * CarValidationException catch into a general "anything that isn't fresh"
-     * fallback, every stale car in the registry would start reporting as
-     * corrupt and the Unknown badge would stop meaning anything.
+     * Old is not corrupt. A wider catch would mark every stale car Unknown.
      */
     public function testStaleButWellFormedTimestampRendersUnverifiedNotUnknown(): void
     {
@@ -296,20 +192,11 @@ final class UserFormHookVerificationCardTest extends TestCase
         $this->assertStringNotContainsString('Unknown', $row);
     }
 
-    // =========================================================================
-    // Whole-panel DB-failure degraded state (the outer try/catch)
-    // =========================================================================
+    // Whole-panel degraded state: the outer try/catch.
 
     /**
-     * When the per-car state query fails, the panel must render its distinct
-     * load-error alert rather than letting CarDatabaseException escape.
-     *
-     * The hook is included mid-render by includeHook()
-     * (users/helpers/us_helpers.php), which wraps it in no try/catch, so an
-     * uncaught exception here takes down the entire admin user-view page —
-     * profile table, car buttons, permission management and all. If that catch
-     * were removed, this test would fail with the exception escaping render(),
-     * not merely with a wrong assertion.
+     * includeHook() has no try/catch, so an escaped exception kills the whole
+     * admin user-view page.
      */
     public function testDatabaseFailureRendersTheDegradedAlertInsteadOfThrowing(): void
     {
@@ -322,11 +209,7 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * The degraded state must be unambiguous: an empty $verificationState in
-     * this state means "unknown", never "no delivery problems" and never "no
-     * cars registered". Reporting a clean bill of health from a failed query is
-     * the specific wrong answer this branch exists to prevent — an admin would
-     * read it as "this owner's email is fine" when nothing was actually checked.
+     * A failed query must read as "unknown", never as a clean bill of health.
      */
     public function testDatabaseFailureSuppressesTheSummaryAlertsAndPerCarTable(): void
     {
@@ -349,11 +232,7 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * The SECOND repository call has its own failure mode: the per-car state
-     * query can succeed and the aggregate delivery-event query still fail. Both
-     * sit inside the same try block, so the panel must degrade identically —
-     * partial data here would pair real car rows with silently missing event
-     * history, which reads as "no events recorded" rather than "not loaded".
+     * Partial data would show "no events recorded" instead of "not loaded".
      */
     public function testEmailEventQueryFailureAlsoRendersTheDegradedAlert(): void
     {
@@ -369,15 +248,8 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * A raw \PDOException must degrade exactly like a CarDatabaseException.
-     *
-     * This is not a redundant case. CarRepository only converts a FAILED
-     * STATEMENT into CarDatabaseException by checking `$db->error()` after the
-     * fact; \DB::query() prepares OUTSIDE its own try/catch, so a failing
-     * prepare (a dropped connection, a renamed column) throws \PDOException
-     * straight through the repository and never becomes a typed exception at
-     * all. The catch lists both types for this reason, and dropping the
-     * \PDOException arm would reopen the whole-page fatal.
+     * \DB::query() prepares outside its own try/catch, so a failed prepare
+     * throws \PDOException straight through CarRepository.
      */
     public function testRawPdoExceptionAlsoRendersTheDegradedAlert(): void
     {
@@ -389,9 +261,7 @@ final class UserFormHookVerificationCardTest extends TestCase
     }
 
     /**
-     * The failure must be recorded under the database category, naming the
-     * owner — the alert deliberately tells the admin only to "see the admin
-     * logs for details", so the log line is the whole diagnostic.
+     * The alert says "see the admin logs", so the log line is the only diagnostic.
      */
     public function testDatabaseFailureIsLoggedAsADatabaseErrorNamingTheOwner(): void
     {
@@ -411,15 +281,6 @@ final class UserFormHookVerificationCardTest extends TestCase
         $this->assertStringContainsString('user_id=' . self::OWNER_ID, $entries[0]['message']);
     }
 
-    /**
-     * The rest of the page must survive the degraded panel.
-     *
-     * The card is rendered AFTER the profile table and car-button list, both of
-     * which come from the `global $db` queries at the top of the hook and are
-     * untouched by the repository failure. The alert's own copy promises "the
-     * rest of this page is unaffected" — this asserts that promise holds rather
-     * than taking the sentence's word for it.
-     */
     public function testDatabaseFailureLeavesTheProfileAndCarButtonsIntact(): void
     {
         $this->useDb(new VerificationCardTestDb(
@@ -434,18 +295,8 @@ final class UserFormHookVerificationCardTest extends TestCase
         $this->assertStringContainsString('Verification and email status could not be loaded', $html);
     }
 
-    // =========================================================================
-    // Helpers
-    // =========================================================================
-
     /**
-     * Narrows the rendered HTML to the "Verification & Email" card.
-     *
-     * The card is the last element the hook emits, so everything from its
-     * heading onward is the card. Needed because a couple of strings the card's
-     * degraded state must NOT contain ("No cars registered") are also emitted
-     * legitimately by the profile table ABOVE the card, and a whole-document
-     * assertion could not tell the two apart.
+     * The profile table above the card also emits "No cars registered".
      */
     private function cardHtml(string $html): string
     {
@@ -455,19 +306,14 @@ final class UserFormHookVerificationCardTest extends TestCase
         return substr($html, $offset);
     }
 
-    /** A timestamp comfortably inside the one-year freshness window. */
     private static function recentTimestamp(): string
     {
         return (new DateTimeImmutable('-1 day'))->format('Y-m-d H:i:s');
     }
 
     /**
-     * Builds one row in the shape findVerificationStateByOwner() returns.
-     *
-     * Numeric columns are strings on purpose: that method's own docblock
-     * documents that PDO returns `int|string` depending on driver typing, and
-     * the hook is written to cast at the call site. Modelling them as native
-     * ints here would quietly stop testing those casts.
+     * Numeric columns are strings because PDO can return them as strings and
+     * the hook casts them.
      */
     private static function car(
         int $id,
@@ -494,16 +340,8 @@ final class UserFormHookVerificationCardTest extends TestCase
 }
 
 /**
- * Scriptable DatabaseInterface for driving user_form_hook.php.
- *
- * Dispatches on SQL text, answering the four distinct queries the hook's render
- * path issues: the profile SELECT and car-button SELECT it makes directly
- * through `global $db`, and the two CarRepository queries behind the card. Each
- * constructor flag selects one failure mode so a single test pins one branch.
- *
- * Named distinctly from SyncOwnerEmailOnVerifyHookTest.php's HookTestDb: with
- * processIsolation="false" both test files share one PHP process, and a
- * duplicate class name would fatal.
+ * Dispatches on SQL text. Named apart from SyncOwnerEmailOnVerifyHookTest's
+ * HookTestDb because both files share one PHP process.
  */
 final class VerificationCardTestDb implements DatabaseInterface
 {
@@ -512,30 +350,12 @@ final class VerificationCardTestDb implements DatabaseInterface
     private int $count = 0;
     private bool $error = false;
 
-    /**
-     * Unused by any assertion; exists solely to give the accessors below a
-     * side effect, satisfying DatabaseInterface's `@phpstan-impure` contract on
-     * each of them. Same device, for the same reason, as HookTestDb::$calls in
-     * tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php.
-     */
+    /** Gives the accessors a side effect for DatabaseInterface's `@phpstan-impure`. */
     private int $calls = 0;
 
     /**
-     * @param array<int, object> $cars Rows findVerificationStateByOwner() returns,
-     *        and (by id) the rows the car-button SELECT returns.
-     * @param array<int, object> $events Rows the aggregate delivery-event query
-     *        returns; each needs car_id, event, occurred_at and reason.
-     * @param bool $failVerificationStateQuery When true the per-car state SELECT
-     *        reports a DB error, so findVerificationStateByOwner() throws
-     *        CarDatabaseException.
-     * @param bool $failEmailEventQuery When true the aggregate delivery-event
-     *        SELECT reports a DB error, so findLatestEmailEventsByCarIds()
-     *        throws CarDatabaseException — the second, independently reachable
-     *        failure inside the hook's single try block.
-     * @param bool $throwPdoExceptionOnVerificationStateQuery When true the
-     *        per-car state SELECT throws a raw \PDOException instead of
-     *        reporting error(), modelling \DB::query()'s unguarded prepare()
-     *        (see the hook's file-header comment on why both types are caught).
+     * @param array<int, object> $cars Verification-state rows; their ids feed the car-button query
+     * @param array<int, object> $events Delivery-event rows
      */
     public function __construct(
         private array $cars = [],
@@ -550,7 +370,6 @@ final class VerificationCardTestDb implements DatabaseInterface
     {
         $this->error = false;
 
-        // The hook's own profile lookup, via `global $db`.
         if (str_contains($sql, 'FROM profiles WHERE user_id')) {
             return $this->respond([(object) [
                 'user_id' => $params[0] ?? 0,
@@ -562,8 +381,6 @@ final class VerificationCardTestDb implements DatabaseInterface
             ]]);
         }
 
-        // The hook's own car-button lookup, via `global $db`. Only the id is
-        // read by that loop.
         if (str_contains($sql, 'FROM cars c WHERE c.user_id')) {
             return $this->respond(array_map(
                 static fn(object $car): object => (object) ['id' => $car->id],
@@ -571,7 +388,6 @@ final class VerificationCardTestDb implements DatabaseInterface
             ));
         }
 
-        // CarRepository::findVerificationStateByOwner().
         if (str_contains($sql, 'email_suppressed, owner_last_updated, last_verified')) {
             if ($this->throwPdoExceptionOnVerificationStateQuery) {
                 throw new \PDOException('simulated: SQLSTATE[HY000] server has gone away during prepare()');
@@ -583,7 +399,6 @@ final class VerificationCardTestDb implements DatabaseInterface
             return $this->respond($this->cars);
         }
 
-        // CarRepository::findLatestEmailEventsByCarIds().
         if (str_contains($sql, 'FROM er_email_events')) {
             if ($this->failEmailEventQuery) {
                 return $this->fail();
@@ -685,12 +500,8 @@ final class VerificationCardTestDb implements DatabaseInterface
     }
 }
 
-// The seam the hook's `new CarRepository(dbi())` resolves through. Guarded
-// because tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php defines the
-// same seam for the sibling hook and, with processIsolation="false", whichever
-// test file PHPUnit loads first wins. Both implementations read
-// $GLOBALS['hookTestDb'], so either one returns this file's double — which is
-// why setUp() assigns there rather than to a private property.
+// SyncOwnerEmailOnVerifyHookTest defines the same seam and whichever file loads
+// first wins. Both read $GLOBALS['hookTestDb'].
 if (!function_exists('dbi')) {
     function dbi(): DatabaseInterface
     {

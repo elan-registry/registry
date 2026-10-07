@@ -10,37 +10,12 @@ use ElanRegistry\Owner;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for #1961's Execute step in
- * `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php`.
+ * #1961: the Execute step of 26-Reconcile-Owner-Fields.php. The page is
+ * securePage()-gated, so the test reproduces its owner loop and totals.
+ * Mid-sync ownership changes are covered in OwnerSyncOwnerFieldsToCarsTest.
  *
- * This suite does not exercise the full securePage()-gated AJAX/HTTP page —
- * there is no precedent anywhere in tests/integration/ for driving a full
- * app/admin/scripts/ page file directly (see
- * CleanupRateLimitsFixScriptRunTest's docblock for the same reasoning applied
- * to script #25). Instead it reproduces the Execute step's exact call
- * sequence directly:
- *
- *   $ownerIds = findOwnerIdsWithDrift(dbi());
- *   foreach ($ownerIds as $ownerId) {
- *       $result = (new Owner($ownerId, dbi()))->syncOwnerFieldsToCars();
- *       // accumulate updatedCount()/skippedCount()/failedCount()
- *   }
- *
- * It proves only that this job's owner-ID-discovery + loop + aggregation
- * wiring is correct. It deliberately does NOT re-prove
- * Owner::syncOwnerFieldsToCars()'s own ownership-changed-mid-sync behavior —
- * that guard is covered in OwnerSyncOwnerFieldsToCarsTest.
- *
- * The drift-detection functions this suite calls (findOwnerIdsWithDrift() in
- * particular) are loaded via
- * {@see IntegrationTestCase::loadOwnerFieldDriftFunctions()}, shared with
- * ReconcileOwnerFieldsAnalyzeTest, which needs the same functions.
- *
- * `cars_hist` assertions are scoped to `operation = 'OWNER_SYNC'` throughout,
- * reusing the same countOwnerSyncHistoryRows() pattern as
- * OwnerSyncOwnerFieldsToCarsTest — the `cars_update` trigger separately writes
- * its own `operation='UPDATE'` row on every matched UPDATE, including no-ops,
- * so an unfiltered count would be wrong.
+ * Count cars_hist by operation='OWNER_SYNC': the cars_update trigger also
+ * writes an 'UPDATE' row on every matched UPDATE, including no-ops.
  *
  * @see app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php
  * @see usersc/classes/Owner.php Owner::syncOwnerFieldsToCars()
@@ -75,10 +50,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    /**
-     * Create a profile row for a test user with optional overrides.
-     * Tracked for cleanup in tearDown(). Mirrors OwnerSyncOwnerFieldsToCarsTest.
-     */
+    /** Tracked for cleanup in tearDown(). */
     private function createTestProfile(int $userId, array $overrides = []): void
     {
         $defaults = [
@@ -101,12 +73,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $this->createdProfileIds[] = (int) $row->id;
     }
 
-    /**
-     * Count cars_hist rows for a car scoped to operation='OWNER_SYNC' — never
-     * all cars_hist rows, since the cars_update trigger writes its own
-     * operation='UPDATE' row for every matched UPDATE, including no-ops.
-     * Same pattern as OwnerSyncOwnerFieldsToCarsTest::countOwnerSyncHistoryRows().
-     */
+    /** The trigger also writes operation='UPDATE' rows, so scope to OWNER_SYNC. */
     private function countOwnerSyncHistoryRows(int $carId): int
     {
         $result = $this->db->query(
@@ -120,14 +87,8 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
     }
 
     /**
-     * Reproduces the Execute step's owner loop and totals accumulation exactly
-     * as the script does it.
-     *
-     * Tracks all five totals the real script tracks — updated, skipped,
-     * failed, ownersScanned and ownerErrors — and narrows its catch to the two
-     * infrastructure exception types the script absorbs, so anything else
-     * (a genuine programming error) fails the test rather than being counted
-     * as an owner error.
+     * The script's owner loop and totals. Catches only the two infrastructure
+     * exception types the script absorbs, so a programming error fails the test.
      *
      * @param list<int> $ownerIds
      * @return array{updated:int, skipped:int, failed:int, ownersScanned:int, ownerErrors:int, perOwner: array<int, \ElanRegistry\OwnerSyncResult|null>}
@@ -150,15 +111,11 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
                 $totalFailed += $result->failedCount();
                 $perOwner[$ownerId] = $result;
             } catch (OwnerDatabaseException | CarDatabaseException $e) {
-                // Per-owner catch, matching the script: a single owner's infra
-                // failure must not abort a run covering many owners. Anything
-                // outside these two types is a programming error and propagates,
-                // exactly as the script lets it propagate.
+                // One owner's infrastructure failure must not abort the run.
                 $ownerErrors++;
                 $perOwner[$ownerId] = null;
 
-                // Same defensive rollback the script performs, so a failure
-                // thrown mid-transaction cannot cascade into every later owner.
+                // Same rollback as the script, so a mid-transaction failure does not cascade.
                 if ($this->db->inTransaction()) {
                     $this->db->rollBack();
                 }
@@ -176,10 +133,8 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
     }
 
     /**
-     * The Execute loop with its website-conflict guard in place, mirroring the
-     * script: the conflicted-owner set is resolved once up front (never
-     * per-iteration), and a matching owner is skipped entirely — no
-     * syncOwnerFieldsToCars() call at all — rather than partially synced.
+     * The loop with the website-conflict guard: the conflict set is resolved
+     * once, and a conflicted owner is skipped entirely.
      *
      * @param list<int> $ownerIds
      * @return array{updated:int, skipped:int, failed:int, ownersScanned:int, ownerErrors:int, ownersSkippedForConflict:int, perOwner: array<int, \ElanRegistry\OwnerSyncResult|null>}
@@ -202,8 +157,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         }
 
         $totals = $this->runExecuteLoop($toSync);
-        // ownersScanned counts every owner the run considered, skips included,
-        // exactly as the script increments it before the conflict check.
+        // Counts skipped owners too, as the script does.
         $totals['ownersScanned'] = count($ownerIds);
         $totals['ownersSkippedForConflict'] = $ownersSkippedForConflict;
 
@@ -211,21 +165,11 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
     }
 
     /**
-     * A website conflict on ONE of an owner's cars holds back ALL of that
-     * owner's cars — and only that owner's.
-     *
-     * Owner::syncOwnerFieldsToCars() writes all nine fields to every car the
-     * owner holds, in one shared method that the profile-save and
-     * sync-location callers also use, with no per-car or per-field opt-out.
-     * Skipping the whole owner is therefore the only way this job can decline
-     * to overwrite one column. The cost — the owner's other, genuinely stale
-     * fields stay stale until an admin resolves the conflict — is what the
-     * second car in this fixture pins down.
+     * A website conflict on one car holds back all of that owner's cars, and
+     * only that owner. syncOwnerFieldsToCars() has no per-field opt-out.
      */
     public function testWebsiteConflictSkipsTheWholeOwnerButNotOtherOwners(): void
     {
-        // Owner A: two cars. One has its own website that differs from the
-        // profile's (the conflict); the other has only a stale email.
         $conflictOwnerId = $this->createTestUser([
             'fname' => 'Conflict',
             'lname' => 'Owner',
@@ -243,13 +187,11 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         ]);
         $siblingCarId = $this->createTestCar($conflictOwnerId, [
             'email'   => 'stale-sibling@example.com',
-            // Matches the profile, so this car has no conflict of its own —
-            // it is held back purely because its owner has one elsewhere.
+            // No conflict of its own; held back because its owner has one.
             'website' => 'www.lotus-elan.net',
         ]);
 
-        // Owner B: ordinary drift, no conflict. Must still be repaired in the
-        // same run — a conflict is per-owner, not a global stop.
+        // A conflict is per owner, not a global stop.
         $cleanOwnerId = $this->createTestUser([
             'fname' => 'Clean',
             'lname' => 'Owner',
@@ -313,17 +255,9 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
     }
 
     /**
-     * A single owner's infrastructure failure must not abort the run: the
-     * owners after it in the work list still get repaired.
-     *
-     * The failure is forced realistically rather than by mocking — the middle
-     * owner's `users` row is deleted between building the work list and running
-     * the loop, the same race a real run hits if an account is deleted while
-     * the job is in flight. `new Owner($id)` then loads no data and
-     * syncOwnerFieldsToCars() throws OwnerDatabaseException for that owner only.
-     *
-     * The failing owner is deliberately in the MIDDLE of the list: a test with
-     * the thrower last would pass even if the loop aborted on failure.
+     * One owner's failure must not abort the run. The middle owner's user row
+     * is deleted (the real race), and the thrower is in the middle because a
+     * last-position thrower would pass even if the loop aborted.
      */
     public function testOneOwnersFailureDoesNotStopLaterOwnersFromBeingRepaired(): void
     {
@@ -358,15 +292,8 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $this->assertContains($throwerOwnerId, $ownerIds);
         $this->assertContains($lastOwnerId, $ownerIds);
 
-        // Scope the run to this test's own three owners, in an order that puts
-        // the thrower between the two that must both be repaired.
         $ownerIdsToRun = [$firstOwnerId, $throwerOwnerId, $lastOwnerId];
 
-        // Force the middle owner's sync to fail: with the user row gone,
-        // Owner::__construct() loads no data and syncOwnerFieldsToCars()
-        // throws OwnerDatabaseException ("called on an Owner that failed to
-        // load"). The car row is left behind deliberately — that is what the
-        // real race leaves behind too.
         $this->db->query('DELETE FROM users WHERE id = ?', [$throwerOwnerId]);
 
         $totals = $this->runExecuteLoop($ownerIdsToRun);
@@ -387,7 +314,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         );
         $this->assertSame('Portland', $lastCar->city);
 
-        // The broken owner's car is untouched: there was no owner data to sync.
         $throwerCar = $this->db->query('SELECT email FROM cars WHERE id = ?', [$throwerCarId])->first();
         $this->assertSame('stale-thrower@example.com', $throwerCar->email, 'The broken owner\'s car must be left alone');
 
@@ -396,12 +322,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $this->assertSame(0, $totals['skipped']);
     }
 
-    /**
-     * Two owners with drifted cars: both are discovered by
-     * findOwnerIdsWithDrift(), every drifted car is repaired to match its
-     * owner's current data, and the aggregated totals equal the sum of each
-     * owner's individual OwnerSyncResult counts.
-     */
+    /** Totals equal the sum of each owner's OwnerSyncResult counts. */
     public function testTwoOwnersAggregatedCorrectly(): void
     {
         $owner1Id = $this->createTestUser([
@@ -414,12 +335,10 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
             'state'   => 'Oregon',
             'country' => 'United States',
         ]);
-        // Drifted: stale email/city on cars table.
         $owner1Car1 = $this->createTestCar($owner1Id, [
             'email' => 'stale-alice@example.com',
             'city'  => 'StaleCity',
         ]);
-        // Also drifted (different field) so this owner has 2 drifted cars.
         $owner1Car2 = $this->createTestCar($owner1Id, [
             'fname' => 'StaleFirstName',
         ]);
@@ -438,7 +357,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
             'city' => 'OldSalem',
         ]);
 
-        // A third, non-drifted owner/car must not appear in the work list.
         $owner3Id = $this->createTestUser([
             'fname' => 'Carl',
             'lname' => 'Carter',
@@ -456,9 +374,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
             'city'    => 'Eugene',
             'state'   => 'Oregon',
             'country' => 'United States',
-            // createTestCar() leaves an omitted `website` as SQL NULL, while
-            // createTestProfile()'s default is '' — set explicitly so this
-            // "not drifted" fixture is actually not drifted.
+            // createTestCar() leaves website NULL but the profile default is ''.
             'website' => '',
         ]);
 
@@ -468,12 +384,10 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $this->assertContains($owner2Id, $ownerIds, 'Owner 2 (drifted) must be in the work list');
         $this->assertNotContains($owner3Id, $ownerIds, 'Owner 3 (not drifted) must not be in the work list');
 
-        // Only run the loop over the two owners this test seeded, in case the
-        // shared test DB has other drifted owners left by unrelated fixtures.
+        // Only this test's owners: the shared DB can hold other drifted owners.
         $ownerIdsToRun = array_values(array_intersect($ownerIds, [$owner1Id, $owner2Id]));
         $totals = $this->runExecuteLoop($ownerIdsToRun);
 
-        // Cars now match owner's current data.
         $car1 = $this->db->query('SELECT email, city FROM cars WHERE id = ?', [$owner1Car1])->first();
         $this->assertSame('alice@example.com', $car1->email);
         $this->assertSame('Portland', $car1->city);
@@ -484,7 +398,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $car3 = $this->db->query('SELECT city FROM cars WHERE id = ?', [$owner2Car1])->first();
         $this->assertSame('Salem', $car3->city);
 
-        // Aggregated totals equal the sum of each owner's individual result.
         $sumUpdated = 0;
         $sumSkipped = 0;
         $sumFailed = 0;
@@ -499,21 +412,12 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $this->assertSame($sumSkipped, $totals['skipped']);
         $this->assertSame($sumFailed, $totals['failed']);
 
-        // Concretely: 3 drifted cars across the two owners, all updated, none
-        // skipped or failed (no mid-sync ownership changes in this scenario).
         $this->assertSame(3, $totals['updated']);
         $this->assertSame(0, $totals['skipped']);
         $this->assertSame(0, $totals['failed']);
     }
 
-    /**
-     * Exactly one cars_hist row with operation='OWNER_SYNC' per car that was
-     * ACTUALLY changed by the sync. A car that already matched its owner
-     * before the run gets zero new OWNER_SYNC rows (syncOwnerFieldsToCars()'s
-     * own no-op branch, per Owner.php:730-745 — a matched-but-unchanged UPDATE
-     * reports success but writes no OWNER_SYNC row). operation='UPDATE'
-     * trigger rows are deliberately not counted here.
-     */
+    /** One OWNER_SYNC row per changed car; an unchanged car gets none. */
     public function testExactlyOneOwnerSyncRowPerActuallyChangedCar(): void
     {
         $ownerId = $this->createTestUser([
@@ -527,13 +431,10 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
             'country' => 'United States',
         ]);
 
-        // Drifted car: will actually change.
         $driftedCarId = $this->createTestCar($ownerId, [
             'email' => 'stale@example.com',
         ]);
 
-        // Already-matching car: nine synced fields identical to the owner's
-        // current data, so the sync's UPDATE is a no-op for it.
         $owner = new Owner($ownerId, $this->db);
         $data = $owner->data();
         $this->assertNotNull($data);
@@ -569,11 +470,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * owner_last_updated is never touched by the reconciliation run — the
-     * single most important invariant per the #1961 plan. Captured
-     * byte-for-byte before and after on a drifted car.
-     */
+    /** #1961: the run never touches owner_last_updated. */
     public function testOwnerLastUpdatedNeverTouched(): void
     {
         $ownerId = $this->createTestUser([
@@ -610,12 +507,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * A repeat run is idempotent: after the first run leaves everything
-     * synced, findOwnerIdsWithDrift() returns no remaining drift, and
-     * defensively re-running the sync loop anyway adds zero new OWNER_SYNC
-     * rows and reports every result as a no-new-history-rows outcome.
-     */
+    /** A repeat run finds no drift and writes no new OWNER_SYNC rows. */
     public function testRepeatRunIsIdempotent(): void
     {
         $ownerId = $this->createTestUser([
@@ -633,7 +525,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
             'city'  => 'OldCorvallis',
         ]);
 
-        // First run: real drift exists and gets repaired.
         $firstRunOwnerIds = findOwnerIdsWithDrift($this->db);
         $this->assertContains($ownerId, $firstRunOwnerIds);
 
@@ -645,7 +536,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $this->assertSame('idempotent-owner@example.com', $car->email);
         $this->assertSame('Corvallis', $car->city);
 
-        // Second discovery pass: no remaining drift for this owner.
         $secondRunOwnerIds = findOwnerIdsWithDrift($this->db);
         $this->assertNotContains(
             $ownerId,
@@ -653,10 +543,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
             'After the first run leaves everything synced, this owner must not reappear in the drift work list'
         );
 
-        // Defensive: re-run the sync loop anyway (as an operator might, or as
-        // the script would if invoked twice back-to-back) and confirm it is a
-        // true no-op — zero new OWNER_SYNC rows, all-updated-with-zero-new-history
-        // outcome.
         $historyCountBeforeSecondRun = $this->countOwnerSyncHistoryRows($carId);
 
         $secondTotals = $this->runExecuteLoop([$ownerId]);
@@ -676,16 +562,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * The consecutive-owner-failure circuit breaker
-     * (RECONCILE_MAX_CONSECUTIVE_OWNER_ERRORS) fires at exactly the
-     * configured threshold, not one before or one after — this pure
-     * threshold comparison was previously untested (flagged in #1992's
-     * review), since it lived only as an inline `>=` comparison in the
-     * execute handler with no extracted, callable form.
-     *
-     * No database interaction needed: this is a pure function of an int.
-     */
+    /** The circuit breaker fires at exactly the threshold (#1992). */
     public function testConsecutiveErrorCircuitBreakerFiresAtExactThreshold(): void
     {
         for ($i = 0; $i < RECONCILE_MAX_CONSECUTIVE_OWNER_ERRORS - 1; $i++) {
@@ -709,21 +586,12 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * An intervening success resets the consecutive-failure count back to
-     * zero — this is the counter-management half the pure threshold
-     * function above cannot cover on its own, since resetting is a loop
-     * responsibility, not the threshold check's. Reproduces the execute
-     * handler's exact counter discipline: increment-and-check on failure,
-     * reset to zero on success, so 4 failures + 1 success + 4 more failures
-     * (8 total, never 5 in an unbroken row) must NOT trip the breaker.
-     */
+    /** A success resets the consecutive-failure count, so 4 + success + 4 must not trip. */
     public function testConsecutiveErrorCountResetsOnAnInterveningSuccess(): void
     {
         $consecutiveErrors = 0;
         $tripped = false;
 
-        // Simulate: fail, fail, fail, fail, SUCCEED (resets), fail, fail, fail, fail.
         $outcomes = [false, false, false, false, true, false, false, false, false];
 
         foreach ($outcomes as $succeeded) {

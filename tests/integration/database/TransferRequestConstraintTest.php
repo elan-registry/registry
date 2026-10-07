@@ -7,17 +7,10 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Schema constraint tests for car_transfer_requests.
+ * Schema constraints on car_transfer_requests (#693).
  *
- *   1. expires_at allows NULL (column re-typed to NULL DEFAULT NULL in #693)
- *
- * A second test asserting `existing_car_id → cars.id ON DELETE CASCADE` was
- * removed in #1679: that FK does not exist. The baseline migration documents
- * its absence deliberately (20260709000000_add_elanregistry_baseline.php, the
- * REVIEW note above the `cars` DDL) because dev lacks the constraint too, and
- * the migration reproduces dev's real schema. Deleting a car therefore leaves
- * its transfer-request rows orphaned — a real gap, tracked as #1547. Restore
- * that test only as part of adding the FK, never on its own.
+ * There is no existing_car_id → cars.id FK (#1547). Add a cascade test only
+ * together with that FK.
  */
 #[Group('integration')]
 final class TransferRequestConstraintTest extends IntegrationTestCase
@@ -34,10 +27,7 @@ final class TransferRequestConstraintTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        // Delete every transfer request this test created. There is no FK from
-        // existing_car_id to cars.id (#1547), so nothing is removed for us when
-        // the base class tearDown deletes the cars — these rows would otherwise
-        // be left orphaned in the test database.
+        // No FK cascade (#1547), so these rows would be orphaned.
         foreach ($this->createdTransferIds as $id) {
             try {
                 $this->db->query("DELETE FROM car_transfer_requests WHERE id = ?", [$id]);
@@ -50,14 +40,7 @@ final class TransferRequestConstraintTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    // =========================================================================
-    // Helpers
-    // =========================================================================
-
     /**
-     * Insert a minimal car_transfer_requests row for a given car and user.
-     * Mirrors the pattern in TransferIntegrationTestCase::createTransferRequest().
-     *
      * @param int   $carId      The existing_car_id value
      * @param int   $userId     Used for both requested_by_user_id and created_by
      * @param array $overrides  Column overrides (e.g. ['expires_at' => null])
@@ -131,20 +114,6 @@ final class TransferRequestConstraintTest extends IntegrationTestCase
         return $id;
     }
 
-    // =========================================================================
-    // Tests
-    // =========================================================================
-
-    /**
-     * car_transfer_requests.expires_at accepts NULL.
-     *
-     * Before the migration the column was NOT NULL DEFAULT '0000-00-00 00:00:00'.
-     * After: NULL DEFAULT NULL.
-     *
-     * Arrange: create a test car and user.
-     * Act:     insert a transfer request with expires_at explicitly NULL.
-     * Assert:  no exception is thrown and the row exists with a NULL expires_at.
-     */
     public function test_transferRequest_expiresAtAcceptsNull(): void
     {
         $userId = $this->createTestUser();

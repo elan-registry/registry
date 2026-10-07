@@ -1,4 +1,3 @@
-// tests/playwright/fixtures.spec.js
 // Pure-logic coverage for fixtures.js's CAR_ID_STANDARD env-var/fallback
 // coercion (#1788) — no page/browser needed, so this runs fast even inside
 // the full Playwright suite. Guards the numeric-coercion contract every

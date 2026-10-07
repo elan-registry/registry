@@ -6,23 +6,15 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Test user_manager_columns.php for stored XSS (#1499)
- *
- * Verifies that the admin User Manager column renderer escapes
- * user-controlled values (email, username, permission names) before
- * returning them for display.
+ * Issue #1499: stored XSS through the admin User Manager column renderer.
  */
 #[Group('security')]
 #[Group('user-manager-columns')]
 class UserManagerColumnsXssTest extends TestCase
 {
     /**
-     * Load user_manager_columns.php and return the
-     * $user_manager_column_data closure it defines.
+     * The parameters become variables that the closure captures from this scope.
      *
-     * @param int $uCount Value for $uCount in the closure's captured scope
-     * @param int $maxUsers Value for $maxUsers in the closure's captured scope
-     * @param int $act Value for $act in the closure's captured scope
      * @return callable(object, string): (string|null)
      */
     private function loadColumnDataClosure(int $uCount = 0, int $maxUsers = 100, int $act = 0): callable
@@ -114,8 +106,7 @@ class UserManagerColumnsXssTest extends TestCase
     {
         $columnData = $this->loadColumnDataClosure();
 
-        // A custom numeric column (e.g. "phone") added per the file's own
-        // CUSTOMIZATION EXAMPLES docblock would reach this branch with a non-string value.
+        // A custom column added per the file's CUSTOMIZATION EXAMPLES can be non-string.
         $user = (object) ['phone' => 5551234];
         $result = $columnData($user, 'phone');
 

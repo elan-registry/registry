@@ -5,174 +5,58 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 /**
- * Test to ensure no serialized data remains in form fields
- * 
- * This test validates that the PHP object injection vulnerability
- * has been eliminated by removing all serialize/unserialize usage.
+ * The contact-owner form and endpoint replaced serialized data with
+ * individual fields. PHPStan's NoSerializeCallRule bans serialize() and
+ * unserialize(). RouteLookupRawSqlRule keeps the user lookup in Owner.
  */
 class SerializedDataRemovalTest extends TestCase
 {
     private string $projectRoot;
-    
+
     protected function setUp(): void
     {
-        $this->projectRoot = dirname(dirname(dirname(__DIR__)));
+        $this->projectRoot = dirname(__DIR__, 3);
     }
 
-    /**
-     * Test that no serialize() function calls exist in PHP files
-     */
-    public function testNoSerializeFunctionCalls(): void
-    {
-        $phpFiles = $this->getPHPFiles();
-        $violationFiles = [];
-        
-        foreach ($phpFiles as $file) {
-            $content = file_get_contents($file);
-            // Check for serialize() but exclude jQuery's .serialize() method
-            if (preg_match('/\bserialize\s*\(/', $content) && !preg_match('/\.\s*serialize\s*\(/', $content)) {
-                $violationFiles[] = $file;
-            }
-        }
-        
-        $this->assertEmpty(
-            $violationFiles,
-            'Found serialize() function calls in: ' . implode(', ', $violationFiles)
-        );
-    }
-    
-    /**
-     * Test that no unserialize() function calls exist in PHP files
-     */
-    public function testNoUnserializeFunctionCalls(): void
-    {
-        $phpFiles = $this->getPHPFiles();
-        $violationFiles = [];
-        
-        foreach ($phpFiles as $file) {
-            $content = file_get_contents($file);
-            if (preg_match('/\bunserialize\s*\(/', $content)) {
-                $violationFiles[] = $file;
-            }
-        }
-        
-        $this->assertEmpty(
-            $violationFiles,
-            'Found unserialize() function calls in: ' . implode(', ', $violationFiles)
-        );
-    }
-    
-    /**
-     * Test that contact_owner.php uses secure individual fields instead of serialized data.
-     * The sender (from_user_id) is now derived from the session server-side and must NOT
-     * appear as a client-controlled hidden field (#971).
-     */
+    /** #971: the sender comes from the session, so from_user_id is not a form field. */
     public function testContactOwnerUsesSecureFields(): void
     {
-        $contactOwnerFile = $this->projectRoot . '/app/owner/contact/owner.php';
-        $this->assertFileExists($contactOwnerFile);
+        $content = $this->read('app/owner/contact/owner.php');
 
-        $content = file_get_contents($contactOwnerFile);
-
-        // Recipient field must still be present (server cannot know the target without it)
-        $this->assertStringContainsString('to_user_id', $content, 'contact_owner.php should pass to_user_id field');
-
-        // from_user_id must NOT appear as a form field — sender is session-derived (#971)
-        $this->assertDoesNotMatchRegularExpression(
-            '/name=[\'"]from_user_id[\'"]/',
-            $content,
-            'contact_owner.php must not expose from_user_id as a tamperable form field'
-        );
-
-        // Should not contain any serialize calls
-        $this->assertStringNotContainsString('serialize(', $content, 'contact_owner.php should not contain serialize() calls');
+        $this->assertStringContainsString('to_user_id', $content);
+        $this->assertDoesNotMatchRegularExpression('/name=[\'"]from_user_id[\'"]/', $content);
     }
-    
-    /**
-     * Test that send-owner-email.php uses secure database lookups
-     */
-    public function testContactOwnerEmailUsesSecureLookups(): void
+
+    /** #971: the endpoint never reads the sender from POST. */
+    public function testContactOwnerEmailDerivesSenderFromSession(): void
     {
-        $contactEmailFile = $this->projectRoot . '/app/api/contact/send-owner-email.php';
-        $this->assertFileExists($contactEmailFile);
-        
-        $content = file_get_contents($contactEmailFile);
-        
-        // User lookups must go through the Owner domain class, whose find() method
-        // runs its own LEFT JOIN users/profiles query with parameterized binding.
-        // Guards against a regression to raw SQL — the original unserialize()-removal
-        // fix required parameterized lookups; routing through Owner preserves that. (Issue #962)
-        $this->assertStringContainsString('new Owner(', $content,
-            'send-owner-email.php should look up users via the Owner domain class');
-        $this->assertStringNotContainsString('SELECT id, email, fname, lname FROM users', $content,
-            'send-owner-email.php should not query the users table directly (#962)');
+        $content = $this->read('app/api/contact/send-owner-email.php');
 
-        // Sender must be derived from session, not from POST (#971)
-        $this->assertStringNotContainsString("Input::get('from_user_id')", $content,
-            'send-owner-email.php must not accept from_user_id from POST (#971)');
-        $this->assertStringContainsString('$user->data()->id', $content,
-            'send-owner-email.php must derive sender identity from session');
-
-        // Should not contain unserialize calls
-        $this->assertStringNotContainsString('unserialize(', $content, 'send-owner-email.php should not contain unserialize() calls');
+        $this->assertStringNotContainsString("Input::get('from_user_id')", $content);
+        $this->assertStringContainsString('$user->data()->id', $content);
     }
-    
-    /**
-     * Test that HTML encoding is used for the to_user_id field.
-     * The from_user_id field was removed (#971) — sender is now session-derived, so
-     * there is no client-supplied from field to encode.
-     */
+
     public function testUserIdFieldsAreHTMLEncoded(): void
     {
-        $contactOwnerFile = $this->projectRoot . '/app/owner/contact/owner.php';
-        $content = file_get_contents($contactOwnerFile);
-
-        $this->assertStringContainsString('htmlspecialchars((string)$to[\'id\'], ENT_QUOTES, \'UTF-8\')', $content,
-            'to_user_id field should be HTML encoded');
+        $this->assertStringContainsString(
+            'htmlspecialchars((string)$to[\'id\'], ENT_QUOTES, \'UTF-8\')',
+            $this->read('app/owner/contact/owner.php')
+        );
     }
-    
-    /**
-     * Test that CSRF protection is maintained
-     */
+
     public function testCSRFProtectionMaintained(): void
     {
-        $contactOwnerFile = $this->projectRoot . '/app/owner/contact/owner.php';
-        $content = file_get_contents($contactOwnerFile);
+        $content = $this->read('app/owner/contact/owner.php');
 
-        // Should maintain CSRF token
-        $this->assertStringContainsString('Token::generate()', $content, 'CSRF token should be generated');
-        $this->assertStringContainsString('name=\'csrf\'', $content, 'CSRF field should be present');
+        $this->assertStringContainsString('Token::generate()', $content);
+        $this->assertStringContainsString('name=\'csrf\'', $content);
     }
-    
-    /**
-     * Get all PHP files in the project (excluding vendor and test directories)
-     * 
-     * @return array Array of PHP file paths
-     */
-    private function getPHPFiles(): array
+
+    private function read(string $relativePath): string
     {
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($this->projectRoot, RecursiveDirectoryIterator::SKIP_DOTS)
-        );
-        
-        $phpFiles = [];
-        foreach ($iterator as $file) {
-            if ($file->getExtension() === 'php') {
-                $filePath = $file->getPathname();
-                
-                // Skip vendor, tests, third-party libraries, and hidden directories
-                if (strpos($filePath, '/vendor/') !== false ||
-                    strpos($filePath, '/tests/') !== false ||
-                    strpos($filePath, '/users/classes/phpmailer/') !== false ||
-                    strpos($filePath, '/users/vendor/') !== false ||
-                    strpos($filePath, '/.') !== false) {
-                    continue;
-                }
-                
-                $phpFiles[] = $filePath;
-            }
-        }
-        
-        return $phpFiles;
+        $path = $this->projectRoot . '/' . $relativePath;
+        $this->assertFileExists($path);
+
+        return (string) file_get_contents($path);
     }
 }

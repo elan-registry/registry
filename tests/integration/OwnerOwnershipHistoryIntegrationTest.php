@@ -8,15 +8,8 @@ use ElanRegistry\Owner;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration test for Owner::getOwnershipHistory()'s happy path (#1618).
- *
- * OwnerReadMethodsDatabaseFailureTest.php already covers the DB-error branch
- * (throws OwnerDatabaseException, added in #1505 PR B) and the no-data-loaded
- * fast path, both via a fully stubbed DatabaseInterface — deliberately not
- * IntegrationTestCase, per that file's own docblock. The happy path needs a
- * real `cars_hist` table with joined `cars` data (Owner.php:395-402's
- * `LEFT JOIN cars`), so it belongs in its own IntegrationTestCase-based file
- * rather than being forced into that stub-only file.
+ * #1618: the happy path of Owner::getOwnershipHistory(). Failure paths are
+ * in OwnerReadMethodsDatabaseFailureTest.php.
  *
  * @see usersc/classes/Owner.php Owner::getOwnershipHistory()
  */
@@ -39,20 +32,14 @@ final class OwnerOwnershipHistoryIntegrationTest extends IntegrationTestCase
             try {
                 $this->db->query("DELETE FROM cars_hist WHERE id = ?", [$historyId]);
             } catch (\Throwable $e) {
-                // Ignore cleanup errors — matches AdminOwnerManagementTest's convention
+                // Ignore cleanup errors
             }
         }
         $this->createdHistoryIds = [];
         parent::tearDown();
     }
 
-    /**
-     * Insert a cars_hist row tied to a given car/user, mirroring the field
-     * shape Owner::syncOwnerFieldsToCars() itself builds (Owner.php) —
-     * `operation`, `car_id`, `model`, `series`, `variant`, `type`, `chassis`
-     * are NOT NULL with no default in the real schema (confirmed via
-     * DESCRIBE cars_hist), so all must be supplied explicitly.
-     */
+    /** cars_hist identity columns are NOT NULL with no default, so supply them all. */
     private function insertHistoryRow(int $carId, int $userId, array $overrides = []): void
     {
         $defaults = [
@@ -82,16 +69,8 @@ final class OwnerOwnershipHistoryIntegrationTest extends IntegrationTestCase
     public function testGetOwnershipHistoryReturnsMultipleRecordsOrderedByCtimeDesc(): void
     {
         $userId = $this->createTestUser();
-        // The car's own chassis/model/year deliberately differ from the
-        // cars_hist rows' values below (rather than matching, as an earlier
-        // version of this test did) — Owner::getOwnershipHistory()'s SELECT
-        // ch.*, c.chassis, c.model, c.year ... LEFT JOIN cars pulls these
-        // three columns from the *joined* cars row, and PDO's duplicate-
-        // column overwrite means c.chassis/c.model win over cars_hist's own
-        // chassis/model of the same name. If the values matched, a
-        // regression that accidentally read cars_hist's own columns instead
-        // of the joined ones would still pass — divergent values make each
-        // assertion below actually discriminate which table it read from.
+        // Car values differ from the cars_hist values so each assertion shows which
+        // table the joined columns came from.
         $carId = $this->createTestCar($userId, [
             'chassis' => 'CARROW01',
             'model'   => 'Elan Plus 2',
@@ -117,16 +96,9 @@ final class OwnerOwnershipHistoryIntegrationTest extends IntegrationTestCase
         $history = $owner->getOwnershipHistory();
 
         $this->assertCount(2, $history, 'Both cars_hist rows for this owner must be returned');
-        // Owner.php:400: ORDER BY ch.ctime DESC — most recent first.
         $this->assertSame('TRANSFER', $history[0]->operation);
         $this->assertSame('CREATE', $history[1]->operation);
 
-        // LEFT JOIN cars c ON ch.car_id = c.id (Owner.php:398) — joined fields
-        // present. All three joined columns (chassis, model, year) checked
-        // individually against the *car's* values (not the history row's own
-        // same-named columns, which deliberately differ above) so each
-        // assertion actually discriminates a broken join, not just checks a
-        // value that happens to be present on both tables.
         $this->assertSame('CARROW01', $history[0]->chassis, 'Joined cars.chassis must be present, not cars_hist.chassis');
         $this->assertSame('Elan Plus 2', $history[0]->model, 'Joined cars.model must be present, not cars_hist.model');
         $this->assertSame(1971, (int) $history[0]->year, 'Joined cars.year must be present');
@@ -135,7 +107,6 @@ final class OwnerOwnershipHistoryIntegrationTest extends IntegrationTestCase
     public function testGetOwnershipHistoryReturnsEmptyArrayWhenNoHistoryExists(): void
     {
         $userId = $this->createTestUser();
-        // No cars_hist rows inserted for this user.
 
         $owner = new Owner($userId);
         $this->assertNotNull($owner->data(), 'Owner must load successfully even with no history');

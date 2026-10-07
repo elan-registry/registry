@@ -6,39 +6,22 @@ use ElanRegistry\Car\CarImageProcessor;
 use ElanRegistry\Resize;
 
 /**
- * Shared filesystem fixture helpers for car-image integration tests.
+ * Filesystem fixture helpers for car-image integration tests. Helpers take the
+ * directory as a parameter because merge tests use two directories at once.
  *
- * Every helper takes the image directory as an explicit parameter rather than
- * reading a single `$this->imageDir` property: merge tests operate on two
- * directories at once (a source car's and a target car's), so a directory
- * closed over by the trait would not serve them.
- *
- * This is a trait rather than an intermediate base class because the consuming
- * test classes need different setUp() shapes (one car vs. two, authenticated
- * vs. not) while both already extend IntegrationTestCase.
- *
- * Consumers must call initThumbnailSizes() in setUp() before using any helper
- * that generates or inspects resized variants, and must create the directories
- * they pass in themselves.
+ * Consumers must call initThumbnailSizes() in setUp() and create the
+ * directories they pass in.
  */
 trait CarImageFixtureTrait
 {
     /**
-     * Thumbnail sizes generated per upload, read from the same
-     * ELAN_IMAGE_THUMBNAIL_SIZES constant app/api/cars/save.php's
-     * uploadImages() uses (#1067 — was a $settings->elan_image_thumbnail_sizes
-     * DB read prior to this), so a production config change can't silently
-     * drift out of sync with these tests.
+     * Same constant uploadImages() uses (#1067), so config changes cannot drift.
      *
      * @var list<int>
      */
     private array $thumbnailSizes;
 
-    /**
-     * Populate $thumbnailSizes from the ELAN_IMAGE_THUMBNAIL_SIZES constant.
-     *
-     * Call from setUp() before any helper below that touches resized variants.
-     */
+    /** Populate $thumbnailSizes from ELAN_IMAGE_THUMBNAIL_SIZES. */
     private function initThumbnailSizes(): void
     {
         $this->thumbnailSizes = array_map('intval', array_map('trim', explode(',', ELAN_IMAGE_THUMBNAIL_SIZES)));
@@ -128,10 +111,8 @@ trait CarImageFixtureTrait
     }
 
     /**
-     * Confirms each variant was actually resized to its target width, not just
-     * copied as a same-size file with a "-resized-" name. The source JPEG from
-     * makeTestJpeg() is landscape (40x30), so Resize's 'auto' mode holds width to
-     * the target size and derives height as round(size * 30 / 40).
+     * Each variant was resized, not copied. makeTestJpeg() is 40x30, so the
+     * height is round(size * 30 / 40).
      *
      * @param string $dir Absolute directory holding the variants, with a trailing slash
      */
@@ -150,11 +131,7 @@ trait CarImageFixtureTrait
         }
     }
 
-    /**
-     * Recursively delete a directory tree, reporting failures to STDERR rather
-     * than failing the test — used from tearDown(), where a cleanup failure
-     * must not mask the test's own result.
-     */
+    /** Report cleanup failures to STDERR so they do not mask the test result. */
     private function recursiveRemoveDirectory(string $dir): void
     {
         if (!is_dir($dir) || is_link($dir)) {

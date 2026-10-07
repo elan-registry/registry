@@ -7,11 +7,7 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration 20260817033112_register_turnstile_hooks
- *
- * Verifies the migration registers all 5 Cloudflare Turnstile hooker hooks
- * (issue #1679), replacing the manual `database/seed-turnstile-hooks.sql`
- * step it supersedes.
+ * Migration 20260817033112_register_turnstile_hooks registers the 5 Turnstile hooks (#1679).
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -42,9 +38,6 @@ final class RegisterTurnstileHooksMigrationTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * All 5 Turnstile hooks must exist with correct page/position/folder/disabled state.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_allTurnstileHooksRegistered(): void
@@ -73,8 +66,7 @@ final class RegisterTurnstileHooksMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Exactly 5 hooker rows should exist for these hooks — no duplicates from
-     * a non-idempotent re-run.
+     * No duplicates from a non-idempotent re-run.
      */
     #[Group('integration')]
     #[Group('migration')]

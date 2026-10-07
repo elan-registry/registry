@@ -1,5 +1,3 @@
-// tests/playwright/admin-fix-script-close-button.spec.js
-//
 // Regression test for issue #1777: admin_script_close_button() (shared by all
 // fix/maintenance scripts via app/admin/includes/fix-script-core.php) must
 // call window.close() unconditionally rather than gating on window.opener.
@@ -17,8 +15,6 @@
 // the $is_exec conditional in 25-Cleanup-Rate-Limits.php), so this test never
 // submits the POST+CSRF execute form and never runs the actual rate-limit
 // cleanup logic.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

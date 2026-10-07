@@ -15,6 +15,9 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 REAL_REPO="$(git rev-parse --show-toplevel)" || exit 1
 SCRIPT="$REAL_REPO/scripts/release-milestone.sh"
 if [ ! -x "$SCRIPT" ]; then
@@ -23,25 +26,6 @@ if [ ! -x "$SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
-# shellcheck disable=SC2329 # called only through the EXIT trap below
-cleanup() {
-    cd / || true
-    [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
-}
 
 export GIT_AUTHOR_NAME="test-release-milestone"
 export GIT_AUTHOR_EMAIL="test-release-milestone@localhost"
@@ -363,10 +347,4 @@ else
         "left behind: [$LEFTOVER]" "output: [$OUT10]"
 fi
 
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

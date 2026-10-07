@@ -10,13 +10,10 @@ use Throwable;
 /**
  * PhpBuiltinServer - leak-proof `php -S` harness for integration tests
  *
- * Integration tests that need a real HTTP layer (`php://input`, real request
- * headers) start PHP's built-in web server as a child process. Before #2166
- * each such test rolled its own spawn/teardown, and a fatal error, a `^C`, or
- * a PHPUnit crash between `setUpBeforeClass()` and `tearDownAfterClass()` left
- * the server running forever, holding its port and its tempnam'd router file.
- * This class centralises that lifecycle and adds the piece the ad-hoc versions
- * lacked: a sweep that reclaims servers leaked by *previous* runs.
+ * Starts PHP's built-in web server for integration tests that need a real
+ * HTTP layer (`php://input`, real request headers). A fatal error, a `^C`, or
+ * a PHPUnit crash can leave a server running and holding its port, so start()
+ * also sweeps servers leaked by previous runs.
  *
  * Usage:
  *
@@ -26,20 +23,15 @@ use Throwable;
  * $server->stop();
  * ```
  *
- * Design constraints, all of which the implementation below depends on:
+ * Constraints the implementation depends on:
  *
- * - **No `pkill`/`pgrep`, even though `pkill` is present on both sides.** A
- *   pattern match cannot express the safety rule that actually matters here —
- *   "kill only if the owner PID is absent from the same `ps` snapshot" — so it
- *   would happily kill a live owner's server. Process enumeration is therefore
- *   a single `ps -ww -eo pid=,args=`, whose `pid args` output format is
- *   identical on macOS and in the container (verified 2026-09-23); the parser
- *   depends on that.
- * - **No `posix_*`/`pcntl_*`.** `posix` is loaded on the host and in the
- *   container (only `pcntl` is missing there), so this is not a portability
- *   workaround. Signalling goes through the `kill` binary so the whole class
- *   has one code path with no extension dependency, and the same `ps`
- *   re-check that guards each signal works identically everywhere.
+ * - **No `pkill`/`pgrep`.** A pattern match cannot express the safety rule
+ *   "kill only if the owner PID is absent from the same `ps` snapshot", so it
+ *   could kill a live owner's server. Enumeration is one
+ *   `ps -ww -eo pid=,args=`. The parser depends on its `pid args` format,
+ *   which is the same on macOS and in the container.
+ * - **No `posix_*`/`pcntl_*`** (`pcntl` is missing in the container). Signals
+ *   go through the `kill` binary, so there is one code path everywhere.
  * - **Array-form `proc_open` everywhere**, including the `kill` calls, so no
  *   string ever reaches a shell.
  * - **Ownership marker in the command line.** The router path embeds the
@@ -55,11 +47,8 @@ use Throwable;
  * — apart from the narrow re-check-to-signal window documented on
  * killOrphan().
  *
- * Pure helpers (routerDir(), routerFileName(), buildCommand(), parsePsOutput(),
- * findOrphans(), staleRouterFiles(), planSweep(), isReadyResponse()) take their
- * inputs as parameters rather than shelling out, so they are directly
- * unit-testable without spawning anything. See
- * tests/unit/system/PhpBuiltinServerTest.php.
+ * The pure helpers take their inputs as parameters, so
+ * tests/unit/system/PhpBuiltinServerTest.php tests them without spawning.
  *
  * This is test-support code: it must never require UserSpice or any app
  * bootstrap.
@@ -418,8 +407,8 @@ final class PhpBuiltinServer
      * - its owner PID is absent from $snapshot (the owner really is gone);
      * - the server PID itself is not $selfPid.
      *
-     * A developer's own `php -S`, an editor holding a router file open, and the
-     * pre-#2166 tempnam-era routers all fail the filename test and are skipped.
+     * A developer's own `php -S` and an editor holding a router file open both
+     * fail the filename test and are skipped.
      *
      * @param array<mixed, mixed> $snapshot  PID => args, normally from parsePsOutput().
      * @param string              $routerDir Directory router files live in, without a trailing slash.

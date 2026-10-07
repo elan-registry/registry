@@ -12,30 +12,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration 20260905172137_convert_car_timestamps_to_datetime
- * (issue #1953).
+ * #1953: migration 20260905172137_convert_car_timestamps_to_datetime.
  *
- * Verifies the post-migration state of:
- * - cars.owner_last_updated: DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, no ON UPDATE
- * - cars.ctime / cars.last_verified: DATETIME NULL
- * - cars.mtime: DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
- * - cars_hist.ctime / cars_hist.mtime: DATETIME NULL (nullability asymmetry vs cars.mtime)
- * - cars_hist.timestamp: DATETIME NOT NULL, idx_cars_hist_timestamp intact
- * - all three cars triggers exist and their bodies still carry
- *   owner_last_updated / vericode_sent_at / email_bounced
- * - the corrective backfill's invariant (BACKFILL_SQL, executed verbatim against a
- *   synthetic row)
- *
- * These are the codebase's first IS_NULLABLE / COLUMN_DEFAULT / EXTRA assertions —
- * every prior schema-assertion test (e.g. CarsYearSmallintMigrationTest) checks only
- * COLUMN_TYPE or existence. That gap is why the #1953 defect (nullable
- * owner_last_updated with a COALESCE(mtime) fallback) shipped undetected.
- *
- * Migration verification ordering problem: by the time this suite runs, the migration
- * has already been applied (or not) — there is no way to observe pre-migration state.
- * The backfill tests therefore do not try to reconstruct history; they re-execute
- * ConvertCarTimestampsToDatetime::BACKFILL_SQL verbatim against a synthetic,
- * test-owned row and assert the invariant it establishes (Test Plan §3).
+ * Asserts IS_NULLABLE / COLUMN_DEFAULT / EXTRA, not only COLUMN_TYPE: the
+ * #1953 defect (nullable owner_last_updated) shipped because no test did.
+ * Pre-migration state cannot be observed, so backfill tests re-run
+ * BACKFILL_SQL against a synthetic row.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -49,24 +31,15 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        // No migration gate here — see requireMigrationApplied(), which the
-        // individual type/nullability tests call for themselves. Everything
-        // else in this class runs against the pre-migration schema too.
+        // No class-wide migration gate: see requireMigrationApplied().
         $this->testUserId = $this->createTestUser();
         $this->loginAsTestUser($this->testUserId);
     }
 
     /**
-     * Skip unless migration 20260905172137 has actually been applied.
-     *
-     * Called per-test rather than from setUp(). Only the assertions that read a
-     * post-migration column *type* or nullability genuinely depend on it; the
-     * trigger, index and backfill tests all pass against the pre-migration
-     * schema and must keep running everywhere. Gating the whole class hid seven
-     * working tests on every unmigrated environment — including the trigger-body
-     * test, which covers what this migration's own docblock calls its single
-     * biggest hazard, and which is therefore exactly the test least affordable
-     * to silence.
+     * Skip unless migration 20260905172137 is applied. Called per test: the
+     * trigger, index and backfill tests also pass on the pre-migration schema
+     * and must keep running.
      */
     private function requireMigrationApplied(): void
     {
@@ -90,11 +63,6 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     protected function tearDown(): void
     {
         try {
-            // Nothing test-local beyond IntegrationTestCase's own createdCarIds/
-            // createdUserIds tracking — createTestCar()/createTestUser() register
-            // their own cleanup. This try/finally exists so a future test-local
-            // fixture added here still gets cleaned up even if an assertion above
-            // it fails, per this file's required tearDown() pattern.
         } finally {
             parent::tearDown();
         }
@@ -131,9 +99,8 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Dedicated test: the absence of ON UPDATE is the entire point of this
-     * issue. cars.owner_last_updated must record owner activity only, never
-     * incidental row writes (e.g. Owner::syncOwnerFieldsToCars()).
+     * #1953: owner_last_updated must record owner activity only, so it must
+     * have no ON UPDATE.
      */
     #[Group('integration')]
     #[Group('migration')]
@@ -338,10 +305,8 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Catches a rebuild that reverted to the pre-#1155 baseline trigger bodies
-     * instead of the post-20260902104755 bodies — the single biggest hazard
-     * this migration's trigger rebuild step carries, per the migration's own
-     * docblock.
+     * Catches a rebuild that reverted to the pre-#1155 trigger bodies, the
+     * biggest hazard of this migration's trigger rebuild.
      */
     #[Group('integration')]
     #[Group('migration')]
@@ -376,22 +341,10 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     // -------------------------------------------------------------------------
 
     /**
-     * Immediately after BACKFILL_SQL runs against an active row, that row must
-     * read as STALE — 366 days is deliberately one day PAST the one-year
-     * boundary, so the whole active registry reads as due-for-verification on
-     * day one. That is the entire corrective purpose of the backfill: the prior
-     * migration left 93.7% of active cars carrying an `mtime` inside the last
-     * year, which would suppress ~94% of the verification email this system
-     * exists to send.
-     *
-     * Asserted through CarRepository::stalenessSql() rather than by arithmetic
-     * on the returned value, so this test is wired to the actual freshness rule
-     * — an inverted or retuned expression must fail here rather than pass on a
-     * date comparison that happens to still hold.
-     *
-     * Re-executes ConvertCarTimestampsToDatetime::BACKFILL_SQL verbatim rather
-     * than duplicating the string, scoped to a single synthetic car via a
-     * WHERE ... AND id = ? tacked onto a copy of the exact statement text.
+     * After BACKFILL_SQL an active row must read as STALE (366 days, one day
+     * past the one-year boundary), or ~94% of verification email would be
+     * suppressed. Asserted through CarRepository::stalenessSql(), so a change
+     * to the freshness rule fails here.
      */
     #[Group('integration')]
     #[Group('migration')]
@@ -439,10 +392,7 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * The backfill's WHERE clause is `solddate IS NULL` — a sold car must be
-     * left untouched.
-     */
+    /** The backfill's WHERE clause is `solddate IS NULL`: a sold car is left untouched. */
     #[Group('integration')]
     #[Group('migration')]
     public function testBackfill_soldCarsWereNotTouched(): void
@@ -473,10 +423,8 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * `mtime = mtime` in BACKFILL_SQL is load-bearing, not a no-op: cars.mtime
-     * is ON UPDATE CURRENT_TIMESTAMP, so omitting it from SET would silently
-     * bump it to the backfill's run time and destroy the row's real
-     * modification timestamp. Assert mtime is byte-identical before and after.
+     * `mtime = mtime` in BACKFILL_SQL is load-bearing: cars.mtime is ON UPDATE
+     * CURRENT_TIMESTAMP, so without it the backfill would overwrite mtime.
      */
     #[Group('integration')]
     #[Group('migration')]
@@ -535,12 +483,7 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
         )->first();
     }
 
-    /**
-     * Executes ConvertCarTimestampsToDatetime::BACKFILL_SQL verbatim, scoped
-     * to a single test-owned car via an appended `AND id = ?` — reuses the
-     * constant exactly as written rather than retyping the UPDATE statement,
-     * per the plan's requirement that the test exercise the real SQL.
-     */
+    /** Runs the real BACKFILL_SQL, scoped to one car with `AND id = ?`. */
     private function runBackfillScopedToCar(int $carId): void
     {
         $sql = \ConvertCarTimestampsToDatetime::BACKFILL_SQL . ' AND id = ?';
@@ -556,13 +499,8 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
 
     /**
      * The repair promotes an unknown day or month to `01`, keeping the year.
-     *
-     * Executes the migration's own statement against a scratch table shaped
-     * like `cars_hist`, so the real SQL is exercised rather than a paraphrase
-     * of it. A scratch table is used rather than a `cars_hist` fixture because
-     * these values cannot be inserted into the live audit table under the
-     * project's `sql_mode` without relaxing it, and because a stray audit row
-     * is not test-local state that tearDown can reliably reclaim.
+     * A scratch table is used: these values cannot go into cars_hist under the
+     * project's sql_mode, and a stray audit row is hard to clean up.
      *
      * @param string $stored   The partial date as legacy data holds it
      * @param string $expected What the repair must produce
@@ -598,16 +536,8 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * A zero-YEAR row must be left alone, not assigned a fabricated year.
-     *
-     * `MAKEDATE(0, 1)` does not error — it returns `2000-01-01`, because MySQL
-     * reads a bare `0` as a two-digit year. Without the `AND YEAR(col) > 0`
-     * guard the repair would silently invent a date 2000 years off, well-formed
-     * and permanently wrong, for a row that recorded nothing at all. Leaving it
-     * unmatched lets the subsequent ALTER reject it loudly instead.
-     *
-     * No such row exists in production today; this pins the guard so a future
-     * one is not silently fabricated.
+     * A zero-YEAR row must be left alone. MAKEDATE(0, 1) returns 2000-01-01,
+     * so without the `YEAR(col) > 0` guard the repair would invent a date.
      */
     #[Group('integration')]
     #[Group('migration')]
@@ -624,12 +554,7 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * A fully-valid date must not be touched by the repair.
-     *
-     * Guards the predicate itself: if it ever widened to match clean rows, the
-     * repair would rewrite real purchase dates to the first of the month.
-     */
+    /** A valid date must not be touched, or real dates become the first of the month. */
     #[Group('integration')]
     #[Group('migration')]
     public function testPartialDateRepair_leavesCompleteDateUntouched(): void
@@ -645,12 +570,8 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Runs the migration's real repair statement over a one-row scratch table
-     * and returns the resulting value.
-     *
-     * `sql_mode` is relaxed only to *insert* the fixture — legacy values like
-     * `1999-06-00` cannot otherwise be written — and restored before the repair
-     * runs, so the statement under test executes under the session's real mode.
+     * Runs the real repair statement over a one-row scratch table. sql_mode is
+     * relaxed only for the fixture insert, then restored before the repair.
      */
     private function runPartialDateRepairOnScratchTable(string $stored): string
     {

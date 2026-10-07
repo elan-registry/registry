@@ -12,18 +12,13 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 REAL_REPO="$(git rev-parse --show-toplevel)" || exit 1
 SCRIPT="$REAL_REPO/scripts/fetch-pr-findings.sh"
 
 TMPROOT="$(mktemp -d)" || exit 1
-# shellcheck disable=SC2329 # called only through the EXIT trap below
-cleanup() { [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"; }
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() { TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAILED=$((TESTS_FAILED + 1)); echo "FAIL: $1"; shift; for l in "$@"; do echo "      $l"; done; }
 
 mkdir -p "$TMPROOT/bin"
 cat > "$TMPROOT/bin/gh" <<'STUB'
@@ -62,6 +57,4 @@ else
     fail "Case 2: a failed inline comment call exits 1" "exit: $STATUS2 (want 1)" "output: [$OUT2]"
 fi
 
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-[ "$TESTS_FAILED" -eq 0 ]
+harness_report

@@ -8,28 +8,10 @@ use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB integration tests for CarRepository::findProfileEmailSuppressed(),
- * CarRepository::findProfileEmailSuppressedForUpdate() (#1895) and
- * CarRepository::updateProfileEmailSuppressed() (#1883).
- *
- * CarVerificationManager::suppressOwnerProfile()'s entire read-then-skip
- * design rests on a specific MySQL/PDO behavior: an UPDATE that sets a
- * column to the value it already holds reports 0 affected rows, which is
- * otherwise indistinguishable from "no matching row" (no profiles row for
- * this user). That behavior is asserted about at length in both classes'
- * docblocks but, before this file, was exercised only through mocks
- * (CarVerificationManagerTest.php) or a private test-local re-implementation
- * of the query (CarVerificationManagerSuppressForOwnerTest.php's
- * profileEmailSuppressed() helper) — never through the repository methods
- * themselves against a real connection. If PDO were ever configured with
- * MYSQL_ATTR_FOUND_ROWS (flipping rowCount() to matched-rows semantics), the
- * entire suppressOwnerProfile() read-then-skip guard would silently stop
- * doing anything useful, and nothing here or in the mocked tests would catch
- * it. These tests pin the actual runtime behavior directly.
- *
- * @see usersc/classes/Car/CarRepository.php
- * @see usersc/classes/Car/CarVerificationManager.php::suppressOwnerProfile()
- * @see https://github.com/elan-registry/registry/issues/1883
+ * #1883, #1895: CarRepository profile email-suppressed reads and writes
+ * against a real connection. suppressOwnerProfile()'s read-then-skip guard
+ * depends on a same-value UPDATE reporting 0 affected rows; the mocks
+ * cannot show that.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -100,21 +82,15 @@ final class CarRepositoryProfileEmailSuppressedTest extends IntegrationTestCase
     }
 
     /**
-     * The load-bearing assertion this whole file exists for: a same-value
-     * UPDATE against an EXISTING row must report false (0 affected rows) —
-     * this is the exact MySQL/PDO behavior suppressOwnerProfile()'s
-     * read-then-skip guard is built around. If this assertion ever starts
-     * failing (e.g. because PDO gained MYSQL_ATTR_FOUND_ROWS), the guard in
-     * CarVerificationManager::suppressOwnerProfile() becomes dead code and
-     * every comment describing it becomes incorrect.
+     * A same-value UPDATE on an existing row must report false (0 rows). If
+     * PDO gains MYSQL_ATTR_FOUND_ROWS, suppressOwnerProfile()'s guard breaks.
      */
     #[Group('fast')]
     public function testUpdateToSameValueOnExistingRowReturnsFalse(): void
     {
         $userId = $this->createTestUser([], true);
 
-        // Confirm the starting value first — the row exists with the flag
-        // already at 0 (createTestUser($withProfile: true)'s default).
+        // The row exists with the flag already at 0.
         $this->assertSame(0, $this->repo->findProfileEmailSuppressed($userId));
 
         $result = $this->repo->updateProfileEmailSuppressed($userId, false);

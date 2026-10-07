@@ -24,6 +24,9 @@ tests/
 │
 ├── Support/                   # Shared test doubles (e.g. FakeDatabase)
 │
+├── hooks/                     # Shell tests for scripts/ and git hooks
+│   └── lib/harness.sh         # Shared pass/fail harness (sourced, not run)
+│
 ├── playwright/                # Browser E2E tests
 │   ├── e2e/                   # End-to-end workflows
 │   ├── security/              # Security testing

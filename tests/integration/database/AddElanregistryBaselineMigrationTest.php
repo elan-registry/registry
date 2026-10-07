@@ -7,39 +7,18 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration 20260709000000_add_elanregistry_baseline
- *
- * Verifies the post-migration state of the 9 ElanRegistry tables the baseline
- * creates on top of stock UserSpice, plus the 3 car audit triggers it creates.
- * Structural drift on shared stock tables (collation conversions, column
- * changes) is not re-tested here — that is what schema-fidelity verification
- * (information_schema diff against dev, done before this migration is
- * committed) already covers. This suite targets the parts most likely to
- * regress silently on a future edit: table existence and audit-trigger
- * presence. Trigger *behavior* (INSERT/UPDATE/DELETE DML) is already covered
- * by CarsYearSmallintMigrationTest against the triggers' current form.
+ * Migration 20260709000000_add_elanregistry_baseline: the 9 ElanRegistry tables
+ * and the 3 car audit triggers exist. Trigger behavior is covered by
+ * CarsYearSmallintMigrationTest.
  */
 #[Group('integration')]
 #[Group('migration')]
 final class AddElanregistryBaselineMigrationTest extends IntegrationTestCase
 {
     /**
-     * The 9 tables the baseline migration creates, excluding phinxlog (Phinx-owned).
-     *
-     * Keep this list in sync with the migration's `CREATE TABLE` statements and
-     * nothing else. Four entries were removed in #1679 because the baseline
-     * migration does not create them, so the test failed on every environment
-     * including CI:
-     *
-     * - `notifications` is not a table at all. The name exists only as the
-     *   `settings.notifications` *column* (stock UserSpice, read by
-     *   `usersc/templates/customizer/file_nav_custom.php`), which is what the
-     *   entry was mistaken for. See #1685.
-     * - `plg_db_explainer_columns`, `plg_db_explainer_databases` and
-     *   `plg_db_explainer_tables` belong to the DB Explainer plugin, which
-     *   creates them on install via the UserSpice plugin manager. They are
-     *   plugin state, not baseline schema, and are absent from any environment
-     *   where that plugin is not installed.
+     * The 9 tables the migration creates (phinxlog excluded). Match only the
+     * migration's CREATE TABLE statements: #1679 removed `notifications` (a
+     * settings column) and the plg_db_explainer_* tables (plugin-owned).
      */
     private const REGISTRY_TABLES = [
         'car_models',
@@ -58,8 +37,7 @@ final class AddElanregistryBaselineMigrationTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        // Verify the migration has been applied by checking that car_models exists.
-        // If it hasn't, skip the suite rather than failing with misleading assertion errors.
+        // Skip, not fail, when the migration is not applied.
         $exists = $this->db->query(
             "SELECT COUNT(*) AS cnt
              FROM information_schema.TABLES
@@ -74,9 +52,6 @@ final class AddElanregistryBaselineMigrationTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * Every table the baseline migration creates must exist after migrating.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_allRegistryTablesExist(): void
@@ -100,12 +75,7 @@ final class AddElanregistryBaselineMigrationTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * All three car audit triggers must exist after the baseline migration
-     * (they are later rebuilt without ModifiedBy by 20260710120000, but must
-     * exist from this migration onward — CarsYearSmallintMigrationTest verifies
-     * their final, post-rebuild form and behavior).
-     */
+    /** Rebuilt by 20260710120000; CarsYearSmallintMigrationTest checks the final form. */
     #[Group('integration')]
     #[Group('migration')]
     public function test_carAuditTriggersExist(): void

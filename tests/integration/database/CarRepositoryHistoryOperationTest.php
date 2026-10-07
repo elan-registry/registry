@@ -8,15 +8,9 @@ use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration (real MySQL) tests for
- * CarRepository::findLatestHistoryOperationByCarIds() — the self-join on a
- * `(car_id, MAX(timestamp))` aggregate, filtered by operation in both the
- * subquery and the outer query. A mocked unit test
- * (CarRepositoryFindLatestHistoryOperationTest) cannot exercise the actual
- * SQL; this file proves the join and the operation filter are correct
- * against a real cars_hist table, mirroring
- * CarRepositoryEmailEventsTest::testEachCarReturnsItsOwnLatestEventNotTheOtherCarsEvent()'s
- * precedent for the sibling findLatestEmailEventsByCarIds() method.
+ * Real-SQL test of CarRepository::findLatestHistoryOperationByCarIds(): the
+ * self-join on (car_id, MAX(timestamp)) with the operation filter in both the
+ * subquery and the outer query. The mocked unit test cannot run the SQL.
  */
 #[Group('integration')]
 final class CarRepositoryHistoryOperationTest extends IntegrationTestCase
@@ -36,10 +30,7 @@ final class CarRepositoryHistoryOperationTest extends IntegrationTestCase
     }
 
     /**
-     * Insert a minimal, valid cars_hist row. Only the columns this test
-     * cares about are parameterized; the rest take safe literal defaults
-     * matching the NOT NULL columns' real schema (model/series/variant/type/
-     * chassis are varchar/char NOT NULL with no default).
+     * model/series/variant/type/chassis are NOT NULL with no default.
      */
     private function insertHistRow(int $carId, string $operation, string $timestamp): void
     {
@@ -59,11 +50,8 @@ final class CarRepositoryHistoryOperationTest extends IntegrationTestCase
     #[Group('fast')]
     public function testOperationFilterExcludesANewerButNonMatchingRow(): void
     {
-        // The newest row for this car is EMAIL BOUNCED, which is NOT in the
-        // requested operations list — the method must return the latest
-        // EMAIL SUPPRESSED row instead, not the overall-latest row regardless
-        // of operation. This is the case a join without the operation filter
-        // in BOTH the subquery and the outer query would get wrong.
+        // The newest row (EMAIL BOUNCED) is not a requested operation. Without the
+        // filter in both subquery and outer query, the wrong row is returned.
         $this->insertHistRow($this->carId, 'EMAIL SUPPRESSED', '2026-01-01 10:00:00');
         $this->insertHistRow($this->carId, 'EMAIL BOUNCED', '2026-01-05 10:00:00');
 
@@ -79,10 +67,8 @@ final class CarRepositoryHistoryOperationTest extends IntegrationTestCase
     {
         $otherCarId = $this->createTestCar($this->userId);
 
-        // Both cars' latest matching row shares the exact same timestamp —
-        // the hardest case for per-car attribution via a self-join. Each car
-        // also has an older row, to confirm MAX() picks the right one per car,
-        // not just the single row present.
+        // Same timestamp for both cars is the hardest case for per-car attribution;
+        // the older rows confirm MAX() picks per car.
         $this->insertHistRow($this->carId, 'EMAIL SUPPRESSED', '2026-02-01 08:00:00');
         $this->insertHistRow($this->carId, 'EMAIL SUPPRESSED', '2026-02-05 08:00:00');
 
@@ -107,8 +93,6 @@ final class CarRepositoryHistoryOperationTest extends IntegrationTestCase
     #[Group('fast')]
     public function testNoMatchCarIsAbsentFromTheResult(): void
     {
-        // $this->carId has zero cars_hist rows for this test — no
-        // insertHistRow() call precedes this assertion.
         $result = $this->repo->findLatestHistoryOperationByCarIds([$this->carId], ['EMAIL SUPPRESSED']);
 
         $this->assertArrayNotHasKey(

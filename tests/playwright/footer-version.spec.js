@@ -1,4 +1,3 @@
-// tests/playwright/footer-version.test.js
 const { test, expect } = require('@playwright/test');
 const { navigateAndWait } = require('./auth-helper.js');
 

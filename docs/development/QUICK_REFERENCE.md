@@ -16,6 +16,12 @@ full testing and build commands.
 composer check:php               # Coding standards + PHPStan (no `composer phpcs` script exists)
 ```
 
+PHPStan also runs the project rules in `tools/phpstan/Rules/`. They check log
+categories, `serialize()` calls, `DatabaseInterface` types, raw lookups in
+action files, and page metadata order. See `CODING_STANDARDS.md`, "Project
+PHPStan Rules". Run the rule tests with
+`vendor/bin/phpunit -c phpunit-unit.xml tests/unit/phpstan`.
+
 ### Milestone Lifecycle
 
 See the Developer Workflow section in [CLAUDE.md](../../CLAUDE.md) for the

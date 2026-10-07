@@ -1,5 +1,3 @@
-// tests/playwright/admin-owner-mgmt.spec.js
-//
 // Smoke coverage for the Manage Owners tab on the admin index page (#1660).
 // #1585 (DatabaseInterface migration) changed DB wiring for
 // getOwnerQualityReports(dbi())/getDuplicateEmailDetails(dbi()) in
@@ -16,8 +14,6 @@
 // getOwnerQualityReports(dbi()) — the other #1585 wiring risk this issue
 // names — IS reliably exercised: it always runs on page load and this
 // spec's Data Health/report-count assertions would fail if it broke.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 // See: app/admin/index.php?tab=owner-mgmt
 
 const { test, expect } = require('@playwright/test');

@@ -7,18 +7,9 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration test for the `crons` row seeded by migration
- * 20260916000001_seed_send_verification_batch_cron (#1885).
- *
- * This is the only test that proves the seeded `crons.file` value names a
- * real file under users/cron/. cron.php's dispatcher resolves a job's `file`
- * column against that directory only, so a seeded value that does not match
- * the shim on disk would leave the job silently unrunnable. The seeded
- * er_cron_job_runs row is exercised separately by
- * CronJobGuardIntegrationTest::testClaimRoundTripAgainstSeededSendVerificationBatchRow().
- *
- * Reads the already-applied state of the test schema only — it never runs
- * the migration or alters the schema.
+ * #1885: the `crons` row seeded by migration
+ * 20260916000001_seed_send_verification_batch_cron. Reads the applied
+ * schema only; never runs the migration.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -35,9 +26,6 @@ final class SeedSendVerificationBatchCronMigrationTest extends IntegrationTestCa
         $this->requireMigrationApplied();
     }
 
-    /**
-     * Skip unless migration 20260916000001 has been applied to the test schema.
-     */
     private function requireMigrationApplied(): void
     {
         $this->db->query(
@@ -65,11 +53,8 @@ final class SeedSendVerificationBatchCronMigrationTest extends IntegrationTestCa
         $this->assertSame(self::CRON_FILE, $row->file);
         $this->assertSame(1, (int) $row->active, 'The crons row must be active=1 so the dispatcher includes the shim');
 
-        // cron.php's dispatcher resolves `file` under users/cron/ only (see
-        // this repo's CLAUDE.md "cron.php's dispatcher hard-codes that
-        // directory as the only path it will resolve a job's file column
-        // against") — prove the seeded value actually names a file that
-        // exists there, not merely a plausible-looking string.
+        // cron.php resolves `file` under users/cron/ only, so a wrong value leaves
+        // the job silently unrunnable.
         $shimPath = dirname(__DIR__, 3) . '/users/cron/' . self::CRON_FILE;
         $this->assertFileExists(
             $shimPath,

@@ -10,28 +10,9 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration regression test for Car::find()'s subordinate-lookup failure handling
- *
- * Verifies the #1505 fix: CarRepository::getHistory() and getFactoryInfo()
- * now throw CarDatabaseException on a DB failure (previously silently
- * returned [] / null). find()'s own contract is that only the primary
- * findById() lookup legitimately throws — so find() must catch a
- * CarDatabaseException from either subordinate lookup, log it under
- * LOG_CATEGORY_DATABASE_ERROR, and still return true with degraded data
- * (empty history / null factory info) rather than let the exception
- * propagate out of find().
- *
- * This test lives in the integration suite (not unit) because it needs a
- * real DB-backed logging path (countMatchingLogs() queries the real `logs`
- * table) and a real car row for findById() to return. It loads the real
- * Car class and injects a PHPUnit stub via Reflection for the single
- * repository property we need to control — findById() delegates to a real
- * CarRepository so the primary lookup succeeds with genuine data, while
- * getHistory()/getFactoryInfo() are stubbed to throw. Sibling to
- * CarCreateRepositoryFailureTest / CarUpdateRepositoryFailureTest, which use
- * the same Reflection-injection technique for Car::create()/update().
- *
- * @see usersc/classes/Car/Car.php Car::find()
+ * #1505: only findById() may throw from Car::find(). A failure in getHistory()
+ * or getFactoryInfo() is logged and find() returns degraded data. Integration
+ * tier because the assertions read the real `logs` table.
  */
 #[Group('integration')]
 #[Group('car-find')]
@@ -55,13 +36,6 @@ final class CarFindSubordinateLookupFailureTest extends IntegrationTestCase
             ->getProperty('repository');
     }
 
-    /**
-     * Build a Car whose repository delegates findById() to a real
-     * CarRepository (so the primary lookup returns genuine data) while
-     * getHistory() and getFactoryInfo() are stubbed to throw
-     * CarDatabaseException, simulating a DB failure isolated to those two
-     * subordinate queries.
-     */
     private function carWithFailingSubordinateLookups(): Car
     {
         $realRepo = new CarRepository($this->db);
@@ -83,10 +57,6 @@ final class CarFindSubordinateLookupFailureTest extends IntegrationTestCase
         return $car;
     }
 
-    /**
-     * Core assertion: find() still returns true and degrades to empty
-     * history / null factory info when both subordinate lookups fail.
-     */
     public function testFindStillSucceedsWithDegradedDataWhenSubordinateLookupsFail(): void
     {
         $car = $this->carWithFailingSubordinateLookups();
@@ -99,10 +69,7 @@ final class CarFindSubordinateLookupFailureTest extends IntegrationTestCase
         $this->assertNotNull($car->data(), 'the primary car data must still be loaded');
     }
 
-    /**
-     * Regression guard: both failures are logged under DATABASE_ERROR so the
-     * degraded result is not silent to operators.
-     */
+    /** The degraded result must not be silent to operators. */
     public function testFindLogsBothSubordinateLookupFailuresUnderDatabaseError(): void
     {
         $historyBefore = $this->countMatchingLogs('DatabaseError', '%getHistory failed for car ' . $this->testCarId . '%');

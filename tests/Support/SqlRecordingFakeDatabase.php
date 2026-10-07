@@ -14,11 +14,7 @@ namespace Tests\Support;
  * Shared by the findUnverifiedOwnerlessAccounts() and findVerifiedOwnerlessAccounts()
  * unit tests, which need exactly this double.
  *
- * Deliberately a *named* class rather than the anonymous `new class extends
- * FakeDatabase` it replaces: PHPStan reports `impureMethod.pure` when an anonymous
- * class overrides one of DatabaseInterface's `@phpstan-impure` methods (`results()`
- * here) with a side-effect-free body, because an anonymous class can never be
- * extended to add the side effect later. A named class is exempt from that check.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.29.1

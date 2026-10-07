@@ -8,23 +8,13 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Test behavior of error/500.php — the canonical handler for all 4xx/5xx
- * error codes (400/401/403/404/405/408/500/502/504) since issue #1830
- * consolidated the former dedicated 403.php/404.php pages into it.
+ * error/500.php, the handler for all 4xx/5xx codes since #1830, run in a
+ * subprocess. #1830: the old logging guard used an unqualified class name that
+ * never resolved, so logging silently did nothing for 47 days.
  *
- * Runs the real page in a subprocess to verify its icon rendering and that
- * the logging guard actually resolves and fires (issue #1830: the
- * pre-consolidation 403/404 handlers guarded
- * logger() with class_exists('LogCategories') — a bare, unqualified class
- * name that silently never resolved under the Composer PSR-4 autoloader,
- * so logging silently no-op'd for 47 days undetected because no test ever
- * executed the guarded code path).
- *
- * The page's own anti-clickjacking header() calls (X-Frame-Options and CSP
- * frame-ancestors, sent before init.php loads) are pinned at source level in
- * tests/unit/security/SecurityHeadersTest.php. An HTTP-level check such as
- * tests/playwright/security/clickjacking.spec.js cannot detect their removal
- * from error/500.php, because .htaccess:13 sets X-Frame-Options globally.
+ * The anti-clickjacking headers are pinned in
+ * tests/unit/security/SecurityHeadersTest.php: an HTTP check cannot see their
+ * removal, because .htaccess sets X-Frame-Options globally.
  */
 #[Group('integration')]
 #[Group('security')]
@@ -44,12 +34,7 @@ class ErrorPageHeadersTest extends IntegrationTestCase
         $this->logCleanupPatterns = [];
     }
 
-    /**
-     * The behavioral tests below write real rows to the `logs` table via a
-     * subprocess (error/500.php calling logger()) — outside
-     * IntegrationTestCase's own car/user tracking, so they need their own
-     * cleanup here to avoid polluting the table on every test run.
-     */
+    /** The subprocess writes `logs` rows outside IntegrationTestCase's tracking. */
     protected function tearDown(): void
     {
         foreach (self::DB_ENV_VARS as $var) {
@@ -66,20 +51,10 @@ class ErrorPageHeadersTest extends IntegrationTestCase
     }
 
     /**
-     * Propagate this test run's DB credentials (loaded from .env.test.local
-     * by tests/bootstrap-integration.php) into the process environment so a
-     * subprocess spawned via shell_exec() connects to the same dedicated
-     * test schema instead of falling back to the project's real .env.
-     *
-     * Unlike LogDeploymentScriptTest's subprocess (which only requires
-     * vendor/autoload.php and connects to the DB directly), error/500.php
-     * requires the full users/init.php bootstrap — which hydrates $settings
-     * from a DB-backed row, not just raw DB_* credentials. putenv() alone
-     * left that hydration broken in testing (settings loaded as an array
-     * instead of the expected object), so this subprocess also explicitly
-     * re-loads .env.test.local via Dotenv — init.php's own
-     * Dotenv::createImmutable() call reads but does not overwrite
-     * already-set $_ENV values, so this doesn't conflict with it.
+     * Pass the test DB credentials to the subprocess so it uses the test
+     * schema, not the real .env. error/500.php loads users/init.php, which
+     * hydrates $settings from the DB; putenv() alone left it broken, so the
+     * subprocess also reloads .env.test.local via Dotenv.
      */
     private function exposeTestDatabaseToSubprocess(): void
     {
@@ -91,12 +66,7 @@ class ErrorPageHeadersTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * Compile-time safety net for the #1830 bug class: assert the fully
-     * qualified class actually resolves under the Composer autoloader. If a
-     * future change breaks the autoload mapping, this fails loudly instead
-     * of the guarded logger() call silently no-op'ing like the original bug.
-     */
+    /** #1830: the fully qualified class must resolve under the Composer autoloader. */
     public function testLogCategoriesClassResolves(): void
     {
         $this->assertTrue(
@@ -106,12 +76,9 @@ class ErrorPageHeadersTest extends IntegrationTestCase
     }
 
     /**
-     * Invoke error/500.php in a subprocess with the given REDIRECT_STATUS,
-     * simulating an Apache ErrorDocument dispatch, and return its captured
-     * stdout. A subprocess is used (rather than an in-process require)
-     * because the file unconditionally calls header()/http_response_code(),
-     * which would emit PHP warnings and pollute global state if required
-     * directly inside the PHPUnit process.
+     * Run error/500.php in a subprocess with the given REDIRECT_STATUS and
+     * return stdout. Not required in-process: its header() calls would warn
+     * and pollute global state.
      */
     private function renderErrorPage(int $statusCode, string $requestUri = '/nonexistent-page'): string
     {
@@ -155,13 +122,7 @@ class ErrorPageHeadersTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * Icon rendering is new output-mapping logic introduced by #1830's
-     * consolidation ($iconSvgMap/match on icon_type) — a future edit to the
-     * match arms could silently render the wrong icon for a status code
-     * without any other test catching it, so this asserts the distinctive
-     * markup for each icon shape appears for the codes that should use it.
-     */
+    /** #1830 icon mapping: a wrong match arm would otherwise go unnoticed. */
     #[DataProvider('iconRenderingProvider')]
     public function testRendersExpectedIconForStatusCode(int $statusCode, string $distinctiveMarkup): void
     {
@@ -211,10 +172,7 @@ class ErrorPageHeadersTest extends IntegrationTestCase
 
         $output = $this->renderErrorPage(404, $requestUri);
 
-        // "Zero rows written" is indistinguishable from "the subprocess crashed
-        // before reaching logger()" unless we also confirm it actually ran to
-        // completion — this positively confirms the page rendered rather than
-        // vacuously passing on a silent subprocess failure.
+        // Proves the page ran to completion, so "zero rows" is not a silent crash.
         $this->assertStringContainsString(
             '</html>',
             $output,

@@ -8,26 +8,9 @@ use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration 20260913205636_widen_cars_vericode_for_hash.
- *
- * Verifies the post-migration schema (cars.vericode is varchar(64), indexed)
- * and the two behaviors a prior review round found broken and fixed:
- *
- * - The migration's guarded UPDATE (`vericode = NULL, mtime = mtime`) must
- *   suppress the cars_update trigger via @disable_triggers, mirroring
- *   CarVerificationColumnsHistTest::testMigrationBackfillGuardSuppressesUpdateHistory()
- *   and CarsYearSmallintMigrationTest::test_disableTriggersGuard_suppressesUpdateHistory()
- *   for other migrations' guarded UPDATEs.
- * - The same UPDATE must preserve cars.mtime (via `mtime = mtime`), since
- *   mtime is ON UPDATE CURRENT_TIMESTAMP and would otherwise be silently
- *   bumped to the migration's run time — see
- *   20260905172137_convert_car_timestamps_to_datetime.php's BACKFILL_SQL/
- *   NULL_REPAIR_SQL for the precedent this migration follows.
- *
- * This does not invoke Phinx's up()/down() directly (that would mutate the
- * test schema mid-suite); instead it replicates the exact guarded UPDATE
- * statement against a fixture row, the same approach
- * CarVerificationColumnsHistTest uses for its own migration-guard test.
+ * Migration 20260913205636_widen_cars_vericode_for_hash: schema, and the
+ * guarded UPDATE (no cars_hist rows, mtime kept). Replicates the UPDATE on a
+ * fixture row instead of calling up()/down(), which would change the shared schema.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -56,8 +39,7 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
     // -------------------------------------------------------------------------
 
     /**
-     * cars.vericode must be varchar(64) nullable after the migration — wide
-     * enough for a 64-char HMAC-SHA256 hex digest.
+     * Wide enough for a 64-char HMAC-SHA256 hex digest.
      */
     #[Group('fast')]
     public function test_schema_carsVericode_isVarchar64Nullable(): void
@@ -85,8 +67,7 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * cars.vericode must be indexed after the migration — the lookup path
-     * (CarRepository::findByVerificationCode()) is a WHERE vericode = ?.
+     * findByVerificationCode() looks up by vericode.
      */
     #[Group('fast')]
     public function test_schema_carsVericode_isIndexed(): void
@@ -101,13 +82,8 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
     // -------------------------------------------------------------------------
 
     /**
-     * The migration's guarded UPDATE must suppress the cars_update trigger.
-     *
-     * Without @disable_triggers, nulling every legacy plaintext vericode in
-     * one UPDATE would write one spurious 'UPDATE' cars_hist row per matched
-     * car — internal bookkeeping misrecorded as an owner edit. At production
-     * scale (~1080 rows per the migration's own header comment) that is
-     * ~1080 bogus audit entries.
+     * Without @disable_triggers, the UPDATE writes a bogus 'UPDATE' cars_hist row
+     * per car (~1080 in production).
      */
     #[Group('fast')]
     public function testMigrationUpdateGuardSuppressesUpdateHistory(): void
@@ -150,16 +126,8 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * The migration's guarded UPDATE must NOT bump cars.mtime.
-     *
-     * cars.mtime is `ON UPDATE CURRENT_TIMESTAMP` — any UPDATE that omits
-     * mtime from its SET clause has that value silently rewritten to the
-     * statement's execution time by MySQL itself, not by application code.
-     * `mtime = mtime` is the documented suppression (see
-     * 20260905172137_convert_car_timestamps_to_datetime.php's BACKFILL_SQL).
-     * Without it, every car this migration touches would falsely appear to
-     * have been modified at migration-run time, corrupting the admin
-     * "recently modified" ordering and the owner-facing last-updated display.
+     * cars.mtime is ON UPDATE CURRENT_TIMESTAMP; without `mtime = mtime` every
+     * touched car would look modified at migration time.
      */
     #[Group('fast')]
     public function testMigrationUpdateGuardPreservesMtime(): void
@@ -169,10 +137,7 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
 
         $carId = $this->createTestCar($this->testUserId, ['vericode' => $legacyPlaintextCode]);
 
-        // Backdate mtime directly — createTestCar()'s INSERT already set it to
-        // "now" via ON UPDATE's INSERT-time default, so an explicit UPDATE is
-        // needed to establish a distinguishable pre-migration value. This
-        // UPDATE itself is guarded for the same reason the migration's is.
+        // createTestCar() set mtime to now; backdate it (guarded) to get a distinguishable value.
         $this->db->query('SET @disable_triggers = 1');
         $this->db->query('UPDATE cars SET mtime = ? WHERE id = ?', [$pastMtime, $carId]);
         $this->db->query('SET @disable_triggers = NULL');
@@ -199,10 +164,7 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Sanity check: an UNGUARDED UPDATE that omits mtime from its SET clause
-     * DOES bump it. This pins the premise the two tests above depend on —
-     * that mtime = mtime is load-bearing, not a no-op — by proving the
-     * opposite behavior occurs without it.
+     * Proves `mtime = mtime` is needed: an unguarded UPDATE does bump mtime.
      */
     #[Group('fast')]
     public function testUnguardedUpdateOmittingMtimeDoesBumpIt(): void
@@ -214,8 +176,7 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
         $this->db->query('UPDATE cars SET mtime = ? WHERE id = ?', [$pastMtime, $carId]);
         $this->db->query('SET @disable_triggers = NULL');
 
-        // Deliberately omits mtime from the SET clause and the trigger guard,
-        // unlike the migration's actual statement — this is the negative case.
+        // Negative case: no mtime in SET and no trigger guard.
         $this->db->query('UPDATE cars SET vericode = NULL WHERE id = ?', [$carId]);
 
         $carsRow = $this->db->query('SELECT mtime FROM cars WHERE id = ?', [$carId])->first();
@@ -233,10 +194,6 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
     // Repository/hashing round-trip against the widened column
     // -------------------------------------------------------------------------
 
-    /**
-     * A 64-char HMAC-SHA256 hash must fit and round-trip through the widened
-     * column without truncation — the reason this migration exists.
-     */
     #[Group('fast')]
     public function testWidenedColumnRoundTripsA64CharHash(): void
     {

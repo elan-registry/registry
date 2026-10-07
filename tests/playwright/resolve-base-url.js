@@ -1,5 +1,3 @@
-// tests/playwright/resolve-base-url.js
-//
 // Kept apart from base-url.js because base-url.js must export a plain
 // string. A string export cannot also carry a function that tests can call
 // with a fake env and a temp .env file.
@@ -11,24 +9,19 @@ const dotenv = require('dotenv');
 // Matches the docker-compose.yml fallback `${APP_HOST_PORT:-8001}`.
 const DEFAULT_PORT = '8001';
 
-// The repo .env, two levels above this file. base-url.js and
-// global-setup.js both read it, so the path lives in one place.
+// base-url.js and global-setup.js both read the repo .env.
 const REPO_ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 /**
  * Read one key from a dotenv file.
  *
- * The file can hold DB credentials, so this function returns only the value
- * of `key`. It does not log the file content and does not write to
- * `process.env`.
+ * The file can hold DB credentials, so return only `key`; never log the file.
  *
  * @param {string} envFilePath - Path of the dotenv file. Must be a non-empty string.
  * @param {string} key - The key to read. Must be a non-empty string.
- * @returns {string | undefined} The value as written in the file (it can be ''),
- *   or undefined if the file does not exist or does not have the key.
+ * @returns {string | undefined} The value ('' is possible), or undefined if the file or key is missing.
  * @throws {TypeError} If `envFilePath` or `key` is not a non-empty string.
- * @throws {Error} Any read error other than ENOENT, for example EACCES or
- *   EISDIR. The error from `fs.readFileSync` is thrown unchanged.
+ * @throws {Error} Any read error other than ENOENT, unchanged.
  */
 function readEnvFileKey(envFilePath, key) {
     if (typeof envFilePath !== 'string' || envFilePath === '') {
@@ -65,31 +58,15 @@ function readEnvFileKey(envFilePath, key) {
  * A key is "not set" if its value is `undefined` or the empty string. This
  * matches the `${APP_HOST_PORT:-8001}` fallback in docker-compose.yml.
  *
- * The .env file holds DB credentials. This function reads only
- * `APP_HOST_PORT` from the parsed file. It does not copy any value into
- * `env` or `process.env`, and it does not log the file content.
- *
- * Failure modes:
- *   - TypeError if `env` is null, not an object, or an array.
- *   - TypeError if `envFilePath` is not a string or is the empty string.
- *   - TypeError if `env.PLAYWRIGHT_BASE_URL` or `env.APP_HOST_PORT` is set
- *     to a value that is not a string (for example the number 8001).
- *   - TypeError if `PLAYWRIGHT_BASE_URL` is not an absolute URL with the
- *     protocol `http:` or `https:` (for example ' ' or 'localhost:8001'),
- *     or if it has a query or a fragment. A valid value is returned in its
- *     parsed form (`URL.href`) with a trailing `/`.
- *   - RangeError if `APP_HOST_PORT` (from `env` or the file) is not an
- *     integer from 1 to 65535. Docker Compose also rejects such a port, so a
- *     silent fallback to 8001 would point the tests at a site that is not there.
- *   - A missing .env file (ENOENT) is skipped. All other read errors, for
- *     example EACCES or EISDIR, are thrown unchanged.
+ * The .env file holds DB credentials: only APP_HOST_PORT is read from it,
+ * and nothing is copied into `env` or logged. An invalid port throws rather
+ * than falling back to 8001, which would point the tests at a missing site.
+ * A missing .env file is skipped.
  *
  * @param {Record<string, string | undefined>} env - The environment to read, usually `process.env`. It is not changed.
  * @param {string} envFilePath - Absolute path of the repo `.env` file.
- * @returns {{url: string, source: string}} `url` is the base URL. It always
- *   ends with `/`. `source` names the step that set it: 'PLAYWRIGHT_BASE_URL',
- *   'APP_HOST_PORT in the environment', 'APP_HOST_PORT in .env', or
- *   'the default port'. global-setup.js puts it in the "Cannot reach" error.
+ * @returns {{url: string, source: string}} `url` ends with `/`. `source` names
+ *   the step that set it, for global-setup.js's "Cannot reach" error.
  * @throws {TypeError} For a wrong-typed argument, a non-string env value, or an invalid `PLAYWRIGHT_BASE_URL`.
  * @throws {RangeError} If `APP_HOST_PORT` is set to a value that is not a valid port.
  * @throws {Error} A read error other than ENOENT for `envFilePath`.
@@ -127,8 +104,7 @@ function resolveBaseUrlWithSource(env, envFilePath) {
 /**
  * Resolve the base URL for local Playwright runs.
  *
- * Same rules, failure modes, and errors as resolveBaseUrlWithSource. The
- * error messages keep the `resolveBaseUrl:` prefix.
+ * Same rules and errors as resolveBaseUrlWithSource.
  *
  * @param {Record<string, string | undefined>} env - The environment to read, usually `process.env`. It is not changed.
  * @param {string} envFilePath - Absolute path of the repo `.env` file.

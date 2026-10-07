@@ -21,22 +21,9 @@ require_once __DIR__ . '/../../Support/FakeBrevoSuppressionSyncClient.php';
 require_once __DIR__ . '/../../Support/SpyEmailEventApplier.php';
 
 /**
- * Unit tests for BrevoSuppressionSyncJob (#1923).
- *
- * Structured after BrevoEventReconciliationJobTest, which tests this job's
- * sibling and uses the same doubles for the same reasons: CarRepository is a
- * PHPUnit stub (upgraded to a mock only where a test asserts on how it was
- * called), while EmailEventApplier and the Brevo client are named Support
- * doubles because the assertions turn on recorded call *sequences* and on the
- * exact window/limit/offset the client was handed across several calls.
- *
- * The incremental mode is driven through runNow(), which reaches execute()
- * without the enabled check or the guard claim — both belong to AbstractCronJob
- * and are covered by AbstractCronJobTest. The backfill modes are called
- * directly, since they are deliberately unreachable from run()/execute().
- *
- * Every job is built with a fixed `$now`, so the incremental window and the
- * unparseable-date fallback are exact rather than approximate.
+ * BrevoSuppressionSyncJob (#1923). Same doubles as BrevoEventReconciliationJobTest.
+ * Incremental mode runs through runNow(); the backfill modes are called
+ * directly because run()/execute() cannot reach them.
  */
 #[Group('fast')]
 final class BrevoSuppressionSyncJobTest extends TestCase
@@ -48,12 +35,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     private const WINDOW_START = '2026-09-07 03:00:00';
 
     /**
-     * Brevo's `blockedAt` is UTC, but occurred_at is stored in PHP's default
-     * timezone (see resolveOccurredAt()) — so the expected local value is
-     * timezone-dependent and would silently pass under a UTC CI runner while
-     * the real production conversion differed. Pinning the app's timezone
-     * (users/init.php sets America/Los_Angeles) makes the conversion the
-     * assertion actually exercises, regardless of the runner's system clock.
+     * Pinned to the app timezone (users/init.php) so the UTC conversion is
+     * tested even on a UTC runner.
      */
     private const APP_TIMEZONE = 'America/Los_Angeles';
 
@@ -63,24 +46,17 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     /** self::BLOCKED_AT_UTC rendered in self::APP_TIMEZONE (UTC-7, PDT). */
     private const BLOCKED_AT_LOCAL = '2026-09-08 05:00:00';
 
-    /**
-     * BrevoSuppressionSyncJob::PAGE_SIZE — a private constant, mirrored here.
-     * 100, confirmed against the live Brevo API on 2026-09-09 (a prior value
-     * of 1000 was hard-rejected by the SDK — see the source constant's
-     * docblock for the full story).
-     */
+    /** Mirrors private BrevoSuppressionSyncJob::PAGE_SIZE. Brevo rejects 1000. */
     private const PAGE_SIZE = 100;
 
-    /** BrevoSuppressionSyncJob::MAX_BACKFILL_PAGES — a private constant, mirrored here. */
+    /** Mirrors private BrevoSuppressionSyncJob::MAX_BACKFILL_PAGES. */
     private const MAX_BACKFILL_PAGES = 500;
 
-    /** Restores the process timezone after each test pins it. */
     private string $originalTimezone = 'UTC';
 
     /**
-     * The repository double. A stub by default; swapped for a mock only by the
-     * tests asserting on how it was called, because PHPUnit emits a notice for
-     * a mock carrying no expectations.
+     * A stub unless a test calls expectRepoCalls(): PHPUnit warns on a mock
+     * with no expectations.
      *
      * @var CarRepository&\PHPUnit\Framework\MockObject\Stub
      */
@@ -108,8 +84,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     // --- Fixtures --------------------------------------------------------
 
     /**
-     * Upgrade the repository double from a stub to a mock, for the tests that
-     * assert on how it was called. Must be called before makeJob().
+     * Call before makeJob().
      *
      * @return CarRepository&\PHPUnit\Framework\MockObject\MockObject
      */
@@ -122,9 +97,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * Every contact's address resolves to the given car ids, and every car row
-     * reads back with both flags clear — i.e. nothing is already flagged, so
-     * the isAlreadyInTargetState() pre-check always says "needs the write".
+     * Every car reads back unflagged, so the pre-check always says "write".
      *
      * @param list<int> $carIds
      */
@@ -145,11 +118,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     /**
      * @param list<\Brevo\Client\Model\GetTransacBlockedContacts|null> $pages
-     * @param FakeBrevoSuppressionSyncClient|null $client Receives the fake
-     *        client this job was built with, so callers can assert on it.
-     * @param AbstractCronJobFakeDatabase|null $db Receives the fake database
-     *        this job was built with, so callers can assert on it (e.g. how
-     *        many times the unmatched-recipient counter UPDATE fired).
+     * @param FakeBrevoSuppressionSyncClient|null $client Out: the job's client
+     * @param AbstractCronJobFakeDatabase|null $db Out: the job's database
      * @param-out FakeBrevoSuppressionSyncClient $client
      * @param-out AbstractCronJobFakeDatabase $db
      */
@@ -176,8 +146,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * A job whose single page holds exactly the given contacts.
-     *
      * @param list<FakeBrevoBlockedContact> $contacts
      * @param FakeBrevoSuppressionSyncClient|null $client
      * @param AbstractCronJobFakeDatabase|null $db
@@ -202,12 +170,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Reason-code mapping ---------------------------------------------
 
-    /**
-     * The mapping table in the class docblock, asserted arm by arm. Each code
-     * must reach EmailEventApplier as the event name whose escalation the
-     * suppression deserves — 'blocked' sets the bounce flag, 'spam' and
-     * 'unsubscribed' the suppression flag.
-     */
+    /** 'blocked' sets the bounce flag; 'spam' and 'unsubscribed' set the suppression flag. */
     #[DataProvider('reasonCodeMappings')]
     public function testReasonCodeMapsToItsEvent(string $code, string $expectedEvent): void
     {
@@ -224,13 +187,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * Brevo's raw reason-code wire values, as plain string literals rather
-     * than the SDK class's constants — matching how
-     * {@see BrevoSuppressionSyncJob::mapReasonCodeToEvent()} itself now owns
-     * these strings (see that method's `REASON_CODE_*` constants) rather than
-     * referencing `\Brevo\Client\Model\GetTransacBlockedContactsReason`'s
-     * constants at runtime, which required the vendored SDK to be loadable
-     * — unavailable in this unit suite.
+     * Literal strings: the SDK's reason constants need the vendored SDK, which
+     * the unit suite cannot load.
      *
      * @return array<string, array{string, string}>
      */
@@ -247,11 +205,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * Pinned separately from the provider above because it is the one
-     * non-obvious arm in the table and the one a future reader is most likely
-     * to "correct". `adminBlocked` means a human deliberately suppressed the
-     * address at Brevo — a suppression decision, not evidence the mailbox is
-     * dead — so it must NOT set the hard-bounce flag the way 'blocked' would.
+     * `adminBlocked` is a human suppression decision, not a dead mailbox, so it
+     * must not set the hard-bounce flag. A reader may want to "correct" this.
      */
     public function testAdminBlockedIsASuppressionNotABounce(): void
     {
@@ -269,11 +224,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
     }
 
-    /**
-     * An unmapped code is never guessed at: no apply() call, a tally under
-     * 'unrecognized' so the operator can see Brevo added a reason this job does
-     * not understand, and a log line under the payload-observation category.
-     */
+    /** The 'unrecognized' tally tells the operator that Brevo added a reason. */
     public function testUnrecognizedReasonCodeIsTalliedAndSkipped(): void
     {
         $this->expectRepoCalls()->expects($this->never())->method('findByEmail');
@@ -311,11 +262,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
     }
 
-    /**
-     * The reason-code breakdown is keyed on Brevo's own raw codes, not the
-     * mapped event names — that is what lets an operator see which suppression
-     * path an address actually took.
-     */
+    /** Raw codes show the operator which suppression path an address took. */
     public function testReasonCodeCountsAreKeyedOnBrevosRawCodes(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -347,11 +294,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(self::BLOCKED_AT_LOCAL, $this->applier->calls[0]['occurredAt']);
     }
 
-    /**
-     * An empty reason message is normalized to null rather than passed through
-     * as '' — er_email_events.reason is nullable and '' would be a lie about
-     * Brevo having said something.
-     */
+    /** '' would claim that Brevo said something. */
     public function testEmptyReasonMessageBecomesNull(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -364,10 +307,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * occurred_at is a naive DATETIME written by the webhook, the reconciliation
-     * job, and this one, and compared across all three by
-     * CarRepository::countSoftBouncesSinceLastDelivered(). A UTC blockedAt is
-     * only comparable if converted to the same clock the other two write.
+     * Three writers share occurred_at and countSoftBouncesSinceLastDelivered()
+     * compares their rows, so a UTC blockedAt must be converted.
      */
     public function testUtcBlockedAtIsStoredInThePhpDefaultTimezone(): void
     {
@@ -410,8 +351,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     {
         $this->matchEveryEmailTo([1]);
 
-        // A page full of contacts must not induce a second fetch: execute() is
-        // one bounded page per invocation, never the first step of a walk.
+        // One bounded page per run, never the first step of a walk.
         $contacts = array_map(
             static fn (int $i): FakeBrevoBlockedContact
                 => FakeBrevoBlockedContact::withReason("owner{$i}@example.com", 'hardBounce'),
@@ -431,11 +371,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertCount(25, $this->applier->calls);
     }
 
-    /**
-     * A full page in incremental mode is the case a paging bug would show up
-     * in: PAGE_SIZE contacts is indistinguishable from "there may be more", and
-     * execute() must still stop at one page.
-     */
+    /** A full page looks like "there may be more"; execute() must still stop. */
     public function testIncrementalRunDoesNotPageEvenOnAFullPage(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -483,15 +419,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * #2085 (pr-test-analyzer follow-up): execute() — the unattended nightly
-     * cron path — appends a warning clause to its "incremental run complete"
-     * summary line whenever counterFailureCount > 0. That line is the ONLY
-     * artifact the nightly run leaves behind (no admin page renders it), so
-     * this drives execute() itself via runNow() rather than
-     * runNowWithSummary(), and asserts on the actual logged text rather than
-     * only on the returned summary object — which is all
-     * testSyncPageUnmatchedContactCounterFailureIsReportedInSummary above
-     * covers.
+     * The nightly log line is the only record of a counter failure, so this
+     * checks the logged text, not only the summary (#2085).
      */
     public function testNightlyRunLogsTheCounterFailureWarningClause(): void
     {
@@ -514,12 +443,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
     }
 
-    /**
-     * The other side of the same behavior (#2085): a clean run — the counter
-     * healthy — must not carry the warning clause, so a genuinely quiet or
-     * fully-successful night reads as clean in the one artifact the nightly
-     * path leaves behind.
-     */
     public function testNightlyRunOmitsTheCounterFailureClauseWhenCounterSucceeds(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([]);
@@ -547,10 +470,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertNull($client->fetchArgs[0]['end']);
     }
 
-    /**
-     * The paging loop: a full page means "there may be more", so it fetches
-     * again at the next offset; the first short page ends the walk.
-     */
     public function testBackfillPagesUntilAShortPageEndsTheWalk(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -567,7 +486,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $summary = $this->makeJob([
             $fullPage(1),
             $fullPage(2),
-            // Short page — the end of the list.
             FakeBrevoSuppressionSyncClient::page([
                 FakeBrevoBlockedContact::withReason('last@example.com', 'hardBounce'),
             ]),
@@ -589,26 +507,15 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * REGRESSION (found in review, #1923): a full page containing even one
-     * contact that reaches none of the three flag-decision buckets — here, an
-     * unrecognized reason code — must NOT be mistaken for a short page. An
-     * earlier version compared the sum of matched+unmatched+alreadyFlagged
-     * against PAGE_SIZE, which undercounts whenever any contact is skipped
-     * (malformed field, unrecognized code, failed lookup, or every matching
-     * car's write failing) — so a full page with one skip looked exactly like
-     * a short page, and the walk stopped there with the rest of Brevo's
-     * suppression list silently never imported. The fix compares
-     * contactsExamined (the real row count Brevo returned) instead.
+     * A full page with a skipped contact is still full (#1923). The walk once
+     * compared the bucket sum to PAGE_SIZE and stopped early, so the rest of
+     * the suppression list was never imported.
      */
     public function testBackfillContinuesPastAFullPageContainingASkippedContact(): void
     {
         $this->matchEveryEmailTo([1]);
 
-        // A full page of PAGE_SIZE contacts, but the first one carries a
-        // reason code this job does not map — it is skipped and reaches none
-        // of the three buckets, so matched+unmatched+alreadyFlagged on this
-        // page is PAGE_SIZE - 1, one short of PAGE_SIZE. If the walk used
-        // that sum as its end-of-list test, it would stop here.
+        // The first contact is skipped, so the bucket sum is PAGE_SIZE - 1.
         $firstPageContacts = array_map(
             static fn (int $i): FakeBrevoBlockedContact => FakeBrevoBlockedContact::withReason(
                 "p1-{$i}@example.com",
@@ -622,8 +529,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
         $firstPage = FakeBrevoSuppressionSyncClient::page($firstPageContacts);
 
-        // Second page proves the walk actually continued — never reached if
-        // the bug is present.
         $secondPage = FakeBrevoSuppressionSyncClient::page([
             FakeBrevoBlockedContact::withReason('p2-1@example.com', 'hardBounce'),
         ]);
@@ -647,10 +552,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertFalse($summary->backfillCapped);
     }
 
-    /**
-     * An empty page is still a page Brevo answered — it ends the walk as a
-     * short page, and counts as fetched (unlike a failed poll below).
-     */
+    /** Unlike a failed poll, an empty page counts as fetched. */
     public function testBackfillStopsOnAnEmptyPageAndCountsItAsFetched(): void
     {
         $summary = $this->makeJob(
@@ -664,19 +566,9 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * REGRESSION (found in review, #1923): the real generated Brevo SDK's
-     * `getContacts()` returns null, not an empty array, whenever the response
-     * carries no `contacts` key at all — the shape Brevo actually sends for
-     * an empty/exhausted suppression list. Confirmed directly against
-     * usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib/Model/GetTransacBlockedContacts.php's
-     * deserializer. Without a `?? []` guard, `count(null)` throws a
-     * TypeError on exactly this condition — meaning every full backfill
-     * would fatal on its own final page, and any quiet nightly run would
-     * fatal too. The bug was invisible to every earlier test because the
-     * fake client's `page()` factory could only ever produce an empty
-     * *array*, never null, so no test could reach it — this test uses
-     * {@see FakeBrevoSuppressionSyncClient::pageWithNullContacts()}
-     * specifically to close that gap.
+     * The SDK's getContacts() returns null when the response has no `contacts`
+     * key, which is how Brevo sends an empty list. Without `?? []` every backfill
+     * fataled on its last page (#1923).
      */
     public function testBackfillTreatsNullContactsAsAnEmptyExhaustedPageRatherThanThrowing(): void
     {
@@ -692,12 +584,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertFalse($summary->backfillCapped);
     }
 
-    /**
-     * A failed poll is explicitly NOT end-of-data, but it is also not retried:
-     * the walk stops and returns what it has, and the page is not counted as
-     * fetched — which is exactly how the loop tells a null poll from an empty
-     * page.
-     */
+    /** A failed poll is not end-of-data and is not retried or counted as fetched. */
     public function testBackfillStopsOnAFailedPollWithoutCountingThePage(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -726,18 +613,12 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Backfill page cap ------------------------------------------------
 
-    /**
-     * Seeded with more full pages than the cap allows, the walk must stop AT the
-     * cap — not walk the extra pages — and say so in the summary so the operator
-     * knows the import is incomplete and worth re-running.
-     */
+    /** The summary flag tells the operator the import is incomplete. */
     public function testBackfillStopsAtItsPageCapAndFlagsTheSummary(): void
     {
         $this->matchEveryEmailTo([1]);
 
-        // One car per contact keeps the applier's recorded calls proportional,
-        // but the page contents are irrelevant here — only that every page is
-        // full, so the short-page stop never fires before the cap does.
+        // Every page is full, so only the cap can stop the walk.
         $fullPage = FakeBrevoSuppressionSyncClient::page(array_map(
             static fn (int $i): FakeBrevoBlockedContact
                 => FakeBrevoBlockedContact::withReason("owner{$i}@example.com", 'hardBounce'),
@@ -763,18 +644,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * REGRESSION (found in review, #1923): the boundary the earlier
-     * on-the-final-iteration `capped` assignment got wrong — a suppression
-     * list that is genuinely exhausted exactly on the cap-th page (a SHORT
-     * final page, not a full one) must NOT be reported as capped. The prior
-     * implementation set `$capped = true` unconditionally on iterating the
-     * final permitted page, before knowing whether that page turned out to
-     * be short; the fix moved the check to after the loop, keyed on which
-     * stop condition actually fired. `testBackfillStopsAtItsPageCapAndFlagsTheSummary`
-     * above only proves the cap fires when there is *more* data past it
-     * (pages 501-505 unconsumed) — that scenario would also pass under the
-     * old buggy code, since the old bug only misfired when exhaustion and
-     * the cap coincide, which is exactly what this test isolates.
+     * A list that ends on a short page that is also the cap-th page is not
+     * capped (#1923). The cap test above passes even with the old bug.
      */
     public function testBackfillEndingExactlyOnTheCapBoundaryIsNotFlaggedAsCapped(): void
     {
@@ -786,9 +657,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce')
         ));
 
-        // MAX_BACKFILL_PAGES - 1 full pages, then a genuinely SHORT final
-        // page as exactly the MAX_BACKFILL_PAGESth fetch — the walk both
-        // exhausts the list and reaches the cap on the same page.
         $pages = array_fill(0, self::MAX_BACKFILL_PAGES - 1, $fullPage);
         $pages[] = FakeBrevoSuppressionSyncClient::page([
             FakeBrevoBlockedContact::withReason('last@example.com', 'hardBounce'),
@@ -843,12 +711,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- runNowWithSummary() counts ---------------------------------------
 
-    /**
-     * The three contact buckets are disjoint and sum to the number of contacts
-     * the run examined, which is the property the admin page's numbers rest on.
-     * Seeded with all three kinds at once: two newly-flagged, one already
-     * flagged, two matching no car.
-     */
+    /** The admin page's numbers depend on the buckets being disjoint. */
     public function testRunNowWithSummaryCountsAreCorrectAndDisjoint(): void
     {
         $this->mockRepo->method('findByEmail')->willReturnCallback(
@@ -861,8 +724,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             }
         );
 
-        // Car 30 already carries email_suppressed, so its 'spam' suppression is
-        // a no-op the run must count separately from real work.
         $this->mockRepo->method('findById')->willReturnCallback(
             static fn (int $id): object => (object) [
                 'id' => $id,
@@ -877,11 +738,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             FakeBrevoBlockedContact::withReason('already@example.com', 'contactFlaggedAsSpam'),
             FakeBrevoBlockedContact::withReason('unknown-a@example.com', 'hardBounce'),
             FakeBrevoBlockedContact::withReason('unknown-b@example.com', 'unsubscribedViaEmail'),
-            // Included specifically so contactsExamined/skippedCount can be
-            // distinguished from the three-bucket sum below — without a
-            // skipped contact in this fixture, a bug that wires
-            // contactsExamined to the bucket sum instead of the real row
-            // count would pass unnoticed.
+            // A skipped contact, so contactsExamined differs from the bucket sum.
             FakeBrevoBlockedContact::withReason('skip@example.com', 'someFutureBrevoCode'),
         ])->runNowWithSummary();
 
@@ -906,27 +763,18 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertFalse($summary->backfillCapped);
         $this->assertFalse($summary->pollFailed);
 
-        // Only the three matched contacts (including the already-flagged one)
-        // are tallied by reason code; unmatched contacts never reach the tally.
         $this->assertSame(
             ['hardBounce' => 1, 'contactFlaggedAsSpam' => 2, 'unrecognized' => 1],
             $summary->reasonCodeCounts
         );
 
-        // The already-flagged contact is still applied — the write is
-        // idempotent, and skipping it would let a partially-applied state
-        // (event row missing, flag set) persist forever.
+        // Still applied: the write is idempotent and repairs a missing event row.
         $this->assertSame(
             ['bounce@example.com', 'spam@example.com', 'already@example.com'],
             array_column($this->applier->calls, 'email')
         );
     }
 
-    /**
-     * A contact counts as already-flagged only when EVERY matching car was
-     * already in the target state — if even one car needed the flag, the run
-     * did real work for that contact.
-     */
     public function testContactWithOneUnflaggedCarCountsAsMatchedNotAlreadyFlagged(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([
@@ -949,15 +797,10 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(0, $summary->alreadyFlaggedCount);
     }
 
-    /**
-     * The pre-check reads the column the mapped event actually sets: 'blocked'
-     * reads email_bounced, everything else email_suppressed. A car carrying the
-     * *other* flag is not already in the target state.
-     */
+    /** 'blocked' reads email_bounced; the others read email_suppressed. */
     public function testAlreadyFlaggedCheckReadsTheColumnTheEventWouldSet(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
-        // Suppressed but not bounced — a hardBounce is still new work.
         $this->mockRepo->method('findById')->willReturn((object) [
             'id' => 1,
             'email_bounced' => 0,
@@ -972,12 +815,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(0, $summary->alreadyFlaggedCount);
     }
 
-    /**
-     * The pre-check fails *open*: an unreadable car row is treated as "not
-     * already flagged", so the suppression is still applied and the contact
-     * counted as newly matched. Overstating new matches is the right way to be
-     * wrong — treating an unreadable car as handled would hide the broken read.
-     */
+    /** Fails open: hiding a broken read is worse than overstating new matches. */
     public function testUnreadableCarRowStillAppliesTheSuppressionAndLogs(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
@@ -997,14 +835,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
     }
 
-    /**
-     * A distinct pre-check failure mode from the DB-exception case above:
-     * findByEmail() matches a car, but findById() then returns null for that
-     * same id — the row vanished between the two reads (deleted mid-run, or a
-     * read-consistency problem), not a DB error. Same fail-open behavior and
-     * same log category, but a different, specifically-worded log line, so an
-     * operator can tell the two apart during triage.
-     */
+    /** A car that vanished between reads gets its own log line for triage. */
     public function testCarVanishedBetweenLookupAndPreCheckStillAppliesTheSuppressionAndLogs(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
@@ -1023,13 +854,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
     }
 
-    /**
-     * runNowWithSummary() rethrows rather than fabricating an all-zero summary,
-     * which would be indistinguishable from a successful run over an empty
-     * suppression list. A repository that throws something other than
-     * CarDatabaseException is not caught anywhere below, so it reaches the
-     * rethrow — and the failure is logged on the way out.
-     */
+    /** An all-zero summary would look like a successful run over an empty list. */
     public function testRunNowWithSummaryLogsAndRethrowsAnUnexpectedFailure(): void
     {
         $this->mockRepo->method('findByEmail')
@@ -1052,11 +877,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * runNowWithSummary() bypasses run()/runNow() entirely (see class
-     * docblock) so it cannot inherit their site-wide verification-switch
-     * check and must repeat it. An operator triggering a manual backfill
-     * while the switch is off needs to know why, not see a fabricated
-     * all-zero summary — hence a thrown exception rather than a silent no-op.
+     * runNowWithSummary() bypasses run(), so it repeats the verification-switch
+     * check and throws so the operator sees why.
      */
     public function testRunNowWithSummaryThrowsWhenVerificationSwitchIsOff(): void
     {
@@ -1073,16 +895,11 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Per-contact / per-car failure isolation --------------------------
 
-    /**
-     * The retry model (a 48h window, or simply re-running the backfill) covers a
-     * skipped car, so one failed write must not starve the contacts behind it.
-     */
+    /** The 48h window or a backfill re-run covers a skipped car. */
     public function testWriteFailureForOneCarDoesNotAbortTheRest(): void
     {
         $this->matchEveryEmailTo([1]);
 
-        // The synthetic id is per-contact, so failing on b@example.com's id
-        // fails exactly that contact's single car.
         $this->applier->failOn($this->syntheticId('b@example.com', 'hardBounce'));
 
         $summary = $this->makeJobWithContacts([
@@ -1101,18 +918,12 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertCount(1, $log, 'A skipped car must be logged, not silent');
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
 
-        // The wholly-failed contact lands in no bucket at all — counting it as
-        // matched would overstate the run, as unmatched would misstate why.
         $this->assertSame(2, $summary->matchedCount);
         $this->assertSame(0, $summary->unmatchedCount);
         $this->assertSame(0, $summary->alreadyFlaggedCount);
         $this->assertSame(['hardBounce' => 2], $summary->reasonCodeCounts);
     }
 
-    /**
-     * One car of a multi-car contact failing must not stop the contact's other
-     * cars, and the contact still counts as matched because real work landed.
-     */
     public function testWriteFailureForOneCarDoesNotStopTheContactsOtherCars(): void
     {
         $this->matchEveryEmailTo([1, 2, 3]);
@@ -1122,9 +933,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
         ])->runFullBackfill();
 
-        // failOn() matches on message-id, which every car of this contact
-        // shares, so all three writes throw — the point being that all three
-        // were still attempted.
+        // All cars share the message-id, so all three fail; all must be attempted.
         $this->assertSame([1, 2, 3], array_column($this->applier->calls, 'carId'));
         $this->assertCount(3, $this->logsContaining('write FAILED'));
         $this->assertSame(0, $summary->matchedCount, 'No write landed, so no bucket may claim the contact');
@@ -1159,11 +968,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
     }
 
-    /**
-     * Brevo's suppression list covers every address the account has ever sent
-     * to, including addresses that were never registry cars. No match is
-     * routine, not an error.
-     */
+    /** Brevo's list includes addresses that were never registry cars. */
     public function testContactMatchingNoCarIsCountedNotLoggedAsAFailure(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([]);
@@ -1179,12 +984,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame([], $this->logsContaining('FAILED'));
     }
 
-    /**
-     * #2085: syncPage()'s unmatched branch also calls
-     * VerificationSettings::incrementUnmatchedRecipientCounter() before
-     * `continue`. N unmatched contacts in one page must fire the counter
-     * UPDATE exactly N times.
-     */
+    /** unmatchedCount alone cannot show a counter UPDATE that never fires (#2085). */
     public function testSyncPageUnmatchedContactIncrementsCounter(): void
     {
         $this->expectRepoCalls()->expects($this->exactly(3))->method('findByEmail')->willReturn([]);
@@ -1200,18 +1000,9 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * A failed counter increment must not corrupt the job's own bookkeeping or
-     * abort the run — the contact is still counted as unmatched and nothing is
-     * counted as skipped.
-     *
-     * But it is NOT invisible: counterFailureCount reports every unmatched
-     * contact that did not reach the dashboard counter, so execute()'s summary
-     * line cannot read as a clean run while the counter silently
-     * under-reports. The increment itself is attempted only once — after the
-     * first failure the call is skipped for the rest of the run (the fault is
-     * settings-row-level, not per-contact, and VerificationSettings logs a
-     * warning row on every failed call) — while the tally keeps counting, so
-     * the reported figure stays the true number missing.
+     * A counter failure must not abort the run, but counterFailureCount must
+     * report it. After the first failure the increment is skipped (the fault is
+     * in the settings row) while the tally keeps counting.
      */
     public function testSyncPageUnmatchedContactCounterFailureIsReportedInSummary(): void
     {
@@ -1237,11 +1028,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
     }
 
-    /**
-     * The other side of the same behavior: with a healthy counter, every
-     * unmatched contact is both attempted and recorded, so counterFailureCount
-     * stays 0 and the summary line carries no failure clause.
-     */
     public function testSyncPageUnmatchedContactCounterSuccessReportsNoFailures(): void
     {
         $this->expectRepoCalls()->expects($this->exactly(2))->method('findByEmail')->willReturn([]);
@@ -1258,12 +1044,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Synthetic message-id determinism ---------------------------------
 
-    /**
-     * The synthetic id is what makes re-running the backfill idempotent under
-     * er_email_events' UNIQUE (car_id, brevo_message_id, event): the same
-     * contact must produce the same id on every run, so a re-import collides
-     * with the existing row instead of inserting a duplicate.
-     */
+    /** A stable id makes a re-import collide with UNIQUE (car_id, brevo_message_id, event). */
     public function testSyntheticMessageIdIsStableAcrossRuns(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -1286,13 +1067,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertStringStartsWith('suppression-import-', $firstId);
     }
 
-    /**
-     * The id is built from the raw blockedAt rather than the resolved
-     * occurred_at precisely so an unparseable date does NOT make it drift:
-     * resolveOccurredAt() falls back to run time, and folding that in would
-     * give the same contact a new id on every run, defeating the idempotence
-     * the id exists to provide.
-     */
+    /** Built from the raw blockedAt: the run-time fallback date would change the id. */
     public function testUnparseableBlockedAtStillYieldsAStableId(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -1303,8 +1078,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $firstId = $this->applier->messageIds()[0];
 
         $this->applier = new SpyEmailEventApplier();
-        // A different injected "now" — the fallback occurred_at differs between
-        // the two runs, which is exactly what must not reach the id.
         $client = new FakeBrevoSuppressionSyncClient([
             FakeBrevoSuppressionSyncClient::page([
                 FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', null, 'not-a-date'),
@@ -1325,11 +1098,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
     }
 
-    /**
-     * A non-string blockedAt collapses to a fixed marker for the same reason —
-     * constant across runs. Asserted against the marker's actual value so the
-     * id scheme cannot change silently.
-     */
     public function testNonStringBlockedAtUsesTheFixedNoDateMarker(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -1359,11 +1127,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
     }
 
-    /**
-     * The id must distinguish contacts, or two different suppressions would
-     * collide on the same car and the second would be lost to the UNIQUE
-     * constraint.
-     */
+    /** Colliding ids would lose the second suppression to the UNIQUE key. */
     public function testSyntheticIdDiffersByEmailCodeAndDate(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -1395,10 +1159,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     // --- Malformed payload fields -----------------------------------------
 
     /**
-     * The SDK's getters are untyped, so a payload-contract change really can
-     * hand the job an array or an int. A bare (string) cast would record an
-     * array as the literal "Array" and treat it as a real address — these must
-     * be skipped and logged instead.
+     * The SDK getters are untyped. A (string) cast would store "Array" as an address.
      *
      * @param mixed $email
      */
@@ -1429,11 +1190,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         ];
     }
 
-    /**
-     * The SDK declares the Reason model as getReason()'s return type but
-     * enforces nothing at deserialization, so a payload missing `reason` really
-     * does yield null.
-     */
+    /** The SDK does not enforce getReason()'s type, so a missing `reason` gives null. */
     public function testContactWithNoReasonObjectIsSkippedAndLogged(): void
     {
         $this->expectRepoCalls()->expects($this->never())->method('findByEmail');
@@ -1467,8 +1224,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertNotEmpty($log);
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
 
-        // A malformed code must NOT be conflated with a code Brevo added that
-        // this job has yet to map — they call for different operator responses.
+        // Malformed and unmapped codes need different operator actions.
         $this->assertSame([], $this->logsContaining('unrecognized reason code'));
     }
 
@@ -1483,10 +1239,6 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         ];
     }
 
-    /**
-     * A malformed contact must not stop the page — the same containment the
-     * unrecognized-code path and per-car write failures already have.
-     */
     public function testMalformedContactDoesNotBlockLaterContacts(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -1505,10 +1257,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
     }
 
-    /**
-     * A non-string reason *message* is not a reason to skip the contact — the
-     * suppression itself is still valid, and the message is only annotation.
-     */
+    /** The message is only annotation; the suppression is still valid. */
     public function testNonStringReasonMessageIsNormalizedToNullNotSkipped(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -1523,13 +1272,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Helpers ---------------------------------------------------------
 
-    /**
-     * Recompute the job's synthetic message id, so a test can name a specific
-     * contact's id (for SpyEmailEventApplier::failOn()) or assert the scheme
-     * itself. Mirrors BrevoSuppressionSyncJob's own construction deliberately
-     * — if the scheme changes, the assertions built on it must be revisited
-     * rather than silently following along.
-     */
+    /** Mirrors the job's id scheme on purpose: a scheme change must break these tests. */
     private function syntheticId(string $email, string $code, string $datePart = self::BLOCKED_AT_UTC): string
     {
         return 'suppression-import-' . md5($email . '|' . $code . '|' . $datePart);

@@ -11,20 +11,8 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Unit test for Owner::getCarsOwned()/getOwnershipHistory()'s
- * DB-error propagation (#1505 PR B).
- *
- * Before this fix, both methods checked `$this->_db->error()` and logged,
- * but then fell through to `return []` — collapsing "the query genuinely
- * returned no rows" and "the query itself failed" into the identical empty
- * array, so callers could not distinguish the two without reading logs.
- * These tests verify OwnerDatabaseException is now thrown instead, mirroring
- * CarRepositoryFindByOwnerFailureTest's pattern for the sibling Car-side gap
- * fixed in PR A (#1816).
- *
- * Fully stubbed via DatabaseInterface (injected into Owner's constructor, so
- * its dbi() fallback is never reached) — no database connection is needed,
- * which is why this lives in tests/unit/ (#2161).
+ * getCarsOwned()/getOwnershipHistory() once returned [] on a query error, so
+ * callers could not tell a failure from no rows (#1505).
  */
 #[Group('owner')]
 #[Group('fast')]

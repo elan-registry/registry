@@ -1,9 +1,5 @@
-// tests/playwright/admin-unverified-account-cleanup.spec.js
-//
 // Behavioral tests for the Account Cleanup tab on the admin index page.
 // Covers: threshold form, CSRF token, DataTables auto-load, confirmation modal.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 // See: app/admin/index.php?tab=account-cleanup
 
 const { test, expect } = require('@playwright/test');

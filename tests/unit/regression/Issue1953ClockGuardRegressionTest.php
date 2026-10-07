@@ -13,20 +13,11 @@ require_once __DIR__ . '/../../../database/migrations/20260905172137_convert_car
 /**
  * Issue #1953: the clock-alignment guard on migration 20260905172137.
  *
- * This guard is the single most consequential safety mechanism in that
- * migration. `ALTER TABLE ... MODIFY COLUMN <ts> DATETIME` renders each stored
- * value as a wall-clock string in the session's timezone, so if MySQL's clock
- * and PHP's clock disagree, every timestamp in `cars` and `cars_hist` shifts
- * permanently. The shifted values are still well-formed, so nothing downstream
- * detects the corruption — a false pass here is silent and irreversible, and
- * the documented remedy is restoring from backup.
- *
- * The guard must compare the two CLOCKS, not `@@session.time_zone` against
- * `@@global.time_zone`. On the local environment measured for #1953 both of
- * those read `SYSTEM` while PHP — with `date.timezone` unset, falling back to
- * UTC — sits seven hours from MySQL: the naive comparison passes while every
- * value would shift. That measured case is pinned below so a future
- * "simplification" back to the timezone-variable comparison fails loudly.
+ * If the MySQL and PHP clocks disagree, the TIMESTAMP -> DATETIME conversion
+ * shifts every stored value. The values stay well-formed, so the damage is
+ * silent and only a backup restore fixes it. The guard must compare the
+ * clocks, not @@session.time_zone against @@global.time_zone: both can read
+ * SYSTEM while the clocks are seven hours apart.
  *
  * @issue 1953
  * @link https://github.com/elan-registry/registry/issues/1953
@@ -35,10 +26,6 @@ require_once __DIR__ . '/../../../database/migrations/20260905172137_convert_car
 #[Group('regression')]
 final class Issue1953ClockGuardRegressionTest extends TestCase
 {
-    /**
-     * Aligned clocks must not throw — otherwise the migration could never run
-     * on a correctly configured host.
-     */
     public function testPassesWhenClocksAgreeExactly(): void
     {
         $this->expectNotToPerformAssertions();
@@ -50,10 +37,7 @@ final class Issue1953ClockGuardRegressionTest extends TestCase
     }
 
     /**
-     * Sub-tolerance drift (query round-trip, minor NTP drift) must pass: a
-     * guard that tripped on normal jitter would block every deploy.
-     *
-     * @param int $seconds Skew to apply, within the 120s tolerance
+     * A guard that tripped on normal jitter would block every deploy.
      */
     #[DataProvider('withinToleranceProvider')]
     public function testPassesWithinTolerance(int $seconds): void
@@ -79,12 +63,6 @@ final class Issue1953ClockGuardRegressionTest extends TestCase
         ];
     }
 
-    /**
-     * One second past the tolerance must throw — pins the boundary direction so
-     * a later edit cannot silently widen the window.
-     *
-     * @param int $seconds Skew to apply, beyond the 120s tolerance
-     */
     #[DataProvider('beyondToleranceProvider')]
     public function testThrowsBeyondTolerance(int $seconds): void
     {
@@ -110,9 +88,8 @@ final class Issue1953ClockGuardRegressionTest extends TestCase
     }
 
     /**
-     * The exact skew measured on the local environment for #1953: MySQL on
-     * US/Pacific, PHP fallen back to UTC. This is the case the guard exists for,
-     * and precisely the case a `@@session` vs `@@global` comparison misses.
+     * The skew measured locally for #1953 (MySQL on US/Pacific, PHP on UTC),
+     * which a @@session vs @@global comparison misses.
      */
     public function testThrowsOnTheMeasuredLocalPhpUtcVersusMysqlPacificSkew(): void
     {
@@ -126,8 +103,7 @@ final class Issue1953ClockGuardRegressionTest extends TestCase
     }
 
     /**
-     * The message must name both clock readings and point at the fix, because
-     * the operator's next action is to correct one of the two clocks.
+     * The operator's next action is to correct one of the two clocks.
      */
     public function testExceptionMessageReportsBothClocksAndTheRemedy(): void
     {
@@ -145,11 +121,7 @@ final class Issue1953ClockGuardRegressionTest extends TestCase
     }
 
     /**
-     * An unreadable MySQL clock must fail closed. Treating an empty reading as
-     * "no skew detected" would let the conversion proceed unguarded — the worst
-     * outcome this guard can produce.
-     *
-     * @param string $dbNow An unusable MySQL NOW() reading
+     * Treating an empty reading as "no skew" would let the conversion run unguarded.
      */
     #[DataProvider('unreadableClockProvider')]
     public function testFailsClosedWhenMysqlClockIsUnreadable(string $dbNow): void
@@ -160,10 +132,7 @@ final class Issue1953ClockGuardRegressionTest extends TestCase
     }
 
     /**
-     * The guard must fail closed on an unusable PHP reading too — the first
-     * implementation checked only the MySQL side.
-     *
-     * @param string $phpNow An unusable PHP time reading
+     * The first implementation checked only the MySQL side.
      */
     #[DataProvider('unreadableClockProvider')]
     public function testFailsClosedWhenPhpClockIsUnreadable(string $phpNow): void
