@@ -38,10 +38,7 @@ class OwnerExceptionHierarchyTest extends TestCase
 
     public function testOwnerExceptionExtendsElanRegistryException(): void
     {
-        $this->assertTrue(
-            is_subclass_of(OwnerException::class, ElanRegistryException::class),
-            'OwnerException should extend ElanRegistryException'
-        );
+        $this->assertSame(ElanRegistryException::class, get_parent_class(OwnerException::class));
     }
 
     #[DataProvider('ownerExceptionClassProvider')]
@@ -62,22 +59,6 @@ class OwnerExceptionHierarchyTest extends TestCase
             $exception,
             "{$className} should be instanceof OwnerException"
         );
-    }
-
-    public function testOwnerExceptionCatchBlockCatchesAllOwnerExceptions(): void
-    {
-        foreach (self::OWNER_EXCEPTION_CLASSES as $className) {
-            $caught = false;
-            try {
-                throw new $className('Test');
-            } catch (OwnerException $e) {
-                $caught = true;
-            }
-            $this->assertTrue(
-                $caught,
-                "{$className} should be caught by catch (OwnerException)"
-            );
-        }
     }
 
     /** @return array<string, array<int, string>> */

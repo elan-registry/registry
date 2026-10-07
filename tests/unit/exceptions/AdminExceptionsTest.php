@@ -7,6 +7,7 @@ namespace Tests\Unit\Exceptions;
 use ElanRegistry\Exceptions\AdminContactException;
 use ElanRegistry\Exceptions\AdminOperationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Exceptions\OwnerException;
 use ElanRegistry\Exceptions\OwnerSearchException;
 use PHPUnit\Framework\TestCase;
 
@@ -17,8 +18,6 @@ class AdminExceptionsTest extends TestCase
         $message = 'Admin user not found';
         $exception = new AdminContactException($message);
 
-        $this->assertInstanceOf(AdminContactException::class, $exception);
-        $this->assertInstanceOf(ElanRegistryException::class, $exception);
         $this->assertEquals($message, $exception->getMessage());
         $this->assertEquals(
             'An error occurred while sending the message. Please try again.',
@@ -61,8 +60,6 @@ class AdminExceptionsTest extends TestCase
         $message = 'Failed to load owner profile';
         $exception = new AdminOperationException($message);
 
-        $this->assertInstanceOf(AdminOperationException::class, $exception);
-        $this->assertInstanceOf(ElanRegistryException::class, $exception);
         $this->assertEquals($message, $exception->getMessage());
         $this->assertEquals(
             'An error occurred during the operation. Please try again.',
@@ -77,39 +74,18 @@ class AdminExceptionsTest extends TestCase
         $message = 'Search query too short';
         $exception = new OwnerSearchException($message);
 
-        $this->assertInstanceOf(OwnerSearchException::class, $exception);
-        $this->assertInstanceOf(ElanRegistryException::class, $exception);
         $this->assertEquals($message, $exception->getMessage());
         $this->assertEquals('Search failed. Please try again.', $exception->getUserMessage());
         $this->assertEquals('OwnerActions', $exception->getLogCategory());
         $this->assertEquals(500, $exception->getHttpStatusCode());
     }
 
-    public function testExceptionCatchingByType(): void
+    /** Action files catch ElanRegistryException; OwnerSearchException is caught as OwnerException. */
+    public function testParentClasses(): void
     {
-        $caughtCorrectly = false;
-
-        try {
-            throw new AdminContactException('Test error');
-        } catch (AdminContactException $e) {
-            $caughtCorrectly = true;
-        }
-
-        $this->assertTrue($caughtCorrectly, 'AdminContactException should be catchable by its type');
-    }
-
-    public function testExceptionCatchingByParentType(): void
-    {
-        $caughtCorrectly = false;
-
-        try {
-            throw new AdminOperationException('Test error');
-        } catch (ElanRegistryException $e) {
-            $caughtCorrectly = true;
-            $this->assertInstanceOf(AdminOperationException::class, $e);
-        }
-
-        $this->assertTrue($caughtCorrectly, 'AdminOperationException should be catchable as ElanRegistryException');
+        $this->assertSame(ElanRegistryException::class, get_parent_class(AdminContactException::class));
+        $this->assertSame(ElanRegistryException::class, get_parent_class(AdminOperationException::class));
+        $this->assertSame(OwnerException::class, get_parent_class(OwnerSearchException::class));
     }
 
     public function testExceptionChaining(): void

@@ -129,7 +129,7 @@ final class LogDeploymentScriptTest extends IntegrationTestCase
     {
         foreach (self::DB_ENV_VARS as $var) {
             $value = $_ENV[$var] ?? getenv($var);
-            if ($value !== false && $value !== null && $value !== '') {
+            if ($value !== false && $value !== '') {
                 putenv("$var=$value");
             }
         }

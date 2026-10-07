@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Exceptions;
 
-use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\OwnerCreationException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
@@ -56,8 +55,6 @@ class OwnerExceptionsTest extends TestCase
     {
         $e = new OwnerValidationException('Test validation error');
 
-        $this->assertInstanceOf(OwnerValidationException::class, $e);
-        $this->assertInstanceOf(ElanRegistryException::class, $e);
         $this->assertEquals(422, $e->getHttpStatusCode());
         $this->assertEquals('ValidationError', $e->getLogCategory());
     }
@@ -93,8 +90,6 @@ class OwnerExceptionsTest extends TestCase
     {
         $e = new OwnerUpdateException('Test update error');
 
-        $this->assertInstanceOf(OwnerUpdateException::class, $e);
-        $this->assertInstanceOf(ElanRegistryException::class, $e);
         $this->assertEquals(500, $e->getHttpStatusCode());
         $this->assertEquals('OwnerActions', $e->getLogCategory());
     }
@@ -129,8 +124,6 @@ class OwnerExceptionsTest extends TestCase
     {
         $e = new OwnerCreationException('Test creation error');
 
-        $this->assertInstanceOf(OwnerCreationException::class, $e);
-        $this->assertInstanceOf(ElanRegistryException::class, $e);
         $this->assertEquals(500, $e->getHttpStatusCode());
         $this->assertEquals('OwnerActions', $e->getLogCategory());
     }
@@ -164,26 +157,5 @@ class OwnerExceptionsTest extends TestCase
             $previous
         );
         $this->assertSame($previous, $creationEx->getPrevious());
-    }
-
-    /** The shared catch blocks in action files catch ElanRegistryException. */
-    public function testAllOwnerExceptionsAreCatchableAsElanRegistryException(): void
-    {
-        $classes = [
-            OwnerValidationException::class,
-            OwnerUpdateException::class,
-            OwnerCreationException::class,
-        ];
-
-        foreach ($classes as $class) {
-            $caught = false;
-            try {
-                throw new $class('Test error');
-            } catch (ElanRegistryException $e) {
-                $caught = true;
-                $this->assertInstanceOf($class, $e);
-            }
-            $this->assertTrue($caught, "{$class} should be catchable as ElanRegistryException");
-        }
     }
 }

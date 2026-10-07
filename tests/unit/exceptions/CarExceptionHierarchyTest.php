@@ -44,10 +44,7 @@ class CarExceptionHierarchyTest extends TestCase
 
     public function testCarExceptionExtendsElanRegistryException(): void
     {
-        $this->assertTrue(
-            is_subclass_of(CarException::class, ElanRegistryException::class),
-            'CarException should extend ElanRegistryException'
-        );
+        $this->assertSame(ElanRegistryException::class, get_parent_class(CarException::class));
     }
 
     #[DataProvider('carExceptionClassProvider')]
@@ -68,22 +65,6 @@ class CarExceptionHierarchyTest extends TestCase
             $exception,
             "{$className} should be instanceof CarException"
         );
-    }
-
-    public function testCarExceptionCatchBlockCatchesAllCarExceptions(): void
-    {
-        foreach (self::CAR_EXCEPTION_CLASSES as $className) {
-            $caught = false;
-            try {
-                throw new $className('Test');
-            } catch (CarException $e) {
-                $caught = true;
-            }
-            $this->assertTrue(
-                $caught,
-                "{$className} should be caught by catch (CarException)"
-            );
-        }
     }
 
     /** @return array<string, array<int, string>> */

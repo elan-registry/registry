@@ -5,7 +5,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/_apcu_namespace_overrides.php';
 
 use ElanRegistry\LocationService;
-use ElanRegistry\LogCategories;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -557,9 +556,7 @@ final class LocationServiceCacheTest extends TestCase
         );
 
         // tearDown()'s is_file() glob misses a symlink.
-        if (is_link($cacheFile)) {
-            unlink($cacheFile);
-        }
+        unlink($cacheFile);
     }
 
     // APCu loaded but not working (#1470). mockApcuSimulateFailure makes the
@@ -600,17 +597,5 @@ final class LocationServiceCacheTest extends TestCase
         } finally {
             $this->tearDownApcuSimulation();
         }
-    }
-
-    // LogCategories constant
-
-    #[Group('fast')]
-    public function test_logCategoryFileError_hasExpectedValue(): void
-    {
-        $this->assertSame(
-            'FileError',
-            LogCategories::LOG_CATEGORY_FILE_ERROR,
-            'LOG_CATEGORY_FILE_ERROR must equal "FileError".'
-        );
     }
 }
