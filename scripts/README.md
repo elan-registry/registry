@@ -16,14 +16,66 @@ npm run build
 
 ### build-summary-index.py
 
-Rebuilds `docs/plans/summaries/index.html` from the `/summary` skill's dated
-status pages and their regenerate prompts. Run after any summary page is
-added or deleted. The pages themselves are gitignored build output under
+Rebuilds `docs/plans/summaries/index.html` from the `/summary` pages. Run it
+after you add or delete a summary page. The pages are gitignored under
 `docs/plans/`; only the script is tracked.
 
+Each series is one folder: `summaries/<series>/prompt.md` and one page per
+run, `summaries/<series>/<YYYY-MM-DD>.html`. `prompt.md` starts with front
+matter (`title`, `category`, `refresh_days`), then the regenerate prompt.
+
+- The index groups series by category: Status, Health, Process, Codebase,
+  Review, then any other.
+- Each series shows its newest page with a `fresh` or `stale` badge (stale:
+  older than `refresh_days`), its older pages, and its prompt, collapsed,
+  with a Copy button and a link to `prompt.md`.
+- It keeps the newest `--keep` pages per series (default 3) and deletes
+  older ones. `--keep 0` keeps every page.
+- A page outside a series folder gets a warning and is not indexed.
+- The index starts with a **Project health** section from the newest
+  `summaries/health/<YYYY-MM-DD>.json` snapshot (see `project-health.py`).
+  A snapshot older than 7 days shows a stale badge. With two or more
+  snapshots, the section also draws the open-issue trend. The builder makes
+  no network calls.
+- The index ends with **How this index is built**: a flow diagram, the
+  refresh commands, and a launchd job (with install and remove commands)
+  that runs the health refresh daily at 07:00. The commands use the path of
+  the checkout that owns the summaries folder.
+
 ```bash
-python3 scripts/build-summary-index.py
+python3 scripts/build-summary-index.py              # default folder, keep 3
+python3 scripts/build-summary-index.py --keep 0     # keep every page
 ```
+
+Exit codes: 0 built; 1 usage error or the folder does not exist. The
+hermetic test is `tests/hooks/test-build-summary-index.sh`.
+
+### project-health.py
+
+Reads GitHub with `gh` (2.48 or later, for `gh api --slurp`) and writes a
+health snapshot to
+`docs/plans/summaries/health/<YYYY-MM-DD>.json` for the index:
+
+- Velocity: issues closed and PRs merged per week (`--weeks`, default 8).
+- Open issues: count, and average, median and oldest age in days.
+- Issue mix, for open issues and for issues closed in the last 30 days:
+  defects, features, security, maintenance, other. The title prefix
+  (`bug:`/`fix:`, `feat:`, `security:`, `chore:`/`tech-debt:`/`test:`/
+  `refactor:`/`docs:`/`perf:`) decides first. Labels decide only when the
+  title has no known prefix.
+- Median open-to-close days for issues closed in the last 30 days.
+- The current milestone: the lowest version with open issues.
+
+It keeps the newest `--keep` snapshots (default 90). Run it, then the index
+builder, by hand or from a scheduled job:
+
+```bash
+python3 scripts/project-health.py && python3 scripts/build-summary-index.py
+```
+
+Exit codes: 0 written; 1 usage error or the folder does not exist; 2 a `gh`
+call failed or returned an unexpected shape (nothing written). The hermetic
+test is `tests/hooks/test-project-health.sh`.
 
 ## Version Management
 
