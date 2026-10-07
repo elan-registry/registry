@@ -41,10 +41,6 @@ after an item is written.
 - [ ] No unit test asserts that `index.php` starts with `<?php` (no leading bytes). (found in /finish-milestone v2.30.4)
 - [ ] The #2189 `login.php` change (`$knownIdentifier` and `(unrecognised)` in `checkRateLimit`/`handleAuthFailure`) has only integration coverage, which CI does not run. Add a source-wiring pin test under `tests/unit/security/`. (found in /finish-milestone v2.30.4)
 
-### `app/admin/assets/admin-core.js` (est. −25)
-
-- [ ] Delete `formatNumber()`, `formatDate()`, `prefersReducedMotion()` (~525-549). Their only reference is the `/* exported */` comment. Trim that list too. (found in the #2208 audit)
-
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -56,12 +52,6 @@ after an item is written.
 ### `app/admin/includes/tab-car_mgmt.php`
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
-
-### `app/admin/index.php` + `app/admin/includes/tab-placeholder.php` (est. −125)
-
-- [ ] Delete `tab-placeholder.php` and the `file_exists()` fallback (~index.php:1152). All 5 keys in the `$validTabs` allowlist have a tab file, so the fallback cannot run. (found in the #2208 audit)
-  - Replacement: `include __DIR__ . '/includes/tab-' . str_replace('-', '_', $activeTab) . '.php';`
-  - #2003 (v2.34.0) also edits `index.php` and `tab-manage_cars.php`, for the duplicated owner-data-quality predicate. Do both in one change.
 
 ### `app/api/cars/list.php`
 
@@ -86,10 +76,6 @@ after an item is written.
 ### `app/owner/contact/owner.php`
 
 - [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Catch `CarDatabaseException`: an uncaught one turns a logged redirect into a 500. Keep the redirect to `/` on not-found (from #2002)
-
-### `app/verify/verify_car.php`, `app/admin/index.php`, `usersc/classes/Car/CarAdministrationService.php` (test-only, no estimate)
-
-- [ ] Same `'year' => $carData->year ?? ''` pattern that crashed the resume-verification INSERT under strict mode (fixed in `usersc/user_settings.php` for #1895) also exists at `verify_car.php:445`, `admin/index.php:274`, and `CarAdministrationService.php:325,521`. `cars_hist.year` is `SMALLINT UNSIGNED NULL`; a car with a NULL year may crash each of these the same way. Change each to `?? null` (found reviewing #1895).
 
 ### `error/500.php`
 
@@ -141,10 +127,6 @@ after an item is written.
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
-
-### `usersc/classes/Car/CarVerificationSendService.php` (est. −27)
-
-- [ ] Delete `sendBatch()` (~388-419). Its own docblock says "NO CALLER TODAY… a fair tech-debt removal candidate". It has zero callers, tests included. (found in the #2208 audit)
 
 ### `usersc/classes/Car/SendResult.php`
 

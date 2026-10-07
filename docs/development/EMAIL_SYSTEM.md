@@ -291,7 +291,11 @@ $settings->setEnabled(false, $userId);  // never throws
 
 The verification system status appears on the Admin dashboard
 (`app/admin/index.php?tab=verification`), visible to both admin and editor
-roles (read-only for editor, toggle control for admin only).
+roles (read-only for editor, toggle control for admin only). The status panel
+and the feature switch are one collapsible panel, "System Status & Feature
+Switch". It is collapsed at the bottom of the tab when the system is healthy,
+and expanded at the top when it is not. See
+[Dashboard Layout](#dashboard-layout-1896).
 
 **Status Indicators:**
 
@@ -330,12 +334,208 @@ The banner states which prerequisite failed and links to the Verification System
 to send a one-off batch of reminders even while the automatic system is paused
 for operational reasons, or to test sending before enabling automation.
 
+### Dashboard Layout (#1896)
+
+`app/admin/includes/tab-verification.php` renders the tab as a dashboard. The
+parts appear in this order, from top to bottom:
+
+1. **Summary cards.** Six cards: Eligible, Pending, Verified, Sold, Bounced,
+   and Suppressed. `CarRepository::countVerificationSummary()` supplies the
+   counts. Verified and Sold follow the queue Window control. The other four
+   cards show the current state.
+2. **Automatic Sending panel.** Shows the job state, the last-run counts,
+   the batch size, **Send Batch Now**, and Pause/Resume. A "Next eligible"
+   line shows `last_run_at` plus `SendVerificationBatchJob::GUARD_INTERVAL_HOURS`
+   (20 hours). The line shows the earliest time the job can run. The real
+   send time is the first cron heartbeat after that time. **Send Batch Now**
+   is a link to the Eligible queue view. It does not send. The send happens
+   only when the admin presses **Send batch** in that view.
+3. **Verification Queue.** One table with seven filter pills and the Window
+   and Show controls. See [Verification Queue](#verification-queue).
+4. **Recent Activity.** The latest 20 `cars_hist` rows with operation
+   `VERIFIED` or `VERIFIED SOLD`, newest first
+   (`CarRepository::findRecentVerificationActivity()`). It has its own
+   Window control, in the `activity_window` URL parameter. This query reads
+   `cars_hist` only, with no join to `cars`, so it can list a row for a car
+   that has since been deleted (there is no foreign key from `cars_hist` to
+   `cars`; see [DATABASE.md](DATABASE.md#no-enforced-foreign-key-constraints)).
+   The Verified and Sold summary cards count differently: their query joins
+   to `cars`, so a deleted car's history row does not count there. The two
+   can disagree by the number of deleted cars with verification history.
+5. **System Status & Feature Switch panel.** The probes and the feature
+   switch are described in [Admin UI](#admin-ui). The panel is a collapsible
+   `<details>` element. Its place depends on system health:
+   - **Healthy** (switch on, Brevo ready, cron ready, unmatched-recipient
+     count is 0, cron failure count is 0, and no probe failed): the panel
+     is collapsed at the bottom of the tab.
+   - **Not healthy** (any other state, including a probe that could not be
+     read): the panel is expanded at the top of the tab.
+
+Each part has its own fault domain. If one query fails, that part shows an
+error or "unavailable" and the other parts still render.
+
+#### Verification Queue
+
+The queue replaces the earlier separate tables. One table shows all views.
+
+**Filter pills:** `All`, `Eligible`, `Pending`, `Bounced`, `Suppressed`,
+`Verified`, `Sold`. Each pill is a plain GET link and shows its count. The
+allowed values are in `CarRepository::QUEUE_STATUSES`.
+
+**What `All` counts.** `All` is the distinct count of cars that are
+Eligible, Pending, Bounced, or Suppressed. It excludes Verified and Sold:
+those two are history, not a current queue state. Bounced and Suppressed
+can overlap on one car, so `All` can be less than the sum of the four pills.
+The rule lives once, in `CarRepository::countVerificationSummary()`.
+
+**Table columns:** Car, Chassis, Owner, Sent, Days, Status, Actions.
+
+**URL state:** `?tab=verification&status=&window=&show=`. A view has its own
+bookmarkable URL. `app/admin/index.php` checks each value against a fixed
+allow-list. A value that is not in the list falls back to the default. It
+never reaches SQL.
+
+| Parameter | Allowed values | Default |
+| --- | --- | --- |
+| `status` | `all`, `eligible`, `pending`, `bounced`, `suppressed`, `verified`, `sold` | `all` |
+| `window` | `7`, `30`, `90`, `365` (days), `0` (all time) | `30` |
+| `show` | `10`, `25`, `50`, `100` (rows) | `25` |
+
+The page also reads `activity_window` for Recent Activity. It uses the same
+allowed values and the same default as `window`.
+
+Rules for the controls:
+
+- **Window** applies to the Verified and Sold views and their summary cards
+  only. The other views show the current state.
+- **Show** limits the number of rows. It does not apply to the Eligible
+  view. That view shows one batch (see [Preview & Send Flow](#preview--send-flow)).
+- The Pending view lists the longest-waiting car first.
+- The Verified and Sold views count each car one time. The pill count and
+  the list length match **only when the pill count is at or below the
+  current Show limit.** A pill count above the limit is still correct; the
+  list is only the top rows the limit allows.
+
+**Pending definition.** A car is Pending when all of these hold, per
+`CarRepository`'s `verificationPendingWhereSql()`:
+
+- It has a live verification link: `vericode` is set, and `vericode_sent_at`
+  is within `CarVerificationEmailComposer::LINK_TTL_DAYS` (60 days) of now.
+- The owner has not responded: `last_verified` is null or earlier than the
+  send, and `solddate` is null.
+- The car is not bounced and not suppressed (car flag or owner profile
+  flag). A bounced or suppressed car shows under its own pill instead.
+
+**Status chip.** The Status column shows the car's latest email event in
+its current send cycle. `CarRepository::findLatestEmailEventPerCarWithPrecedence()`
+selects the event. The chips are: Sent, Delivered, Soft bounce (with the
+reason), Bounced, Brevo complaint, and Opted out. "Bounced" covers
+`EmailEventApplier::HARD_BOUNCE_EVENTS` (`hard_bounce`, `blocked`, `invalid`,
+`invalid_email`). "Delivered" covers four Brevo event names: `delivered`,
+`unique_opened`, `opened`, and `click` — an open or a click proves the
+message arrived, so each renders the same chip as a plain delivery. The
+reason text is Brevo free text. The page escapes it with
+`htmlspecialchars()` at render time.
+
+A Brevo event name this system does not otherwise recognize renders its own
+chip: the literal event name, with underscores turned to spaces and the
+first letter capitalized (for example `deferred` renders as "Deferred"),
+styled as a plain, low-emphasis chip. This keeps a new or unlisted Brevo
+event visible instead of showing nothing. The logic is in `vsStatusChip()`'s
+`default` case. `invalid_email` is excluded from this example because it is
+one of the hard-bounce events above, and so always renders "Bounced"
+instead of reaching this `default` case.
+
+**Chip precedence rule.** A terminal event always outranks a later
+"Delivered" event in the same send cycle. Terminal events are
+`EmailEventApplier::HARD_BOUNCE_EVENTS` (hard bounce, blocked, invalid,
+invalid email) plus `EmailEventApplier::SUPPRESSION_EVENTS` (spam,
+unsubscribed). For example, Brevo can report a message as delivered and then
+hard bounce it. The chip shows Bounced. Rules that select the chip event:
+
+1. The current send cycle starts at the car's latest `sent` event. The cycle
+   holds that event and all later events. A car with no `sent` event uses all
+   of its events.
+2. In the cycle, a terminal event wins over any other event, at any time.
+3. If no terminal event exists, the latest event wins (`occurred_at DESC`,
+   then `id DESC`).
+
+The send cycle is set by time, not by `brevo_message_id`. The local `sent`
+event carries a local id, and Brevo webhook events carry Brevo's own id.
+The two ids never match. This differs from the original FRD text. The
+project owner approved the difference.
+
+The project owner also approved `unsubscribed` as a terminal event. The FRD
+list did not include it.
+
+**Opted out and Brevo complaint.** For a suppressed car, the chip shows
+"Brevo complaint" when `EmailNoticeBuilder::resolveSuppressionCause()`
+returns `CAUSE_BREVO_COMPLAINT` — a `spam` or `unsubscribed` suppression
+event not older than the car's latest `EMAIL SUPPRESSED` `cars_hist` row. In
+all other cases it shows "Opted out" (the owner used the opt-out link, which
+writes no `er_email_events` row). The chip and the owner-facing "email
+paused" account notice share this one rule, so they cannot disagree on which
+label a given car gets. The logic is in `vsStatusChip()`.
+
+**Why the filter pill and the status chip can disagree.** The pill is based
+on the car's current state. The chip is based on the latest email event.
+These two sources do not always match. For example, a car with one soft
+bounce:
+
+- The chip shows **Soft bounce**.
+- The car is still under the **Pending** pill. A soft bounce is not final.
+  Brevo escalates repeated soft bounces. The
+  car's `email_bounced` flag stays 0, and the Pending view includes only cars
+  that are not bounced and not suppressed.
+
+The car moves to the **Bounced** pill only when the `email_bounced` flag
+becomes 1. This is not a fault. Use the pill to find the car. Use the chip
+to see what happened to the last email.
+
+A second case: after an admin clicks **Clear Bounced**, the car's Status
+chip can still show **Bounced**. Clear Bounced writes `cars.email_bounced =
+0` and a `cars_hist` audit row; it does not change or delete the car's
+`er_email_events` rows. The hard-bounce event stays the latest terminal
+event in the car's open send cycle, so the chip keeps showing Bounced until
+a new verification email starts a new send cycle. The pill and the action
+button react at once: the car leaves the Bounced pill, and its row offers
+**Mark Bounced** again, because both read the `email_bounced` flag, not the
+event history.
+
+**Contextual action per row.** Each row has one action button. It replaces
+the three buttons per row in the earlier tool. The car's state selects the
+button, in this order:
+
+| Car state | Button | POST `command` |
+| --- | --- | --- |
+| Suppressed (car flag or owner profile flag) | Clear Suppression | `clear_suppression` |
+| Not suppressed, bounced | Clear Bounced | `clear_bounced` |
+| Not suppressed, not bounced | Mark Bounced | `mark_bounced` |
+
+A suppressed car shows Clear Suppression, even if it is also bounced. Clear
+Bounced then becomes available after the suppression is cleared. When the
+chip reads Soft bounce, the Mark Bounced button is disabled. One soft bounce
+does not confirm a dead address.
+
+The handlers and their owner-level effects are unchanged. See
+[Mark Bounced / Clear Bounced / Clear Suppression](#mark-bounced--clear-bounced--clear-suppression-owner-level-actions).
+Each button submits a sibling form through the `form=` attribute, because the
+Eligible view wraps its table in the batch form and nested forms are not
+valid HTML. Editors see a dash in the Actions column (read-only). A row
+whose owner could not be loaded, or is the `noowner` system account (the
+GDPR-erasure reassignment target), also shows a dash: the three actions all
+act on the whole owner, and `noowner` can hold many unrelated cars. The
+server independently rejects any of the three commands posted for a
+`noowner`-owned car.
+
 ### Preview & Send Flow
 
-**GET request (no side effects):** Renders a table of eligible cars, up to the
-configured batch size (`VerificationSettings::batchSize()`, default 5), in the
-Verification tab's "Send Verification Emails" card section. Car data shown: ID,
-chassis, owner name, email address. Every dynamic value is HTML-escaped at render time.
+**GET request (no side effects):** The Eligible view of the Verification
+Queue (`?tab=verification&status=eligible`) renders a table of eligible cars,
+up to the configured batch size (`VerificationSettings::batchSize()`, default
+5), under the heading "Send Verification Emails". Car data shown: ID, chassis,
+owner name, sent date, days, status chip, and the row action. Every dynamic
+value is HTML-escaped at render time.
 
 **POST `verification_send_batch` action:** Sends verification emails to one batch of cars.
 CSRF token validated first (`Token::check()`); missing/invalid token includes the
@@ -360,7 +560,8 @@ standard UserSpice token-error page and no writes occur. For each submitted car 
 ### Mark Bounced / Clear Bounced / Clear Suppression (Owner-level Actions)
 
 **Critical semantics:** These actions fan out to **every car the owner has**.
-They are owner-level, not car-level.
+They are owner-level, not car-level. The queue shows one of the three buttons
+for each car row. See [Verification Queue](#verification-queue).
 
 **Mark Bounced** (`mark_bounced` POST):
 
@@ -484,7 +685,6 @@ environment belongs in `app/admin/index.php` (the Verification tab's POST comman
   `CarRepository::findVerificationEligible()` verbatim; the single query both
   callers use
 - `sendOne(object $carData): SendResult` — send one car's email, return sent/failed
-- `sendBatch(array $cars): array` — map `sendOne()` over multiple cars
 
 **Intended Reuse by #1885:** The cron job that follows this issue will call
 `sendOne()` in the same sequence, with the same eligibility rules. This prevents

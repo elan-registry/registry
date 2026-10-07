@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailNoticeBuilder;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
@@ -21,6 +24,11 @@ use ElanRegistry\Owner;
  *
  * Included by app/admin/index.php, which has already run init.php, securePage(),
  * and established $currentUserId / $csrfToken.
+ *
+ * Layout, top to bottom: summary cards, Automatic Sending, the verification
+ * queue, recent activity. The Status / Feature Switch panel is at the top and
+ * open when any probe reports a problem or the switch is off. When all is
+ * healthy it is at the bottom and closed.
  */
 
 // ---------------------------------------------------------------------------
@@ -39,6 +47,18 @@ $sendReportFailed      = $sendReportFailed ?? [];
 
 // Send services constructed by index.php, shared via the include scope.
 $verificationSendSvc = $verificationSendSvc ?? null;
+$verificationRepo    = $verificationRepo ?? null;
+
+// Dashboard URL state (?status=&window=&show=&activity_window=). index.php
+// checks each value against its allow-list in CarRepository. The window
+// defaults here are null, not 30: null is the valid "all time" value, and
+// `?? 30` would replace it.
+$queueStatus        = $queueStatus ?? 'all';
+$queueWindowDays    = $queueWindowDays ?? null;
+$queueShowLimit     = $queueShowLimit ?? 25;
+$activityWindowDays = $activityWindowDays ?? null;
+
+$vsIsEligibleView = $queueStatus === 'eligible';
 
 // ---------------------------------------------------------------------------
 // Readiness probes. VerificationSettings never throws from its probes, but a
@@ -129,7 +149,8 @@ if (isset($vsSettings)) {
     }
 }
 
-if ($verificationSendSvc !== null && isset($vsSettings)) {
+// Only the Eligible queue view shows this preview, so other views skip the query.
+if ($vsIsEligibleView && $verificationSendSvc !== null && isset($vsSettings)) {
     try {
         $vsEligible = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
@@ -140,6 +161,10 @@ if ($verificationSendSvc !== null && isset($vsSettings)) {
             $e->getMessage()
         ));
     }
+} elseif ($vsIsEligibleView) {
+    // Without the send service or the settings there is no preview. Say so,
+    // so that an empty list does not read as "no cars are due".
+    $vsEligibleError = 'The list of eligible cars could not be loaded. Check the system log for details.';
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +336,243 @@ if (!function_exists('vsEsc')) {
         return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
     }
 }
+
+if (!function_exists('vsWindowLabel')) {
+    /**
+     * Give the display text for a queue or activity window
+     *
+     * @param int|null $windowDays Days back from now, or null for all time
+     */
+    function vsWindowLabel(?int $windowDays): string
+    {
+        return $windowDays === null ? 'All time' : "Last {$windowDays} days";
+    }
+}
+
+if (!function_exists('vsStatusChip')) {
+    /**
+     * Give the Status chip for one queue row
+     *
+     * The chip shows the car's latest email event, as chosen by
+     * CarRepository::findLatestEmailEventPerCarWithPrecedence(). A
+     * suppressed car instead shows its suppression cause, from
+     * EmailNoticeBuilder::resolveSuppressionCause(), so the chip and the
+     * owner's account notice cannot disagree. That rule uses the latest
+     * suppression event of any send cycle. CAUSE_BREVO_COMPLAINT shows
+     * Brevo complaint (either a `spam` or an `unsubscribed` event — the rule
+     * does not say which); any other cause shows Opted out.
+     *
+     * @param object|null $event The chip event row, or null if the car has none
+     * @param bool $suppressed True when the car or its owner profile is suppressed
+     * @param object|null $suppressionEvent The car's latest suppression event of any send cycle, if read
+     * @param object|null $suppressedHist The latest `EMAIL SUPPRESSED` cars_hist row, if read
+     * @return array{kind: string, label: string, class: string, reason: string}
+     *         `kind` is '' when there is no event to show
+     */
+    function vsStatusChip(?object $event, bool $suppressed, ?object $suppressionEvent, ?object $suppressedHist): array
+    {
+        $name   = isset($event->event) ? (string) $event->event : null;
+        $reason = trim((string) ($event->reason ?? ''));
+
+        $optedOut  = ['kind' => 'opted_out', 'label' => 'Opted out', 'class' => 'text-bg-secondary', 'reason' => ''];
+        $spam      = ['kind' => 'spam', 'label' => 'Spam complaint', 'class' => 'text-bg-danger', 'reason' => ''];
+        // resolveSuppressionCause() answers only "owner opt-out or Brevo
+        // complaint" (EmailEventApplier::SUPPRESSION_EVENTS = spam or
+        // unsubscribed; it does not say which). Label it the same way the
+        // account notice does, rather than naming the specific event, so the
+        // chip and the notice cannot disagree for the unsubscribed-as-
+        // complaint case.
+        $complaint = ['kind' => 'complaint', 'label' => 'Brevo complaint', 'class' => 'text-bg-danger', 'reason' => ''];
+
+        if ($suppressed) {
+            $cause = EmailNoticeBuilder::resolveSuppressionCause($suppressionEvent, $suppressedHist);
+
+            return $cause['cause'] === EmailNoticeBuilder::CAUSE_BREVO_COMPLAINT ? $complaint : $optedOut;
+        }
+
+        if ($name === null) {
+            return ['kind' => '', 'label' => '', 'class' => '', 'reason' => ''];
+        }
+        if (in_array($name, EmailEventApplier::HARD_BOUNCE_EVENTS, true)) {
+            return ['kind' => 'bounced', 'label' => 'Bounced', 'class' => 'text-bg-danger', 'reason' => $reason];
+        }
+
+        return match ($name) {
+            'sent'         => ['kind' => 'sent', 'label' => 'Sent', 'class' => 'text-bg-secondary', 'reason' => ''],
+            // An open or a click proves the message arrived.
+            'delivered', 'unique_opened', 'opened', 'click'
+                           => ['kind' => 'delivered', 'label' => 'Delivered', 'class' => 'text-bg-success', 'reason' => ''],
+            'soft_bounce'  => ['kind' => 'soft_bounce', 'label' => 'Soft bounce', 'class' => 'text-bg-warning', 'reason' => $reason],
+            'spam'         => $spam,
+            'unsubscribed' => $optedOut,
+            // Brevo can add event names. Show the stored name, not a guess.
+            default        => ['kind' => 'other', 'label' => ucfirst(str_replace('_', ' ', $name)),
+                               'class' => 'text-bg-light', 'reason' => $reason],
+        };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard summary counts. Their own fault domain: a failure here shows
+// "unavailable" on the cards and pills, and the sections below still render.
+// $vsRepo is reused by the probes below when this construction succeeds.
+// ---------------------------------------------------------------------------
+/** @var array{all: int, eligible: int, pending: int, bounced: int, suppressed: int, verified: int, sold: int}|null $vsSummary */
+$vsSummary = null;
+$vsRepo    = $verificationRepo ?? new CarRepository(dbi());
+
+try {
+    $vsSummary = $vsRepo->countVerificationSummary($queueWindowDays);
+} catch (\Throwable $e) {
+    logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+        'Verification tab: could not load the summary counts [%s]: %s',
+        get_class($e),
+        $e->getMessage()
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// Verification queue rows. Their own fault domain. The Eligible view uses the
+// eligible-car preview above (the same rows the batch form sends), so it does
+// not run a second query.
+// ---------------------------------------------------------------------------
+/** @var array<int, object> $vsQueueRows */
+$vsQueueRows  = [];
+$vsQueueError = null;
+
+if ($vsIsEligibleView) {
+    $vsQueueRows  = $vsEligible;
+    $vsQueueError = $vsEligibleError;
+} else {
+    try {
+        $vsQueueRows = $vsRepo->findVerificationQueue($queueStatus, $queueWindowDays, $queueShowLimit);
+    } catch (\Throwable $e) {
+        $vsQueueError = 'The verification queue could not be loaded. Check the system log for details.';
+        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+            'Verification tab: could not load the %s queue [%s]: %s',
+            $queueStatus,
+            get_class($e),
+            $e->getMessage()
+        ));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Status chip events for the queue rows. Their own fault domain: a failure
+// shows "Unavailable" in the Status column, never an empty chip that reads as
+// "no events". Defaults to unreadable when there are rows, for the same
+// reason as $autoSendCountsUnreadable below.
+// ---------------------------------------------------------------------------
+$vsQueueCarIds           = [];
+$vsQueueSuppressedCarIds = [];
+foreach ($vsQueueRows as $vsQueueRow) {
+    $vsQueueRowId = (int) ($vsQueueRow->id ?? 0);
+    if ($vsQueueRowId > 0) {
+        $vsQueueCarIds[] = $vsQueueRowId;
+        if ((int) ($vsQueueRow->email_suppressed ?? 0) === 1
+            || (int) ($vsQueueRow->profile_email_suppressed ?? 0) === 1) {
+            $vsQueueSuppressedCarIds[] = $vsQueueRowId;
+        }
+    }
+}
+
+/** @var array<int, object> $vsChipEvents */
+$vsChipEvents = [];
+/** @var array<int, object> $vsSuppressionEvents */
+$vsSuppressionEvents = [];
+/** @var array<int, object> $vsSuppressedHist */
+$vsSuppressedHist = [];
+$vsChipUnreadable = $vsQueueCarIds !== [];
+
+if ($vsQueueCarIds !== []) {
+    try {
+        $vsChipEvents = $vsRepo->findLatestEmailEventPerCarWithPrecedence($vsQueueCarIds);
+
+        // A suppressed car's chip shows its cause. It uses the same reads as
+        // EmailNoticeBuilder: the latest suppression event of any send cycle,
+        // and the latest EMAIL SUPPRESSED history row.
+        if ($vsQueueSuppressedCarIds !== []) {
+            $vsSuppressionEvents = $vsRepo->findLatestEmailEventsByCarIdsAndEvents(
+                $vsQueueSuppressedCarIds,
+                EmailEventApplier::SUPPRESSION_EVENTS
+            );
+            $vsSuppressedHist = $vsRepo->findLatestHistoryOperationByCarIds(
+                $vsQueueSuppressedCarIds,
+                [EmailNoticeBuilder::OPERATION_SUPPRESSED]
+            );
+        }
+        $vsChipUnreadable = false;
+    } catch (\Throwable $e) {
+        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+            'Verification tab: could not load the queue status chips [%s]: %s',
+            get_class($e),
+            $e->getMessage()
+        ));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Recent activity. Its own fault domain, with its own window.
+// ---------------------------------------------------------------------------
+/** @var array<int, object> $vsActivity */
+$vsActivity      = [];
+$vsActivityError = null;
+
+try {
+    $vsActivity = $vsRepo->findRecentVerificationActivity($activityWindowDays, 20);
+} catch (\Throwable $e) {
+    $vsActivityError = 'Recent activity could not be loaded. Check the system log for details.';
+    logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+        'Verification tab: could not load recent activity [%s]: %s',
+        get_class($e),
+        $e->getMessage()
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// Next-eligible time for automatic sending: the guard declines a run until
+// GUARD_INTERVAL_HOURS have passed since the last claimed run. The real send
+// time is the first cron heartbeat after that.
+// ---------------------------------------------------------------------------
+$autoSendNextEligibleAt = $autoSendLastRunAt?->add(
+    new \DateInterval('PT' . SendVerificationBatchJob::GUARD_INTERVAL_HOURS . 'H')
+);
+
+// ---------------------------------------------------------------------------
+// One healthy flag for the Status panel's place on the page, from the probe
+// results above. An unreadable probe is not healthy: an unreadable unmatched
+// counter keeps its initial 0, and an unreadable failure log is null.
+// ---------------------------------------------------------------------------
+$vsAllHealthy = !$vsProbeFailed
+    && $vsEnabled
+    && $vsBrevoReady
+    && $vsCronReady
+    && !$vsUnmatchedUnreadable
+    && $vsUnmatchedCount === 0
+    && $cronFailureCount === 0;
+
+// Current URL state, so that each link and form keeps the other settings.
+$vsUrlState = [
+    'tab'             => 'verification',
+    'status'          => $queueStatus,
+    'window'          => (string) ($queueWindowDays ?? 0),
+    'show'            => (string) $queueShowLimit,
+    'activity_window' => (string) ($activityWindowDays ?? 0),
+];
+$vsTabUrl = static fn (array $overrides = []): string
+    => 'index.php?' . http_build_query(array_merge($vsUrlState, $overrides));
+
+$vsStatusLabels = [
+    'all'        => 'All',
+    'eligible'   => 'Eligible',
+    'pending'    => 'Pending',
+    'bounced'    => 'Bounced',
+    'suppressed' => 'Suppressed',
+    'verified'   => 'Verified',
+    'sold'       => 'Sold',
+];
+
+$vsNow = new \DateTimeImmutable();
 ?>
 
 <!-- Verification System Header -->
@@ -319,7 +581,7 @@ if (!function_exists('vsEsc')) {
         <h2 class="text-primary mb-1">
             <i class="fas fa-clipboard-check"></i> Verification System
         </h2>
-        <p class="text-muted mb-0">Feature switch and readiness for owner car verification</p>
+        <p class="text-muted mb-0">Owner car verification: counts, sending, queue, and system status</p>
     </div>
 </div>
 
@@ -331,12 +593,22 @@ if (!function_exists('vsEsc')) {
     </div>
 <?php } ?>
 
-<div class="card registry-card mb-4">
-    <div class="card-header card-header-er-primary">
-        <h5 class="mb-0 card-header-er-primary-text">
-            <i class="fas fa-clipboard-check"></i> Verification System
+<?php
+// The Status panel is rendered once into a buffer, then output at the top or
+// the bottom of the tab. See $vsAllHealthy.
+ob_start();
+?>
+<details class="card registry-card mb-4" id="verificationStatusPanel"<?= $vsAllHealthy ? '' : ' open' ?>>
+    <summary class="card-header card-header-er-l2">
+        <h5 class="d-inline mb-0 card-header-er-l2-text">
+            <i class="fas fa-heartbeat"></i> System Status &amp; Feature Switch
         </h5>
-    </div>
+        <?php if ($vsAllHealthy) { ?>
+        <span class="badge text-bg-success ms-2"><i class="fas fa-check-circle"></i> All healthy</span>
+        <?php } else { ?>
+        <span class="badge text-bg-warning ms-2"><i class="fas fa-exclamation-triangle"></i> Needs attention</span>
+        <?php } ?>
+    </summary>
     <div class="card-body">
 
         <!-- Status -->
@@ -539,12 +811,44 @@ if (!function_exists('vsEsc')) {
         <?php } ?>
 
     </div>
+</details>
+<?php
+$vsStatusPanelHtml = (string) ob_get_clean();
+
+if (!$vsAllHealthy) {
+    echo $vsStatusPanelHtml;
+}
+?>
+
+<!-- Summary cards. Verified and Sold use the queue Window; the others are current state. -->
+<div class="row g-3 mb-4" id="verificationSummaryCards">
+    <?php foreach (['eligible', 'pending', 'verified', 'sold', 'bounced', 'suppressed'] as $vsSummaryKey) { ?>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="er-stat-tile h-100" data-summary="<?= vsEsc($vsSummaryKey) ?>">
+            <div class="er-stat-number">
+                <?= $vsSummary !== null ? vsEsc(number_format($vsSummary[$vsSummaryKey])) : '&mdash;' ?>
+            </div>
+            <div class="er-stat-label"><?= vsEsc($vsStatusLabels[$vsSummaryKey]) ?></div>
+            <?php if ($vsSummaryKey === 'verified' || $vsSummaryKey === 'sold') { ?>
+            <div class="er-stat-label"><?= vsEsc(vsWindowLabel($queueWindowDays)) ?></div>
+            <?php } ?>
+        </div>
+    </div>
+    <?php } ?>
 </div>
+
+<?php if ($vsSummary === null) { ?>
+    <div class="alert alert-danger" role="alert">
+        <i class="fas fa-exclamation-circle"></i>
+        The summary counts could not be loaded. Check the system log for
+        <strong>CarVerification</strong> entries.
+    </div>
+<?php } ?>
 
 <!-- Automatic Sending (#1885) -->
 <div class="card registry-card mb-4<?= $autoSendPaused ? ' border-warning' : '' ?>">
-    <div class="card-header card-header-er-primary">
-        <h5 class="mb-0 card-header-er-primary-text">
+    <div class="card-header card-header-er-l2">
+        <h5 class="mb-0 card-header-er-l2-text">
             <i class="fas fa-robot"></i> Automatic Sending
         </h5>
     </div>
@@ -582,6 +886,25 @@ if (!function_exists('vsEsc')) {
                         last ran <?= vsEsc($autoSendLastRunAt->format('M j, Y g:i A')) ?>
                     </small>
                 <?php } ?>
+            </dd>
+
+            <dt class="col-sm-4">Next eligible</dt>
+            <dd class="col-sm-8">
+                <?php if ($autoSendPaused) { ?>
+                    <span class="text-muted">Not scheduled while automatic sending is paused</span>
+                <?php } elseif ($autoSendState !== CronJobEnabledState::ENABLED) { ?>
+                    <span class="text-muted">Unknown &mdash; the job status could not be read</span>
+                <?php } elseif ($autoSendNextEligibleAt === null) { ?>
+                    On the next cron heartbeat (no automatic run yet)
+                <?php } else { ?>
+                    After <?= vsEsc($autoSendNextEligibleAt->format('M j, Y g:i A')) ?>
+                <?php } ?>
+                <small class="form-text text-muted d-block mt-1">
+                    <i class="fas fa-info-circle"></i>
+                    The job runs at most once every
+                    <?= vsEsc((string) SendVerificationBatchJob::GUARD_INTERVAL_HOURS) ?> hours. The actual send
+                    time depends on when the server's cron heartbeat next fires.
+                </small>
             </dd>
 
             <dt class="col-sm-4">Last run results</dt>
@@ -654,7 +977,13 @@ if (!function_exists('vsEsc')) {
         <?php if ($vsCanToggle) { ?>
         <!-- Gated on $vsCanToggle to match this tab's "read-only for editors"
              contract. The server re-checks hasPerm([2]) on the POST side; this
-             only avoids showing an editor a control their click would reject. -->
+             only avoids showing an editor a control their click would reject.
+             Send Batch Now is a link, not a POST: it opens the Eligible view,
+             which previews the batch before its Send batch button sends it. -->
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+        <a class="btn btn-outline-primary" href="<?= vsEsc($vsTabUrl(['status' => 'eligible'])) ?>#verificationQueue">
+            <i class="fas fa-paper-plane"></i> Send Batch Now
+        </a>
         <form action="index.php?tab=verification" method="POST">
             <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
             <input type="hidden" name="command" value="verification_toggle_cron">
@@ -669,6 +998,7 @@ if (!function_exists('vsEsc')) {
             </button>
             <?php } ?>
         </form>
+        </div>
         <?php } else { ?>
         <p class="text-muted mb-0">
             <i class="fas fa-lock"></i> Administrator access is required to pause or resume automatic sending.
@@ -678,19 +1008,70 @@ if (!function_exists('vsEsc')) {
     </div>
 </div>
 
-<!-- Send Verification Emails -->
-<div class="card registry-card mb-4">
-    <div class="card-header card-header-er-primary">
-        <h5 class="mb-0 card-header-er-primary-text">
-            <i class="fas fa-envelope-circle-check"></i> Send Verification Emails
+<!-- Verification Queue -->
+<div class="card registry-card mb-4" id="verificationQueue">
+    <div class="card-header card-header-er-l2">
+        <h5 class="mb-0 card-header-er-l2-text">
+            <i class="fas fa-list-check"></i> Verification Queue
         </h5>
     </div>
     <div class="card-body">
 
-        <p class="text-muted">
-            Review the cars currently due a verification email, then send the batch.
-            Nothing is sent until you press <strong>Send batch</strong>.
-        </p>
+        <!-- Filter pills. Each pill is a GET link, so each view has its own bookmarkable URL. -->
+        <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter the verification queue by status">
+            <?php foreach (CarRepository::QUEUE_STATUSES as $vsPillStatus) {
+                $vsPillActive = $vsPillStatus === $queueStatus;
+            ?>
+            <a class="btn btn-sm filter-pill <?= $vsPillActive ? 'btn-primary active' : 'btn-outline-secondary' ?>"
+               href="<?= vsEsc($vsTabUrl(['status' => $vsPillStatus])) ?>#verificationQueue"
+               data-status="<?= vsEsc($vsPillStatus) ?>"
+               <?= $vsPillActive ? 'aria-current="page"' : '' ?>>
+                <?= vsEsc($vsStatusLabels[$vsPillStatus]) ?>
+                <?php if ($vsSummary !== null) { ?>
+                <span class="ms-1">(<?= vsEsc(number_format($vsSummary[$vsPillStatus])) ?>)</span>
+                <?php } ?>
+            </a>
+            <?php } ?>
+        </div>
+
+        <!-- Window and Show. A plain GET form; the other URL state goes in hidden fields. -->
+        <form action="index.php" method="GET" class="row g-2 align-items-center mb-1" id="verificationQueueControls">
+            <input type="hidden" name="tab" value="verification">
+            <input type="hidden" name="status" value="<?= vsEsc($queueStatus) ?>">
+            <input type="hidden" name="activity_window" value="<?= vsEsc($vsUrlState['activity_window']) ?>">
+            <div class="col-auto">
+                <label class="col-form-label col-form-label-sm" for="verificationQueueWindow">Window</label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" id="verificationQueueWindow" name="window">
+                    <?php foreach (CarRepository::QUEUE_WINDOW_CHOICES as $vsWindowKey => $vsWindowValue) { ?>
+                    <option value="<?= vsEsc((string) $vsWindowKey) ?>"<?= $vsWindowValue === $queueWindowDays ? ' selected' : '' ?>>
+                        <?= vsEsc(vsWindowLabel($vsWindowValue)) ?>
+                    </option>
+                    <?php } ?>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="col-form-label col-form-label-sm" for="verificationQueueShow">Show</label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" id="verificationQueueShow" name="show">
+                    <?php foreach (CarRepository::QUEUE_SHOW_CHOICES as $vsShowValue) { ?>
+                    <option value="<?= vsEsc((string) $vsShowValue) ?>"<?= $vsShowValue === $queueShowLimit ? ' selected' : '' ?>>
+                        <?= vsEsc((string) $vsShowValue) ?> rows
+                    </option>
+                    <?php } ?>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
+            </div>
+        </form>
+        <small class="form-text text-muted d-block mb-3">
+            <i class="fas fa-info-circle"></i>
+            Window applies to Verified and Sold (and to their summary cards). The other views show the
+            current state. Show does not apply to Eligible, which previews one batch.
+        </small>
 
 <?php if ($sendBatchJustRan) { ?>
 
@@ -791,32 +1172,62 @@ if (!function_exists('vsEsc')) {
         <?php } ?>
 
         <hr>
-        <h6 class="text-primary mb-3"><i class="fas fa-envelope"></i> Cars still due a verification email</h6>
 
 <?php } ?>
 
-<?php if ($vsEligibleError !== null) { ?>
+<?php if ($vsIsEligibleView) { ?>
+        <h6 class="text-primary mb-2"><i class="fas fa-envelope-circle-check"></i> Send Verification Emails</h6>
+        <p class="text-muted">
+            Review the cars currently due a verification email, then send the batch.
+            Nothing is sent until you press <strong>Send batch</strong>.
+        </p>
+<?php } elseif ($queueStatus === 'pending') { ?>
+        <p class="text-muted">Showing <strong>Pending</strong>, longest-waiting first.</p>
+<?php } else { ?>
+        <p class="text-muted">
+            Showing <strong><?= vsEsc($vsStatusLabels[$queueStatus] ?? $queueStatus) ?></strong>,
+            up to <?= vsEsc((string) $queueShowLimit) ?> rows.
+        </p>
+<?php } ?>
+
+<?php if ($vsQueueError !== null) { ?>
 
         <div class="alert alert-danger" role="alert">
-            <i class="fas fa-exclamation-circle"></i> <?= vsEsc($vsEligibleError) ?>
+            <i class="fas fa-exclamation-circle"></i> <?= vsEsc($vsQueueError) ?>
         </div>
 
-<?php } elseif ($vsEligible === []) { ?>
+<?php } elseif ($vsQueueRows === []) { ?>
 
         <div class="alert alert-info" role="alert">
-            <i class="fas fa-info-circle"></i> No cars are currently due a verification email.
+            <i class="fas fa-info-circle"></i>
+            <?= $vsIsEligibleView ? 'No cars are currently due a verification email.' : 'No cars match this view.' ?>
         </div>
 
 <?php } else { ?>
 
+        <?php if ($vsIsEligibleView) { ?>
         <p class="text-muted">
             Showing up to the configured batch size (<?= vsEsc((string) $vsBatchSize) ?>)
             of the oldest-verified eligible cars.
         </p>
+        <?php } ?>
 
-        <form action="index.php?tab=verification" method="POST">
+        <?php if ($vsChipUnreadable) { ?>
+        <div class="alert alert-warning" role="alert">
+            <i class="fas fa-exclamation-triangle"></i>
+            Email status could not be read, so the Status column is unavailable. Check the system log for
+            <strong>CarVerification</strong> entries.
+        </div>
+        <?php } ?>
+
+        <?php if ($vsIsEligibleView) { ?>
+        <!-- The batch form wraps the Eligible table, so the previewed rows are the rows sent.
+             The per-row action buttons submit their own sibling forms through form=, so
+             Send batch is the only submit button in this form with no form= attribute. -->
+        <form action="<?= vsEsc($vsTabUrl(['status' => 'eligible'])) ?>" method="POST">
             <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
             <input type="hidden" name="command" value="verification_send_batch">
+        <?php } ?>
 
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
@@ -825,64 +1236,139 @@ if (!function_exists('vsEsc')) {
                             <th scope="col">Car</th>
                             <th scope="col">Chassis</th>
                             <th scope="col">Owner</th>
-                            <th scope="col">Email</th>
-                            <th scope="col">Owner actions</th>
+                            <th scope="col">Sent</th>
+                            <th scope="col">Days</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($vsEligible as $eligibleCar) {
-                        // cars.fname/cars.lname ARE present in this row (findVerificationEligible()
-                        // selects cars.*, and fname/lname are denormalized onto cars — see
+                    <?php foreach ($vsQueueRows as $queueCar) {
+                        $queueCarId = (int) ($queueCar->id ?? 0);
+
+                        // cars.fname/cars.lname ARE present in this row (both queue queries
+                        // select them, and fname/lname are denormalized onto cars — see
                         // DATABASE.md), but they are a synced copy that can drift from the
                         // authoritative users/profiles values. The owner name shown here is
                         // resolved per row via Owner::data() rather than trusting the
-                        // denormalized cars columns, so this preview matches what the send
-                        // actually uses (CarVerificationSendService also loads Owner fresh).
+                        // denormalized cars columns, so the Eligible preview matches what the
+                        // send actually uses (CarVerificationSendService also loads Owner fresh).
                         // Guarded per row: this loop runs inside an already-open <tbody>, well
-                        // past the try/catch that built $vsEligible above — that catch's fault
+                        // past the try/catch that built the row list above — that catch's fault
                         // domain covers only the query that produced the list, not this per-row
                         // lookup. An uncaught throw here would fatal mid-render (unclosed table,
                         // no error shown), so a failure instead logs and falls back to the row's
                         // own denormalized cars.fname/cars.lname rather than aborting the page.
+                        // Null when the owner row could not be read, so the action
+                        // buttons below have something to gate on even when the
+                        // try/catch falls back to the row's denormalized name.
+                        $vsOwnerRow = null;
                         try {
-                            $vsOwnerRow  = (new Owner((int) $eligibleCar->user_id))->data();
+                            $vsOwnerRow  = (new Owner((int) $queueCar->user_id))->data();
                             $vsOwnerName = trim(($vsOwnerRow->fname ?? '') . ' ' . ($vsOwnerRow->lname ?? ''));
                         } catch (\Throwable $e) {
                             logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                                'Verification tab: owner %d could not be loaded for the eligible-car preview row of car %d [%s]: %s',
-                                (int) $eligibleCar->user_id,
-                                (int) $eligibleCar->id,
+                                'Verification tab: owner %d could not be loaded for the queue row of car %d [%s]: %s',
+                                (int) $queueCar->user_id,
+                                $queueCarId,
                                 get_class($e),
                                 $e->getMessage()
                             ));
-                            $vsOwnerName = trim(($eligibleCar->fname ?? '') . ' ' . ($eligibleCar->lname ?? ''));
+                            $vsOwnerName = trim(($queueCar->fname ?? '') . ' ' . ($queueCar->lname ?? ''));
+                        }
+
+                        // The `noowner` system account (GDPR-erasure reassignment
+                        // target, see CarAdministrationService) and a row with no
+                        // live owner at all are not real owners: mark_bounced /
+                        // clear_bounced / clear_suppression all act on the WHOLE
+                        // owner (CarVerificationManager::*ForOwner()), so a click
+                        // here would flag or clear every other car `noowner` holds
+                        // too. Same username check CarVerificationSendService uses
+                        // to skip sending to this account.
+                        $queueOwnerIsActionable = $vsOwnerRow !== null
+                            && ($vsOwnerRow->username ?? '') !== 'noowner';
+                        // Null covers a missing users row and a failed lookup. Neither must read like a GDPR-erasure car.
+                        $queueNoActionTitle = $vsOwnerRow === null
+                            ? 'The owner record is missing or could not be loaded. No action is available.'
+                            : 'This car has no individual owner to act on.';
+
+                        $queueSentAt = !empty($queueCar->vericode_sent_at)
+                            ? date_create_immutable((string) $queueCar->vericode_sent_at)
+                            : false;
+                        $queueDays = $queueSentAt !== false ? (int) $queueSentAt->diff($vsNow)->days : null;
+
+                        $queueBounced    = (int) ($queueCar->email_bounced ?? 0) === 1;
+                        $queueSuppressed = (int) ($queueCar->email_suppressed ?? 0) === 1
+                            || (int) ($queueCar->profile_email_suppressed ?? 0) === 1;
+
+                        $queueChip = vsStatusChip(
+                            $vsChipEvents[$queueCarId] ?? null,
+                            $queueSuppressed,
+                            $vsSuppressionEvents[$queueCarId] ?? null,
+                            $vsSuppressedHist[$queueCarId] ?? null
+                        );
+
+                        // One action per row, from the car's state. Suppressed comes first:
+                        // a suppressed car that is not bounced needs Clear Suppression, not
+                        // Mark Bounced. A single soft bounce keeps the car Pending (Brevo
+                        // escalates repeated soft bounces), so Mark Bounced is disabled there.
+                        if ($queueSuppressed) {
+                            $queueAction = ['command' => 'clear_suppression', 'label' => 'Clear Suppression',
+                                            'class' => 'btn-outline-secondary', 'disabled' => false];
+                        } elseif ($queueBounced) {
+                            $queueAction = ['command' => 'clear_bounced', 'label' => 'Clear Bounced',
+                                            'class' => 'btn-outline-secondary', 'disabled' => false];
+                        } else {
+                            $queueAction = ['command' => 'mark_bounced', 'label' => 'Mark Bounced',
+                                            'class' => 'btn-outline-danger',
+                                            'disabled' => $queueChip['kind'] === 'soft_bounce'];
                         }
                     ?>
                         <tr>
                             <td>
-                                <input type="hidden" name="car_ids[]" value="<?= vsEsc($eligibleCar->id) ?>">
-                                <?= vsEsc($eligibleCar->id) ?>
+                                <?php if ($vsIsEligibleView) { ?>
+                                <input type="hidden" name="car_ids[]" value="<?= vsEsc($queueCarId) ?>">
+                                <?php } ?>
+                                <?= vsEsc($queueCarId) ?>
                             </td>
-                            <td><?= vsEsc($eligibleCar->chassis ?? '') ?></td>
-                            <td><?= vsEsc($vsOwnerName !== '' ? $vsOwnerName : "owner #{$eligibleCar->user_id}") ?></td>
-                            <td><?= vsEsc($eligibleCar->email ?? '') ?></td>
+                            <td><?= vsEsc($queueCar->chassis ?? '') ?></td>
+                            <td><?= vsEsc($vsOwnerName !== '' ? $vsOwnerName : "owner #{$queueCar->user_id}") ?></td>
+                            <td><?= $queueSentAt !== false ? vsEsc($queueSentAt->format('Y-m-d')) : '&mdash;' ?></td>
+                            <td><?= $queueDays !== null ? vsEsc((string) $queueDays) : '&mdash;' ?></td>
                             <td>
-                                <?php if ($vsCanToggle) { ?>
+                                <?php if ($vsChipUnreadable) { ?>
+                                <span class="text-muted">Unavailable</span>
+                                <?php } elseif ($queueChip['kind'] === '') { ?>
+                                <span class="text-muted">&mdash;</span>
+                                <?php } else { ?>
+                                <span class="badge <?= vsEsc($queueChip['class']) ?>" data-chip="<?= vsEsc($queueChip['kind']) ?>">
+                                    <?= vsEsc($queueChip['label']) ?>
+                                </span>
+                                <?php if ($queueChip['reason'] !== '') { ?>
+                                <small class="text-muted d-block"><?= vsEsc($queueChip['reason']) ?></small>
+                                <?php } ?>
+                                <?php } ?>
+                            </td>
+                            <td>
+                                <?php if ($vsCanToggle && $queueOwnerIsActionable) { ?>
                                 <!-- Rendered outside the batch form via the form= attribute: nested
                                      forms are invalid HTML and would break the batch submission.
                                      Gated on $vsCanToggle (admin-only) to match this tab's own
                                      "read-only for editors" contract — the server independently
                                      enforces the same hasPerm([2]) check on the POST side, this is
                                      purely so an editor isn't shown controls their click would reject. -->
-                                <button type="submit" class="btn btn-sm btn-outline-danger"
-                                        name="command" value="mark_bounced"
-                                        form="owner-action-<?= vsEsc($eligibleCar->id) ?>">Mark Bounced</button>
-                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        name="command" value="clear_bounced"
-                                        form="owner-action-<?= vsEsc($eligibleCar->id) ?>">Clear Bounced</button>
-                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        name="command" value="clear_suppression"
-                                        form="owner-action-<?= vsEsc($eligibleCar->id) ?>">Clear Suppression</button>
+                                <button type="submit" class="btn btn-sm <?= vsEsc($queueAction['class']) ?>"
+                                        name="command" value="<?= vsEsc($queueAction['command']) ?>"
+                                        form="owner-action-<?= vsEsc($queueCarId) ?>"
+                                        <?= $queueAction['disabled']
+                                            ? 'disabled title="One soft bounce does not confirm a dead address."'
+                                            : '' ?>><?= vsEsc($queueAction['label']) ?></button>
+                                <?php } elseif ($vsCanToggle) { ?>
+                                <!-- No live, non-system owner: mark_bounced / clear_bounced /
+                                     clear_suppression all act on the whole owner, and acting on
+                                     `noowner` or a row with no owner would reach every other car
+                                     that account holds. -->
+                                <span class="text-muted" title="<?= vsEsc($queueNoActionTitle) ?>">&mdash;</span>
                                 <?php } else { ?>
                                 <span class="text-muted">&mdash;</span>
                                 <?php } ?>
@@ -893,6 +1379,7 @@ if (!function_exists('vsEsc')) {
                 </table>
             </div>
 
+        <?php if ($vsIsEligibleView) { ?>
             <?php if ($vsCanToggle) { ?>
             <button type="submit" class="btn btn-primary">
                 <i class="fas fa-paper-plane"></i> Send batch
@@ -901,12 +1388,13 @@ if (!function_exists('vsEsc')) {
             <p class="text-muted mb-0"><i class="fas fa-lock"></i> Administrator access is required to send.</p>
             <?php } ?>
         </form>
+        <?php } ?>
 
         <?php if ($vsCanToggle) { ?>
-        <?php foreach ($vsEligible as $eligibleCar) { ?>
-        <form action="index.php?tab=verification" method="POST" id="owner-action-<?= vsEsc($eligibleCar->id) ?>">
+        <?php foreach ($vsQueueRows as $queueCar) { ?>
+        <form action="<?= vsEsc($vsTabUrl()) ?>" method="POST" id="owner-action-<?= vsEsc((int) ($queueCar->id ?? 0)) ?>">
             <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
-            <input type="hidden" name="car_id" value="<?= vsEsc($eligibleCar->id) ?>">
+            <input type="hidden" name="car_id" value="<?= vsEsc((int) ($queueCar->id ?? 0)) ?>">
         </form>
         <?php } ?>
         <?php } ?>
@@ -915,5 +1403,73 @@ if (!function_exists('vsEsc')) {
 
     </div>
 </div>
+
+<!-- Recent Activity -->
+<div class="card registry-card mb-4" id="verificationRecentActivity">
+    <div class="card-header card-header-er-l2">
+        <h5 class="mb-0 card-header-er-l2-text">
+            <i class="fas fa-clock-rotate-left"></i> Recent Activity
+        </h5>
+    </div>
+    <div class="card-body">
+
+        <form action="index.php" method="GET" class="row g-2 align-items-center mb-3" id="verificationActivityControls">
+            <input type="hidden" name="tab" value="verification">
+            <input type="hidden" name="status" value="<?= vsEsc($queueStatus) ?>">
+            <input type="hidden" name="window" value="<?= vsEsc($vsUrlState['window']) ?>">
+            <input type="hidden" name="show" value="<?= vsEsc($vsUrlState['show']) ?>">
+            <div class="col-auto">
+                <label class="col-form-label col-form-label-sm" for="verificationActivityWindow">Window</label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" id="verificationActivityWindow" name="activity_window">
+                    <?php foreach (CarRepository::QUEUE_WINDOW_CHOICES as $vsWindowKey => $vsWindowValue) { ?>
+                    <option value="<?= vsEsc((string) $vsWindowKey) ?>"<?= $vsWindowValue === $activityWindowDays ? ' selected' : '' ?>>
+                        <?= vsEsc(vsWindowLabel($vsWindowValue)) ?>
+                    </option>
+                    <?php } ?>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
+            </div>
+            <div class="col-auto">
+                <small class="text-muted">Latest 20 VERIFIED and VERIFIED SOLD events</small>
+            </div>
+        </form>
+
+        <?php if ($vsActivityError !== null) { ?>
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-circle"></i> <?= vsEsc($vsActivityError) ?>
+        </div>
+        <?php } elseif ($vsActivity === []) { ?>
+        <p class="text-muted mb-0">No verification activity in this window.</p>
+        <?php } else { ?>
+        <ul class="list-unstyled mb-0">
+            <?php foreach ($vsActivity as $vsActivityRow) {
+                $vsActivityAt   = date_create_immutable((string) ($vsActivityRow->timestamp ?? ''));
+                $vsActivityName = trim(($vsActivityRow->fname ?? '') . ' ' . ($vsActivityRow->lname ?? ''));
+            ?>
+            <li class="mb-1">
+                <span class="text-nowrap text-muted">
+                    <?= $vsActivityAt !== false
+                        ? vsEsc($vsActivityAt->format('M j, Y g:i A'))
+                        : vsEsc($vsActivityRow->timestamp ?? '') ?>
+                </span>
+                &mdash; <strong><?= vsEsc($vsActivityRow->operation ?? '') ?></strong>
+                &mdash; car <?= vsEsc((int) ($vsActivityRow->car_id ?? 0)) ?><?= $vsActivityName !== '' ? ', ' . vsEsc($vsActivityName) : '' ?>
+            </li>
+            <?php } ?>
+        </ul>
+        <?php } ?>
+
+    </div>
+</div>
+
+<?php
+if ($vsAllHealthy) {
+    echo $vsStatusPanelHtml;
+}
+?>
 
 <script src="<?= $us_url_root ?>app/admin/assets/js/tab-verification.min.js?v=<?= ASSET_VERSION ?>"></script>

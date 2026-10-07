@@ -1,4 +1,4 @@
-/* exported formatNumber, formatDate, prefersReducedMotion, initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal, showConfirmDialog, showInputDialog, escapeHtml, makeInfoRow */
+/* exported initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal, showConfirmDialog, showInputDialog, escapeHtml, makeInfoRow */
 /**
  * admin-core.js
  * Consolidated Management Interface JavaScript
@@ -521,32 +521,6 @@ $(document).ready(function() {
 // ==========================================================================
 // Utility Functions (Available globally)
 // ==========================================================================
-
-/**
- * Format numbers with thousands separators
- */
-function formatNumber(num) {
-    return new Intl.NumberFormat().format(num);
-}
-
-/**
- * Format dates consistently
- */
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
-}
-
-/**
- * Check if user prefers reduced motion
- */
-function prefersReducedMotion() {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
 
 /**
  * Initialize Car Management functionality for the car-mgmt tab

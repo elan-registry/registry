@@ -1218,21 +1218,17 @@ final class CarRepositoryTest extends TestCase
             'findVerificationEligible() must filter on stalenessSql(), the exact negation of freshnessSql()'
         );
         $this->assertStringContainsString(
-            'LEFT JOIN profiles ON profiles.user_id = cars.user_id',
+            'AND COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0) = 0',
             $capturedSql,
-            'The owner-level opt-out must be joined as a LEFT JOIN, not an INNER JOIN — users and '
-                . 'profiles are not 1:1 in this schema (see CarRepository::findProfileEmailSuppressed()\'s '
-                . 'docblock), so an INNER JOIN would silently make every owner who never filled in a '
-                . 'profile permanently un-emailable'
-        );
-        $this->assertStringContainsString(
-            'AND COALESCE(profiles.email_suppressed, 0) = 0',
-            $capturedSql,
-            'An owner who opted out (profiles.email_suppressed = 1) must be excluded regardless of the '
-                . 'per-car flag — setSuppressedForOwner() only fans out to the cars held at opt-out time, '
-                . 'so a car acquired later reads cars.email_suppressed = 0 and would otherwise re-enter '
-                . 'the eligible set (the gap named in 20260914093000_add_profile_email_suppressed.php). '
-                . 'COALESCE supplies the column default for an owner with no profiles row at all'
+            'The owner-level opt-out must be read via a correlated subquery, not a LEFT JOIN — '
+                . 'profiles.user_id has no UNIQUE index, so a join could duplicate the car row in a list '
+                . 'result. An owner who opted out (profiles.email_suppressed = 1) must be excluded '
+                . 'regardless of the per-car flag — setSuppressedForOwner() only fans out to the cars held '
+                . 'at opt-out time, so a car acquired later reads cars.email_suppressed = 0 and would '
+                . 'otherwise re-enter the eligible set (the gap named in '
+                . '20260914093000_add_profile_email_suppressed.php). COALESCE supplies the column default '
+                . 'for an owner with no profiles row at all, and MAX treats "suppressed in any profiles '
+                . 'row" as suppressed if an owner somehow has more than one'
         );
         // Pins the removed #1953 mtime fallback, not every COALESCE.
         $this->assertStringNotContainsString(

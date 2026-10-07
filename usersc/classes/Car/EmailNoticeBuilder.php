@@ -76,7 +76,11 @@ final class EmailNoticeBuilder
     /** Maximum number of addresses the notice names. The rest go into overflowCount. */
     public const MAX_ADDRESSES = 3;
 
-    private const OPERATION_SUPPRESSED = 'EMAIL SUPPRESSED';
+    /**
+     * cars_hist.operation of a suppression. Public so that each caller of
+     * {@see self::resolveSuppressionCause()} reads the same history rows.
+     */
+    public const OPERATION_SUPPRESSED = 'EMAIL SUPPRESSED';
     private const OPERATION_BOUNCED    = 'EMAIL BOUNCED';
 
     public function __construct(private CarRepository $repo)
@@ -169,17 +173,8 @@ final class EmailNoticeBuilder
                 $key = strtolower($flags['suppressedAddress']);
                 $byAddress[$key] ??= ['address' => $flags['suppressedAddress'], 'suppressed' => null, 'bounced' => null];
 
-                $eventAt = self::toDateTime($suppressionEvents[$carId]->occurred_at ?? null);
-                $histAt  = self::toDateTime($suppressedHist[$carId]->timestamp ?? null);
-                // The event wins only if it is not older than the latest
-                // EMAIL SUPPRESSED row — otherwise it is a stale event from
-                // before an intervening clear-and-resuppress cycle. Compared
-                // at full datetime precision, not the truncated display
-                // date, so a same-day clear-and-resuppress is not missed.
-                $eventIsCurrent = $eventAt !== null && ($histAt === null || $eventAt >= $histAt);
-                $entry = $eventIsCurrent
-                    ? ['cause' => self::CAUSE_BREVO_COMPLAINT, 'date' => $eventAt->format('Y-m-d')]
-                    : ['cause' => self::CAUSE_OWNER_OPTOUT, 'date' => $histAt?->format('Y-m-d')];
+                $cause = self::resolveSuppressionCause($suppressionEvents[$carId] ?? null, $suppressedHist[$carId] ?? null);
+                $entry = ['cause' => $cause['cause'], 'date' => $cause['at']?->format('Y-m-d')];
                 $byAddress[$key]['suppressed'] = self::mergeSuppressed($byAddress[$key]['suppressed'], $entry);
             }
 
@@ -221,6 +216,39 @@ final class EmailNoticeBuilder
                 json_encode($all, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE)
             ),
         ];
+    }
+
+    /**
+     * Resolve the cause of one suppressed car's current suppression
+     *
+     * The one rule for "Brevo complaint or owner opt-out". The account notice
+     * and the admin queue Status chip both use it, so the two cannot disagree.
+     * The suppression event is the cause only when it is not older than the
+     * latest `EMAIL SUPPRESSED` cars_hist row. An older event is from before
+     * an intervening clear-and-resuppress, so it is ignored. The comparison
+     * uses full datetime precision, not the display date, so a same-day
+     * clear-and-resuppress is not missed. See the class docblock.
+     *
+     * @param object|null $suppressionEvent The car's latest
+     *        {@see EmailEventApplier::SUPPRESSION_EVENTS} row from
+     *        {@see CarRepository::findLatestEmailEventsByCarIdsAndEvents()},
+     *        not limited to a send cycle. Null when the car has none.
+     * @param object|null $suppressedHist The car's latest
+     *        {@see self::OPERATION_SUPPRESSED} cars_hist row from
+     *        {@see CarRepository::findLatestHistoryOperationByCarIds()}. Null when the car has none.
+     * @return array{cause: 'owner_optout'|'brevo_complaint', at: ?DateTimeImmutable}
+     *         `at` is the time of the row that gives the cause, or null when no row gives one
+     */
+    public static function resolveSuppressionCause(?object $suppressionEvent, ?object $suppressedHist): array
+    {
+        $eventAt = self::toDateTime($suppressionEvent->occurred_at ?? null);
+        $histAt  = self::toDateTime($suppressedHist->timestamp ?? null);
+
+        if ($eventAt !== null && ($histAt === null || $eventAt >= $histAt)) {
+            return ['cause' => self::CAUSE_BREVO_COMPLAINT, 'at' => $eventAt];
+        }
+
+        return ['cause' => self::CAUSE_OWNER_OPTOUT, 'at' => $histAt];
     }
 
     /**
@@ -306,7 +334,8 @@ final class EmailNoticeBuilder
      * The returned `Y-m-d`-only values in the built array are too coarse to
      * tell apart a clear and a re-suppression made on the same calendar
      * day, so the cause/bounce-date recency checks in
-     * {@see self::buildForOwner()} compare these objects directly, before
+     * {@see self::resolveSuppressionCause()} and {@see self::buildForOwner()}
+     * compare these objects directly, before
      * either side is formatted (`->format('Y-m-d')`) for the returned array.
      *
      * Returns null for null, non-string, malformed or zero-date values.

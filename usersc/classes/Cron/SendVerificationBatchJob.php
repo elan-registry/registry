@@ -70,8 +70,11 @@ final class SendVerificationBatchJob extends AbstractCronJob
      * leaves enough slack for the run to re-anchor at roughly the same hour,
      * while staying comfortably inside a once-a-day cadence — the interval is
      * a floor on the gap between batches, not a schedule.
+     *
+     * Public so the admin Verification tab can show the next-eligible time
+     * from the same value the guard uses.
      */
-    private const GUARD_INTERVAL_HOURS = 20;
+    public const GUARD_INTERVAL_HOURS = 20;
 
     /**
      * Collaborators are injected rather than constructed internally, matching

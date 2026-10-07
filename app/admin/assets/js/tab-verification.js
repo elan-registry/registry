@@ -60,4 +60,24 @@
                 );
             });
     });
+
+    // Window/Show/Activity-window controls are plain GET forms: the browser
+    // can submit them with no JS at all. The one gap is that a plain GET
+    // submit reloads at the top of this long page, while the filter pills
+    // above (server-rendered links) keep the reader's place with a URL
+    // fragment. This reproduces that fragment for the two forms, without
+    // changing how they build or submit their query string.
+    [
+        ['verificationQueueControls', 'verificationQueue'],
+        ['verificationActivityControls', 'verificationRecentActivity']
+    ].forEach(function (pair) {
+        var form = document.getElementById(pair[0]);
+        if (!form) return;
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            var params = new URLSearchParams(new FormData(form));
+            window.location.assign(form.action.split('#')[0] + '?' + params.toString() + '#' + pair[1]);
+        });
+    });
 })();
