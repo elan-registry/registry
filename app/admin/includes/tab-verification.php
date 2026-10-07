@@ -1287,9 +1287,9 @@ if (!$vsAllHealthy) {
                         // to skip sending to this account.
                         $queueOwnerIsActionable = $vsOwnerRow !== null
                             && ($vsOwnerRow->username ?? '') !== 'noowner';
-                        // A failed lookup must not read like a GDPR-erasure car.
+                        // Null covers a missing users row and a failed lookup. Neither must read like a GDPR-erasure car.
                         $queueNoActionTitle = $vsOwnerRow === null
-                            ? 'The owner record could not be loaded. No action is available.'
+                            ? 'The owner record is missing or could not be loaded. No action is available.'
                             : 'This car has no individual owner to act on.';
 
                         $queueSentAt = !empty($queueCar->vericode_sent_at)
