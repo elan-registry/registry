@@ -2,7 +2,8 @@
 #
 # Tests for scripts/build-summary-index.py: one folder per series, grouped by
 # category, fresh/stale badges, the newest --keep pages kept, and the prompt
-# shown collapsed without its front matter.
+# shown collapsed without its front matter, and the Project health section
+# drawn from health/<date>.json snapshots.
 #
 # HERMETIC: each case builds a fixture folder under a temp dir and runs the
 # script with --dir. SUMMARY_TODAY pins today's date. No network calls.
@@ -72,7 +73,7 @@ else
 fi
 
 # --- Case 3: categories in the fixed order ---------------------------------
-ORDER="$(grep -o '<h2>[A-Za-z]*' "$IDX" | sed 's/<h2>//' | tr '\n' ' ')"
+ORDER="$(grep -o '<h2>[A-Za-z]*' "$IDX" | sed 's/<h2>//' | grep -v '^Project$' | tr '\n' ' ')"
 if [ "$ORDER" = "Status Health Review Other " ]; then
     pass "Case 3: categories in order Status, Health, Review, Other"
 else
@@ -151,6 +152,66 @@ if grep -q '&lt;script&gt;alert(1)&lt;/script&gt;' "$H/index.html" && ! grep -q 
     pass "Case 11: HTML in a prompt is escaped"
 else
     fail "Case 11: HTML in a prompt is escaped"
+fi
+
+# --- Case 12: summary falls back to meta description, then chip + tagline --
+M="$TMPROOT/m"
+prompt "$M/meta" "Meta" "Status" 7
+mkdir -p "$M/meta" "$M/chip"
+printf '<html><head><title>T</title><meta name="description" content="from meta"></head></html>\n' > "$M/meta/2026-10-09.html"
+prompt "$M/chip" "Chip" "Status" 7
+printf '<html><body><div class="tagline">from tagline</div><div class="verdict-chip">from chip</div></body></html>\n' > "$M/chip/2026-10-09.html"
+build "$M" >/dev/null
+if grep -q 'from meta' "$M/index.html" && grep -q 'from chip. from tagline' "$M/index.html"; then
+    pass "Case 12: summary falls back to meta description, then chip and tagline"
+else
+    fail "Case 12: summary falls back to meta description, then chip and tagline"
+fi
+
+# --- Case 13: no health snapshot says how to make one ----------------------
+if grep -q 'No snapshot yet' "$IDX" && printf '%s' "$OUT" | grep -q 'no health snapshot'; then
+    pass "Case 13: with no health snapshot the index says how to make one"
+else
+    fail "Case 13: with no health snapshot the index says how to make one" "out: [$OUT]"
+fi
+
+# --- Case 14: newest health snapshot drives the section ---------------------
+# snap <dir> <date> <open total> <defects>: one health snapshot.
+snap() {
+    mkdir -p "$1/health"
+    printf '{"velocity":[{"week_start":"2026-09-28","issues_closed":12,"prs_merged":9},{"week_start":"2026-10-05","issues_closed":8,"prs_merged":5}],"open":{"total":%s,"avg_age_days":20.5,"median_age_days":11,"oldest_days":90,"defects":%s,"features":2,"security":1,"maintenance":3,"other":0},"closed_30d":{"total":30,"defects":10,"features":8,"security":2,"maintenance":9,"other":1,"median_lead_days":4},"milestone":{"title":"v9.9.9: <Test>","closed":3,"total":4}}\n' "$3" "$4" > "$1/health/$2.json"
+}
+P="$TMPROOT/p"
+prompt "$P/one" "One" "Status" 7
+page "$P/one" 2026-10-09 "x"
+snap "$P" 2026-09-20 40 10
+snap "$P" 2026-10-09 44 22
+POUT="$(build "$P")"
+PIDX="$P/index.html"
+# 10 issues closed/week, 44 open, 50% defects (22/44), trend from 40 to 44.
+if grep -q '<b>10</b><span>issues closed / week' "$PIDX" \
+    && grep -q '<b>44</b><span>open issues' "$PIDX" \
+    && grep -q 'class="warn"><b>50<small>%' "$PIDX" \
+    && grep -q 'Open issues over time' "$PIDX" \
+    && grep -q 'v9.9.9: &lt;Test&gt;' "$PIDX" \
+    && grep -q 'badge fresh">current' "$PIDX" \
+    && printf '%s' "$POUT" | grep -q 'index.html: 1 series.*health 2026-10-09'; then
+    pass "Case 14: newest health snapshot drives the section, with trend and escaping"
+else
+    fail "Case 14: newest health snapshot drives the section, with trend and escaping" "out: [$POUT]"
+fi
+
+# --- Case 15: an old snapshot is stale; a bad one is skipped with a warning -
+Q="$TMPROOT/q"
+snap "$Q" 2026-09-01 40 10
+printf 'not json' > "$Q/health/2026-10-01.json"
+build "$Q" >/dev/null
+if grep -q 'badge stale">39 days old' "$Q/index.html" \
+    && ! grep -q 'Open issues over time' "$Q/index.html" \
+    && grep -q 'health/2026-10-01.json skipped' "$TMPROOT/err"; then
+    pass "Case 15: an old snapshot is stale, a bad one is skipped with a warning"
+else
+    fail "Case 15: an old snapshot is stale, a bad one is skipped with a warning" "err: [$(cat "$TMPROOT/err")]"
 fi
 
 echo ""

@@ -16,6 +16,13 @@ prompt.md front matter, between two `---` lines:
                                 Codebase, Review come first, in that order)
     refresh_days: 7            (older than this = stale)
 
+      health/<YYYY-MM-DD>.json   snapshots from scripts/project-health.py
+
+The index opens with a Project health section drawn from the newest health
+snapshot (velocity, open-issue age, issue mix, current milestone) and, when
+older snapshots exist, the open-issue trend. With no snapshot the section
+says how to make one. This script makes no network calls.
+
 The index groups series by category. Each series shows its newest page with
 a fresh/stale badge, its older pages, and its prompt (collapsed, with a Copy
 button and a link to prompt.md). The builder keeps the newest --keep pages
@@ -31,6 +38,7 @@ SUMMARY_TODAY=YYYY-MM-DD overrides today's date (for tests).
 import argparse
 import datetime as dt
 import html
+import json
 import os
 import re
 import sys
@@ -39,6 +47,15 @@ from pathlib import Path
 DEFAULT_DIR = Path(__file__).resolve().parent.parent / "docs" / "plans" / "summaries"
 PAGE_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})\.html$")
 CATEGORY_ORDER = ["Status", "Health", "Process", "Codebase", "Review"]
+HEALTH_DIR = "health"
+HEALTH_STALE_DAYS = 7
+KIND_STYLE = [  # (key, label, colour) in stack order
+    ("defects", "defects", "#B3261E"),
+    ("security", "security", "#A15C07"),
+    ("features", "features", "#00563F"),
+    ("maintenance", "maintenance", "#5B6B8C"),
+    ("other", "other", "#B8B2AA"),
+]
 
 
 def parse_args(argv):
@@ -67,14 +84,31 @@ def read_prompt(path):
     return meta, text.strip()
 
 
+def _text(fragment):
+    return html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", fragment))).strip()
+
+
 def page_meta(path):
+    """Return (title, one-line summary) for a page.
+
+    The summary is the first of: <p class="lede">, <meta name="description">,
+    or a .verdict-chip plus .tagline pair (older pages use those).
+    """
     text = path.read_text(encoding="utf-8")
     title = re.search(r"<title>(.*?)</title>", text, re.S)
     lede = re.search(r'<p class="lede">(.*?)</p>', text, re.S)
-    return (
-        html.unescape(title.group(1).strip()) if title else "",
-        html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", lede.group(1))).strip()) if lede else "",
-    )
+    meta = re.search(r'<meta\s+name="description"\s+content="([^"]*)"', text)
+    chip = re.search(r'class="verdict-chip">(.*?)</', text, re.S)
+    tag = re.search(r'class="tagline">(.*?)</', text, re.S)
+    if lede:
+        summary = _text(lede.group(1))
+    elif meta:
+        summary = _text(meta.group(1))
+    elif chip or tag:
+        summary = ". ".join(_text(m.group(1)) for m in (chip, tag) if m)
+    else:
+        summary = ""
+    return (_text(title.group(1)) if title else "", summary)
 
 
 def today():
@@ -84,7 +118,7 @@ def today():
 
 def collect(root, keep):
     series, deleted = [], []
-    for d in sorted(p for p in root.iterdir() if p.is_dir()):
+    for d in sorted(p for p in root.iterdir() if p.is_dir() and p.name != HEALTH_DIR):
         pages = sorted((f for f in d.iterdir() if PAGE_RE.match(f.name)), key=lambda f: f.name, reverse=True)
         meta, prompt = read_prompt(d / "prompt.md")
         if not pages and not prompt:
@@ -128,7 +162,145 @@ def age_text(s):
     return "1 day ago" if s["age"] == 1 else f"{s['age']} days ago"
 
 
-def render(series, root_name):
+def load_health(root):
+    """Return the health snapshots, newest first. A file that is not valid
+    JSON is skipped with a warning, so one bad run cannot break the index."""
+    snaps = []
+    folder = root / HEALTH_DIR
+    if not folder.is_dir():
+        return snaps
+    for f in sorted(folder.glob("????-??-??.json"), reverse=True):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            data["_date"] = dt.date.fromisoformat(f.name[:10])
+            snaps.append(data)
+        except (ValueError, OSError) as exc:
+            print(f"warning: {HEALTH_DIR}/{f.name} skipped: {exc}", file=sys.stderr)
+    return snaps
+
+
+def _num(value, digits=0):
+    if value is None:
+        return "—"
+    return f"{value:.{digits}f}" if digits else f"{round(value)}"
+
+
+def velocity_svg(weeks):
+    """Paired bars per week: issues closed (accent) and PRs merged (muted)."""
+    e = html.escape
+    if not weeks:
+        return ""
+    top = max(max(w.get("issues_closed", 0), w.get("prs_merged", 0)) for w in weeks) or 1
+    pad_l, pad_t, plot_h, col = 8, 22, 120, 76
+    width = pad_l * 2 + col * len(weeks)
+    height = pad_t + plot_h + 40
+    bw = 24
+    parts = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+             f'aria-label="Issues closed and PRs merged per week">']
+    parts.append(f'<line x1="{pad_l}" y1="{pad_t + plot_h}" x2="{width - pad_l}" y2="{pad_t + plot_h}" stroke="#E5E2DE"/>')
+    for i, w in enumerate(weeks):
+        x0 = pad_l + i * col + (col - 2 * bw - 4) / 2
+        for j, (key, colour) in enumerate((("issues_closed", "#00563F"), ("prs_merged", "#B8B2AA"))):
+            v = w.get(key, 0)
+            h = plot_h * v / top
+            x = x0 + j * (bw + 4)
+            y = pad_t + plot_h - h
+            parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw}" height="{h:.1f}" rx="2" fill="{colour}"/>')
+            parts.append(f'<text x="{x + bw / 2:.1f}" y="{y - 5:.1f}" class="v">{v}</text>')
+        label = dt.date.fromisoformat(w["week_start"]).strftime("%b %-d")
+        parts.append(f'<text x="{pad_l + i * col + col / 2:.1f}" y="{pad_t + plot_h + 18}" class="x">{e(label)}</text>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def mix_bar(label, counts):
+    """One stacked bar for an issue mix. Counts go in the legend, not on the
+    bar, so a thin segment can never hide its own number."""
+    e = html.escape
+    total = sum(counts.get(k, 0) for k, _, _ in KIND_STYLE)
+    segs = "".join(
+        f'<span style="flex:{counts.get(k, 0)};background:{c}" title="{e(name)}: {counts.get(k, 0)}"></span>'
+        for k, name, c in KIND_STYLE if counts.get(k, 0)
+    )
+    legend = "".join(
+        f'<li><i style="background:{c}"></i>{e(name)} <b>{counts.get(k, 0)}</b></li>'
+        for k, name, c in KIND_STYLE
+    )
+    return (f'<div class="mix"><div class="mix-head"><span>{e(label)}</span><b>{total}</b></div>'
+            f'<div class="stack">{segs or "<span style=flex:1></span>"}</div><ul>{legend}</ul></div>')
+
+
+def trend_svg(snaps):
+    """Open issues across snapshots, oldest to newest. Needs two or more."""
+    pts = [(s["_date"], s.get("open", {}).get("total")) for s in reversed(snaps)]
+    pts = [(d, v) for d, v in pts if isinstance(v, (int, float))]
+    if len(pts) < 2:
+        return ""
+    lo, hi = min(v for _, v in pts), max(v for _, v in pts)
+    span = (hi - lo) or 1
+    w, h, pad = 560, 90, 18
+    step = (w - 2 * pad) / (len(pts) - 1)
+    xy = [(pad + i * step, pad + (h - 2 * pad) * (1 - (v - lo) / span)) for i, (_, v) in enumerate(pts)]
+    path = " ".join(f"{x:.1f},{y:.1f}" for x, y in xy)
+    first, last = pts[0], pts[-1]
+    return (f'<svg class="chart" viewBox="0 0 {w} {h + 22}" role="img" aria-label="Open issues over time">'
+            f'<polyline points="{path}" fill="none" stroke="#00563F" stroke-width="2"/>'
+            f'<circle cx="{xy[-1][0]:.1f}" cy="{xy[-1][1]:.1f}" r="4" fill="#00563F"/>'
+            f'<text x="{pad}" y="{h + 16}" class="x" text-anchor="start">{first[0].isoformat()} · {first[1]}</text>'
+            f'<text x="{w - pad}" y="{h + 16}" class="x" text-anchor="end">{last[0].isoformat()} · {last[1]}</text>'
+            f"</svg>")
+
+
+def render_health(snaps):
+    e = html.escape
+    if not snaps:
+        return ('  <section class="health">\n    <h2>Project health</h2>\n'
+                '    <p class="cap">No snapshot yet. Run <code>scripts/project-health.py</code>, '
+                'then this builder again.</p>\n  </section>')
+    s = snaps[0]
+    age = (today() - s["_date"]).days
+    stale = age > HEALTH_STALE_DAYS
+    op = s.get("open", {})
+    cl = s.get("closed_30d", {})
+    vel = s.get("velocity", [])
+    n_weeks = len(vel)
+    avg_closed = sum(w.get("issues_closed", 0) for w in vel) / n_weeks if n_weeks else None
+    avg_prs = sum(w.get("prs_merged", 0) for w in vel) / n_weeks if n_weeks else None
+    ms = s.get("milestone")
+    ms_html = ""
+    if ms and ms.get("total"):
+        pct = 100 * ms.get("closed", 0) / ms["total"]
+        ms_html = (f'<div class="ms"><div class="mix-head"><span>{e(ms.get("title", ""))}</span>'
+                   f'<b>{ms.get("closed", 0)}/{ms["total"]}</b></div>'
+                   f'<div class="stack"><span style="flex:{pct:.1f};background:#00563F"></span>'
+                   f'<span style="flex:{100 - pct:.1f};background:#E5E2DE"></span></div></div>')
+    defect_share = (100 * op.get("defects", 0) / op["total"]) if op.get("total") else None
+    trend = trend_svg(snaps)
+    trend_html = f'<h3>Open issues over time</h3>{trend}' if trend else ""
+    badge = (f'<span class="badge stale">{age} days old</span>' if stale
+             else '<span class="badge fresh">current</span>')
+    return f'''  <section class="health">
+    <div class="row"><h2>Project health</h2>{badge}</div>
+    <div class="glance">
+      <div><b>{_num(avg_closed)}</b><span>issues closed / week</span></div>
+      <div><b>{_num(avg_prs)}</b><span>PRs merged / week</span></div>
+      <div><b>{op.get("total", "—")}</b><span>open issues</span></div>
+      <div><b>{_num(op.get("median_age_days"))}<small>d</small></b><span>median open age (avg {_num(op.get("avg_age_days"))}d)</span></div>
+      <div><b>{_num(cl.get("median_lead_days"))}<small>d</small></b><span>median open→close, 30 days</span></div>
+      <div class="{'warn' if defect_share and defect_share >= 40 else ''}"><b>{_num(defect_share)}<small>%</small></b><span>of open issues are defects</span></div>
+    </div>
+    <h3>Velocity, last {n_weeks} weeks <span class="key"><i style="background:#00563F"></i>issues closed <i style="background:#B8B2AA"></i>PRs merged</span></h3>
+    {velocity_svg(vel)}
+    <h3>Issue mix</h3>
+    {mix_bar("open now", op)}
+    {mix_bar("closed, last 30 days", cl)}
+    {('<h3>Current milestone</h3>' + ms_html) if ms_html else ""}
+    {trend_html}
+    <p class="cap src">Snapshot {e(s["_date"].isoformat())} from GitHub. Refresh: <code>scripts/project-health.py &amp;&amp; scripts/build-summary-index.py</code></p>
+  </section>'''
+
+
+def render(series, root_name, snaps=()):
     e = html.escape
     cats = {}
     for s in series:
@@ -215,7 +387,28 @@ def render(series, root_name):
   pre {{ background: var(--raised); border-radius: 10px; padding: 16px; margin: 0; font: 13px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }}
   .copy {{ position: absolute; top: 10px; right: 14px; font: 600 13px var(--sans); color: var(--accent); background: var(--bg); border: 1.5px solid var(--accent); border-radius: 6px; padding: 4px 12px; cursor: pointer; }}
   .file {{ display: inline-block; margin-top: 8px; font: 13px var(--mono); color: var(--accent); }}
-  @media (max-width: 600px) {{ h1 {{ font-size: 28px; }} .row {{ flex-wrap: wrap; }} }}
+  .health {{ border-top: 1px solid var(--line); padding-top: 28px; }}
+  .health .glance {{ display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 12px; gap: 24px 28px; }}
+  .health .glance b {{ font-size: 30px; }}
+  .health .glance small {{ font-size: 16px; color: var(--muted); margin-left: 2px; }}
+  .health .glance span {{ display: block; }}
+  h3 {{ font-size: 15px; margin: 32px 0 10px; }}
+  .key {{ font: 400 13px var(--sans); color: var(--muted); margin-left: 10px; }}
+  .key i, .mix li i {{ display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 5px 0 10px; }}
+  .chart {{ width: 100%; height: auto; display: block; }}
+  .chart text {{ font: 12px var(--mono); fill: var(--muted); text-anchor: middle; }}
+  .chart text.v {{ fill: var(--ink); }}
+  .mix, .ms {{ margin: 0 0 18px; }}
+  .mix-head {{ display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px; }}
+  .mix-head b {{ font-family: var(--mono); }}
+  .stack {{ display: flex; height: 16px; border-radius: 4px; overflow: hidden; background: var(--line); gap: 2px; }}
+  .mix ul {{ list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; font-size: 13px; color: var(--muted); }}
+  .mix li {{ margin-right: 6px; }}
+  .mix li:first-child i {{ margin-left: 0; }}
+  .mix li b {{ font-family: var(--mono); color: var(--ink); font-weight: 600; }}
+  .src {{ margin-top: 20px; font-size: 13px; }}
+  code {{ font: 13px var(--mono); background: var(--raised); padding: 1px 5px; border-radius: 4px; }}
+  @media (max-width: 600px) {{ h1 {{ font-size: 28px; }} .row {{ flex-wrap: wrap; }} .health .glance {{ grid-template-columns: repeat(2, 1fr); }} }}
   @media print {{ .copy {{ display: none; }} details {{ display: none; }} }}
 </style>
 </head>
@@ -228,6 +421,7 @@ def render(series, root_name):
     <div class="{'warn' if n_stale else ''}"><b>{n_stale}</b><span>stale</span></div>
     <div><b>{n_pages}</b><span>pages kept</span></div>
   </div>
+{render_health(list(snaps))}
 {body}
   <p class="cap" style="margin-top:40px">To regenerate a series, open its prompt, copy it, and paste it into Claude Code from Registry/. Edit the series' prompt.md to change it.</p>
 </main>
@@ -252,14 +446,16 @@ def main(argv):
         print(f"build-summary-index.py: no such folder: {root}", file=sys.stderr)
         return 1
     series, deleted = collect(root, a.keep)
+    snaps = load_health(root)
     for name in deleted:
         print(f"deleted {name} (keep {a.keep})")
     for loose in sorted(root.glob("*.html")):
         if loose.name != "index.html":
             print(f"warning: {loose.name} is not in a series folder and is not indexed", file=sys.stderr)
-    (root / "index.html").write_text(render(series, "docs/plans/summaries"), encoding="utf-8")
+    (root / "index.html").write_text(render(series, "docs/plans/summaries", snaps), encoding="utf-8")
     stale = sum(1 for s in series if s["stale"])
-    print(f"index.html: {len(series)} series, {sum(len(s['pages']) for s in series)} page(s), {stale} stale")
+    health = f"health {snaps[0]['_date'].isoformat()}" if snaps else "no health snapshot"
+    print(f"index.html: {len(series)} series, {sum(len(s['pages']) for s in series)} page(s), {stale} stale, {health}")
     return 0
 
 

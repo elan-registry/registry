@@ -28,4 +28,6 @@ paths:
   and `<series>/<YYYY-MM-DD>.html` pages. Write a `/summary` page into its
   series folder, never at the top of `summaries/` or the repo root. Then run
   `python3 scripts/build-summary-index.py`, which rebuilds `index.html` and
-  keeps the newest 3 pages per series.
+  keeps the newest 3 pages per series. `summaries/health/` holds the
+  `scripts/project-health.py` snapshots for the index's Project health
+  section. It is not a series.

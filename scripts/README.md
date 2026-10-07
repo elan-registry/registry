@@ -32,6 +32,11 @@ matter (`title`, `category`, `refresh_days`), then the regenerate prompt.
 - It keeps the newest `--keep` pages per series (default 3) and deletes
   older ones. `--keep 0` keeps every page.
 - A page outside a series folder gets a warning and is not indexed.
+- The index starts with a **Project health** section from the newest
+  `summaries/health/<YYYY-MM-DD>.json` snapshot (see `project-health.py`).
+  A snapshot older than 7 days shows a stale badge. With two or more
+  snapshots, the section also draws the open-issue trend. The builder makes
+  no network calls.
 
 ```bash
 python3 scripts/build-summary-index.py              # default folder, keep 3
@@ -40,6 +45,32 @@ python3 scripts/build-summary-index.py --keep 0     # keep every page
 
 Exit codes: 0 built; 1 usage error or the folder does not exist. The
 hermetic test is `tests/hooks/test-build-summary-index.sh`.
+
+### project-health.py
+
+Reads GitHub with `gh` and writes a health snapshot to
+`docs/plans/summaries/health/<YYYY-MM-DD>.json` for the index:
+
+- Velocity: issues closed and PRs merged per week (`--weeks`, default 8).
+- Open issues: count, and average, median and oldest age in days.
+- Issue mix, for open issues and for issues closed in the last 30 days:
+  defects, features, security, maintenance, other. The title prefix
+  (`bug:`/`fix:`, `feat:`, `security:`, `chore:`/`tech-debt:`/`test:`/
+  `refactor:`/`docs:`/`perf:`) decides first. Labels decide only when the
+  title has no known prefix.
+- Median open-to-close days for issues closed in the last 30 days.
+- The current milestone: the lowest version with open issues.
+
+It keeps the newest `--keep` snapshots (default 90). Run it, then the index
+builder, by hand or from a scheduled job:
+
+```bash
+python3 scripts/project-health.py && python3 scripts/build-summary-index.py
+```
+
+Exit codes: 0 written; 1 usage error or the folder does not exist; 2 a `gh`
+call failed or returned an unexpected shape (nothing written). The hermetic
+test is `tests/hooks/test-project-health.sh`.
 
 ## Version Management
 
