@@ -31,40 +31,39 @@
   share suppression-cause logic with the owner-facing notice and a guard
   against applying owner-level actions to the `noowner` system account.
 - [#1891](https://github.com/elan-registry/registry/issues/1891) — Added an
-  Owner Information section to the car edit form, consolidating profile-sync
-  write paths with corrected exception handling, retry logic, and audit
-  logging. Consolidates [#1880](https://github.com/elan-registry/registry/issues/1880).
+  Owner Information section to the car edit form and consolidated the
+  profile-sync write paths behind it.
+  Consolidates [#1880](https://github.com/elan-registry/registry/issues/1880).
 - [#1895](https://github.com/elan-registry/registry/issues/1895) — Added a
   Resume Verification Emails control to Account Settings so an owner can
   clear their own `email_suppressed` flag, sharing logic with the existing
   admin action.
 - [#1899](https://github.com/elan-registry/registry/issues/1899) — Added an
   email-paused notice to account.php for owners with suppressed or bounced car
-  emails. The same change fixes the Uncloak button on account.php, which
-  always failed its CSRF check. It also drops the unused `country` table. Run
-  `composer migrate` on deploy.
+  emails, fixed the Uncloak button's CSRF check on the same page, and dropped
+  the unused `country` table.
 - [#2295](https://github.com/elan-registry/registry/issues/2295) — Fixed car
-  edit save failing with "Please select Model" when the model list was still
-  loading; Save now waits for the real load instead of a guessed timeout.
+  edit save failing with "Please select Model" by making Save wait for the
+  model list to load instead of a guessed timeout.
   Consolidates [#2297](https://github.com/elan-registry/registry/issues/2297).
 - [#2314](https://github.com/elan-registry/registry/issues/2314) — Fixed gaps
   in the developer workflow commands found by a product, architecture and UX
-  audit: hand-offs between commands, the review fingerprint, the scope check
-  before release, and a hotfix path that did not work. Developer-only; no
-  deploy step.
+  audit, including command hand-offs, the review fingerprint, the pre-release
+  scope check, and a broken hotfix path. Developer-only. No deploy step.
 - [#2316](https://github.com/elan-registry/registry/issues/2316) — Closed the
-  re-audit findings: the cleanup ledger is now the committed file
-  `docs/development/CLEANUP_LEDGER.md`, the sprint file is gone, hotfixes run
-  through `/start-issue --hotfix`, every command can resume after a stop, and
-  `/finish-issue` asks for your confirmation before it merges.
-  Developer-only; no deploy step.
-- [#2324](https://github.com/elan-registry/registry/issues/2324) — The
-  summary index (`scripts/build-summary-index.py`) now groups pages by series
-  and category and has four new series. Added `scripts/project-health.py`.
-  Developer-only; no deploy step.
+  re-audit findings, moving the cleanup ledger to the committed file
+  `docs/development/CLEANUP_LEDGER.md` and giving every command a resume
+  path, a working hotfix route through `/start-issue --hotfix`, and a
+  confirmation step before `/finish-issue` merges. Developer-only. No deploy
+  step.
+- [#2324](https://github.com/elan-registry/registry/issues/2324) — Grouped
+  the summary index (`scripts/build-summary-index.py`) by series and
+  category, added four new series, and added `scripts/project-health.py`.
+  Developer-only. No deploy step.
 - [#2327](https://github.com/elan-registry/registry/issues/2327) — Cut about
-  13,400 lines from `tests/` with no lost coverage. Removed duplicate tests
-  and long test comments. Five PHPStan rules in `tools/phpstan/Rules/` replace
-  text-scan tests. `tools/` is excluded from the deploy package and blocked in
-  `.htaccess`. The product refactors that some removed tests pointed to moved
-  to #2329 to #2334. Developer-only; no deploy step.
+  13,400 lines from `tests/` with no lost coverage by removing duplicate
+  tests and replacing text-scan tests with five PHPStan rules in
+  `tools/phpstan/Rules/` (the product refactors some removed tests pointed to
+  moved to [#2329](https://github.com/elan-registry/registry/issues/2329)
+  through [#2334](https://github.com/elan-registry/registry/issues/2334)).
+  Developer-only. No deploy step.
