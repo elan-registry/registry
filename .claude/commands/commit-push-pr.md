@@ -36,11 +36,18 @@ prose.
    `**Status:** Implemented — pending commit/PR`, go to step 3. Otherwise,
    use AskUserQuestion: "The plan status is `<status>`, not `Implemented —
    pending commit/PR`. Commit anyway?" Options: `Commit anyway`, `Stop`. On
-   `Stop`, stop and tell the user to finish `/execute-plan` first.
+   `Stop`, stop. Tell the user the next command, as plain text:
+
+   - If the status starts with `Draft`, type `/start-issue <N>`. A Draft
+     plan needs approval again, for example after a deviation.
+   - Otherwise, type `/execute-plan <N>`.
+
+   `<N>` is the issue number in the plan file name.
 
    If the plan has the line ``**PR base:** `main` ``, this is a hotfix
-   (`/start-issue --hotfix`). The base is `main`: use `origin/main` in
-   step 3.3 (skip step 3.1 and step 3.2), and pass `--base main` in step 6.
+   (`/start-issue --hotfix`). The base is `main`. Do step 3.1. Then skip
+   step 3.2, and use `origin/main` in step 3.3 even if step 3.1 found a PR.
+   Pass `--base main` in step 6.
 3. List the files that this branch changes. First update the remote
    branches. Run:
 
@@ -124,9 +131,12 @@ prose.
    - **`## Delta from plan`.** Compare the plan with the branch:
      - Each file in the step 3.3 list that the plan does not name. The plan
        names a file in backticks, usually in the Implementation Checklist.
-       Ignore files under `docs/plans/`.
-     - Each Implementation Checklist item that the plan marks N/A, with
-       its reason.
+       Ignore these files. The workflow edits them on every branch:
+       - files under `docs/plans/`
+       - `docs/releases/RELEASE_NOTES_*.md`
+       - `docs/development/CLEANUP_LEDGER.md`
+     - Each Implementation Checklist line of the form
+       `- [ ] <item> — N/A: <reason>`. Write the item and its reason.
 
      Write one bullet for each. If there are none, write `- none`. If there
      is no plan, write `- none (no plan)`. If step 3 failed, keep the line
@@ -171,11 +181,22 @@ prose.
      `/address-pr-comments`. Do not start it through the Skill tool: it
      declares `model: opus` and this command declares `model: sonnet`
      (CLAUDE.md, "Hand-offs between commands").
-   - `1` — refused (bad branch or a forbidden path in `docs/plans/` or
-     `_noupload/`). Stop and report the reason to the user; do not retry
-     with `--branch` unless the reason was the branch check.
+   - `1` — refused. The stderr gives one of these reasons:
+     - usage error (a missing `--message-file`, `--title` or `--body-file`)
+     - unknown argument
+     - message file or body file not found
+     - not inside a git repository
+     - bad branch (`main`, `master`, or `milestone/*`)
+     - a forbidden path under `docs/plans/` or `_noupload/`
+
+     For a bad branch, use `--branch` as step 6 says. For each other reason,
+     stop and report the stderr to the user. Do not retry with `--branch`.
+     Tell the user to fix the cause, then type `/commit-push-pr` again. The
+     script is safe to run again.
    - `2` — a `git` or `gh` command failed. Stop and report the script's
-     stderr to the user.
+     stderr to the user. Tell the user to fix the cause, then type
+     `/commit-push-pr` again. The script is safe to run again: it reuses a
+     PR that already exists.
    - `3` — the base branch could not be resolved. Stop and ask the user
      which branch to use, then re-run with `--base <ref>`.
 

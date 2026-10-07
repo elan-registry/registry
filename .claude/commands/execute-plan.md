@@ -15,9 +15,9 @@ Keep output brief — terse status lines, no preamble, no restating of steps.
 > one exception: a plan that a previous run marked `Implemented`.
 >
 > **2. NEVER commit, push, or create PRs.**
-> After implementation is complete, stop. The user commits explicitly via
-> `/commit` or `/commit-push-pr`. Do not run `git add`, `git commit`, or
-> `git push` under any circumstances during this workflow.
+> After implementation is complete, stop. The user types `/commit`, then
+> `/review-pr` (Step 9). Do not run `git add`, `git commit`, or `git push`
+> under any circumstances during this workflow.
 
 ---
 
@@ -213,8 +213,9 @@ Test Plan / Documentation Plan sections):
 - **technical-documentation-writer**: update docs per the plan's Documentation
   Plan.
 
-Run quality checks: relevant test suites, and note that pre-commit hooks will
-run PHPStan/phpcs on staged files at commit time regardless.
+Run quality checks: relevant test suites (run with the Bash tool
+`timeout: 600000`), and note that pre-commit hooks will run PHPStan/phpcs on
+staged files at commit time regardless.
 
 **Execute, don't just read, for two specific risk classes.** Two real bugs
 reached `/review-pr` in past issues that a careful code-review pass missed
@@ -292,14 +293,19 @@ Per the fix-when-you-touch-it policy
 same check `/finish-issue` Step 4.5 and `/review-pr` Step 1 use, moved here
 so it's caught right after implementation, while context is fresh:
 
+This command does not commit, so the file list comes from the working tree:
+tracked changes since the merge base, plus untracked files.
+
 ```bash
-git diff --name-only $(git merge-base HEAD <base-ref>)..HEAD \
+set -o pipefail
+MERGE_BASE=$(git merge-base HEAD <base-ref>)
+[ -n "$MERGE_BASE" ] || { echo "no merge base with <base-ref>" >&2; exit 3; }
+{ git diff --name-only "$MERGE_BASE" && git ls-files --others --exclude-standard; } \
   | scripts/check-baseline-hygiene.sh
 ```
 
-(No commits yet? Pipe `git diff --name-only` with no ref, or `git status
---short` reduced to paths, instead.)
-
+- **Exit 3** — no merge base. Stop and tell the user. The base ref from
+  Step 6.4 is wrong, or the branch does not share history with it.
 - **Exit 0, no output** — clean. Proceed to Step 6.6.
 - **Exit 0, `BASELINE OVERRIDE: <file>` lines** — read the matching entries
   (`grep -B3 -A8 "path: <file>" phpstan-baseline.neon`). If the flagged lines
@@ -307,27 +313,35 @@ git diff --name-only $(git merge-base HEAD <base-ref>)..HEAD \
   the file, untouched by this plan, ask via AskUserQuestion: "`<file>` has N
   pre-existing baseline entries on lines this plan didn't touch. How should
   I proceed?" — `Carry over, not touched by this plan` (recommended) or
-  `Fix them now anyway`. After any fix, run `composer phpstan:baseline`,
-  re-run PHPStan on the file, and re-check the loop above returns nothing
-  for it.
+  `Fix them now anyway`. After any fix, run `composer phpstan:baseline`
+  (run with the Bash tool `timeout: 600000`), run PHPStan on the file
+  again, and check that the command above prints nothing for it.
 - **Exit 2** — could not run at all (baseline file not found, usually a
   wrong working directory) — treat as "can't verify," not "clean."
+- **Any other exit code** — a `git` command failed. Treat it as "can't
+  verify," not "clean". Show the user the stderr.
 
 ### Step 6.6: Cleanup Ledger Check
 
-`/start-issue` Step 5.5 pulls ledger items known at plan-approval time into
-the plan's **Ledger items** section and the Implementation Checklist. This
-step catches two gaps that step can't: an item added to the ledger *after*
-this plan was approved, and a file this implementation ended up touching
-that the plan didn't foresee touching.
+**Hotfix plans skip this step** (the plan has the line
+``**PR base:** `main` ``). A hotfix fixes only the emergency, so it takes no
+cleanup items. Go to Step 6.7.
+
+`/start-issue` Step 9 ("Pull ledger items") pulls ledger items known at
+plan-approval time into the plan's **Ledger items** section and the
+Implementation Checklist. This step catches two gaps that step can't: an
+item added to the ledger *after* this plan was approved, and a file this
+implementation ended up touching that the plan didn't foresee touching.
+
+Use the same working-tree file list as Step 6.5:
 
 ```bash
-git diff --name-only $(git merge-base HEAD <base-ref>)..HEAD \
+set -o pipefail
+MERGE_BASE=$(git merge-base HEAD <base-ref>)
+[ -n "$MERGE_BASE" ] || { echo "no merge base with <base-ref>" >&2; exit 3; }
+{ git diff --name-only "$MERGE_BASE" && git ls-files --others --exclude-standard; } \
   | scripts/ledger-items-for-files.sh
 ```
-
-(No commits yet? Use `git diff --name-only` or `git status --short` reduced
-to paths, same substitution Step 6.5 uses.)
 
 The script reads `docs/development/CLEANUP_LEDGER.md`. Items that Step 5
 fixed are already deleted from it, so they do not show here.
@@ -353,6 +367,9 @@ fixed are already deleted from it, so they do not show here.
   "can't verify," not "clean". Tell the user and continue. This check does
   not block the rest of the workflow.
 - **Exit 1** — usage error. Correct the input and run it again.
+- **Exit 3** — no merge base. Stop and tell the user, as in Step 6.5.
+- **Any other exit code** — a `git` command failed. Treat it as "can't
+  verify," not "clean". Show the user the stderr and continue.
 
 ### Step 6.7: Update Draft Release Notes
 
@@ -376,7 +393,8 @@ code for reuse, simplification, and efficiency, and edits the files. Run it
 here, before Step 7, so the Step 7 reviewers see the simplified code and the
 Step 7 fingerprint still matches at hand-off.
 
-After the skill returns, run the test suites for the changed files again.
+After the skill returns, run the test suites for the changed files again
+(run with the Bash tool `timeout: 600000`).
 If a test fails, fix the simplification or revert it. If the skill edited a
 file that the plan does not list, revert that edit (Step 5, "Deviation
 rule").
@@ -449,6 +467,25 @@ scrutinised code in the PR.
 | **Blocking** | Verified, reproducible, and in this diff | Fix now, this PR |
 | **Advisory** | Real, but not this issue's job | New issue via `/found` |
 | **Note** | Wording, style, docs nuance | Fix only if already on that line |
+
+**Record each finding that you do not fix.** Write one line for it under a
+`## Review decisions` heading at the end of the plan file. Create the
+heading if it is not there. Use the line forms of `/review-pr` Step 6
+("Record each decision"):
+
+```text
+- `<file:line>` — <issue> — False positive: <reason>
+- `<file:line>` — <suggestion> — Skipped: <reason>
+- `<file:line>` — <suggestion> — Deferred: ledger | issue #<n>
+```
+
+- **Advisory** — `/found` sends it to a new issue or to the cleanup ledger.
+  Write `Deferred: issue #<n>` or `Deferred: ledger`.
+- **Note** that you do not fix — write `Skipped: <reason>`.
+- A finding that is not real (the code, a query, or a test result
+  contradicts it) — write `False positive: <reason>`.
+
+`/commit-push-pr` copies this section into the PR body.
 
 Fix all Blocking findings in **one** batch of edits, then re-check **only
 the diff of that batch**, with only the reviewers whose findings it addressed. That is
@@ -526,15 +563,28 @@ Do not silently leave unchecked items with no explanation, and do not
 silently mark something N/A on your own judgment — that defeats the purpose
 of a plan a later step can trust.
 
-If `Do the work now` changes a tracked file, delete the plan file's
-`Review fingerprint:` line. The Step 7 lanes did not see that change.
+**The N/A marker.** On `Mark N/A with a reason`, leave the item `[ ]` and
+add a space, `— N/A: <reason>` at the end of its line. The line then has
+this exact form:
+
+```text
+- [ ] <item> — N/A: <reason>
+```
+
+`/review-pr` and `/commit-push-pr` find N/A items by this form. Use no
+other form.
 
 Also check the plan's `## Ledger items` section. Each `- [x]` line must be
 fixed in this branch, and its line must be gone from
 `docs/development/CLEANUP_LEDGER.md`. If the line is still in the ledger
-file, delete it now (Step 5, "Ledger items"). For an item marked N/A, write
-`N/A: <reason>` after the line, leave it `[ ]`, and leave it in the ledger
-file.
+file, delete it now (Step 5, "Ledger items"). Mark a ledger item N/A with
+the same marker, leave it `[ ]`, and leave its line in the ledger file.
+
+**Stale fingerprint.** If this step changed any tracked file (the work from
+`Do the work now`, or a ledger line deleted), delete the plan file's
+`Review fingerprint:` line. The Step 7 lanes did not see that change, so
+`/review-pr` runs all of its lanes. A change to the plan file alone does not
+count: the plan file is gitignored.
 
 Update the plan file's status line to `**Status:** Implemented — pending
 commit/PR`. This is the last edit before hand-off, so a stop after it loses
@@ -544,37 +594,21 @@ no work (Step 2 resumes it).
 
 **Do NOT commit, push, or create PRs.** State plainly that implementation is
 complete and the plan file at `docs/plans/issues/issue-<NUMBER>-<slug>.md`
-shows every item verified complete. State as plain text that the plan file
-holds the state, so the user may run `/clear` (or `/compact`) now and then
-type `/commit` themselves. No menu option can run `/clear` or `/compact`.
+shows every item verified complete.
 
-Then ask via AskUserQuestion, offering only the actual next step, not the
-full sequence — "Implementation complete. What next?" Options: `/commit`
-(recommended — the plugin skill `commit-commands:commit`), `Ask more
-questions / discuss first`. Invoke `/commit` immediately via the Skill tool,
-by its listed name (`commit-commands:commit`). This command makes the
-`/review-pr` offer itself, after the skill returns.
+Then tell the user, as plain text: "The plan file holds the state, so you
+may run `/clear` now. Then type `/commit`, then `/review-pr`." Do not offer
+a menu. Do not start `/commit` through the Skill tool: `/commit` is the
+plugin skill `commit-commands:commit`, which declares no `model:`, so the
+two commands are not a same-model pair (CLAUDE.md, "Hand-offs between
+commands"). The plugin `/commit` names no next step, so this text must
+name `/review-pr`.
 
-The full remaining sequence, each step handed off once the prior one
-completes — do not present this whole list to the user at once, re-offer
-one step at a time as each becomes the actual next action:
-
-1. `/commit`
-2. `/review-pr` — **must run after `/commit`, not before.** It reviews only
-   committed history, so its Step 0 stops when the working tree has
-   uncommitted changes. It skips the lanes that the Step 7 fingerprint names
-   (its Step 3), and re-stamps the fingerprint when its own run is clean
-   (its Step 6). After `/commit` completes, offer `/review-pr` as the next
-   step, not `/commit-push-pr` directly.
-3. `/commit-push-pr` (only once `/review-pr` reports clean, or the user
-   explicitly accepts its recommendations as-is)
-4. `/address-pr-comments` (after CI runs on the pushed PR)
-5. `/finish-issue` (once `/address-pr-comments` reports clean)
-
-Steps 1–2 start through the Skill tool. `/review-pr` declares `model: opus`,
-the same as this command. Steps 3–5 follow `/review-pr`, which hands off as
-plain text, so the user types them (CLAUDE.md, "Hand-offs between
-commands").
+`/review-pr` must run after `/commit`, not before. It reviews only committed
+history, so its Step 0 stops when the working tree has uncommitted changes.
+It skips the lanes that the Step 7 fingerprint names (its Step 3), and
+stamps the fingerprint again when its own run is clean (its Step 6).
+`/review-pr` then hands off to `/commit-push-pr` as plain text.
 
 **For bug-fix plans** (plan file has a Bug Escape Analysis section), remind
 the user to include the escape analysis in the PR description.
@@ -623,8 +657,9 @@ within this command — that happens later, at merge time, not here.
   (resolve this discrepancy which way, is this item really unnecessary) go
   to AskUserQuestion. Never present a checklist item as done, or a plan as
   complete, without having done one of the two.
-- **Use AskUserQuestion for every discrepancy, completeness gap, and
-  hand-off choice** (Steps 3, 8, 9) — not free-form chat questions.
+- **Use AskUserQuestion for every discrepancy and completeness gap**
+  (Steps 3, 8) — not free-form chat questions. The hand-off (Step 9) is
+  plain text, never a menu.
 - **Follow project conventions** from CLAUDE.md and CODING_STANDARDS.md.
 - **Execute risky code paths, don't just read them** — new/changed SQL against
   a real local DB, and wrong-typed (not just missing) structured-input tests

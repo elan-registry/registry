@@ -43,6 +43,8 @@ deferred an item to the ledger, and `/commit-push-pr` commits it.
 
 Run this **first**, before launching any agent — a failing suite short-circuits
 the review before spending agent tokens on a branch that is already broken.
+Run it with the Bash tool `timeout: 600000`. The default timeout of 2
+minutes stops the suite before it ends.
 
 ```bash
 scripts/run-verification-suite.sh
@@ -329,13 +331,25 @@ true. So this check runs as a separate lane, and its findings stay separate.
    the plan file's Implementation Checklist and acceptance criteria. If no
    issue maps to the branch, skip this step and write "Spec: no issue found"
    in Step 5.
-2. Launch one fresh agent (`subagent_type: "general-purpose"`, not `fork`,
-   in parallel with Step 4) with the diff command, the commit list, the issue
-   text, and the plan file path. Give it this brief:
 
-> "Compare this diff with the issue and its plan. Report: (a) each
+   If the plan has a line that starts `**Combine group:** combined with`,
+   this branch also implements each issue in that line. List them:
+
+   ```bash
+   grep -E '^\*\*Combine group:\*\* combined with' <plan-file> | grep -oE '#[0-9]+' | tr -d '#'
+   ```
+
+   Read each listed issue with the same `gh issue view` command. The spec is
+   every issue in the group, not only `<N>`.
+2. Launch one fresh agent (`subagent_type: "general-purpose"`, not `fork`,
+   in parallel with Step 4) with the diff command, the commit list, the text
+   of each issue from item 1, and the plan file path. Give it this brief:
+
+> "Compare this diff with the issues and the plan. The diff must meet the
+> acceptance criteria of every issue given, not only the first. Name the
+> issue number in each finding. Report: (a) each
 > requirement or acceptance criterion that is missing or partly done;
-> (b) each change in the diff that the issue did not ask for (scope creep);
+> (b) each change in the diff that no issue asked for (scope creep);
 > (c) each requirement that looks done but where the implementation looks
 > wrong. Quote the issue or plan line for each finding. Do not review code
 > style — other reviewers do that. Report findings only. Do not list
@@ -353,7 +367,9 @@ Collect all agent findings and categorize them:
 | **Recommendation** | Decide before push   | Style suggestion, dead code, minor improvement, optional refactor |
 | **Informational**  | No action needed     | Confirmed-good patterns, context notes                            |
 
-**Ledger check.** Find the open items in
+**Ledger check.** Skip it on a hotfix branch (the PR base is `main`, or
+the plan has the line ``**PR base:** `main` ``) and write "Ledger: skipped
+(hotfix)". A hotfix takes no cleanup items. Otherwise, find the open items in
 `docs/development/CLEANUP_LEDGER.md` for the changed files. Shell variables
 do not carry over between Bash calls. This block computes `$MERGE_BASE`
 again:
@@ -386,7 +402,12 @@ the exit code:
   item text as the suggestion. If the plan's **Ledger items** section
   contains the item text, add "(the plan lists it, but its ledger line is
   still there)" to the suggestion. Do not add a row for an item that the
-  plan marks `N/A: <reason>`.
+  plan marks N/A (`- [ ] <item> — N/A: <reason>`). Do not add a row for an
+  item whose text the
+  plan's `## Review decisions` section already records as `Deferred:` or
+  `Skipped:`. An earlier run of Step 6 decided it. A `Defer → Cleanup
+  ledger` edit stays uncommitted, and this check reads the working-tree
+  ledger, so that item shows here again.
 - **Any other exit code** — write "Ledger: could not query" in the report.
   Include the stderr. Continue the review.
 
@@ -475,9 +496,12 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
      `Cleanup ledger`, `New GitHub issue`) to pick the destination, same
      distinction `/found` uses between cleanup and defect:
      - *Cleanup ledger* — edit `docs/development/CLEANUP_LEDGER.md` with the
-       Edit tool. Find the `###` heading for the repo-relative file path in
-       backticks. Use the path without the `:line` part of the `File:Line`
-       column. Add this line under the heading:
+       Edit tool. The path is the `File:Line` column without the `:line`
+       part. Find the first `###` heading that matches the path. A heading
+       can hold more than one backticked token. A token matches when it is
+       the same path, or when it ends in `/` and the path starts with it.
+       This is the rule that `scripts/ledger-items-for-files.sh` uses. Add
+       this line under the matching heading:
 
        ```text
        - [ ] <one-line item> (found in #<N>)
@@ -485,10 +509,10 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
 
        `<N>` is the issue number that `scripts/check-plan-state.sh` found,
        or the PR number if it found none. If neither exists, omit
-       `(found in #<N>)`. If the heading does not exist,
-       add it in path order. If the heading already has a line with the
-       same item text, do not add the line. The edit stays uncommitted.
-       `/commit-push-pr` commits it.
+       `(found in #<N>)`. If no heading matches, add
+       ``### `<path>` `` in path order. If the matching heading already has
+       a line with the same item text, do not add the line. The edit stays
+       uncommitted. `/commit-push-pr` commits it.
      - *New GitHub issue* — follow `/found`'s "Defer" steps: `gh issue
        create` with the `triage` label and a `TYPE:` title prefix matching
        the finding (`bug:` for a defect, `tech-debt:`/`chore:` otherwise).

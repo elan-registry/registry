@@ -16,6 +16,12 @@ declare(strict_types=1);
  *   4. Wrong repo/branch URLs— github.com/<old-owner>, /blob/master/
  *   5. Dead symbols          — identifiers documented as live API that no
  *                              longer exist anywhere in the codebase
+ *   6. Dropped tables        — tables a migration dropped that the docs
+ *                              still describe
+ *   7. Documented values     — documented constant lists (for example
+ *                              LogCategories) drifting from the source
+ *   8. Ledger paths          — a CLEANUP_LEDGER.md heading that names a
+ *                              file or directory that no longer exists
  *
  * Rule 5 is the one that motivated this script: `getUserWithProfile()` was
  * removed in v2.26.2 and a regression test guards it in production code, but

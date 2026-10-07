@@ -18,9 +18,17 @@ building.
 
 ## Arguments
 
-- `$ARGUMENTS` — the milestone version number (e.g., `v2.17.0`). If the
-  milestone doesn't exist yet on GitHub, create it first:
-  `gh api repos/elan-registry/registry/milestones -f title="$ARGUMENTS"`
+- `$ARGUMENTS` — the milestone version number (e.g., `v2.17.0`). If no
+  open milestone has this version, Step 1 offers to create it.
+
+## Candidate filter
+
+A candidate is an open issue, not a pull request, with no milestone or in
+the `Backlog` milestone. The `Backlog` milestone is not a release
+commitment. An issue in any other milestone belongs to that release and is
+never a candidate. Every issue query in this command uses `--paginate`
+(`gh api`) or `--limit 500` (`gh issue list`), because the backlog has more
+than 100 open issues.
 
 ## Context check
 
@@ -39,15 +47,36 @@ seal, output) via TaskCreate.
 
 ## Step 1: Read the signals
 
-Find the milestone number:
+Find the milestone number and full title:
 
 ```bash
-gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" \
-  --jq '.[] | select(.title | test("^$ARGUMENTS([: ]|$)")) | .number'
+gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" --paginate \
+  --jq '.[] | select(.title | test("^$ARGUMENTS([: ]|$)")) | [.number, .title] | @tsv'
 ```
 
-Exactly one number → record it as `MILESTONE_NUM`. Step 4 uses it. Zero or
-more than one → stop and report the open milestone titles.
+A milestone title can have a suffix after the version, for example
+`v2.31.0: Reachable Owners and Findable Cars` or `v2.30.6 - Enable
+Verification System`.
+
+- **One line** → record the number as `MILESTONE_NUM` and the full title as
+  `MILESTONE_TITLE`. Step 4 uses both.
+- **More than one line** → stop. Show the titles. Tell the user: "Rename or
+  close the extra milestone on GitHub, then type
+  `/plan-milestone $ARGUMENTS`."
+- **No line** → ask the user: "No open milestone has the version
+  `$ARGUMENTS`. Create it? Reply with the full title (it must start with
+  `$ARGUMENTS`, for example `$ARGUMENTS: <short theme>`), or `no` to stop."
+  - A title that starts with `$ARGUMENTS` → create the milestone and record
+    the two values from the output. Then continue with this step.
+
+    ```bash
+    gh api repos/elan-registry/registry/milestones -f title="<full title>" \
+      --jq '[.number, .title] | @tsv'
+    ```
+
+  - A title that does not start with `$ARGUMENTS` → ask again.
+  - `no` → stop. Tell the user: "Create the milestone on GitHub, then type
+    `/plan-milestone $ARGUMENTS`."
 
 Read the newest release retrospective, if one exists:
 
@@ -61,11 +90,11 @@ theme's audience, and which signal we ignored. Show all three answers to the
 user before Step 2. Step 3 uses the first answer. No file → say "No
 retrospective found." and continue.
 
-Pull every open issue that has no milestone, newest first:
+Pull every candidate (see "Candidate filter"), newest first:
 
 ```bash
-gh api "repos/elan-registry/registry/issues?state=open&sort=created&direction=desc&per_page=100" \
-  --jq '.[] | select(.milestone == null) | {number, title, labels: [.labels[].name], created_at}'
+gh api "repos/elan-registry/registry/issues?state=open&sort=created&direction=desc&per_page=100" --paginate \
+  --jq '.[] | select(.pull_request == null) | select(.milestone == null or .milestone.title == "Backlog") | {number, title, labels: [.labels[].name], created_at}'
 ```
 
 Group by `signal:*` label. Read `signal:owner` and `signal:analytics` issues
@@ -107,11 +136,20 @@ Pull candidate issues from the backlog that could serve the theme (not just
 those already loosely related — scan broadly, the theme is the filter):
 
 ```bash
-gh api "repos/elan-registry/registry/issues?state=open&per_page=100" \
-  --jq '.[] | select(.milestone == null) | {number, title, labels: [.labels[].name], body}'
+gh api "repos/elan-registry/registry/issues?state=open&per_page=100" --paginate \
+  --jq '.[] | select(.pull_request == null) | select(.milestone == null or .milestone.title == "Backlog") | {number, title, labels: [.labels[].name], body}'
 ```
 
-For each candidate, apply the three questions:
+First, sort out the `signal:defect` candidates. For each one, decide from
+the body whether a user can see the defect: an owner, a visitor, or an
+admin or editor in the site UI. A user-visible defect stays in. It does not
+have to serve the theme, and it skips the questions and the edge-case test
+below. It counts toward the 3–6 theme issues in Step 4. Put it in the
+"surviving" table with the signal `signal:defect (user-visible)`, so the
+user sees it. A defect that no user can see goes through the gate like any
+other candidate.
+
+For each other candidate, apply the three questions:
 
 1. **Who noticed?** Name the signal. "Nobody, I thought of it" → out.
 2. **What do they do today instead?** Acceptable workaround → not a release
@@ -147,23 +185,30 @@ Produce two lists:
 |---|-------|--------------------------------------------------|
 ```
 
-Two kinds of work skip this gate entirely — check for both separately:
+Two more kinds of work skip this gate entirely — check for both
+separately. Take only candidates (no milestone, or `Backlog`). An issue of
+either kind in another milestone stays in that milestone.
 
 - **`signal:forced`** — at most one per milestone (the housekeeping slot in
-  Step 4). If more than one is open, the user picks which ships now.
-- **`gate-critical`** — always include every open one. These sit outside the
+  Step 4). If more than one is a candidate, the user picks which ships now.
+- **`gate-critical`** — include every candidate. These sit outside the
   Step 4 cap and do not consume the housekeeping slot: a gate you cannot
   trust makes every other rule decorative, so its repairs never wait.
 
 ```bash
-gh issue list --label "signal:forced" --state open --json number,title
-gh issue list --label "gate-critical" --state open --json number,title
+gh issue list --repo elan-registry/registry --label "signal:forced" --state open --limit 500 \
+  --json number,title,milestone \
+  --jq '.[] | select(.milestone == null or .milestone.title == "Backlog") | {number, title}'
+gh issue list --repo elan-registry/registry --label "gate-critical" --state open --limit 500 \
+  --json number,title,milestone \
+  --jq '.[] | select(.milestone == null or .milestone.title == "Backlog") | {number, title}'
 ```
 
 ## Step 4: Seal the milestone
 
-Cap: **3–6 theme issues, plus at most one housekeeping issue, plus every
-open `gate-critical` issue** (uncapped — see Step 3). If more than six theme
+Cap: **3–6 theme issues (user-visible `signal:defect` issues count here),
+plus at most one housekeeping issue, plus every `gate-critical` candidate**
+(uncapped — see Step 3). If more than six theme
 candidates survived Step 3, ask the user which six take priority — the
 remainder stay in the backlog, not force-added.
 
@@ -195,8 +240,10 @@ For each selected issue:
 
    ```bash
    gh issue edit NNN --repo elan-registry/registry --title "<type>: <description>" \
-     --milestone "$ARGUMENTS" --add-label "status:ready" --remove-label "triage"
+     --milestone "<MILESTONE_TITLE>" --add-label "status:ready" --remove-label "triage"
    ```
+
+   `--milestone` takes the full title from Step 1, not the version alone.
 
    If the issue does not have the `triage` label, leave out
    `--remove-label "triage"`. If the title already has the correct scoped
@@ -230,8 +277,8 @@ gh issue close NNN --repo elan-registry/registry \
   --comment "Closing as low-value / make-work during milestone planning. Can be reopened if prioritized."
 ```
 
-Otherwise leave the issue open in the backlog, with no milestone and no
-label change. Add one comment with the one-line reason from the "Candidates
+Otherwise leave the issue open. Do not change its milestone (none or
+`Backlog`) or its labels. Add one comment with the one-line reason from the "Candidates
 cut" table:
 
 ```bash
@@ -249,8 +296,10 @@ gh api repos/elan-registry/registry/milestones/<MILESTONE_NUM> -X PATCH \
 ## Step 5: Output summary
 
 - The theme sentence
-- Sealed issue list (number, title, signal) — theme issues and the
-  housekeeping issue separately
+- The full milestone title (`MILESTONE_TITLE`), and "created" if Step 1
+  created it
+- Sealed issue list (number, title, signal) — theme issues, user-visible
+  defects, the housekeeping issue, and `gate-critical` issues separately
 - Combine groups commented on (Step 4), or "none"
 - Cut candidates and why
 - Any issues closed outright

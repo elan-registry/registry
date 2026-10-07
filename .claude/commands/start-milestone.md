@@ -26,17 +26,25 @@ release notes, and recommending an issue order.
 ### Step 1: Validate the milestone exists on GitHub
 
 ```bash
-gh api repos/elan-registry/registry/milestones \
-  --jq '.[] | select(.title | startswith("'"$ARGUMENTS"'"))'
+gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" --paginate \
+  --jq '.[] | select(.title | test("^$ARGUMENTS([: ]|$)")) | {number, title, description}'
 ```
 
-If not found, stop and report the error. Show available open milestones:
+A milestone title can have a suffix after the version, for example
+`v2.31.0: Reachable Owners and Findable Cars`.
+
+- **One result** → record the number as `<NUMBER>`, the full title as
+  `<MILESTONE_TITLE>`, and the description. Later steps use them.
+- **No result** → stop. Show the open milestone titles. Tell the user: "Type
+  `/plan-milestone $ARGUMENTS`. It offers to create the milestone and seals
+  its issue list."
+- **More than one result** → stop. Show the titles. Tell the user: "Rename
+  or close the extra milestone on GitHub, then type
+  `/start-milestone $ARGUMENTS`."
 
 ```bash
-gh api repos/elan-registry/registry/milestones --jq '.[].title'
+gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" --paginate --jq '.[].title'
 ```
-
-Record the full milestone title and milestone number for later steps.
 
 ### Step 2: Ensure clean working tree
 
@@ -44,8 +52,8 @@ Record the full milestone title and milestone number for later steps.
 git status --porcelain
 ```
 
-If there are uncommitted changes, stop and ask the user to commit or stash
-first.
+If there are uncommitted changes, stop. Tell the user: "Commit or stash the
+changes, then type `/start-milestone $ARGUMENTS`."
 
 ### Step 3: Create the milestone branch from main
 
@@ -98,7 +106,8 @@ scripts/find-milestone-branch.sh $ARGUMENTS
   git push -u origin milestone/$ARGUMENTS
   ```
 
-- **Exit 2** — usage error. Check `$ARGUMENTS` was given.
+- **Exit 2** — usage error. Stop. Tell the user: "Type
+  `/start-milestone <version>`, for example `/start-milestone v2.17.0`."
 
 ### Step 3.5: Clean up fix scripts from the previous release
 
@@ -145,8 +154,8 @@ Skip the commit if nothing changed. Step 6.5 pushes this commit.
 ### Step 4: List the milestone's open issues
 
 ```bash
-gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=50" \
-  --jq '.[] | {number, title, labels: [.labels[].name], body}'
+gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=100" --paginate \
+  --jq '.[] | select(.pull_request == null) | {number, title, labels: [.labels[].name], body}'
 ```
 
 Use the direct API call, not `gh issue list --milestone` (see CLAUDE.md's
@@ -158,8 +167,9 @@ open issue in the milestone has `status:ready`. Count the open issues
 without that label:
 
 ```bash
-gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=100" \
-  --jq '[.[] | select(.pull_request == null) | select([.labels[].name] | index("status:ready") | not)] | length'
+gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=100" --paginate \
+  --jq '.[] | select(.pull_request == null) | select([.labels[].name] | index("status:ready") | not) | .number' \
+  | wc -l
 ```
 
 The milestone is sealed when all of these are true:
@@ -227,7 +237,10 @@ do they do today instead? / what breaks if this never ships?), the edge-case
 test, and the inclusion question ("which of these serve the theme?" —
 default is out, not in). If the retrospective from Step 4.4 names work that
 nobody needed, an issue of the same kind must show a stronger signal to
-stay. Cap: **3–6 theme issues, plus at most one
+stay. A `signal:defect` issue that a user can see (an owner, a visitor, or
+an admin or editor in the site UI) stays in without the theme test, and
+counts toward the theme issues. Show it to the user with the signal
+`signal:defect (user-visible)`. Cap: **3–6 theme issues, plus at most one
 housekeeping (`signal:forced`) issue, plus every open `gate-critical` issue**
 (uncapped, bypasses the theme test).
 
@@ -300,6 +313,26 @@ gh issue close NNN --repo elan-registry/registry \
 
 Remove secondary issues from the working list. The primary carries the full
 combined scope into Step 5.
+
+Then scope each issue that stays. `/start-issue` needs acceptance criteria
+and `status:ready` on each issue. Apply `/plan-milestone` Step 4, items 1 to
+4, to each issue in the working list:
+
+1. Write the acceptance criteria.
+2. Add them to the issue body as an `## Acceptance criteria` section.
+3. Give the title its scoped type, apply `status:ready`, and remove
+   `triage`. The issue is already in the milestone, so leave out
+   `--milestone`:
+
+   ```bash
+   gh issue edit NNN --repo elan-registry/registry --title "<type>: <description>" \
+     --add-label "status:ready" --remove-label "triage"
+   ```
+
+4. For an issue scoped down to the guard only, post the scope comment.
+
+Skip an issue that already has an `## Acceptance criteria` section that
+matches the theme and `status:ready`.
 
 ### Step 4.6: Offer a production data refresh
 
@@ -406,7 +439,12 @@ sessions see it:
 
 ### Step 6: Create draft release notes
 
-Create a draft release notes file at
+If `docs/releases/RELEASE_NOTES_$ARGUMENTS.md` already exists, do not
+change it. Print "Release notes already exist at
+`docs/releases/RELEASE_NOTES_$ARGUMENTS.md`. Left unchanged." Continue to
+Step 6.5.
+
+Otherwise, create a draft release notes file at
 `docs/releases/RELEASE_NOTES_$ARGUMENTS.md` using the template at
 `docs/development/RELEASE_NOTES_TEMPLATE.md`:
 
@@ -450,7 +488,9 @@ git rev-list --count origin/milestone/$ARGUMENTS..HEAD
 ```
 
 The first command must print nothing and the second must print `0`. If not,
-stop and show the output.
+stop and show the output. Tell the user: "Commit or push the changes shown,
+then type `/start-milestone $ARGUMENTS`. Step 3 finds the existing branch
+and Step 6 keeps the existing release notes."
 
 ### Step 7: Output summary
 
@@ -464,9 +504,9 @@ Display:
 - The issues that got `status:blocked` and the combine groups commented on
   (Step 5)
 - Which issues are expected to require wiki/architecture updates
-- Note that draft release notes were created at
-  `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`, committed, and pushed
-  (Step 6.5)
+- Whether Step 6 created the draft release notes at
+  `docs/releases/RELEASE_NOTES_$ARGUMENTS.md` or left an existing file
+  unchanged, and that Step 6.5 committed and pushed the branch
 
 End with the next command as plain text, not a question. GitHub and the
 release notes hold the state, so tell the user to run `/clear`

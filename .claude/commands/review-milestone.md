@@ -13,8 +13,11 @@ to resolution before the branch is handed off to `/release-milestone`.
 
 This command picks up where `/finish-milestone` left off — after the
 milestone branch has been tested (Step 3.7 there), reviewed (Steps 9.5–9.9
-there), documented (Steps 5.5–8 there), and pushed (Step 10 there), but
-before any PR exists.
+there), documented (Steps 5.5–8 there), and pushed (Step 10 there).
+
+The user can type `/review-milestone $ARGUMENTS` again after a run stops.
+Step 3 reuses an open milestone PR, and Step 1 accepts the fix commits
+that Step 4 pushed.
 
 ## Arguments
 
@@ -29,7 +32,7 @@ TaskCreate:
 
 1. Locate the milestone branch and re-verify it's review-ready
 2. Re-derive merged-PR list, diff, and known-broken-test status
-3. Create the PR targeting main
+3. Create the PR targeting main, or reuse the open one
 4. Verify CI milestone review posted with zero unresolved findings; recover
    and fix as needed; confirm CI is fully green
 5. Output summary
@@ -103,8 +106,9 @@ repo state rather than assume the handoff was clean (same principle
   happened — this check exists specifically for the case where it didn't.
 
 - **The marker covers the branch as it is now.** Its `sha:` line records the
-  tip that `/finish-milestone` Step 10 pushed. A commit after that tip had
-  no review:
+  last reviewed tip. `/finish-milestone` Step 10 writes it, and Step 4 here
+  moves it to each fix commit that Step 4 verified and pushed. A commit
+  after that tip had no review:
 
   ```bash
   grep '^sha: ' docs/plans/releases/$ARGUMENTS-review.done
@@ -157,7 +161,22 @@ Step 3.5 writes when the user accepts the tags:
 On exit 2, a row reading `(lookup-failed)` means the issue's state couldn't
 be confirmed — resolve that before treating the row as accepted or not.
 
-### Step 3: Create the PR targeting main
+### Step 3: Create the PR targeting main, or reuse the open one
+
+Look for an open milestone PR from an earlier run first:
+
+```bash
+gh pr list --base main --head milestone/$ARGUMENTS --state open \
+  --json number,url,body
+```
+
+- **One PR** — reuse it. Record its number and URL. Build the body below
+  from Step 2's data. If the "Issues Resolved", "Known Test Exclusions" or
+  "Accepted Risks" section differs from the PR's body, replace the body:
+  `gh pr edit <pr-number> --body-file <file> --repo elan-registry/registry`.
+  Then go to Step 4.
+- **More than one PR** — stop and ask the user which PR to use.
+- **No PR** — create it:
 
 ```bash
 gh pr create \
@@ -232,6 +251,8 @@ proof that happened (webhook throttle, the action's own workflow-file-match
 guard, or turn exhaustion can each complete a job while posting nothing —
 see #1724). Verify the comment itself, and its content, in one call:
 
+Run it with the Bash tool `timeout: 600000`:
+
 ```bash
 scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=label \
   --include-important --check-skip-tag
@@ -241,17 +262,31 @@ scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=label \
 
 - **Exit 0** — comment confirmed, zero unresolved Blocking/Important
   findings. Note "posted normally" in the Step 5 summary and proceed.
-- **Exit 1** — could not verify (`gh` auth/network/rate-limit). Report the
-  error and resolve it before re-running; do not treat as "no review."
+- **Exit 1** — could not verify (`gh` auth/network/rate-limit). Do not
+  treat it as "no review." Stop and report the error. Tell the user to fix
+  the cause (for example, `gh auth login`), then type
+  `/review-milestone $ARGUMENTS`. Step 3 reuses the open PR.
 - **Exit 2** — comment confirmed, but an unresolved Blocking or Important
   finding remains (see stdout for the heading(s)). Fix it here:
   `/release-milestone` does not fix findings. For each fix:
 
   1. Commit it on the milestone branch.
-  2. Run `scripts/run-verification-suite.sh`. Exit 1 blocks the push. Exit
-     2 means the integration suite could not run — fix the environment and
-     run it again. Do not push until it exits 0.
+  2. Run `scripts/run-verification-suite.sh` (run with the Bash tool
+     `timeout: 600000`). Exit 1 blocks the push. Exit 2 means the
+     integration suite could not run — fix the environment and run it
+     again. Do not push until it exits 0.
   3. Push it: `git push origin milestone/$ARGUMENTS`.
+  4. Move the marker's `sha:` line to the pushed tip. The fix went through
+     this loop (verification suite, then a new CI review), so Step 1 must
+     accept it when the command runs again:
+
+     ```bash
+     f=docs/plans/releases/$ARGUMENTS-review.done
+     { echo "sha: $(git rev-parse origin/milestone/$ARGUMENTS)"; grep -v '^sha: ' "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"
+     ```
+
+     Only this step moves the `sha:` line. A commit that did not go through
+     steps 1–3 here still needs `/finish-milestone $ARGUMENTS`.
 
   A push does not start a new review. Neither review job runs on a
   `synchronize` event for a `milestone/*` → `main` PR. Start one with a
@@ -264,7 +299,8 @@ scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=label \
   ```
 
   Wait for the `milestone-review` check to finish
-  (`gh pr checks <pr-number> --watch`), then run this script again. Until
+  (`gh pr checks <pr-number> --watch`, run with the Bash tool
+  `timeout: 600000`), then run this script again. Until
   the new review posts, the script still reads the old comment. Repeat
   until it exits 0. If a finding needs user judgment or access only they
   have (e.g. a prod-host check), use AskUserQuestion — "defer to a tracked
@@ -291,9 +327,8 @@ check the deploy sheet:
 scripts/check-deploy-sheet-fresh.sh $ARGUMENTS
 ```
 
-On exit 1 (a deploy input changed) or exit 2, tell the user to refresh the
-deploy sheet by hand from `/finish-milestone` Step 6.6's instructions
-before `/release-milestone`.
+Exit 1 (a deploy input changed) or exit 2 means the deploy sheet needs a
+refresh. Step 5 then does not offer `/release-milestone`.
 
 ### Step 5: Output summary
 
@@ -308,7 +343,11 @@ before `/release-milestone`.
   deep review later, label the PR `deep-review` or comment `@claude
   deep-review`", "Deploy sheet is at `docs/plans/releases/$ARGUMENTS-deploy.md`
   — `/release-milestone` reuses this file rather than generating its own"
-- Use AskUserQuestion for the actual next step, since `/release-milestone`
+- If Step 4 found the deploy sheet stale (exit 1 or 2), end with plain
+  text, not a menu. Tell the user to refresh the deploy sheet by hand from
+  `/finish-milestone` Step 6.6's instructions (the sheet and its stamp).
+  Then tell them to run `/clear` and type `/release-milestone $ARGUMENTS`.
+- Otherwise, use AskUserQuestion for the actual next step, since `/release-milestone`
   is runnable right now — it merges the PR itself (that's its Step 6), it
   does not wait for a human to merge on GitHub first:
   - Question: "Milestone PR ready. What next?"
@@ -326,7 +365,8 @@ before `/release-milestone`.
   resolved
 - The PR MUST target `main`, not any other branch
 - Push only `milestone/$ARGUMENTS`, only to `origin`, and only for finding
-  fixes in Step 4. Never push `main`, `prod`, or `test`
+  fixes in Step 4. After each verified fix push, Step 4 moves the marker's
+  `sha:` line to the new tip. Never push `main`, `prod`, or `test`
 - The deploy sheet lives at `docs/plans/releases/<version>-deploy.md` —
   gitignored, never committed or printed in full to the conversation (it
   names ssh hosts and docroots)

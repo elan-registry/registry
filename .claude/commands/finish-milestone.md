@@ -104,7 +104,12 @@ gh api "repos/elan-registry/registry/issues?milestone=<MILESTONE_NUM>&state=open
 
 - If open issues remain, warn user and list them. Ask, for each issue,
   whether to finish it first or leave it out of this release.
-- For each issue the user leaves out, remove its milestone, so
+- If the user wants to finish any issue first, stop now. Do not remove
+  anything yet: the next run asks again about each issue that is still
+  open. End with plain text: for each issue to finish, run `/clear`, then
+  type `/start-issue <N>` and follow the per-issue commands through
+  `/finish-issue`. Then run `/clear` and type `/finish-milestone $ARGUMENTS`.
+- Otherwise, for each issue the user leaves out, remove its milestone, so
   `/plan-milestone` sees it again as unplanned work:
 
   ```bash
@@ -114,9 +119,6 @@ gh api "repos/elan-registry/registry/issues?milestone=<MILESTONE_NUM>&state=open
   After Step 3 checks out the milestone branch, remove the issue's `WIP:`
   entry from "Issues Resolved" in `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`,
   and any changelog bullet for it. Commit the change.
-- If the user wants to finish an issue first, stop after the removals
-  above. End with plain text: finish each issue with the per-issue
-  commands, then type `/finish-milestone $ARGUMENTS` again.
 
 ### Step 3: Switch to milestone branch and ensure up to date
 
@@ -224,7 +226,8 @@ branch tip (see "Running the command again").
 CI runs unit tests only, and each issue ran integration tests on its own
 branch. This is the one run of integration tests on the merged milestone
 tree. Integration tests run in this checkout's Docker `app` container, so
-start the stack first (`docker compose up -d`).
+start the stack first (`docker compose up -d`). Run the script with the
+Bash tool `timeout: 600000`:
 
 ```bash
 scripts/run-verification-suite.sh
@@ -577,8 +580,14 @@ Launch the `security-reviewer` agent with this scoped prompt:
 > checks — those were done per-issue. Report only findings that could not
 > have been caught by reviewing each PR in isolation."
 
-- If **Critical or High** cross-integration findings are found, **stop** and
-  tell the user to fix them before proceeding.
+- If **Critical or High** cross-integration findings are found, do not go
+  to Step 9.7. Show each finding. Fix each one in this session as a commit
+  on the milestone branch, after the user approves the fix. Then do this
+  check again on the new diff. If the user wants to fix them outside this
+  session, stop. End with plain text: commit the fixes on the milestone
+  branch, then type `/finish-milestone $ARGUMENTS`. It skips the steps
+  whose results exist for the current tip (see "Running the command
+  again").
 - If only Medium/Low or no findings, note in summary and proceed.
 
 ### Step 9.7: Local multi-agent review (before opening the PR)
@@ -608,7 +617,13 @@ Focus areas at milestone level:
 - Release-notes accuracy vs. the merged PR list
 - Aggregated security surface
 
-If Critical or Important issues surface, **stop and fix them before creating the PR**.
+If Critical or Important issues surface, do not go to Step 9.8. Fix each
+one in this session as a commit on the milestone branch, after the user
+approves the fix. Then launch the same agents again on the new diff. If
+the user wants to fix them outside this session, stop. End with plain
+text: commit the fixes on the milestone branch, then type
+`/finish-milestone $ARGUMENTS`. It skips the steps whose results exist for
+the current tip (see "Running the command again").
 
 Once the local review is clean, record a short list of what Step 9.7 found
 and fixed (file:line + one-line description per item, or "none" if the
@@ -667,7 +682,7 @@ Ask it to perform the same five checks the CI job does:
 
 **This step blocks on any finding, not just Critical/High.** Present every
 finding to the user regardless of severity. For each one: **fix it** (apply
-the fix, re-run this step's agent on the corrected diff), or **user
+the fix, launch this step's agent again on the corrected diff), or **user
 explicitly accepts the risk**. No PR exists yet, so record each accepted
 finding as one line in `docs/plans/releases/$ARGUMENTS-accepted-risks.md`
 (finding, reason, follow-up issue if any). `/review-milestone` Step 3 copies
@@ -713,8 +728,8 @@ non-zero after already producing some files, and a clean exit with missing
 output is exactly the bug this step exists to catch.
 
 If anything fails or produces incomplete output, fix it on the milestone
-branch (same fix-then-re-verify loop as Step 9.8), then re-run this step
-against the fixed commit. Clean up the worktree when done:
+branch (same fix-then-re-verify loop as Step 9.8), then do this smoke test
+again against the fixed commit. Clean up the worktree when done:
 
 ```bash
 cd -
@@ -726,7 +741,8 @@ Once clean, proceed to Step 10.
 ### Step 10: Push the milestone branch, output summary, and hand off to `/review-milestone`
 
 If any step after Step 3.7 committed a code change (not only docs), run
-`scripts/run-verification-suite.sh` again. Handle its exit codes as in
+`scripts/run-verification-suite.sh` again (run with the Bash tool
+`timeout: 600000`). Handle its exit codes as in
 Step 3.7.
 
 Check the deploy sheet against the final branch tip:
@@ -735,8 +751,9 @@ Check the deploy sheet against the final branch tip:
 scripts/check-deploy-sheet-fresh.sh $ARGUMENTS
 ```
 
-Exit 0 means no deploy input changed after Step 6.6. On exit 1 or 2, do
-Step 6.6 again (render the sheet and its stamp), then continue.
+Exit 0 means no deploy input changed after Step 6.6. On exit 1 or 2,
+render the sheet and its stamp again from Step 6.6's instructions, then
+continue.
 
 Push the milestone branch. This command's commits (Steps 3.7–9.9) are local
 until now, and `/review-milestone` opens the PR with
@@ -771,7 +788,9 @@ EOF
 ```
 
 The `sha:` line is the pushed tip. `/review-milestone` Step 1 checks that it
-still equals `origin/milestone/$ARGUMENTS`. For a step that skipped under
+still equals `origin/milestone/$ARGUMENTS`. `/review-milestone` Step 4
+moves it to each finding fix that it verifies and pushes. Any other commit
+after this tip needs a new run of this command. For a step that skipped under
 "Running the command again", copy its line from
 `$ARGUMENTS-review.prev`. Then delete the old marker:
 
@@ -799,8 +818,8 @@ Then summarize:
   `/publish-wiki` in the wiki clone — this repo's PR does not carry them
 
 End with plain text, not a menu. Tell the user to run `/clear` first, then
-type `/review-milestone $ARGUMENTS` (it opens the PR, verifies that the CI
-review posted, and confirms green). This context is very large, and
+type `/review-milestone $ARGUMENTS` (it opens the PR, or reuses the open
+one, verifies that the CI review posted, and confirms green). This context is very large, and
 `/review-milestone` reads everything it needs from the repo and the marker
 file. Do not start it through the Skill tool: it declares `model: sonnet`,
 and a Skill-tool start runs it on this command's model (CLAUDE.md,

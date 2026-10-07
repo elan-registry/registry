@@ -16,9 +16,10 @@
 #   - .env.example
 #   - app/admin/scripts/fix/ and app/admin/scripts/maintenance/
 #   - docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md
-#   - an added or deleted .php file outside tests/, database/, scripts/,
-#     vendor/ and users/ that calls securePage( (a new page needs
-#     permission registration)
+#   - a .php file outside tests/, database/, scripts/, vendor/ and users/
+#     that is added or deleted and calls securePage(, or that is modified
+#     and gains or loses securePage( (a new page needs permission
+#     registration)
 # Release notes, CLAUDE.md, review fixes and other code commits do not
 # change the sheet, so they do not make it stale. The one input this
 # script cannot see is a manual procedure in a merged PR's body (the
@@ -38,7 +39,7 @@
 # Exit codes:
 #   0 = fresh (no deploy input changed since the stamped commit)
 #   1 = stale (a deploy input changed; stderr lists the changed paths)
-#   2 = can't verify — no stamp file, the stamp is not a single valid
+#   2 = can't verify — no stamp file, an unreadable stamp file, the stamp is not a single valid
 #       commit SHA (empty, corrupt, or more than one line), the stamped
 #       commit or the milestone branch does not resolve in this repo, or a
 #       git command failed. Never treat exit 2 as either fresh or stale.
@@ -53,7 +54,10 @@ if [ ! -f "$STAMP_FILE" ]; then
   exit 2
 fi
 
-STAMPED_SHA="$(tr -d '[:space:]' < "$STAMP_FILE")"
+if ! STAMPED_SHA="$(tr -d '[:space:]' < "$STAMP_FILE")"; then
+  echo "Could not read stamp file $STAMP_FILE — cannot verify freshness." >&2
+  exit 2
+fi
 
 if ! printf '%s' "$STAMPED_SHA" | grep -qE '^[0-9a-f]{40}$'; then
   echo "Stamp file $STAMP_FILE does not contain a single valid 40-char SHA (got: '${STAMPED_SHA}')." >&2
@@ -84,12 +88,20 @@ if ! NAME_STATUS="$(git -c core.quotePath=false diff --no-renames --name-status 
   exit 2
 fi
 
-# Sets CONTENT to the file at the given commit. A failed read exits 2:
+# Sets SECURE to "yes" when the file at the given commit calls securePage(,
+# and to "no" when it does not. It sets a variable and is not called in
+# $(...), so the exit below stops the script. A failed read exits 2:
 # reading it as "no securePage(" would hide a stale sheet.
-read_file_at() {
-  if ! CONTENT="$(git show "${1}:${2}" 2>&1)"; then
-    echo "Could not read ${1}:${2}: ${CONTENT}" >&2
+secure_page_at() {
+  local content
+  if ! content="$(git show "${1}:${2}" 2>&1)"; then
+    echo "Could not read ${1}:${2}: ${content}" >&2
     exit 2
+  fi
+  if grep -q 'securePage(' <<<"$content"; then
+    SECURE=yes
+  else
+    SECURE=no
   fi
 }
 
@@ -104,14 +116,26 @@ while IFS=$'\t' read -r status path; do
   esac
   [[ "$path" =~ \.php$ ]] || continue
   [[ "$path" =~ ^(tests|database|scripts|vendor|users)/ ]] && continue
+  # A page that gains securePage( after the stamp is a new page for the
+  # sheet. A page that loses it no longer needs its registration.
   case "$status" in
-    A) read_file_at "$CURRENT_TIP" "$path" ;;
-    D) read_file_at "$STAMPED_SHA" "$path" ;;
+    A)
+      secure_page_at "$CURRENT_TIP" "$path"
+      [ "$SECURE" = yes ] || continue
+      ;;
+    D)
+      secure_page_at "$STAMPED_SHA" "$path"
+      [ "$SECURE" = yes ] || continue
+      ;;
+    M)
+      secure_page_at "$STAMPED_SHA" "$path"
+      BEFORE="$SECURE"
+      secure_page_at "$CURRENT_TIP" "$path"
+      [ "$SECURE" != "$BEFORE" ] || continue
+      ;;
     *) continue ;;
   esac
-  if grep -q 'securePage(' <<<"$CONTENT"; then
-    CHANGED_INPUTS+="${status} ${path}"$'\n'
-  fi
+  CHANGED_INPUTS+="${status} ${path}"$'\n'
 done <<<"$NAME_STATUS"
 
 if [ -z "$CHANGED_INPUTS" ]; then

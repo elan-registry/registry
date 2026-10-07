@@ -296,8 +296,9 @@ scripts/check-deploy-sheet-fresh.sh v2.30.5
   - `.env.example`
   - `app/admin/scripts/fix/` and `app/admin/scripts/maintenance/`
   - `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md`
-  - an added or deleted `.php` file that calls `securePage(`, outside
-    `tests/`, `database/`, `scripts/`, `vendor/` and `users/`
+  - a `.php` file that calls `securePage(`, outside `tests/`, `database/`,
+    `scripts/`, `vendor/` and `users/`. The file is added or deleted, or it
+    is modified and gains or loses `securePage(`.
 - Release notes, `CLAUDE.md`, review fixes and other code commits do not make
   the sheet stale.
 - It cannot see a manual procedure in a merged PR body. A merge of `main` into
@@ -308,7 +309,7 @@ scripts/check-deploy-sheet-fresh.sh v2.30.5
 | --- | --- |
 | 0 | Fresh. No deploy input changed since the stamp. |
 | 1 | Stale. Stderr lists the changed paths. |
-| 2 | Cannot verify: no stamp, a bad stamp, or a commit or branch that does not resolve. Never treat it as fresh or stale. |
+| 2 | Cannot verify: no stamp, an unreadable stamp, a bad stamp, a commit or branch that does not resolve, or a failed `git` command. Never treat it as fresh or stale. |
 
 The hermetic test is `tests/hooks/test-check-deploy-sheet-fresh.sh`.
 
@@ -327,6 +328,15 @@ the milestone branch and pushes it, syncs local `main`, merges the PR, tags
 the merge commit, pushes the tag, creates a draft GitHub release, and closes
 the GitHub milestone. `--dry-run` prints each command and changes nothing.
 
+- **Fast-forward pulls.** Every pull is `--ff-only`. The script never
+  creates a merge commit when it pulls.
+- **Stray commits.** Before it pulls `main`, the script counts the local
+  commits that `origin/main` does not have. If the count is not `0`, it
+  stops. Move those commits to a side branch first.
+- **The tag.** The script reads the merge commit of the PR (`gh pr view
+  --json mergeCommit`). It tags that SHA, not `HEAD`. Then it checks that the
+  tag points at the SHA. An existing tag on another commit stops the run.
+
 - **Notes copy.** Before it removes the notes, the script saves them to
   `docs/plans/releases/<version>-release-notes.md` (gitignored). The release
   is created from that copy. If the copy is missing, the script restores it
@@ -340,7 +350,7 @@ the GitHub milestone. `--dry-run` prints each command and changes nothing.
 | --- | --- |
 | 0 | Every step completed, or `--dry-run` printed the plan. |
 | 1 | A check stopped the run before it changed anything: bad arguments, a deploy remote, a closed PR, missing notes with no removal commit, or stray local commits on `main`. |
-| 2 | A step failed: a merge conflict, a rejected push, or a tag on the wrong commit. |
+| 2 | A step failed: a merge conflict, a rejected push, a pull that is not a fast-forward, or a tag on the wrong commit. |
 
 The hermetic test is `tests/hooks/test-release-milestone.sh`.
 

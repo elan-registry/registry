@@ -35,8 +35,8 @@
 #       (bad args, deploy remote, closed PR, release notes missing with no
 #       removal commit, stray local commits on main). Fix the cause and run
 #       the script again.
-#   2 = a step itself failed (e.g. merge conflict, push rejected, tag on
-#       the wrong commit). Fix the cause and run the script again. It skips
+#   2 = a step itself failed (e.g. merge conflict, push rejected, a pull
+#       that is not a fast-forward, tag on the wrong commit). Fix the cause and run the script again. It skips
 #       the steps that already completed.
 
 # -E: the ERR trap below must also fire for a failure inside run().
@@ -103,7 +103,7 @@ if [ "$PR_STATE" = "MERGED" ]; then
   echo "PR #${PR_NUMBER} is already merged — skipping."
 else
   run git checkout "$BRANCH"
-  run git pull origin "$BRANCH"
+  run git pull --ff-only origin "$BRANCH"
   if [ "$DRY_RUN" -eq 1 ] || [ -f "$NOTES_FILE" ]; then
     run mkdir -p "$(dirname "$KEEP_NOTES")"
     run cp "$NOTES_FILE" "$KEEP_NOTES"
@@ -134,18 +134,19 @@ fi
 step "Step 7: sync main"
 run git checkout main
 run git fetch origin --prune
-run git pull origin main
 
+# Check before the pull: on a diverged main, the pull fails with a less
+# clear message.
 if [ "$DRY_RUN" -eq 0 ]; then
-  COUNTS="$(git rev-list --left-right --count origin/main...main)"
-  RIGHT="$(echo "$COUNTS" | awk '{print $2}')"
-  if [ "$RIGHT" != "0" ]; then
-    echo "Local main has ${RIGHT} commit(s) not on origin/main. Stop — park them on a side branch first." >&2
+  AHEAD="$(git rev-list --count origin/main..main)"
+  if [ "$AHEAD" != "0" ]; then
+    echo "Local main has ${AHEAD} commit(s) not on origin/main. Stop — park them on a side branch first." >&2
     exit 1
   fi
 else
-  echo "[dry-run] git rev-list --left-right --count origin/main...main"
+  echo "[dry-run] git rev-list --count origin/main..main  # expect: 0"
 fi
+run git pull --ff-only origin main
 
 # --- Step 8: merge the PR ---
 step "Step 8: merge PR #${PR_NUMBER}"
@@ -157,7 +158,7 @@ fi
 
 # --- Step 9: pull the merge commit ---
 step "Step 9: pull merge commit"
-run git pull origin main
+run git pull --ff-only origin main
 
 # --- Step 10: delete local milestone branch, if present ---
 step "Step 10: delete local milestone branch"
@@ -168,28 +169,34 @@ else
 fi
 
 # --- Step 11: tag the merge commit ---
+# Tag the PR's merge commit by its SHA, not HEAD: a commit pushed to main
+# after the merge would make HEAD the wrong commit.
 step "Step 11: create annotated tag"
-if [ "$DRY_RUN" -eq 0 ] && git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "[dry-run] gh pr view $PR_NUMBER --json mergeCommit --jq .mergeCommit.oid  # MERGE_SHA"
+  echo "[dry-run] git tag -a ${VERSION} <MERGE_SHA> -m \"Release ${VERSION}: <milestone title>\""
+  echo "[dry-run] git rev-parse ${VERSION}^{commit}  # expect: <MERGE_SHA>"
+else
   MERGE_SHA="$(gh pr view "$PR_NUMBER" --json mergeCommit --jq '.mergeCommit.oid')"
-  TAGGED_SHA="$(git rev-parse "${VERSION}^{commit}")"
-  if [ "$TAGGED_SHA" != "$MERGE_SHA" ]; then
-    echo "Tag ${VERSION} already exists on ${TAGGED_SHA}, not on the merge commit ${MERGE_SHA}. Stop and investigate." >&2
+  if ! printf '%s' "$MERGE_SHA" | grep -qE '^[0-9a-f]{40}$'; then
+    echo "Could not read the merge commit of PR #${PR_NUMBER} (got: '${MERGE_SHA}'). Stop and investigate." >&2
     exit 2
   fi
-  echo "Tag ${VERSION} already exists on the merge commit — skipping."
-else
-  MILESTONE_TITLE="$(gh api "repos/${REPO}/milestones/${MILESTONE_NUMBER}" --jq .title)"
-  run git tag -a "${VERSION}" -m "Release ${VERSION}: ${MILESTONE_TITLE}"
-
-  if [ "$DRY_RUN" -eq 0 ]; then
-    DESCRIBED="$(git describe HEAD)"
-    if [ "$DESCRIBED" != "$VERSION" ]; then
-      echo "git describe HEAD returned '${DESCRIBED}', expected '${VERSION}' with no suffix." >&2
-      echo "The tag is not on a clean merge commit — stop and investigate." >&2
+  if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+    TAGGED_SHA="$(git rev-parse "${VERSION}^{commit}")"
+    if [ "$TAGGED_SHA" != "$MERGE_SHA" ]; then
+      echo "Tag ${VERSION} already exists on ${TAGGED_SHA}, not on the merge commit ${MERGE_SHA}. Stop and investigate." >&2
       exit 2
     fi
+    echo "Tag ${VERSION} already exists on the merge commit — skipping."
   else
-    echo "[dry-run] git describe HEAD  # expect: $VERSION"
+    MILESTONE_TITLE="$(gh api "repos/${REPO}/milestones/${MILESTONE_NUMBER}" --jq .title)"
+    git tag -a "${VERSION}" "${MERGE_SHA}" -m "Release ${VERSION}: ${MILESTONE_TITLE}"
+    TAGGED_SHA="$(git rev-parse "${VERSION}^{commit}")"
+    if [ "$TAGGED_SHA" != "$MERGE_SHA" ]; then
+      echo "Tag ${VERSION} points at ${TAGGED_SHA}, expected the merge commit ${MERGE_SHA}. Stop and investigate." >&2
+      exit 2
+    fi
   fi
 fi
 
@@ -209,7 +216,15 @@ else
       exit 2
     fi
     mkdir -p "$(dirname "$KEEP_NOTES")"
-    git show "${REMOVED_IN}^:${NOTES_FILE}" > "$KEEP_NOTES"
+    # Write to a temp file first, so a failed git show leaves no empty copy
+    # for the next run to publish.
+    TMP_NOTES="${KEEP_NOTES}.tmp.$$"
+    if ! git show "${REMOVED_IN}^:${NOTES_FILE}" > "$TMP_NOTES"; then
+      rm -f "$TMP_NOTES"
+      echo "Could not restore ${NOTES_FILE} from ${REMOVED_IN}^. Stop." >&2
+      exit 2
+    fi
+    mv "$TMP_NOTES" "$KEEP_NOTES"
     echo "Restored release notes from ${REMOVED_IN}^ to ${KEEP_NOTES}."
   fi
   run gh release create "${VERSION}" \

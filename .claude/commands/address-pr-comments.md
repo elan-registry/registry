@@ -45,6 +45,9 @@ draft state — so a review should already be in flight for the current HEAD.
 GitHub's abuse/rate throttle, and even a "successful" job run does not
 guarantee a comment was posted (workflow-file-match guard, turn exhaustion).
 
+Run it with the Bash tool `timeout: 600000`. The default timeout of 2
+minutes stops the poll before its own 2-minute window ends.
+
 ```bash
 scripts/poll-review-posted.sh <pr-number> 15 120
 ```
@@ -54,9 +57,9 @@ Sonnet job — faster than the Fable milestone-level review).
 
 | Exit | Meaning | Action |
 | --- | --- | --- |
-| 0 | Comment found | Proceed to Step 2 — its findings feed into Step 4's triage same as any other comment |
+| 0 | Comment found | Proceed to Step 2-3 — its findings feed into Step 4's triage same as any other comment |
 | 1 | No comment after the poll window — see recovery steps below | See below |
-| 2 | Could not verify (`gh` failed — auth/network/rate-limit) | Stop, report the actual `gh` error. Do NOT treat this as "no review posted" |
+| 2 | Could not verify (`gh` failed — auth/network/rate-limit) | Stop, report the actual `gh` error. Do NOT treat this as "no review posted". Tell the user to fix the `gh` problem, then type `/address-pr-comments` again |
 
 **On exit 1, recover:**
 
@@ -68,7 +71,7 @@ Sonnet job — faster than the Fable milestone-level review).
    ```
 
    If either tag is present, stop here — review is intentionally skipped,
-   not missing. Proceed to Step 2 (there's simply nothing from this source).
+   not missing. Proceed to Step 2-3 (there's simply nothing from this source).
 
 2. Otherwise, re-trigger manually:
 
@@ -79,7 +82,8 @@ Sonnet job — faster than the Fable milestone-level review).
      --repo elan-registry/registry
    ```
 
-3. Wait for the new run and re-check for the comment the same way. If it
+3. Wait for the new run. Run `scripts/poll-review-posted.sh <pr-number> 15 120`
+   again (run it with the Bash tool `timeout: 600000`). If the comment
    still doesn't appear and the PR's diff touches
    `.github/workflows/claude-code-review.yml`, this is the self-referential
    workflow-file skip case — report it distinctly; re-triggering will not
@@ -102,6 +106,8 @@ header for the exact shape.
 Exit 0 means the fetch ran (an empty result is a valid clean PR). Exit 1
 means `gh` could not be queried at all (auth/network/rate-limit/bad PR
 number) — stop and report the error; do not treat this as "no findings."
+Tell the user to fix the `gh` problem, then type `/address-pr-comments`
+again.
 
 ## Step 4: Triage All Findings
 
@@ -176,8 +182,11 @@ branch re-review here would be a third read of the same tiny diff.
 **If a threshold is met**, run the full review: get the full accumulated
 branch diff — the same view CI uses — since this catches cross-commit issues
 (dead code, broken call interactions, unreachable paths) that per-fix diffs miss.
+Shell variables do not carry over between Bash calls, so this block computes
+`$BASE` again:
 
 ```bash
+BASE=$(gh pr view <pr-number> --repo elan-registry/registry --json baseRefName --jq .baseRefName)
 git diff $(git merge-base HEAD origin/$BASE)..HEAD
 ```
 
@@ -235,11 +244,17 @@ git commit -m "fix: address PR review comments (#<pr-number>)"
 git push origin "$(git branch --show-current)"
 ```
 
-Wait up to 5 minutes for checks to re-run. Poll every 60 seconds:
+Wait for the checks to re-run. Run this with the Bash tool
+`timeout: 600000`. It polls every 60 seconds until all checks end:
 
 ```bash
-gh pr checks <pr-number> --repo elan-registry/registry
+gh pr checks <pr-number> --repo elan-registry/registry --watch --interval 60
 ```
+
+If the Bash tool stops the command at its timeout, run
+`gh pr checks <pr-number> --repo elan-registry/registry` once and report the
+checks that are still pending. Then stop. Tell the user to type
+`/address-pr-comments` again after the checks end.
 
 If any check still fails after the fix, report the failure and stop — do not
 proceed to Step 7 until all blocking items and CI checks are clean. Tell the
@@ -261,7 +276,13 @@ disappears with no record of the decision. For each item, in order:
      - *Cleanup ledger* — edit `docs/development/CLEANUP_LEDGER.md` with
        the Edit tool, in the form `/review-pr` Step 6 gives. Use the file
        path without its `:line` part, and the issue number in
-       `(found in #<N>)`. Commit and push the edit the same way as Step 6.
+       `(found in #<N>)`. Find the first `###` heading that matches the
+       path. A heading can hold more than one backticked token. A token
+       matches when it is the same path, or when it ends in `/` and the path
+       starts with it. This is the rule that
+       `scripts/ledger-items-for-files.sh` uses. Add the line under that
+       heading. If no heading matches, add ``### `<path>` `` in path order.
+       Commit and push the edit the same way as Step 6.
      - *New GitHub issue* — follow `/found`'s "Defer" steps.
 
      Record the decision with `Deferred: ledger` or `Deferred: issue #<n>`
@@ -329,7 +350,8 @@ body by hand. Then continue.
 ## Important
 
 - **Never force-merge over failing checks.** If CI still fails after fixes,
-  stop and report.
+  stop and report. Tell the user to fix the failure, then type
+  `/address-pr-comments` again.
 - Fix only what the comment identifies. Do not refactor surrounding code.
 - If a "Blocking" item appears to be a false positive, present it to the user
   with the rationale before skipping it, and record it in the PR body (Step 5).

@@ -89,3 +89,9 @@ End with plain text, not a menu:
 Do not offer `/start-issue`. With no milestone, `/start-issue` would put the
 issue on whichever milestone branch is checked out and skip the planning
 gate.
+
+**Exception: a production break.** If the issue is `signal:defect` and
+production is broken, data is at risk, or there is a security exposure, say
+instead: "Issue #NUMBER created: URL. This is a hotfix. Run `/clear`, then
+type `/start-issue NUMBER --hotfix`." The hotfix track ships from `main`
+outside the milestone (CLAUDE.md, "Developer Workflow").

@@ -304,9 +304,9 @@ until the user asks for that deploy.
    the open milestone. Confirm the version with the user.
    `/release-milestone` Step 3 accepts four-part tags
    (`scripts/check-version-newer.sh`).
-3. **Tag `main` and push the tag to `origin`.** Use an annotated tag, as
-   `scripts/release-milestone.sh` does. `git describe HEAD` must print the
-   new tag with no suffix:
+3. **Tag `main` and push the tag to `origin`.** Use an annotated tag. Here
+   `HEAD` is the commit to release, so tag `HEAD`. `git describe HEAD` must
+   print the new tag with no suffix:
 
    ```bash
    git checkout main

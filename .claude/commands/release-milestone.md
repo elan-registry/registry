@@ -34,7 +34,20 @@ gh pr list --base main --state open \
 
 - Filter for PRs where `headRefName` starts with `milestone/`
 - If `$ARGUMENTS` is given, match against `milestone/$ARGUMENTS`
-- Exactly one match → use it. Zero or multiple → stop and ask the user.
+- Exactly one match → use it. Multiple → stop and ask the user.
+- Zero matches → an earlier run may have merged the PR and then stopped.
+  Without `$ARGUMENTS`, stop and ask the user for the version. With it,
+  look for the merged PR:
+
+  ```bash
+  gh pr list --base main --head milestone/<version> --state merged \
+    --json number,title,url
+  ```
+
+  One merged PR → this is a **resume after the merge**. Use that PR. In the
+  milestone lookup below, use `state=all` instead of `state=open` (the
+  milestone can already be closed). Then follow "Resume after the merge"
+  below. No merged PR → stop and ask the user.
 - Extract the version from the branch name (e.g., `milestone/v2.17.0` →
   `v2.17.0`) and the milestone number from the PR's milestone field.
 - The milestone PR often has no milestone set (`milestone: null`). If so,
@@ -48,6 +61,20 @@ gh pr list --base main --state open \
 
   Exactly one number → use it. Zero or more than one → stop and ask the
   user. Steps 2 and 6 use this `<milestone-number>`.
+
+#### Resume after the merge
+
+The milestone branch is deleted and its release notes are gone, so the
+checks in Steps 2–4 cannot run. The script checked them before the merge.
+
+1. The working tree must be clean (`git status --porcelain` prints
+   nothing). If it is not, stop and ask the user to commit or stash.
+2. Skip Steps 2, 3 and 4. Confirm only that
+   `docs/plans/releases/<version>-deploy.md` exists, for Step 7.
+3. In Step 5, show the PR, the version, and the steps that remain: tag the
+   merge commit, push the tag, create the draft release, close the
+   milestone. Ask the user to confirm.
+4. Go to Step 6. The script skips the steps that are already done.
 
 ### Step 2: Verify preconditions
 
@@ -75,7 +102,10 @@ scripts/check-blocking-findings.sh <number> --include-important
   it ends before a PR exists.
 - **Exit 2** — can't verify: no posted review comment was found, the `gh`
   call failed, or a grep failed while it scanned the review. Treat as "can't
-  verify," not "clean." Stop and investigate.
+  verify," not "clean." Stop and report the error. If no review comment
+  posted, tell the user to type `/review-milestone <version>`. It reuses
+  the open PR and starts the CI review. For a `gh` failure, tell the user
+  to fix the cause, then type `/release-milestone <version>`.
 
 This is a second, independent check on the same requirement
 `/review-milestone` Step 4 already enforces — it exists so a PR that sat open
@@ -114,10 +144,25 @@ the check against a stale or wrong checkout.
   on the milestone branch, commit, push, and type `/release-milestone
   <version>` again. That push does not re-run the milestone CI review.
 - **Exit 1 with no issue lines printed** — treat as exit 2.
+- **Exit 2 with "No release notes"** — check whether an earlier run of
+  the script already removed the file:
+
+  ```bash
+  git log -1 --full-history --format=%H --diff-filter=D \
+    milestone/<version> -- docs/releases/RELEASE_NOTES_<version>.md
+  ```
+
+  A SHA means the script removed the notes after an earlier confirmed
+  Step 5, and then stopped before the merge. This is a resume. Skip this
+  check and go to Step 3. No SHA → handle it as the exit 2 below.
 - **Exit 2** — can't verify: bad arguments, no release-notes file, no
   "Issues Resolved" entries in it, a milestone with no issues (usually a
   wrong milestone number), the `gh` call failed, or a tool failed
-  mid-check. Treat as "can't verify," not "clean." Stop and investigate.
+  mid-check. Treat as "can't verify," not "clean." Stop and report the
+  error. A missing notes file or a missing "Issues Resolved" section needs
+  `/finish-milestone <version>` (it finalizes the notes). For a wrong
+  milestone number or a `gh` failure, fix the cause, then type
+  `/release-milestone <version>`.
 
 `/finish-milestone` Step 5.5 calls the same script earlier. This check runs
 again here because the milestone PR can stay open for a while after
@@ -134,7 +179,10 @@ The script accepts a three-part version and a four-part patch-release tag
 (`v2.30.4.1`, from `DEPLOYMENT.md`, "Patch Release from main").
 
 - **Exit 0** — newer than the last tag. Proceed.
-- **Exit 1** — not newer. Stop and ask the user.
+- **Exit 1** — not newer. Stop. Show the version and the last tag, and ask
+  the user. A wrong version needs a fix to the milestone branch name and
+  the release notes. A tag `<version>` on an open PR needs investigation.
+  After the fix, tell the user to type `/release-milestone <version>`.
 - **Exit 2** — the script could not read a version. Recover in this order:
   1. If stderr says `git describe` failed, the tags are probably not
      fetched. Run `git fetch origin --tags`, then run the script again.
@@ -183,7 +231,8 @@ ls docs/plans/releases/<version>-deploy.md
     anyway or stop and refresh the sheet first (by hand from
     `/finish-milestone` Step 6.6's instructions, or by typing
     `/finish-milestone <version>`).
-  - **Exit 2** — no stamp file — can't verify. Warn rather than assume fresh.
+  - **Exit 2** — can't verify (no stamp file, an unreadable or corrupt
+    stamp, or a git failure; see stderr). Warn rather than assume fresh.
 
 Confirm `.claude.local.md` § "Deployment hosts" is present — the sheet
 already has it baked in, but Step 7's reminder and any ad hoc host lookup
@@ -215,6 +264,8 @@ running the merge, which cannot be undone by re-running the command.
 
 ### Step 6: Run the release script
 
+Run it with the Bash tool `timeout: 600000`:
+
 ```bash
 scripts/release-milestone.sh <version> <pr-number> <milestone-number>
 ```
@@ -225,20 +276,24 @@ file as a commit on the milestone branch and push it (so it lands inside the PR,
 push to `main` after merge); sync local `main` to `origin/main` and refuse to
 proceed if local `main` carries commits `origin/main` doesn't have; merge the
 PR (regular merge, `--delete-branch`); pull the merge commit; delete the
-local milestone branch; tag the merge commit `<version>` and verify `git
-describe HEAD` returns it with no suffix; push the tag; create the GitHub
+local milestone branch; tag the PR's merge commit (from `gh pr view
+--json mergeCommit`, not `HEAD`) `<version>` and verify the tag points at
+it; push the tag; create the GitHub
 release as a **draft** with `--verify-tag` from the saved notes; close the
 GitHub milestone.
 
 The script refuses any remote argument named `prod` or `test` — it only ever
 pushes to `origin`. Exit 0 means every step above completed. Exit 1 means a
 check stopped the run (bad args, closed PR, missing release notes, stray
-local commits on `main` — the script's own output says which). Exit 2 means
+local commits on `main` — the script's own output says which). Every pull is
+`--ff-only`. Exit 2 means
 a step failed (merge conflict, push rejected, tag on the wrong commit).
 
 If the script exits non-zero, report its exact output and stop. Do not
 do the remaining steps by hand. Find the cause from the output, and ask the
-user before you change anything to fix it. Then run the same command again.
+user before you change anything to fix it. Then run the same script
+command again. If the session ended, the user types
+`/release-milestone <version>`: Step 1 finds the open or merged PR.
 The script can resume: it skips each step whose work is already done (notes
 already removed, PR already merged, tag already on the merge commit, release
 already created). If the saved notes copy is missing, it restores the notes

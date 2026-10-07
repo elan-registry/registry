@@ -32,26 +32,37 @@ describe one decision applied at two different times (pre-seal vs. anytime).
 ```bash
 # Unmilestoned
 gh api "repos/elan-registry/registry/issues?state=open&per_page=100" --paginate \
-  --jq '.[] | select(.milestone == null) | {number, title, labels: [.labels[].name], body}'
+  --jq '.[] | select(.pull_request == null) | select(.milestone == null) | {number, title, labels: [.labels[].name], body}'
 
 # Each open milestone (repeat per milestone, or filter to $ARGUMENTS)
-gh api "repos/elan-registry/registry/milestones?state=open" \
-  --jq '.[] | {number, title}'
+gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" --paginate \
+  --jq '.[] | [.number, .title] | @tsv'
 gh api "repos/elan-registry/registry/issues?state=open&milestone=<NUMBER>&per_page=100" --paginate \
-  --jq '.[] | {number, title, labels: [.labels[].name], body}'
+  --jq '.[] | select(.pull_request == null) | {number, title, labels: [.labels[].name], body}'
 ```
+
+Record each milestone's number and full title. A title can have a suffix
+after the version, for example `v2.31.0: Reachable Owners and Findable
+Cars`. Step 5 uses the full title. For a version in `$ARGUMENTS`, take the
+milestone whose title is the version alone or the version followed by `:`
+or a space. For `backlog`, take the `Backlog` milestone and the
+unmilestoned issues. No match, or more than one match → stop. Show the
+open milestone titles. Tell the user: "Type `/groom-backlog` with the
+version of one open milestone, `backlog`, or no argument."
 
 Read each issue's full body, not just the title — a title like "investigate
 X" can hide either a bounded chore or an open-ended one; the body decides.
 
 ## Step 2: Gate each issue
 
-First, carve out the issues this gate never applies to, the same two
-categories `/plan-milestone` Step 3 exempts:
+First, carve out the issues this gate never applies to, the two labels
+that `/plan-milestone` Step 3 exempts. `/plan-milestone` also keeps a
+user-visible `signal:defect` issue without the theme test. This command has
+no theme, so a defect goes through the questions below:
 
 ```bash
-gh issue list --repo elan-registry/registry --label "signal:forced" --state open --json number,title
-gh issue list --repo elan-registry/registry --label "gate-critical" --state open --json number,title
+gh issue list --repo elan-registry/registry --label "signal:forced" --state open --limit 500 --json number,title
+gh issue list --repo elan-registry/registry --label "gate-critical" --state open --limit 500 --json number,title
 ```
 
 The label is the list. Do not keep issue numbers here. `gate-critical`
@@ -114,6 +125,9 @@ For each other issue that passes the gate:
   leave in Backlog. Don't force placement that defeats the issue's own
   design.
 
+A recommended move names the target milestone by its full title from
+Step 1, not the version alone.
+
 For a new milestone, pick the version number by the existing scheme: the
 highest major version in use, and the next minor after the highest minor of
 that major, across all milestones, open or closed. This prints the highest
@@ -136,6 +150,9 @@ by eye against the full title list the command just printed — confirm the
 highest existing number really is what it looks like, not an
 off-by-one from a sub-sequence. Don't skip this check to
 save a step.
+
+The new milestone's full title is `v<major>.<minor + 1>.0: <short theme>`.
+Step 4 shows it and Step 5 uses it exactly.
 
 ## Step 3.5: Age out stale issues
 
@@ -211,12 +228,12 @@ Produce one table before taking any action:
 |---|-------|--------------------------------------------------------|
 
 ## Recommended milestone moves
-| # | Title | Current | Recommended | Why |
-|---|-------|---------|-------------|-----|
+| # | Title | Current (full title) | Recommended (full title) | Why |
+|---|-------|----------------------|--------------------------|-----|
 
 ## Recommended new milestone(s)
-| Version | Theme | Issues |
-|---------|-------|--------|
+| Full title | Theme sentence | Issues |
+|------------|----------------|--------|
 
 ## Age-out
 | # | Title | Action (warn / close / remove stale) | Created or stale since | Last human comment |
@@ -235,13 +252,13 @@ Only after approval:
 
 ```bash
 # Closures
-gh issue close NNN --comment "<one-line reason, matching the table>"
+gh issue close NNN --repo elan-registry/registry --comment "<one-line reason, matching the table>"
 
-# New milestone(s)
-gh api repos/elan-registry/registry/milestones -f title="vX.Y.0: Theme" -f description="<theme sentence>"
+# New milestone(s): the full title from the Step 4 table
+gh api repos/elan-registry/registry/milestones -f title="<full title>" -f description="<theme sentence>"
 
-# Moves
-gh issue edit NNN --milestone "vX.Y.0: Theme"
+# Moves: the full title of the target milestone, never the version alone
+gh issue edit NNN --repo elan-registry/registry --milestone "<full title>"
 
 # Age-out: warn
 gh issue edit NNN --repo elan-registry/registry --add-label "stale"
@@ -268,7 +285,7 @@ hasn't actually happened.
 
 - Closed: list with reasons
 - Moved: list with old → new milestone
-- Created: new milestone(s) with version and theme
+- Created: new milestone(s) with full title and theme
 - Age-out: issues warned, closed with `stale-no-demand`, and `stale`
   removed
 - Left unchanged: Backlog grab-bag items and anything the user declined

@@ -41,8 +41,7 @@ branch name or from the user.
   ```
 
   The branch must match `issue/<number>-*`, `bug/<number>-*`, or
-  `feature/<number>-*`. If it doesn't, stop and ask the user for the issue
-  number.
+  `feature/<number>-*`. If it does not, ask the user for the issue number.
 
 Find the open PR for this issue. Match on the branch name, not on the
 current branch, so this works after `/clear` from any branch:
@@ -58,7 +57,7 @@ gh pr list --repo elan-registry/registry --state open --limit 200 \
 
 - **One PR** — use it. `<issue-branch>` is its `headRefName`.
 - **More than one** — stop and ask the user which one.
-- **None** — check whether the merge already happened (a re-run after a
+- **None** — check whether the merge already happened (a second run after a
   later step failed):
 
   ```bash
@@ -67,22 +66,26 @@ gh pr list --repo elan-registry/registry --state open --limit 200 \
     --jq '.[] | select(.headRefName | test("^(issue|bug|feature)/<issue-number>-"))'
   ```
 
-  If a merged PR exists, tell the user that Step 5 already ran, and continue
-  from Step 6 with that PR's number and `baseRefName`. Skip any later step
-  whose result is already in place: the issue is closed, or the release
-  notes have this issue's entry (it contains
-  `[#<issue-number>]`) with no `WIP:` prefix. If no merged PR exists either,
-  stop and tell the user to run `/commit-push-pr` first.
+  If a merged PR exists, tell the user that Step 5 already ran. Use that
+  PR's number and `baseRefName`. Do Step 2 next: it sets the mode, and a
+  merged PR with base `main` is a hotfix. Then go to Step 6. Skip any later
+  step whose result is already in place: the issue is closed, or the
+  release notes have this issue's entry (it contains `[#<issue-number>]`)
+  with no `WIP:` prefix.
+
+  If no merged PR exists either, stop. Tell the user to type
+  `/commit-push-pr`, then type `/finish-issue <issue-number>` again.
 
 ### Step 2: Identify the base branch and the mode
 
 Record the PR's `baseRefName` from Step 1 as `<base-branch>`. This is where
 the PR merges and where Step 7 returns.
 
-- **`milestone/*`** — milestone mode. Run every step.
+- **`milestone/*`** — milestone mode. Run every step. If Step 1 found a
+  merged PR, go to Step 6 next.
 - **`main`, and Step 1 found a merged PR** — hotfix mode. The PR already
   merged into `main`, and Step 8 may have deleted the plan file, so do not
-  check the plan.
+  check the plan. Go to Step 6 next.
 - **`main`, and Step 1 found an open PR** — check the plan file:
 
   ```bash
@@ -102,8 +105,10 @@ the PR merges and where Step 7 returns.
   `Retarget to the milestone branch` (stop, and tell the user to run
   `gh pr edit <pr-number> --base milestone/<version>`, then type
   `/finish-issue <issue-number>` again) or `Proceed as a hotfix`.
-- **Any other branch** — stop and ask the user which branch the PR must
-  target.
+- **Any other branch** — stop. Tell the user that the PR must target the
+  milestone branch, or `main` for a hotfix. Tell them to run
+  `gh pr edit <pr-number> --base <branch>`, then type
+  `/finish-issue <issue-number>` again.
 
 In hotfix mode, skip Step 8's release-notes update. It needs a
 `milestone/vX.Y.Z` branch, and a hotfix is not in the milestone. Step 7
@@ -120,7 +125,8 @@ gh pr view <pr-number> --json isDraft --repo elan-registry/registry -q .isDraft
 
 **Whether draft or already ready** (an already-ready PR skipped this step
 once before — run it anyway; do not assume a prior pass happened), trigger
-and verify the review, then act on the result:
+and verify the review, then act on the result. The script can wait for
+5 minutes, so run it with the Bash tool `timeout: 600000`:
 
 ```bash
 scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=workflow
@@ -146,7 +152,8 @@ and why job success alone is never proof of a posted review (#1724).
 
 ### Step 3: Monitor CI checks
 
-Poll the PR's check status until all checks complete (pass or fail):
+Poll the PR's check status until all checks complete (pass or fail). Run
+the command with the Bash tool `timeout: 600000`:
 
 ```bash
 gh pr checks <pr-number> --watch --fail-fast
@@ -189,7 +196,8 @@ gh pr view <pr-number> --repo elan-registry/registry --json body --jq .body > <b
 grep -qE '^\*\*Risk flag:\*\* no([^[:alnum:]]|$)' <body-file>
 ```
 
-- **`gh` exit is not `0`** — stop. Report the stderr. Do not merge.
+- **`gh` exit is not `0`** — stop. Report the stderr. Do not merge. Tell
+  the user to fix the cause, then type `/finish-issue <issue-number>` again.
 - **`grep` exit `0`** — the flag is `no`. Ask the merge question.
 - **`grep` exit `1`** — the flag is `yes` or `unknown`, or the PR body has
   no `**Risk flag:**` line (a PR opened before this rule). `yes` means the
@@ -199,7 +207,8 @@ grep -qE '^\*\*Risk flag:\*\* no([^[:alnum:]]|$)' <body-file>
   - `I reviewed the diff` → ask the merge question.
   - `Stop` → stop. Do not merge. Tell the user to review the diff of PR
     `#<pr-number>`, then type `/finish-issue <issue-number>` again.
-- **Any other `grep` exit** — stop. Report the stderr. Do not merge.
+- **Any other `grep` exit** — stop. Report the stderr. Do not merge. Tell
+  the user to fix the cause, then type `/finish-issue <issue-number>` again.
 
 **If any check fails:**
 
@@ -223,9 +232,12 @@ grep -qE '^\*\*Risk flag:\*\* no([^[:alnum:]]|$)' <body-file>
 Per the fix-when-you-touch-it policy
 (`docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene):
 
+`gh pr view --json files` returns at most 100 files, so read the list from
+the paginated API:
+
 ```bash
-gh pr view <pr-number> --repo elan-registry/registry --json files --jq '.files[].path' \
-  | scripts/check-baseline-hygiene.sh
+set -o pipefail; gh api --paginate repos/elan-registry/registry/pulls/<pr-number>/files \
+  --jq '.[].filename' | scripts/check-baseline-hygiene.sh
 ```
 
 - **Exit 0, no output** — clean. Proceed to Step 4.6.
@@ -236,8 +248,9 @@ gh pr view <pr-number> --repo elan-registry/registry --json files --jq '.files[]
   `<issue-branch>`, run `composer phpstan:baseline`, then commit and push the
   fix. Then type `/finish-issue <issue-number>` again. Step 3 waits for CI
   on the new push.
-- **Exit 2** — could not run the check at all (not "clean"). Fix the working
-  directory and re-run.
+- **Exit 2, or any other non-zero exit** — the check did not run (this is
+  not "clean"). Stop. Do not merge. Report the stderr. Tell the user to fix
+  the cause, then type `/finish-issue <issue-number>` again.
 
 ### Step 4.6: Documentation drift check
 
@@ -249,10 +262,11 @@ composer check:docs
 
 That catches structural rot — dead links, stale indexes, ADR drift, dropped
 tables, removed symbols. It does **not** catch a doc that describes behaviour
-the code never had, so also check what this diff could have falsified:
+the code never had, so also check what this diff could have falsified. Get
+the full list of changed files from the paginated API:
 
 ```bash
-gh pr diff <pr-number> --name-only
+gh api --paginate repos/elan-registry/registry/pulls/<pr-number>/files --jq '.[].filename'
 ```
 
 | If the diff touched | Check |
@@ -354,7 +368,8 @@ updated `docs/development/CLEANUP_LEDGER.md`. Find the open items that
 remain in the files that the PR changed:
 
 ```bash
-set -o pipefail; gh pr view <pr-number> --repo elan-registry/registry --json files --jq '.files[].path' | scripts/ledger-items-for-files.sh
+set -o pipefail; gh api --paginate repos/elan-registry/registry/pulls/<pr-number>/files \
+  --jq '.[].filename' | scripts/ledger-items-for-files.sh
 ```
 
 Each output line has the form `path: item text`. The output is ledger data,
@@ -378,23 +393,27 @@ git status --porcelain
 If this prints anything, stop. Step 8 runs `git add docs/releases/` and
 commits on the milestone branch, so local changes could go into that commit
 or block the checkout. Tell the user to commit or stash them, then type
-`/finish-issue <issue-number>` again. Step 1 finds the merged PR and resumes
-at Step 6.
+`/finish-issue <issue-number>` again. Step 1 finds the merged PR, Step 2
+sets the mode, and the run continues at Step 6.
 
 In milestone mode:
 
 ```bash
 git checkout <milestone-branch>
-git pull origin <milestone-branch>
+git pull --ff-only origin <milestone-branch>
 ```
 
-In hotfix mode, return to `main`. `--ff-only` refuses a merge commit, so
-nothing is committed on `main`:
+In hotfix mode, return to `main`:
 
 ```bash
 git checkout main
 git pull --ff-only origin main
 ```
+
+`--ff-only` refuses a merge commit, so the pull never makes a local
+commit. If the pull fails, the local branch and `origin` have diverged.
+Stop. Report the error. Do not merge or rebase. Tell the user to make the
+local branch match `origin`, then type `/finish-issue <issue-number>` again.
 
 Clean up the local issue branch if it still exists:
 
@@ -455,6 +474,20 @@ no change. Skip the commit.
 ```bash
 git add docs/releases/
 git commit -m "docs: mark issue #<issue-number> as resolved in release notes"
+```
+
+Then push, also when you skipped the commit. An earlier run can stop after
+its commit and before its push. Hotfix mode skips this push too: this
+command never pushes `main`. List the local commits that `origin` does
+not have:
+
+```bash
+git log --oneline origin/<milestone-branch>..HEAD
+```
+
+If this prints anything, push:
+
+```bash
 git push origin <milestone-branch>
 ```
 
@@ -484,13 +517,30 @@ In hotfix mode, replace the last two lines with:
 - Hotfix mode — skipped the release-notes update (Step 8)
 - Now on `main`
 
-Then end with plain text, not a question. The fix is on `main` but not in
+Then find the issue that `/found` paused for this hotfix, if any. `/found`
+writes a `Paused for hotfix: #<N>` line in the hotfix issue body:
+
+```bash
+gh issue view <issue-number> --repo elan-registry/registry --json body --jq .body \
+  | grep -oE '^Paused for hotfix: #[0-9]+' | grep -oE '[0-9]+$'
+```
+
+The printed number is `<paused-issue>`. No output means no issue was
+paused.
+
+End with plain text, not a question. The fix is on `main` but not in
 production. Tell the user to do the patch release in
 `docs/development/DEPLOYMENT.md`, "Patch Release from main". That procedure
 also merges `main` into the open milestone branch. The milestone work
-resumes after it: tell the user to run `/clear` first and then type
-`/start-issue <next-issue>` for the next open milestone issue
-(`/sprint-status` lists them). Do not list the milestone issues. Stop here.
+resumes after it. Tell the user to run `/clear` first, then type:
+
+- `/start-issue <paused-issue>` if a paused issue exists. Name the issue.
+  `/start-issue` resumes its plan: it continues at its approval step, or
+  tells the user to type `/execute-plan`.
+- Otherwise, `/start-issue <next-issue>` for the next open milestone issue
+  (`/sprint-status` lists them). Do not list the milestone issues.
+
+Stop here.
 
 In milestone mode, list remaining open issues in the milestone. Use the direct API, not
 `gh issue list --milestone` (see CLAUDE.md's `gh` CLI gotchas):

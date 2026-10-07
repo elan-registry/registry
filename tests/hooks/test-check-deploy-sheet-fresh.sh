@@ -119,6 +119,17 @@ commit_file tests/unit/NewTest.php "<?php securePage(\$php_self);"
 commit_file scripts/tool.php "<?php securePage(\$php_self);"
 expect_status 0 "Case 5: securePage( under tests/ and scripts/ -> exit 0"
 
+# --- Case 5b: existing PHP file gains securePage( -> 1 -------------------
+commit_file app/owner/helper.php "<?php echo 'helper';"
+stamp
+commit_file app/owner/helper.php "<?php securePage(\$php_self); echo 'helper';"
+expect_status 1 "Case 5b: modified PHP file gains securePage( -> exit 1" "M app/owner/helper.php"
+
+# --- Case 5c: existing page loses securePage( -> 1 -----------------------
+stamp
+commit_file app/owner/helper.php "<?php echo 'helper';"
+expect_status 1 "Case 5c: modified page loses securePage( -> exit 1" "M app/owner/helper.php"
+
 # --- Case 6: no stamp file -> 2 ------------------------------------------
 rm -f "$STAMP"
 expect_status 2 "Case 6: no stamp file -> exit 2" "No stamp file"
@@ -130,6 +141,16 @@ expect_status 2 "Case 7: corrupt stamp -> exit 2" "single valid 40-char SHA"
 # --- Case 8: stamped commit not in repo -> 2 -----------------------------
 printf '%s\n' "0123456789abcdef0123456789abcdef01234567" > "$STAMP"
 expect_status 2 "Case 8: unknown stamped commit -> exit 2" "not present in this repo"
+
+# --- Case 8b: unreadable stamp file -> 2 ---------------------------------
+stamp
+chmod 000 "$STAMP"
+if [ -r "$STAMP" ]; then
+    pass "Case 8b: unreadable stamp file -> skipped (running as root reads any file)"
+else
+    expect_status 2 "Case 8b: unreadable stamp file -> exit 2" "Could not read stamp file"
+fi
+chmod 644 "$STAMP"
 
 # --- Case 9: milestone branch missing -> 2 -------------------------------
 stamp

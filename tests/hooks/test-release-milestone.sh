@@ -61,7 +61,8 @@ cat > "$STUBDIR/gh" <<'STUB'
 #!/bin/bash
 # State files in $STUB_STATE: pr_state, mergeable, merge_sha, calls,
 # release_notes (present once the release exists), milestone_state,
-# fail_release (present -> release create fails).
+# fail_release (present -> release create fails), push_after_merge
+# (present -> one more commit lands on main right after the merge).
 S="$STUB_STATE"
 echo "$*" >> "$S/calls"
 want_pr="${STUB_PR:-42}"
@@ -82,6 +83,12 @@ case "$*" in
             git push -q origin main || exit 1
             git push -q origin --delete milestone/v9.9.9 || exit 1
             git rev-parse HEAD > "$S/merge_sha"
+            if [ -f "$S/push_after_merge" ]; then
+                echo later > later.txt
+                git add later.txt
+                git commit -q -m "commit after the merge"
+                git push -q origin main || exit 1
+            fi
         ) || exit 1
         echo MERGED > "$S/pr_state" ;;
     "api repos/elan-registry/registry/milestones/7 --jq .title")
@@ -105,6 +112,21 @@ case "$*" in
 esac
 STUB
 chmod +x "$STUBDIR/gh"
+
+# A git wrapper that fails `git show` when FAIL_GIT_SHOW is set, and runs
+# the real git for everything else.
+REAL_GIT="$(command -v git)"
+GITSTUBDIR="$TMPROOT/gitbin"
+mkdir -p "$GITSTUBDIR"
+cat > "$GITSTUBDIR/git" <<STUB
+#!/bin/bash
+if [ "\$1" = show ] && [ -n "\${FAIL_GIT_SHOW:-}" ]; then
+    echo "stub git: simulated show failure" >&2
+    exit 128
+fi
+exec "$REAL_GIT" "\$@"
+STUB
+chmod +x "$GITSTUBDIR/git"
 
 # Builds a fresh origin, working clone and stub state for one case, and
 # sets ORIGIN, WORK and STATE.
@@ -275,6 +297,64 @@ if [ "$STATUS7" -eq 0 ] && [ "$BEFORE" = "$AFTER" ] \
     pass "Case 7: dry run -> exit 0, no ref or gh state change"
 else
     fail "Case 7: dry run -> exit 0" "exit: $STATUS7 (want 0)" "output: [$OUT7]"
+fi
+
+# --- Case 8: a commit lands on main after the merge -> tag on merge ----
+setup_case case8
+touch "$STATE/push_after_merge"
+OUT8="$(run_release "$VERSION" "$PR" "$MS" 2>&1)"
+STATUS8=$?
+WHY8="$(check_released)"
+if [ "$STATUS8" -eq 0 ] && [ -z "$WHY8" ]; then
+    pass "Case 8: commit on main after the merge -> exit 0, tag on the merge commit, not HEAD"
+else
+    fail "Case 8: commit on main after the merge -> tag on merge commit" "exit: $STATUS8 (want 0)" \
+        "check: $WHY8" "output: [$OUT8]"
+fi
+
+# --- Case 9: local main diverged from origin/main -> 1, no merge ---------
+setup_case case9
+(
+    cd "$WORK" || exit 1
+    git checkout -q main
+    echo stray > stray.txt
+    git add stray.txt
+    git commit -q -m "stray local commit"
+    git checkout -q "milestone/${VERSION}"
+) || exit 1
+OTHER="$TMPROOT/case9/other"
+git clone -q "$ORIGIN" "$OTHER" 2>/dev/null
+(
+    cd "$OTHER" || exit 1
+    git checkout -q main
+    echo remote > remote.txt
+    git add remote.txt
+    git commit -q -m "remote commit"
+    git push -q origin main
+) || exit 1
+OUT9="$(run_release "$VERSION" "$PR" "$MS" 2>&1)"
+STATUS9=$?
+if [ "$STATUS9" -eq 1 ] && printf '%s' "$OUT9" | grep -q 'commit(s) not on origin/main' \
+    && ! grep -q '^pr merge' "$STATE/calls"; then
+    pass "Case 9: diverged local main -> exit 1 with the stray-commit message, no merge"
+else
+    fail "Case 9: diverged local main -> exit 1" "exit: $STATUS9 (want 1)" "output: [$OUT9]"
+fi
+
+# --- Case 10: notes restore fails -> 2, no empty notes copy --------------
+setup_case case10
+touch "$STATE/fail_release"
+run_release "$VERSION" "$PR" "$MS" >/dev/null 2>&1
+rm -f "$STATE/fail_release" "$WORK/$KEEP_REL"
+OUT10="$(cd "$WORK" && PATH="$GITSTUBDIR:$STUBDIR:$PATH" FAIL_GIT_SHOW=1 STUB_STATE="$STATE" \
+    STUB_ORIGIN="$ORIGIN" "$SCRIPT" "$VERSION" "$PR" "$MS" 2>&1)"
+STATUS10=$?
+LEFTOVER="$(find "$WORK/docs/plans/releases" -name "${VERSION}-release-notes.md*" 2>/dev/null)"
+if [ "$STATUS10" -eq 2 ] && [ -z "$LEFTOVER" ] && [ ! -f "$STATE/release_notes" ]; then
+    pass "Case 10: git show fails during restore -> exit 2, no notes copy left behind"
+else
+    fail "Case 10: git show fails during restore -> exit 2" "exit: $STATUS10 (want 2)" \
+        "left behind: [$LEFTOVER]" "output: [$OUT10]"
 fi
 
 echo ""
