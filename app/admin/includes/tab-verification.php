@@ -1287,6 +1287,10 @@ if (!$vsAllHealthy) {
                         // to skip sending to this account.
                         $queueOwnerIsActionable = $vsOwnerRow !== null
                             && ($vsOwnerRow->username ?? '') !== 'noowner';
+                        // A failed lookup must not read like a GDPR-erasure car.
+                        $queueNoActionTitle = $vsOwnerRow === null
+                            ? 'The owner record could not be loaded. No action is available.'
+                            : 'This car has no individual owner to act on.';
 
                         $queueSentAt = !empty($queueCar->vericode_sent_at)
                             ? date_create_immutable((string) $queueCar->vericode_sent_at)
@@ -1364,7 +1368,7 @@ if (!$vsAllHealthy) {
                                      clear_suppression all act on the whole owner, and acting on
                                      `noowner` or a row with no owner would reach every other car
                                      that account holds. -->
-                                <span class="text-muted" title="This car has no individual owner to act on.">&mdash;</span>
+                                <span class="text-muted" title="<?= vsEsc($queueNoActionTitle) ?>">&mdash;</span>
                                 <?php } else { ?>
                                 <span class="text-muted">&mdash;</span>
                                 <?php } ?>
