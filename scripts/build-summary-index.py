@@ -8,6 +8,7 @@ Layout (docs/plans/ is gitignored; this script is tracked):
       <series>/
         prompt.md                front matter, then the regenerate prompt
         <YYYY-MM-DD>.html        one page per run
+      health/<YYYY-MM-DD>.json   snapshots from scripts/project-health.py
 
 prompt.md front matter, between two `---` lines:
 
@@ -15,8 +16,6 @@ prompt.md front matter, between two `---` lines:
     category: Status           (groups the index; Status, Health, Process,
                                 Codebase, Review come first, in that order)
     refresh_days: 7            (older than this = stale)
-
-      health/<YYYY-MM-DD>.json   snapshots from scripts/project-health.py
 
 The index opens with a Project health section drawn from the newest health
 snapshot (velocity, open-issue age, issue mix, current milestone) and, when
@@ -60,8 +59,16 @@ KIND_STYLE = [  # (key, label, colour) in stack order
 ]
 
 
+class UsageParser(argparse.ArgumentParser):
+    """argparse exits 2 on a usage error; this script documents exit 1."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        self.exit(1, f"{self.prog}: error: {message}\n")
+
+
 def parse_args(argv):
-    p = argparse.ArgumentParser(add_help=True)
+    p = UsageParser(add_help=True)
     p.add_argument("--dir", type=Path, default=DEFAULT_DIR)
     p.add_argument("--keep", type=int, default=3)
     a = p.parse_args(argv)
@@ -165,8 +172,8 @@ def age_text(s):
 
 
 def load_health(root):
-    """Return the health snapshots, newest first. A file that is not valid
-    JSON is skipped with a warning, so one bad run cannot break the index."""
+    """Return the health snapshots, newest first. A file that is not a JSON
+    object is skipped with a warning, so one bad file cannot break the index."""
     snaps = []
     folder = root / HEALTH_DIR
     if not folder.is_dir():
@@ -174,6 +181,8 @@ def load_health(root):
     for f in sorted(folder.glob("????-??-??.json"), reverse=True):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("not a JSON object")
             data["_date"] = dt.date.fromisoformat(f.name[:10])
             snaps.append(data)
         except (ValueError, OSError) as exc:

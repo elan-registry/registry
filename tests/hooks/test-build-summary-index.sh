@@ -142,6 +142,15 @@ else
     fail "Case 10: a missing folder exits 1" "exit: $S10"
 fi
 
+# --- Case 10b: a usage error exits 1, as documented -------------------------
+build "$TMPROOT/k" --keep -1 >/dev/null; S10B=$?
+build "$TMPROOT/k" --no-such-flag >/dev/null; S10C=$?
+if [ "$S10B" -eq 1 ] && [ "$S10C" -eq 1 ]; then
+    pass "Case 10b: a bad --keep and an unknown flag exit 1"
+else
+    fail "Case 10b: a bad --keep and an unknown flag exit 1" "--keep -1: $S10B" "unknown flag: $S10C"
+fi
+
 # --- Case 11: HTML in a prompt is escaped -----------------------------------
 H="$TMPROOT/h"
 prompt "$H/x" "X" "Status" 7
@@ -205,13 +214,15 @@ fi
 Q="$TMPROOT/q"
 snap "$Q" 2026-09-01 40 10
 printf 'not json' > "$Q/health/2026-10-01.json"
-build "$Q" >/dev/null
-if grep -q 'badge stale">39 days old' "$Q/index.html" \
+printf '[]' > "$Q/health/2026-10-02.json"
+build "$Q" >/dev/null; S15=$?
+if [ "$S15" -eq 0 ] && grep -q 'badge stale">39 days old' "$Q/index.html" \
     && ! grep -q 'Open issues over time' "$Q/index.html" \
-    && grep -q 'health/2026-10-01.json skipped' "$TMPROOT/err"; then
-    pass "Case 15: an old snapshot is stale, a bad one is skipped with a warning"
+    && grep -q 'health/2026-10-01.json skipped' "$TMPROOT/err" \
+    && grep -q 'health/2026-10-02.json skipped: not a JSON object' "$TMPROOT/err"; then
+    pass "Case 15: an old snapshot is stale; bad or wrong-shape ones are skipped with a warning"
 else
-    fail "Case 15: an old snapshot is stale, a bad one is skipped with a warning" "err: [$(cat "$TMPROOT/err")]"
+    fail "Case 15: an old snapshot is stale; bad or wrong-shape ones are skipped with a warning" "err: [$(cat "$TMPROOT/err")]"
 fi
 
 # --- Case 16: the "How this index is built" section -------------------------

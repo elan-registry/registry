@@ -22,8 +22,9 @@ Usage: scripts/project-health.py [--dir PATH] [--weeks N] [--keep N]
   --weeks N   weeks of velocity (default 8)
   --keep N    snapshots to keep (default 90; 0 keeps all)
 
-Exit codes: 0 written; 1 usage error or missing folder; 2 a gh call failed
-(nothing written). SUMMARY_TODAY=YYYY-MM-DD overrides today's date (tests).
+Exit codes: 0 written; 1 usage error or missing folder; 2 a gh call failed or
+returned JSON of an unexpected shape (nothing written). SUMMARY_TODAY=YYYY-MM-DD
+overrides today's date (tests).
 """
 import argparse
 import datetime as dt
@@ -43,9 +44,27 @@ class GhError(Exception):
     pass
 
 
+class UsageParser(argparse.ArgumentParser):
+    """argparse exits 2 on a usage error; here 2 means a gh failure."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        self.exit(1, f"{self.prog}: error: {message}\n")
+
+
+def expect(data, kind, what):
+    """Raise GhError when gh returns JSON of the wrong shape. A silent
+    default here would write a snapshot of zeros and exit 0."""
+    names = {dict: "object", list: "array", str: "string", int: "number",
+             float: "number", bool: "boolean", type(None): "null"}
+    if not isinstance(data, kind):
+        raise GhError(f"{what}: expected a JSON {names[kind]}, got {names.get(type(data), type(data).__name__)}")
+    return data
+
+
 def gh_json(args):
-    """Run gh and parse its JSON stdout. --paginate output is concatenated
-    JSON arrays, so they are merged into one list."""
+    """Run gh and parse its JSON stdout. Use --paginate with --slurp: without
+    it gh may print one JSON array per page, which is not one JSON value."""
     try:
         out = subprocess.run(["gh"] + args, capture_output=True, text=True, check=False)
     except OSError as exc:
@@ -55,27 +74,32 @@ def gh_json(args):
     text = out.stdout.strip()
     if not text:
         return []
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        merged = []
-        for chunk in re.split(r"\]\s*\[", text.strip()[1:-1]):
-            if chunk.strip():
-                merged.extend(json.loads(f"[{chunk}]"))
-        return merged
+    return json.loads(text)
+
+
+def search(query, **params):
+    """One search/issues page. A timed-out search returns partial results
+    with incomplete_results set; low counts would look like real data."""
+    args = ["api", "-X", "GET", "search/issues", "-f", f"q=repo:{REPO} {query}"]
+    for key, value in params.items():
+        args += ["-f", f"{key}={value}"]
+    data = expect(gh_json(args), dict, "search")
+    if data.get("incomplete_results"):
+        raise GhError(f"search timed out with incomplete results: {query}")
+    return data
 
 
 def search_count(query):
-    data = gh_json(["api", "-X", "GET", "search/issues", "-f", f"q=repo:{REPO} {query}", "-f", "per_page=1"])
-    return int(data.get("total_count", 0)) if isinstance(data, dict) else 0
+    data = search(query, per_page=1)
+    if not isinstance(data.get("total_count"), int):
+        raise GhError("search count: no total_count in the response")
+    return data["total_count"]
 
 
 def search_items(query):
     items, page = [], 1
     while True:
-        data = gh_json(["api", "-X", "GET", "search/issues", "-f", f"q=repo:{REPO} {query}",
-                        "-f", "per_page=100", "-f", f"page={page}"])
-        batch = data.get("items", []) if isinstance(data, dict) else []
+        batch = expect(search(query, per_page=100, page=page).get("items"), list, "search items")
         items.extend(batch)
         if len(batch) < 100 or page >= 10:
             return items
@@ -133,7 +157,9 @@ def snapshot(today, weeks):
             "prs_merged": search_count(f"is:pr is:merged merged:{rng}"),
         })
 
-    open_issues = [i for i in gh_json(["api", "--paginate", f"repos/{REPO}/issues?state=open&per_page=100"])
+    pages = expect(gh_json(["api", "--paginate", "--slurp", f"repos/{REPO}/issues?state=open&per_page=100"]),
+                   list, "open issues")
+    open_issues = [i for page in pages for i in expect(page, list, "open issues page")
                    if "pull_request" not in i]
     ages = [(today - day(i["created_at"])).days for i in open_issues]
     open_kinds = dict.fromkeys(KINDS, 0)
@@ -147,7 +173,7 @@ def snapshot(today, weeks):
         closed_kinds[kind(i)] += 1
     leads = [(day(i["closed_at"]) - day(i["created_at"])).days for i in closed if i.get("closed_at")]
 
-    milestones = gh_json(["api", f"repos/{REPO}/milestones?state=open&per_page=100"])
+    milestones = expect(gh_json(["api", f"repos/{REPO}/milestones?state=open&per_page=100"]), list, "milestones")
     current = None
     for m in sorted((m for m in milestones if version_key(m.get("title", ""))),
                     key=lambda m: version_key(m["title"])):
@@ -176,7 +202,7 @@ def snapshot(today, weeks):
 
 
 def main(argv):
-    p = argparse.ArgumentParser()
+    p = UsageParser()
     p.add_argument("--dir", type=Path, default=DEFAULT_DIR)
     p.add_argument("--weeks", type=int, default=8)
     p.add_argument("--keep", type=int, default=90)

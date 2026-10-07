@@ -52,7 +52,8 @@ hermetic test is `tests/hooks/test-build-summary-index.sh`.
 
 ### project-health.py
 
-Reads GitHub with `gh` and writes a health snapshot to
+Reads GitHub with `gh` (2.48 or later, for `gh api --slurp`) and writes a
+health snapshot to
 `docs/plans/summaries/health/<YYYY-MM-DD>.json` for the index:
 
 - Velocity: issues closed and PRs merged per week (`--weeks`, default 8).

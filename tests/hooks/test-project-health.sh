@@ -26,28 +26,31 @@ pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
 fail() { TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAILED=$((TESTS_FAILED + 1)); echo "FAIL: $1"; shift; for l in "$@"; do echo "      $l"; done; }
 
 # --- Stub gh ----------------------------------------------------------------
-# Open issues: one per kind rule, plus a PR that must be ignored. Ages on
-# 2026-10-10: 10, 20, 30, 40, 50, 60 days.
-mkdir -p "$TMPROOT/bin"
-cat > "$TMPROOT/open.json" <<'JSON'
-[
+# Each API call answers from one fixture file, so a case can break one
+# response. Open issues come as two --slurp pages: one per kind rule, plus a
+# PR that must be ignored. Ages on 2026-10-10: 10, 20, 30, 40, 50, 60 days.
+F="$TMPROOT/fx"
+mkdir -p "$TMPROOT/bin" "$F"
+cat > "$F/open.json" <<'JSON'
+[[
  {"title":"fix(email): x","labels":[{"name":"enhancement"}],"created_at":"2026-09-30T00:00:00Z"},
  {"title":"feat: y","labels":[{"name":"bug"}],"created_at":"2026-09-20T00:00:00Z"},
  {"title":"security: z","labels":[],"created_at":"2026-09-10T00:00:00Z"},
- {"title":"tech-debt: w","labels":[],"created_at":"2026-08-31T00:00:00Z"},
+ {"title":"tech-debt: w","labels":[],"created_at":"2026-08-31T00:00:00Z"}
+],[
  {"title":"No prefix here","labels":[{"name":"signal:defect"}],"created_at":"2026-08-21T00:00:00Z"},
  {"title":"Plain title","labels":[],"created_at":"2026-08-11T00:00:00Z"},
  {"title":"a PR","labels":[],"created_at":"2026-01-01T00:00:00Z","pull_request":{}}
-]
+]]
 JSON
-cat > "$TMPROOT/closed.json" <<'JSON'
+cat > "$F/closed.json" <<'JSON'
 {"total_count":3,"items":[
  {"title":"bug: a","labels":[],"created_at":"2026-10-01T00:00:00Z","closed_at":"2026-10-03T00:00:00Z"},
  {"title":"feat: b","labels":[],"created_at":"2026-09-20T00:00:00Z","closed_at":"2026-09-26T00:00:00Z"},
  {"title":"chore: c","labels":[],"created_at":"2026-09-25T00:00:00Z","closed_at":"2026-10-05T00:00:00Z"}
 ]}
 JSON
-cat > "$TMPROOT/milestones.json" <<'JSON'
+cat > "$F/milestones.json" <<'JSON'
 [
  {"title":"v2.30.10: later","open_issues":5,"closed_issues":0},
  {"title":"v2.30.8: done","open_issues":0,"closed_issues":4},
@@ -55,15 +58,19 @@ cat > "$TMPROOT/milestones.json" <<'JSON'
  {"title":"Backlog","open_issues":40,"closed_issues":0}
 ]
 JSON
+echo '{"total_count":7,"items":[]}' > "$F/count.json"
+echo '{"total_count":3,"items":[]}' > "$F/merged.json"
+cp -R "$F" "$TMPROOT/fx.orig"
+
 cat > "$TMPROOT/bin/gh" <<STUB
 #!/bin/bash
 [ -n "\${GH_FAIL:-}" ] && { echo "HTTP 401: Bad credentials" >&2; exit 1; }
 case "\$*" in
-  *"is:pr is:merged"*) echo '{"total_count":3,"items":[]}' ;;
-  *"per_page=1 "*|*"per_page=1")      echo '{"total_count":7,"items":[]}' ;;
-  *search/issues*)     cat "$TMPROOT/closed.json" ;;
-  *issues?state=open*) cat "$TMPROOT/open.json" ;;
-  *milestones*)        cat "$TMPROOT/milestones.json" ;;
+  *"is:pr is:merged"*)            cat "$F/merged.json" ;;
+  *"per_page=1 "*|*"per_page=1")  cat "$F/count.json" ;;
+  *search/issues*)                cat "$F/closed.json" ;;
+  *"--slurp"*issues?state=open*)  cat "$F/open.json" ;;
+  *milestones*)                   cat "$F/milestones.json" ;;
   *) echo "stub gh: unexpected \$*" >&2; exit 1 ;;
 esac
 STUB
@@ -144,13 +151,39 @@ else
     fail "Case 8: a gh failure exits 2 and writes nothing" "exit: $S8" "err: [$(cat "$TMPROOT/err")]"
 fi
 
-# --- Case 9: gh JSON of the wrong shape exits 2, not a traceback ---------
-printf '{"message":"odd"}' > "$TMPROOT/open.json"
-run "$E" >/dev/null; S9=$?
-if [ "$S9" -eq 2 ] && ! grep -q Traceback "$TMPROOT/err"; then
-    pass "Case 9: gh JSON of the wrong shape exits 2 without a traceback"
+# bad <case> <fixture> <json> <stderr text>: one broken gh response must exit
+# 2 with that message and write nothing. Each case gets its own folder and
+# fresh fixtures, so one failure cannot cascade into the next case.
+bad() {
+    local dir="$TMPROOT/bad-$1" status
+    rm -rf "$F" && cp -R "$TMPROOT/fx.orig" "$F"
+    printf '%s' "$3" > "$F/$2"
+    mkdir -p "$dir"
+    run "$dir" >/dev/null; status=$?
+    if [ "$status" -eq 2 ] && [ ! -d "$dir/health" ] && grep -q "$4" "$TMPROOT/err" \
+        && ! grep -q Traceback "$TMPROOT/err"; then
+        pass "Case $1: $2 = $3 exits 2 and writes nothing"
+    else
+        fail "Case $1: $2 = $3 exits 2 and writes nothing" "exit: $status" "err: [$(cat "$TMPROOT/err")]"
+    fi
+}
+
+# --- Case 9: each wrong-shape gh response exits 2 --------------------------
+bad 9a open.json '{"message":"odd"}' 'open issues: expected a JSON array'
+bad 9b open.json '[{}]' 'open issues page: expected a JSON array'
+bad 9c count.json '{"message":"API rate limit exceeded"}' 'no total_count'
+bad 9d count.json '{"total_count":7,"incomplete_results":true,"items":[]}' 'incomplete results'
+bad 9e closed.json '{"total_count":3}' 'search items: expected a JSON array'
+bad 9f milestones.json '{}' 'milestones: expected a JSON array'
+rm -rf "$F" && cp -R "$TMPROOT/fx.orig" "$F"
+
+# --- Case 9g: a usage error exits 1 -----------------------------------------
+run "$E" --weeks 0 >/dev/null; S9G=$?
+run "$E" --no-such-flag >/dev/null; S9H=$?
+if [ "$S9G" -eq 1 ] && [ "$S9H" -eq 1 ]; then
+    pass "Case 9g: a bad --weeks and an unknown flag exit 1"
 else
-    fail "Case 9: gh JSON of the wrong shape exits 2 without a traceback" "exit: $S9" "err: [$(cat "$TMPROOT/err")]"
+    fail "Case 9g: a bad --weeks and an unknown flag exit 1" "--weeks 0: $S9G" "unknown flag: $S9H"
 fi
 
 # --- Case 10: a missing folder exits 1 --------------------------------------
