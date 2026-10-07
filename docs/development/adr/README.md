@@ -29,6 +29,7 @@ We follow the [Michael Nygard ADR template](https://cognitect.com/blog/2011/11/1
 | [ADR-017](ADR-017-automate-frontend-vendoring-via-npm-build-pipeline.md) | Automate Frontend Vendoring via npm Build Pipeline | Superseded (by ADR-018) | Medium |
 | [ADR-018](ADR-018-build-at-deploy-for-frontend-vendoring.md) | Build Frontend Assets at Deploy Time Instead of Committing Build Output | Accepted | Medium |
 | [ADR-019](ADR-019-no-csrf-on-public-read-only-endpoints.md) | Do Not Apply CSRF Tokens to Public Read-Only Endpoints | In Review | High |
+| [ADR-020](ADR-020-issue-driven-workflow.md) | Issue-Driven Workflow: Theme Gate, Plan Gate, and Single Review Round | Accepted | Medium |
 
 ## Statuses
 

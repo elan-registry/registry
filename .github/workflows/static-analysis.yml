@@ -60,9 +60,11 @@ jobs:
               - "eslint-rules/**"
               - "docker-compose.yml"
               - "package-lock.json"
+            # Every path: check-docs fails when a change deletes or renames a
+            # file that a Markdown link or a CLEANUP_LEDGER.md heading names
+            # (.json, .htaccess and directories too). It needs only PHP core.
             docs:
-              - "**.md"
-              - "scripts/check-docs.php"
+              - "**"
 
   docs:
     name: Documentation Consistency

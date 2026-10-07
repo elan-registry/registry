@@ -1,7 +1,7 @@
 ---
 description: Full-branch PR review that matches CI scope — diff + complete file content, with user confirmation on recommendations
 model: opus
-argument-hint: "[aspects: code|errors|comments|tests|simplify|all]"
+argument-hint: "[aspects: code|errors|comments|tests|spec|simplify|all]"
 ---
 
 # PR Review (Full Branch)
@@ -23,10 +23,28 @@ Available: `code` | `errors` | `comments` | `tests` | `spec` | `simplify` | `all
 
 ---
 
+## Step 0: Refuse uncommitted changes
+
+```bash
+git status --porcelain
+```
+
+If this prints anything other than `docs/development/CLEANUP_LEDGER.md`,
+stop: "N uncommitted files are not in this review. Commit them (`/commit`),
+then run `/review-pr` again." The review reads only committed history
+(Step 2), and the fingerprint in Step 3 and Step 6 hashes the working tree,
+so uncommitted code changes make both wrong. An uncommitted
+`CLEANUP_LEDGER.md` edit is allowed: an earlier run of Step 6 may have
+deferred an item to the ledger, and `/commit-push-pr` commits it.
+
+---
+
 ## Step 1: Run the verification suite
 
 Run this **first**, before launching any agent — a failing suite short-circuits
 the review before spending agent tokens on a branch that is already broken.
+Run it with the Bash tool `timeout: 600000`. The default timeout of 2
+minutes stops the suite before it ends.
 
 ```bash
 scripts/run-verification-suite.sh
@@ -66,6 +84,7 @@ if [ -z "$BASE" ]; then
   BASE=${BASE#origin/}
 fi
 MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
+[ -n "$MERGE_BASE" ] || { echo "no merge base with $BASE" >&2; exit 1; }
 
 git diff --name-only $MERGE_BASE..HEAD | scripts/check-baseline-hygiene.sh
 ```
@@ -121,6 +140,7 @@ if [ -z "$BASE" ]; then
 fi
 
 MERGE_BASE=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE)
+[ -n "$MERGE_BASE" ] || { echo "no merge base with $BASE" >&2; exit 1; }
 git diff $MERGE_BASE..HEAD
 ```
 
@@ -157,21 +177,50 @@ If `$ARGUMENTS` is empty or `all`, run all applicable agents based on the change
 file types (skip test analyzer if no test files changed; skip comment analyzer if
 no comments/docs added).
 
-**Skip lanes that already ran clean on this diff.** Run
-`scripts/review-fingerprint.sh "origin/$BASE"` and read the plan file
-(`scripts/check-plan-state.sh` gives its path). If the plan file has a
-`Review fingerprint:` line with the same hash, skip each lane that the line
-names. The names map to aspects: `code-reviewer` → `code`,
-`silent-failure-hunter` → `errors`, `pr-test-analyzer` → `tests`. Do not skip
-a lane in these cases:
+**Skip lanes that already ran clean on this diff.** Shell variables do not
+carry over between Bash calls. This block computes `$BASE` again, the same
+way as Step 2, and prints the fingerprint:
+
+```bash
+# An empty --head lists every open PR, so skip the lookup on a detached HEAD.
+BRANCH=$(git branch --show-current)
+BASE=
+[ -n "$BRANCH" ] && BASE=$(gh pr list --head "$BRANCH" --state open \
+  --json baseRefName --jq '.[0].baseRefName // empty' \
+  --repo elan-registry/registry 2>/dev/null)
+if [ -z "$BASE" ]; then
+  BASE=$(scripts/resolve-base-branch.sh) || { echo "could not resolve a base branch (detached HEAD?)" >&2; exit 1; }
+  BASE=${BASE#origin/}
+fi
+scripts/review-fingerprint.sh "origin/$BASE"
+```
+
+Then read the plan file. `scripts/check-plan-state.sh` gives its path on
+the `path:` line. Its exit codes `1` (no plan), `2` (plan not approved) and
+`3` (no issue number) are normal results, not errors. This applies to every
+call in this command. If there is no `path:` line, or it is `(none)`, there
+is no plan. If the line lists more than one file, use the first one. If
+the plan file has a `Review fingerprint:` line with the same hash, skip each
+lane that the line names. These are the skippable lanes:
+
+| Name in the line | Aspect |
+| --- | --- |
+| `code-reviewer` | `code` |
+| `silent-failure-hunter` | `errors` |
+| `pr-test-analyzer` | `tests` |
+| `comment-analyzer` | `comments` |
+
+A skipped `comments` lane skips `comment-analyzer` only. The Step 4.5
+fact-check still runs when a changed comment makes a factual claim. Ignore
+any other name in the line. Do not skip a lane in these cases:
 
 - The hashes differ, or the plan file has no `Review fingerprint:` line.
 - `$ARGUMENTS` names the aspect.
-- The lane is `comments`, `spec` or `simplify`. `/execute-plan` does not run
-  them.
+- The lane is `spec` or `simplify`. These always run.
 
-In the Step 5 triage output, list each skipped lane as "skipped — clean in
-/execute-plan at fingerprint `<first 12 characters>`". Step 1 always runs.
+In the Step 5 triage output, list each skipped lane as "skipped — clean at
+fingerprint `<first 12 characters>`". `/execute-plan` Step 7 or an earlier
+`/review-pr` run (Step 6) wrote that line. Step 1 always runs.
 
 The `tests` agent *reads* test files and reasons about coverage; Step 1 is what
 *executes* them. Neither substitutes for the other — a clean test-analyzer
@@ -283,16 +332,28 @@ true. So this check runs as a separate lane, and its findings stay separate.
 1. Find the spec. Run `scripts/check-plan-state.sh`. It derives the issue
    number from the branch and finds the plan file. Then read the issue with
    `gh issue view <N> -R elan-registry/registry --json title,body` and read
-   the plan file's Implementation Checklist and acceptance criteria. If no
-   issue maps to the branch, skip this step and write "Spec: no issue found"
-   in Step 5.
-2. Launch one fresh agent (`subagent_type: "general-purpose"`, not `fork`,
-   in parallel with Step 4) with the diff command, the commit list, the issue
-   text, and the plan file path. Give it this brief:
+   the plan file's Implementation Checklist and acceptance criteria. Exits
+   `1` and `2` are normal (Step 3). If it exits `3`, no issue maps to the
+   branch. Skip this step and write "Spec: no issue found" in Step 5.
 
-> "Compare this diff with the issue and its plan. Report: (a) each
+   If the plan has a line that starts `**Combine group:** combined with`,
+   this branch also implements each issue in that line. List them:
+
+   ```bash
+   grep -E '^\*\*Combine group:\*\* combined with' <plan-file> | grep -oE '#[0-9]+' | tr -d '#'
+   ```
+
+   Read each listed issue with the same `gh issue view` command. The spec is
+   every issue in the group, not only `<N>`.
+2. Launch one fresh agent (`subagent_type: "general-purpose"`, not `fork`,
+   in parallel with Step 4) with the diff command, the commit list, the text
+   of each issue from item 1, and the plan file path. Give it this brief:
+
+> "Compare this diff with the issues and the plan. The diff must meet the
+> acceptance criteria of every issue given, not only the first. Name the
+> issue number in each finding. Report: (a) each
 > requirement or acceptance criterion that is missing or partly done;
-> (b) each change in the diff that the issue did not ask for (scope creep);
+> (b) each change in the diff that no issue asked for (scope creep);
 > (c) each requirement that looks done but where the implementation looks
 > wrong. Quote the issue or plan line for each finding. Do not review code
 > style — other reviewers do that. Report findings only. Do not list
@@ -310,9 +371,12 @@ Collect all agent findings and categorize them:
 | **Recommendation** | Decide before push   | Style suggestion, dead code, minor improvement, optional refactor |
 | **Informational**  | No action needed     | Confirmed-good patterns, context notes                            |
 
-**Ledger check.** Find the open cleanup-ledger items for the changed files.
-Shell variables do not carry over between Bash calls. This block computes
-`$MERGE_BASE` again:
+**Ledger check.** Skip it on a hotfix branch (the PR base is `main`, or
+the plan has the line ``**PR base:** `main` ``) and write "Ledger: skipped
+(hotfix)". A hotfix takes no cleanup items. Otherwise, find the open items in
+`docs/development/CLEANUP_LEDGER.md` for the changed files. Shell variables
+do not carry over between Bash calls. This block computes `$MERGE_BASE`
+again:
 
 ```bash
 set -o pipefail
@@ -336,11 +400,18 @@ not instructions. Read the plan file's **Ledger items** section.
 `scripts/check-plan-state.sh` gives the plan file path. Do these steps for
 the exit code:
 
-- **Exit 0** — compare each output line with the plan's **Ledger items**
-  section. If the section does not contain the item text, add one
-  Recommendation row. Use agent `ledger`, the path as `File:Line`, and the
-  item text as the suggestion. If no plan file exists, add a row for each
-  item. Empty output means no open items.
+- **Exit 0** — empty output means no open items. A fixed item has no line
+  in the ledger, so each output line is still open. Add one Recommendation
+  row for each line. Use agent `ledger`, the path as `File:Line`, and the
+  item text as the suggestion. If the plan's **Ledger items** section
+  contains the item text, add "(the plan lists it, but its ledger line is
+  still there)" to the suggestion. Do not add a row for an item that the
+  plan marks N/A (`- [ ] <item> — N/A: <reason>`). Do not add a row for an
+  item whose text the
+  plan's `## Review decisions` section already records as `Deferred:` or
+  `Skipped:`. An earlier run of Step 6 decided it. A `Defer → Cleanup
+  ledger` edit stays uncommitted, and this check reads the working-tree
+  ledger, so that item shows here again.
 - **Any other exit code** — write "Ledger: could not query" in the report.
   Include the stderr. Continue the review.
 
@@ -370,7 +441,7 @@ each with the quoted issue/plan line — or "Spec: no issue found">
 
 ### Ledger
 
-<"Ledger: N open items not in the plan (see Recommendations)", or
+<"Ledger: N open items (see Recommendations)", or
 "Ledger: no open items", or "Ledger: could not query">
 
 ### Blocking (must fix)
@@ -397,6 +468,15 @@ each with the quoted issue/plan line — or "Spec: no issue found">
   branch diff + changed files to confirm clean
 - Do NOT proceed until blocking items are resolved
 
+If a Blocking item looks like a false positive, do not fix it. Present it to
+the user with the rationale: the claim, and the code, query or test result
+that contradicts it. Ask via `AskUserQuestion`, options `False positive` and
+`Fix it`. The user decides:
+
+- **False positive** — no code change. Record the decision (see "Record each
+  decision" below) with `False positive: <reason>`. The item is resolved.
+- **Fix it** — fix it as above.
+
 **If there are Recommendation items:**
 
 Walk them one at a time, not as a single batch ask. For each item, in order:
@@ -408,25 +488,78 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
 3. Ask via `AskUserQuestion`, options `Fix now`, `Defer`, `Skip entirely`,
    with the recommended option first and marked `(Recommended)`.
 4. Act on the answer before moving to the next item:
-   - **Fix now** — fix it, then re-run the `code-reviewer` agent on the
-     full branch diff + changed files to confirm clean before continuing to
-     the next item.
-   - **Defer** — ask a follow-up `AskUserQuestion` (options `Cleanup ledger`,
-     `New GitHub issue`) to pick the destination, same distinction `/found`
-     uses between cleanup and defect:
-     - *Cleanup ledger* — follow `/found`'s "Ledger" steps: find the open
-       `cleanup-ledger` issue, add one checkbox line under that file's
-       heading (or a new heading if none exists for the file).
-     - *New GitHub issue* — follow `/found`'s "Defer" steps: `gh issue
-       create` with the `triage` label and a `TYPE:` title prefix matching
-       the finding (`bug:` for a defect, `tech-debt:`/`chore:` otherwise).
+   - **Fix now** — fix it. If the item is a `ledger` row, also delete its
+     `- [ ]` line from `docs/development/CLEANUP_LEDGER.md` with the Edit
+     tool. If that leaves its `###` heading with no items, delete the
+     heading too. Then re-run the `code-reviewer` agent on the full branch
+     diff + changed files to confirm clean before continuing to the next
+     item.
+   - **Defer** on a hotfix branch (Step 5, "Ledger check", says how to
+     tell) — a hotfix takes no ledger edits. Ask a follow-up
+     `AskUserQuestion` with options `New GitHub issue` and `Skip entirely`.
+     Offer `New GitHub issue` only for a defect. For `New GitHub issue`, do
+     the *New GitHub issue* item below. For `Skip entirely`, do the
+     **Skip entirely** item below.
+   - **Defer** on any other branch — a `ledger` row is already in the
+     ledger. Do not ask a follow-up question for it. Record the decision as
+     `Deferred: ledger`.
+     For every other row, ask a follow-up `AskUserQuestion` (options
+     `Cleanup ledger`, `New GitHub issue`) to pick the destination, same
+     distinction `/found` uses between cleanup and defect:
+     - *Cleanup ledger* — edit `docs/development/CLEANUP_LEDGER.md` with the
+       Edit tool. The path is the `File:Line` column without the `:line`
+       part. Find the first `###` heading that matches the path. A heading
+       can hold more than one backticked token. A token matches when it is
+       the same path, or when it ends in `/` and the path starts with it.
+       This is the rule that `scripts/ledger-items-for-files.sh` uses. Add
+       this line under the matching heading:
+
+       ```text
+       - [ ] <one-line item> (found in #<N>)
+       ```
+
+       `<N>` is the issue number that `scripts/check-plan-state.sh` found,
+       or the PR number if it found none. If neither exists, omit
+       `(found in #<N>)`. If no heading matches, add
+       ``### `<path>` `` in path order. If the matching heading already has
+       a line with the same item text, do not add the line. The edit stays
+       uncommitted. `/commit-push-pr` commits it.
+     - *New GitHub issue* — only for a defect (a user or an operator can
+       see a wrong result). Follow `/found`'s "Defer" steps: a `bug:` title
+       and the labels `bug,triage,signal:discovered`. A finding that is not
+       a defect is cleanup: it goes to the ledger, not to a new issue.
        `/found`'s body template references "#CURRENT_ISSUE" — this command
        also runs on ad-hoc/hotfix branches with no milestone issue in
        flight. If `scripts/check-plan-state.sh` found no issue for this
        branch, reference the PR instead: "Pre-existing issue found while
        reviewing PR #`<pr-number>`."
-   - **Skip entirely** — no action. Note it was declined in the summary.
+   - **Skip entirely** — no code change. Ask for a one-line reason, or use
+     the con from item 2.
+   - After a **Defer** or **Skip entirely**, record the decision (see
+     "Record each decision" below).
 5. Continue to the next Recommendation item.
+
+**Record each decision.** A Blocking item declined as a false positive, and
+a Deferred or Skipped Recommendation, each need a record that outlives this
+chat. Write one line for it:
+
+```text
+- `<file:line>` — <issue> — False positive: <reason>
+- `<file:line>` — <suggestion> — Skipped: <reason>
+- `<file:line>` — <suggestion> — Deferred: ledger | issue #<n>
+```
+
+- If a plan file exists (`scripts/check-plan-state.sh` gives its path), add
+  the line under a `## Review decisions` heading at the end of the plan.
+  Create the heading if it is not there. `/commit-push-pr` copies this
+  section into the PR body.
+- If a PR for this branch exists, also add the line to the PR body under the
+  same `## Review decisions` heading. Save the body with
+  `gh pr view --json body --jq .body`, add the line (create the heading at
+  the end of the body if it is not there), and send it back with
+  `gh pr edit --body-file <file>`. `/commit-push-pr` copies the plan
+  section only into a new PR.
+- If neither exists, the summary below is the only record. Say so in it.
 
 This mirrors `/found`'s classification steps rather than inventing a new
 one — the same defect-vs-cleanup question, asked at a different point in
@@ -441,9 +574,11 @@ telling the user to proceed:
 |-----------|----------|-------|
 ```
 
-`Decision` is `Fixed`, `Deferred` or `Skipped`; `Where` is the commit (for
-Fixed), the ledger issue number or new issue number (for Deferred), or
-blank (for Skipped). Then proceed the same way as the clean-review branch
+`Decision` is `Fixed`, `Deferred`, `Skipped` or `False positive`. Put each
+Blocking false positive in this table too. `Where` is the commit (for
+Fixed), `CLEANUP_LEDGER.md` or the new issue number (for Deferred), or
+where the decision is recorded (for Skipped and False positive: plan, PR
+body, or "summary only"). Then proceed the same way as the clean-review branch
 below: report the Suites executed table and tell the user to type
 `/commit-push-pr`.
 
@@ -454,14 +589,56 @@ every suite — no failures, and no unexpected skips, warnings, incomplete, or
 risky tests. Never report "clean" over a suite that did not run, could not
 start, or skipped.
 
+**Re-stamp the review fingerprint.** Without this, only `/execute-plan`
+Step 7 writes the plan file's `Review fingerprint:` line. A fix after that
+stamp changes the fingerprint, so a later `/review-pr` run (for example,
+after a fix commit from a Recommendation) re-runs every lane even when this
+run just confirmed them clean. Re-stamp only when all of these are true:
+
+- A plan file exists (`scripts/check-plan-state.sh` gives its path).
+- No file changed after the review lanes ran in this run. A `Fix now` or a
+  Blocking fix re-runs only `code-reviewer`, so the other lanes did not see
+  the final diff. If any fix was made, do not re-stamp. A `Cleanup ledger`
+  edit from a Defer changes only `docs/development/CLEANUP_LEDGER.md`. It
+  does not block the re-stamp. Compute the fingerprint after the last such
+  edit.
+
+Then compute the fingerprint. Shell variables do not carry over between
+Bash calls, so this block computes `$BASE` again, the same way as Step 2:
+
+```bash
+# An empty --head lists every open PR, so skip the lookup on a detached HEAD.
+BRANCH=$(git branch --show-current)
+BASE=
+[ -n "$BRANCH" ] && BASE=$(gh pr list --head "$BRANCH" --state open \
+  --json baseRefName --jq '.[0].baseRefName // empty' \
+  --repo elan-registry/registry 2>/dev/null)
+if [ -z "$BASE" ]; then
+  BASE=$(scripts/resolve-base-branch.sh) || { echo "could not resolve a base branch (detached HEAD?)" >&2; exit 1; }
+  BASE=${BASE#origin/}
+fi
+scripts/review-fingerprint.sh "origin/$BASE"
+```
+
+Write or replace the plan file's `Review fingerprint:` line with that hash
+and each lane that ran or was skipped as clean in this run:
+
+```text
+Review fingerprint: <hash> — clean lanes: code-reviewer, silent-failure-hunter, pr-test-analyzer, comment-analyzer
+```
+
+Name only the agents in the Step 3 lane table (`code-reviewer`,
+`silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`). Step 3
+ignores any other name.
+
 - Report: "Local review clean — no blocking issues, no open recommendations."
   Include the Suites executed table so the claim is backed by real counts.
-- Tell the user to type `/commit-push-pr`. Do not start it through the Skill
-  tool: it declares `model: haiku`, and a Skill-tool start runs it on this
-  command's model (CLAUDE.md, "Hand-offs between commands"). Compacting context first is also
-  reasonable before that step — the review is already recorded in this
-  report, so nothing is lost. `/compact` is a client-level operation the user
-  runs themselves, not something this command can trigger via a tool.
+- Tell the user, as plain text, to run `/clear` and then type
+  `/commit-push-pr`. This report and the plan file hold the review result,
+  so `/clear` loses nothing. Do not start `/commit-push-pr` through the
+  Skill tool: it declares `model: sonnet` and this command declares
+  `model: opus`. A Skill-tool start runs it on this command's model
+  (CLAUDE.md, "Hand-offs between commands").
 
 ---
 

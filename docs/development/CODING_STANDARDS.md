@@ -248,12 +248,12 @@ can correctly carry a `bug` label, and a `fix:`-preambled issue rarely needs
 
 ### Where this is enforced
 
-- `/new-issue` always drafts a fully-scoped issue (acceptance criteria +
-  technical notes) before creating it, so its titles use a scoped type
-  (`fix:`, `feat:`, `test:`, etc.) — never bare `bug:`.
-- `/found` creates issues from a one-line description with no acceptance
-  criteria, so its titles use `bug:` (or the closest matching type for a
-  non-defect finding) and keep the `triage` label until someone scopes it.
+- `/new-issue` and `/found` capture issues without acceptance criteria, so
+  their titles use `bug:` for a defect (or the closest matching type for a
+  non-defect finding) and keep the `triage` label.
+- `/plan-milestone` writes the acceptance criteria when it selects an issue
+  for a milestone. Give the title its scoped type (`fix:`, `feat:`, `test:`,
+  etc.) at that point.
 
 ---
 

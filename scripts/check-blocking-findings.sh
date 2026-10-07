@@ -31,12 +31,14 @@
 # Checks the LAST comment matching the "Strengths" anchor (the same anchor
 # check-review-posted.sh uses to identify a genuine posted review, as
 # opposed to an arbitrary human comment that happens to contain the word
-# "Blocking") — not every comment on the PR.
+# "Blocking") — not every comment on the PR. It reads all pages of comments,
+# so it checks the same newest review that verify-ci-review.sh accepts. One
+# page holds only 30 comments, and the first page has the oldest ones.
 #
 # Prints one line per non-excluded match found (for context) and exits:
 #   0 = clean (no unresolved findings)
 #   1 = at least one unresolved Blocking (or Important, if requested) finding
-#   2 = can't verify — no review comment found, the gh API call itself
+#   2 = can't verify — no review comment found, a gh API call
 #       failed (auth/network/rate-limit/404), a grep failed while it scanned
 #       the review, or the arguments were invalid.
 #       Never treat exit 2 as "clean" — it means the check did not run.
@@ -73,16 +75,38 @@ fi
 GH_ERR="$(mktemp)"
 trap 'rm -f "$GH_ERR"' EXIT
 
-if ! REVIEW_BODY=$(gh api "repos/elan-registry/registry/issues/${PR_NUM}/comments" \
-    --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | last | .body // ""' \
+# With --paginate, gh runs the --jq filter on each page separately. So the
+# filter prints the ID of each review comment, and the shell keeps the last
+# ID of all pages. Then a second call reads the body of that one comment.
+if ! REVIEW_IDS=$(gh api "repos/elan-registry/registry/issues/${PR_NUM}/comments" --paginate \
+    --jq '.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*")) | .id' \
     2>"$GH_ERR"); then
   echo "gh api call failed for PR #${PR_NUM} — cannot verify Blocking/Important status (NOT evidence of a clean PR):" >&2
   cat "$GH_ERR" >&2
   exit 2
 fi
+REVIEW_ID="${REVIEW_IDS##*$'\n'}"
+
+if [ -z "$REVIEW_ID" ]; then
+  echo "No Strengths-anchored review comment found on PR #${PR_NUM} — cannot verify Blocking/Important status." >&2
+  exit 2
+fi
+case "$REVIEW_ID" in
+  *[!0-9]*)
+    echo "gh api returned a comment ID that is not a number ('${REVIEW_ID}') for PR #${PR_NUM} — cannot verify Blocking/Important status." >&2
+    exit 2
+    ;;
+esac
+
+if ! REVIEW_BODY=$(gh api "repos/elan-registry/registry/issues/comments/${REVIEW_ID}" \
+    --jq '.body // ""' 2>"$GH_ERR"); then
+  echo "gh api call failed for comment ${REVIEW_ID} on PR #${PR_NUM} — cannot verify Blocking/Important status (NOT evidence of a clean PR):" >&2
+  cat "$GH_ERR" >&2
+  exit 2
+fi
 
 if [ -z "$REVIEW_BODY" ]; then
-  echo "No Strengths-anchored review comment found on PR #${PR_NUM} — cannot verify Blocking/Important status." >&2
+  echo "Review comment ${REVIEW_ID} on PR #${PR_NUM} has an empty body — cannot verify Blocking/Important status." >&2
   exit 2
 fi
 

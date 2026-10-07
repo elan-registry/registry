@@ -16,12 +16,14 @@
 # On stdout, one line per field:
 #   path: <file path, or (none)>
 #   approved: yes|no
-#   checklist: <done>/<total>
+#   checklist: <done>/<total>   (an item marked `- [ ] <item> — N/A: <reason>`
+#                                counts as done)
 #
 # Exit codes:
 #   0  Plan file found and its Status line is exactly
 #      "Approved — ready for /execute-plan".
-#   1  No plan file found for the issue.
+#   1  No plan file found for the issue. A note on stderr names the
+#      directory searched and the wrong-clone-or-worktree cause.
 #   2  Plan file found but not approved (any other Status line value).
 #   3  No issue number given and none could be derived from the branch name.
 #
@@ -69,6 +71,7 @@ if [ "${#candidates[@]}" -eq 0 ]; then
     echo "path: (none)"
     echo "approved: no"
     echo "checklist: 0/0"
+    echo "check-plan-state.sh: no plan file for issue #${issue_number} under $(pwd)/docs/plans/. docs/plans/ is gitignored, so each clone and worktree has its own copy: check that this is the clone or worktree where the issue was planned." >&2
     exit 1
 fi
 
@@ -90,8 +93,9 @@ echo "approved: ${approved}"
 
 total="$(grep -c -E '^- \[[ xX]\]' "$plan_file" 2>/dev/null || true)"
 done_count="$(grep -c -E '^- \[[xX]\]' "$plan_file" 2>/dev/null || true)"
+na_count="$(grep -c -E '^- \[ \] .* — N/A: ' "$plan_file" 2>/dev/null || true)"
 total="${total:-0}"
-done_count="${done_count:-0}"
+done_count=$(( ${done_count:-0} + ${na_count:-0} ))
 echo "checklist: ${done_count}/${total}"
 
 if [ "$approved" = "yes" ]; then
