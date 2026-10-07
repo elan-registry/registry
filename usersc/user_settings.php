@@ -913,7 +913,7 @@ try {
                         </div>
                         <!-- END Extend user_setttings.php with some PROFILE information -->
 
-                        <div class="mb-3">
+                        <div class="mb-3" id="account-email">
                             <label for="email">Email</label>
                             <input class='form-control' type='text' id='email' name='email' value='<?= htmlspecialchars($userdetails->email ?? '', ENT_QUOTES, 'UTF-8') ?>' />
                             <?php if (!IS_NULL($userdetails->email_new)) {

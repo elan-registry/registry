@@ -36,23 +36,6 @@ if (!isset($pw_settings->meter_active)) {
 }
 $socials = $db->query("SELECT * FROM plg_social_logins WHERE built_in = 0 ORDER BY `provider`;")->results();
 
-// Get the country list for registration form
-$countryQ = $db->query("SELECT name FROM country ORDER BY name");
-if ($countryQ->count() > 0) {
-    $countrylist = $countryQ->results();
-} else {
-    $countrylist = [];
-}
-
-// Get popular countries from actual registry data (users table)
-$popularCountriesQ = $db->query("SELECT country, COUNT(*) as user_count FROM users WHERE country IS NOT NULL AND country != '' AND LENGTH(TRIM(country)) > 0 GROUP BY country ORDER BY user_count DESC LIMIT 10");
-$popularCountries = [];
-if ($popularCountriesQ->count() > 0) {
-    foreach ($popularCountriesQ->results() as $country) {
-        $popularCountries[] = $country->country;
-    }
-}
-
 $hooks = getMyHooks();
 
 if ($user->isLoggedIn()) {

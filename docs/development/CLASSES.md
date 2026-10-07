@@ -750,6 +750,24 @@ to provide a focused, testable data access layer wrapping the `cars`,
   subquery). Used alongside `findVerificationStateByOwner()` to back the
   Bounced/Suppressed columns' event detail (#1924). No-ops to `[]` with no
   query issued on an empty `$carIds` array.
+- `findLatestEmailEventsByCarIdsAndEvents(array $carIds, array $events): array` -
+  Latest (max `occurred_at`) `er_email_events` row per car id, limited to the
+  given `event` values, keyed by `(int) car_id`; a car with no matching row is
+  absent from the map. Same self-join-on-`MAX(occurred_at)` technique as
+  `findLatestEmailEventsByCarIds()`, filtered in both the subquery and the
+  outer query. Used by `EmailNoticeBuilder` to find each car's latest
+  suppression (`spam`/`unsubscribed`) or hard-bounce event, so a later,
+  unrelated event (`opened`, `click`, `delivered`) cannot outrank the actual
+  suppression or bounce event (#1899). No-ops to `[]` with no query issued
+  when `$carIds` or `$events` is empty.
+- `findLatestHistoryOperationByCarIds(array $carIds, array $operations): array` -
+  Latest (max `timestamp`) `cars_hist` row per car id, limited to the given
+  `operation` values, keyed by `(int) car_id`; a car with no matching row is
+  absent from the map. Same self-join-on-`MAX(timestamp)` technique as
+  `findLatestEmailEventsByCarIds()`. Used by `EmailNoticeBuilder` to date the
+  `'EMAIL SUPPRESSED'`/`'EMAIL BOUNCED'` cause lines on the account-page
+  notice (#1899). No-ops to `[]` with no query issued when `$carIds` or
+  `$operations` is empty.
 - `findVerificationEligible(int $limit, int $offset): array` - Paginated
   query for cars eligible for a verification email: not sold, deliverable
   email, and stale — neither verified nor updated by its owner within the last
@@ -1163,6 +1181,79 @@ any key in `BADGES`, and the cars list JS needs no change.
 **See Also**:
 
 - [UI_STANDARDS.md](UI_STANDARDS.md#car-status-badges) - Tokens, classes, and accessibility rules
+
+---
+
+### EmailNoticeBuilder
+
+**Location**: `/usersc/classes/Car/EmailNoticeBuilder.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Assembles the data for the account-page notice that tells an
+owner one of their car's delivery addresses is suppressed or bounced
+(#1899). Pure data assembler — returns a plain array, renders no HTML. The
+partial `app/views/_email_paused_notice.php` escapes every field at render
+time.
+
+**Key Features**:
+
+- `buildForOwner(int $ownerId): ?array` - `null` when the owner has no car
+  with `email_suppressed=1` or `email_bounced=1`. Otherwise returns
+  `array{addresses: list<array{address: string, suppressed: array{cause:
+  'owner_optout'|'brevo_complaint', date: ?string}|null, bounced:
+  array{date: ?string}|null}>, overflowCount: int, hasSuppressed: bool,
+  hasBounced: bool, contentHash: string}`.
+- Takes `CarRepository` by constructor injection, so a test can supply a
+  mock.
+- Dedupes by address, lowercased, not the owner's profile email — a car's
+  registered delivery address can differ from the account email. Each flag
+  uses its own address: suppressed uses the car's own `email` column;
+  bounced uses `email_bounced_address`, falling back to the car's `email`
+  when that is empty (`CarVerificationManager::setBouncedForOwner()` writes
+  one owner-level address to every car's `email_bounced_address`, so it can
+  differ from a given car's own `email`). When a car's two addresses
+  differ, it contributes to two separate entries. A flag with no usable
+  address for it is dropped and logged, not merged into the other flag's
+  address.
+- Suppression cause: an `er_email_events` row with `event` in
+  (`spam`, `unsubscribed`) means `brevo_complaint`, but only when that
+  event is not older than the car's latest `'EMAIL SUPPRESSED'` cars_hist
+  row — otherwise the event is stale (from before an intervening clear and
+  resuppress) and is ignored. No current event means `owner_optout` (the
+  opt-out POST handler in `verify_car.php` writes no event row). Two cars
+  sharing one address: `brevo_complaint` wins over `owner_optout`; same
+  cause, the later date wins.
+- Dates: the suppressed-cause date comes from `cars_hist`
+  (`'EMAIL SUPPRESSED'`) for `owner_optout`, or from the event's
+  `occurred_at` for `brevo_complaint` (the webhook path never writes an
+  `'EMAIL SUPPRESSED'` history row). The bounced date is the later of the
+  latest `'EMAIL BOUNCED'` cars_hist row (only `app/admin/index.php` writes
+  it) and the latest hard-bounce event
+  (`EmailEventApplier::HARD_BOUNCE_EVENTS`) — not simply "history, else
+  event" — because a webhook hard-bounce (which writes no history row) can
+  arrive after an admin-marked bounce was cleared and the car bounced
+  again. Both recency comparisons use full datetime precision, not the
+  truncated `Y-m-d` display date, so a same-day clear-and-resuppress isn't
+  missed. A flag with neither signal (legacy data) defaults to
+  `owner_optout` with a `null` date; the partial omits the date clause
+  rather than show one.
+- Caps the address list at `MAX_ADDRESSES` (3), sorted by lowercase
+  address; `overflowCount` is the remainder. `hasSuppressed`/`hasBounced`/
+  `contentHash` cover the full set, including addresses past the cap.
+- `contentHash` is a sha256 of the full sorted address/cause/date set.
+  `account.php` uses it in the per-owner `sessionStorage` dismissal key, so
+  a change to the underlying flags makes the notice reappear.
+
+**Exceptions**:
+
+- `CarDatabaseException` - propagated from `CarRepository` on any query
+  failure.
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Suppression/bounce semantics and the
+  email-paused notice section
 
 ---
 

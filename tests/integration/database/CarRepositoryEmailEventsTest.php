@@ -388,4 +388,101 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
 
         $this->assertSame([], $latest);
     }
+
+    // --- findLatestEmailEventsByCarIdsAndEvents() ---------------------------
+    //
+    // Sibling of findLatestEmailEventsByCarIds() above, but the `event`
+    // filter also appears in the self-join's subquery AND the outer query
+    // (see that method's own docblock for why both are needed — the same
+    // reasoning CarRepositoryHistoryOperationTest::
+    // testOperationFilterExcludesANewerButNonMatchingRow() exercises for
+    // findLatestHistoryOperationByCarIds()). This is the exact query
+    // EmailNoticeBuilder::buildForOwner() now depends on to avoid
+    // misattributing a suppression/bounce cause to a later, unrelated event.
+
+    #[Group('fast')]
+    public function testEventFilterExcludesANewerButNonMatchingRow(): void
+    {
+        // The newest event for this car is 'opened', which is NOT in the
+        // requested event list — the method must return the earlier 'spam'
+        // row instead of the overall-latest row regardless of event. This
+        // reproduces the exact round-one defect: an unfiltered "latest event
+        // of any type" lookup would see 'opened' and miss the suppression.
+        $this->insertRawEvent('spam', 'filter-1', '2026-04-01 09:00:00');
+        $this->insertRawEvent('opened', 'filter-2', '2026-04-02 09:00:00');
+
+        $result = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
+            [$this->carId],
+            ['spam', 'unsubscribed']
+        );
+
+        $this->assertArrayHasKey($this->carId, $result);
+        $this->assertSame('spam', $result[$this->carId]->event);
+        $this->assertSame('2026-04-01 09:00:00', $result[$this->carId]->occurred_at);
+    }
+
+    #[Group('fast')]
+    public function testEachCarReturnsItsOwnLatestMatchingEventUnderATimestampTie(): void
+    {
+        $otherCarId = $this->createTestCar($this->userId, [
+            'email' => 'events-filter-other-' . uniqid() . '@example.com',
+        ]);
+        $otherEmail = (string) $this->db->query('SELECT email FROM cars WHERE id = ?', [$otherCarId])->first()->email;
+
+        // Both cars' latest matching ('hard_bounce') event shares the same
+        // occurred_at — the hardest case for per-car attribution via a
+        // self-join scoped by event.
+        $this->insertRawEvent('hard_bounce', 'tie-a', '2026-04-05 08:00:00');
+        $this->db->query(
+            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, ?, ?, NULL, ?, ?)',
+            [$otherCarId, $otherEmail, 'hard_bounce', 'tie-b', '2026-04-05 08:00:00']
+        );
+        $this->assertFalse($this->db->error(), 'Failed to seed er_email_events row: ' . $this->db->errorString());
+
+        $result = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
+            [$this->carId, $otherCarId],
+            ['hard_bounce', 'blocked', 'invalid', 'invalid_email']
+        );
+
+        $this->assertArrayHasKey($this->carId, $result);
+        $this->assertArrayHasKey($otherCarId, $result);
+        $this->assertSame((string) $this->carId, (string) $result[$this->carId]->car_id);
+        $this->assertSame((string) $otherCarId, (string) $result[$otherCarId]->car_id);
+
+        $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$otherCarId]);
+        $this->deleteTestCar($otherCarId);
+    }
+
+    #[Group('fast')]
+    public function testCarWithOnlyNonMatchingEventsIsAbsentFromTheResult(): void
+    {
+        $this->insertRawEvent('opened', 'nomatch-1', '2026-04-01 09:00:00');
+        $this->insertRawEvent('delivered', 'nomatch-2', '2026-04-02 09:00:00');
+
+        $result = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
+            [$this->carId],
+            ['spam', 'unsubscribed']
+        );
+
+        $this->assertArrayNotHasKey(
+            $this->carId,
+            $result,
+            'A car with no matching event must be absent from the map, not present with a null value'
+        );
+    }
+
+    #[Group('fast')]
+    public function testEmptyCarIdsArrayReturnsEmptyArrayForEventsFiltered(): void
+    {
+        $this->assertSame([], $this->repo->findLatestEmailEventsByCarIdsAndEvents([], ['spam']));
+    }
+
+    #[Group('fast')]
+    public function testEmptyEventsArrayReturnsEmptyArray(): void
+    {
+        $this->insertRawEvent('spam', 'empty-events-1', '2026-04-01 09:00:00');
+
+        $this->assertSame([], $this->repo->findLatestEmailEventsByCarIdsAndEvents([$this->carId], []));
+    }
 }
