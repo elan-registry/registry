@@ -344,15 +344,17 @@ reader assuming an absent feature was an oversight and "restoring" it.
   (ADR-001).
 - **jQuery cannot be removed.** It is a UserSpice 6 dependency, not a project
   choice (ADR-015, ADR-016).
-- **No car-owner verification flow, for now.** `app/admin/verify/` was
-  removed entirely in #1613 — the emailed link pointed at a nonexistent
-  path, carried a session-bound CSRF token that could never match a
-  recipient's session, and sat behind an admin-only auth gate on what was
-  meant to be an owner-facing page. No navigation linked to it. The
-  underlying service layer (`CarVerificationManager`, `Car`/`CarRepository`
-  verification methods) is retained; #1155 shipped the data-model foundation
-  in v2.30.0, and the rebuild continues as #1156's follow-on issues — the
-  send pipeline in v2.30.3 and owner/admin self-service in v2.30.5.
+- **The rebuilt verification flow exists but is switched off.** The original
+  implementation was removed entirely in #1613 (`app/admin/verify/` — a
+  broken emailed link, a session-bound CSRF token that could never match a
+  recipient's session, an admin-only auth gate on what was meant to be an
+  owner-facing page, no navigation linked to it). The rebuild shipped the
+  data model in v2.30.0 (#1155), the send pipeline in v2.30.3, and the admin
+  dashboard (#1156, extended by #1896 with the queue, activity feed, status
+  chips and owner-level Mark Bounced / Clear Bounced / Clear Suppression
+  actions). See [§3.3 "Car verification"](#33-editor-and-administrator) and
+  [§4 "Verification is what keeps the data true"](#4-how-the-capabilities-connect)
+  for why the feature switch still defaults off.
 
 ## 7. What is built but broken or incomplete
 
