@@ -780,4 +780,18 @@ final class CarEditOwnerColumnRefreshTest extends IntegrationTestCase
             'a client-supplied website value must never survive onto the car'
         );
     }
+
+    /**
+     * #1963: save.php must not write a client-supplied website again. save.php
+     * cannot be loaded under PHPUnit (every branch ends in exit), so this reads
+     * its source. #2333 replaces it with a test of extracted code.
+     */
+    public function testSaveDotPhpNoLongerCallsUpdateWebsite(): void
+    {
+        $source = file_get_contents(dirname(__DIR__, 2) . '/app/api/cars/save.php');
+        $this->assertIsString($source, 'save.php must be readable');
+
+        $this->assertStringNotContainsString('updateWebsite(', $source,
+            'save.php must not call or define updateWebsite() (#1963)');
+    }
 }
