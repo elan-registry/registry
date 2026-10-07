@@ -358,8 +358,9 @@ if (!function_exists('vsStatusChip')) {
      * suppressed car instead shows its suppression cause, from
      * EmailNoticeBuilder::resolveSuppressionCause(), so the chip and the
      * owner's account notice cannot disagree. That rule uses the latest
-     * suppression event of any send cycle. A current `spam` event shows
-     * Spam complaint. Any other cause shows Opted out.
+     * suppression event of any send cycle. CAUSE_BREVO_COMPLAINT shows
+     * Brevo complaint (either a `spam` or an `unsubscribed` event — the rule
+     * does not say which); any other cause shows Opted out.
      *
      * @param object|null $event The chip event row, or null if the car has none
      * @param bool $suppressed True when the car or its owner profile is suppressed
@@ -373,15 +374,20 @@ if (!function_exists('vsStatusChip')) {
         $name   = isset($event->event) ? (string) $event->event : null;
         $reason = trim((string) ($event->reason ?? ''));
 
-        $optedOut = ['kind' => 'opted_out', 'label' => 'Opted out', 'class' => 'text-bg-secondary', 'reason' => ''];
-        $spam     = ['kind' => 'spam', 'label' => 'Spam complaint', 'class' => 'text-bg-danger', 'reason' => ''];
+        $optedOut  = ['kind' => 'opted_out', 'label' => 'Opted out', 'class' => 'text-bg-secondary', 'reason' => ''];
+        $spam      = ['kind' => 'spam', 'label' => 'Spam complaint', 'class' => 'text-bg-danger', 'reason' => ''];
+        // resolveSuppressionCause() answers only "owner opt-out or Brevo
+        // complaint" (EmailEventApplier::SUPPRESSION_EVENTS = spam or
+        // unsubscribed; it does not say which). Label it the same way the
+        // account notice does, rather than naming the specific event, so the
+        // chip and the notice cannot disagree for the unsubscribed-as-
+        // complaint case.
+        $complaint = ['kind' => 'complaint', 'label' => 'Brevo complaint', 'class' => 'text-bg-danger', 'reason' => ''];
 
         if ($suppressed) {
             $cause = EmailNoticeBuilder::resolveSuppressionCause($suppressionEvent, $suppressedHist);
 
-            return $cause['cause'] === EmailNoticeBuilder::CAUSE_BREVO_COMPLAINT
-                && ($suppressionEvent->event ?? null) === 'spam'
-                ? $spam : $optedOut;
+            return $cause['cause'] === EmailNoticeBuilder::CAUSE_BREVO_COMPLAINT ? $complaint : $optedOut;
         }
 
         if ($name === null) {
@@ -1253,6 +1259,10 @@ if (!$vsAllHealthy) {
                         // lookup. An uncaught throw here would fatal mid-render (unclosed table,
                         // no error shown), so a failure instead logs and falls back to the row's
                         // own denormalized cars.fname/cars.lname rather than aborting the page.
+                        // Null when the owner row could not be read, so the action
+                        // buttons below have something to gate on even when the
+                        // try/catch falls back to the row's denormalized name.
+                        $vsOwnerRow = null;
                         try {
                             $vsOwnerRow  = (new Owner((int) $queueCar->user_id))->data();
                             $vsOwnerName = trim(($vsOwnerRow->fname ?? '') . ' ' . ($vsOwnerRow->lname ?? ''));
@@ -1266,6 +1276,17 @@ if (!$vsAllHealthy) {
                             ));
                             $vsOwnerName = trim(($queueCar->fname ?? '') . ' ' . ($queueCar->lname ?? ''));
                         }
+
+                        // The `noowner` system account (GDPR-erasure reassignment
+                        // target, see CarAdministrationService) and a row with no
+                        // live owner at all are not real owners: mark_bounced /
+                        // clear_bounced / clear_suppression all act on the WHOLE
+                        // owner (CarVerificationManager::*ForOwner()), so a click
+                        // here would flag or clear every other car `noowner` holds
+                        // too. Same username check CarVerificationSendService uses
+                        // to skip sending to this account.
+                        $queueOwnerIsActionable = $vsOwnerRow !== null
+                            && ($vsOwnerRow->username ?? '') !== 'noowner';
 
                         $queueSentAt = !empty($queueCar->vericode_sent_at)
                             ? date_create_immutable((string) $queueCar->vericode_sent_at)
@@ -1325,7 +1346,7 @@ if (!$vsAllHealthy) {
                                 <?php } ?>
                             </td>
                             <td>
-                                <?php if ($vsCanToggle) { ?>
+                                <?php if ($vsCanToggle && $queueOwnerIsActionable) { ?>
                                 <!-- Rendered outside the batch form via the form= attribute: nested
                                      forms are invalid HTML and would break the batch submission.
                                      Gated on $vsCanToggle (admin-only) to match this tab's own
@@ -1338,6 +1359,12 @@ if (!$vsAllHealthy) {
                                         <?= $queueAction['disabled']
                                             ? 'disabled title="One soft bounce does not confirm a dead address."'
                                             : '' ?>><?= vsEsc($queueAction['label']) ?></button>
+                                <?php } elseif ($vsCanToggle) { ?>
+                                <!-- No live, non-system owner: mark_bounced / clear_bounced /
+                                     clear_suppression all act on the whole owner, and acting on
+                                     `noowner` or a row with no owner would reach every other car
+                                     that account holds. -->
+                                <span class="text-muted" title="This car has no individual owner to act on.">&mdash;</span>
                                 <?php } else { ?>
                                 <span class="text-muted">&mdash;</span>
                                 <?php } ?>

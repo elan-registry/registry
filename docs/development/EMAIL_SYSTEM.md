@@ -429,25 +429,29 @@ Rules for the controls:
 **Status chip.** The Status column shows the car's latest email event in
 its current send cycle. `CarRepository::findLatestEmailEventPerCarWithPrecedence()`
 selects the event. The chips are: Sent, Delivered, Soft bounce (with the
-reason), Bounced, Spam complaint, and Opted out. "Bounced" covers hard
-bounce, blocked, and invalid events. "Delivered" covers four Brevo event
-names: `delivered`, `unique_opened`, `opened`, and `click` — an open or a
-click proves the message arrived, so each renders the same chip as a plain
-delivery. The reason text is Brevo free text. The page escapes it with
+reason), Bounced, Brevo complaint, and Opted out. "Bounced" covers
+`EmailEventApplier::HARD_BOUNCE_EVENTS` (`hard_bounce`, `blocked`, `invalid`,
+`invalid_email`). "Delivered" covers four Brevo event names: `delivered`,
+`unique_opened`, `opened`, and `click` — an open or a click proves the
+message arrived, so each renders the same chip as a plain delivery. The
+reason text is Brevo free text. The page escapes it with
 `htmlspecialchars()` at render time.
 
 A Brevo event name this system does not otherwise recognize renders its own
 chip: the literal event name, with underscores turned to spaces and the
-first letter capitalized (for example `invalid_email` renders as "Invalid
-email"), styled as a plain, low-emphasis chip. This keeps a new or unlisted
-Brevo event visible instead of showing nothing. The logic is in
-`vsStatusChip()`'s `default` case.
+first letter capitalized (for example `deferred` renders as "Deferred"),
+styled as a plain, low-emphasis chip. This keeps a new or unlisted Brevo
+event visible instead of showing nothing. The logic is in `vsStatusChip()`'s
+`default` case. `invalid_email` is excluded from this example because it is
+one of the hard-bounce events above, and so always renders "Bounced"
+instead of reaching this `default` case.
 
 **Chip precedence rule.** A terminal event always outranks a later
-"Delivered" event in the same send cycle. Terminal events are hard bounce,
-blocked, invalid, spam, and unsubscribed. For example, Brevo can report a
-message as delivered and then hard bounce it. The chip shows Bounced. Rules
-that select the chip event:
+"Delivered" event in the same send cycle. Terminal events are
+`EmailEventApplier::HARD_BOUNCE_EVENTS` (hard bounce, blocked, invalid,
+invalid email) plus `EmailEventApplier::SUPPRESSION_EVENTS` (spam,
+unsubscribed). For example, Brevo can report a message as delivered and then
+hard bounce it. The chip shows Bounced. Rules that select the chip event:
 
 1. The current send cycle starts at the car's latest `sent` event. The cycle
    holds that event and all later events. A car with no `sent` event uses all
@@ -464,11 +468,14 @@ project owner approved the difference.
 The project owner also approved `unsubscribed` as a terminal event. The FRD
 list did not include it.
 
-**Opted out and Spam complaint.** For a suppressed car, the chip shows
-"Spam complaint" only when a `spam` event is not older than the car's latest
-`EMAIL SUPPRESSED` `cars_hist` row. In all other cases it shows "Opted out"
-(the owner used the opt-out link, which writes no `er_email_events` row). The
-logic is in `vsStatusChip()`. It follows `EmailNoticeBuilder`.
+**Opted out and Brevo complaint.** For a suppressed car, the chip shows
+"Brevo complaint" when `EmailNoticeBuilder::resolveSuppressionCause()`
+returns `CAUSE_BREVO_COMPLAINT` — a `spam` or `unsubscribed` suppression
+event not older than the car's latest `EMAIL SUPPRESSED` `cars_hist` row. In
+all other cases it shows "Opted out" (the owner used the opt-out link, which
+writes no `er_email_events` row). The chip and the owner-facing "email
+paused" account notice share this one rule, so they cannot disagree on which
+label a given car gets. The logic is in `vsStatusChip()`.
 
 **Why the filter pill and the status chip can disagree.** The pill is based
 on the car's current state. The chip is based on the latest email event.
@@ -514,7 +521,12 @@ The handlers and their owner-level effects are unchanged. See
 [Mark Bounced / Clear Bounced / Clear Suppression](#mark-bounced--clear-bounced--clear-suppression-owner-level-actions).
 Each button submits a sibling form through the `form=` attribute, because the
 Eligible view wraps its table in the batch form and nested forms are not
-valid HTML. Editors see a dash in the Actions column (read-only).
+valid HTML. Editors see a dash in the Actions column (read-only). A row
+whose owner could not be loaded, or is the `noowner` system account (the
+GDPR-erasure reassignment target), also shows a dash: the three actions all
+act on the whole owner, and `noowner` can hold many unrelated cars. The
+server independently rejects any of the three commands posted for a
+`noowner`-owned car.
 
 ### Preview & Send Flow
 

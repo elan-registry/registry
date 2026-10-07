@@ -935,6 +935,20 @@ if (ElanInput::existsPost()) {
                     try {
                         $verifyOwnerData = (new Owner($verifyOwnerId))->data();
 
+                        // mark_bounced / clear_bounced / clear_suppression all act
+                        // on the WHOLE owner (CarVerificationManager::*ForOwner()),
+                        // so a `noowner` car must not reach this handler: the
+                        // `noowner` system account (GDPR-erasure reassignment
+                        // target) can hold many unrelated cars, and this would
+                        // flag or clear all of them from a single row's click. The
+                        // UI already hides the action for this case; this is the
+                        // server-side half of that same guard.
+                        if (($verifyOwnerData->username ?? '') === 'noowner') {
+                            throw new CarValidationException(
+                                "Car {$verifyCarId} has no individual owner to apply '{$command}' to"
+                            );
+                        }
+
                         if ($command === 'mark_bounced') {
                             // The address recorded is ALWAYS the owner's current
                             // users.email, never the car's denormalized cars.email.

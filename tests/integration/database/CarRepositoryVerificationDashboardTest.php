@@ -196,6 +196,109 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         );
     }
 
+    // --- pending: the other 4 exclusion rules (verificationPendingWhereSql()) --
+
+    /**
+     * The TTL boundary above is one of five Pending exclusions. These four
+     * each have a car with a LIVE link (sent inside the TTL, so the TTL
+     * clause alone would include it), each excluded for a different reason:
+     * already answered, transferred, sold, and already bounced/suppressed.
+     * A regression in any one clause leaves that car stuck in Pending,
+     * double-counted under its real pill too.
+     */
+    #[Group('fast')]
+    public function testPendingExcludesAnsweredTransferredSoldAndBouncedOrSuppressedCars(): void
+    {
+        $ttlDays = CarVerificationEmailComposer::LINK_TTL_DAYS;
+        $liveLinkSentAt = date('Y-m-d H:i:s', strtotime("-1 day"));
+
+        $answeredCarId = $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-pending-answered@example.com'),
+            [
+                'vericode'         => 'hash-answered',
+                'vericode_sent_at' => $liveLinkSentAt,
+                'last_verified'    => date('Y-m-d H:i:s', strtotime('+1 hour', strtotime($liveLinkSentAt))),
+            ]
+        ));
+
+        // A transfer clears vericode but keeps vericode_sent_at (see
+        // CarAdministrationService::transfer()) — vericode IS NULL is what
+        // excludes this car, not vericode_sent_at being stale.
+        $transferredCarId = $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-pending-transferred@example.com'),
+            [
+                'vericode'         => null,
+                'vericode_sent_at' => $liveLinkSentAt,
+            ]
+        ));
+
+        $soldCarId = $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-pending-sold@example.com'),
+            [
+                'vericode'         => 'hash-sold',
+                'vericode_sent_at' => $liveLinkSentAt,
+                'solddate'         => date('Y-m-d'),
+            ]
+        ));
+
+        $bouncedCarId = $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-pending-bounced@example.com'),
+            [
+                'vericode'              => 'hash-bounced',
+                'vericode_sent_at'      => $liveLinkSentAt,
+                'email_bounced'         => 1,
+                'email_bounced_address' => 'dash-pending-bounced@example.com',
+            ]
+        ));
+
+        $suppressedCarId = $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-pending-suppressed@example.com'),
+            [
+                'vericode'         => 'hash-suppressed',
+                'vericode_sent_at' => $liveLinkSentAt,
+                'email_suppressed' => 1,
+            ]
+        ));
+
+        $pendingIds = $this->queueIds($this->repo->findVerificationQueue('pending', null, 1000));
+
+        $this->assertNotContains(
+            $answeredCarId,
+            $pendingIds,
+            'A car whose owner already verified after the link was sent must not be Pending'
+        );
+        $this->assertNotContains(
+            $transferredCarId,
+            $pendingIds,
+            'A transferred car (vericode cleared) must not be Pending even with a live vericode_sent_at'
+        );
+        $this->assertNotContains($soldCarId, $pendingIds, 'A sold car must not be Pending');
+        $this->assertNotContains($bouncedCarId, $pendingIds, 'A bounced car with a live link must not be Pending');
+        $this->assertNotContains(
+            $suppressedCarId,
+            $pendingIds,
+            'A suppressed car with a live link must not be Pending'
+        );
+
+        // Each exclusion must also hold under the Pending count, not only the
+        // list: isolate via a before/after delta the same way the TTL test
+        // above does, using the bounced car. Clearing email_bounced leaves a
+        // live, unanswered link with every other Pending condition met, so
+        // the car becomes Pending — proving the count applies the bounced
+        // exclusion the same way the list does, not that it ignores it.
+        $this->db->query('UPDATE cars SET email_bounced = 0 WHERE id = ?', [$bouncedCarId]);
+        $withoutBounced = $this->repo->countVerificationSummary(null)['pending'];
+        $this->db->query('UPDATE cars SET email_bounced = 1 WHERE id = ?', [$bouncedCarId]);
+        $withBounced = $this->repo->countVerificationSummary(null)['pending'];
+
+        $this->assertSame(
+            $withBounced + 1,
+            $withoutBounced,
+            'Clearing the bounced flag on a car with an otherwise-live link must raise the Pending count by '
+            . 'exactly 1: the count applies the bounced exclusion the same way the list does'
+        );
+    }
+
     // --- bounced ----------------------------------------------------------------
 
     #[Group('fast')]
