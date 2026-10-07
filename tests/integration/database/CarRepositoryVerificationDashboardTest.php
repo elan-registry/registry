@@ -371,6 +371,79 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         ));
     }
 
+    /**
+     * Pins the #1896 review-fix (profileEmailSuppressedSql()) directly: an
+     * owner with two `profiles` rows must not duplicate their car in any
+     * queue list or inflate any count. `profiles.user_id` has no UNIQUE
+     * index, so nothing in the schema stops a second row existing; before
+     * the fix, every `LEFT JOIN profiles` site returned one row per match,
+     * doubling this owner's cars everywhere. Covers the branches the fix
+     * touched: suppressed (profile-flag path), pending, and the summary
+     * counts that must still equal 1 despite 2 join matches.
+     */
+    #[Group('fast')]
+    public function testOwnerWithTwoProfilesRowsDoesNotDuplicateTheirCarInAnyQueueOrCount(): void
+    {
+        $dupedOwnerId = $this->createTestUser([], true);
+
+        $before = $this->repo->countVerificationSummary(null)['suppressed'];
+
+        $secondProfileInserted = $this->db->insert('profiles', [
+            'user_id' => $dupedOwnerId,
+            'bio'     => '',
+            'city'    => '',
+            'state'   => '',
+            'country' => '',
+        ]);
+        $this->assertTrue(
+            $secondProfileInserted,
+            'Test setup: failed to seed a second profiles row for the same user_id: ' . $this->db->errorString()
+        );
+
+        $suppressedCarId = $this->createTestCar($dupedOwnerId, array_merge(
+            $this->eligibleFields('dash-dup-profile-suppressed@example.com'),
+            ['email_suppressed' => 1]
+        ));
+        $pendingCarId = $this->createTestCar($dupedOwnerId, array_merge(
+            $this->eligibleFields('dash-dup-profile-pending@example.com'),
+            [
+                'vericode'         => 'hash-dup-pending',
+                'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-1 day')),
+            ]
+        ));
+
+        $suppressedRows = $this->repo->findVerificationQueue('suppressed', null, 1000);
+        $suppressedIds  = $this->queueIds($suppressedRows);
+        $this->assertSame(
+            1,
+            count(array_filter($suppressedIds, static fn (int $id): bool => $id === $suppressedCarId)),
+            'The duplicated-profile owner\'s suppressed car must appear exactly once in the suppressed '
+            . 'queue list, not once per matching profiles row'
+        );
+
+        $pendingIds = $this->queueIds($this->repo->findVerificationQueue('pending', null, 1000));
+        $this->assertSame(
+            1,
+            count(array_filter($pendingIds, static fn (int $id): bool => $id === $pendingCarId)),
+            'The duplicated-profile owner\'s pending car must appear exactly once in the pending queue list'
+        );
+
+        $allIds = $this->queueIds($this->repo->findVerificationQueue('all', null, 1000));
+        $this->assertSame(
+            1,
+            count(array_filter($allIds, static fn (int $id): bool => $id === $suppressedCarId)),
+            'The duplicated-profile owner\'s car must appear exactly once in the "all" queue list too'
+        );
+
+        $after = $this->repo->countVerificationSummary(null)['suppressed'];
+        $this->assertSame(
+            $before + 1,
+            $after,
+            'Adding one suppressed car for an owner with 2 profiles rows must raise the suppressed count '
+            . 'by exactly 1, not 2 — a duplicated join match would double-count it'
+        );
+    }
+
     // --- verified / sold: distinct cars, not raw cars_hist rows ------------------
 
     #[Group('fast')]
