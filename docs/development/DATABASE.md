@@ -18,8 +18,7 @@
   ownership transfer workflow
 - **Factory Data**: `elan_factory_info` reference table for Lotus Elan
   specifications
-- **System Tables**: `audit`, `country`, `fix_script_runs` for system operations
-  and reference data
+- **System Tables**: `audit`, `fix_script_runs` for system operations
 
 ## Database Naming Conventions
 
@@ -38,7 +37,7 @@
 - `er_cron_job_runs` (v2.30.2) — generic "when did this job last run" table for `CronJobGuard`, replacing per-job bespoke settings columns (#2034)
 - Any future feature-config, workflow state, or application-owned table created after this issue
 
-**Upstream tables (not renamed):** `settings`, `users`, `users_session`, `us_*`, etc. (UserSpice), and `cars`, `car_transfer_requests`, `deleted_accounts_archive`, `elan_factory_info`, `car_models`, `fix_script_runs`, `country` (pre-existing project tables).
+**Upstream tables (not renamed):** `settings`, `users`, `users_session`, `us_*`, etc. (UserSpice), and `cars`, `car_transfer_requests`, `deleted_accounts_archive`, `elan_factory_info`, `car_models`, `fix_script_runs` (pre-existing project tables).
 
 ---
 
@@ -322,13 +321,6 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 | `timestamp` | `timestamp` | Action timestamp |
 | `ip` | `varchar(255)` | IP address of user |
 | `viewed` | `int(1)` | View status flag |
-
-#### `country` - Country reference data
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | `int` | PRIMARY KEY, AUTO_INCREMENT |
-| `name` | `varchar(100)` | Country name |
 
 #### `fix_script_runs` - Database maintenance tracking
 

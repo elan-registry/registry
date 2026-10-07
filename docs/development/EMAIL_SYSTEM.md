@@ -428,6 +428,33 @@ safe: the second request waits for the first to commit, reads 0, and succeeds.
 If a step after the commit fails (log line, flash message, or redirect), the
 owner sees that the emails were resumed, not "Nothing was changed".
 
+### Email-Paused Notice on Account Settings (#1899)
+
+The Account Settings page shows a banner when any car the owner has is
+suppressed or bounced. The banner names the affected addresses and links to
+the Resume control above and to the owner's email field, so the owner finds
+the fix without knowing to look for it first.
+
+**Builder:** `EmailNoticeBuilder::buildForOwner(int $ownerId): ?array`
+(`usersc/classes/Car/EmailNoticeBuilder.php`). Returns `null` when no car is
+flagged. It resolves each address's suppression cause with the same
+owner-opt-out-vs-Brevo-complaint rule the Resume control above uses: a
+flagged car with a `spam` or `unsubscribed` row in `er_email_events` is a
+Brevo complaint; otherwise it is the owner's own opt-out click.
+
+**Repository method:** `CarRepository::findLatestHistoryOperationByCarIds(array $carIds, array $operations): array`
+finds each car's latest `cars_hist` row matching one of the given
+`operation` values (e.g. `'EMAIL SUPPRESSED'`, `'EMAIL BOUNCED'`), keyed by
+`car_id`. Same self-join-on-`MAX(timestamp)` technique and empty-array no-op
+as `findLatestEmailEventsByCarIds()` above. The builder uses it to date the
+suppression and bounce lines in the banner.
+
+**Partial:** `app/views/_email_paused_notice.php`, included from
+`usersc/account.php`. Dismissing the banner stores a key in
+`sessionStorage` so it stays hidden for that browser tab until the
+underlying data changes (a hash of the affected addresses, causes, and
+dates) or the session ends.
+
 ### The Shared Send Service
 
 **Class:** `CarVerificationSendService` (`usersc/classes/Car/CarVerificationSendService.php`)

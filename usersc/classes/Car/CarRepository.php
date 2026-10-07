@@ -1627,6 +1627,134 @@ class CarRepository
     }
 
     /**
+     * Find the most recent er_email_events row of one of the given event types, for each of a set of car ids
+     *
+     * Same self-join technique as {@see findLatestEmailEventsByCarIds()}, but
+     * scoped to a given set of `event` values (e.g. `EmailEventApplier::SUPPRESSION_EVENTS`)
+     * instead of the latest event of any type. A caller that needs "was the
+     * suppression a Brevo complaint" cannot use the unfiltered method: the
+     * latest event for a car can be a later, unrelated event (`opened`,
+     * `click`, `delivered`) that is newer than the `spam`/`unsubscribed`
+     * event that actually caused the suppression, which would misattribute
+     * the cause. The event filter is in both the subquery and the outer
+     * query, for the same reason {@see findLatestHistoryOperationByCarIds()}
+     * filters both. No-ops on an empty `$carIds` or `$events` array.
+     *
+     * @param array<int> $carIds
+     * @param array<string> $events er_email_events.event values to match
+     * @return array<int, object{car_id: int|string, event: string, occurred_at: string, reason: ?string}>
+     *         Keyed by car_id. A car with no matching event is absent from
+     *         the returned array — callers must treat a missing key as "no
+     *         matching event," not as an error.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findLatestEmailEventsByCarIdsAndEvents(array $carIds, array $events): array
+    {
+        if ($carIds === [] || $events === []) {
+            return [];
+        }
+
+        $ids              = array_values($carIds);
+        $eventValues      = array_values($events);
+        $idPlaceholders   = implode(',', array_fill(0, count($ids), '?'));
+        $evtPlaceholders  = implode(',', array_fill(0, count($eventValues), '?'));
+
+        $result = $this->db->query(
+            "SELECT e.car_id, e.event, e.occurred_at, e.reason
+               FROM er_email_events e
+               JOIN (
+                     SELECT car_id, MAX(occurred_at) AS max_occurred_at
+                       FROM er_email_events
+                      WHERE car_id IN ({$idPlaceholders})
+                        AND event IN ({$evtPlaceholders})
+                      GROUP BY car_id
+                    ) latest
+                 ON latest.car_id = e.car_id
+                AND latest.max_occurred_at = e.occurred_at
+              WHERE e.car_id IN ({$idPlaceholders})
+                AND e.event IN ({$evtPlaceholders})",
+            array_merge($ids, $eventValues, $ids, $eventValues)
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::findLatestEmailEventsByCarIdsAndEvents failed for car_ids=' . implode(',', $ids)
+                . ' events=' . implode(',', $eventValues) . ': ' . $this->db->errorString()
+            );
+        }
+
+        $latest = [];
+        foreach ($result->results() as $row) {
+            $latest[(int) $row->car_id] = $row;
+        }
+
+        return $latest;
+    }
+
+    /**
+     * Find the most recent cars_hist row with one of the given operations, for each of a set of car ids
+     *
+     * Uses the same self-join on a `(car_id, MAX(timestamp))` aggregate as
+     * {@see findLatestEmailEventsByCarIds()}. The operation filter is in both
+     * the subquery and the outer query. Without the outer filter, a
+     * non-matching row with the same timestamp as the matching row could
+     * join. If two matching rows for one car share the maximum timestamp,
+     * the later one in the result wins the array key. Either row is equally
+     * "latest". No-ops on an empty `$carIds` or `$operations` array rather
+     * than issuing a query with an empty IN() list.
+     *
+     * @param array<int> $carIds
+     * @param array<string> $operations cars_hist.operation values to match (e.g. 'EMAIL SUPPRESSED')
+     * @return array<int, object{car_id: int|string, operation: string, timestamp: string}>
+     *         Keyed by car_id. A car with no matching row is absent from the
+     *         returned array. Callers must treat a missing key as "no matching
+     *         history", not as an error.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findLatestHistoryOperationByCarIds(array $carIds, array $operations): array
+    {
+        if ($carIds === [] || $operations === []) {
+            return [];
+        }
+
+        $ids            = array_values($carIds);
+        $ops            = array_values($operations);
+        $idPlaceholders = implode(',', array_fill(0, count($ids), '?'));
+        $opPlaceholders = implode(',', array_fill(0, count($ops), '?'));
+
+        $result = $this->db->query(
+            "SELECT h.car_id, h.operation, h.timestamp
+               FROM cars_hist h
+               JOIN (
+                     SELECT car_id, MAX(timestamp) AS max_timestamp
+                       FROM cars_hist
+                      WHERE car_id IN ({$idPlaceholders})
+                        AND operation IN ({$opPlaceholders})
+                      GROUP BY car_id
+                    ) latest
+                 ON latest.car_id = h.car_id
+                AND latest.max_timestamp = h.timestamp
+              WHERE h.car_id IN ({$idPlaceholders})
+                AND h.operation IN ({$opPlaceholders})",
+            array_merge($ids, $ops, $ids, $ops)
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::findLatestHistoryOperationByCarIds failed for car_ids=' . implode(',', $ids)
+                . ' operations=' . implode(',', $ops) . ': ' . $this->db->errorString()
+            );
+        }
+
+        $latest = [];
+        foreach ($result->results() as $row) {
+            $latest[(int) $row->car_id] = $row;
+        }
+
+        return $latest;
+    }
+
+    /**
      * Delete er_email_events rows older than a given cutoff
      *
      * Used by the nightly reconciliation job (#1889) to enforce the 24-month

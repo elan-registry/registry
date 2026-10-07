@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarBadges;
+use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\EmailNoticeBuilder;
 use ElanRegistry\CarView;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\OwnerDatabaseException;
@@ -45,6 +47,14 @@ try {
 } catch (CarDatabaseException $e) {
     logger($ownerId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'account.php: findByOwner failed: ' . $e->getMessage());
     $cars = [];
+}
+// A failed lookup must not block the account page, so the notice degrades
+// to absent, the same as the car list above.
+try {
+    $emailNotice = (new EmailNoticeBuilder(new CarRepository(dbi())))->buildForOwner($ownerId);
+} catch (CarDatabaseException $e) {
+    logger($ownerId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'account.php: email notice lookup failed: ' . $e->getMessage());
+    $emailNotice = null;
 }
 $carCount   = count($cars);
 if ($ownerData !== null) {
@@ -109,6 +119,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 <div id="page-wrapper">
     <div class="container py-4">
         <div class="well">
+            <?php include $abs_us_root . $us_url_root . 'app/views/_email_paused_notice.php'; ?>
 
             <!-- ================================================================
                  PROFILE CARD
