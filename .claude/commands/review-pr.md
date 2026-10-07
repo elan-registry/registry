@@ -513,9 +513,10 @@ Walk them one at a time, not as a single batch ask. For each item, in order:
        ``### `<path>` `` in path order. If the matching heading already has
        a line with the same item text, do not add the line. The edit stays
        uncommitted. `/commit-push-pr` commits it.
-     - *New GitHub issue* — follow `/found`'s "Defer" steps: `gh issue
-       create` with the `triage` label and a `TYPE:` title prefix matching
-       the finding (`bug:` for a defect, `tech-debt:`/`chore:` otherwise).
+     - *New GitHub issue* — only for a defect (a user or an operator can
+       see a wrong result). Follow `/found`'s "Defer" steps: a `bug:` title
+       and the labels `bug,triage,signal:discovered`. A finding that is not
+       a defect is cleanup: it goes to the ledger, not to a new issue.
        `/found`'s body template references "#CURRENT_ISSUE" — this command
        also runs on ad-hoc/hotfix branches with no milestone issue in
        flight. If `scripts/check-plan-state.sh` found no issue for this

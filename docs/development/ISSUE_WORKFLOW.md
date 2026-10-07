@@ -426,9 +426,9 @@ Each command touches the ledger at one step:
 | `/found` | Adds a cleanup find to the file with an edit. |
 | `/start-issue` Step 9 ("Pull ledger items") | Copies the items for each file the plan edits into the plan's **Ledger items** section and into the checklist. The plan gate approves them with the rest of the plan. |
 | `/execute-plan` Step 5, 6.6, 8 | Deletes the line of each item it fixes, and ticks it in the plan. Step 6.6 checks the files it edited for items that the plan does not list. For each one it offers: fix now, add to plan and fix now, or leave. Step 8 checks that no ticked item is still in the file. |
-| `/review-pr` Steps 5 and 6 | Reports each open item for a changed file as a Recommendation. **Fix now** deletes the line. **Defer** on a ledger item changes nothing and records `Deferred: ledger`. Any other deferred Recommendation goes to the ledger (an edit) or to a new issue. |
+| `/review-pr` Steps 5 and 6 | Reports each open item for a changed file as a Recommendation. **Fix now** deletes the line. **Defer** on a ledger item changes nothing and records `Deferred: ledger`. Any other deferred Recommendation goes to a new issue if it is a defect, or to the ledger (an edit) if it is cleanup. |
 | `/commit-push-pr` | Information only. It lists the open items for the touched files in its final summary. It asks nothing and writes nothing to the PR body. |
-| `/address-pr-comments` Steps 6 and 7 | Deletes the line of an item that one of its fixes completes. A deferred Advisory item goes to the ledger or to a new issue. It commits the file edit with the fixes. |
+| `/address-pr-comments` Steps 6 and 7 | Deletes the line of an item that one of its fixes completes. A deferred Advisory item goes to a new issue if it is a defect, or to the ledger if it is cleanup. It commits the file edit with the fixes. |
 | `/finish-issue` Step 6.5 | Information only. It reports the open items that remain in the files the PR edited. |
 
 A hotfix plan takes no ledger items. `/start-issue`, `/execute-plan`
@@ -528,7 +528,7 @@ Every reviewer, local or CI, sorts each finding into one of three buckets:
 | Bucket | Test | Action |
 | --- | --- | --- |
 | **Blocking** | Verified, reproducible, and in this diff | Fix now, in this PR. |
-| **Advisory** | Real, but not this PR's job | New issue (`signal:discovered`) or cleanup ledger. |
+| **Advisory** | Real, but not this PR's job | New issue (defect, `signal:discovered`) or cleanup ledger (no change in behavior). |
 | **Note** | Wording, style, docs nuance | Fix only if the change already touches that line. |
 
 Record each declined finding in a `## Review decisions` section. Each line

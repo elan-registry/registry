@@ -283,7 +283,9 @@ disappears with no record of the decision. For each item, in order:
        `scripts/ledger-items-for-files.sh` uses. Add the line under that
        heading. If no heading matches, add ``### `<path>` `` in path order.
        Commit and push the edit the same way as Step 6.
-     - *New GitHub issue* — follow `/found`'s "Defer" steps.
+     - *New GitHub issue* — only for a defect. Follow `/found`'s "Defer"
+       steps (`bug:` title, labels `bug,triage,signal:discovered`). A
+       finding that is not a defect goes to the ledger.
 
      Record the decision with `Deferred: ledger` or `Deferred: issue #<n>`
      (see "PR body records").
