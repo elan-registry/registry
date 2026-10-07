@@ -11,4 +11,8 @@
 
 ## Issues Resolved
 
-- [#1899](https://github.com/elan-registry/registry/issues/1899) — Added an email-paused notice to account.php for owners with suppressed or bounced car emails. The same change fixes the Uncloak button on account.php, which always failed its CSRF check. It also drops the unused `country` table. Run `composer migrate` on deploy.
+- [#1899](https://github.com/elan-registry/registry/issues/1899) — Added an
+  email-paused notice to account.php for owners with suppressed or bounced car
+  emails. The same change fixes the Uncloak button on account.php, which
+  always failed its CSRF check. It also drops the unused `country` table. Run
+  `composer migrate` on deploy.
