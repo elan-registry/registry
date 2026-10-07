@@ -8,22 +8,10 @@ use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Live-DB tests for CarRepository::freshnessSql()/stalenessSql() (issue #1953).
- *
- * Mocked unit tests (tests/unit/cars/services/CarRepositoryFreshnessTest.php)
- * exact-string-match the generated SQL against a mocked DB — they cannot catch
- * a fragment that is fatally wrong against the real schema or the production
- * sql_mode (STRICT_TRANS_TABLES, NO_ZERO_IN_DATE, NO_ZERO_DATE; no sql_mode
- * override is documented in this repo beyond DB.php's `SET SESSION sql_mode = ''`).
- * These tests exercise the fragments as raw ad-hoc queries against the live
- * schema instead.
- *
- * Deliberately does NOT skip when the #1953 migration hasn't run: freshnessSql()/
- * stalenessSql() reference only owner_last_updated and last_verified, both of
- * which already existed as nullable DATETIME/TIMESTAMP columns before this
- * migration. The expression is valid SQL against either column type, so these
- * tests are expected to pass whether or not `composer migrate` has been run
- * locally (confirmed by hand against the production sql_mode during planning).
+ * #1953: CarRepository::freshnessSql()/stalenessSql() run as real queries.
+ * The unit tests only string-match the SQL, so they cannot catch a fragment
+ * that fails against the real schema or sql_mode. No migration skip: the
+ * expression is valid before and after the #1953 migration.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -160,8 +148,7 @@ final class CarFreshnessSqlLiveQueryTest extends IntegrationTestCase
             'solddate'           => null,
         ]);
 
-        // No exception, no ApiResponse/error wrapping — a genuinely malformed
-        // query would surface here as a thrown CarDatabaseException.
+        // A malformed query would throw CarDatabaseException here.
         $results = $this->repo->findVerificationEligible(1000, 0);
 
         $ids = array_map(static fn ($row) => (int) $row->id, $results);
@@ -178,15 +165,9 @@ final class CarFreshnessSqlLiveQueryTest extends IntegrationTestCase
     // -------------------------------------------------------------------------
 
     /**
-     * A car one minute inside the one-year window must read fresh.
-     *
-     * Together with its just-stale sibling this is what pins the interval to a
-     * year. Without them the window is asserted only as an exact SQL string, so
-     * retuning it (1 YEAR -> 18 MONTH, say) leaves every behavioural test green
-     * and the string assertions read as "this string changed" rather than "this
-     * behaviour is wrong" — inviting a maintainer to update them and ship a
-     * silently different verification window. That is the same shape of miss
-     * that let #1953 itself pass a green suite.
+     * A car one minute inside the one-year window must read fresh. With its
+     * just-stale sibling this pins the interval behaviorally, not only as a
+     * SQL string.
      */
     #[Group('fast')]
     public function testFreshnessSqlMatchesCarJustInsideTheOneYearBoundary(): void
@@ -210,9 +191,6 @@ final class CarFreshnessSqlLiveQueryTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * A car one minute outside the one-year window must read stale.
-     */
     #[Group('fast')]
     public function testFreshnessSqlExcludesCarJustOutsideTheOneYearBoundary(): void
     {
@@ -236,10 +214,8 @@ final class CarFreshnessSqlLiveQueryTest extends IntegrationTestCase
     }
 
     /**
-     * The same boundary via `last_verified`, the other operand of the OR.
-     *
-     * `owner_last_updated` alone would leave the verified-recently disjunct
-     * unpinned, so a retune of only that half would go unnoticed.
+     * The same boundary via `last_verified`, the other operand of the OR, so a
+     * retune of only that half is caught.
      */
     #[Group('fast')]
     public function testFreshnessSqlAppliesTheSameBoundaryToLastVerified(): void

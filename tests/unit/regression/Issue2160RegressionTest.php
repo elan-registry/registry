@@ -7,36 +7,14 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Regression test for Issue #2160: the integration suite's group exclusions
- * must come from `phpunit-integration.xml` alone, never from a composer
- * script's command line.
- *
- * In PHPUnit 12, `TextUI/Configuration/Merger.php` *replaces* the XML
- * `<groups><exclude>` list whenever any CLI `--exclude-group` is passed — it
- * does not merge the two. A composer script that ran
- * `phpunit -c phpunit-integration.xml --exclude-group known-broken` therefore
- * silently dropped the XML's `live-network` exclusion and re-enabled tests
- * that make real outbound HTTP calls. Nothing failed; the run just got slow
- * and network-dependent.
- *
- * The integration suite cannot run in CI (it needs a real database), so this
- * unit-level guard is the only CI-enforced check on that wiring. It pins
- * three things:
- *
- * - no composer script that uses `phpunit-integration.xml` passes
- *   `--exclude-group`;
- * - the XML still excludes both `live-network` and `known-broken`;
- * - the two network-dependent integration tests still carry
- *   `#[Group('live-network')]`, so the XML exclusion actually covers them.
- *
- * Both of those test classes extend PHPUnit's plain TestCase (not
- * IntegrationTestCase) and have no top-level side effects, so they load
- * safely under the unit bootstrap and their attributes are read via
- * Reflection rather than by parsing source text.
+ * Issue #2160: in PHPUnit 12 a CLI --exclude-group replaces the XML
+ * <groups><exclude> list instead of merging with it, so a composer script
+ * that passed one silently re-enabled the live-network tests. The
+ * integration suite does not run in CI, so this unit test is the only CI
+ * check on that wiring.
  *
  * @issue 2160
  * @link https://github.com/elan-registry/registry/issues/2160
- * @category regression
  */
 #[Group('regression')]
 final class Issue2160RegressionTest extends TestCase
@@ -47,7 +25,6 @@ final class Issue2160RegressionTest extends TestCase
 
     protected function setUp(): void
     {
-        // tests/unit/regression/ is three levels below the project root
         $this->projectRoot = dirname(__DIR__, 3);
     }
 
@@ -145,8 +122,6 @@ final class Issue2160RegressionTest extends TestCase
     }
 
     /**
-     * Composer scripts normalized to a list of command strings each.
-     *
      * @return array<string, list<string>>
      */
     private function composerScripts(): array
@@ -162,8 +137,6 @@ final class Issue2160RegressionTest extends TestCase
 
         $scripts = [];
         foreach ($composer['scripts'] as $name => $value) {
-            // Scripts may be a single command or an array of commands; `@php`
-            // prefixes need no special handling because the check is a substring match.
             $commands = is_array($value) ? $value : [$value];
             $scripts[(string) $name] = array_values(array_filter($commands, 'is_string'));
         }

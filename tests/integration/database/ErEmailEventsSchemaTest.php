@@ -7,16 +7,10 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Schema-assertion tests for the `er_email_events` table created by issue
- * #1887's migration `20260907141817_create_er_email_events_table`.
+ * #1887: er_email_events schema.
  *
- * `brevo_message_id NOT NULL DEFAULT ''` is correctness-critical, not a style
- * choice — MySQL treats every NULL as distinct in a unique index, so a
- * nullable column would silently defeat `UNIQUE (car_id, brevo_message_id,
- * event)` for exactly the rows that need dedup most (a locally-written 'sent'
- * row, or any inbound payload missing the field). This is asserted directly
- * against information_schema rather than just trusted from the migration
- * source.
+ * brevo_message_id must be NOT NULL: MySQL treats each NULL as distinct in a
+ * unique index, so a nullable column would defeat the dedup key.
  */
 #[Group('integration')]
 final class ErEmailEventsSchemaTest extends IntegrationTestCase
@@ -127,9 +121,7 @@ final class ErEmailEventsSchemaTest extends IntegrationTestCase
     #[Group('fast')]
     public function testCarIdHasNoForeignKeyConstraint(): void
     {
-        // This codebase has no FK constraints on car-adjacent tables (cars.user_id's
-        // own FK was deliberately dropped — 20260719120000_drop_cars_user_id_fk.php).
-        // er_email_events.car_id follows the same convention deliberately.
+        // Convention: no FKs on car-adjacent tables (20260719120000_drop_cars_user_id_fk.php).
         $fkRows = $this->db->query(
             "SELECT CONSTRAINT_NAME
              FROM information_schema.KEY_COLUMN_USAGE

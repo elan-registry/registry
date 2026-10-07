@@ -8,33 +8,15 @@ use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * End-to-end test for the user deletion → car reassignment flow.
- *
- * Verifies that after_user_deletion.php correctly reassigns cars.user_id to
- * the noowner account when a user is deleted, without relying on any FK
- * constraint to do the work; that it deletes the user's profile row and
- * expires their pending transfer requests in the same transaction; and that
- * it logs the reassignment (one completion summary plus one entry per car).
- *
- * This test closes the gap that allowed the #1279 race condition to reach
- * production: the previous FK test exercised the constraint in isolation
- * (bypassing the hook), so the hook was never tested end-to-end.
- *
- * Extends TransferIntegrationTestCase (not IntegrationTestCase directly) solely
- * to reuse its createTransferRequest() fixture helper for the pending-transfer-
- * expiry assertions below — this file is otherwise unrelated to transfer tests.
+ * #1279: runs after_user_deletion.php end to end; no FK reassigns cars to noowner.
+ * Extends TransferIntegrationTestCase only for createTransferRequest().
  */
 #[Group('integration')]
 final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
 {
     /**
-     * @var int[] user_ids of profile rows this test inserted directly (bypassing
-     *     IntegrationTestCase's fixtures, which don't track profiles). The hook is
-     *     expected to delete these itself, but a failed assertion or an early-return
-     *     in the hook (e.g. no session, a DB error on the noowner lookup, or a
-     *     transaction rollback — the no-noowner fallback branch still deletes the
-     *     profile, so that alone isn't a leak scenario) would otherwise leak the row
-     *     into the persistent integration schema forever.
+     * @var int[] user_ids of profile rows inserted directly; base fixtures do not
+     *     track profiles, so a failed hook would leak them.
      */
     private array $createdProfileUserIds = [];
 
@@ -42,13 +24,8 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
     {
         parent::setUp();
 
-        // after_user_deletion.php requires an authenticated session (currentUserId()
-        // throws RuntimeException otherwise) — see the ASSUMPTION comment in
-        // after_user_deletion.php for which production callers provide one. The hook
-        // itself only checks for a session, not admin permission, so this fixture is
-        // an authenticated (non-admin) test user, not an actual admin. Without it, the
-        // hook aborts before reassigning cars and the final assertion below fails with
-        // a confusing "wrong ID" message instead of a clear "no session" error.
+        // The hook needs a session (currentUserId() throws), not admin permission.
+        // Without it the hook aborts and the test fails with a confusing "wrong ID" message.
         $actingUserId = $this->createTestUser();
         $this->loginAsTestUser($actingUserId);
     }
@@ -56,38 +33,21 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
     protected function tearDown(): void
     {
         try {
-            // Belt-and-suspenders: the hook is expected to have already deleted these
-            // (that's what the test asserts), so this is normally a 0-row no-op. It only
-            // matters if an assertion failed partway through and left a row behind.
             foreach ($this->createdProfileUserIds as $userId) {
-                // DB::query() never throws on execute-time failure — check error() explicitly
-                // so a failed cleanup DELETE doesn't silently leave a row in the test schema.
+                // DB::query() does not throw on execute failure; check error().
                 $result = $this->db->query('DELETE FROM profiles WHERE user_id = ?', [$userId]);
                 if ($result->error()) {
                     fwrite(STDERR, "NOTE: tearDown() cleanup failed for profile user_id {$userId}: {$result->errorString()}\n");
                 }
             }
         } finally {
-            // Run even if the profile cleanup above throws, so the base class's own
-            // fixture cleanup — and its restoreGlobalUser() call — is never skipped.
+            // Always run base cleanup, including restoreGlobalUser().
             parent::tearDown();
         }
     }
 
     /**
-     * Full hook path: delete user → require after_user_deletion.php → cars go to noowner,
-     * profile is deleted, pending transfer requests expire.
-     *
-     * Arrange: create a test user with two cars (proves the hook's per-car reassignment
-     *          loop, not just a single-iteration pass), a profile row, and a pending
-     *          transfer request they initiated. Also create an unrelated second user's
-     *          pending transfer request, to prove the hook's expiry UPDATE is scoped to
-     *          the deleted user and doesn't over-match.
-     * Act:     delete the user row (as deleteUsers() would), then run the hook.
-     * Assert:  cars.user_id equals the noowner ID for both cars (never NULL); the profile
-     *          row is gone; the pending transfer request is expired; the other user's
-     *          transfer request is untouched; the hook logs one UserDeletion completion
-     *          summary and one CarActions entry per car.
+     * Two cars prove the per-car loop; a second user's request proves the expiry UPDATE is scoped.
      */
     public function test_afterUserDeletionHook_cleansUpUserDataAndLogs(): void
     {
@@ -100,13 +60,8 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         $userId = $this->createTestUser();
         $carIds = [$this->createTestCar($userId), $this->createTestCar($userId)];
 
-        // Seed synthetic PII directly onto both cars. createTestCar() leaves these
-        // columns NULL, and NULL already satisfies the post-hook assertNull(lat)/
-        // assertNull(lon) checks below with nothing having changed — without this
-        // seed, a regression that left the scrub logic out entirely would still pass.
-        // fname/lname use values clearly distinct from noowner's ('No'/'Owner') so the
-        // post-hook assertion that they become noowner's name actually proves a change
-        // occurred, not just that both happened to already match.
+        // Seed PII: createTestCar() leaves it NULL, which would let a missing scrub pass.
+        // Names differ from noowner's so the post-hook name check proves a change.
         foreach ($carIds as $carId) {
             $seeded = $this->db->update('cars', $carId, [
                 'email'   => 'colin.chapman@example.com',
@@ -132,21 +87,12 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         $this->assertTrue((bool) $profileInserted, 'Test fixture: profiles insert must succeed');
         $this->createdProfileUserIds[] = $userId;
 
-        // Transfer request the deleted user initiated for someone else's car — the hook
-        // must expire it (not leave it pointing at a now-deleted requester). existing_car_id
-        // has no FK to cars.id (see #1547), so any car ID would satisfy the schema; this
-        // test reuses one of its own tracked cars for readability. Cleanup is automatic:
-        // createTransferRequest() (inherited from TransferIntegrationTestCase) tracks the
-        // returned ID and deletes it directly by ID in tearDown().
         $transferRequestId = $this->createTransferRequest($carIds[0], $userId, [
             'status'            => 'pending',
             'submitted_chassis' => 'T' . substr(uniqid(), -10),
         ]);
 
-        // An unrelated user's pending transfer request — must survive the hook untouched.
-        // Without this, a regression that widened the hook's WHERE clause (e.g. dropping
-        // the requested_by_user_id filter) would silently expire every pending request in
-        // the schema and nothing here would catch it.
+        // Catches a widened WHERE clause that would expire every pending request.
         $otherUserId = $this->createTestUser();
         $otherCarId = $this->createTestCar($otherUserId);
         $otherTransferRequestId = $this->createTransferRequest($otherCarId, $otherUserId, [
@@ -154,21 +100,15 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             'submitted_chassis' => 'T' . substr(uniqid(), -10),
         ]);
 
-        // Simulate deleteUsers() having removed the user row.
-        // With fk_cars_user_id gone, this does NOT touch cars.user_id.
         $this->db->delete('users', ['id', '=', $userId]);
         // Leave $userId in createdUserIds — tearDown's redundant DELETE is a 0-row no-op.
 
-        // Pre-condition: cars still carry the deleted user's ID (no FK to NULL them).
         foreach ($carIds as $carId) {
             $before = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
             $this->assertSame($userId, (int) $before->user_id, "Pre-condition: car $carId's user_id intact after user deleted (no FK)");
         }
 
-        // Pre-condition: the seeded PII actually landed on the cars before the hook
-        // runs — a silently-failed seed would otherwise make the post-hook assertions
-        // vacuous again (NULL/blank columns "passing" the scrub check without the hook
-        // having changed anything).
+        // A failed seed would make the scrub assertions vacuous.
         foreach ($carIds as $carId) {
             $seededFields = $this->carOwnerIdentityFields($carId);
             $this->assertSame('colin.chapman@example.com', $seededFields->email, "Pre-condition: car $carId's seeded email present before hook runs");
@@ -177,26 +117,13 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             $this->assertSame('Hethel', $seededFields->city, "Pre-condition: car $carId's seeded city present before hook runs");
             $this->assertSame('Norfolk', $seededFields->state, "Pre-condition: car $carId's seeded state present before hook runs");
             $this->assertSame('United Kingdom', $seededFields->country, "Pre-condition: car $carId's seeded country present before hook runs");
-            // cars.lat/lon are MySQL FLOAT (32-bit); 52.4567/1.0234 aren't exactly
-            // representable in float32, so an exact assertSame here looks like a
-            // precision hazard. Verified directly against this project's MySQL/PDO
-            // stack that both values compare identical after a round-trip — MySQL
-            // emits the shortest decimal that round-trips the stored float32, and
-            // PHP's (float) cast lands on the same bit pattern as the literal.
-            // Reproduce with:
-            //   php -r '$p = new PDO("mysql:host=db;port=3306;dbname=elanregi_dev_test_2", "elanregi_dev_test", getenv("DB_PASS"));
-            //     $p->exec("CREATE TEMPORARY TABLE t (lat FLOAT, lon FLOAT)");
-            //     $p->prepare("INSERT INTO t (lat, lon) VALUES (?, ?)")->execute([52.4567, 1.0234]);
-            //     $r = $p->query("SELECT lat, lon FROM t")->fetch(PDO::FETCH_OBJ);
-            //     var_dump((float) $r->lat === 52.4567, (float) $r->lon === 1.0234);'
-            // Run it in the app container (docker compose exec -u www-data app),
-            // with host/port/dbname/user from .env.test.local. Both assertions print true.
+            // Exact assertSame on FLOAT columns is safe for these values: MySQL emits the
+            // shortest decimal that round-trips float32, which casts back to the same literal.
             $this->assertSame(52.4567, (float) $seededFields->lat, "Pre-condition: car $carId's seeded lat present before hook runs");
             $this->assertSame(1.0234, (float) $seededFields->lon, "Pre-condition: car $carId's seeded lon present before hook runs");
             $this->assertSame('https://example.com/colin', $seededFields->website, "Pre-condition: car $carId's seeded website present before hook runs");
         }
 
-        // Pre-condition: profile and both pending transfer requests still exist.
         $this->assertSame(1, $this->profileRowCount($userId), 'Pre-condition: profile row exists before hook runs');
         $this->assertSame(
             'pending',
@@ -209,15 +136,7 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             'Pre-condition: other user\'s transfer request still pending before hook runs'
         );
 
-        // logs is never truncated between runs against the persistent integration schema
-        // (tearDown() only deletes cars, cars_hist, and car_transfer_requests rows tied to
-        // those cars, plus users — never logs). The completion-summary message is
-        // identical across runs (it carries only the noowner ID and car count, both
-        // stable), so an absolute assertSame(1, ...) would only pass on a freshly
-        // provisioned schema and fail on every rerun. The per-car messages embed
-        // fresh auto-increment IDs and are usually unique per run, but IDs can repeat
-        // across runs if the schema's AUTO_INCREMENT is ever reset — before/after
-        // deltas make both assertions robust to that regardless.
+        // logs is never cleaned up and these messages can repeat across runs, so count deltas.
         $completionLogMessage = sprintf(
             'Complete cleanup: reassigned %d cars to noowner user (ID: %d)',
             count($carIds),
@@ -246,22 +165,14 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         $db = $this->db;
         require TESTING_ROOT . '/usersc/scripts/after_user_deletion.php';
 
-        // Assert: both cars are now owned by noowner, not the deleted user and not NULL.
         foreach ($carIds as $carId) {
             $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
             $this->assertNotNull($after->user_id, "cars.user_id must not be NULL after hook runs (car $carId)");
             $this->assertSame($noOwnerId, (int) $after->user_id, "cars.user_id must equal noowner ID after hook (car $carId)");
         }
 
-        // Assert: the deleted owner's PII no longer appears on cars/cars_hist — proves
-        // the real transfer() → updateCar()/insertHistory() path actually persists the
-        // scrub (GDPR erasure), not just that it was asked to. email/city/state/country
-        // blank to '' (noowner has no profile row and an unroutable email); fname/lname
-        // take on noowner's own account name (a legible placeholder identity, not the
-        // deleted user's — asserted against a live lookup, not a hardcoded string, so
-        // this stays correct if the noowner fixture's name ever changes); website is
-        // nulled (not blanked to '') by CarValidator's dedicated website-clearing case;
-        // lat/lon are null (no profile row to source coordinates from).
+        // GDPR erasure: the noowner name comes from a live lookup so a fixture rename does not break this.
+        // website is nulled (not blanked) by CarValidator's website-clearing case.
         foreach ($carIds as $carId) {
             $carFields = $this->carOwnerIdentityFields($carId);
             foreach (['email', 'city', 'state', 'country'] as $field) {
@@ -273,21 +184,8 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             $this->assertNull($carFields->lat, "cars.lat should be null for car $carId");
             $this->assertNull($carFields->lon, "cars.lon should be null for car $carId");
 
-            // cars_hist is an append-only audit trail (DATABASE.md: "Car audit trail").
-            // insertHistory() — the path used by transfer(), and thus by this deletion
-            // hook — only ever inserts, never updates existing rows' content columns.
-            // (CarRepository::transferHistory() does UPDATE cars_hist, but only to
-            // rewrite the car_id FK during a car merge; it never touches PII/content
-            // columns and is not part of the deletion-reassignment path exercised here.)
-            // This block proves the audit row THIS transfer just created correctly
-            // reflects the target owner's (noowner's) identity, not the deleted user's
-            // — it does NOT and cannot prove anything about historic cars_hist rows
-            // written before this deletion, since prior rows' content is intentionally
-            // never retroactively modified.
-            //
-            // cars_hist.website stays '' (not null): insertHistory()'s history-field build
-            // doesn't go through CarValidator's CLEARABLE_FIELDS pass that nulls
-            // $updateFields['website'] on the cars table — see CarAdministrationService.php.
+            // cars_hist is append-only: only the new audit row is checked, not historic rows.
+            // website stays '' there: insertHistory() skips CarValidator's CLEARABLE_FIELDS pass.
             $histFields = $this->carsHistOwnerIdentityFields($carId);
             foreach (['email', 'city', 'state', 'country', 'website'] as $field) {
                 $this->assertSame('', $histFields->$field, "cars_hist.$field should be blanked for car $carId");
@@ -298,11 +196,8 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             $this->assertNull($histFields->lon, "cars_hist.lon should be null for car $carId");
         }
 
-        // Assert: the profile row was deleted (GDPR erasure).
         $this->assertSame(0, $this->profileRowCount($userId), 'profiles row must be deleted after hook runs');
 
-        // Assert: the pending transfer request was expired, not left pointing at a
-        // deleted requester.
         $transferAfter = $this->db->query(
             "SELECT status, completed_date, admin_notes FROM car_transfer_requests WHERE id = ?",
             [$transferRequestId]
@@ -315,15 +210,12 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             'Expired transfer request must note the account deletion'
         );
 
-        // Assert: the expiry UPDATE is scoped to the deleted user — an unrelated
-        // pending request must survive untouched.
         $this->assertSame(
             'pending',
             $this->transferRequestStatus($otherTransferRequestId),
             "Other user's unrelated transfer request must remain pending after hook runs"
         );
 
-        // Assert: the hook logged the completion summary exactly once.
         $this->assertLoggedExactlyOnceSince(
             LogCategories::LOG_CATEGORY_USER_DELETION,
             $completionLogMessage,
@@ -331,8 +223,6 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             'Hook must log exactly one UserDeletion completion summary'
         );
 
-        // Assert: the hook logged exactly one CarActions entry per car — proves the
-        // per-car loop fires for each car, not just once regardless of car count.
         foreach ($carIds as $index => $carId) {
             $this->assertLoggedExactlyOnceSince(
                 LogCategories::LOG_CATEGORY_CAR_ACTIONS,
@@ -343,10 +233,6 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         }
     }
 
-    /**
-     * Count profile rows for a user — used before/after the hook to confirm the
-     * profile is deleted (GDPR erasure) rather than left behind or double-deleted.
-     */
     private function profileRowCount(int $userId): int
     {
         $row = $this->db->query('SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?', [$userId])->first();
@@ -354,9 +240,6 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         return (int) $row->cnt;
     }
 
-    /**
-     * Fetch a car_transfer_requests row's current status by ID.
-     */
     private function transferRequestStatus(int $transferRequestId): string
     {
         $row = $this->db->query(
@@ -367,9 +250,6 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         return (string) $row->status;
     }
 
-    /**
-     * Fetch a car's current owner-identity PII fields by car ID.
-     */
     private function carOwnerIdentityFields(int $carId): object
     {
         return $this->db->query(
@@ -378,13 +258,6 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         )->first();
     }
 
-    /**
-     * Fetch the most recent NEWOWNER cars_hist row's owner-identity PII fields by car ID.
-     *
-     * This is always the row THIS test's transfer() call just inserted (cars_hist is
-     * append-only — see the comment at its call site), so it proves the fresh audit
-     * row reflects the target owner's identity, never anything about historic rows.
-     */
     private function carsHistOwnerIdentityFields(int $carId): object
     {
         return $this->db->query(
@@ -394,24 +267,13 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
     }
 
     /**
-     * Assert a logs table match count grew by exactly one since $countBefore was
-     * captured. See the before-capture comment in the test method for why deltas
-     * (not absolute counts) are required against the persistent integration schema.
-     *
-     * $lognote is passed to countMatchingLogs() as a LIKE pattern — safe today since
-     * none of this file's log messages contain '%' or '_', but a future message that
-     * does would silently widen the match instead of failing loudly.
+     * Trap: $lognote is a LIKE pattern; a message with '%' or '_' silently widens the match.
      */
     private function assertLoggedExactlyOnceSince(string $logtype, string $lognote, int $countBefore, string $failureMessage): void
     {
         $this->assertSame($countBefore + 1, $this->countMatchingLogs($logtype, $lognote), $failureMessage);
     }
 
-    /**
-     * Count er_email_events rows for a car — used before/after the hook runs
-     * to confirm the departing owner's webhook event history is cleared
-     * (#1887) as part of the same transaction as reassignment.
-     */
     private function emailEventRowCount(int $carId): int
     {
         $row = $this->db->query('SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ?', [$carId])->first();
@@ -431,11 +293,7 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         $this->assertTrue((bool) $inserted, 'Test fixture: er_email_events insert must succeed: ' . $this->db->errorString());
     }
 
-    /**
-     * #1887: a departing owner's er_email_events rows must be cleared in the
-     * same transaction as reassignment, before the car->owner link is
-     * severed — via the noowner-exists branch (the primary/common path).
-     */
+    /** #1887: er_email_events cleared in the reassignment transaction (noowner-exists branch). */
     public function test_afterUserDeletionHook_clearsEmailEventsViaNoOwnerBranch(): void
     {
         $noOwnerRow = $this->db->query("SELECT id FROM users WHERE username = ?", ['noowner'])->first();
@@ -467,14 +325,8 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
     }
 
     /**
-     * Same scenario, forced down the fallback branch (no `noowner` user
-     * present) — this is the bug the plan fixes: previously the fallback
-     * branch never fetched a car list at all before calling
-     * reassignCarsByUser(), so er_email_events cleanup silently never
-     * happened on this path. Forces the branch by temporarily renaming the
-     * noowner account's username so the hook's own lookup finds nothing,
-     * restoring it in a finally block so no other test ever observes a
-     * missing noowner account.
+     * #1887 fallback branch (no noowner user). Renames noowner temporarily; the
+     * finally block restores it so no other test sees it missing.
      */
     public function test_afterUserDeletionHook_clearsEmailEventsViaFallbackBranch(): void
     {
@@ -513,13 +365,8 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
     }
 
     /**
-     * Deletion failing mid-transaction: forces a genuine DB error inside the
-     * hook's transaction (temporarily renaming
-     * car_transfer_requests.admin_notes, which the hook's very first write
-     * inside the transaction UPDATEs) and asserts the whole transaction rolls
-     * back — er_email_events rows survive, and the car is NOT reassigned —
-     * matching the file's existing all-or-nothing guarantee. Column restored
-     * in a finally block.
+     * Renames car_transfer_requests.admin_notes (the hook's first write) to force a
+     * DB error; the finally block restores the column.
      */
     public function test_afterUserDeletionHook_rollsBackEmailEventsOnMidTransactionFailure(): void
     {

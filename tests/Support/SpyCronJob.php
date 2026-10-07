@@ -18,8 +18,7 @@ use ElanRegistry\Cron\AbstractCronJob;
  * guard before the fake database saw the claim, preventing the "claim succeeded"
  * test from reaching execute().
  *
- * Deliberately a *named* class rather than an anonymous one, per the
- * `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2

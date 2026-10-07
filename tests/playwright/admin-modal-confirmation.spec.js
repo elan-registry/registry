@@ -1,12 +1,8 @@
-// tests/playwright/admin-modal-confirmation.test.js
-//
 // Behavioral tests for the Bootstrap 5 #confirmationModal used on admin pages.
 // Covers: modal DOM presence, Cancel/Confirm behavior, XSS prevention via
 // textContent, and CSRF token availability for modal-triggered operations.
 // Cancel/Confirm and XSS checks target the backup cleanup confirmation modal
 // (button[onclick*="performBackupCleanup"]) in Area 2.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

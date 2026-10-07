@@ -15,28 +15,9 @@ use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
 
 /**
- * Real-DB behavioral tests for BrevoEventReconciliationJob (#1889) covering
- * query-shape correctness that a fake-database unit test cannot prove.
- *
- * tests/unit/cron/BrevoEventReconciliationJobTest.php already covers the
- * job's control flow (tag gate, per-event failure isolation, bounded page,
- * window math, date fallback) against a mocked CarRepository and a fake
- * Brevo client — none of that is repeated here. This file wires the job with
- * a REAL CarRepository and a REAL EmailEventApplier (and, transitively, a
- * real CarVerificationManager) against the local MySQL test schema, so the
- * actual SQL — insertEmailEvent()'s ON DUPLICATE KEY UPDATE dedup and
- * deleteEmailEventsOlderThan()'s cutoff comparison — runs for real. The
- * Brevo client stays a fake (FakeBrevoEventReconciliationClient): there is
- * no real Brevo API to poll in a test, and the point here is what the job
- * does with events once it has them, not how it fetches them.
- *
- * tests/integration/database/CarRepositoryEmailEventsTest.php already proves
- * insertEmailEvent()'s dedup and deleteEmailEventsOlderThan()'s cutoff
- * directly against CarRepository — this file's job is narrower: prove the
- * *job*, wired end-to-end, actually reaches those same code paths when run
- * twice (simulating a subsequent night's re-processing of the same Brevo
- * event) and when its own execute() drives the purge, not just that
- * CarRepository's methods work in isolation.
+ * #1889: BrevoEventReconciliationJob with a real CarRepository and
+ * EmailEventApplier, so the dedup and purge SQL runs for real. Control flow
+ * is in tests/unit/cron/BrevoEventReconciliationJobTest.php.
  *
  * @see https://github.com/elan-registry/registry/issues/1889
  */
@@ -60,14 +41,9 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         parent::setUp();
         $this->requireDatabase();
 
-        // execute() checks the site-wide verification switch first (since
-        // v2.30.2) and it ships off by default — force it on so this file's
-        // job-behavior assertions aren't short-circuited by an unrelated
-        // switch. Restored in tearDown().
-        // unmatched_recipient_count is read from the same singleton row and
-        // restored alongside `enabled`: IntegrationTestCase does not reset
-        // tables between tests, so the increment this file's unmatched-recipient
-        // test drives would otherwise leak into every later test reading it.
+        // execute() returns early while verification is off (the default), so force
+        // it on. Also restore unmatched_recipient_count: tables are not reset
+        // between tests.
         $this->db->query('SELECT enabled, unmatched_recipient_count FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
@@ -123,13 +99,8 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     // --- Dedup across two execute() calls (simulating a re-processed night) --
 
     /**
-     * The same Brevo event "polled" twice across two separate execute() calls
-     * — e.g. a partial success one night, then the same event still inside
-     * the 48-hour lookback window the following night — must dedup down to
-     * one er_email_events row via the real ON DUPLICATE KEY UPDATE, not two.
-     * A mocked CarRepository unit test cannot catch a regression here (e.g.
-     * a change to the unique index, or a switch to DB::insert()'s
-     * indiscriminate update mode) because it never touches the real schema.
+     * An event polled again inside the 48-hour window must dedup to one row
+     * via the real ON DUPLICATE KEY UPDATE.
      */
     public function testSameEventAcrossTwoRunsDedupsToOneRow(): void
     {
@@ -148,8 +119,6 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             'First run must record exactly one row'
         );
 
-        // Second night's run "re-polls" the same event — still inside the
-        // 48-hour window, exactly as the job's own retry model expects.
         $this->makeJob([$event], new \DateTimeImmutable('2026-09-09 03:00:00'))->runNow();
 
         $this->assertSame(
@@ -160,12 +129,7 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         );
     }
 
-    /**
-     * Same as above, but for an event type that also triggers a flag write
-     * (hard_bounce -> setBounced()), proving the dedup holds even when the
-     * full EmailEventApplier::apply() escalation path runs both times, not
-     * just the event-row insert.
-     */
+    /** Dedup holds when the full apply() escalation runs twice. */
     public function testSameHardBounceEventAcrossTwoRunsDedupsAndStaysBounced(): void
     {
         $event = new FakeBrevoEvent(
@@ -192,18 +156,13 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     // --- Retention purge exercised through execute() ------------------------
 
     /**
-     * CarRepositoryEmailEventsTest already proves deleteEmailEventsOlderThan()
-     * itself respects the cutoff. This proves the *job's* execute() actually
-     * drives that call with its real 24-month cutoff, end-to-end, against a
-     * seeded row old enough to purge and one recent enough to survive — with
-     * a fake Brevo client returning no events, isolating the purge from the
-     * backfill so this test cannot pass or fail on backfill behavior.
+     * execute() drives the purge with its real 24-month cutoff. No events, so
+     * the backfill cannot affect the result.
      */
     public function testExecutePurgesOnlyRowsOlderThanTheTwentyFourMonthCutoff(): void
     {
         $now = new \DateTimeImmutable('2026-09-09 03:00:00');
 
-        // 25 months old — must be purged.
         $this->repo->insertEmailEvent(
             $this->carId,
             $this->carEmail,
@@ -212,7 +171,6 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             'reconcile-purge-old',
             '2024-08-09 03:00:00'
         );
-        // Recent — must survive.
         $this->repo->insertEmailEvent(
             $this->carId,
             $this->carEmail,
@@ -235,14 +193,7 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
 
     // --- Unmatched recipient counter (#2085) --------------------------------
 
-    /**
-     * An event whose recipient matches no car must not be silently dropped: it
-     * increments both the in-memory summary tally and, separately,
-     * er_verification_settings.unmatched_recipient_count in the real database
-     * (#2085 added the increment call; this proves it survives the job's real
-     * execute() path against a live DB, not just a mocked VerificationSettings
-     * collaborator at the unit-test level).
-     */
+    /** #2085: an unmatched recipient increments the real DB counter. */
     public function testUnmatchedRecipientIncrementsTheDashboardCounterInTheDatabase(): void
     {
         $unmatchedEmail = 'reconcile-unmatched-' . uniqid() . '@example.com';

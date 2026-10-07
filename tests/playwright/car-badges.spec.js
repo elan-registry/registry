@@ -1,5 +1,3 @@
-// tests/playwright/car-badges.spec.js
-//
 // Coverage for the status badges (Sold, Verified, New) from issue #1900.
 // CarBadges (PHP) picks the badge keys and draws them with CarBadges::html().
 // The account page and details page call it directly. The cars list gets the

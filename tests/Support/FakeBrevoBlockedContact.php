@@ -20,8 +20,7 @@ namespace Tests\Support;
  * the job an array or an int. Keeping them loose is what lets a test construct
  * a deliberately malformed contact and exercise the job's `is_string()` guards.
  *
- * Deliberately a *named* class rather than an anonymous one, per the
- * `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2

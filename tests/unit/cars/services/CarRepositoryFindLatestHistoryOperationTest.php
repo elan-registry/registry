@@ -11,13 +11,8 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit test for CarRepository::findLatestHistoryOperationByCarIds(), mocking
- * DatabaseInterface. Mirrors CarRepositoryFindByOwnerFailureTest.php's and
- * CarRepositoryEmailEventsTest.php's (sibling findLatestEmailEventsByCarIds())
- * conventions: a mocked DB double for the no-op/contract-shape behavior that
- * does not need a real self-join, and the live-DB integration test
- * (tests/integration/database/CarRepositoryHistoryOperationTest.php) for the
- * SQL correctness a mock cannot verify.
+ * A mock cannot check the self-join SQL; see
+ * tests/integration/database/CarRepositoryHistoryOperationTest.php.
  */
 #[Group('fast')]
 final class CarRepositoryFindLatestHistoryOperationTest extends TestCase

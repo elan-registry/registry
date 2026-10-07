@@ -9,19 +9,8 @@ use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\PhpBuiltinServer;
 
 /**
- * Behavioral (real-process, real-DB) tests for app/verify/verify_car.php —
- * the public car verification landing page built by #1881.
- *
- * Follows BrevoWebhookEndpointTest.php's harness pattern exactly, since
- * verify_car.php explicitly follows app/api/webhooks/brevo.php's shape (no
- * securePage(), no session): a router script requires the real endpoint file
- * under PHP's built-in web server (`php -S`), driven with real HTTP requests
- * via curl so genuine $_SERVER['REQUEST_METHOD'], GET/POST superglobals, and
- * response headers/status are all exercised — not simulated by including the
- * file directly with superglobals hand-set.
- *
- * @see docs/plans/issue-1881-verify-car-landing-page.md
- * @see https://github.com/elan-registry/registry/issues/1881
+ * #1881: real-process tests for app/verify/verify_car.php under `php -S`,
+ * driven by curl, so real superglobals, headers, and status codes are used.
  */
 #[Group('integration')]
 final class VerifyCarLandingPageTest extends IntegrationTestCase
@@ -188,12 +177,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     // Fixtures
     // ------------------------------------------------------------------
 
-    /**
-     * Sets a plaintext vericode on the test car (hashed at rest, per
-     * CarVerificationManager::setVerificationCode()) and, unless overridden,
-     * a vericode_sent_at timestamp well inside the 60-day expiry window.
-     * Returns the plaintext code for use in requests.
-     */
+    /** Returns the plaintext vericode; it is stored hashed. */
     private function issueVericode(?string $sentAt = null): string
     {
         $plaintext = bin2hex(random_bytes(16));
@@ -407,13 +391,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->assertSame(0, $this->historyCount('VERIFIED SOLD'));
     }
 
-    /**
-     * Structured-input requirement: a solddate that is present but not a
-     * valid date string at all, not merely out of range. Confirms the page's
-     * own documented failure mode (inline validation error, no write, no
-     * crash) rather than a PHP fatal from DateTime::createFromFormat()
-     * choking on garbage input.
-     */
+    /** A garbage solddate must give an inline validation error, not a write or a fatal. */
     public function testPostActionSoldWithNonsenseDateStringIsRejectedWithNoWrite(): void
     {
         $code = $this->issueVericode();
@@ -499,15 +477,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     // ------------------------------------------------------------------
 
     /**
-     * The `cars_update` DB trigger (see database/migrations/…convert_car_
-     * timestamps_to_datetime.php) fires on every UPDATE to `cars`, including
-     * the ones verify_car.php itself issues via markSold()/markVerified() —
-     * so a single verify POST produces BOTH a trigger-written 'UPDATE' row
-     * AND the app's own explicit 'VERIFIED SOLD'/'VERIFIED' row. This test
-     * proves the two remain distinguishable by a single query filtering
-     * `operation`, per the issue's acceptance criterion — not that only one
-     * row type exists, but that the owner-initiated row is never confused
-     * with the trigger's generic one.
+     * The cars_update trigger also writes an 'UPDATE' row for each verify
+     * POST. A query on `operation` must still find only the app's own row.
      */
     public function testVerifiedSoldOperationIsDistinguishableFromOrdinaryUpdateOperation(): void
     {
@@ -523,17 +494,12 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         ]);
         $this->assertSame(303, $result['status']);
 
-        // The trigger fired (an ordinary 'UPDATE' row exists from the same
-        // markSold() call) ...
         $this->assertGreaterThan(
             $updateCountBefore,
             $this->historyCount('UPDATE'),
             'The cars_update trigger must still fire a generic UPDATE row for this same write'
         );
 
-        // ... and it is a DIFFERENT row from the app's own audit row: a query
-        // filtered to operation='VERIFIED SOLD' finds exactly the one owner-
-        // initiated row, never conflated with the trigger's 'UPDATE' row.
         $this->assertSame($verifiedSoldCountBefore + 1, $this->historyCount('VERIFIED SOLD'));
 
         $verifiedSoldRow = $this->db->query(
@@ -600,33 +566,15 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     // ------------------------------------------------------------------
 
     /**
-     * Issue #1883 AC10: "The owner suppressed is derived server-side from the
-     * vericode lookup only — no car or user identifier in the request is
-     * trusted; covered by a test posting a valid vericode alongside a
-     * mismatched user id and asserting only the vericode's own owner is
-     * suppressed."
-     *
-     * verify_car.php's action=optout POST branch calls
-     * Input::raw('vericode') and Input::raw('action') only — it never calls
-     * Input::raw() for any user/owner/car identifier (grep the file: the only
-     * three Input::raw() call sites are 'vericode', 'action', and 'solddate').
-     * So posting a 'user_id' (or any other plausibly-attacker-controlled
-     * field name) alongside the vericode has no code path that could read it
-     * — $ownerId is resolved once, earlier in the file, purely from
-     * $verifyCar->user_id (itself resolved from the vericode lookup at
-     * CarRepository::findByVerificationCode()). This test proves that by
-     * actively trying to defeat it: it posts owner B's id under several
-     * plausible field names next to owner A's valid vericode, then asserts
-     * owner A (the vericode's real owner) is suppressed and owner B is not
-     * touched at all.
+     * #1883 AC10: the owner to suppress comes from the vericode lookup only.
+     * Owner B's id posted under plausible field names must not be read.
      */
     public function testPostWithMismatchedUserIdInBodySuppressesOnlyTheVericodesOwnOwner(): void
     {
         // Owner A: the fixture from setUp() ($this->testUserId / $this->testCarId).
         $code = $this->issueVericode();
 
-        // Owner B: a second owner with their own car, wholly unrelated to the
-        // vericode being posted.
+        // Owner B: unrelated to the posted vericode.
         $otherUserId = $this->createTestUser();
         $otherCarId = $this->createTestCar($otherUserId, ['chassis' => 'VF' . uniqid()]);
 
@@ -636,10 +584,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $historyBeforeA = $this->historyCount('EMAIL SUPPRESSED');
         $historyBeforeB = $this->historyCountForCar($otherCarId, 'EMAIL SUPPRESSED');
 
-        // The vericode belongs to owner A, but the POST body claims owner B's
-        // id under every plausible field name an attacker might guess the
-        // page reads for the fan-out target. None of these fields are part of
-        // the page's real form — this simulates a forged/tampered request.
+        // Forged request: these fields are not in the real form.
         $result = $this->post('vericode=' . $code . '&action=optout', [
             'vericode' => $code,
             'user_id' => (string) $otherUserId,
@@ -690,11 +635,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $code = $this->issueVericode();
         $otherCarBefore = $this->db->query('SELECT * FROM cars WHERE id = ?', [$otherCarId])->first();
 
-        // The vericode belongs to $this->testCarId, but the POST body claims
-        // a different car's id via a field the page never reads for mutation
-        // purposes (verify_car.php resolves the car exclusively from the
-        // vericode, per its own docblock — this "car_id" field is not even
-        // part of its real form, this simulates a forged/tampered request).
+        // Forged request: verify_car.php resolves the car only from the vericode.
         $result = $this->post('vericode=' . $code . '&action=verify', [
             'vericode' => $code,
             'car_id' => (string) $otherCarId,
@@ -725,9 +666,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     {
         $code = $this->issueVericode();
 
-        // Visit the verify-confirm step, then "Cancel" back to the plain
-        // landing URL (a GET, not a form submit) per the page's own Cancel
-        // link semantics.
+        // Cancel is a plain GET back to the landing URL.
         $this->get('vericode=' . $code . '&action=verify');
         $cancelResult = $this->get('vericode=' . $code);
 
@@ -752,11 +691,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     {
         $code = $this->issueVericode();
 
-        // Mirror the "ownerless" condition findVerificationEligible() (and
-        // this page's own re-check) uses: no live users row, or reassigned
-        // to the 'noowner' GDPR placeholder. Simulate via user_id pointing at
-        // a nonexistent user id — cars.user_id has no FK, so this is exactly
-        // the deleted-user shape the page's docblock describes.
+        // Deleted-user shape: cars.user_id has no FK, so point it at a missing user.
         $nonexistentUserId = 999999999;
         $this->db->query('UPDATE cars SET user_id = ? WHERE id = ?', [$nonexistentUserId, $this->testCarId]);
 
@@ -773,9 +708,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     public function testCarReassignedToNoownerWithValidUnexpiredVericodeRendersInvalidLink(): void
     {
         $noownerUserId = $this->createTestUser(['username' => 'noowner_' . uniqid()]);
-        // Directly force the username to the literal 'noowner' sentinel the
-        // page's re-check filters on (CarRepository::findVerificationEligible()'s
-        // exclusion, mirrored by verify_car.php's own re-check).
+        // The 'noowner' GDPR placeholder that findVerificationEligible() excludes.
         $this->db->query('UPDATE users SET username = ? WHERE id = ?', ['noowner', $noownerUserId]);
 
         $code = $this->issueVericode();
@@ -786,8 +719,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->assertSame(404, $result['status']);
         $this->assertStringContainsString('expired or is no longer valid', $result['body']);
 
-        // Restore username before IntegrationTestCase's tearDown() deletes it,
-        // purely so cleanup doesn't depend on the 'noowner' rename surviving.
+        // Restore so tearDown() cleanup does not depend on the rename.
         $this->db->query('UPDATE users SET username = ? WHERE id = ?', ['restored_' . uniqid(), $noownerUserId]);
     }
 
@@ -796,17 +728,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     // ------------------------------------------------------------------
 
     /**
-     * The config pin in RateLimitConfigTest proves the 'verification_code_attempt'
-     * block exists — it does NOT prove verify_car.php's checkRateLimit()/
-     * recordRateLimit() calls actually run against it. That gap matters
-     * because RateLimit::check()'s token_max/total_max paths count ONLY rows
-     * written by record() — without a working recordRateLimit() call (or if
-     * the action-name string ever drifts out of sync between the page and
-     * the config), the configured limit can silently never trip while every
-     * other test in this file keeps passing, since none of them inspect
-     * us_rate_limits directly. This test closes that gap: it proves a real
-     * request writes a real row, scoped to the token identifier the page
-     * documents using (see verify_car.php's rate-limiting comment block).
+     * RateLimitConfigTest proves only that the config exists. This proves the
+     * page records rows under the token identifier, so the limit can trip.
      */
     public function testGetRequestRecordsRateLimitAttemptForTokenIdentifier(): void
     {
@@ -833,18 +756,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
-     * RateLimit::check()'s token_max/ip_max paths count ONLY rows with
-     * success=0 (getAttemptCount()'s $successOnly=false path) — a rejected
-     * request that gets recorded as success=1 is invisible to those limits
-     * forever, regardless of how many rows accumulate. A prior version of
-     * verify_car.php recorded $rateLimitAllowed (whether the request was
-     * throttled) instead of whether the vericode actually resolved, so every
-     * wrong guess landed as success=1 and token_max/ip_max were silently
-     * inert in production even though testGetRequestRecordsRateLimitAttempt-
-     * ForTokenIdentifier above — and every other test in this file — kept
-     * passing. This test drives a real unresolvable-vericode request and
-     * asserts the row it produces is a recorded failure, closing exactly
-     * that gap.
+     * token_max/ip_max count only success=0 rows. A rejected vericode must be
+     * recorded as a failure, or the limits never trip.
      */
     public function testUnknownVericodeRecordsFailedRateLimitAttempt(): void
     {
@@ -870,33 +783,18 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
-     * verify_car.php's own docblock states that a throttled (429) request
-     * must render the identical body to every other rejection — "a throttled
-     * prober must not learn that they were throttled rather than simply
-     * wrong." This is a behavioral (real HTTP, real process) test, so it
-     * seeds enough failed us_rate_limits rows to trip the token_max
-     * threshold and then asserts on the real response.
+     * A throttled (429) request must render the same body as any other
+     * rejection, so a prober cannot tell throttled from wrong.
      *
-     * NOTE: computing the *effective* token_max from this test process is
-     * unreliable — the php -S server process this test drives loads .env
-     * itself (via Dotenv::createImmutable() inside users/init.php) and
-     * applies usersc/includes/rate_limits_dev_override.php's 100x
-     * US_ENVIRONMENT=development relaxation, while replicating that exact
-     * env/config load from this separate PHPUnit process was not made
-     * reliable enough to land here. Seeding a large, fixed row count (well
-     * above both the unrelaxed default of 10 and the relaxed 1000) avoids
-     * depending on knowing the exact effective threshold.
+     * The php -S process applies the 100x dev relaxation itself, so the test
+     * seeds a fixed row count above both thresholds.
      */
     public function testThrottledRequestRendersIdenticalBodyToInvalidLink(): void
     {
         $code = $this->issueVericode();
         $identifierKey = hash('sha256', 'token::' . $code);
 
-        // RateLimit::check() counts token_max against success=0 rows
-        // specifically (getAttemptCount()'s $success=false path), not all
-        // attempts, so seed failed rows directly rather than firing
-        // thousands of real HTTP requests first. 1100 comfortably exceeds
-        // both the unrelaxed (10) and 100x dev-relaxed (1000) thresholds.
+        // 1100 failed rows exceed both thresholds (10 and dev-relaxed 1000).
         for ($i = 0; $i < 1100; $i++) {
             $this->db->insert('us_rate_limits', [
                 'action' => 'verification_code_attempt',
@@ -938,12 +836,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
-     * Unlike the sold path (already covered above), a repeat verify POST is
-     * not guarded — this is deliberate (re-attesting "still accurate" is
-     * harmless, unlike re-recording a sale), but that asymmetry was
-     * previously untested and undocumented. This pins the current, intended
-     * behavior so a future change to it is a conscious decision, not a
-     * silent regression.
+     * Unlike sold, a repeat verify is deliberately not guarded: re-attesting
+     * is harmless.
      */
     public function testRepeatVerifyPostReVerifiesAndInsertsAnotherHistoryRow(): void
     {
@@ -1146,14 +1040,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
-     * _verify_optout_confirm.php's pre-suppression card names how many cars
-     * the opt-out covers ($optOutCarCount, built from findByOwner() — see
-     * verify_car.php's action=optout GET branch). This is the consent-scope
-     * statement for an action that fans out across the owner's entire
-     * account, per that file's own comment: a fixed fallback "would tell a
-     * multi-car owner their action affects only one car, which is simply
-     * false." This test proves the plural branch actually names the real
-     * count for a two-car owner, not a hardcoded singular/generic fallback.
+     * Opt-out covers every car of the owner, so the confirm card must state
+     * the real car count, not a singular fallback.
      */
     public function testGetActionOptoutWithMultipleCarsStatesPluralCarCount(): void
     {
@@ -1170,11 +1058,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * Singular counterpart to the plural case above: a one-car owner (the
-     * fixture's default shape) must see singular copy ("1 registered car" /
-     * "its history"), not the plural form.
-     */
+    /** Singular copy for a one-car owner. */
     public function testGetActionOptoutWithOneCarStatesSingularCarCount(): void
     {
         $code = $this->issueVericode();
@@ -1194,60 +1078,12 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         );
     }
 
-    // A prior version of this test attempted to simulate a mid-loop
-    // insertHistory() failure by pre-reserving cars_hist's next
-    // auto-increment id with a placeholder row, then relying on the real
-    // insert to collide on a duplicate primary key. That collision is not
-    // reliable: cars_hist.id also advances from the `cars_insert`/
-    // `cars_update`/`cars_delete` triggers (verified live — every write to
-    // `cars` fires an unconditional AFTER trigger that inserts its own
-    // cars_hist row), so the id reserved by the probe can be consumed by
-    // unrelated trigger-driven activity before this test's own POST runs,
-    // making the test flaky rather than deterministic (observed: reserved
-    // id 1000001044, actual ids landed at 1000001044/1047/1048 — no
-    // collision occurred). A genuine per-car failure-injection point does
-    // not exist at this HTTP layer via a PRIMARY KEY collision: cars.* and
-    // cars_hist.* share identical column widths (deliberately mirrored, see
-    // DATABASE.md), so no value can be valid for the cars row a fixture
-    // needs but invalid for the cars_hist insert; and Owner::find() resolves
-    // per owner, not per car, so it cannot be made to fail for the second
-    // car without also failing the first (same owner for both).
-    //
-    // testOptoutMidTransactionFailureReturns500AndRollsBackAllCarsAndHistoryRows()
-    // below replaces that abandoned approach with a different, genuinely
-    // deterministic failure-injection technique: a held table lock rather
-    // than a row/id collision.
-
     /**
-     * Deterministic HTTP-level failure injection for the optout transaction.
-     *
-     * Forces the real `UPDATE cars` issued by setSuppressedForOwner() ->
-     * updateEmailSuppressed() to fail: the `cars_update` AFTER trigger (see
-     * database/migrations/20260709000000_add_elanregistry_baseline.php)
-     * unconditionally inserts its own audit row into `cars_hist` as PART OF
-     * that same UPDATE statement, so holding `LOCK TABLES cars_hist WRITE`
-     * from a second connection blocks the trigger's insert and, transitively,
-     * the UPDATE itself — with no reliance on row ids, timing windows, or
-     * column-width tricks. `SET GLOBAL lock_wait_timeout` (not
-     * innodb_lock_wait_timeout — LOCK TABLES obeys the former, not the
-     * latter) is set to 1s beforehand so the fresh PDO connection
-     * verify_car.php's own `php -S` request opens picks up a 1s wait as its
-     * session default; the pre-existing default (31536000s / one year) would
-     * otherwise make this test hang effectively forever. The failing UPDATE
-     * throws a PDOException, which CarVerificationManager::persist() catches
-     * and rethrows as CarDatabaseException — an ElanRegistryException — which
-     * is exactly what verify_car.php's optout branch catches to
-     * rollback()/renderActionFailed() (the post-authentication failure page,
-     * distinct from renderInvalidLink() — see that function's own docblock
-     * for why this path must say plainly that the write failed rather than
-     * reusing the generic "nothing is wrong" copy).
-     *
-     * A second, unrelated PDO connection is required for the lock: PHP's
-     * built-in server (the PhpBuiltinServer started lazily in setUp()) serves one request per
-     * process with no persistent state between requests, so the DB
-     * connection the POST below uses is necessarily a fresh one opened after
-     * the SET GLOBAL below — it cannot be the same connection holding the
-     * lock.
+     * Failure injection: a second connection holds LOCK TABLES cars_hist WRITE,
+     * so the cars_update trigger, and with it the optout UPDATE, fails.
+     * lock_wait_timeout (not innodb_lock_wait_timeout) is set to 1s globally so
+     * the php -S request's new connection does not wait for the 1-year default.
+     * The page must answer with renderActionFailed(), not renderInvalidLink().
      */
     public function testOptoutMidTransactionFailureReturns500AndRollsBackAllCarsAndHistoryRows(): void
     {
@@ -1268,18 +1104,12 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
             $_ENV['DB_PASS'] ?? getenv('DB_PASS')
         );
 
-        // Capture the real pre-test value rather than assuming MySQL's
-        // documented 31536000s default — restoring whatever this environment
-        // actually had keeps this test from permanently changing server
-        // behavior if some other process had already customized it.
+        // Restore the real value, not the documented default.
         $originalTimeout = (string) $this->db->query(
             "SHOW VARIABLES LIKE 'lock_wait_timeout'"
         )->first()->Value;
 
-        // Affects only NEW connections' session default (LOCK TABLES obeys
-        // this session variable, not the connection-agnostic
-        // innodb_lock_wait_timeout) — restored in finally below regardless
-        // of outcome, so no other test in this run is affected.
+        // Affects only new connections; restored in finally.
         $this->db->query('SET GLOBAL lock_wait_timeout = 1');
 
         try {
@@ -1292,12 +1122,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
                 $result['status'],
                 'A blocked cars_hist write mid-transaction must surface as renderActionFailed(500)'
             );
-            // Pins the 'error' state renderActionFailed() actually renders —
-            // not merely the status code it shares with a config-missing or
-            // owner-lookup 500 from renderInvalidLink(). This is the specific
-            // behavior verify_car.php's docblock argues for: a post-auth
-            // failure must say plainly that the write did not complete,
-            // never reuse renderInvalidLink()'s "nothing is wrong" copy.
+            // renderActionFailed() must say the write failed, unlike renderInvalidLink().
             $this->assertStringContainsString(
                 'Something went wrong on our end',
                 $result['body'],
@@ -1314,10 +1139,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
                 'The opt-out-specific failure copy must warn the owner their opt-out did not take effect'
             );
         } finally {
-            // UNLOCK TABLES (and closing the connection) first: a stray
-            // global left at 1s is merely annoying for the rest of the run,
-            // but a lock left held on cars_hist would deterministically fail
-            // every subsequent test in this file that mutates a car.
+            // Unlock first: a held cars_hist lock would fail every later test that writes a car.
             $lockConn->exec('UNLOCK TABLES');
             $lockConn = null;
             $this->db->query('SET GLOBAL lock_wait_timeout = ' . (int) $originalTimeout);
@@ -1454,14 +1276,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
-     * DSN for a direct PDO connection to the same test database
-     * IntegrationTestCase's own $this->db uses, built from the same
-     * DB_HOST/DB_PORT/DB_NAME env vars exposeTestDatabaseToEnvironment()
-     * already validated are present. Needed only for the second, lock-holding
-     * connection in testOptoutMidTransactionFailureReturns500AndRollsBackAllCarsAndHistoryRows()
-     * — $this->db itself must stay free to run assertions against the
-     * unlocked `cars`/`cars_hist` tables while the second connection holds
-     * the lock.
+     * DSN for the second, lock-holding connection; $this->db must stay free
+     * for assertions while the lock is held.
      */
     private function buildDsn(): string
     {
@@ -1469,9 +1285,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $port = $_ENV['DB_PORT'] ?? getenv('DB_PORT') ?: 3306;
         $name = (string) ($_ENV['DB_NAME'] ?? getenv('DB_NAME'));
 
-        // DB_HOST may already carry ":port" (see .env.test.local) — DATABASE.md
-        // and this file's own DB_ENV_VARS both treat DB_HOST as authoritative
-        // in that case, so prefer it over the separate DB_PORT var.
+        // DB_HOST may already carry ':port' (.env.test.local); prefer it.
         if (str_contains($host, ':')) {
             [$host, $port] = explode(':', $host, 2);
         }

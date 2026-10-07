@@ -8,19 +8,8 @@ use ElanRegistry\Owner;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Thin, single live-DB test for {@see Owner::updateProfileAndSync()} (#1891).
- *
- * The wrapper's own wiring (does it call update() before sync, propagate a
- * validation failure before sync ever runs, return a non-complete-success
- * result rather than swallowing it) is covered without a database by
- * tests/unit/classes/OwnerUpdateProfileAndSyncTest.php. The method itself
- * introduces no new query — it only chains two already-tested methods — so
- * this file proves exactly one thing a unit test cannot: that calling it
- * once against a real database really does persist the users/profiles write
- * AND cascade it to every car the owner has, in a single call. Per-field
- * validation rules and per-car sync failure modes are already covered,
- * respectively, by tests/unit/OwnerValidationTest.php and
- * tests/integration/OwnerSyncOwnerFieldsToCarsTest.php — not duplicated here.
+ * #1891: one live-DB call to Owner::updateProfileAndSync() persists the
+ * users/profiles write and cascades it to every car. Wiring is unit-tested.
  */
 #[Group('integration')]
 #[Group('owner')]
@@ -74,8 +63,7 @@ final class OwnerUpdateProfileAndSyncTest extends IntegrationTestCase
         $this->assertEqualsWithDelta(45.5231, (float) $profileRow->lat, 0.001);
         $this->assertEqualsWithDelta(-122.6765, (float) $profileRow->lon, 0.001);
 
-        // cars: the syncOwnerFieldsToCars() half of the chain cascaded the
-        // just-written values onto every car this owner has, in this one call.
+        // cars: the syncOwnerFieldsToCars() half cascaded to every car.
         foreach ([$carId1, $carId2] as $carId) {
             $carRow = $this->db->query(
                 'SELECT fname, lname, city, state, country, website, lat, lon FROM cars WHERE id = ?',
@@ -94,14 +82,9 @@ final class OwnerUpdateProfileAndSyncTest extends IntegrationTestCase
     }
 
     /**
-     * Regression guard (#1891): usersc/user_settings.php cannot clear the
-     * website through updateProfileAndSync($ownerFields), because
-     * Owner::update() drops empty values — an empty website never survives
-     * validateAndSanitizeFields(). The page instead writes `profiles.website`
-     * directly, then calls syncOwnerFieldsToCars() on its own (see
-     * $websiteCleared in usersc/user_settings.php). This test proves that
-     * second half of the page's workaround actually clears the car, using
-     * the same two calls the page makes, not updateProfileAndSync().
+     * #1891: Owner::update() drops empty values, so user_settings.php clears
+     * the website with a direct write plus syncOwnerFieldsToCars(). This
+     * runs the same two calls.
      */
     public function testClearedWebsiteReachesCarsViaDirectWriteThenSync(): void
     {

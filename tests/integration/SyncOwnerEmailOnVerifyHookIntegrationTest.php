@@ -12,32 +12,13 @@ use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\PassThroughDatabase;
 
 /**
- * Integration tests for #1958 (confirmed email change via verify.php wasn't
- * syncing to cars.email). Validates the DB-backed sync mechanics the hook
- * (usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php) depends on:
- * a real database, a user whose email has just changed, syncOwnerFieldsToCars()
- * updates every owned car, and the exceptions it can throw match the hook's
- * catch clauses. Does not duplicate OwnerSyncOwnerFieldsToCarsTest.php
- * (#1873, general nine-field behavior) — this pins the specific sequence
- * #1958's hook relies on.
- *
- * The hook FILE's own control flow (run-once-per-request guard, partial-
- * failure logging, log category per catch branch) is covered directly in
- * tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php, which `require`s
- * the hook file itself. That file's class name would otherwise collide with
- * this one's — normal suite runs scope to one testsuite config and never hit
- * it, but a cross-suite --filter that autoloads both fatals with "Cannot
- * redeclare class" — so this file carries the Integration suffix.
- *
- * Manual verification of the real confirm-by-link flow (clicking an actual
- * emailed link) is not automatable — no Playwright pattern in this repo
- * retrieves a Mailtrap-captured confirmation link — see
- * docs/development/DEPLOYMENT.md's "Hooker Hook Registration" section for
- * the manual verification steps.
+ * #1958: the DB-backed sync that the sync_owner_email_on_verify hook relies on.
+ * The hook's own control flow: tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php.
+ * The "Integration" suffix avoids a "Cannot redeclare class" fatal when a
+ * cross-suite --filter loads both files.
  *
  * @see usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php
  * @see usersc/classes/Owner.php Owner::syncOwnerFieldsToCars()
- * @see tests/integration/OwnerSyncOwnerFieldsToCarsTest.php
  */
 #[Group('integration')]
 #[Group('owner')]
@@ -52,8 +33,6 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
-            // Cleans up the row inserted by
-            // testAdminScriptRecordCompletionRejectsUncastStringUserIdFromDbRow().
             $this->db->query('DELETE FROM fix_script_runs WHERE script_name = ?', [basename(__FILE__)]);
         }
 
@@ -61,15 +40,9 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     }
 
     /**
-     * A PassThroughDatabase proxy backed by the real connection, except that
-     * query() reports a database error for the specific
-     * `UPDATE cars SET ... WHERE id = ? AND user_id = ?` call issued by
-     * CarRepository::updateCarForOwner() — forcing that call to throw
-     * CarDatabaseException, exactly as a genuine deadlock or constraint
-     * violation would. Same sabotage as
-     * OwnerSyncOwnerFieldsToCarsTest::dbFailingOwnerScopedUpdate() with no
-     * per-car targeting; kept local because this suite covers the hook's own
-     * catch semantics rather than that class's fixture.
+     * Real connection, except the owner-scoped `UPDATE cars ... WHERE id = ?
+     * AND user_id = ?` reports a DB error, so updateCarForOwner() throws
+     * CarDatabaseException.
      */
     private function dbFailingUpdateCarForOwner(): DatabaseInterface
     {
@@ -84,27 +57,16 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         };
     }
 
-    /**
-     * Core positive-path test for #1958: construct a real Owner for a user
-     * whose users.email has just changed, call syncOwnerFieldsToCars(), and
-     * confirm cars.email reflects the new address for every car the owner
-     * has. Uses two cars to also confirm the sync is not scoped to a single
-     * car.
-     */
+    /** #1958: a changed users.email syncs to every owned car. */
     public function testConfirmedEmailChangeSyncsToAllOwnedCars(): void
     {
         $userId = $this->createTestUser(['email' => 'old-address@example.com']);
         $carId1 = $this->createTestCar($userId, ['email' => 'old-address@example.com']);
         $carId2 = $this->createTestCar($userId, ['email' => 'old-address@example.com']);
 
-        // Mirrors users/verify.php's own confirm-by-link write: users.email
-        // is updated to the previously-staged email_new value immediately
-        // before the verifySuccess hooks fire.
+        // Mirrors users/verify.php: users.email is set before the verifySuccess hooks fire.
         $this->db->query("UPDATE users SET email = ? WHERE id = ?", ['new-address@example.com', $userId]);
 
-        // This is the hook's entire body, reduced to its essential sequence
-        // (see class docblock) — $userId here stands in for
-        // (int) $verify->data()->id in the real hook.
         $owner = new Owner($userId);
         $result = $owner->syncOwnerFieldsToCars();
 
@@ -123,15 +85,8 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     }
 
     /**
-     * Confirms the negative path the hook's catch block exists for: when
-     * syncOwnerFieldsToCars() throws (a genuine per-car UPDATE failure, not
-     * the row-count ambiguity — see
-     * OwnerSyncOwnerFieldsToCarsTest::testUpdateQueryFailureRollsBackAndPropagates()),
-     * it throws CarDatabaseException, which the hook's
-     * first catch clause (OwnerDatabaseException | CarDatabaseException)
-     * names explicitly. This proves that catch clause is reachable and
-     * matches what syncOwnerFieldsToCars() can actually throw against a real
-     * database.
+     * The hook's first catch clause (OwnerDatabaseException | CarDatabaseException)
+     * matches what syncOwnerFieldsToCars() throws against a real database.
      */
     public function testSyncFailureThrowsCarDatabaseExceptionCatchableAsTheHookExpects(): void
     {
@@ -159,7 +114,6 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         try {
             $owner->syncOwnerFieldsToCars();
         } catch (\ElanRegistry\Exceptions\OwnerDatabaseException | CarDatabaseException $e) {
-            // Exactly the combined catch clause the hook uses.
             $thrown = $e;
         }
 
@@ -175,8 +129,7 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
             'A genuine per-car UPDATE failure must surface as CarDatabaseException specifically'
         );
 
-        // Confirm the car's email was NOT actually changed — the per-car
-        // transaction rolled back before the exception propagated.
+        // The per-car transaction rolled back before the exception propagated.
         $car = $this->db->query("SELECT email FROM cars WHERE id = ?", [$carId])->first();
         $this->assertNotNull($car);
         $this->assertSame(
@@ -187,12 +140,9 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     }
 
     /**
-     * Confirms the hook's second catch clause (\Throwable, not \Exception —
-     * see the hook's own comment for why) is reachable: a bare \TypeError
-     * from the DB layer propagates uncaught through syncOwnerFieldsToCars().
-     * The real DB layer coerces non-scalar bind params with a warning rather
-     * than throwing (confirmed by direct experimentation), so this uses a
-     * minimal DatabaseInterface stub that throws \TypeError directly instead.
+     * The hook's \Throwable catch is reachable: a \TypeError propagates through
+     * syncOwnerFieldsToCars(). The real DB layer only warns on bad bind params,
+     * so a stub throws the \TypeError.
      */
     public function testMalformedOwnerDataThrowsThrowableCatchableAsTheHookExpects(): void
     {
@@ -203,9 +153,6 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
             public function query(string $sql, array $params = []): self
             {
                 $this->calls++;
-                // Simulates a TypeError-family Error surfacing from deep in the
-                // DB layer when handed a malformed, untyped value — the class
-                // of failure the hook's own comment calls out by name.
                 throw new \TypeError('simulated: bindValue() received a non-scalar value');
             }
             public function get(string $table, array $where): self
@@ -321,13 +268,8 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     }
 
     /**
-     * Regression test for the bug fixed in #1958's second commit: script 26
-     * originally passed $user->data()->id (a string, straight off a DB row)
-     * to admin_script_record_completion()'s `int $userId` parameter uncast.
-     * Under this file's declare(strict_types=1), that throws TypeError rather
-     * than coercing — confirmed here with a real DB-fetched id, not a
-     * hand-typed string literal, since the whole point is that a DB row's
-     * property is a string even when it looks like an integer.
+     * #1958: a DB-row id is a string. Under strict_types, passing it uncast to
+     * admin_script_record_completion(int $userId) throws TypeError.
      */
     public function testAdminScriptRecordCompletionRejectsUncastStringUserIdFromDbRow(): void
     {
@@ -346,48 +288,16 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         }
         $this->assertNotNull($thrown, 'An uncast string id must throw TypeError under strict_types — this is the bug #1958 shipped once');
 
-        // The actual fix: casting avoids the TypeError.
         admin_script_record_completion(__FILE__, (int) $row->id);
     }
 
-    // =========================================================================
-    // Issue #1890: CarRepository::clearBouncedForUser() /
-    // carIdsWithBouncedFlagButNoAddress() against a real database.
-    //
-    // These exercise exactly what a mocked unit test cannot: MySQL's actual
-    // LOWER() comparison semantics, the cars_update AFTER UPDATE trigger
-    // firing (a cars_hist row per changed car), and that the bounce-clear
-    // UPDATE and syncOwnerFieldsToCars()'s own per-car UPDATEs can run back
-    // to back in one request without a transaction conflict — the specific
-    // risk class called out in the plan's "Database & Security
-    // Considerations" section (bounce-clear is a bare autocommit UPDATE with
-    // no beginTransaction() of its own).
-    // =========================================================================
+    // #1890: clearBouncedForUser() / carIdsWithBouncedFlagButNoAddress() against
+    // real MySQL: LOWER() semantics, the cars_update trigger, and bounce-clear
+    // (autocommit) followed by the sync's own transactions in one request.
 
     /**
-     * Two real cars for the same user, bounced under two different
-     * addresses. Confirming the new users.email only matches one of them
-     * proves the real UPDATE's WHERE clause (including MySQL's LOWER()
-     * comparison) selects the correct row and leaves the other alone — a
-     * mocked unit test can only pin the SQL text, not that MySQL evaluates
-     * it as intended.
-     *
-     * The "current" car's bounced address is seeded as a case-DIFFERENT but
-     * otherwise identical string to the confirmed email
-     * ('NEW-Address@Example.com' vs. 'new-address@example.com') — not merely
-     * a different address as the stale car is. This is what makes the
-     * "must be left untouched" assertion below actually exercise the
-     * LOWER() comparison: removing LOWER() from clearBouncedForUser()'s SQL
-     * would break specifically this assertion (the car would then no longer
-     * match the confirmed email case-sensitively... but the point is
-     * clearBouncedForUser()'s WHERE clause matches on the ADDRESS DIFFERING,
-     * so a case-only difference must NOT count as differing — proving the
-     * comparison is genuinely case-insensitive, not merely coincidentally
-     * passing because the two strings happen to already match byte-for-byte).
-     *
-     * Also verifies `email_suppressed` (set on both cars beforehand) is left
-     * untouched by the UPDATE on both cars — proving the bounce-clear UPDATE
-     * genuinely never writes that column, not just that its SQL text omits it.
+     * Only the car whose bounced address differs (case-insensitively) from the
+     * confirmed email is cleared. email_suppressed is never written.
      */
     public function testOnlyTheMatchingBouncedCarClearsAndGetsAHistoryRow(): void
     {
@@ -400,14 +310,11 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         $repo->updateEmailSuppressed($staleCarId, true);
 
         $currentCarId = $this->createTestCar($userId, ['chassis' => 'BOUNCECLR2']);
-        // Case-DIFFERENT from, but otherwise identical to, the confirmed
-        // email — so only the LOWER() comparison can tell this car's
-        // recorded address already matches.
+        // Differs only in case, so only LOWER() shows it already matches.
         $repo->updateEmailBounced($currentCarId, true, 'NEW-Address@Example.com');
         $repo->updateEmailSuppressed($currentCarId, true);
 
-        // Clear cars_hist rows written by the calls above so this test's own
-        // assertion below (exactly one new row) isn't polluted by them.
+        // Clear cars_hist rows from setup so the "exactly one new row" check is clean.
         $this->db->query('DELETE FROM cars_hist WHERE car_id IN (?, ?)', [$staleCarId, $currentCarId]);
 
         $cleared = $repo->clearBouncedForUser($userId, 'new-address@example.com');
@@ -442,8 +349,6 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
             'email_suppressed must remain untouched on the car the UPDATE skips entirely'
         );
 
-        // The cars_update trigger must have fired exactly once, for the
-        // one car actually changed by the UPDATE — not for the untouched one.
         $histRows = $this->db->query(
             'SELECT car_id FROM cars_hist WHERE car_id IN (?, ?) ORDER BY car_id',
             [$staleCarId, $currentCarId]
@@ -453,12 +358,8 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     }
 
     /**
-     * A car with email_bounced=1 and a NULL email_bounced_address (the
-     * pre-existing data-integrity anomaly the plan describes) must be found
-     * by the integrity-check SELECT beforehand, and then clears via the real
-     * UPDATE — clearBouncedForUser()'s WHERE clause explicitly ORs on
-     * "address IS NULL", which a unit test can pin as SQL text but not prove
-     * MySQL evaluates as true for a genuinely NULL column.
+     * A NULL email_bounced_address with email_bounced=1 (legacy anomaly) is
+     * found and cleared; only real MySQL proves the "IS NULL" branch.
      */
     public function testCarWithNullBouncedAddressIsFoundByIntegrityCheckAndClears(): void
     {
@@ -466,9 +367,7 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         $repo = new CarRepository($this->db);
 
         $carId = $this->createTestCar($userId, ['chassis' => 'BOUNCECLR3']);
-        // Write the anomaly directly — updateEmailBounced() itself forbids
-        // this combination, so it can only exist from data predating that
-        // guard (per the plan's docblock rationale for clearBouncedForUser()).
+        // updateEmailBounced() forbids this combination; only legacy data has it.
         $this->db->query(
             'UPDATE cars SET email_bounced = 1, email_bounced_address = NULL WHERE id = ?',
             [$carId]
@@ -490,14 +389,7 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         $this->assertCount(1, $histRows, 'The clearing UPDATE must produce exactly one cars_hist row');
     }
 
-    /**
-     * The specific transaction-ordering risk the plan calls out: bounce-clear
-     * runs first (a bare autocommit UPDATE with no explicit beginTransaction()
-     * of its own), then syncOwnerFieldsToCars() (which manages its own
-     * per-car transactions) runs immediately after, in the same request. This
-     * confirms neither call interferes with the other — the sync must still
-     * fully succeed when called right after a real bounce-clear UPDATE.
-     */
+    /** Bounce-clear (autocommit) followed by the sync's own transactions must not conflict. */
     public function testSyncOwnerFieldsToCarsSucceedsImmediatelyAfterBounceClearUpdate(): void
     {
         $userId = $this->createTestUser(['email' => 'old-address@example.com']);
@@ -510,8 +402,6 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         $repo->updateEmailBounced($carId, true, 'old-address@example.com');
         $this->db->query('DELETE FROM cars_hist WHERE car_id = ?', [$carId]);
 
-        // Mirrors the real confirm-by-link write and the hook's own ordering:
-        // users.email changes first, then bounce-clear, then the sync.
         $this->db->query('UPDATE users SET email = ? WHERE id = ?', ['new-address@example.com', $userId]);
 
         $cleared = $repo->clearBouncedForUser($userId, 'new-address@example.com');

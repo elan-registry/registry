@@ -6,24 +6,10 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Integration test for scripts/vendor-bootstrap-maps.php (Issue #1414).
- *
- * Like scripts/log-deployment.php (#1424), this is a standalone CLI script
- * with no class/function to unit test directly — invoked as a real
- * subprocess. No database is involved, so this extends PHPUnit's TestCase
- * directly rather than IntegrationTestCase.
- *
- * The script accepts an optional `projectRoot` CLI argument (defaults to the
- * real repo root) specifically so tests can point it at a disposable fixture
- * directory instead of the real project's users/ tree — this lets the
- * non-network-dependent failure paths (missing file, unparseable version) be
- * tested without touching real project files or the network. The happy-path
- * and idempotency-short-circuit tests genuinely hit the official jsdelivr
- * CDN (same as a real deploy would), since that's the actual behavior being
- * verified and the project already assumes deploy-time network access for
- * this exact script. Because of those live calls the class carries
- * `#[Group('live-network')]`, which `phpunit-integration.xml` excludes from
- * the default run. Run it explicitly with:
+ * #1414: scripts/vendor-bootstrap-maps.php run as a real subprocess. The
+ * `projectRoot` argument points failure-path tests at a fixture directory.
+ * The happy path hits the jsdelivr CDN, so the class is in the excluded
+ * `live-network` group. Run it with:
  *   vendor/bin/phpunit -c phpunit-integration.xml --group live-network
  */
 #[Group('integration')]
@@ -73,9 +59,8 @@ final class VendorBootstrapMapsScriptTest extends TestCase
 
     public function testMismatchedLocalFileSkipsMapWithoutOverwriting(): void
     {
-        // A real Bootstrap version banner, but content that won't byte-match the
-        // official v5.3.8 release — the script must fetch-and-compare (real
-        // network call to jsdelivr) and then skip rather than vendor a bogus map.
+        // A real version banner with content that does not match v5.3.8: the
+        // script must fetch, compare, and skip rather than vendor a bogus map.
         file_put_contents(
             $this->fixtureRoot . '/users/js/bootstrap.bundle.min.js',
             "/*!\n  * Bootstrap v5.3.8 (https://getbootstrap.com/)\n  */\nconsole.log('locally modified, not the real build');"
@@ -96,10 +81,7 @@ final class VendorBootstrapMapsScriptTest extends TestCase
 
     public function testRealProjectFilesVendorMatchingMapsAndShortCircuitOnRerun(): void
     {
-        // Exercises the real happy path against the actual project files (which are
-        // already known-good, verified-matching Bootstrap 5.3.8 builds), including a
-        // real network round-trip to jsdelivr — mirroring exactly what a real
-        // `git pull` or deploy does. No projectRoot override: uses the real repo.
+        // Real project files and a real jsdelivr round trip, as on deploy.
         $projectRoot = dirname(__DIR__, 2);
         $cssMapPath = $projectRoot . '/users/css/bootstrap.min.css.map';
         $jsMapPath = $projectRoot . '/users/js/bootstrap.bundle.min.js.map';

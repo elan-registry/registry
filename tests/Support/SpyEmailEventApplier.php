@@ -25,8 +25,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
  * counting within a single multi-car event, where every call shares one
  * message-id and so cannot be distinguished by it alone).
  *
- * Deliberately a *named* class rather than an anonymous one, per the
- * `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2

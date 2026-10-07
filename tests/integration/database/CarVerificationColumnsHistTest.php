@@ -10,32 +10,10 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for the car verification and bounce-state columns and
- * their capture in `cars_hist`.
- *
- * Migration 20260902104755_add_car_verification_columns (#1155) added three
- * columns to `cars` (mirrored onto `cars_hist`) and extended the cars_insert,
- * cars_update, and cars_delete triggers to capture them:
- *
- * - `owner_last_updated` DATETIME NULL
- * - `vericode_sent_at`   DATETIME NULL
- * - `email_bounced`      TINYINT(1) NOT NULL DEFAULT 0
- *
- * Migration 20260907141816_add_car_bounce_state_columns (#1887) added two
- * more the same way, exactly mirroring #1155's migration:
- *
- * - `email_bounced_address` VARCHAR(155) NULL
- * - `email_suppressed`      TINYINT(1) NOT NULL DEFAULT 0
- *
- * This is real MySQL trigger behavior and cannot be verified with a mocked
- * DB — only a live database proves the trigger bodies actually capture these
- * columns on every INSERT, UPDATE, and DELETE.
- *
- * In the cars_update trigger body, the five columns this test asserts follow
- * the same convention as most other columns (OLD.*), NOT the chassis_override
- * exception (NEW.*). The trigger bodies are rebuilt in full by later
- * migrations; see the most recent one to redefine cars_update (currently
- * AddCarsVerificationAttemptsColumns::createTriggers()).
+ * #1155, #1887: the verification and bounce-state columns on `cars` and their
+ * capture in `cars_hist` by the cars_insert/update/delete triggers. Trigger
+ * behavior needs a live database. In cars_update these columns use OLD.*;
+ * only chassis_override uses NEW.*.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -60,11 +38,7 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
         $this->loginAsTestUser($this->testUserId);
     }
 
-    /**
-     * Skips the test (rather than failing with a DB error) if the given
-     * column is not yet present — mirrors ChassisOverridePersistenceTest's
-     * pattern for a migration that may not have run yet.
-     */
+    /** Skips, rather than fails, when the migration has not run. */
     private function assertColumnExists(string $table, string $column): void
     {
         $check = $this->db->query(
@@ -85,9 +59,7 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
     }
 
     /**
-     * One row per trigger-captured column: [column, value written to cars,
-     * cast applied to the cars_hist value before comparing]. The value read
-     * back from cars_hist must equal the value written.
+     * [column, value written to cars, cast for the cars_hist comparison]
      *
      * @return array<string, array{string, int|string, 'int'|'string'}>
      */
@@ -103,8 +75,6 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
     }
 
     /**
-     * Reads $column from $histRow and casts it for a strict comparison.
-     *
      * @param 'int'|'string' $cast
      */
     private function histValue(object $histRow, string $column, string $cast): int|string
@@ -146,14 +116,8 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
     }
 
     /**
-     * INSERT: a new car row with the column populated must produce a
-     * corresponding cars_hist INSERT row capturing that same value.
-     *
-     * Deliberately inserts via raw SQL rather than createTestCar(): that
-     * helper purges any pre-existing cars_hist rows for the new car ID
-     * immediately after inserting, as a safeguard against AUTO_INCREMENT
-     * reuse — but that purge would also delete the very INSERT-trigger row
-     * this test needs to inspect.
+     * Raw SQL, not createTestCar(): that helper purges cars_hist rows for the
+     * new ID, which would delete the INSERT-trigger row under test.
      *
      * @param 'int'|'string' $cast
      */
@@ -200,17 +164,10 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
     }
 
     /**
-     * UPDATE: the cars_update trigger uses OLD.* (not NEW.*) for these five
-     * columns — the deliberate NEW.* exception is chassis_override only.
-     *
-     * Each write goes through its dedicated CarRepository method (mirroring
-     * real application call sites in CarVerificationManager), so each UPDATE
-     * produces its own cars_hist row whose value for the just-changed
-     * column(s) must be the PRE-update value, not the new one. Kept as one
-     * sequential method rather than parameterised: each block reads the
-     * newest UPDATE row, which is the one its own write just produced
-     * (ordered by `timestamp DESC, id DESC` — `timestamp` has whole-second
-     * resolution, so several blocks' rows can share one value).
+     * Each UPDATE must write the PRE-update value to cars_hist (OLD.*).
+     * One sequential method: each block reads the newest UPDATE row, ordered
+     * by `timestamp DESC, id DESC` because `timestamp` has whole-second
+     * resolution.
      */
     #[Group('fast')]
     public function testUpdateTriggerCapturesPreUpdateOldValues(): void
@@ -230,15 +187,7 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
         $repo = new CarRepository($this->db);
 
         // --- owner_last_updated -------------------------------------------
-        // Via updateCar() directly, not a dedicated single-column setter
-        // (unlike the columns below): CarRepository's own
-        // owner_last_updated setter was removed as dead code (#1930) — no
-        // production caller ever wrote this column standalone, since
-        // Car::update() and CarVerificationManager fold it into their own
-        // multi-column updateCar() calls to avoid a second cars_hist row for
-        // one logical edit. This is still a single-column UPDATE statement
-        // for this test's purposes, so the trigger assertion below is
-        // unaffected.
+        // Via updateCar(): the standalone setter was removed as dead code (#1930).
         $this->assertTrue(
             $repo->updateCar($carId, ['owner_last_updated' => '2026-09-01 12:00:00']),
             'updateCar() must succeed'
@@ -283,9 +232,7 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
         );
 
         // --- email_bounced + email_bounced_address ---------------------------
-        // One block, not two: updateEmailBounced() writes both columns in a
-        // single UPDATE statement, so a second call would see the first
-        // call's address as OLD rather than the original fixture value.
+        // One block: updateEmailBounced() writes both columns in one UPDATE.
         $this->assertTrue(
             $repo->updateEmailBounced($carId, true, 'new-' . uniqid() . '@example.com'),
             'updateEmailBounced() must succeed'
@@ -336,19 +283,9 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
     }
 
     /**
-     * Car::update() with $isOwnerInitiated = true must fold owner_last_updated
-     * into the SAME $filteredFields array as the rest of the changed car
-     * fields, producing exactly ONE `UPDATE cars SET ...` statement — not a
-     * separate call for owner_last_updated alone. Two statements would
-     * produce two cars_hist UPDATE rows for a single logical edit, doubling
-     * the audit trail (the bug this branch fixes).
-     *
-     * Proof: since the cars_update trigger captures OLD.* for both `color`
-     * and `owner_last_updated`, a single UPDATE statement that changes both
-     * must produce exactly one cars_hist row whose `color` AND
-     * `owner_last_updated` are BOTH the pre-update values. Two separate
-     * UPDATE statements could not produce this — each would only capture the
-     * OLD value of the column it individually changed.
+     * An owner-initiated Car::update() must change owner_last_updated in the
+     * SAME statement as the other fields, so one edit gives one cars_hist row.
+     * One row with both OLD values proves a single statement.
      */
     #[Group('fast')]
     public function testCarUpdateWithOwnerInitiatedFlagProducesSingleAuditRow(): void
@@ -406,9 +343,7 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
     }
 
     /**
-     * DELETE: deleting a car must produce a cars_hist DELETE row capturing
-     * the column's final value (OLD.*, same convention as every other column
-     * in the cars_delete trigger).
+     * DELETE: the cars_hist DELETE row captures the final value (OLD.*).
      *
      * @param 'int'|'string' $cast
      */
@@ -444,24 +379,9 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
     }
 
     /**
-     * The migration's backfill (`UPDATE cars SET owner_last_updated = mtime,
-     * mtime = mtime WHERE owner_last_updated IS NULL`) runs before the trigger
-     * rebuild step, while the pre-migration cars_update trigger is still
-     * installed. Without the @disable_triggers guard it wraps the statement
-     * in, that trigger would fire once per row and insert a spurious 'UPDATE'
-     * cars_hist row for what is pure internal bookkeeping, not a real edit —
-     * this proves the guard suppresses it, mirroring
-     * CarsYearSmallintMigrationTest::test_disableTriggersGuard_suppressesUpdateHistory()
-     * for a different migration's guarded UPDATE.
-     *
-     * The property under test is the @disable_triggers guard itself, not the
-     * backfill's `IS NULL` predicate. Migration 20260905172137 made
-     * `cars.owner_last_updated` NOT NULL DEFAULT CURRENT_TIMESTAMP, so a NULL
-     * fixture is no longer constructible and the original one-time backfill can
-     * never match a row again. The guarded UPDATE is therefore driven off a
-     * known-stale sentinel value instead — same statement shape, same trigger
-     * exposure, and it keeps running on every migrated database rather than
-     * skipping into permanent silence.
+     * The @disable_triggers guard around the migration's backfill UPDATE must
+     * suppress the spurious cars_hist 'UPDATE' row. owner_last_updated is now
+     * NOT NULL, so the guarded UPDATE runs off a stale sentinel value instead.
      */
     #[Group('fast')]
     public function testMigrationBackfillGuardSuppressesUpdateHistory(): void

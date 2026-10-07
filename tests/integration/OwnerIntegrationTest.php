@@ -5,13 +5,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Owner;
 
-/**
- * Integration tests for Owner class
- *
- * These tests require the full application bootstrap and real database connection.
- * They test Owner functionality with actual database data and global functions.
- * Owner's pure field-validation tests (no DB) live in tests/unit/OwnerValidationTest.php.
- */
+/** Pure field validation is in tests/unit/OwnerValidationTest.php. */
 class OwnerIntegrationTest extends IntegrationTestCase
 {
     protected function setUp(): void
@@ -20,9 +14,6 @@ class OwnerIntegrationTest extends IntegrationTestCase
         $this->requireDatabase();
     }
 
-    /**
-     * Test owner loading with valid ID
-     */
     public function testFindWithValidUser(): void
     {
         $userId = $this->createTestUser();
@@ -34,9 +25,6 @@ class OwnerIntegrationTest extends IntegrationTestCase
         $this->assertEquals($userId, $owner->data()->id);
     }
 
-    /**
-     * Test getting cars owned by owner
-     */
     public function testGetCarsOwned(): void
     {
         $userId = $this->createTestUser();
@@ -47,7 +35,6 @@ class OwnerIntegrationTest extends IntegrationTestCase
         $this->assertIsArray($ownedCars);
         $this->assertGreaterThan(0, count($ownedCars));
 
-        // Check that all returned cars belong to this user
         foreach ($ownedCars as $carData) {
             $this->assertEquals($userId, $carData->user_id);
         }
@@ -88,7 +75,6 @@ class OwnerIntegrationTest extends IntegrationTestCase
                 'lat' => '0',
                 'lon' => '0',
             ]);
-            // update() calls find() internally — data is already reloaded from DB
             $this->assertSame(0.0, (float) $owner->data()->lat,
                 'lat=0 must survive a MySQL write and read-back');
             $this->assertSame(0.0, (float) $owner->data()->lon,

@@ -1,37 +1,23 @@
 #!/bin/bash
 #
-# Regression test for scripts/check-blocking-findings.sh and
-# scripts/verify-ci-review.sh (#2222): a clean review (no Blocking heading at
-# all) must exit 0, not fail under `pipefail`/`set -e` before it can print
-# anything, and a caller's `if ! poll; then poll_status=$?` pattern must not
-# silently store the negated (always-0) exit status.
-#
-# Also covers #2225: the workflow-file guard in verify-ci-review.sh reads the
-# PR's file list (`gh api …/pulls/N/files`) through a here-string, not a
-# piped `grep -q`, so a large list can't SIGPIPE `gh` and read as "no match".
-#
-# Also covers #2223: CI's own Blocking gate in claude-code-review.yml (both
-# the pr-to-milestone-review and milestone-review jobs) must keep using the
-# exact same HEADING_PATTERN, EXCLUSION_PATTERN, and per-grep
-# `|| [ $? -eq 1 ]` guard as scripts/check-blocking-findings.sh. See that
-# script's header for why. Part C checks the two never drift apart.
-#
-# Also covers #2314: check-blocking-findings.sh reads all pages of PR
-# comments and checks the newest review (cases 8b-8e).
+# Regression test for scripts/check-blocking-findings.sh (Part A),
+# scripts/verify-ci-review.sh (Part B), and the Blocking gate copies in
+# .github/workflows/claude-code-review.yml (Part C, #2223). Part C fails if
+# the workflow's HEADING_PATTERN, EXCLUSION_PATTERN or per-grep
+# `|| [ $? -eq 1 ]` guard drift from the script.
 #
 # HERMETIC: Part A stubs `gh` (and, for case 16, `grep`) first on PATH. Part B
-# runs a copy of verify-ci-review.sh from a directory that also holds stub
-# poll-review-posted.sh and check-blocking-findings.sh siblings, which the
-# copy finds through its own SCRIPT_DIR. Part B also puts a logging `gh` stub
-# first on PATH for the recovery path. Part C reads files under $REAL_REPO
-# and temp copies of the workflow file, and also runs the extracted gate
-# blocks with `bash -e -c` (GitHub Actions' real default shell, no
-# `-o pipefail`; no network, no real `gh`, no `eval`).
+# runs a copy of verify-ci-review.sh beside stub sibling scripts, which the
+# copy finds through its own SCRIPT_DIR, with a logging `gh` stub first on
+# PATH. Part C runs the extracted gate blocks with `bash -e -c`, the GitHub
+# Actions default shell (no pipefail). No network and no real `gh`.
 #
 # Usage: bash tests/hooks/test-check-blocking-findings.sh
-# Exit code: 0 if all scenarios pass, 1 otherwise.
 
 set -u
+
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
 
 REAL_REPO="$(git rev-parse --show-toplevel)" || exit 1
 CHECK_SCRIPT="$REAL_REPO/scripts/check-blocking-findings.sh"
@@ -46,25 +32,6 @@ if [ ! -x "$VERIFY_SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
-# shellcheck disable=SC2329 # called only through the EXIT trap below
-cleanup() {
-    cd / || true
-    [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
-}
 
 # =========================================================================
 # Part A: scripts/check-blocking-findings.sh
@@ -1328,12 +1295,4 @@ else
         "exit: $STATUS33 (want non-zero)" "output: [$OUT33]"
 fi
 
-# --- Report ------------------------------------------------------------
-
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

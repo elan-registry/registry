@@ -8,29 +8,13 @@ use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\PhpBuiltinServer;
 
 /**
- * Behavioral (real-process, real-DB) tests for usersc/login.php's
- * failed-login branch (issue #2189).
+ * #2189: a password typed into the username box must not be stored in any
+ * recoverable form (logs.lognote, us_rate_limits metadata, or an email-derived
+ * identifier_key).
  *
- * A member who types their password into the username box must not have
- * that value written to storage in any recoverable form. Before the fix, an
- * unmatched login attempt wrote the raw submitted value to both
- * `logs.lognote` and `us_rate_limits.metadata.username_attempted`, and
- * `RateLimit::record()` also stored an `identifier_key` derived from it
- * (`hash('sha256', 'email::' . strtolower($value))`) whenever the value
- * happened to look like an email address — see
- * users/classes/RateLimit.php's sanitizeIdentifiers()/buildIdentifierKey().
- *
- * Drives real HTTP requests (via curl, with a real cookie jar so the
- * session-bound CSRF token round-trips) against usersc/login.php under PHP's
- * built-in web server, following VerifyCarLandingPageTest.php's and
- * BrevoWebhookEndpointTest.php's harness pattern. A plain `include` of
- * login.php cannot exercise this: the page starts a real session, requires a
- * session-bound CSRF token (Token::check()), and reads real superglobals for
- * username/password.
- *
- * No TURNSTILE_SITE_KEY/TURNSTILE_SECRET_KEY are set in .env.test.local, so
- * usersc/includes/turnstile.php's isTurnstileEnabled() gate is off in this
- * environment and the POST is never blocked by a missing Turnstile token.
+ * Uses the built-in web server with a cookie jar: login.php needs a real
+ * session and a session-bound CSRF token. Turnstile is off because
+ * .env.test.local sets no Turnstile keys.
  *
  * @see usersc/login.php
  * @see usersc/plugins/hooker/hooks/login_fail_logger.php
@@ -76,9 +60,7 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
         }
         $this->cookieJar = $jar;
 
-        // Earlier tests (or earlier runs of this file) may have left
-        // 'login_attempt' rows for the router's fixed REMOTE_ADDR that would
-        // otherwise trip the IP-scoped rate limit before a test's own POST runs.
+        // Old 'login_attempt' rows for the fixed REMOTE_ADDR could trip the IP rate limit.
         $this->db->query("DELETE FROM us_rate_limits WHERE action = 'login_attempt'");
     }
 
@@ -133,11 +115,7 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
     // HTTP helpers
     // ------------------------------------------------------------------
 
-    /**
-     * GET the login page with a fresh session (cookie jar written), and pull
-     * the session-bound CSRF token out of the rendered hidden field
-     * (`<input type="hidden" name="csrf" value="...">`, from tokenHere()).
-     */
+    /** Fresh session; returns the session-bound CSRF token from the page. */
     private function fetchCsrfToken(): string
     {
         $result = $this->request('GET', null);
@@ -359,17 +337,8 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
     // ------------------------------------------------------------------
 
     /**
-     * Logs in with the user's `email` column value rather than `username`:
-     * usersc/login.php accepts either (its lookup query is
-     * `WHERE username = ? OR email = ?`), and RateLimit::sanitizeIdentifiers()
-     * only keeps the 'email' identifier type for a value that passes
-     * FILTER_VALIDATE_EMAIL — createTestUser()'s default username
-     * ("testuser_<uniqid>") does not, so it would produce only a 'user'-type
-     * row and never exercise the identifier_key this test pins. Using the
-     * real email column guarantees the submitted value is email-shaped,
-     * giving a direct proof that a MATCHED identifier is passed through to
-     * RateLimit (unlike the unmatched case, which must never produce this
-     * row at all — see the email-shaped unmatched test above).
+     * Uses the email column: only an email-shaped value keeps the 'email'
+     * identifier type, which this test needs. login.php accepts username or email.
      */
     public function testMatchedUsernameWithWrongPasswordLogsTheUsernameAndRecordsItInRateLimitMetadata(): void
     {

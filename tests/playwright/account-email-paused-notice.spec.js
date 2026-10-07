@@ -1,5 +1,3 @@
-// tests/playwright/account-email-paused-notice.spec.js
-//
 // Coverage for the email-paused notice on usersc/account.php (#1899): a
 // banner naming suppressed/bounced delivery addresses, with links to the two
 // Account Settings controls that fix it.
@@ -11,10 +9,6 @@
 // owner, and a clean owner. The fixture needs the application database. The
 // local stack is Docker only, so the spec runs the fixture in the app
 // container through fixture-runner.js.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see
-// tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see
-// docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { login, isLoggedIn } = require('./auth-helper.js');

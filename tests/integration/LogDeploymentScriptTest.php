@@ -7,19 +7,9 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration test for scripts/log-deployment.php (Issue #1424).
- *
- * The script is a standalone CLI script invoked by the post-receive deploy
- * hook — it has no class/function to unit test directly, so this test
- * invokes it as a real subprocess and asserts on the row it writes to the
- * `logs` table.
- *
- * Environment note: tests/bootstrap-integration.php loads .env.test.local
- * into THIS PHPUnit process's $_ENV, but a subprocess spawned via exec()
- * starts with a fresh environment and would otherwise fall back to the
- * project's real .env — putenv() propagates this run's DB_* values before
- * each invocation so the subprocess's getenv() fallback resolves to the
- * same dedicated test schema this test suite already requires.
+ * scripts/log-deployment.php (#1424), run as a real subprocess because it is a
+ * standalone CLI script. A subprocess does not inherit this process's $_ENV, so
+ * DB_* values are passed with putenv(); otherwise it would use the real .env.
  */
 #[Group('integration')]
 #[Group('deployment')]
@@ -48,7 +38,6 @@ final class LogDeploymentScriptTest extends IntegrationTestCase
             try {
                 $this->db->query('DELETE FROM logs WHERE id = ?', [$this->insertedLogId]);
             } catch (RuntimeException $e) {
-                // Ignore cleanup errors — matches IntegrationTestCase's own convention.
             }
             $this->insertedLogId = null;
         }
@@ -73,7 +62,7 @@ final class LogDeploymentScriptTest extends IntegrationTestCase
             "SELECT * FROM logs WHERE logtype = 'Deployment' ORDER BY id DESC LIMIT 1"
         )->first();
 
-        // DB::first() (users/classes/DB.php) returns [] — not null — when no row matches.
+        // DB::first() returns [], not null, when no row matches.
         $this->assertIsObject($row, 'Expected a Deployment row to be inserted');
         $this->insertedLogId = (int)$row->id;
 
@@ -89,12 +78,9 @@ final class LogDeploymentScriptTest extends IntegrationTestCase
 
         $lastIdBefore = $this->latestDeploymentLogId();
 
-        // Only one of the four required arguments is supplied.
         [$returnCode, $output] = $this->runScript(['v2.29.0-test']);
 
-        // Capture any row that may have been inserted BEFORE asserting, so a regression
-        // that actually writes a row here — the exact scenario this test exists to catch —
-        // doesn't leave it as a permanent orphan if the assertion below fails.
+        // Capture any row before asserting, so a failing regression leaves no orphan row.
         $lastIdAfter = $this->latestDeploymentLogId();
         if ($lastIdAfter !== $lastIdBefore) {
             $this->insertedLogId = $lastIdAfter;
@@ -110,7 +96,7 @@ final class LogDeploymentScriptTest extends IntegrationTestCase
 
     private function latestDeploymentLogId(): ?int
     {
-        // DB::first() (users/classes/DB.php) returns [] — not null — when no row matches.
+        // DB::first() returns [], not null, when no row matches.
         $row = $this->db->query(
             "SELECT id FROM logs WHERE logtype = 'Deployment' ORDER BY id DESC LIMIT 1"
         )->first();
@@ -137,10 +123,7 @@ final class LogDeploymentScriptTest extends IntegrationTestCase
     }
 
     /**
-     * Propagate this test run's DB credentials (loaded from .env.test.local
-     * by tests/bootstrap-integration.php) into the process environment so a
-     * subprocess spawned via exec() connects to the same dedicated test
-     * schema instead of falling back to the project's real .env.
+     * Without this, the subprocess falls back to the real .env, not the test schema.
      */
     private function exposeTestDatabaseToSubprocess(): void
     {

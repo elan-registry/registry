@@ -17,28 +17,26 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SCRIPT="$REPO_ROOT/scripts/check-wip-markers.sh"
-
-TESTS_RUN=0
-TESTS_FAILED=0
 
 TEST_VERSION="__test_wip_marker_$$"
 NOTES_FILE="$REPO_ROOT/docs/releases/RELEASE_NOTES_${TEST_VERSION}.md"
 
+# shellcheck disable=SC2329 # called only through the EXIT trap in lib/harness.sh
 cleanup() {
     rm -f "$NOTES_FILE"
 }
-trap cleanup EXIT
 
 assert() {
     local desc="$1" expected_exit="$2" actual_exit="$3"
-    TESTS_RUN=$((TESTS_RUN + 1))
     if [ "$expected_exit" -eq "$actual_exit" ]; then
-        echo "PASS: $desc"
+        pass "$desc"
     else
-        echo "FAIL: $desc (expected exit $expected_exit, got $actual_exit)"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        fail "$desc" "expected exit $expected_exit, got $actual_exit"
     fi
 }
 
@@ -66,20 +64,10 @@ OUTPUT="$("$SCRIPT" "$TEST_VERSION" 2>/dev/null)"
 EXIT_CODE=$?
 assert "remaining WIP marker exits 1" 1 "$EXIT_CODE"
 
-TESTS_RUN=$((TESTS_RUN + 1))
 if echo "$OUTPUT" | grep -q "WIP:"; then
-    echo "PASS: remaining WIP marker is printed to stdout"
+    pass "remaining WIP marker is printed to stdout"
 else
-    echo "FAIL: remaining WIP marker was not printed to stdout"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "remaining WIP marker is printed to stdout" "output: [$OUTPUT]"
 fi
 
-# --- Report ------------------------------------------------------------
-
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

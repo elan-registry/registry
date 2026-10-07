@@ -1,5 +1,3 @@
-// tests/playwright/login-functionality.test.js
-
 /**
  * Comprehensive login functionality tests
  * These tests verify the core authentication system works correctly

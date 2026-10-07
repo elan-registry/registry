@@ -33,6 +33,13 @@ use ElanRegistry\DatabaseInterface;
  * returns the instance rather than a separate result object, and `query()` returns
  * the instance for chaining without ever throwing.
  *
+ * Use a named class in tests/Support, not an anonymous class, when a subclass
+ * overrides a `@phpstan-impure` method (`query()`, `first()`, `error()`,
+ * `count()`, `results()`) with a body that does not read mutable state.
+ * PHPStan reports `impureMethod.pure` for the anonymous form, because an
+ * anonymous class can never be extended to add that state. A named class is
+ * exempt. The named fakes in this folder point here for that reason.
+ *
  * For integration tests that need a real connection, see PassThroughDatabase.
  *
  * @package Tests\Support

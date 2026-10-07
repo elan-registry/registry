@@ -7,33 +7,12 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit tests for type helper conversion logic.
- *
- * dbInt() tests call ElanRegistry\TypeHelpers::toInt() directly — the real
- * production logic (#1599), extracted from usersc/includes/custom_functions.php
- * so it's testable without full framework initialization. custom_functions.php's
- * dbInt() and tests/bootstrap-unit.php's dbInt() stub both delegate to it, so
- * there is exactly one copy of the conversion logic; a source-inspection test
- * below guards that custom_functions.php's dbInt() hasn't reverted to a local
- * reimplementation.
- *
- * currentUserId() is session-coupled (depends on the global $user UserSpice
- * object) and isn't cleanly extractable without breaking its zero-arg calling
- * convention used throughout the app, so it stays in custom_functions.php.
- * Its real-code coverage lives in tests/integration/CurrentUserIdTest.php
- * (#1599), using IntegrationTestCase::loginAsTestUser() to fake an
- * authenticated session — the same pattern UserDeletionReassignmentTest.php
- * already uses for a hook that also calls currentUserId() internally.
- *
- * @issue 1599
+ * currentUserId() is session-coupled, so its coverage is in
+ * tests/integration/CurrentUserIdTest.php (#1599).
  */
 #[Group('fast')]
 final class TypeHelpersTest extends TestCase
 {
-    // ============================================================
-    // TypeHelpers::toInt() tests
-    // ============================================================
-
     public function testToIntWithObjectProperty(): void
     {
         $obj = (object) ['id' => '42', 'name' => 'test'];
@@ -85,10 +64,7 @@ final class TypeHelpersTest extends TestCase
 
     public function testToIntWithObjectNullProperty_throwsPropertyDoesNotExist(): void
     {
-        // isset() returns false for a property that exists but is null — dbInt()
-        // deliberately cannot distinguish "property is null" from "property is
-        // missing" and reports the latter message either way. This pins that as
-        // known, intentional behavior rather than an accidental regression target.
+        // Intentional: isset() cannot tell a null property from a missing one.
         $obj = (object) ['id' => null];
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("Property 'id' does not exist on object");
@@ -120,35 +96,74 @@ final class TypeHelpersTest extends TestCase
         TypeHelpers::toInt($obj, 'id');
     }
 
-    // ============================================================
-    // Source inspection: dbInt() must delegate, not reimplement
-    // ============================================================
-
     /**
-     * custom_functions.php's dbInt() must call TypeHelpers::toInt() rather than
-     * reimplementing the conversion logic inline — the drift risk this issue
-     * (#1599) exists to close. Captures and exact-matches the function body
-     * between its braces, rather than checking independent substrings, which
-     * would still pass against a dbInt() that reimplements the logic inline
-     * elsewhere in the file while TypeHelpers::toInt() is called from
-     * unrelated dead code.
+     * The unit bootstrap defines its own dbInt() stub, so the real one from
+     * custom_functions.php runs in a subprocess. An empty server_globals.php
+     * under a temporary root stands in for the framework include at the end
+     * of that file (#1599).
      */
-    public function testCustomFunctionsDbIntDelegatesToTypeHelpers(): void
+    public function testRealDbIntMatchesTypeHelpersToInt(): void
     {
-        $file = dirname(__DIR__, 3) . '/usersc/includes/custom_functions.php';
-        $content = (string) file_get_contents($file);
+        $projectRoot = dirname(__DIR__, 3);
+        $fakeRoot = sys_get_temp_dir() . '/dbint_' . bin2hex(random_bytes(6)) . '/';
+        mkdir($fakeRoot . 'usersc/includes', 0700, true);
+        touch($fakeRoot . 'usersc/includes/server_globals.php');
 
-        $matched = preg_match(
-            '/function dbInt\(mixed \$value, string \$property = \'id\'\): int\s*\{(.*?)\}/s',
-            $content,
-            $matches
-        );
+        $harness = <<<'PHP'
+            <?php
+            declare(strict_types=1);
+            require $argv[1] . '/vendor/autoload.php';
+            $abs_us_root = $argv[2];
+            $us_url_root = '';
+            require $argv[1] . '/usersc/includes/custom_functions.php';
+            $inputs = [
+                [(object) ['id' => '42'], 'id'], [(object) ['user_id' => 7], 'user_id'],
+                [5, 'id'], ['123', 'id'], ['12.9', 'id'], ['0', 'id'],
+                [true, 'id'], [null, 'id'], ['', 'id'], ['abc', 'id'],
+                [(object) ['id' => null], 'id'], [(object) ['name' => 'x'], 'id'],
+            ];
+            $run = static function (callable $fn, array $args): string {
+                try {
+                    return 'int:' . $fn(...$args);
+                } catch (Throwable $e) {
+                    return get_class($e) . ':' . $e->getMessage();
+                }
+            };
+            $results = [];
+            foreach ($inputs as $args) {
+                $results[] = [$run('dbInt', $args), $run([ElanRegistry\TypeHelpers::class, 'toInt'], $args)];
+            }
+            echo json_encode($results);
+            PHP;
+        $harnessFile = $fakeRoot . 'harness.php';
+        file_put_contents($harnessFile, $harness);
 
-        $this->assertSame(1, $matched, 'custom_functions.php must define dbInt() with the expected signature');
-        $this->assertSame(
-            'return TypeHelpers::toInt($value, $property);',
-            trim($matches[1]),
-            'custom_functions.php dbInt() body must be exactly a delegating call to TypeHelpers::toInt() — no other logic'
-        );
+        try {
+            $process = proc_open(
+                ['php', $harnessFile, $projectRoot, $fakeRoot],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes
+            );
+            $this->assertIsResource($process);
+            $stdout = (string) stream_get_contents($pipes[1]);
+            $stderr = (string) stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            $this->assertSame(0, proc_close($process), $stderr);
+        } finally {
+            unlink($harnessFile);
+            unlink($fakeRoot . 'usersc/includes/server_globals.php');
+            rmdir($fakeRoot . 'usersc/includes');
+            rmdir($fakeRoot . 'usersc');
+            rmdir($fakeRoot);
+        }
+
+        $results = json_decode($stdout, true);
+        $this->assertIsArray($results, $stdout);
+        $this->assertCount(12, $results);
+        $this->assertSame('int:42', $results[0][0]);
+        foreach ($results as $index => [$dbInt, $toInt]) {
+            $this->assertSame($toInt, $dbInt, "Input #{$index}");
+        }
     }
 }

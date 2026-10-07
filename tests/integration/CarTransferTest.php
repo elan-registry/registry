@@ -11,12 +11,6 @@ use ElanRegistry\Exceptions\CarValidationException;
 
 use PHPUnit\Framework\Attributes\Group;
 
-/**
- * Test cases for Car transfer functionality
- *
- * Tests cover car ownership transfer operations with user validation,
- * transaction handling, relationship updates, and profile data copying.
- */
 #[Group('integration')]
 final class CarTransferTest extends IntegrationTestCase
 {
@@ -33,16 +27,12 @@ final class CarTransferTest extends IntegrationTestCase
         $this->testUserId = $this->createTestUser();
         $this->targetUserId = $this->createTestUser();
 
-        // Set up authenticated user context for transfer operations
         $this->loginAsTestUser($this->testUserId);
 
         $this->db = DB::getInstance();
 
-        // city/state/country/lat/lon live on `profiles`, not `users` — createTestUser() only
-        // writes `users`. Give the transfer target real location data so
-        // testTransferUpdatesLocationData verifies an actual copy instead of comparing '' === ''.
-        // If this insert silently failed, the test would go right back to comparing '' === ''
-        // with no signal — so check it explicitly rather than let a failure hide.
+        // Location lives on `profiles`; without it the location test compares
+        // '' === ''. Checked so a failed insert cannot hide that.
         $profileInserted = $this->db->insert('profiles', [
             'user_id' => $this->targetUserId,
             'city'    => 'Hethel',
@@ -51,7 +41,6 @@ final class CarTransferTest extends IntegrationTestCase
         ]);
         $this->assertTrue((bool) $profileInserted, 'Test fixture: profiles insert must succeed');
 
-        // Create unique test car for this test
         try {
             $this->testCarId = $this->createTestCar($this->testUserId, [
                 'chassis' => 'TR' . uniqid()
@@ -68,15 +57,11 @@ final class CarTransferTest extends IntegrationTestCase
                 $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$this->targetUserId]);
             }
         } finally {
-            // Run even if the profile cleanup above throws, so the base class's own
-            // fixture cleanup — and its restoreGlobalUser() call — is never skipped.
+            // Run even if the cleanup above throws, so restoreGlobalUser() is never skipped.
             parent::tearDown();
         }
     }
 
-    /**
-     * Test successful car transfer to valid user
-     */
     #[Group('fast')]
     public function testTransferCarSuccessWithValidUser(): void
     {
@@ -89,9 +74,6 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertEquals($this->targetUserId, $transferredCar->data()->user_id);
     }
 
-    /**
-     * Test car transfer fails with invalid user ID
-     */
     #[Group('fast')]
     public function testTransferCarFailsWithInvalidUser(): void
     {
@@ -101,9 +83,6 @@ final class CarTransferTest extends IntegrationTestCase
         $car->transfer(99999, 'Test transfer', 'NEWOWNER', $this->testUserId);
     }
 
-    /**
-     * Test car transfer fails when car does not exist
-     */
     #[Group('fast')]
     public function testTransferCarFailsWhenCarNotExists(): void
     {
@@ -113,16 +92,12 @@ final class CarTransferTest extends IntegrationTestCase
         $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER', $this->testUserId);
     }
 
-    /**
-     * Test car transfer updates cars.user_id
-     */
     #[Group('fast')]
     public function testTransferUpdatesCarsUserId(): void
     {
         $car = new Car($this->testCarId);
         $carId = $car->data()->id;
 
-        // Verify original owner
         $before = $this->db->query(
             "SELECT user_id FROM cars WHERE id = ?",
             [$carId]
@@ -131,7 +106,6 @@ final class CarTransferTest extends IntegrationTestCase
 
         $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER', $this->testUserId);
 
-        // Verify owner was updated
         $after = $this->db->query(
             "SELECT user_id FROM cars WHERE id = ?",
             [$carId]
@@ -139,9 +113,6 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertSame($this->targetUserId, (int) $after->user_id);
     }
 
-    /**
-     * Test car transfer creates history record
-     */
     #[Group('fast')]
     public function testTransferCreatesHistoryRecord(): void
     {
@@ -150,7 +121,6 @@ final class CarTransferTest extends IntegrationTestCase
 
         $car->transfer($this->targetUserId, 'Test transfer history', 'NEWOWNER', $this->testUserId);
 
-        // Check that history record was created with NEWOWNER operation
         $historyQuery = $this->db->query(
             "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'NEWOWNER'",
             [$carId]
@@ -158,34 +128,25 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertTrue($historyQuery->count() > 0);
     }
 
-    /**
-     * Test car transfer copies user profile data
-     */
     #[Group('fast')]
     public function testTransferCopiesUserProfileData(): void
     {
         $car = new Car($this->testCarId);
 
-        // Get target user's profile data
         $targetUser = (new Owner($this->targetUserId))->data();
         $this->assertNotNull($targetUser);
 
         $car->transfer($this->targetUserId, 'Test transfer profile', 'NEWOWNER', $this->testUserId);
 
-        // Verify that car now has target user's profile data
         $updatedCar = new Car((int) $car->data()->id);
         $this->assertEquals($targetUser->fname ?? '', $updatedCar->data()->fname);
         $this->assertEquals($targetUser->lname ?? '', $updatedCar->data()->lname);
         $this->assertEquals($targetUser->email ?? '', $updatedCar->data()->email);
     }
 
-    /**
-     * Test car transfer transaction rollback on failure
-     */
     #[Group('fast')]
     public function testTransferTransactionRollbackOnFailure(): void
     {
-        // Test that invalid user causes transfer to fail completely
         $this->expectException(CarValidationException::class);
 
         $car = new Car($this->testCarId);
@@ -194,16 +155,12 @@ final class CarTransferTest extends IntegrationTestCase
         try {
             $car->transfer(99999, 'Test transfer', 'NEWOWNER', $this->testUserId);
         } catch (Exception $e) {
-            // After failed transfer, car should still have original owner
             $carReloaded = new Car((int) $car->data()->id);
             $this->assertEquals($originalUserId, $carReloaded->data()->user_id);
             throw $e;
         }
     }
 
-    /**
-     * Test car transfer with TRANSFER operation type
-     */
     #[Group('fast')]
     public function testTransferCarWithTransferOperationType(): void
     {
@@ -212,7 +169,6 @@ final class CarTransferTest extends IntegrationTestCase
 
         $car->transfer($this->targetUserId, 'Test transfer', 'TRANSFER', $this->testUserId);
 
-        // Check that history record was created with TRANSFER operation
         $historyQuery = $this->db->query(
             "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'TRANSFER'",
             [$carId]
@@ -240,9 +196,6 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertSame($before, (string) $after->owner_last_updated, 'transfer() must not change owner_last_updated');
     }
 
-    /**
-     * Test car transfer updates location data if available
-     */
     #[Group('fast')]
     public function testTransferUpdatesLocationData(): void
     {
@@ -250,7 +203,6 @@ final class CarTransferTest extends IntegrationTestCase
 
         $car->transfer($this->targetUserId, 'Test transfer location', 'NEWOWNER', $this->testUserId);
 
-        // Verify that car now has target user's location data
         $targetUser = (new Owner($this->targetUserId))->data();
         $updatedCar = new Car((int) $car->data()->id);
 
@@ -288,12 +240,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertNull($histQuery->first()->solddate);
     }
 
-    /**
-     * Issue #1878 guard: the clear path must write SQL NULL and nothing else.
-     * A never-sold car cannot distinguish "cleared" from "untouched", but it
-     * does catch a regression that writes a sentinel (e.g. '' — a hard error
-     * under STRICT_TRANS_TABLES on a DATE column — or '0000-00-00').
-     */
+    /** #1878: the clear must write SQL NULL, not a sentinel such as '' or '0000-00-00'. */
     #[Group('fast')]
     public function testTransferLeavesNeverSoldCarSoldDateNull(): void
     {
@@ -310,11 +257,8 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
-     * email_bounced is a property of the previous owner's address, not the car:
-     * carrying it forward would permanently exclude the car from
-     * CarRepository::findVerificationEligible() (`AND email_bounced = 0`) once
-     * the address that caused the bounce is gone. Transfer to a real owner must
-     * clear it on the live `cars` row.
+     * The bounce belongs to the previous owner's address; carrying it forward
+     * would exclude the car from findVerificationEligible() forever.
      */
     #[Group('fast')]
     public function testTransferClearsEmailBouncedOnPreviouslyBouncedCar(): void
@@ -334,14 +278,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertSame(0, (int) $carRow->email_bounced);
     }
 
-    /**
-     * email_bounced_address and email_suppressed (#1887) are properties of
-     * the previous owner's address by the same argument as email_bounced
-     * above: carrying email_suppressed forward would suppress mail to a new
-     * owner who never sent a spam complaint, and carrying the bounced
-     * address forward retains a stale personal identifier for someone who no
-     * longer owns the car. Transfer to a real owner must clear both.
-     */
+    /** #1887: both belong to the previous owner's address. */
     #[Group('fast')]
     public function testTransferClearsBounceAddressAndSuppressedOnPreviouslyFlaggedCar(): void
     {
@@ -364,19 +301,9 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
-     * Reassignment to the system account ("no owner") is NOT a change of
-     * owner (see the sold-date precedent for the same distinction, #1878) —
-     * the boolean email_bounced/email_suppressed flags must survive so they
-     * aren't lost while a car sits ownerless, mirroring email_bounced's own
-     * preservation.
-     *
-     * email_bounced_address is different: it is the actual bounced email
-     * address string, not a boolean signal, and this is exactly the
-     * reassignment path usersc/scripts/after_user_deletion.php uses to move
-     * a departing user's cars to 'noowner' for GDPR erasure. Preserving the
-     * address here would leave a deleted user's real email address readable
-     * indefinitely on a car they no longer own — so, unlike the two boolean
-     * flags, it must always be cleared, including on this path.
+     * Reassignment to "noowner" is not a change of owner (#1878), so the boolean
+     * flags survive. email_bounced_address is PII and this is the GDPR erasure
+     * path (after_user_deletion.php), so it is always cleared.
      */
     #[Group('fast')]
     public function testSystemAccountReassignmentPreservesFlagsButClearsBounceAddress(): void
@@ -411,11 +338,8 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
-     * vericode is a bearer token: whoever holds the plaintext verification
-     * link can Verify or mark Sold with no login (see the
-     * car-owner-verification FRD). A live link surviving a transfer would
-     * let the PREVIOUS owner keep acting on a car they no longer own, so
-     * transfer to a real owner must clear it.
+     * vericode is a bearer token: a live link would let the previous owner
+     * verify or mark sold a car they no longer own.
      */
     #[Group('fast')]
     public function testTransferClearsVericodeOnPreviouslyVerifiedCar(): void
@@ -435,16 +359,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertNull($carRow->vericode, 'vericode must be cleared on transfer to a real owner');
     }
 
-    /**
-     * Unlike email_bounced/email_suppressed (boolean signals about the
-     * previous owner's address, preserved on system-account reassignment),
-     * vericode is an active credential — the same argument that applies to
-     * email_bounced_address's PII clearing applies here with more force: a
-     * stale live link must not survive ANY ownership change, including
-     * reassignment to the `noowner` GDPR-erasure account, since the
-     * departing owner could otherwise still use it against a car they no
-     * longer own.
-     */
+    /** A live credential: cleared on any ownership change, including noowner. */
     #[Group('fast')]
     public function testSystemAccountReassignmentAlsoClearsVericode(): void
     {
@@ -471,15 +386,11 @@ final class CarTransferTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * Test transfer works with an explicit actingUserId even when global $user is unset.
-     * Verifies that Car::transfer() does not fall back to currentUserId() internally.
-     */
+    /** transfer() must not fall back to a global $user. */
     #[Group('fast')]
     public function testTransferHonorsExplicitActingUserIdWithoutGlobalUser(): void
     {
-        // Car::__construct() needs a global $user (via getSettings()), so construct before
-        // unsetting it — only transfer() itself must not fall back to a global $user internally.
+        // Car::__construct() needs global $user (getSettings()), so construct first.
         $car = new Car($this->testCarId);
 
         $savedUser = $GLOBALS['user'] ?? null;
@@ -493,8 +404,6 @@ final class CarTransferTest extends IntegrationTestCase
             }
         }
 
-        // Reload with global $user restored (Car::__construct() needs it via getSettings())
-        // to verify transfer() itself did not depend on it.
         $transferredCar = new Car($this->testCarId);
         $this->assertEquals(
             $this->targetUserId,

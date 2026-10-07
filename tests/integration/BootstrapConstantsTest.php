@@ -8,25 +8,10 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Regression test for issue #1931.
+ * #1931: the bootstrap's fallback load of config.php keeps these constants
+ * defined even when users/init.php throws before loader.php.
  *
- * tests/bootstrap-integration.php runs users/init.php in a deliberately
- * non-fatal try/catch — if init.php throws before reaching
- * usersc/includes/loader.php, usersc/includes/config.php never loads and the
- * application constants Car and BackupManager read are left undefined. This
- * test asserts the bootstrap's fallback load of config.php keeps those
- * constants defined regardless, catching the failure mode #1931 describes: a
- * suite that only tells the truth in one execution order.
- *
- * No test file loads config.php itself — the three per-file guards that did
- * were removed in #1931, and the bootstrap fallback replaced them. Do not
- * reintroduce one: it would define these constants as a side effect of test
- * discovery and let this test pass while the bootstrap fallback is broken.
- *
- * The rows cover what the removed guards were protecting: ELAN_IMAGE_DIR for
- * Car, the BACKUP_RETENTION_* trio for BackupManager::getRetentionDays(), the
- * warning/lookback windows it also reads, and BACKUP_BASE_DIR, which
- * BackupRestorabilityTest builds its path from.
+ * Do not load config.php from a test file: it would hide a broken fallback.
  */
 #[Group('integration')]
 final class BootstrapConstantsTest extends IntegrationTestCase

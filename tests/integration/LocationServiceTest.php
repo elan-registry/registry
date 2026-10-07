@@ -10,43 +10,12 @@ use ElanRegistry\LocationService;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * LocationServiceTest
+ * LocationService geocoding against Photon/Nominatim.
  *
- * Integration tests for location geocoding services using OpenStreetMap APIs:
- * - Forward geocoding (address → coordinates) via Photon/Nominatim
- * - Reverse geocoding (coordinates → address) via Nominatim
- * - Input validation
- * - Rate limiting
- * - Coordinate precision
- * - Error handling
- *
- * Tests assume user ID 1 for rate limiting and logging context.
- *
- * LIVE-NETWORK TESTS (issue #1759)
- * ---------------------------------
- * Methods tagged #[Group('live-network')] make real outbound HTTP calls to
- * Photon/Nominatim and assert on live third-party response content (real
- * city names, real coordinate ranges, real multi-state disambiguation).
- * They are excluded from the default `composer test:integration` /
- * `test:full` run via the `<groups><exclude>` block in
- * phpunit-integration.xml, so a local integration run never blocks on
- * transient network issues, rate limits, or upstream downtime. (The
- * integration suite requires a live DB and is not run in CI — see
- * .github/workflows/tests.yml — so this exclusion benefits local dev runs.)
- *
- * These are intentionally NOT mocked: LocationService has no injectable HTTP
- * client (it calls curl_init/curl_exec/file_get_contents unqualified), and
- * mocking the transport would only prove LocationService parses a canned fixture
- * correctly — duplicating what tests/unit/location/LocationServiceRateLimitTest.php
- * already verifies with tests/unit/location/_curl_namespace_overrides.php.
- * The entire point of these specific tests is validating actual live
- * compatibility with the upstream providers.
- *
- * The remaining methods (input validation, coordinate math, class structure)
- * make no network calls and are deterministic — they run in every default
- * integration pass with no group tag needed.
- *
- * Run the live-network group explicitly:
+ * Methods in the `live-network` group call the real providers and are
+ * excluded from default runs (#1759). They are not mocked on purpose: they
+ * prove live compatibility; parsing of canned responses is covered by
+ * tests/unit/location/LocationServiceRateLimitTest.php. Run them with:
  *   vendor/bin/phpunit -c phpunit-integration.xml --group live-network
  */
 #[Group('Integration')]
@@ -63,9 +32,6 @@ class LocationServiceTest extends IntegrationTestCase
         $this->service = new LocationService();
     }
 
-    /**
-     * Test that LocationService class exists and has required methods
-     */
     public function testLocationServiceClassStructure(): void
     {
         $this->assertTrue(class_exists(LocationService::class), 'LocationService class exists');
@@ -76,14 +42,9 @@ class LocationServiceTest extends IntegrationTestCase
         $this->assertTrue($reflection->hasMethod('validateCoordinates'), 'validateCoordinates method exists');
     }
 
-    /**
-     * Test forward geocoding with valid address
-     * Tests: Portland, Oregon, United States → coordinates via Photon/Nominatim
-     */
     #[Group('live-network')]
     public function testForwardGeocodingPortland(): void
     {
-
         try {
             $results = $this->service->searchLocation('Portland Oregon', self::TEST_USER_ID, 5);
         } catch (LocationServiceException $e) {
@@ -93,18 +54,15 @@ class LocationServiceTest extends IntegrationTestCase
         $this->assertIsArray($results, "Search should return array");
         $this->assertNotEmpty($results, "Should find Portland results");
 
-        // Check first result structure
         $result = $results[0];
         $this->assertArrayHasKey('lat', $result, "Result should have latitude");
         $this->assertArrayHasKey('lon', $result, "Result should have longitude");
         $this->assertArrayHasKey('city', $result, "Result should have city");
         $this->assertArrayHasKey('country', $result, "Result should have country");
 
-        // Verify data types
         $this->assertIsNumeric($result['lat'], "Latitude should be numeric");
         $this->assertIsNumeric($result['lon'], "Longitude should be numeric");
 
-        // Verify Portland, OR is in reasonable bounds
         // Portland, OR is approximately at 45.52°N, 122.68°W
         $this->assertGreaterThan(45, $result['lat'], "Portland latitude should be > 45");
         $this->assertLessThan(46, $result['lat'], "Portland latitude should be < 46");
@@ -114,13 +72,9 @@ class LocationServiceTest extends IntegrationTestCase
         echo "\n✓ Forward geocoding successful: Portland → ({$result['lat']}, {$result['lon']})\n";
     }
 
-    /**
-     * Test forward geocoding with London, UK
-     */
     #[Group('live-network')]
     public function testForwardGeocodingLondon(): void
     {
-
         try {
             $results = $this->service->searchLocation('London United Kingdom', self::TEST_USER_ID, 5);
         } catch (LocationServiceException $e) {
@@ -140,14 +94,9 @@ class LocationServiceTest extends IntegrationTestCase
         echo "\n✓ Forward geocoding successful: London → ({$result['lat']}, {$result['lon']})\n";
     }
 
-    /**
-     * Test reverse geocoding with valid coordinates
-     * Tests: 45.52°N, 122.68°W (Portland, OR) → address
-     */
     #[Group('live-network')]
     public function testReverseGeocodingPortland(): void
     {
-
         $lat = 45.52;
         $lon = -122.68;
 
@@ -163,24 +112,18 @@ class LocationServiceTest extends IntegrationTestCase
         $this->assertArrayHasKey('city', $result, "Result should have city");
         $this->assertArrayHasKey('country', $result, "Result should have country");
 
-        // Verify coordinates match input
         $this->assertEquals(45.52, $result['lat'], "Latitude should match input");
         $this->assertEquals(-122.68, $result['lon'], "Longitude should match input");
 
-        // Should identify Portland, Oregon area
         $this->assertNotEmpty($result['city'], "Should identify city");
         $this->assertNotEmpty($result['country'], "Should identify country");
 
         echo "\n✓ Reverse geocoding successful: (45.52, -122.68) → {$result['city']}, {$result['country']}\n";
     }
 
-    /**
-     * Test reverse geocoding with London coordinates
-     */
     #[Group('live-network')]
     public function testReverseGeocodingLondon(): void
     {
-
         $lat = 51.51;
         $lon = -0.13;
 
@@ -196,13 +139,8 @@ class LocationServiceTest extends IntegrationTestCase
         echo "\n✓ Reverse geocoding successful: (51.51, -0.13) → {$result['city']}, {$result['country']}\n";
     }
 
-    /**
-     * Test coordinate validation
-     */
     public function testCoordinateValidation(): void
     {
-
-        // Valid coordinates
         $this->assertTrue(
             $this->service->validateCoordinates(45.52, -122.68),
             "Valid coordinates should pass"
@@ -213,7 +151,6 @@ class LocationServiceTest extends IntegrationTestCase
             "Valid London coordinates should pass"
         );
 
-        // Invalid latitude
         $this->assertFalse(
             $this->service->validateCoordinates(91.0, 0.0),
             "Latitude > 90 should fail"
@@ -224,7 +161,6 @@ class LocationServiceTest extends IntegrationTestCase
             "Latitude < -90 should fail"
         );
 
-        // Invalid longitude
         $this->assertFalse(
             $this->service->validateCoordinates(0.0, 181.0),
             "Longitude > 180 should fail"
@@ -238,36 +174,23 @@ class LocationServiceTest extends IntegrationTestCase
         echo "\n✓ Coordinate validation working correctly\n";
     }
 
-    /**
-     * Test search with too short query
-     */
     public function testSearchWithShortQuery(): void
     {
-
         $this->expectException(LocationServiceException::class);
         $this->expectExceptionMessage('at least 2 characters');
 
         $this->service->searchLocation('A', self::TEST_USER_ID);
     }
 
-    /**
-     * Test reverse geocode with invalid coordinates
-     */
     public function testReverseGeocodeWithInvalidCoordinates(): void
     {
-
-        // Invalid latitude
         $this->expectException(LocationServiceException::class);
         $this->service->reverseGeocode(91.0, 0.0, self::TEST_USER_ID);
     }
 
-    /**
-     * Test coordinate precision (should be 4 decimal places)
-     */
     #[Group('live-network')]
     public function testCoordinatePrecision(): void
     {
-
         try {
             $results = $this->service->searchLocation('Portland Oregon', self::TEST_USER_ID, 1);
         } catch (LocationServiceException $e) {
@@ -278,7 +201,6 @@ class LocationServiceTest extends IntegrationTestCase
         $latStr = (string)$result['lat'];
         $lonStr = (string)$result['lon'];
 
-        // Count decimal places
         if (strpos($latStr, '.') !== false) {
             $latDecimals = strlen(substr(strrchr($latStr, '.'), 1));
             $this->assertLessThanOrEqual(4, $latDecimals, "Latitude should have ≤ 4 decimal places");
@@ -293,25 +215,13 @@ class LocationServiceTest extends IntegrationTestCase
     }
 
     /**
-     * Regression test for #1400: the geocoding service must still return
-     * multiple, genuinely distinct same-named cities in different states
-     * (e.g. Springfield, OH vs. Springfield, MO) so the frontend has the raw
-     * material it needs to disambiguate them. This test is independent of
-     * the frontend dedupe-key fix in location-picker.js — it only confirms
-     * the service layer doesn't collapse or drop the distinct candidates
-     * before they ever reach the browser.
-     *
-     * Depends on live third-party Photon/Nominatim data: only skips on a
-     * thrown LocationServiceException, not on "fewer than 2 states found" —
-     * if upstream ranking ever changes enough that "Springfield" no longer
-     * surfaces 2+ distinct US states in the first 8 results, this test will
-     * fail rather than skip, and may need a higher limit or a different
-     * query term.
+     * #1400: the service must return distinct same-named cities in different
+     * states so the frontend can tell them apart. Fails, not skips, if live
+     * ranking stops returning 2+ states; then raise the limit or change the query.
      */
     #[Group('live-network')]
     public function testForwardGeocodingDisambiguatesSameNameCities(): void
     {
-
         try {
             $results = $this->service->searchLocation('Springfield', self::TEST_USER_ID, 8);
         } catch (LocationServiceException $e) {
@@ -342,13 +252,9 @@ class LocationServiceTest extends IntegrationTestCase
             . implode(', ', $states) . "\n";
     }
 
-    /**
-     * Test that search returns expected result structure
-     */
     #[Group('live-network')]
     public function testSearchResultStructure(): void
     {
-
         try {
             $results = $this->service->searchLocation('Paris France', self::TEST_USER_ID, 1);
         } catch (LocationServiceException $e) {
@@ -359,13 +265,11 @@ class LocationServiceTest extends IntegrationTestCase
 
         $result = $results[0];
 
-        // Verify all expected fields are present
         $expectedFields = ['city', 'state', 'country', 'lat', 'lon', 'display'];
         foreach ($expectedFields as $field) {
             $this->assertArrayHasKey($field, $result, "Result should have '{$field}' field");
         }
 
-        // Verify types
         $this->assertIsString($result['city'], "City should be string");
         $this->assertIsString($result['country'], "Country should be string");
         $this->assertIsNumeric($result['lat'], "Latitude should be numeric");

@@ -1,13 +1,9 @@
-// tests/playwright/admin-page-titles.spec.js
-//
 // Behavioral verification for #1430: app/admin/index.php,
 // app/admin/maintenance.php, and app/admin/design-system.php set
 // $pageTitle/$pageDescription before requiring users/init.php (previously
 // they were set after, so the page-specific title never took effect and the
 // generic site title rendered instead). This confirms the actual rendered
 // <title> now reflects the page-specific title for each tab.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test } = require('@playwright/test');
 const { ensureLoggedIn, assertPageTitle } = require('./auth-helper.js');

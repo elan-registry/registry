@@ -10,22 +10,10 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration regression test for Car::update() repository-failure path
+ * #934: when CarRepository::update() fails, Car::update() writes exactly one
+ * DATABASE_ERROR log entry and throws CarDatabaseException. Integration tier
+ * because countMatchingLogs() reads the real `logs` table.
  *
- * Verifies the #934 fix: when CarRepository::update() returns false, exactly
- * one log entry is written under LOG_CATEGORY_DATABASE_ERROR and
- * CarDatabaseException is thrown. The old code had two consecutive
- * if (!$updateResult) guards — the first logged under LOG_CATEGORY_CAR_UPDATE
- * ("may indicate no changes") before the second logged the actual failure and
- * threw. That duplicate guard is now removed.
- *
- * This test lives in the integration suite (not unit) because it needs a
- * real DB-backed logging path (countMatchingLogs() queries the real `logs`
- * table). It loads the real Car class and injects a PHPUnit stub via
- * Reflection for the single repository property we need to control.
- *
- * @issue 934
- * @link https://github.com/unibrain1/elanregistry/issues/934
  * @see usersc/classes/Car/Car.php Car::update()
  */
 #[Group('integration')]
@@ -43,10 +31,7 @@ final class CarUpdateRepositoryFailureTest extends IntegrationTestCase
             ->getProperty('repository');
     }
 
-    /**
-     * Helper: build a Car with a stub repository that always returns false
-     * from updateCar().
-     */
+    /** Build a Car whose stub repository returns false from updateCar(). */
     private function carWithFailingRepo(): Car
     {
         $car = new Car();
@@ -59,9 +44,6 @@ final class CarUpdateRepositoryFailureTest extends IntegrationTestCase
         return $car;
     }
 
-    /**
-     * Core assertion: CarDatabaseException is thrown on repo update failure.
-     */
     public function testUpdateThrowsCarDatabaseExceptionOnRepositoryFailure(): void
     {
         $this->expectException(CarDatabaseException::class);
@@ -73,10 +55,7 @@ final class CarUpdateRepositoryFailureTest extends IntegrationTestCase
         ]);
     }
 
-    /**
-     * Regression guard: exactly one log entry under DATABASE_ERROR, none under
-     * CAR_UPDATE. Previously two guards fired two log() calls; now only one.
-     */
+    /** #934: one DATABASE_ERROR entry, none under CAR_UPDATE (a duplicate guard logged twice). */
     public function testUpdateLogsExactlyOnceUnderDatabaseErrorOnFailure(): void
     {
         $dbErrBefore = $this->countMatchingLogs('DatabaseError', 'Car update failed%');
@@ -108,13 +87,8 @@ final class CarUpdateRepositoryFailureTest extends IntegrationTestCase
     }
 
     /**
-     * update() still returns true when updateCar() itself succeeds but the
-     * post-update reload (find() -> findById()) fails — Car.php:254-257 logs a
-     * "state may be stale" warning instead of throwing. Sibling to
-     * CarCreateRepositoryFailureTest::testCreateThrowsCarCreationExceptionWhenPostInsertFindFails,
-     * except create() throws on this failure and update() does not.
-     *
-     * Uses createStub() (not createMock()), matching carWithFailingRepo() above.
+     * A failed reload after a successful updateCar() logs a "state may be stale"
+     * warning and returns true. create() throws in the same case.
      */
     public function testUpdateStillSucceedsButLogsWhenPostUpdateReloadFails(): void
     {

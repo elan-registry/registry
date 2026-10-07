@@ -1,5 +1,3 @@
-// tests/playwright/car-verified-row.spec.js
-//
 // Coverage for the Verified row and the admin-only Email on file row in the
 // Vehicle Information card (issue #1897). The card is app/views/cars/_vehicle_info_card.php.
 // Three pages draw it: the car details page, the account page, and the

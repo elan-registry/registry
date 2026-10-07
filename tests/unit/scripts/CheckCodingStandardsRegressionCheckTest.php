@@ -5,12 +5,8 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 /**
- * Coverage for the numbered-vs-descriptive filename branch added to
- * checkRegressionTestStructure() in scripts/check-coding-standards.php by
- * #1559 (which also made the method reachable for the first time — see its
- * own docblock). Runs the real script as a subprocess against small fixture
- * files rather than reaching into its private methods via Reflection, so it
- * exercises the exact CLI invocation .githooks/pre-commit and CI actually use.
+ * Issue #1559: runs the real checker as a subprocess, the same CLI call that
+ * the pre-commit hook and CI make.
  */
 final class CheckCodingStandardsRegressionCheckTest extends TestCase
 {
@@ -21,11 +17,6 @@ final class CheckCodingStandardsRegressionCheckTest extends TestCase
         $this->checkerScript = dirname(__DIR__, 3) . '/scripts/check-coding-standards.php';
     }
 
-    /**
-     * A numbered file (Issue{N}RegressionTest), a descriptive file
-     * ({Name}RegressionTest), and the RegressionTestCase base-class
-     * exemption must all pass with zero errors.
-     */
     public function testValidFixturesProduceNoErrors(): void
     {
         $root = $this->writeFixtures([
@@ -86,11 +77,6 @@ final class CheckCodingStandardsRegressionCheckTest extends TestCase
         $this->assertStringContainsString('Errors: 0', $output);
     }
 
-    /**
-     * A numbered file missing its @issue/@link annotations, and a file that
-     * matches neither the numbered nor descriptive filename pattern, must
-     * both be reported as blocking errors.
-     */
     public function testInvalidFixturesAreReportedAsErrors(): void
     {
         $root = $this->writeFixtures([
@@ -134,9 +120,6 @@ final class CheckCodingStandardsRegressionCheckTest extends TestCase
     }
 
     /**
-     * Writes each [filename => content] pair into a fresh temp directory's
-     * tests/unit/regression/ subtree and returns the temp root.
-     *
      * @param array<string, string> $fixtures
      */
     private function writeFixtures(array $fixtures): string

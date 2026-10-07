@@ -1,5 +1,3 @@
-// tests/playwright/user-settings-page.spec.js
-//
 // Coverage for usersc/user_settings.php (issue #1253).
 //
 // This is the ElanRegistry-customized version of the user settings page —
@@ -8,8 +6,6 @@
 // "Update your user settings" heading (upstream drives its heading off a
 // language string and includes a forceReauth() step-up that could redirect
 // a fresh test session).
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

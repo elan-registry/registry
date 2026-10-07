@@ -1,5 +1,3 @@
-// tests/playwright/admin-maintenance-smoke.spec.js
-//
 // Page/content-level smoke coverage for app/admin/maintenance.php (#1660).
 // Rewritten in #1225 from a two-tab layout into a single page with no tabs,
 // backed by 3 card partials (maintenance-backups.php, maintenance-migrations.php,
@@ -8,8 +6,6 @@
 // before reaching markup — it does not duplicate the <title> check already in
 // admin-page-titles.spec.js or the modal DOM/CSRF checks already in
 // admin-modal-confirmation.spec.js.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

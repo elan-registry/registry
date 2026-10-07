@@ -54,7 +54,20 @@ const vendorFiles = [
   ['node_modules/filepond-plugin-image-transform/dist/filepond-plugin-image-transform.min.js', 'usersc/js/filepond-plugin-image-transform.min.js'],
 ];
 
-Promise.all([
+/**
+ * Builds the registry map style from a VersaTiles osm TileJSON.
+ *
+ * @param {string} base VersaTiles server origin.
+ * @param {object} osmTileJson TileJSON for the osm source. Root-relative tile URLs are made absolute.
+ * @returns {Promise<object>} The MapLibre style object.
+ */
+async function buildOsmStyle(base, osmTileJson) {
+  const { osm } = await import('@versatiles/style');
+  const tiles = osmTileJson.tiles.map((t) => (/^https?:\/\//.test(t) ? t : base + t));
+  return osm(versatilesStyleOptions(base, { ...osmTileJson, tiles }));
+}
+
+const build = () => Promise.all([
   ...jsFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.js$/, '.min.js') })),
   ...cssFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.css$/, '.min.css') })),
 ]).then(async () => {
@@ -167,7 +180,6 @@ Promise.all([
   // "Migration from v5"). tiles.versatiles.org retired the v5 "basics" sprite
   // sheet; the current sheet is /assets/sprites/base.{json,png} (v6 emits the
   // extensionless ".../sprites/base" — MapLibre appends .json/@2x.png itself).
-  const { osm } = await import('@versatiles/style');
   const VERSATILES_BASE = 'https://tiles.versatiles.org';
   // Passing urls.osm as a URL string makes osm() emit {type, url} — a live
   // reference to the TileJSON MapLibre fetches at map load. That TileJSON's
@@ -191,11 +203,16 @@ Promise.all([
   const osmTileJson = await fetch(`${VERSATILES_BASE}/tiles/osm/tiles.json`, {
     signal: AbortSignal.timeout(10000),
   }).then((r) => r.json());
-  osmTileJson.tiles = osmTileJson.tiles.map((t) => (/^https?:\/\//.test(t) ? t : VERSATILES_BASE + t));
-  const style = osm(versatilesStyleOptions(VERSATILES_BASE, osmTileJson));
+  const style = await buildOsmStyle(VERSATILES_BASE, osmTileJson);
   fs.writeFileSync('usersc/js/versatiles-colorful.json', JSON.stringify(style));
   console.log('Generated usersc/js/versatiles-colorful.json');
 }).catch((err) => {
   console.error('Build failed:', err?.stack ?? err?.message ?? err);
   process.exit(1);
 });
+
+if (require.main === module) {
+  build();
+}
+
+module.exports = { buildOsmStyle };

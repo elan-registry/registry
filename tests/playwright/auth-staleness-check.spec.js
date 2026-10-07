@@ -1,4 +1,3 @@
-// tests/playwright/auth-staleness-check.spec.js
 // Pure-logic coverage for e2e/auth-staleness-check.js's assertAuthStillValid
 // (#1935) — no real browser, no network, no real site. The module under test
 // exposes an injectable `newContext` seam precisely so its three outcomes can

@@ -13,15 +13,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * CarModelTest - Integration Tests for CarModel Reference Data Class
- *
- * Tests the read-only query interface for car model reference data.
- * These tests verify correct data retrieval and filtering from the car_models table.
- *
- * Integration tier, not unit: `new CarModel()` with no injected database
- * falls back to dbi(), so every test here queries the real, seeded
- * car_models table. The stub-only DB-failure cases live in
- * tests/unit/CarModelFailureTest.php.
+ * Integration tier: `new CarModel()` falls back to dbi() and reads the real,
+ * seeded car_models table. DB-failure cases: tests/unit/CarModelFailureTest.php.
  */
 #[Group('integration')]
 #[Group('reference-data')]
@@ -30,19 +23,12 @@ class CarModelTest extends TestCase
 {
     private CarModel $carModel;
 
-    /**
-     * Set up test fixtures
-     */
     protected function setUp(): void
     {
         parent::setUp();
         $this->carModel = new CarModel();
     }
 
-    /**
-     * @test
-     * getAll() returns all car models
-     */
     public function testGetAllReturnsAllModels(): void
     {
         $allModels = $this->carModel->getAll();
@@ -50,7 +36,6 @@ class CarModelTest extends TestCase
         $this->assertIsArray($allModels);
         $this->assertGreaterThanOrEqual(20, count($allModels), 'Should have at least 20 models');
 
-        // Verify each model has required properties
         foreach ($allModels as $model) {
             $this->assertObjectHasProperty('id', $model);
             $this->assertObjectHasProperty('year_available_from', $model);
@@ -65,58 +50,38 @@ class CarModelTest extends TestCase
         }
     }
 
-    /**
-     * @test
-     * getAvailableInYear() returns models for specific year
-     */
     public function testGetAvailableInYearReturnsCorrectModels(): void
     {
-        // 1970 should have S4, Sprint, and Plus 2 models
         $models = $this->carModel->getAvailableInYear(1970);
 
         $this->assertIsArray($models);
         $this->assertGreaterThan(0, count($models), 'Year 1970 should have models');
 
-        // Check for expected series in 1970
         $series = array_unique(array_map(fn($m) => $m->series_normalized, $models));
         $this->assertContains('S4', $series, 'S4 should be available in 1970');
         $this->assertContains('Sprint', $series, 'Sprint should be available in 1970');
     }
 
-    /**
-     * @test
-     * getAvailableInYear() with 1963 returns S1 models
-     */
     public function testGetAvailableInYear1963(): void
     {
         $models = $this->carModel->getAvailableInYear(1963);
 
         $this->assertGreaterThan(0, count($models));
 
-        // S1 should be available
         $series = array_unique(array_map(fn($m) => $m->series_normalized, $models));
         $this->assertContains('S1', $series);
     }
 
-    /**
-     * @test
-     * getAvailableInYear() with 1974 returns late models
-     */
     public function testGetAvailableInYear1974(): void
     {
         $models = $this->carModel->getAvailableInYear(1974);
 
         $this->assertGreaterThan(0, count($models));
 
-        // Should be Plus 2S 130 models only
         $series = array_unique(array_map(fn($m) => $m->series_normalized, $models));
         $this->assertContains('+2S/130', $series);
     }
 
-    /**
-     * @test
-     * getAvailableInYear(1965) does not include the removed 26R|Race|26 misclassification
-     */
     public function testGetAvailableInYear1965ExcludesBadRow(): void
     {
         $models = $this->carModel->getAvailableInYear(1965);
@@ -125,51 +90,33 @@ class CarModelTest extends TestCase
         $this->assertNotContains('26R|Race|26', $modelValues);
     }
 
-    /**
-     * @test
-     * getAvailableInYear() throws for invalid year (too early)
-     */
     public function testGetAvailableInYearThrowsForYearTooEarly(): void
     {
         $this->expectException(CarValidationException::class);
         $this->carModel->getAvailableInYear(1962);
     }
 
-    /**
-     * @test
-     * getAvailableInYear() throws for invalid year (too late)
-     */
     public function testGetAvailableInYearThrowsForYearTooLate(): void
     {
         $this->expectException(CarValidationException::class);
         $this->carModel->getAvailableInYear(1975);
     }
 
-    /**
-     * @test
-     * getBySeries() returns models for S4
-     */
     public function testGetBySeriesS4(): void
     {
         $s4Models = $this->carModel->getBySeries('S4');
 
         $this->assertGreaterThan(0, count($s4Models));
 
-        // All should have S4 in series_normalized
         foreach ($s4Models as $model) {
             $this->assertEquals('S4', $model->series_normalized);
         }
 
-        // Should have both FHC and DHC variants
         $variants = array_unique(array_map(fn($m) => $m->variant, $s4Models));
         $this->assertContains('FHC', $variants);
         $this->assertContains('DHC', $variants);
     }
 
-    /**
-     * @test
-     * getBySeries() returns models for Sprint
-     */
     public function testGetBySeriesSprint(): void
     {
         $sprintModels = $this->carModel->getBySeries('Sprint');
@@ -180,17 +127,12 @@ class CarModelTest extends TestCase
             $this->assertEquals('Sprint', $model->series_normalized);
         }
 
-        // Year range should be 1970-1973
         $minYear = min(array_map(fn($m) => $m->year_available_from, $sprintModels));
         $maxYear = max(array_map(fn($m) => $m->year_available_to, $sprintModels));
         $this->assertEquals(1970, $minYear);
         $this->assertEquals(1973, $maxYear);
     }
 
-    /**
-     * @test
-     * getBySeries() returns models for +2 (Plus 2)
-     */
     public function testGetBySeriesPlusTwo(): void
     {
         $plus2Models = $this->carModel->getBySeries('+2');
@@ -202,30 +144,18 @@ class CarModelTest extends TestCase
         }
     }
 
-    /**
-     * @test
-     * getBySeries() returns empty array for non-existent series
-     */
     public function testGetBySeriesNonExistent(): void
     {
         $models = $this->carModel->getBySeries('NonExistent');
         $this->assertEmpty($models);
     }
 
-    /**
-     * @test
-     * getBySeries() returns empty array for empty string
-     */
     public function testGetBySeriesEmpty(): void
     {
         $models = $this->carModel->getBySeries('');
         $this->assertEmpty($models);
     }
 
-    /**
-     * @test
-     * byValue() returns correct model for valid composite key
-     */
     public function testByValueValidModel(): void
     {
         $model = $this->carModel->byValue('S4|FHC|36');
@@ -238,10 +168,6 @@ class CarModelTest extends TestCase
         $this->assertEquals(1971, $model->year_available_to);
     }
 
-    /**
-     * @test
-     * byValue() returns correct model for Drophead S4
-     */
     public function testByValueDropheadS4(): void
     {
         $model = $this->carModel->byValue('S4|DHC|45');
@@ -253,40 +179,24 @@ class CarModelTest extends TestCase
         $this->assertEquals('45', $model->type_code);
     }
 
-    /**
-     * @test
-     * byValue() returns null for non-existent model
-     */
     public function testByValueNonExistent(): void
     {
         $model = $this->carModel->byValue('S4|NonExistentVariant|36');
         $this->assertNull($model);
     }
 
-    /**
-     * @test
-     * byValue() returns null for empty string
-     */
     public function testByValueEmpty(): void
     {
         $model = $this->carModel->byValue('');
         $this->assertNull($model);
     }
 
-    /**
-     * @test
-     * byValue() returns null for removed misclassified 26R Race row
-     */
     public function testBadRowDoesNotExist(): void
     {
         $model = $this->carModel->byValue('26R|Race|26');
         $this->assertNull($model);
     }
 
-    /**
-     * @test
-     * byValue() returns correct S1 Race model
-     */
     public function testByValueS1Race26R(): void
     {
         $model = $this->carModel->byValue('S1|Race|26R');
@@ -296,10 +206,6 @@ class CarModelTest extends TestCase
         $this->assertSame('26R', $model->type_code);
     }
 
-    /**
-     * @test
-     * byValue() returns correct S2 Race model
-     */
     public function testByValueS2Race26R(): void
     {
         $model = $this->carModel->byValue('S2|Race|26R');
@@ -309,10 +215,6 @@ class CarModelTest extends TestCase
         $this->assertSame('26R', $model->type_code);
     }
 
-    /**
-     * @test
-     * getSeriesInYear() returns series available in 1970
-     */
     public function testGetSeriesInYear1970(): void
     {
         $series = $this->carModel->getSeriesInYear(1970);
@@ -320,39 +222,25 @@ class CarModelTest extends TestCase
         $this->assertIsArray($series);
         $this->assertContains('S4', $series);
         $this->assertContains('Sprint', $series);
-        // Plus 2 models should be present
         $plus2Variants = array_filter($series, fn($s) => strpos($s, '+2') === 0);
         $this->assertNotEmpty($plus2Variants, 'Should contain at least one Plus 2 variant');
     }
 
-    /**
-     * @test
-     * getSeriesInYear() returns only S1 for 1963
-     */
     public function testGetSeriesInYear1963(): void
     {
         $series = $this->carModel->getSeriesInYear(1963);
 
         $this->assertIsArray($series);
         $this->assertGreaterThan(0, count($series));
-        // Should contain S1
         $this->assertTrue(in_array('S1', $series) || in_array('Elan 1500', $series));
     }
 
-    /**
-     * @test
-     * getSeriesInYear() throws for invalid year
-     */
     public function testGetSeriesInYearThrowsForInvalidYear(): void
     {
         $this->expectException(CarValidationException::class);
         $this->carModel->getSeriesInYear(1975);
     }
 
-    /**
-     * @test
-     * groupByYear() returns all 12 years
-     */
     public function testGroupByYearReturnsAllYears(): void
     {
         $grouped = $this->carModel->groupByYear();
@@ -360,17 +248,12 @@ class CarModelTest extends TestCase
         $this->assertIsArray($grouped);
         $this->assertEquals(12, count($grouped), 'Should have entries for years 1963-1974');
 
-        // Check all years present
         for ($year = 1963; $year <= 1974; $year++) {
             $this->assertArrayHasKey($year, $grouped, "Year {$year} should be present");
             $this->assertIsArray($grouped[$year]);
         }
     }
 
-    /**
-     * @test
-     * groupByYear() 1963 has at least 2 models (S1 Roadster + S1 Race)
-     */
     public function testGroupByYear1963HasModels(): void
     {
         $grouped = $this->carModel->groupByYear();
@@ -378,22 +261,16 @@ class CarModelTest extends TestCase
         $this->assertGreaterThanOrEqual(2, count($grouped[1963]), 'Year 1963 should have S1 models');
     }
 
-    /**
-     * @test
-     * groupByYear() returns consistent counts
-     */
     public function testGroupByYearConsistency(): void
     {
         $grouped = $this->carModel->groupByYear();
         $allModels = $this->carModel->getAll();
 
-        // Count total models across all years
         $totalByGroup = 0;
         foreach ($grouped as $year => $models) {
             $totalByGroup += count($models);
         }
 
-        // Count total by year range
         $totalByRange = 0;
         foreach ($allModels as $model) {
             $totalByRange += ($model->year_available_to - $model->year_available_from + 1);
@@ -402,20 +279,12 @@ class CarModelTest extends TestCase
         $this->assertEquals($totalByRange, $totalByGroup, 'Total model-year combinations should match');
     }
 
-    /**
-     * @test
-     * exists() returns true for valid model combination
-     */
     public function testExistsValidModel(): void
     {
         $exists = $this->carModel->exists('S4', 'FHC', '36');
         $this->assertTrue($exists);
     }
 
-    /**
-     * @test
-     * exists() returns true for Sprint models
-     */
     public function testExistsSprintModel(): void
     {
         $fhc = $this->carModel->exists('Sprint', 'FHC', '36');
@@ -425,28 +294,16 @@ class CarModelTest extends TestCase
         $this->assertTrue($dhc);
     }
 
-    /**
-     * @test
-     * exists() returns true for S1 Race model
-     */
     public function testExistsS1Race26R(): void
     {
         $this->assertTrue($this->carModel->exists('S1', 'Race', '26R'));
     }
 
-    /**
-     * @test
-     * exists() returns true for S2 Race model
-     */
     public function testExistsS2Race26R(): void
     {
         $this->assertTrue($this->carModel->exists('S2', 'Race', '26R'));
     }
 
-    /**
-     * @test
-     * exists() returns false for invalid variant
-     */
     public function testExistsInvalidVariant(): void
     {
         $exists = $this->carModel->exists('S4', 'Coupe', '36');
@@ -454,30 +311,18 @@ class CarModelTest extends TestCase
         $this->assertFalse($exists);
     }
 
-    /**
-     * @test
-     * exists() returns false for invalid type code
-     */
     public function testExistsInvalidTypeCode(): void
     {
         $exists = $this->carModel->exists('S4', 'FHC', '99');
         $this->assertFalse($exists);
     }
 
-    /**
-     * @test
-     * exists() handles whitespace in parameters
-     */
     public function testExistsHandlesWhitespace(): void
     {
         $exists = $this->carModel->exists(' S4 ', ' FHC ', ' 36 ');
         $this->assertTrue($exists);
     }
 
-    /**
-     * @test
-     * All models have valid type codes
-     */
     public function testAllModelsHaveValidTypeCodes(): void
     {
         $validTypeCodes = ['26', '36', '45', '50', '26R'];
@@ -489,10 +334,6 @@ class CarModelTest extends TestCase
         }
     }
 
-    /**
-     * @test
-     * Every Race variant has series in S1 or S2
-     */
     public function testRaceModelsHaveCorrectSeriesValues(): void
     {
         $raceModels = $this->getRaceModels();
@@ -503,10 +344,6 @@ class CarModelTest extends TestCase
         }
     }
 
-    /**
-     * @test
-     * Every Race variant has type_code 26R
-     */
     public function testRaceModelsHaveCorrectTypeCode(): void
     {
         $raceModels = $this->getRaceModels();
@@ -529,10 +366,6 @@ class CarModelTest extends TestCase
         return $raceModels;
     }
 
-    /**
-     * @test
-     * CarValidator rejects the removed misclassified 26R|Race|26 model value
-     */
     public function testValidateModelRejectsRemovedBadRow(): void
     {
         $validator = new CarValidator();
@@ -541,10 +374,6 @@ class CarModelTest extends TestCase
         $validator->validateAndSanitizeFields(['model' => '26R|Race|26'], true);
     }
 
-    /**
-     * @test
-     * All models have series_normalized value
-     */
     public function testAllModelsHaveSeriesNormalized(): void
     {
         $allModels = $this->carModel->getAll();
@@ -557,10 +386,6 @@ class CarModelTest extends TestCase
         }
     }
 
-    /**
-     * @test
-     * All models have valid year ranges
-     */
     public function testAllModelsHaveValidYearRanges(): void
     {
         $allModels = $this->carModel->getAll();
@@ -573,10 +398,6 @@ class CarModelTest extends TestCase
         }
     }
 
-    /**
-     * @test
-     * Unique model values across all models
-     */
     public function testUniqueModelValues(): void
     {
         $allModels = $this->carModel->getAll();
@@ -586,10 +407,6 @@ class CarModelTest extends TestCase
         $this->assertEquals(count($allModels), count($unique), 'All model_values should be unique');
     }
 
-    /**
-     * @test
-     * Results are properly ordered in getAll()
-     */
     public function testGetAllOrderingByYear(): void
     {
         $allModels = $this->carModel->getAll();
@@ -602,10 +419,6 @@ class CarModelTest extends TestCase
         }
     }
 
-    /**
-     * @test
-     * SE/S/E suffixes are properly normalized
-     */
     public function testSeriesNormalizationStripsSpecialSuffixes(): void
     {
         $allModels = $this->carModel->getAll();
@@ -613,10 +426,8 @@ class CarModelTest extends TestCase
         $withSE = array_filter($allModels, fn($m) => stripos($m->series, 'SE') !== false || stripos($m->series, 'S/E') !== false);
 
         foreach ($withSE as $model) {
-            // series_normalized should not contain SE or S/E
             $this->assertStringNotContainsString('SE', $model->series_normalized);
             $this->assertStringNotContainsString('S/E', $model->series_normalized);
-            // Should contain the base series name
             $this->assertGreaterThan(0, strlen($model->series_normalized));
         }
     }

@@ -7,35 +7,15 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Behavioral (real-process, real-DB) tests for the
- * `resume_verification_emails` POST branch of `usersc/user_settings.php`
- * (#1895 — owner self-service "Resume verification emails").
+ * #1895: the `resume_verification_emails` POST branch of
+ * usersc/user_settings.php.
  *
- * usersc/user_settings.php is a full HTML page, not a JSON API endpoint, and
- * Redirect::to() ends the request with a hard exit() either way (it sends a
- * Location header when possible, or falls through to an exit()-ing JS
- * redirect otherwise — see users/classes/Redirect.php). So, as with
- * VerificationToggleEndpointBehaviorTest's ApiResponse::send() constraint,
- * each request runs in its own `php -r` subprocess. A register_shutdown_function()
- * callback inside that subprocess captures the usSuccess() session flash to a
- * temp file just before PHP tears the process down — the exit() itself always
- * wins the race against any code placed after `require` in the same script.
- * The POST tests then assert on that captured flash plus real database state
- * (flags, cars_hist rows), never on the rendered page body. Only the GET
- * tests read the rendered body, to check when the control shows.
+ * Redirect::to() always calls exit(), so each request runs in its own
+ * `php -r` subprocess, and a shutdown function captures the usSuccess()
+ * flash to a temp file. POST tests assert on that flash and database state.
  *
- * securePage($php_self) (called by usersc/user_settings.php) needs a real
- * web-relative $php_self to find its `pages` row. Server::get('PHP_SELF')
- * derives this from $_SERVER['SCRIPT_FILENAME'] under CLI (see
- * users/classes/Server.php's cliFallback()), so SCRIPT_FILENAME is set to the
- * endpoint's real path before users/init.php runs. securePage() also requires
- * the session user to hold the page's permission_page_matches permission (not
- * merely users.permissions != 0), so the fixture user is granted
- * permission_id 1 (Member) via a real user_permission_matches row, mirroring
- * what User::create() does for every real signup.
- *
- * @see usersc/user_settings.php
- * @see https://github.com/elan-registry/registry/issues/1895
+ * securePage() needs SCRIPT_FILENAME set before users/init.php (for
+ * $php_self) and a real permission_id 1 match for the fixture user.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -124,11 +104,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         return array_map(static fn (object $row): string => (string) $row->operation, $rows);
     }
 
-    /**
-     * Creates a logged-in, Member-permissioned ($user_permission_matches,
-     * permission_id = 1) test user with a profiles row, as
-     * usersc/user_settings.php's securePage() gate requires.
-     */
+    /** A logged-in Member (permission_id 1) with a profiles row, for securePage(). */
     private function createEndpointTestUser(): int
     {
         $ownerId = $this->createTestUser(['permissions' => 1], true);
@@ -138,26 +114,13 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     }
 
     /**
-     * Runs usersc/user_settings.php as a POST request in its own subprocess,
-     * with a real session + CSRF token and a logged-in user via the same
-     * reflection-based technique VerificationToggleEndpointBehaviorTest uses.
+     * Runs usersc/user_settings.php in its own subprocess with a real session,
+     * CSRF token, and logged-in user.
      *
-     * @param array<string, mixed> $extraPost Additional $_POST fields, merged
-     *                                         after 'csrf' and
-     *                                         'resume_verification_emails'
-     *                                         (a field here can override
-     *                                         either).
-     * @param bool $omitCsrfKey When true, the 'csrf' key is left out of
-     *                          $_POST entirely instead of set to a valid or
-     *                          invalid value — proves the missing-key case,
-     *                          not just the bad-value case. Overrides
-     *                          $withValidCsrf.
-     * @param bool $asGet When true, the request is a plain GET page load: no
-     *                    $_POST fields are set and the other POST options are
-     *                    ignored. Use it to assert on the rendered page body.
-     * @param bool $withResumeField When false, the 'resume_verification_emails'
-     *                              field is left out, so the request is the
-     *                              ordinary profile-update form POST.
+     * @param array<string, mixed> $extraPost Extra $_POST fields; can override 'csrf' and 'resume_verification_emails'
+     * @param bool $omitCsrfKey Leave out the 'csrf' key entirely; overrides $withValidCsrf
+     * @param bool $asGet Plain GET page load; the POST options are ignored
+     * @param bool $withResumeField False sends the ordinary profile-update POST
      * @return array{exitCode: int, raw: string, successFlash: string}
      */
     private function invokeResumeEndpoint(
@@ -395,10 +358,8 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     }
 
     /**
-     * Confirms the exact cars_hist.operation string against the live
-     * varchar(32) column (no truncation — 'SUPPRESSION CLEARED BY OWNER' is
-     * 28 chars) and that it differs from the admin path's
-     * 'EMAIL SUPPRESSION CLEARED' string (app/admin/index.php).
+     * The operation string fits varchar(32) and differs from the admin
+     * path's 'EMAIL SUPPRESSION CLEARED'.
      */
     #[Group('fast')]
     public function testCarsHistOperationStringExactAndDistinctFromAdminString(): void

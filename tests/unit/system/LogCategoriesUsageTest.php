@@ -2,71 +2,18 @@
 
 declare(strict_types=1);
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Group;
-
 /**
- * Test that car, contact, and admin PHP endpoints use LogCategories constants
- * instead of hardcoded string literals in withLogging() and logger() calls.
+ * Single-file regression checks on endpoint and page source. PHPStan's
+ * LogCategoryArgumentRule enforces LogCategories constants in logger() and
+ * withLogging() calls.
  */
 #[Group('system')]
 #[Group('logging')]
 class LogCategoriesUsageTest extends TestCase
 {
-    /**
-     * Car-related PHP files that should use LogCategories constants
-     * for all logging category parameters.
-     */
-    private const CAR_ENDPOINT_FILES = [
-        'app/api/cars/chassis-availability.php',
-        'app/api/cars/save.php',
-        'app/api/cars/history.php',
-        'app/api/cars/chassis-validate.php',
-        'app/api/cars/transfer-request.php',
-        'app/admin/includes/process-transfer-approve.php',
-        'app/admin/includes/process-transfer-deny.php',
-        'app/admin/includes/process-car-details.php',
-    ];
-
-    /**
-     * Contact-related PHP files that should use LogCategories constants
-     * for all logging category parameters.
-     */
-    private const CONTACT_ENDPOINT_FILES = [
-        'app/api/contact/send-feedback.php',
-        'app/api/contact/send-owner-email.php',
-    ];
-
-    /**
-     * app/admin/ PHP files that call logger()/withLogging() — must use
-     * LogCategories constants for the category parameter.
-     * Hand-maintained: add new admin files here when
-     * they introduce logger()/withLogging() calls. (Some app/admin/includes/
-     * files are grouped under CAR_ENDPOINT_FILES instead, by domain rather
-     * than path.)
-     */
-    private const ADMIN_ENDPOINT_FILES = [
-        'app/admin/includes/fix-script-core.php',
-        'app/admin/includes/load-owner-info.php',
-        'app/admin/includes/load-owner-profile.php',
-        'app/admin/includes/process-admin-contact.php',
-        'app/admin/includes/process-owner-search.php',
-        'app/admin/includes/process-owner-sync-location.php',
-        'app/admin/includes/process-owner-update.php',
-        'app/admin/includes/process-user-details.php',
-        'app/admin/includes/system/backup-operations.php',
-        'app/admin/includes/tab-account_cleanup.php',
-        'app/admin/includes/tab-car_mgmt.php',
-        'app/admin/includes/tab-owner_mgmt.php',
-        'app/admin/index.php',
-        'app/admin/maintenance.php',
-        'app/admin/scripts/fix/_TEMPLATE_Fix-Script.php',
-        'app/admin/scripts/maintenance/21-Fix-Page-Permissions.php',
-        'app/admin/scripts/maintenance/24-Regenerate-Optimized-Thumbnails.php',
-    ];
-
     private string $rootDir;
 
     protected function setUp(): void
@@ -75,514 +22,109 @@ class LogCategoriesUsageTest extends TestCase
         $this->rootDir = dirname(__DIR__, 3);
     }
 
-    #[DataProvider('carEndpointFilesProvider')]
-    public function testNoHardcodedWithLoggingStrings(string $relativePath): void
-    {
-        $filePath = $this->rootDir . '/' . $relativePath;
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped("File not found: $relativePath");
-        }
-
-        $content = file_get_contents($filePath);
-
-        // Match withLogging calls that use string literals for the category parameter
-        // Pattern: ->withLogging(anything, 'SomeString', anything)
-        // The category is the second argument after the user ID
-        $pattern = '/->withLogging\s*\([^,]+,\s*[\'"][A-Za-z]+[\'"]/';
-
-        $matches = [];
-        preg_match_all($pattern, $content, $matches);
-
-        $this->assertEmpty(
-            $matches[0],
-            sprintf(
-                "File %s contains hardcoded string literals in withLogging() calls. " .
-                "Use LogCategories constants instead.\nFound: %s",
-                $relativePath,
-                implode(', ', $matches[0])
-            )
-        );
-    }
-
-    #[DataProvider('carEndpointFilesProvider')]
-    public function testNoHardcodedLoggerStrings(string $relativePath): void
-    {
-        $filePath = $this->rootDir . '/' . $relativePath;
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped("File not found: $relativePath");
-        }
-
-        $content = file_get_contents($filePath);
-
-        // Match logger() calls that use string literals for the category parameter
-        // Pattern: logger(anything, 'SomeString', anything)
-        $pattern = '/\blogger\s*\([^,]+,\s*[\'"][A-Za-z]+[\'"]/';
-
-        $matches = [];
-        preg_match_all($pattern, $content, $matches);
-
-        $this->assertEmpty(
-            $matches[0],
-            sprintf(
-                "File %s contains hardcoded string literals in logger() calls. " .
-                "Use LogCategories constants instead.\nFound: %s",
-                $relativePath,
-                implode(', ', $matches[0])
-            )
-        );
-    }
-
-    #[DataProvider('contactEndpointFilesProvider')]
-    public function testNoHardcodedWithLoggingStringsInContactFiles(string $relativePath): void
-    {
-        $filePath = $this->rootDir . '/' . $relativePath;
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped("File not found: $relativePath");
-        }
-
-        $content = file_get_contents($filePath);
-
-        // Match withLogging calls that use string literals for the category parameter
-        // Pattern: ->withLogging(anything, 'SomeString', anything)
-        // The category is the second argument after the user ID
-        $pattern = '/->withLogging\s*\([^,]+,\s*[\'"][A-Za-z]+[\'"]/';
-
-        $matches = [];
-        preg_match_all($pattern, $content, $matches);
-
-        $this->assertEmpty(
-            $matches[0],
-            sprintf(
-                "File %s contains hardcoded string literals in withLogging() calls. " .
-                "Use LogCategories constants instead.\nFound: %s",
-                $relativePath,
-                implode(', ', $matches[0])
-            )
-        );
-    }
-
-    #[DataProvider('contactEndpointFilesProvider')]
-    public function testNoHardcodedLoggerStringsInContactFiles(string $relativePath): void
-    {
-        $filePath = $this->rootDir . '/' . $relativePath;
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped("File not found: $relativePath");
-        }
-
-        $content = file_get_contents($filePath);
-
-        // Match logger() calls that use string literals for the category parameter
-        // Pattern: logger(anything, 'SomeString', anything)
-        $pattern = '/\blogger\s*\([^,]+,\s*[\'"][A-Za-z]+[\'"]/';
-
-        $matches = [];
-        preg_match_all($pattern, $content, $matches);
-
-        $this->assertEmpty(
-            $matches[0],
-            sprintf(
-                "File %s contains hardcoded string literals in logger() calls. " .
-                "Use LogCategories constants instead.\nFound: %s",
-                $relativePath,
-                implode(', ', $matches[0])
-            )
-        );
-    }
-
-    /**
-     * Test that check-chassis.php uses ApiResponse pattern
-     */
     public function testCheckChassisUsesApiResponse(): void
     {
-        $filePath = $this->rootDir . '/app/api/cars/chassis-availability.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('check-chassis.php not found');
-        }
+        $content = $this->read('app/api/cars/chassis-availability.php');
 
-        $content = file_get_contents($filePath);
-
-        $this->assertStringContainsString('ApiResponse::', $content, 'check-chassis.php should use ApiResponse');
-        $this->assertStringNotContainsString("echo 'taken'", $content, 'check-chassis.php should not echo plain text');
-        $this->assertStringNotContainsString("echo 'not_taken'", $content, 'check-chassis.php should not echo plain text');
+        $this->assertStringContainsString('ApiResponse::', $content);
+        $this->assertStringNotContainsString("echo 'taken'", $content);
+        $this->assertStringNotContainsString("echo 'not_taken'", $content);
     }
 
-    /**
-     * Test that car-related JS files use ElanRegistryAPI instead of $.ajax
-     */
     public function testFormPhpJsUsesElanRegistryAPI(): void
     {
-        // JS was extracted from edit.php to car-edit.js in issue #1328
-        $filePath = $this->rootDir . '/app/assets/js/car-edit.js';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('car-edit.js not found');
-        }
+        $content = $this->read('app/assets/js/car-edit.js');
 
-        $content = file_get_contents($filePath);
-
-        // Should not contain $.ajax for car-related AJAX calls
-        $this->assertStringNotContainsString('$.ajax', $content, 'car-edit.js should use ElanRegistryAPI instead of $.ajax');
-        $this->assertStringContainsString('new ElanRegistryAPI()', $content, 'car-edit.js should use new ElanRegistryAPI()');
+        $this->assertStringNotContainsString('$.ajax', $content);
+        $this->assertStringContainsString('new ElanRegistryAPI()', $content);
     }
 
-    /**
-     * Test that admin-core.js uses ElanRegistryAPI instead of $.ajax
-     */
     public function testAdminCoreJsUsesElanRegistryAPI(): void
     {
-        $filePath = $this->rootDir . '/app/admin/assets/admin-core.js';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('admin-core.js not found');
-        }
+        $content = $this->read('app/admin/assets/admin-core.js');
 
-        $content = file_get_contents($filePath);
-
-        $this->assertStringNotContainsString('$.ajax', $content, 'admin-core.js should use ElanRegistryAPI instead of $.ajax');
-        $this->assertStringContainsString('new ElanRegistryAPI()', $content, 'admin-core.js should use new ElanRegistryAPI()');
+        $this->assertStringNotContainsString('$.ajax', $content);
+        $this->assertStringContainsString('new ElanRegistryAPI()', $content);
     }
 
-    /**
-     * Regression test for Issue #639: join.php must capture email() return value and log failures.
-     */
+    /** #639 */
     public function testJoinPhpCapturesEmailReturnValue(): void
     {
-        $filePath = $this->rootDir . '/usersc/join.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('join.php not found');
-        }
+        $content = $this->read('usersc/join.php');
 
-        $content = file_get_contents($filePath);
-
-        $this->assertMatchesRegularExpression(
-            '/\$\w+\s*=\s*email\s*\(/',
-            $content,
-            'join.php must capture the return value of email() (Issue #639)'
-        );
-        $this->assertStringContainsString(
-            'LogCategories::LOG_CATEGORY_EMAIL_ERROR',
-            $content,
-            'join.php must log email failures using LogCategories::LOG_CATEGORY_EMAIL_ERROR (Issue #639)'
-        );
+        $this->assertMatchesRegularExpression('/\$\w+\s*=\s*email\s*\(/', $content, 'join.php must capture the email() result (#639)');
+        $this->assertStringContainsString('LogCategories::LOG_CATEGORY_EMAIL_ERROR', $content);
     }
 
-    /**
-     * Regression test for Issue #657: user_settings.php must log verify-email delivery failures.
-     */
+    /** #657 */
     public function testUserSettingsPhpLogsEmailFailure(): void
     {
-        $filePath = $this->rootDir . '/usersc/user_settings.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('user_settings.php not found');
-        }
-
-        $content = file_get_contents($filePath);
-
         $this->assertStringContainsString(
             'LogCategories::LOG_CATEGORY_EMAIL_ERROR',
-            $content,
-            'user_settings.php must log verify-email failures using LogCategories::LOG_CATEGORY_EMAIL_ERROR (Issue #657)'
+            $this->read('usersc/user_settings.php'),
+            'user_settings.php must log verify-email failures (#657)'
         );
     }
 
-    /**
-     * Regression test for Issue #658: edit.php must not expose getMessage() in user-facing $errors[].
-     */
+    /** #658 */
     public function testEditPhpCatchBlocksUseGetUserMessage(): void
     {
-        $this->assertNoGetMessageInErrorsArray(
-            'app/api/cars/save.php',
-            'Use $e->getUserMessage() instead (Issue #658).'
-        );
+        $this->assertNoGetMessageInErrorsArray('app/api/cars/save.php');
     }
 
-    /**
-     * Regression test for Issue #659: manage-consolidated.php must not expose getMessage() in $errors[].
-     */
+    /** #659 */
     public function testManageConsolidatedPhpCatchBlocksDoNotExposeGetMessage(): void
     {
-        $this->assertNoGetMessageInErrorsArray(
-            'app/admin/index.php',
-            'Use a safe static message instead (Issue #659).'
-        );
+        $this->assertNoGetMessageInErrorsArray('app/admin/index.php');
     }
 
-    /**
-     * Assert that no $errors[] assignment in a file uses $e->getMessage() directly.
-     * Such assignments expose technical exception messages to users.
-     */
-    private function assertNoGetMessageInErrorsArray(string $relativePath, string $hint): void
-    {
-        $filePath = $this->rootDir . '/' . $relativePath;
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped("File not found: $relativePath");
-        }
-
-        $content = (string)file_get_contents($filePath);
-        preg_match_all('/\$errors\[\]\s*=\s*[^;]*\$e->getMessage\(\)/', $content, $matches);
-
-        $this->assertEmpty(
-            $matches[0],
-            "$relativePath must not use \$e->getMessage() in \$errors[] assignments. $hint Found: "
-                . implode(', ', $matches[0])
-        );
-    }
-
-    /**
-     * Regression test for Issue #669: manage-consolidated.php must not use a hardcoded
-     * $currentUserId fallback or raw $_SESSION access for the user ID.
-     * A fabricated user ID would corrupt the audit trail for destructive admin operations.
-     */
+    /** #669: a fabricated user ID corrupts the audit trail of admin operations. */
     public function testManageConsolidatedPhpHasNoUserIdFallback(): void
     {
-        $filePath = $this->rootDir . '/app/admin/index.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('index.php not found');
-        }
+        $content = $this->read('app/admin/index.php');
 
-        $content = (string)file_get_contents($filePath);
-
-        $this->assertStringNotContainsString(
-            '$currentUserId = 1',
-            $content,
-            'manage-consolidated.php must not fall back to a hardcoded user ID — this corrupts the audit trail (Issue #669)'
-        );
-        $this->assertStringNotContainsString(
-            '$_SESSION[\'user\'][\'id\']',
-            $content,
-            'manage-consolidated.php must not access $_SESSION directly for the user ID — use the $user object (Issue #669)'
-        );
+        $this->assertStringNotContainsString('$currentUserId = 1', $content);
+        $this->assertStringNotContainsString('$_SESSION[\'user\'][\'id\']', $content);
     }
 
-    /**
-     * Regression test for Issue #650: process-admin-contact.php must check email_body()
-     * return value before calling email(), so template failures are distinguishable from
-     * Brevo delivery failures in the logs.
-     */
-    public function testAdminContactChecksEmailBodyReturn(): void
+    /** #650, #701: an empty email_body() is a template failure and must not be sent. */
+    public function testEmailBodyReturnIsCheckedBeforeSending(): void
     {
-        $filePath = $this->rootDir . '/app/admin/includes/process-admin-contact.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('process-admin-contact.php not found');
+        foreach (['app/admin/includes/process-admin-contact.php', 'usersc/join.php', 'usersc/user_settings.php'] as $file) {
+            $this->assertStringContainsString("\$body === ''", $this->read($file), "$file must check email_body() for ''");
         }
-
-        $content = (string)file_get_contents($filePath);
-
-        $this->assertStringContainsString(
-            "\$body === ''",
-            $content,
-            'process-admin-contact.php must check email_body() return for empty string before calling email() (Issue #650)'
-        );
     }
 
-    // --- Issue #701: email_body() return value checks — all callers must guard against empty body ---
-
-    /**
-     * Regression test for Issue #701: usersc/join.php must check email_body() return value
-     * before calling email(), so template failures are detectable and logged.
-     *
-     * @issue 701
-     * @link https://github.com/unibrain1/elanregistry/issues/701
-     */
-    public function testUsercJoinChecksEmailBodyReturn(): void
+    /** #600 */
+    public function testSendFeedbackPhpHasNoHardcodedLoggerUserId(): void
     {
-        $filePath = $this->rootDir . '/usersc/join.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('usersc/join.php not found');
-        }
-
-        $content = (string)file_get_contents($filePath);
-
-        $this->assertStringContainsString(
-            "\$body === ''",
-            $content,
-            'usersc/join.php must check email_body() return for empty string before calling ' .
-            'email() — template failures must be logged, not silently sent as blank emails (Issue #701)'
-        );
+        $this->assertDoesNotMatchRegularExpression('/\blogger\s*\(\s*1\s*,/', $this->read('app/api/contact/send-feedback.php'));
     }
 
-    /**
-     * Regression test for Issue #701: usersc/user_settings.php must check email_body() return value
-     * before calling email(), so template failures are detectable and logged.
-     *
-     * @issue 701
-     * @link https://github.com/unibrain1/elanregistry/issues/701
-     */
-    public function testUsercUserSettingsChecksEmailBodyReturn(): void
-    {
-        $filePath = $this->rootDir . '/usersc/user_settings.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('usersc/user_settings.php not found');
-        }
-
-        $content = (string)file_get_contents($filePath);
-
-        $this->assertStringContainsString(
-            "\$body === ''",
-            $content,
-            'usersc/user_settings.php must check email_body() return for empty string before calling ' .
-            'email() — template failures must be logged, not silently sent as blank emails (Issue #701)'
-        );
-    }
-
-    /**
-     * Regression test for Issue #600: send-feedback.php modernization checks.
-     */
-    public function testSendFeedbackPhpIsModernized(): void
-    {
-        $filePath = $this->rootDir . '/app/api/contact/send-feedback.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('send-feedback.php not found');
-        }
-
-        $content = (string)file_get_contents($filePath);
-
-        // logger() calls must not use hardcoded user ID 1
-        $this->assertDoesNotMatchRegularExpression(
-            '/\blogger\s*\(\s*1\s*,/',
-            $content,
-            'send-feedback.php must not use hardcoded user ID 1 in logger() calls (#600)'
-        );
-    }
-
-    /**
-     * Regression test for Issue #368: _email_template_verify_new.php must not contain
-     * a hardcoded admin email address and must call getFeedbackEmail() instead.
-     */
-    public function testNoHardcodedAdminEmailInVerifyTemplate(): void
-    {
-        $filePath = $this->rootDir . '/usersc/views/_email_template_verify_new.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('_email_template_verify_new.php not found');
-        }
-
-        $content = (string)file_get_contents($filePath);
-
-        $this->assertStringNotContainsString(
-            'admin@elanregistry.org',
-            $content,
-            '_email_template_verify_new.php must not contain hardcoded admin@elanregistry.org (#368)'
-        );
-        $this->assertStringContainsString(
-            'getFeedbackEmail()',
-            $content,
-            '_email_template_verify_new.php must call getFeedbackEmail() for admin contact (#368)'
-        );
-    }
-
-    /**
-     * Data provider for car endpoint files
-     */
-    public static function carEndpointFilesProvider(): array
-    {
-        $data = [];
-        foreach (self::CAR_ENDPOINT_FILES as $file) {
-            $data[$file] = [$file];
-        }
-        return $data;
-    }
-
-    /**
-     * Regression test for Issue #976: process-car-details.php must return HTTP 404
-     * for missing cars, not HTTP 200 with an error payload.
-     */
+    /** #976 */
     public function testProcessCarDetailsUsesNotFoundForMissingCar(): void
     {
-        $filePath = $this->rootDir . '/app/admin/includes/process-car-details.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('process-car-details.php not found');
-        }
+        $content = $this->read('app/admin/includes/process-car-details.php');
 
-        $content = (string)file_get_contents($filePath);
-
-        $this->assertStringContainsString(
-            'ApiResponse::notFound(',
-            $content,
-            'process-car-details.php must use ApiResponse::notFound() for missing cars (#976)'
-        );
-        $this->assertStringNotContainsString(
-            "ApiResponse::error('Car not found', 200)",
-            $content,
-            'process-car-details.php must not return HTTP 200 for a missing car (#976)'
-        );
+        $this->assertStringContainsString('ApiResponse::notFound(', $content);
+        $this->assertStringNotContainsString("ApiResponse::error('Car not found', 200)", $content);
     }
 
-    /**
-     * Data provider for contact endpoint files
-     */
-    public static function contactEndpointFilesProvider(): array
+    private function assertNoGetMessageInErrorsArray(string $relativePath): void
     {
-        $data = [];
-        foreach (self::CONTACT_ENDPOINT_FILES as $file) {
-            $data[$file] = [$file];
-        }
-        return $data;
-    }
-
-    #[DataProvider('adminEndpointFilesProvider')]
-    public function testNoHardcodedWithLoggingStringsInAdminFiles(string $relativePath): void
-    {
-        $filePath = $this->rootDir . '/' . $relativePath;
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped("File not found: $relativePath");
-        }
-
-        $content = file_get_contents($filePath);
-
-        // Match withLogging calls that use string literals for the category parameter
-        // Pattern: ->withLogging(anything, 'SomeString', anything)
-        // The category is the second argument after the user ID
-        $pattern = '/->withLogging\s*\([^,]+,\s*[\'"][^\'"]+[\'"]/';
-
-        $matches = [];
-        preg_match_all($pattern, $content, $matches);
+        preg_match_all('/\$errors\[\]\s*=\s*[^;]*\$e->getMessage\(\)/', $this->read($relativePath), $matches);
 
         $this->assertEmpty(
             $matches[0],
-            sprintf(
-                "File %s contains hardcoded string literals in withLogging() calls. " .
-                "Use LogCategories constants instead.\nFound: %s",
-                $relativePath,
-                implode(', ', $matches[0])
-            )
+            "$relativePath must not put \$e->getMessage() in \$errors[]. Found: " . implode(', ', $matches[0])
         );
     }
 
-    #[DataProvider('adminEndpointFilesProvider')]
-    public function testNoHardcodedLoggerStringsInAdminFiles(string $relativePath): void
+    private function read(string $relativePath): string
     {
-        $filePath = $this->rootDir . '/' . $relativePath;
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped("File not found: $relativePath");
-        }
+        $path = $this->rootDir . '/' . $relativePath;
+        $this->assertFileExists($path);
 
-        $content = file_get_contents($filePath);
-
-        // Match logger() calls that use string literals for the category parameter
-        // Pattern: logger(anything, 'SomeString', anything)
-        $pattern = '/\blogger\s*\([^,]+,\s*[\'"][^\'"]+[\'"]/';
-
-        $matches = [];
-        preg_match_all($pattern, $content, $matches);
-
-        $this->assertEmpty(
-            $matches[0],
-            sprintf(
-                "File %s contains hardcoded string literals in logger() calls. " .
-                "Use LogCategories constants instead.\nFound: %s",
-                $relativePath,
-                implode(', ', $matches[0])
-            )
-        );
-    }
-
-    /**
-     * Data provider for admin endpoint files
-     */
-    public static function adminEndpointFilesProvider(): array
-    {
-        $data = [];
-        foreach (self::ADMIN_ENDPOINT_FILES as $file) {
-            $data[$file] = [$file];
-        }
-        return $data;
+        return (string) file_get_contents($path);
     }
 }

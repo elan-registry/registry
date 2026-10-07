@@ -18,6 +18,9 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 REAL_REPO="$(git rev-parse --show-toplevel)" || exit 1
 CHECK_SCRIPT="$REAL_REPO/scripts/check-milestone-scope-drift.sh"
 if [ ! -x "$CHECK_SCRIPT" ]; then
@@ -26,25 +29,6 @@ if [ ! -x "$CHECK_SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
-# shellcheck disable=SC2329 # called only through the EXIT trap below
-cleanup() {
-    cd / || true
-    [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
-}
 
 STUBDIR="$TMPROOT/bin"
 WORKDIR="$TMPROOT/repo"
@@ -351,12 +335,4 @@ else
         "exit: $STATUS17 (want 1)" "output: [$OUT17]"
 fi
 
-# --- Report ------------------------------------------------------------
-
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

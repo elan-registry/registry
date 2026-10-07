@@ -12,18 +12,13 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 REAL_REPO="$(git rev-parse --show-toplevel)" || exit 1
 SCRIPT="$REAL_REPO/scripts/project-health.py"
 
 TMPROOT="$(mktemp -d)" || exit 1
-# shellcheck disable=SC2329 # called only through the EXIT trap below
-cleanup() { [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"; }
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() { TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAILED=$((TESTS_FAILED + 1)); echo "FAIL: $1"; shift; for l in "$@"; do echo "      $l"; done; }
 
 # --- Stub gh ----------------------------------------------------------------
 # Each API call answers from one fixture file, so a case can break one
@@ -194,6 +189,4 @@ else
     fail "Case 10: a missing folder exits 1" "exit: $S10"
 fi
 
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-[ "$TESTS_FAILED" -eq 0 ]
+harness_report

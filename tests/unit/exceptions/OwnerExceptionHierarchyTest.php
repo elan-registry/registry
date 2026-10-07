@@ -14,20 +14,11 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
-/**
- * Test cases for the OwnerException hierarchy
- *
- * Verifies that all owner-related exceptions properly extend OwnerException,
- * which in turn extends ElanRegistryException, maintaining backward
- * compatibility with existing catch blocks. Mirrors CarExceptionHierarchyTest.php.
- */
+/** Existing catch (OwnerException) blocks depend on this hierarchy. */
 #[Group('unit')]
 #[Group('exceptions')]
 class OwnerExceptionHierarchyTest extends TestCase
 {
-    /**
-     * All owner exception classes that should extend OwnerException
-     */
     private const OWNER_EXCEPTION_CLASSES = [
         OwnerCreationException::class,
         OwnerSearchException::class,
@@ -36,9 +27,6 @@ class OwnerExceptionHierarchyTest extends TestCase
         OwnerDatabaseException::class,
     ];
 
-    /**
-     * Test that OwnerException is abstract and cannot be instantiated
-     */
     public function testOwnerExceptionIsAbstract(): void
     {
         $reflection = new ReflectionClass(OwnerException::class);
@@ -48,9 +36,6 @@ class OwnerExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that OwnerException extends ElanRegistryException
-     */
     public function testOwnerExceptionExtendsElanRegistryException(): void
     {
         $this->assertTrue(
@@ -59,11 +44,6 @@ class OwnerExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that all owner exceptions extend OwnerException
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('ownerExceptionClassProvider')]
     public function testOwnerExceptionExtendsOwnerException(string $className): void
     {
@@ -73,11 +53,6 @@ class OwnerExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test backward compatibility - all owner exceptions are instanceof OwnerException
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('ownerExceptionClassProvider')]
     public function testAllOwnerExceptionsAreInstanceOfOwnerException(string $className): void
     {
@@ -89,9 +64,6 @@ class OwnerExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that OwnerException catch block catches all owner exceptions
-     */
     public function testOwnerExceptionCatchBlockCatchesAllOwnerExceptions(): void
     {
         foreach (self::OWNER_EXCEPTION_CLASSES as $className) {
@@ -108,11 +80,7 @@ class OwnerExceptionHierarchyTest extends TestCase
         }
     }
 
-    /**
-     * Data provider for owner exception classes
-     *
-     * @return array<string, array<int, string>>
-     */
+    /** @return array<string, array<int, string>> */
     public static function ownerExceptionClassProvider(): array
     {
         $data = [];
