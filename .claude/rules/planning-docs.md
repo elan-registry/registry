@@ -20,6 +20,6 @@ paths:
   clones/sessions; everything else here is scratch space for the current
   session or an in-progress plan.
 - Layout summary for a fresh clone: `issues/issue-<NNN>-<slug>.md`,
-  `sprints/<version>.md`, `features/<name>/`, `spikes/<issue>-<slug>/`,
-  `analysis/`, `summaries/`, `releases/`. Only `README.md` and `HANDOFF.md`
+  `features/<name>/`, `spikes/<issue>-<slug>/`, `analysis/`, `summaries/`,
+  `releases/`. Only `README.md` and `HANDOFF.md`
   belong at the top level. Use `analysis/` when no other subdirectory fits.

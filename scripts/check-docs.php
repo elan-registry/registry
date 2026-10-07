@@ -16,6 +16,12 @@ declare(strict_types=1);
  *   4. Wrong repo/branch URLs— github.com/<old-owner>, /blob/master/
  *   5. Dead symbols          — identifiers documented as live API that no
  *                              longer exist anywhere in the codebase
+ *   6. Dropped tables        — tables a migration dropped that the docs
+ *                              still describe
+ *   7. Documented values     — documented constant lists (for example
+ *                              LogCategories) drifting from the source
+ *   8. Ledger paths          — a CLEANUP_LEDGER.md heading that names a
+ *                              file or directory that no longer exists
  *
  * Rule 5 is the one that motivated this script: `getUserWithProfile()` was
  * removed in v2.26.2 and a regression test guards it in production code, but
@@ -92,6 +98,7 @@ final class DocsChecker
         $this->checkDeadSymbols();
         $this->checkDroppedTables();
         $this->checkDocumentedValues();
+        $this->checkLedgerPaths();
 
         return $this->report();
     }
@@ -417,6 +424,40 @@ final class DocsChecker
                         'documented-value-drift',
                         'docs/development/CSS_AND_ASSETS.md',
                         "generated asset path {$directory} must match scripts/build.js and .gitignore"
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Rule 8 — every path that a cleanup-ledger heading names exists.
+     *
+     * A PR that deletes or renames a file must move or delete its ledger
+     * group. Otherwise the items point at nothing and no reader finds them.
+     * A token that ends in `/` names a directory. Any other token names a file.
+     */
+    private function checkLedgerPaths(): void
+    {
+        $ledger = $this->root . '/docs/development/CLEANUP_LEDGER.md';
+        if (!is_file($ledger)) {
+            return;
+        }
+
+        $lines = file($ledger, FILE_IGNORE_NEW_LINES) ?: [];
+        foreach ($lines as $i => $line) {
+            if (!str_starts_with($line, '### ') || !preg_match_all('/`([^`]+)`/', $line, $m)) {
+                continue;
+            }
+
+            foreach ($m[1] as $token) {
+                $path = $this->root . '/' . $token;
+                $exists = str_ends_with($token, '/') ? is_dir($path) : is_file($path);
+                if (!$exists) {
+                    $this->problem(
+                        'ledger-orphan',
+                        $this->rel($ledger) . ':' . ($i + 1),
+                        "{$line} — names missing path: {$token}"
                     );
                 }
             }

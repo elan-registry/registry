@@ -28,7 +28,8 @@
 #       --trigger=<workflow|label|none> [--include-important] [--check-skip-tag]
 #
 #   --trigger=workflow   recovery re-runs: gh workflow run claude-code-review.yml
-#   --trigger=label      recovery re-applies the `deep-review` label
+#   --trigger=label      recovery re-applies the `deep-review` label (it
+#                        removes the label first when the PR has it)
 #   --trigger=none       no recovery trigger is attempted; a missing comment
 #                        after the poll window is reported as-is (exit 4)
 #   --include-important  after a comment is confirmed, also fail (exit 2) on
@@ -38,9 +39,15 @@
 #                        and deliberately posts nothing; treat that as
 #                        exit 3, not a failure
 #
+# A comment counts only when it is for the PR's head commit: the newest
+# review comment must be created after the head commit reached the branch
+# (see review_is_fresh). An older comment reviewed an earlier head. The
+# script then waits, and recovers, the same as when no comment exists.
+#
 # Exit codes:
-#   0 = comment confirmed, and no unresolved Blocking finding (nor, with
-#       --include-important, an unresolved Important finding)
+#   0 = comment for the head commit confirmed, and no unresolved Blocking
+#       finding (nor, with --include-important, an unresolved Important
+#       finding)
 #   1 = could not verify at all — a `gh` call failed (auth, network, rate
 #       limit) or arguments were invalid. NOT the same as "no review posted."
 #   2 = comment confirmed, but an unresolved Blocking (or, with
@@ -48,8 +55,9 @@
 #       matched heading(s).
 #   3 = no comment, but the PR title carries `[skip-review]` — the correct,
 #       by-design outcome (--check-skip-tag only)
-#   4 = no comment after poll + one recovery attempt (or after poll alone,
-#       with --trigger=none) — genuine "did not post" outcome
+#   4 = no comment for the head commit after poll + one recovery attempt
+#       (or after poll alone, with --trigger=none) — genuine "did not post"
+#       outcome
 #   5 = reserved (not currently emitted; --include-important failures use
 #       exit 2 for a uniform "unresolved finding" contract)
 #
@@ -108,8 +116,102 @@ esac
 
 REPO="elan-registry/registry"
 
+# Is the newest review comment for the PR's head commit? A comment created
+# before the head commit reached the branch reviewed an older head, so a
+# later run must not accept it (#2314). The comment body does not
+# name the commit it reviewed, and a committer date can be older than the
+# push, so the time comes from the repository activity API: the newest
+# entry whose `after` is the head SHA.
+# Returns 0 = fresh, 1 = stale (or no comment), 2 = could not verify.
+review_is_fresh() {
+  local head_info head_sha head_ref cross pushed_at comment_times comment_at
+  if ! head_info=$(gh pr view "$PR_NUM" --repo "$REPO" \
+      --json headRefOid,headRefName,isCrossRepository \
+      --jq '[.headRefOid, .headRefName, (.isCrossRepository | tostring)] | @tsv' 2>&1); then
+    echo "verify-ci-review.sh: could not read the PR head commit: $head_info" >&2
+    return 2
+  fi
+  IFS=$'\t' read -r head_sha head_ref cross <<< "$head_info"
+
+  # The activity API covers only branches in this repository.
+  if [ "$cross" = "true" ]; then
+    echo "verify-ci-review.sh: warning: the PR head is in a fork. The check that the review is for the head commit does not apply." >&2
+    return 0
+  fi
+  case "$head_sha" in
+    ''|*[!0-9a-f]*)
+      echo "verify-ci-review.sh: could not read the PR head commit (got '$head_sha')." >&2
+      return 2
+      ;;
+  esac
+  if [ "${#head_sha}" -ne 40 ]; then
+    echo "verify-ci-review.sh: could not read the PR head commit (got '$head_sha')." >&2
+    return 2
+  fi
+  # The ref goes into a URL query, so allow only plain branch-name characters.
+  case "$head_ref" in
+    ''|*[!A-Za-z0-9._/-]*)
+      echo "verify-ci-review.sh: the PR head branch name '$head_ref' is empty or has characters this check does not accept." >&2
+      return 2
+      ;;
+  esac
+
+  if ! pushed_at=$(gh api "repos/${REPO}/activity?ref=refs/heads/${head_ref}&per_page=100" \
+      --jq "[.[] | select(.after == \"${head_sha}\")] | first | .timestamp // \"\""); then
+    echo "verify-ci-review.sh: could not read when the head commit reached ${head_ref}." >&2
+    return 2
+  fi
+  if [ -z "$pushed_at" ]; then
+    echo "verify-ci-review.sh: the activity of ${head_ref} has no entry for the head commit ${head_sha}." >&2
+    return 2
+  fi
+
+  # --paginate: the newest review can be after the first page of comments.
+  if ! comment_times=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" --paginate \
+      --jq '.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*")) | .created_at'); then
+    echo "verify-ci-review.sh: could not read the review comments of PR #${PR_NUM}." >&2
+    return 2
+  fi
+  comment_at="${comment_times##*$'\n'}"
+  if [ -z "$comment_at" ]; then
+    return 1
+  fi
+
+  # Compare as integers (YYYYMMDDHHMMSS). A string compare follows the
+  # locale's collation.
+  local pushed_num="${pushed_at//[!0-9]/}" comment_num="${comment_at//[!0-9]/}"
+  if [ "${#pushed_num}" -ne 14 ] || [ "${#comment_num}" -ne 14 ]; then
+    echo "verify-ci-review.sh: could not read the times (head reached the branch: '$pushed_at', review comment: '$comment_at')." >&2
+    return 2
+  fi
+  if [ "$comment_num" -lt "$pushed_num" ]; then
+    echo "The newest review comment (${comment_at}) is older than the head commit ${head_sha:0:8} on ${head_ref} (${pushed_at})." >&2
+    return 1
+  fi
+  return 0
+}
+
+# Waits for a review comment for the PR's head commit.
+# Returns 0 = found, 1 = none after the timeout, 2 = could not verify.
 poll() {
-  "$SCRIPT_DIR/poll-review-posted.sh" "$PR_NUM" "$INTERVAL" "$TIMEOUT"
+  local poll_status=0 fresh_status elapsed=0
+  "$SCRIPT_DIR/poll-review-posted.sh" "$PR_NUM" "$INTERVAL" "$TIMEOUT" || poll_status=$?
+  if [ "$poll_status" -ne 0 ]; then
+    return "$poll_status"
+  fi
+  while :; do
+    fresh_status=0
+    review_is_fresh || fresh_status=$?
+    if [ "$fresh_status" -ne 1 ]; then
+      return "$fresh_status"
+    fi
+    if [ "$elapsed" -ge "$TIMEOUT" ]; then
+      echo "No review comment for the head commit after ${TIMEOUT}s." >&2
+      return 1
+    fi
+    sleep "$INTERVAL"
+    elapsed=$((elapsed + INTERVAL))
+  done
 }
 
 # Initial poll.
@@ -118,7 +220,7 @@ if poll; then
 else
   poll_status=$?
   if [ "$poll_status" -eq 2 ]; then
-    echo "verify-ci-review.sh: could not verify (see poll-review-posted.sh output above)." >&2
+    echo "verify-ci-review.sh: could not verify (see the output above)." >&2
     exit 1
   fi
 
@@ -167,6 +269,20 @@ else
       exit 1
     fi
   else
+    # Adding a label that the PR already has sends no `labeled` event, so
+    # remove it first.
+    if ! LABELS=$(gh pr view "$PR_NUM" --repo "$REPO" --json labels --jq '.labels[].name' 2>&1); then
+      echo "verify-ci-review.sh: could not verify: could not read the PR labels: $LABELS" >&2
+      exit 1
+    fi
+    if grep -Fxq 'deep-review' <<< "$LABELS"; then
+      if ! RECOVERY_ERR=$(gh pr edit "$PR_NUM" --remove-label "deep-review" --repo "$REPO" 2>&1); then
+        echo "verify-ci-review.sh: could not verify: recovery trigger failed:" >&2
+        echo "  gh pr edit ${PR_NUM} --remove-label deep-review --repo ${REPO}" >&2
+        echo "  $RECOVERY_ERR" >&2
+        exit 1
+      fi
+    fi
     if ! RECOVERY_ERR=$(gh pr edit "$PR_NUM" --add-label "deep-review" --repo "$REPO" 2>&1); then
       echo "verify-ci-review.sh: could not verify: recovery trigger failed:" >&2
       echo "  gh pr edit ${PR_NUM} --add-label deep-review --repo ${REPO}" >&2

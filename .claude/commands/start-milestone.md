@@ -9,9 +9,9 @@ Keep output brief — terse status lines, no preamble, no restating of steps.
 
 ## Step 0: Initialize TaskList
 
-Create one tracking task per major step below using TaskCreate (sprint plan
-check, branch creation, fix-script cleanup, issue quality review,
-release-notes draft, issue ordering, output). Set to
+Create one tracking task per major step below using TaskCreate (branch
+creation, fix-script cleanup, issue quality review, issue ordering,
+release-notes draft, commit and push, output). Set to
 `in_progress`/`completed` as you progress.
 
 Begin work on a milestone by creating a milestone branch from main, drafting
@@ -26,33 +26,25 @@ release notes, and recommending an issue order.
 ### Step 1: Validate the milestone exists on GitHub
 
 ```bash
-gh api repos/elan-registry/registry/milestones \
-  --jq '.[] | select(.title | startswith("'"$ARGUMENTS"'"))'
+gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" --paginate \
+  --jq '.[] | select(.title | test("^$ARGUMENTS([: ]|$)")) | {number, title, description}'
 ```
 
-If not found, stop and report the error. Show available open milestones:
+A milestone title can have a suffix after the version, for example
+`v2.31.0: Reachable Owners and Findable Cars`.
+
+- **One result** → record the number as `<NUMBER>`, the full title as
+  `<MILESTONE_TITLE>`, and the description. Later steps use them.
+- **No result** → stop. Show the open milestone titles. Tell the user: "Type
+  `/plan-milestone $ARGUMENTS`. It offers to create the milestone and seals
+  its issue list."
+- **More than one result** → stop. Show the titles. Tell the user: "Rename
+  or close the extra milestone on GitHub, then type
+  `/start-milestone $ARGUMENTS`."
 
 ```bash
-gh api repos/elan-registry/registry/milestones --jq '.[].title'
+gh api "repos/elan-registry/registry/milestones?state=open&per_page=100" --paginate --jq '.[].title'
 ```
-
-Record the full milestone title and milestone number for later steps.
-
-### Step 1.5: Check for a proposed sprint plan
-
-Look for a sprint plan matching this milestone under `docs/plans/sprints/`:
-
-```bash
-ls docs/plans/sprints/$ARGUMENTS.md
-```
-
-- **If found**: read it. This becomes the starting point for the issue order
-  in Step 5 — treat its sequence as a proposed ordering to validate, not to
-  regenerate from scratch. Carry forward any rationale/context notes it
-  contains (dependencies, split candidates, sequencing constraints) into
-  Step 5's synthesis and into the release notes summary in Step 6.
-- **If not found**: skip silently, continue to Step 2. Sprint plans are
-  optional — fall back to a fully agent-generated order in Step 5.
 
 ### Step 2: Ensure clean working tree
 
@@ -60,8 +52,8 @@ ls docs/plans/sprints/$ARGUMENTS.md
 git status --porcelain
 ```
 
-If there are uncommitted changes, stop and ask the user to commit or stash
-first.
+If there are uncommitted changes, stop. Tell the user: "Commit or stash the
+changes, then type `/start-milestone $ARGUMENTS`."
 
 ### Step 3: Create the milestone branch from main
 
@@ -114,7 +106,8 @@ scripts/find-milestone-branch.sh $ARGUMENTS
   git push -u origin milestone/$ARGUMENTS
   ```
 
-- **Exit 2** — usage error. Check `$ARGUMENTS` was given.
+- **Exit 2** — usage error. Stop. Tell the user: "Type
+  `/start-milestone <version>`, for example `/start-milestone v2.17.0`."
 
 ### Step 3.5: Clean up fix scripts from the previous release
 
@@ -156,17 +149,41 @@ milestone branch:
 git commit -m "chore: remove completed fix scripts from vX.Y.Z"
 ```
 
-Skip the commit if nothing changed.
+Skip the commit if nothing changed. Step 6.5 pushes this commit.
 
 ### Step 4: List the milestone's open issues
 
 ```bash
-gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=50" \
-  --jq '.[] | {number, title, labels: [.labels[].name], body}'
+gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=100" --paginate \
+  --jq '.[] | select(.pull_request == null) | {number, title, labels: [.labels[].name], body}'
 ```
 
 Use the direct API call, not `gh issue list --milestone` (see CLAUDE.md's
 `gh` gotchas). Use the API result as the authoritative issue list.
+
+Then check whether `/plan-milestone` sealed this milestone. Its Step 4
+leaves two marks: the milestone description is the theme sentence, and every
+open issue in the milestone has `status:ready`. Count the open issues
+without that label:
+
+```bash
+gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=100" --paginate \
+  --jq '.[] | select(.pull_request == null) | select([.labels[].name] | index("status:ready") | not) | .number' \
+  | wc -l
+```
+
+The milestone is sealed when all of these are true:
+
+- The milestone has at least one open issue.
+- The count is `0`.
+- The description from Step 1 is one sentence that names an audience and
+  an outcome. A category name, an issue list, or an empty description does
+  not count.
+
+**Sealed** → print "Sealed by /plan-milestone. Skipping gate." Skip Steps
+4.4 and 4.5. The description is the theme sentence. Continue to Step 4.6.
+
+**Not sealed** → continue to Step 4.4.
 
 ### Step 4.4: State the milestone theme
 
@@ -182,9 +199,18 @@ Not a category. "Photo improvements" has no audience, no outcome and no finish
 line — and a milestone without a finish line drifts until the list is empty
 rather than until the work is done.
 
-First read the previous release's retrospective, if present:
-`ls docs/plans/releases/*-retro.md`. Its "Shipped but not needed" line names
-what the last milestone over-built. Quote it before you ask for the theme.
+`/plan-milestone` did not run, so it did not read the last retrospective.
+Read the newest one here, if one exists:
+
+```bash
+find docs/plans/releases -name '*-retro.md' 2>/dev/null | sort -V | tail -1
+```
+
+`/finish-milestone` Step 6.5 writes this file. It holds three answers, in
+this order: what we shipped that nobody needed, what we learned about the
+theme's audience, and which signal we ignored. Show all three answers before
+you ask for the theme. Step 4.5 uses the first answer. No file → say "No
+retrospective found." and continue.
 
 Ask the user:
 
@@ -195,9 +221,7 @@ Record the answer. It becomes the yardstick for Step 4.5 and the release
 criterion: **the milestone ships when the theme sentence is true, not when
 the issue list is empty.**
 
-Then make it the milestone description on GitHub, unless `/plan-milestone`
-already did (the description from Step 1 is already the theme sentence — if
-it is a category name, an issue list, or empty, replace it):
+Then make it the milestone description on GitHub:
 
 ```bash
 gh api repos/elan-registry/registry/milestones/<NUMBER> -X PATCH \
@@ -211,7 +235,12 @@ milestone that reached `/start-milestone` without `/plan-milestone` sealing
 it first. Run the same gate here: the three questions (who noticed? / what
 do they do today instead? / what breaks if this never ships?), the edge-case
 test, and the inclusion question ("which of these serve the theme?" —
-default is out, not in). Cap: **3–6 theme issues, plus at most one
+default is out, not in). If the retrospective from Step 4.4 names work that
+nobody needed, an issue of the same kind must show a stronger signal to
+stay. A `signal:defect` issue that a user can see (an owner, a visitor, or
+an admin or editor in the site UI) stays in without the theme test, and
+counts toward the theme issues. Show it to the user with the signal
+`signal:defect (user-visible)`. Cap: **3–6 theme issues, plus at most one
 housekeeping (`signal:forced`) issue, plus every open `gate-critical` issue**
 (uncapped, bypasses the theme test).
 
@@ -285,6 +314,26 @@ gh issue close NNN --repo elan-registry/registry \
 Remove secondary issues from the working list. The primary carries the full
 combined scope into Step 5.
 
+Then scope each issue that stays. `/start-issue` needs acceptance criteria
+and `status:ready` on each issue. Apply `/plan-milestone` Step 4, items 1 to
+4, to each issue in the working list:
+
+1. Write the acceptance criteria.
+2. Add them to the issue body as an `## Acceptance criteria` section.
+3. Give the title its scoped type, apply `status:ready`, and remove
+   `triage`. The issue is already in the milestone, so leave out
+   `--milestone`:
+
+   ```bash
+   gh issue edit NNN --repo elan-registry/registry --title "<type>: <description>" \
+     --add-label "status:ready" --remove-label "triage"
+   ```
+
+4. For an issue scoped down to the guard only, post the scope comment.
+
+Skip an issue that already has an `## Acceptance criteria` section that
+matches the theme and `status:ready`.
+
 ### Step 4.6: Offer a production data refresh
 
 Decide from the milestone's **content**, not the calendar, whether development
@@ -333,14 +382,13 @@ milestone does not depend on it.
 
 ### Step 5: Recommend an issue order
 
+This order is advice for this session. No file stores it. After each
+merge, `/finish-issue` names the next open issue: the lowest-numbered open
+issue in the milestone without `status:blocked`.
+
 Launch the **senior-product-manager** agent to analyze all issues and
 determine the best sequence. Consider:
 
-- **Sprint plan proposal** — if Step 1.5 found a sprint plan, pass its
-  proposed sequence and rationale to the agent as a starting point. The agent
-  should validate it against current issue state (closures/consolidations
-  from Step 4.5 may have changed the picture) and flag any deviation it
-  recommends, rather than ignore it.
 - **Dependencies** — issues that other issues depend on should come first
   (e.g., a schema change before a feature that uses it)
 - **Severity** — CRITICAL before HIGH before MEDIUM before LOW
@@ -355,25 +403,48 @@ determine the best sequence. Consider:
   single entry in the sequence
 
 Synthesize agent recommendations into a numbered list with a brief rationale
-for each position. If this order differs from the sprint plan's proposed
-sequence, call out what changed and why. Flag any issues that will likely
-require wiki/architecture document updates.
+for each position. Flag any issues that will likely require
+wiki/architecture document updates. Also list:
+
+- **Order conflicts** — an issue that must wait for a higher-numbered open
+  issue. The lowest-numbered rule would pick it too early.
+- **Combine groups** — issues that touch the same code and must land as one
+  PR. `/plan-milestone` Step 4 may already have posted these. Read the
+  issue comments for the phrase `Combine into one PR with`.
 
 Ask the user to approve the order:
 
 > "Approve this issue order? Reply yes to continue, or list changes."
 
-If a sprint plan file exists (Step 1.5), once the user approves the final
-order, update `docs/plans/sprints/$ARGUMENTS.md` in place so its sequence line
-matches the approved order (same format the file already uses, e.g.
-`**#NNN → #NNN → ...**`). There is nothing to commit — `docs/plans/` is
-gitignored local scratch space. Do not touch
-`docs/plans/sprints/README.md` — it is only removed/updated when the milestone is
-released, not here.
+After approval, record on GitHub what the order needs, so that later
+sessions see it:
+
+- For each order conflict, add `status:blocked` and a comment that names
+  the blocker. Remove the label when the blocker closes.
+
+  ```bash
+  gh issue edit NNN --repo elan-registry/registry --add-label "status:blocked"
+  gh issue comment NNN --repo elan-registry/registry --body "Blocked by #BLOCKER (planned in $ARGUMENTS)."
+  ```
+
+- For each new combine group, post one comment on each issue in the group.
+  Use exactly this phrase, because `/start-issue` reads it. Skip an issue
+  that already has the comment.
+
+  ```bash
+  gh issue comment NNN --repo elan-registry/registry --body "Combine into one PR with #A, #B (planned in $ARGUMENTS)."
+  ```
+
+  On each issue, list the other issues of the group, not the issue itself.
 
 ### Step 6: Create draft release notes
 
-Create a draft release notes file at
+If `docs/releases/RELEASE_NOTES_$ARGUMENTS.md` already exists, do not
+change it. Print "Release notes already exist at
+`docs/releases/RELEASE_NOTES_$ARGUMENTS.md`. Left unchanged." Continue to
+Step 6.5.
+
+Otherwise, create a draft release notes file at
 `docs/releases/RELEASE_NOTES_$ARGUMENTS.md` using the template at
 `docs/development/RELEASE_NOTES_TEMPLATE.md`:
 
@@ -396,22 +467,52 @@ Create a draft release notes file at
 Use the **technical-documentation-writer** agent if the milestone has many
 issues or complex scope.
 
+### Step 6.5: Commit and push the milestone branch
+
+`/start-issue` stops when `git status --porcelain` prints anything. The
+release notes file is tracked, not ignored, so commit it now:
+
+```bash
+git add docs/releases/RELEASE_NOTES_$ARGUMENTS.md
+git commit -m "docs: draft release notes for $ARGUMENTS"
+git push origin milestone/$ARGUMENTS
+```
+
+If the file did not change (the branch already had it), skip the commit and
+still push. The push also sends the Step 3.5 commit, if there is one. Then
+check the result:
+
+```bash
+git status --porcelain
+git rev-list --count origin/milestone/$ARGUMENTS..HEAD
+```
+
+The first command must print nothing and the second must print `0`. If not,
+stop and show the output. Tell the user: "Commit or push the changes shown,
+then type `/start-milestone $ARGUMENTS`. Step 3 finds the existing branch
+and Step 6 keeps the existing release notes."
+
 ### Step 7: Output summary
 
 Display:
 
 - The milestone branch name (`milestone/$ARGUMENTS`)
-- Whether a sprint plan was found at `docs/plans/sprints/$ARGUMENTS.md` and used to
-  seed the order
-- How many issues were closed in the quality review (if any)
+- How many issues were closed in the quality review (if any), or that Step 4
+  found the milestone sealed and skipped the gate
 - Any consolidation opportunities flagged (if not already addressed by the user)
-- The approved issue order (from step 5)
-- Whether `docs/plans/sprints/$ARGUMENTS.md` was updated to match (if applicable)
+- The approved issue order (from Step 5)
+- The issues that got `status:blocked` and the combine groups commented on
+  (Step 5)
 - Which issues are expected to require wiki/architecture updates
-- Note that draft release notes were created at
-  `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`
-- Instructions: "Use `/start-issue <number>` to plan the first issue, then
-  `/execute-plan` to implement it once the plan is approved"
+- Whether Step 6 created the draft release notes at
+  `docs/releases/RELEASE_NOTES_$ARGUMENTS.md` or left an existing file
+  unchanged, and that Step 6.5 committed and pushed the branch
+
+End with the next command as plain text, not a question. GitHub and the
+release notes hold the state, so tell the user to run `/clear`
+first and then type `/start-issue <first-issue>`. Do not start it through
+the Skill tool. This is a context boundary (CLAUDE.md, "Hand-offs between
+commands").
 
 ## Important
 
@@ -429,5 +530,4 @@ Display:
   work progresses (`/start-issue` only plans; it doesn't touch release
   notes).
 - `docs/plans/` is gitignored local scratch space, never committed (see
-  `.claude/rules/planning-docs.md`). Sprint plan files are deleted once a
-  milestone is released — do not treat a missing file as an error.
+  `.claude/rules/planning-docs.md`). This command writes nothing there.

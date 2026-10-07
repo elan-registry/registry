@@ -16,6 +16,9 @@
 # `|| [ $? -eq 1 ]` guard as scripts/check-blocking-findings.sh. See that
 # script's header for why. Part C checks the two never drift apart.
 #
+# Also covers #2314: check-blocking-findings.sh reads all pages of PR
+# comments and checks the newest review (cases 8b-8e).
+#
 # HERMETIC: Part A stubs `gh` (and, for case 16, `grep`) first on PATH. Part B
 # runs a copy of verify-ci-review.sh from a directory that also holds stub
 # poll-review-posted.sh and check-blocking-findings.sh siblings, which the
@@ -72,17 +75,58 @@ mkdir -p "$STUBDIR"
 STUB_BODY_FILE="$TMPROOT/body.txt"
 export STUB_BODY_FILE
 
-# Stub `gh`: ignores its arguments (the real script's --jq filter selects
-# the last Strengths-anchored comment's body; the stub just hands back
-# whatever body this scenario staged). STUB_GH_FAIL=1 simulates an API
-# failure (auth/network/rate-limit).
+# Stub `gh`. It ignores --jq and prints what the script's filter would print.
+# The script makes two calls:
+#   gh api repos/…/issues/N/comments --paginate : the IDs of the
+#       Strengths-anchored comments, one per line. Page 1 is STUB_PAGE1
+#       (default "101"). Page 2 is STUB_PAGE2 (default empty), and the stub
+#       prints it only when --paginate is given, as real gh does.
+#   gh api repos/…/issues/comments/<id>         : the body of comment <id>.
+#       The file $STUB_BODY_DIR/<id> when it exists, else $STUB_BODY_FILE
+#       (the body this scenario staged). STUB_GH_BODY_FAIL=1 makes only this
+#       call fail.
+# STUB_GH_FAIL=1 makes every call fail (auth/network/rate-limit).
+STUB_BODY_DIR="$TMPROOT/bodies"
+mkdir -p "$STUB_BODY_DIR"
+export STUB_BODY_DIR
 cat > "$STUBDIR/gh" <<'STUB'
 #!/bin/bash
 if [ "${STUB_GH_FAIL:-0}" = "1" ]; then
     echo "gh: simulated API failure (stub)" >&2
     exit 1
 fi
-cat "$STUB_BODY_FILE" 2>/dev/null
+paginate=0
+endpoint=""
+for arg in "$@"; do
+    case "$arg" in
+        --paginate) paginate=1 ;;
+        repos/*) endpoint="$arg" ;;
+    esac
+done
+case "$endpoint" in
+    */issues/comments/*)
+        if [ "${STUB_GH_BODY_FAIL:-0}" = "1" ]; then
+            echo "gh: simulated comment read failure (stub)" >&2
+            exit 1
+        fi
+        id="${endpoint##*/}"
+        if [ -f "$STUB_BODY_DIR/$id" ]; then
+            cat "$STUB_BODY_DIR/$id"
+        else
+            cat "$STUB_BODY_FILE" 2>/dev/null
+        fi
+        ;;
+    */issues/*/comments)
+        [ -n "${STUB_PAGE1-101}" ] && printf '%s\n' "${STUB_PAGE1-101}"
+        if [ "$paginate" = "1" ] && [ -n "${STUB_PAGE2:-}" ]; then
+            printf '%s\n' "$STUB_PAGE2"
+        fi
+        ;;
+    *)
+        echo "gh stub: unexpected call: $*" >&2
+        exit 1
+        ;;
+esac
 exit 0
 STUB
 chmod +x "$STUBDIR/gh"
@@ -241,6 +285,56 @@ else
     fail "Case 8: gh api call fails -> exit 2" "exit: $STATUS8 (want 2)" "output: [$OUT8]"
 fi
 
+# --- Case 8b: no Strengths-anchored comment on any page -> 2 -------------
+OUT8B="$(STUB_PAGE1="" run_check "" 1 2>&1)"
+STATUS8B=$?
+if [ "$STATUS8B" -eq 2 ] && [[ "$OUT8B" == *"No Strengths-anchored review comment found"* ]]; then
+    pass "Case 8b: no Strengths-anchored comment -> exit 2"
+else
+    fail "Case 8b: no Strengths-anchored comment -> exit 2" \
+        "exit: $STATUS8B (want 2)" "output: [$OUT8B]"
+fi
+
+# --- Case 8c: the comment body read fails -> 2 ----------------------------
+OUT8C="$(STUB_GH_BODY_FAIL=1 run_check "### Strengths" 1 2>&1)"
+STATUS8C=$?
+if [ "$STATUS8C" -eq 2 ] && [[ "$OUT8C" == *"simulated comment read failure"* ]]; then
+    pass "Case 8c: the comment body read fails -> exit 2"
+else
+    fail "Case 8c: the comment body read fails -> exit 2" \
+        "exit: $STATUS8C (want 2)" "output: [$OUT8C]"
+fi
+
+# --- Case 8d: the newest review is on page 2 (#2314) ----------------------
+# Page 1 holds an older review (ID 101) with a live Blocking heading. Page 2
+# holds the newest review (ID 205), which is clean. The script must read all
+# pages and check 205, the review verify-ci-review.sh accepts. Without
+# --paginate it sees only 101 and exits 1. If it keeps the first ID instead
+# of the last, it also exits 1.
+printf '%s\n' "### Strengths" "- Old." "" "### Blocking" "- Old finding." > "$STUB_BODY_DIR/101"
+printf '%s\n' "### Strengths" "- New." "" "### Suggestions" "- Nit." > "$STUB_BODY_DIR/102"
+printf '%s\n' "### Strengths" "- Newest." "" "### Suggestions" "- None." > "$STUB_BODY_DIR/205"
+OUT8D="$(STUB_PAGE1=$'101' STUB_PAGE2=$'204\n205' run_check "" 1 2>&1)"
+STATUS8D=$?
+if [ "$STATUS8D" -eq 0 ]; then
+    pass "Case 8d: newest review on page 2 is the one checked -> exit 0"
+else
+    fail "Case 8d: newest review on page 2 is the one checked -> exit 0" \
+        "exit: $STATUS8D (want 0)" "output: [$OUT8D]"
+fi
+
+# --- Case 8e: the newest review on page 2 has a Blocking finding -> 1 ------
+# The reverse of case 8d. Page 1 is clean, and the newest review is not.
+printf '%s\n' "### Strengths" "- Newest." "" "### Blocking" "- New finding." > "$STUB_BODY_DIR/305"
+OUT8E="$(STUB_PAGE1=$'102' STUB_PAGE2=$'305' run_check "" 1 2>&1)"
+STATUS8E=$?
+if [ "$STATUS8E" -eq 1 ] && [[ "$OUT8E" == *"### Blocking"* ]]; then
+    pass "Case 8e: Blocking finding in the newest review on page 2 -> exit 1"
+else
+    fail "Case 8e: Blocking finding in the newest review on page 2 -> exit 1" \
+        "exit: $STATUS8E (want 1)" "output: [$OUT8E]"
+fi
+
 # --- Case 9: no arguments -> 2 ---------------------------------------------
 OUT9="$(PATH="$STUBDIR:$PATH" "$CHECK_SCRIPT" 2>&1)"
 STATUS9=$?
@@ -359,6 +453,8 @@ cp "$VERIFY_SCRIPT" "$VSCRIPTS/verify-ci-review.sh"
 chmod +x "$VSCRIPTS/verify-ci-review.sh"
 
 POLL_COUNT_FILE="$TMPROOT/poll-count"
+STUB_COMMENTS_COUNT_FILE="$TMPROOT/comments-count"
+export STUB_COMMENTS_COUNT_FILE
 GH_LOG="$TMPROOT/gh.log"
 CHECK_ARGS_LOG="$TMPROOT/check-args.log"
 export CHECK_ARGS_LOG
@@ -413,9 +509,54 @@ chmod +x "$VSCRIPTS/check-blocking-findings.sh"
 # when STUB_GH_PR_EDIT_FAIL=1, and `gh pr view` fails when STUB_GH_PR_VIEW_FAIL=1
 # (each prints a distinct stderr message so a case can assert on it). All
 # other calls succeed.
+#
+# The head-commit check (#2314) reads three things. The stub ignores --jq and
+# prints what the filter would print:
+#   gh pr view --json headRefOid,...  : "<sha>\t<ref>\t<cross>" from
+#       STUB_HEAD_SHA, STUB_HEAD_REF and STUB_CROSS. Fails when
+#       STUB_GH_HEAD_FAIL=1.
+#   gh api repos/…/activity…          : STUB_PUSHED_AT (may be set empty).
+#       Fails when STUB_GH_ACTIVITY_FAIL=1.
+#   gh api repos/…/issues/N/comments  : STUB_COMMENT_TIMES, one created_at
+#       per line. From the second call on, STUB_COMMENT_TIMES2 when it is set.
+# The defaults make the newest comment later than the push (a fresh review).
+# `gh pr view --json labels` prints STUB_GH_LABELS.
 cat > "$STUBDIR/gh" <<'STUB'
 #!/bin/bash
 printf '%s\n' "gh $*" >> "${STUB_GH_LOG:?STUB_GH_LOG not set}"
+if [ "$1" = "pr" ] && [ "$2" = "view" ] && case "$*" in *headRefOid*) true ;; *) false ;; esac; then
+    if [ "${STUB_GH_HEAD_FAIL:-0}" = "1" ]; then
+        echo "gh: simulated head lookup failure (stub)" >&2
+        exit 1
+    fi
+    printf '%s\t%s\t%s\n' "${STUB_HEAD_SHA-0123456789abcdef0123456789abcdef01234567}" \
+        "${STUB_HEAD_REF-milestone/v9.9.9}" "${STUB_CROSS:-false}"
+    exit 0
+fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ] && case "$*" in *"--json labels"*) true ;; *) false ;; esac; then
+    printf '%s' "${STUB_GH_LABELS:-}"
+    exit 0
+fi
+if [ "$1" = "api" ] && case "$2" in repos/*/activity*) true ;; *) false ;; esac; then
+    if [ "${STUB_GH_ACTIVITY_FAIL:-0}" = "1" ]; then
+        echo "gh: simulated activity failure (stub)" >&2
+        exit 1
+    fi
+    printf '%s\n' "${STUB_PUSHED_AT-2026-10-06T13:00:00Z}"
+    exit 0
+fi
+if [ "$1" = "api" ] && case "$2" in repos/*/issues/*/comments) true ;; *) false ;; esac; then
+    n=0
+    [ -f "$STUB_COMMENTS_COUNT_FILE" ] && n="$(cat "$STUB_COMMENTS_COUNT_FILE")"
+    n=$((n + 1))
+    printf '%s' "$n" > "$STUB_COMMENTS_COUNT_FILE"
+    if [ "$n" -ge 2 ] && [ -n "${STUB_COMMENT_TIMES2:-}" ]; then
+        printf '%s\n' "$STUB_COMMENT_TIMES2"
+    else
+        printf '%s\n' "${STUB_COMMENT_TIMES-2026-10-06T13:10:00Z}"
+    fi
+    exit 0
+fi
 if [ "$1" = "api" ] && case "$2" in repos/*/pulls/*/files) true ;; *) false ;; esac; then
     case "${STUB_GH_DIFF_MODE:-}" in
         large-match)
@@ -449,7 +590,7 @@ STUB
 chmod +x "$STUBDIR/gh"
 
 run_verify() {
-    rm -f "$POLL_COUNT_FILE"
+    rm -f "$POLL_COUNT_FILE" "$STUB_COMMENTS_COUNT_FILE"
     : > "$GH_LOG"
     : > "$CHECK_ARGS_LOG"
     STUB_POLL_COUNT_FILE="$POLL_COUNT_FILE" STUB_GH_LOG="$GH_LOG" \
@@ -465,7 +606,7 @@ run_verify() {
 # shellcheck disable=SC2120,SC2119 # kept symmetric with run_verify; no case
 # needs extra flags on the label path yet, but "$@" costs nothing to keep
 run_verify_label() {
-    rm -f "$POLL_COUNT_FILE"
+    rm -f "$POLL_COUNT_FILE" "$STUB_COMMENTS_COUNT_FILE"
     : > "$GH_LOG"
     : > "$CHECK_ARGS_LOG"
     STUB_POLL_COUNT_FILE="$POLL_COUNT_FILE" STUB_GH_LOG="$GH_LOG" \
@@ -642,6 +783,110 @@ if printf '%s' "$OUT36" | grep -q 'could not read the PR title' \
 else
     fail "Case 36: title lookup fails -> a warning is printed" \
         "exit: $STATUS36" "output: [$OUT36]"
+fi
+
+# --- Head-commit check (#2314) ---------------------------------------------
+# A review comment created before the head commit reached the branch
+# reviewed an older head. The script must not read its findings as the
+# result for the current head.
+
+# --- Case 37: stale comment stays stale -> recovery, then 4 ---------------
+OUT37="$(STUB_POLL_EXIT=0 STUB_CHECK_EXIT=0 STUB_PUSHED_AT=2026-10-06T13:20:00Z \
+    STUB_COMMENT_TIMES=2026-10-06T13:10:00Z run_verify 2>&1)"
+STATUS37=$?
+if [ "$STATUS37" -eq 4 ] && [ ! -s "$CHECK_ARGS_LOG" ] \
+    && grep -q 'workflow run claude-code-review.yml' "$GH_LOG" \
+    && grep -q 'activity?ref=refs/heads/milestone/v9.9.9&' "$GH_LOG" \
+    && printf '%s' "$OUT37" | grep -q 'is older than the head commit 01234567'; then
+    pass "Case 37: review older than the head push -> recovery sent, exit 4, findings not read"
+else
+    fail "Case 37: review older than the head push -> recovery sent, exit 4, findings not read" \
+        "exit: $STATUS37 (want 4)" "check args: [$(cat "$CHECK_ARGS_LOG")] (want empty)" "output: [$OUT37]"
+fi
+
+# --- Case 38: stale first, fresh on the next check -> 0, no recovery ------
+OUT38="$(STUB_POLL_EXIT=0 STUB_CHECK_EXIT=0 STUB_PUSHED_AT=2026-10-06T13:20:00Z \
+    STUB_COMMENT_TIMES=2026-10-06T13:10:00Z \
+    STUB_COMMENT_TIMES2="$(printf '2026-10-06T13:10:00Z\n2026-10-06T13:25:00Z')" run_verify 2>&1)"
+STATUS38=$?
+if [ "$STATUS38" -eq 0 ] && [ "$(cat "$CHECK_ARGS_LOG")" = "[1]" ] \
+    && ! grep -q 'workflow run' "$GH_LOG"; then
+    pass "Case 38: new review posts while waiting -> exit 0, no recovery, findings read"
+else
+    fail "Case 38: new review posts while waiting -> exit 0, no recovery, findings read" \
+        "exit: $STATUS38 (want 0)" "output: [$OUT38]"
+fi
+
+# --- Case 39: only the newest comment counts -------------------------------
+# An older fresh-looking line before a stale newest line cannot happen in
+# API order, so test the reverse: an old comment, then a new one -> 0.
+OUT39="$(STUB_POLL_EXIT=0 STUB_CHECK_EXIT=0 STUB_PUSHED_AT=2026-10-06T13:20:00Z \
+    STUB_COMMENT_TIMES="$(printf '2026-10-06T12:00:00Z\n2026-10-06T13:21:00Z')" run_verify 2>&1)"
+STATUS39=$?
+if [ "$STATUS39" -eq 0 ] && ! grep -q 'workflow run' "$GH_LOG"; then
+    pass "Case 39: newest of several comments is after the push -> exit 0"
+else
+    fail "Case 39: newest of several comments is after the push -> exit 0" \
+        "exit: $STATUS39 (want 0)" "output: [$OUT39]"
+fi
+
+# --- Case 40: head commit has no activity entry -> 1 -----------------------
+OUT40="$(STUB_POLL_EXIT=0 STUB_CHECK_EXIT=0 STUB_PUSHED_AT='' run_verify 2>&1)"
+STATUS40=$?
+if [ "$STATUS40" -eq 1 ] && printf '%s' "$OUT40" | grep -q 'has no entry for the head commit' \
+    && [ ! -s "$CHECK_ARGS_LOG" ]; then
+    pass "Case 40: no activity entry for the head commit -> exit 1"
+else
+    fail "Case 40: no activity entry for the head commit -> exit 1" \
+        "exit: $STATUS40 (want 1)" "output: [$OUT40]"
+fi
+
+# --- Case 41: activity or head lookup fails -> 1 ---------------------------
+OUT41A="$(STUB_POLL_EXIT=0 STUB_CHECK_EXIT=0 STUB_GH_ACTIVITY_FAIL=1 run_verify 2>&1)"
+STATUS41A=$?
+OUT41B="$(STUB_POLL_EXIT=0 STUB_CHECK_EXIT=0 STUB_GH_HEAD_FAIL=1 run_verify 2>&1)"
+STATUS41B=$?
+OUT41C="$(STUB_POLL_EXIT=0 STUB_CHECK_EXIT=0 STUB_HEAD_REF='bad ref&x=1' run_verify 2>&1)"
+STATUS41C=$?
+if [ "$STATUS41A" -eq 1 ] && printf '%s' "$OUT41A" | grep -q 'could not read when the head commit' \
+    && [ "$STATUS41B" -eq 1 ] && printf '%s' "$OUT41B" | grep -q 'could not read the PR head commit' \
+    && [ "$STATUS41C" -eq 1 ] && printf '%s' "$OUT41C" | grep -q 'does not accept'; then
+    pass "Case 41: activity failure, head failure, or unsafe ref -> exit 1"
+else
+    fail "Case 41: activity failure, head failure, or unsafe ref -> exit 1" \
+        "exits: $STATUS41A $STATUS41B $STATUS41C (want 1 1 1)" \
+        "output A: [$OUT41A]" "output B: [$OUT41B]" "output C: [$OUT41C]"
+fi
+
+# --- Case 42: fork PR -> warning, the check does not apply -> 0 ------------
+OUT42="$(STUB_POLL_EXIT=0 STUB_CHECK_EXIT=0 STUB_CROSS=true STUB_PUSHED_AT=2026-10-06T13:20:00Z \
+    STUB_COMMENT_TIMES=2026-10-06T13:10:00Z run_verify 2>&1)"
+STATUS42=$?
+if [ "$STATUS42" -eq 0 ] && printf '%s' "$OUT42" | grep -q 'head is in a fork' \
+    && ! grep -q 'activity' "$GH_LOG"; then
+    pass "Case 42: fork PR -> warning, exit 0, no activity call"
+else
+    fail "Case 42: fork PR -> warning, exit 0, no activity call" \
+        "exit: $STATUS42 (want 0)" "output: [$OUT42]"
+fi
+
+# --- Case 43: label recovery removes an existing deep-review label first ---
+OUT43="$(STUB_POLL_EXIT=1 STUB_POLL2_EXIT=0 STUB_CHECK_EXIT=0 \
+    STUB_GH_LABELS="$(printf 'bug\ndeep-review')" run_verify_label 2>&1)"
+STATUS43=$?
+EDITS43="$(grep 'pr edit' "$GH_LOG")"
+WANT43="$(printf '%s\n%s' 'gh pr edit 1 --remove-label deep-review --repo elan-registry/registry' \
+    'gh pr edit 1 --add-label deep-review --repo elan-registry/registry')"
+OUT43B="$(STUB_POLL_EXIT=1 STUB_POLL2_EXIT=0 STUB_CHECK_EXIT=0 STUB_GH_LABELS='bug' run_verify_label 2>&1)"
+STATUS43B=$?
+EDITS43B="$(grep 'pr edit' "$GH_LOG")"
+if [ "$STATUS43" -eq 0 ] && [ "$EDITS43" = "$WANT43" ] \
+    && [ "$STATUS43B" -eq 0 ] && [ "$EDITS43B" = 'gh pr edit 1 --add-label deep-review --repo elan-registry/registry' ]; then
+    pass "Case 43: label recovery removes deep-review first only when the PR has it"
+else
+    fail "Case 43: label recovery removes deep-review first only when the PR has it" \
+        "exits: $STATUS43 $STATUS43B (want 0 0)" "edits: [$EDITS43]" "edits without label: [$EDITS43B]" \
+        "output: [$OUT43]" "output without label: [$OUT43B]"
 fi
 
 # =========================================================================

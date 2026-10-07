@@ -129,16 +129,40 @@ Semgrep (GitHub App managed scan) runs on every PR; the
 
 Branches: `main` ← `milestone/vX.Y.Z` ← `issue/NNN-slug`. One PR per issue,
 targeting the milestone branch. Each command describes its own steps.
-`/simplify` is the built-in Claude Code skill, not a project command.
+`/execute-plan` runs the built-in `/simplify` skill itself (its Step 6.8).
 
 ```text
 /plan-milestone → /start-milestone
-  per issue: /start-issue → /execute-plan → /simplify → /commit → /review-pr
+  per issue: /start-issue → /execute-plan → /commit → /review-pr
              → /commit-push-pr → /address-pr-comments → /finish-issue
-/finish-milestone → /review-pr → /review-milestone → /release-milestone
+/finish-milestone → /review-milestone → /release-milestone
 Other: /new-issue, /found, /security-review, /sprint-status, /groom-backlog,
        /revise-claude-md, /clean_gone
 ```
+
+`/finish-milestone` runs its own review of the milestone diff (Steps 9.5 to
+9.8), so do not run `/review-pr` at the milestone boundary.
+
+Hotfix (production broken, data at risk, or a security exposure):
+
+1. Capture the issue with `/new-issue` (`signal:defect`). During another
+   issue, use `/found`, which records the paused issue.
+2. `/start-issue <N> --hotfix` branches from `main`. The per-issue commands
+   then run as usual, with PR base `main`.
+3. Do the patch release in `DEPLOYMENT.md`, "Patch Release from main".
+4. To resume a paused issue, type `/start-issue <paused-N>`. `/finish-issue`
+   names it.
+
+`/commit` is the plugin skill `commit-commands:commit`; this project has no
+`/commit` command. `.claude/settings.json` denies the plugin skill
+`commit-commands:commit-push-pr`, so `/commit-push-pr` is always this
+project's command (see `docs/development/ISSUE_WORKFLOW.md`, "Discoveries
+mid-issue").
+
+Cleanup finds (no change in behavior) go in the committed
+`docs/development/CLEANUP_LEDGER.md`. Fix an item and delete its line in the
+same PR. `composer check:docs` fails when a ledger heading names a file that
+no longer exists.
 
 **Hand-offs between commands.** A command's `model:` frontmatter applies
 only when the user types the command. A command that another command starts
