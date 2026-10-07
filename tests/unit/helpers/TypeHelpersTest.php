@@ -140,7 +140,7 @@ final class TypeHelpersTest extends TestCase
 
         try {
             $process = proc_open(
-                ['php', $harnessFile, $projectRoot, $fakeRoot],
+                [PHP_BINARY, $harnessFile, $projectRoot, $fakeRoot],
                 [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
                 $pipes
             );

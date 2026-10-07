@@ -554,9 +554,6 @@ final class LocationServiceCacheTest extends TestCase
             is_link($cacheFile),
             'Dangling symlink must remain intact — realpath() returns false for it, so the realpath guard skipped unlink.'
         );
-
-        // tearDown()'s is_file() glob misses a symlink.
-        unlink($cacheFile);
     }
 
     // APCu loaded but not working (#1470). mockApcuSimulateFailure makes the

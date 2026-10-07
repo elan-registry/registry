@@ -30,9 +30,8 @@ use PHPUnit\Framework\TestCase;
  * strips comments with `token_get_all()` so a commented-out or
  * documented-only call cannot pass, isolates the method body that builds the
  * Configuration with `ReflectionMethod`, and asserts the call inside it —
- * the same technique tests/unit/cars/CarActionsSaveWiringTest.php and
- * tests/unit/regression/Issue1953RegressionTest.php use for source-level
- * invariants that cannot be exercised directly.
+ * the same technique tests/unit/cars/CarActionsSaveWiringTest.php uses for
+ * source-level invariants that cannot be exercised directly.
  *
  * A prior version of this test searched the raw file text, so a call moved
  * into a comment, an `if (false && ...)` guard, or a docblock still made the

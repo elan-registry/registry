@@ -2,11 +2,10 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../../integration/RobotsTxtGroups.php';
-
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\RobotsTxtGroups;
 
 /**
  * Pins the RobotsTxtGroups evaluator that RobotsTxtAsServedTest (#1542) uses.

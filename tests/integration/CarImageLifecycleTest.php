@@ -204,6 +204,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
         $this->assertSame('', $row->image, 'Removing the only image must leave the empty-list sentinel');
 
         // KNOWN GAP (#1629): removeImage() updates only the DB. Documents current behavior.
+        // Flip to assertFileDoesNotExist() when #1629 is fixed.
         $this->assertUploadedFilesExist($this->imageDir, $filename);
     }
 

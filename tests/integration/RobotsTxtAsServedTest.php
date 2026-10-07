@@ -2,10 +2,9 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/RobotsTxtGroups.php';
-
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\RobotsTxtGroups;
 
 /**
  * #1542: compare the robots.txt that test.elanregistry.org serves with this

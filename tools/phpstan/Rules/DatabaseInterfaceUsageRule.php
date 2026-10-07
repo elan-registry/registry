@@ -26,7 +26,8 @@ use PHPStan\Rules\RuleErrorBuilder;
  *   removed the shared global mock of these classes from the unit suite.
  *
  * Calls to a \DB-only method on a DatabaseInterface receiver need no rule here.
- * PHPStan reports them as "Call to an undefined method".
+ * PHPStan reports them as "Call to an undefined method" (identifier
+ * `method.notFound`).
  *
  * @implements Rule<FileNode>
  */

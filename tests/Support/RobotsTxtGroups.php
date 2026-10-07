@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+namespace Tests\Support;
+
+use RuntimeException;
+
 /**
  * robots.txt group parser and rule evaluator for RobotsTxtAsServedTest.
  *

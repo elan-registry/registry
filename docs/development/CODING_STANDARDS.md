@@ -173,9 +173,9 @@ See [CLAUDE.md](../../CLAUDE.md) for directory structure.
 ## PHPStan Baseline Hygiene
 
 The project runs a single `phpstan.neon` config at level 5. It analyses an
-explicit list of project-owned paths (see the `paths` block in the config);
-`users/` upstream is out of scope. `tests/` and `tools/phpstan/` are in scope. Pre-existing errors are
-captured in `phpstan-baseline.neon`.
+explicit list of project-owned paths in the `paths` block of the config.
+Upstream `users/` is out of scope. `tests/` and `tools/phpstan/` are in scope.
+`phpstan-baseline.neon` holds the pre-existing errors.
 
 **When you touch any project-owned PHP file:** run PHPStan on it and fix
 **all** errors it reports. The baseline silently suppresses pre-existing errors,
@@ -206,8 +206,11 @@ to level 8 (nullable property/method access checks).
 
 `phpstan.neon` registers custom rules from `tools/phpstan/Rules/`. They run in
 every PHPStan run (CI, pre-commit hook, `composer check:php`). They check every
-file in the `paths` block of `phpstan.neon`, including `tests/`. Do not add a
-baseline entry or an ignore for one of these errors. Fix the code.
+file in the `paths` block of `phpstan.neon`, including `tests/`, and no other
+file. PHPStan does not analyse upstream `users/` (apart from `users/cron/`) or
+most of `usersc/plugins/`, `usersc/templates/`, and `usersc/widgets/`. So
+`elanRegistry.serializeCall` and the `\DB` type rule do not check those files.
+Do not add a baseline entry or an ignore for one of these errors. Fix the code.
 
 | Identifier | Rule |
 | --- | --- |
@@ -215,7 +218,7 @@ baseline entry or an ignore for one of these errors. Fix the code.
 | `elanRegistry.serializeCall` | Do not call `serialize()` or `unserialize()`. Use `json_encode()` and `json_decode()`. |
 | `elanRegistry.concreteDbType` | In `app/` and `usersc/`, do not type a parameter or property as `\DB`. Use `ElanRegistry\DatabaseInterface`. Only `DbAdapter` may use `\DB`. |
 | `elanRegistry.globalDbDouble` | Do not declare a global `DB` or `QueryResult` class. Build a small `DatabaseInterface` test double. |
-| `elanRegistry.rawDomainLookup` | The action files in the `files:` list of the rule must not contain `FROM cars` or `FROM users`. Use `new Car()` or `new Owner()`. An `ignoreErrors` entry permits one: the #1014 IDOR guard in `send-owner-email.php`. |
+| `elanRegistry.rawDomainLookup` | The action files in the `files:` list of the rule must not contain `FROM cars` or `FROM users`. Use `new Car()` or `new Owner()`. An `ignoreErrors` entry with `count: 1` permits the one #1014 IDOR query in `app/api/contact/send-owner-email.php`. `reportUnmatchedIgnoredErrors` is on, so PHPStan fails if that file gets a second raw lookup or loses the one lookup. |
 | `elanRegistry.pageMetadataMissing`, `elanRegistry.pageMetadataAfterInit`, `elanRegistry.pageMetadataNoInit` | A page must assign `$pageTitle` and `$pageDescription` before `require_once '.../users/init.php'`. A page is a file under `app/`, `docs/`, or `error/` that calls `securePage()`. `app/api/`, `app/admin/includes/`, and `app/admin/scripts/` are not pages. |
 | `elanRegistry.pageMetadataStaleExemption` | A page on the `exemptPages` list in `phpstan.neon` now sets `$pageTitle`. Remove it from the list. |
 
