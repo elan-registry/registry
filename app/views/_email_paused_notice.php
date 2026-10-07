@@ -12,8 +12,8 @@ if (count(get_included_files()) == 1) {
  * The "email paused" notice on usersc/account.php (#1899). It tells an owner
  * that verification emails to one or more of their car addresses stopped,
  * and links to the two Account Settings controls that fix it. The notice
- * changes no state. Its only actions are two links and a dismiss button
- * that writes sessionStorage.
+ * changes no state. Its only actions are links, a dismiss button that
+ * writes sessionStorage, and disclosure toggles.
  *
  * Caller must set:
  *   $emailNotice      ?array   Return value of EmailNoticeBuilder::buildForOwner().
@@ -85,6 +85,7 @@ foreach ($emailNotice['addresses'] as $_enEntry) {
 $_enAddresses = static fn (array $entries): array => array_column($entries, 'address');
 
 $_enSettingsUrl = $_en($us_url_root . 'usersc/user_settings.php');
+$_enCarsUrl     = $_en($us_url_root . 'app/owner/cars/index.php');
 $_enDismissKey  = 'er.emailNotice.dismissed.' . $ownerId . '.' . $emailNotice['contentHash'];
 $_enOverflow    = $emailNotice['overflowCount'];
 $_enLabelledBy  = trim(
@@ -161,7 +162,7 @@ $_enLabelledBy  = trim(
         <p class="mb-2">You asked us to stop sending them to <?= $_enList($_enAddresses($_enOptOut)) ?>, and we have.</p>
         <?php endif; ?>
         <?php if ($_enComplaint !== []): ?>
-        <p class="mb-2">An email we sent to <?= $_enList($_enAddresses($_enComplaint)) ?> was reported as unwanted, so we stopped sending to be on the safe side.</p>
+        <p class="mb-2">Our email provider flagged <?= $_enList($_enAddresses($_enComplaint)) ?> as unreachable or unwanted, so we stopped sending to be on the safe side.</p>
         <?php endif; ?>
         <?php if ($_enOptOut === [] && $_enComplaint === []): ?>
         <p class="mb-2">Verification emails are paused for one or more of your email addresses.</p>
@@ -181,7 +182,7 @@ $_enLabelledBy  = trim(
                 <?php endforeach; ?>
                 <?php foreach ($_enComplaint as $_enEntry): ?>
                     <?php $_enWhen = $_enDate($_enEntry['suppressed']['date']); ?>
-                <li><?= $_enWhen !== null ? 'On ' . $_enWhen . ' your' : 'Your' ?> email provider told us that one of our messages to <strong><?= $_en($_enEntry['address']) ?></strong> was reported as unwanted. To respect that, we stopped sending. If it was accidental (spam filters sometimes do this on their own), one click on your Account Settings page starts them again.</li>
+                <li><?= $_enWhen !== null ? 'On ' . $_enWhen . ' our' : 'Our' ?> email provider flagged <strong><?= $_en($_enEntry['address']) ?></strong> as unreachable or unwanted. To respect that, we stopped sending. If it was accidental (spam filters sometimes do this on their own), one click on your Account Settings page starts them again.</li>
                 <?php endforeach; ?>
             </ul>
         </div>
@@ -222,7 +223,7 @@ $_enLabelledBy  = trim(
     <?php endif; ?>
 
     <?php if ($_enOverflow > 0): ?>
-    <p class="mb-3">This notice shows <?= count($emailNotice['addresses']) ?> addresses, and <?= $_enOverflow ?> more <?= $_enOverflow === 1 ? 'is' : 'are' ?> also affected.</p>
+    <p class="mb-3">This notice shows <?= count($emailNotice['addresses']) ?> addresses, and <?= $_enOverflow ?> more <?= $_enOverflow === 1 ? 'is' : 'are' ?> also affected. See <a href="<?= $_enCarsUrl ?>">your cars</a> for the full list.</p>
     <?php endif; ?>
 </div>
 <script nonce="<?= $_en($userspice_nonce ?? '') ?>">

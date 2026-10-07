@@ -20,8 +20,9 @@ if (!securePage($php_self)) {
     die();
 }
 
-// Handle uncloak POST — form submits to this page with action=""
-if (!empty($_POST['uncloak']) && Token::check(\Input::get('token'))) {
+// Handle uncloak POST — form submits to this page with action="".
+// tokenHere() emits name="csrf", so the check must read that field.
+if (!empty($_POST['uncloak']) && Token::check(\Input::get('csrf'))) {
     endCloak();
     Redirect::to($us_url_root . 'usersc/account.php');
 }

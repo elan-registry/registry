@@ -80,7 +80,7 @@ test.describe('Email-paused notice on account.php (#1899)', () => {
         const notice = page.locator('#email-paused-notice');
         await expect(notice).toBeVisible();
         await expect(notice.locator('.er-email-notice__line--suppressed')).toBeVisible();
-        await expect(notice).toContainText('was reported as unwanted');
+        await expect(notice).toContainText('flagged');
         await expect(notice.locator('.er-email-notice__line--bounced')).toHaveCount(0);
     });
 
@@ -112,6 +112,10 @@ test.describe('Email-paused notice on account.php (#1899)', () => {
         const notice = page.locator('#email-paused-notice');
         await expect(notice).toBeVisible();
         await expect(notice).toContainText('This notice shows 3 addresses, and 1 more is also affected.');
+        await expect(notice.getByRole('link', { name: 'your cars' })).toHaveAttribute(
+            'href',
+            /\/app\/owner\/cars\/index\.php$/
+        );
     });
 
     test('banner is role="status", has no heading inside, and is the first element before the profile card', async ({ page }) => {

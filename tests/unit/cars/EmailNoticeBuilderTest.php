@@ -30,9 +30,10 @@ use PHPUnit\Framework\TestCase;
  *   wins over owner_optout regardless of order; for the same cause, the
  *   later date wins (self::laterDate(), which treats null as "the other
  *   side wins", not as earliest).
- * - A flagged car with an empty/blank `email` falls back to
- *   `email_bounced_address` only when `bounced` is true; if that's also
- *   empty, the car is skipped entirely (no address to show).
+ * - Each flag has its own address. A suppressed flag uses the car's `email`.
+ *   A bounced flag uses `email_bounced_address`, else the car's `email`. A
+ *   flag with no usable address is skipped. When the two addresses of one
+ *   car differ, the car adds to two address entries.
  * - Constructor takes `CarRepository $repo` (mockable, not injected via a
  *   factory or static call).
  */
@@ -390,6 +391,91 @@ final class EmailNoticeBuilderTest extends TestCase
         $builder = new EmailNoticeBuilder($repo);
 
         $this->assertNull($builder->buildForOwner(1));
+    }
+
+    // --- bounced entry names email_bounced_address, not cars.email ----------
+
+    /**
+     * CarVerificationManager::setBouncedForOwner() writes one owner-level
+     * address to email_bounced_address on every car of that owner, so a
+     * car's own email can differ from the address that bounced. The bounced
+     * entry must name the address that bounced.
+     */
+    public function testBouncedEntryUsesBouncedAddressWhenItDiffersFromCarEmail(): void
+    {
+        $repo = $this->repoReturning([
+            self::car(1, 'car@example.com', false, true, 'bounced@example.com'),
+        ]);
+        $builder = new EmailNoticeBuilder($repo);
+
+        $result = $builder->buildForOwner(1);
+
+        $this->assertNotNull($result);
+        $this->assertCount(1, $result['addresses']);
+        $this->assertSame('bounced@example.com', $result['addresses'][0]['address']);
+        $this->assertNotNull($result['addresses'][0]['bounced']);
+        $this->assertNull($result['addresses'][0]['suppressed']);
+    }
+
+    public function testSuppressedAndBouncedCarWithDifferentAddressesProducesTwoEntries(): void
+    {
+        $repo = $this->repoReturning([
+            self::car(1, 'car@example.com', true, true, 'bounced@example.com'),
+        ]);
+        $builder = new EmailNoticeBuilder($repo);
+
+        $result = $builder->buildForOwner(1);
+
+        $this->assertNotNull($result);
+        $this->assertCount(2, $result['addresses']);
+        $this->assertTrue($result['hasSuppressed']);
+        $this->assertTrue($result['hasBounced']);
+
+        $byAddress = [];
+        foreach ($result['addresses'] as $entry) {
+            $byAddress[$entry['address']] = $entry;
+        }
+        $this->assertNotNull($byAddress['car@example.com']['suppressed']);
+        $this->assertNull($byAddress['car@example.com']['bounced']);
+        $this->assertNull($byAddress['bounced@example.com']['suppressed']);
+        $this->assertNotNull($byAddress['bounced@example.com']['bounced']);
+    }
+
+    public function testSuppressedAndBouncedCarWithSameBouncedAddressStaysOneEntry(): void
+    {
+        $repo = $this->repoReturning([
+            self::car(1, 'shared@example.com', true, true, 'shared@example.com'),
+        ]);
+        $builder = new EmailNoticeBuilder($repo);
+
+        $result = $builder->buildForOwner(1);
+
+        $this->assertNotNull($result);
+        $this->assertCount(1, $result['addresses']);
+        $this->assertSame('shared@example.com', $result['addresses'][0]['address']);
+        $this->assertNotNull($result['addresses'][0]['suppressed']);
+        $this->assertNotNull($result['addresses'][0]['bounced']);
+    }
+
+    /**
+     * Suppression applies to the car's own email. A bounced address must not
+     * stand in for a missing car email on the suppressed entry.
+     */
+    public function testSuppressedCarWithEmptyEmailDoesNotBorrowTheBouncedAddress(): void
+    {
+        $repo = $this->repoReturning([
+            self::car(1, '', true, true, 'bounced@example.com'),
+        ]);
+        $builder = new EmailNoticeBuilder($repo);
+
+        $result = $builder->buildForOwner(1);
+
+        $this->assertNotNull($result);
+        $this->assertCount(1, $result['addresses']);
+        $this->assertSame('bounced@example.com', $result['addresses'][0]['address']);
+        $this->assertNull($result['addresses'][0]['suppressed']);
+        $this->assertNotNull($result['addresses'][0]['bounced']);
+        $this->assertFalse($result['hasSuppressed']);
     }
 
     // --- same address, cause merge rules: brevo_complaint wins --------------

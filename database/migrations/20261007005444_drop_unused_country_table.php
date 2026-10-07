@@ -13,10 +13,8 @@ use Phinx\Migration\AbstractMigration;
  * removal as #2304, out of scope at the time.
  *
  * `usersc/join.php`'s dead `$countrylist`/`$popularCountries` assembly is
- * removed in the same change that adds this migration (#1899's cleanup
- * ledger). `$popularCountries` reads `users.country`, a different column,
- * and is unaffected by this table drop — it is dead for the same reason
- * (never read), not because of this table.
+ * removed in the same change that adds this migration. `country` had no
+ * readers after that removal.
  *
  * Explicit up()/down(), matching the other schema migrations in this
  * directory. `down()` restores the table's structure, matching the baseline

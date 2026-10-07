@@ -19,8 +19,15 @@ use ElanRegistry\LogCategories;
  * values. The partial escapes them.
  *
  * The notice is about delivery addresses, not cars. Entries are grouped by
- * each car's own `email` column (not the profile email), because a car's
- * registered address can differ from the account address.
+ * address, case-insensitively, and never by the profile email, because a
+ * car's registered address can differ from the account address. Each flag
+ * uses its own address:
+ * - Suppressed: the car's own `email` column.
+ * - Bounced: the car's `email_bounced_address`, else the car's `email`.
+ *   {@see CarVerificationManager::setBouncedForOwner()} writes one
+ *   owner-level bounced address to every car of that owner, so this address
+ *   can differ from the car's `email`.
+ * When the two addresses of one car differ, that car adds to two entries.
  *
  * Suppression cause comes from data that already exists:
  * - The car has a `spam`/`unsubscribed` er_email_events row
@@ -112,32 +119,37 @@ final class EmailNoticeBuilder
                 continue;
             }
 
-            $address = self::toNonEmptyString($car->email ?? null);
-            if ($address === null && $bounced) {
-                $address = self::toNonEmptyString($car->email_bounced_address ?? null);
+            $carEmail          = self::toNonEmptyString($car->email ?? null);
+            $suppressedAddress = $suppressed ? $carEmail : null;
+            // setBouncedForOwner() writes one owner-level address to every
+            // car of that owner, so email_bounced_address can differ from
+            // this car's own email. It is the address that actually bounced.
+            $bouncedAddress = $bounced
+                ? (self::toNonEmptyString($car->email_bounced_address ?? null) ?? $carEmail)
+                : null;
+
+            // A flag with no address to name gives the owner nothing to act
+            // on. This is anomalous data (a flagged car should have an
+            // address), not an expected case, so it is logged.
+            if ($suppressed && $suppressedAddress === null) {
+                self::logMissingAddress($ownerId, $carId, 'suppressed');
             }
-            if ($address === null) {
-                // No address to name, so the owner has nothing to act on here.
-                // This is anomalous data (a flagged car should have an
-                // address) rather than an expected case, so it is logged.
-                logger(
-                    $ownerId,
-                    LogCategories::LOG_CATEGORY_EMAIL_ERROR,
-                    "EmailNoticeBuilder: car {$carId} is flagged (suppressed=" . ($suppressed ? 1 : 0)
-                        . ', bounced=' . ($bounced ? 1 : 0) . ') but has no usable email address'
-                );
+            if ($bounced && $bouncedAddress === null) {
+                self::logMissingAddress($ownerId, $carId, 'bounced');
+            }
+            if ($suppressedAddress === null && $bouncedAddress === null) {
                 continue;
             }
 
-            $flagged[$carId] = ['address' => $address, 'suppressed' => $suppressed, 'bounced' => $bounced];
+            $flagged[$carId] = ['suppressedAddress' => $suppressedAddress, 'bouncedAddress' => $bouncedAddress];
         }
 
         if ($flagged === []) {
             return null;
         }
 
-        $suppressedIds = array_keys(array_filter($flagged, static fn (array $f): bool => $f['suppressed']));
-        $bouncedIds    = array_keys(array_filter($flagged, static fn (array $f): bool => $f['bounced']));
+        $suppressedIds = array_keys(array_filter($flagged, static fn (array $f): bool => $f['suppressedAddress'] !== null));
+        $bouncedIds    = array_keys(array_filter($flagged, static fn (array $f): bool => $f['bouncedAddress'] !== null));
 
         $suppressionEvents = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
             $suppressedIds,
@@ -153,10 +165,10 @@ final class EmailNoticeBuilder
         /** @var array<string, array{address: string, suppressed: array{cause: 'owner_optout'|'brevo_complaint', date: ?string}|null, bounced: array{date: ?string}|null}> $byAddress */
         $byAddress = [];
         foreach ($flagged as $carId => $flags) {
-            $key = strtolower($flags['address']);
-            $byAddress[$key] ??= ['address' => $flags['address'], 'suppressed' => null, 'bounced' => null];
+            if ($flags['suppressedAddress'] !== null) {
+                $key = strtolower($flags['suppressedAddress']);
+                $byAddress[$key] ??= ['address' => $flags['suppressedAddress'], 'suppressed' => null, 'bounced' => null];
 
-            if ($flags['suppressed']) {
                 $eventAt = self::toDateTime($suppressionEvents[$carId]->occurred_at ?? null);
                 $histAt  = self::toDateTime($suppressedHist[$carId]->timestamp ?? null);
                 // The event wins only if it is not older than the latest
@@ -171,7 +183,10 @@ final class EmailNoticeBuilder
                 $byAddress[$key]['suppressed'] = self::mergeSuppressed($byAddress[$key]['suppressed'], $entry);
             }
 
-            if ($flags['bounced']) {
+            if ($flags['bouncedAddress'] !== null) {
+                $key = strtolower($flags['bouncedAddress']);
+                $byAddress[$key] ??= ['address' => $flags['bouncedAddress'], 'suppressed' => null, 'bounced' => null];
+
                 // The later of the two: a webhook hard-bounce can arrive
                 // after the latest admin-marked 'EMAIL BOUNCED' history row
                 // (e.g. an admin cleared an earlier bounce and the car
@@ -228,6 +243,15 @@ final class EmailNoticeBuilder
         }
 
         return ['cause' => $current['cause'], 'date' => self::laterDate($current['date'], $next['date'])];
+    }
+
+    private static function logMissingAddress(int $ownerId, int $carId, string $flag): void
+    {
+        logger(
+            $ownerId,
+            LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+            "EmailNoticeBuilder: car {$carId} is {$flag} but has no usable email address"
+        );
     }
 
     private static function laterDate(?string $a, ?string $b): ?string
