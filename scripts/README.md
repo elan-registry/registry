@@ -37,6 +37,10 @@ matter (`title`, `category`, `refresh_days`), then the regenerate prompt.
   A snapshot older than 7 days shows a stale badge. With two or more
   snapshots, the section also draws the open-issue trend. The builder makes
   no network calls.
+- The index ends with **How this index is built**: a flow diagram, the
+  refresh commands, and a launchd job (with install and remove commands)
+  that runs the health refresh daily at 07:00. The commands use the path of
+  the checkout that owns the summaries folder.
 
 ```bash
 python3 scripts/build-summary-index.py              # default folder, keep 3

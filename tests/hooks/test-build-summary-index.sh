@@ -73,7 +73,7 @@ else
 fi
 
 # --- Case 3: categories in the fixed order ---------------------------------
-ORDER="$(grep -o '<h2>[A-Za-z]*' "$IDX" | sed 's/<h2>//' | grep -v '^Project$' | tr '\n' ' ')"
+ORDER="$(grep -o '<h2>[A-Za-z]*' "$IDX" | sed 's/<h2>//' | grep -v -e '^Project$' -e '^How$' | tr '\n' ' ')"
 if [ "$ORDER" = "Status Health Review Other " ]; then
     pass "Case 3: categories in order Status, Health, Review, Other"
 else
@@ -212,6 +212,17 @@ if grep -q 'badge stale">39 days old' "$Q/index.html" \
     pass "Case 15: an old snapshot is stale, a bad one is skipped with a warning"
 else
     fail "Case 15: an old snapshot is stale, a bad one is skipped with a warning" "err: [$(cat "$TMPROOT/err")]"
+fi
+
+# --- Case 16: the "How this index is built" section -------------------------
+if grep -q 'How this index is built' "$IDX" \
+    && grep -q 'aria-label="How the summaries index is built"' "$IDX" \
+    && grep -q 'launchctl bootstrap gui/' "$IDX" \
+    && grep -q '&lt;string&gt;org.elanregistry.summary-health&lt;/string&gt;' "$IDX" \
+    && grep -q "cd &#x27;$REAL_REPO&#x27;" "$IDX"; then
+    pass "Case 16: index explains how it is built and how to refresh it daily"
+else
+    fail "Case 16: index explains how it is built and how to refresh it daily"
 fi
 
 echo ""

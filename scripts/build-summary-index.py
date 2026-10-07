@@ -44,7 +44,9 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_DIR = Path(__file__).resolve().parent.parent / "docs" / "plans" / "summaries"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_DIR = REPO_ROOT / "docs" / "plans" / "summaries"
+LAUNCHD_LABEL = "org.elanregistry.summary-health"
 PAGE_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})\.html$")
 CATEGORY_ORDER = ["Status", "Health", "Process", "Codebase", "Review"]
 HEALTH_DIR = "health"
@@ -300,7 +302,108 @@ def render_health(snaps):
   </section>'''
 
 
-def render(series, root_name, snaps=()):
+def flow_svg():
+    """How the index is built: two lanes (health snapshot, summary pages)
+    that meet at the builder. Columns come from one grid, so boxes and
+    arrows cannot overlap."""
+    e = html.escape
+    bw, bh, gap, pad = 140, 50, 22, 10
+    lane_y = (20, 110)
+    col_x = [pad + i * (bw + gap) for i in range(5)]
+    width = col_x[-1] + bw + pad
+    height = lane_y[1] + bh + 20
+    out = [f'<svg class="chart flow" viewBox="0 0 {width} {height}" role="img" '
+           f'aria-label="How the summaries index is built">',
+           '<defs><marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">'
+           '<path d="M0,0 L8,4 L0,8 z" fill="#6B6B6B"/></marker></defs>']
+
+    def box(x, y, h, lines, cls=""):
+        out.append(f'<rect x="{x}" y="{y}" width="{bw}" height="{h}" rx="8" class="node {cls}"/>')
+        first = y + h / 2 - (len(lines) - 1) * 8 + 4
+        for i, line in enumerate(lines):
+            out.append(f'<text x="{x + bw / 2}" y="{first + i * 16:.1f}">{e(line)}</text>')
+
+    def arrow(x1, y1, x2, y2):
+        out.append(f'<line x1="{x1}" y1="{y1}" x2="{x2 - 2}" y2="{y2}" stroke="#6B6B6B" '
+                   f'stroke-width="1.5" marker-end="url(#arr)"/>')
+
+    lanes = (
+        (["GitHub", "via gh"], ["project-health.py"], ["health/", "<date>.json"]),
+        (["<series>/", "prompt.md"], ["Claude Code", "/summary"], ["<series>/", "<date>.html"]),
+    )
+    for y, cells in zip(lane_y, lanes):
+        mid = y + bh / 2
+        for c, lines in enumerate(cells):
+            box(col_x[c], y, bh, lines)
+            arrow(col_x[c] + bw, mid, col_x[c + 1], mid)
+    span_h = lane_y[1] + bh - lane_y[0]
+    box(col_x[3], lane_y[0], span_h, ["build-summary-", "index.py"], "key")
+    centre = lane_y[0] + span_h / 2
+    box(col_x[4], centre - bh / 2, bh, ["index.html"], "key")
+    arrow(col_x[3] + bw, centre, col_x[4], centre)
+    out.append("</svg>")
+    return "".join(out)
+
+
+def launchd_plist(repo):
+    """A user LaunchAgent that refreshes the health snapshot and the index
+    every morning. A login shell (zsh -l) gives it the PATH where gh and
+    python3 live; launchd's own PATH has neither."""
+    log = Path.home() / "Library" / "Logs" / "elanregistry-summary-health.log"
+    cmd = f"cd '{repo}' && python3 scripts/project-health.py && python3 scripts/build-summary-index.py"
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{LAUNCHD_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>-lc</string><string>{html.escape(cmd, quote=False)}</string></array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>{log}</string>
+  <key>StandardErrorPath</key><string>{log}</string>
+</dict>
+</plist>"""
+
+
+def render_about(repo):
+    e = html.escape
+    agent = f"~/Library/LaunchAgents/{LAUNCHD_LABEL}.plist"
+    install = (f"# 1. Save the file above as {agent}\n"
+               f"launchctl bootstrap gui/$(id -u) {agent}\n"
+               f"launchctl kickstart gui/$(id -u)/{LAUNCHD_LABEL}   # run once now\n"
+               f"# Remove it:\n"
+               f"launchctl bootout gui/$(id -u)/{LAUNCHD_LABEL} && rm {agent}")
+    return f'''  <section class="about">
+    <h2>How this index is built</h2>
+    {flow_svg()}
+    <p class="cap">Two inputs meet at the builder. It reads files only and makes no network calls.</p>
+    <h3>Refresh</h3>
+    <ul class="refresh">
+      <li><b>Project health</b><span>run by hand, or daily with the job below</span><code>python3 scripts/project-health.py &amp;&amp; python3 scripts/build-summary-index.py</code></li>
+      <li><b>A summary series</b><span>when its badge says stale</span><code>open its prompt, Copy, paste into Claude Code</code></li>
+      <li><b>Index only</b><span>after you add or delete a page</span><code>python3 scripts/build-summary-index.py</code></li>
+    </ul>
+    <p class="cap">Run all commands from {e(str(repo))}. The health badge turns stale after {HEALTH_STALE_DAYS} days without a snapshot.</p>
+    <details>
+      <summary>Run the health refresh daily (macOS launchd)</summary>
+      <p class="cap">Runs at 07:00 when the Mac is awake, or at the next wake. It needs your gh login, so it runs here, not in the cloud.</p>
+      <div class="prompt-wrap"><button type="button" class="copy">Copy</button><pre>{e(launchd_plist(repo))}</pre></div>
+      <div class="prompt-wrap"><button type="button" class="copy">Copy</button><pre>{e(install)}</pre></div>
+    </details>
+  </section>'''
+
+
+def repo_for(root):
+    """The checkout that owns a summaries folder. The refresh commands must
+    run there, not in whichever worktree ran this builder."""
+    root = root.resolve()
+    if root.parts[-3:] == ("docs", "plans", "summaries"):
+        return root.parents[2]
+    return REPO_ROOT
+
+
+def render(series, root_name, snaps=(), root_dir=DEFAULT_DIR):
     e = html.escape
     cats = {}
     for s in series:
@@ -408,6 +511,17 @@ def render(series, root_name, snaps=()):
   .mix li b {{ font-family: var(--mono); color: var(--ink); font-weight: 600; }}
   .src {{ margin-top: 20px; font-size: 13px; }}
   code {{ font: 13px var(--mono); background: var(--raised); padding: 1px 5px; border-radius: 4px; }}
+  .about {{ border-top: 1px solid var(--line); padding-top: 28px; }}
+  .flow {{ margin: 8px 0 10px; }}
+  .flow rect.node {{ fill: var(--raised); stroke: var(--line); }}
+  .flow rect.key {{ fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; }}
+  .flow text {{ fill: var(--ink); font-size: 12px; }}
+  .refresh {{ list-style: none; padding: 0; margin: 0 0 12px; }}
+  .refresh li {{ border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; margin-bottom: 12px; }}
+  .refresh b {{ display: inline-block; min-width: 175px; }}
+  .refresh span {{ color: var(--muted); font-size: 14px; }}
+  .refresh code {{ display: table; margin-top: 4px; overflow-wrap: anywhere; }}
+  .about .prompt-wrap {{ margin-top: 10px; }}
   @media (max-width: 600px) {{ h1 {{ font-size: 28px; }} .row {{ flex-wrap: wrap; }} .health .glance {{ grid-template-columns: repeat(2, 1fr); }} }}
   @media print {{ .copy {{ display: none; }} details {{ display: none; }} }}
 </style>
@@ -423,7 +537,7 @@ def render(series, root_name, snaps=()):
   </div>
 {render_health(list(snaps))}
 {body}
-  <p class="cap" style="margin-top:40px">To regenerate a series, open its prompt, copy it, and paste it into Claude Code from Registry/. Edit the series' prompt.md to change it.</p>
+{render_about(repo_for(root_dir))}
 </main>
 <script>
   document.querySelectorAll('.copy').forEach(function (btn) {{
@@ -452,7 +566,7 @@ def main(argv):
     for loose in sorted(root.glob("*.html")):
         if loose.name != "index.html":
             print(f"warning: {loose.name} is not in a series folder and is not indexed", file=sys.stderr)
-    (root / "index.html").write_text(render(series, "docs/plans/summaries", snaps), encoding="utf-8")
+    (root / "index.html").write_text(render(series, "docs/plans/summaries", snaps, root), encoding="utf-8")
     stale = sum(1 for s in series if s["stale"])
     health = f"health {snaps[0]['_date'].isoformat()}" if snaps else "no health snapshot"
     print(f"index.html: {len(series)} series, {sum(len(s['pages']) for s in series)} page(s), {stale} stale, {health}")
