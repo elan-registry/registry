@@ -16,14 +16,30 @@ npm run build
 
 ### build-summary-index.py
 
-Rebuilds `docs/plans/summaries/index.html` from the `/summary` skill's dated
-status pages and their regenerate prompts. Run after any summary page is
-added or deleted. The pages themselves are gitignored build output under
+Rebuilds `docs/plans/summaries/index.html` from the `/summary` pages. Run it
+after you add or delete a summary page. The pages are gitignored under
 `docs/plans/`; only the script is tracked.
 
+Each series is one folder: `summaries/<series>/prompt.md` and one page per
+run, `summaries/<series>/<YYYY-MM-DD>.html`. `prompt.md` starts with front
+matter (`title`, `category`, `refresh_days`), then the regenerate prompt.
+
+- The index groups series by category: Status, Health, Process, Codebase,
+  Review, then any other.
+- Each series shows its newest page with a `fresh` or `stale` badge (stale:
+  older than `refresh_days`), its older pages, and its prompt, collapsed,
+  with a Copy button and a link to `prompt.md`.
+- It keeps the newest `--keep` pages per series (default 3) and deletes
+  older ones. `--keep 0` keeps every page.
+- A page outside a series folder gets a warning and is not indexed.
+
 ```bash
-python3 scripts/build-summary-index.py
+python3 scripts/build-summary-index.py              # default folder, keep 3
+python3 scripts/build-summary-index.py --keep 0     # keep every page
 ```
+
+Exit codes: 0 built; 1 usage error or the folder does not exist. The
+hermetic test is `tests/hooks/test-build-summary-index.sh`.
 
 ## Version Management
 
