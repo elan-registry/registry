@@ -64,6 +64,12 @@ Header always set X-XSS-Protection "0"
     Require all denied
 </FilesMatch>
 
+# Leaked PHP error logs from the removed #1768 rule hold stack traces (#2326).
+# Do not set error_log here. See ENVIRONMENT.md, "PHP Error Logging".
+<FilesMatch "^%\{ENV">
+    Require all denied
+</FilesMatch>
+
 # Disable HTTP TRACE (XST prevention)
 <LimitExcept GET POST HEAD OPTIONS>
     Require all denied
@@ -87,17 +93,6 @@ RewriteRule ^backups/ - [F,L]
 # independent of whatever edge/host-level rule (Cloudflare, LiteSpeed) is
 # also blocking this path.
 RewriteRule (^|/)\.git(/|$) - [F,L]
-
-# PHP error log destination per environment (#1768)
-# Resolved at request-time via HTTP_HOST since .htaccess is deployed
-# identically to every environment (no deploy-time templating exists).
-<IfModule mod_php.c>
-    RewriteCond %{HTTP_HOST} ^test\.elanregistry\.org [NC]
-    RewriteRule .* - [E=PHP_ERROR_LOG:/home/unibrain/php_error/test.elanregistry.org-php-error.log]
-    RewriteCond %{HTTP_HOST} !^test\.elanregistry\.org [NC]
-    RewriteRule .* - [E=PHP_ERROR_LOG:/home/unibrain/php_error/elanregistry.org-php-error.log]
-    php_value error_log %{ENV:PHP_ERROR_LOG}
-</IfModule>
 
 # Test subdomain: serve a blocking robots.txt without affecting production (#1369)
 # NOTE: Cloudflare fetches robots.txt directly from origin, bypassing Apache rewrites.
