@@ -165,6 +165,28 @@ final class AdminVerificationStatusChipTest extends TestCase
         $this->assertSame('opted_out', $chip['kind']);
     }
 
+    /**
+     * A car suppressed only through the owner's profile-level flag (its own
+     * email_suppressed flag is 0) must show Opted out even when a stale Brevo
+     * complaint event is on record for it — matching EmailNoticeBuilder's
+     * account notice and the owner's Resume gate, which both treat a
+     * profile-only suppression as an owner opt-out (see #2339's cross-surface
+     * finding this test closes).
+     */
+    public function testProfileOnlySuppressionShowsOptedOutNotBrevoComplaint(): void
+    {
+        $chip = vsStatusChip(
+            null,
+            true,
+            self::suppressionEvent('spam', '2026-09-01 10:00:00'),
+            null,
+            false
+        );
+
+        $this->assertSame('opted_out', $chip['kind']);
+        $this->assertSame('Opted out', $chip['label']);
+    }
+
     public function testLiveSpamEventOnANonSuppressedCarStillShowsSpamComplaint(): void
     {
         // Not the suppressed branch: a live 'spam' event on a car not yet

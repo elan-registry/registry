@@ -366,11 +366,20 @@ if (!function_exists('vsStatusChip')) {
      * @param bool $suppressed True when the car or its owner profile is suppressed
      * @param object|null $suppressionEvent The car's latest suppression event of any send cycle, if read
      * @param object|null $suppressedHist The latest `EMAIL SUPPRESSED` cars_hist row, if read
+     * @param bool $carFlagSet True when the car's own `email_suppressed` flag is set, as opposed
+     *        to only the owner's profile-level flag. Passed through to
+     *        {@see EmailNoticeBuilder::resolveSuppressionCause()} so a profile-only suppression
+     *        shows Opted out here too, matching the owner's account notice and Resume gate.
      * @return array{kind: string, label: string, class: string, reason: string}
      *         `kind` is '' when there is no event to show
      */
-    function vsStatusChip(?object $event, bool $suppressed, ?object $suppressionEvent, ?object $suppressedHist): array
-    {
+    function vsStatusChip(
+        ?object $event,
+        bool $suppressed,
+        ?object $suppressionEvent,
+        ?object $suppressedHist,
+        bool $carFlagSet = true
+    ): array {
         $name   = isset($event->event) ? (string) $event->event : null;
         $reason = trim((string) ($event->reason ?? ''));
 
@@ -385,7 +394,7 @@ if (!function_exists('vsStatusChip')) {
         $complaint = ['kind' => 'complaint', 'label' => 'Brevo complaint', 'class' => 'text-bg-danger', 'reason' => ''];
 
         if ($suppressed) {
-            $cause = EmailNoticeBuilder::resolveSuppressionCause($suppressionEvent, $suppressedHist);
+            $cause = EmailNoticeBuilder::resolveSuppressionCause($suppressionEvent, $suppressedHist, $carFlagSet);
 
             return $cause['cause'] === EmailNoticeBuilder::CAUSE_BREVO_COMPLAINT ? $complaint : $optedOut;
         }
@@ -1297,15 +1306,17 @@ if (!$vsAllHealthy) {
                             : false;
                         $queueDays = $queueSentAt !== false ? (int) $queueSentAt->diff($vsNow)->days : null;
 
-                        $queueBounced    = (int) ($queueCar->email_bounced ?? 0) === 1;
-                        $queueSuppressed = (int) ($queueCar->email_suppressed ?? 0) === 1
+                        $queueBounced     = (int) ($queueCar->email_bounced ?? 0) === 1;
+                        $queueCarFlagSet  = (int) ($queueCar->email_suppressed ?? 0) === 1;
+                        $queueSuppressed  = $queueCarFlagSet
                             || (int) ($queueCar->profile_email_suppressed ?? 0) === 1;
 
                         $queueChip = vsStatusChip(
                             $vsChipEvents[$queueCarId] ?? null,
                             $queueSuppressed,
                             $vsSuppressionEvents[$queueCarId] ?? null,
-                            $vsSuppressedHist[$queueCarId] ?? null
+                            $vsSuppressedHist[$queueCarId] ?? null,
+                            $queueCarFlagSet
                         );
 
                         // One action per row, from the car's state. Suppressed comes first:

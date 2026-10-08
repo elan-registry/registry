@@ -187,3 +187,7 @@ after an item is written.
 ### `usersc/plugins/hooker/hooks/user_form_hook.php`
 
 - [ ] Replace the raw `SELECT c.* FROM cars` (~L22) with `CarRepository::findByOwner()`. Decide badge order: accept no order, or add `ORDER BY model, year` to `findByOwner()` and check its other caller (from #2002)
+
+### `usersc/user_settings.php` + `app/verify/verify_car.php` + `app/admin/index.php`
+
+- [ ] `userSettingsHistoryFields()`, `verifyHistoryFields()`, and `verifyHistoryFieldsForAdminAction()` are three separate copies of the same `cars_hist` snapshot shape. A fix found by one copy's own bug (the `year ?? ''` strict-mode failure, #2328) had to be repeated in all three. A shared builder would need only one fix (found in /finish-milestone v2.30.5)

@@ -137,6 +137,12 @@ detail, factory and statistics pages — as public.
   variants.
 - **Mark a car sold** — the record stays in the registry; the sale becomes part
   of its history rather than removing it.
+- **See and fix a paused verification email** (`usersc/account.php`) — a
+  dismissable notice names any address with suppressed or bounced
+  verification email, and links to Account Settings to fix it.
+- **Resume suppressed verification emails** (`usersc/user_settings.php`) — an
+  owner can clear their own opt-out, without an admin. A suppression caused
+  by a Brevo spam complaint stays admin-only to clear.
 - **Request an ownership transfer** (`app/api/cars/transfer-request.php`) — when
   you buy a car already in the registry, you request it rather than creating a
   duplicate. There is no "claim this car" button on the detail page: the entry

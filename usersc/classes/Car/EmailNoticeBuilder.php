@@ -191,10 +191,14 @@ final class EmailNoticeBuilder
                 // at 0 any spam event on this car is stale (for example, from
                 // before a merge). findBrevoComplaintCarIds() does not keep
                 // this car paused, so the notice must not tell the owner that
-                // only the registry can turn it back on.
-                $cause = $flags['profileOnly']
-                    ? ['cause' => self::CAUSE_OWNER_OPTOUT, 'at' => self::toDateTime($suppressedHist[$carId]->timestamp ?? null)]
-                    : self::resolveSuppressionCause($suppressionEvents[$carId] ?? null, $suppressedHist[$carId] ?? null);
+                // only the registry can turn it back on. resolveSuppressionCause()
+                // applies this same rule via its $carFlagSet parameter, so this
+                // and the admin Status chip (vsStatusChip()) cannot disagree.
+                $cause = self::resolveSuppressionCause(
+                    $suppressionEvents[$carId] ?? null,
+                    $suppressedHist[$carId] ?? null,
+                    !$flags['profileOnly']
+                );
                 $entry = ['cause' => $cause['cause'], 'date' => $cause['at']?->format('Y-m-d')];
                 $byAddress[$key]['suppressed'] = self::mergeSuppressed($byAddress[$key]['suppressed'], $entry);
             }
@@ -250,6 +254,14 @@ final class EmailNoticeBuilder
      * uses full datetime precision, not the display date, so a same-day
      * clear-and-resuppress is not missed. See the class docblock.
      *
+     * When the car's own `email_suppressed` flag is not set (the car is
+     * suppressed only through the owner's profile-level flag), the cause is
+     * always the owner opt-out. A Brevo event belongs to a specific car's
+     * send history, so a profile-only suppression cannot be caused by one —
+     * any event found on such a car is stale, from before an owner-level
+     * change. See {@see self::buildForOwner()}, which applies this same rule
+     * and must keep agreeing with this method.
+     *
      * @param object|null $suppressionEvent The car's latest
      *        {@see EmailEventApplier::SUPPRESSION_EVENTS} row from
      *        {@see CarRepository::findLatestEmailEventsByCarIdsAndEvents()},
@@ -257,13 +269,24 @@ final class EmailNoticeBuilder
      * @param object|null $suppressedHist The car's latest
      *        {@see self::OPERATION_SUPPRESSED} cars_hist row from
      *        {@see CarRepository::findLatestHistoryOperationByCarIds()}. Null when the car has none.
+     * @param bool $carFlagSet True when the car's own `email_suppressed` flag is set.
+     *        Defaults to true for callers that have not checked (every existing caller
+     *        before this parameter was added, each reading a car whose own flag is set).
      * @return array{cause: 'owner_optout'|'brevo_complaint', at: ?DateTimeImmutable}
      *         `at` is the time of the row that gives the cause, or null when no row gives one
      */
-    public static function resolveSuppressionCause(?object $suppressionEvent, ?object $suppressedHist): array
-    {
+    public static function resolveSuppressionCause(
+        ?object $suppressionEvent,
+        ?object $suppressedHist,
+        bool $carFlagSet = true
+    ): array {
+        $histAt = self::toDateTime($suppressedHist->timestamp ?? null);
+
+        if (!$carFlagSet) {
+            return ['cause' => self::CAUSE_OWNER_OPTOUT, 'at' => $histAt];
+        }
+
         $eventAt = self::toDateTime($suppressionEvent->occurred_at ?? null);
-        $histAt  = self::toDateTime($suppressedHist->timestamp ?? null);
 
         if ($eventAt !== null && ($histAt === null || $eventAt >= $histAt)) {
             return ['cause' => self::CAUSE_BREVO_COMPLAINT, 'at' => $eventAt];

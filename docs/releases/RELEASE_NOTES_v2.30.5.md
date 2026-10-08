@@ -8,9 +8,10 @@
 - An owner whose car emails are suppressed or bounced now sees a dismissable
   notice on Account Settings naming the affected addresses, the reason, and
   links to fix it. ([#1899](https://github.com/elan-registry/registry/issues/1899))
-- The car edit form has a new Owner Information section, so the verification
-  email's single edit link now covers everything the email asks the owner to
-  check. ([#1891](https://github.com/elan-registry/registry/issues/1891))
+- The car edit form now links to Account Settings to update your name,
+  location, or website, and a name/website/location change there now reaches
+  every car on the account through one write path.
+  ([#1891](https://github.com/elan-registry/registry/issues/1891))
 - An owner can now resume their own suppressed verification emails from
   Account Settings, without needing an admin.
   ([#1895](https://github.com/elan-registry/registry/issues/1895))
@@ -29,10 +30,15 @@
 - [#1896](https://github.com/elan-registry/registry/issues/1896) — Rebuilt
   the admin Verification tab's dashboard, with per-row status chips that
   share suppression-cause logic with the owner-facing notice and a guard
-  against applying owner-level actions to the `noowner` system account.
-- [#1891](https://github.com/elan-registry/registry/issues/1891) — Added an
-  Owner Information section to the car edit form and consolidated the
-  profile-sync write paths behind it.
+  against applying owner-level actions to the `noowner` system account. Also
+  fixed a car with no model year failing to save a verify, sold, bounce, or
+  suppression action under the database's strict mode
+  (`app/verify/verify_car.php`, `app/admin/index.php`,
+  `CarAdministrationService`).
+- [#1891](https://github.com/elan-registry/registry/issues/1891) — Added a
+  car edit form link to Account Settings for the owner's name, location, and
+  website, and consolidated the write path for those fields behind one
+  method shared by every car on the account.
   Consolidates [#1880](https://github.com/elan-registry/registry/issues/1880).
 - [#1895](https://github.com/elan-registry/registry/issues/1895) — Added a
   Resume Verification Emails control to Account Settings so an owner can
@@ -42,6 +48,7 @@
   email-paused notice to account.php for owners with suppressed or bounced car
   emails, fixed the Uncloak button's CSRF check on the same page, and dropped
   the unused `country` table.
+  Consolidates [#2304](https://github.com/elan-registry/registry/issues/2304).
 - [#2295](https://github.com/elan-registry/registry/issues/2295) — Fixed car
   edit save failing with "Please select Model" by making Save wait for the
   model list to load instead of a guessed timeout.
