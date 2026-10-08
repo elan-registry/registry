@@ -76,6 +76,11 @@ after an item is written.
 
 - [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Catch `CarDatabaseException`: an uncaught one turns a logged redirect into a 500. Keep the redirect to `/` on not-found (from #2002)
 
+### `app/views/_email_paused_notice.php`
+
+- [ ] No dedicated unit test for the partial's own escaping/copy branches: a hostile address string, date-omitted text when no audit row exists, overflow pluralization ("is"/"are"), "and N more" join text. Playwright covers some rendering end to end but does not target these branches directly. (found while working on #1899)
+- [ ] No Playwright test that changing the underlying flagged-car data re-shows a notice the owner already dismissed in the same session — the `contentHash`-driven re-show behavior `EmailNoticeBuilder`'s own docblock promises. (found while working on #1899)
+
 ### `error/500.php`
 
 - [ ] Restore a unit pin: all nine status codes (400/401/403/404/405/408/500/502/504) have entries in both `$errorMessages` and `$logCategoryMap` (from #2169)
