@@ -331,7 +331,7 @@ if (!function_exists('vsEsc')) {
      *
      * @param mixed $value
      */
-    function vsEsc($value): string
+    function vsEsc(mixed $value): string
     {
         return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
     }
