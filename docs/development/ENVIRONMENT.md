@@ -808,26 +808,30 @@ for location geocoding. Nominatim does not need an API key.
 
 ## PHP Error Logging
 
-PHP logs errors, warnings, and fatal errors to separate files on test and
-production. Both servers use the mod_php SAPI.
+PHP writes errors, warnings, and fatal errors to a log outside the docroot.
 
-- **Test**: `/home/unibrain/php_error/test.elanregistry.org-php-error.log`
-- **Production**: `/home/unibrain/php_error/elanregistry.org-php-error.log`
+| Environment | `error_log` value | Set by |
+| --- | --- | --- |
+| Test | `/home/unibrain/php_error/test.elanregistry.org-php-error.log` | `.user.ini` in the test docroot |
+| Production | `/home/unibrain/php_error/elanregistry.org-php-error.log` | `.user.ini` in the production docroot |
+| Local Docker | empty (stderr). Read it with `docker compose logs app` | `docker/php.ini-overrides.ini` |
 
-The root `.htaccess` file selects the log destination during each Apache
-request. An `HTTP_HOST`-conditional `RewriteRule` sets the environment
-variable that `php_value error_log %{ENV:PHP_ERROR_LOG}` uses. The deploy
-process does not change this value. Git tracks one `.htaccess` file and
-deploys it to every environment. Search `.htaccess` for `PHP_ERROR_LOG` to
-find this rule.
+The test and production hosts run LiteSpeed with `lsphp`, not Apache
+mod_php (checked on the hosts on 2026-10-07, #2326). PHP reads the
+`.user.ini` file in each docroot. Each host has its own `.user.ini`, which
+exists only on the host. Git does not track it, so one tree deploys to both
+hosts. A deploy into the same docroot is expected to keep it, as for
+`usersc/vericode_secret.php`, which is also untracked (`DEPLOYMENT.md`). A
+deploy into a new directory needs a new `.user.ini`. lsphp reads `.user.ini`
+again only after `user_ini.cache_ttl` (default 300 seconds).
 
-The `<IfModule mod_php.c>` block does nothing if the server changes from
-mod_php to another SAPI, such as PHP-FPM. Apache skips unknown `IfModule`
-blocks without an error. If the error logs stop after a server or PHP change,
-check that the server still uses mod_php.
-
-Local Docker development uses PHP's default error log location inside the
-`app` container.
+Do not set `error_log` in `.htaccess`. On the hosts, LiteSpeed applied
+the #1768 `<IfModule mod_php.c>` block, and its `php_value` line overrode
+`.user.ini`. PHP did not expand the `%{ENV:...}` value. It wrote each error
+to a web-readable file named `%{ENV:PHP_ERROR_LOG}` in the directory of the
+failing script (#2326). `.htaccess` now denies that filename, and
+`tests/unit/regression/Issue2326HtaccessErrorLogRegressionTest.php` fails on
+any `php_value` or `php_flag` line that holds `%{`.
 
 ## Troubleshooting
 

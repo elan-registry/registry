@@ -37,7 +37,6 @@ after an item is written.
 
 ### `.htaccess` + `usersc/login.php` (test coverage)
 
-- [ ] No test requests `/.git/HEAD` or `docker-compose.yml` (#2212, #2121 carried from Dev Environment). Add 403 checks to `tests/playwright/e2e/not-logged-in.spec.js`. (found in /finish-milestone v2.30.4)
 - [ ] No unit test asserts that `index.php` starts with `<?php` (no leading bytes). (found in /finish-milestone v2.30.4)
 - [ ] The #2189 `login.php` change (`$knownIdentifier` and `(unrecognised)` in `checkRateLimit`/`handleAuthFailure`) has only integration coverage, which CI does not run. Add a source-wiring pin test under `tests/unit/security/`. (found in /finish-milestone v2.30.4)
 
