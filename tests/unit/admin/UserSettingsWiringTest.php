@@ -462,9 +462,10 @@ final class UserSettingsWiringTest extends TestCase
         // their own key directly; location queues city/state/country (and
         // lat/lon when present) via one array_merge() call. The unconfirmed
         // email branch must not queue anything — asserted separately above.
-        $this->assertSame(
+        preg_match_all('/\$ownerFields\[[\'"][a-z_]+[\'"]\]\s*=(?!=)/', $content, $assignments);
+        $this->assertCount(
             4,
-            substr_count($content, "\$ownerFields['") + substr_count($content, '$ownerFields["'),
+            $assignments[0],
             "Expected exactly 4 direct \$ownerFields['key'] = ... assignments (fname, lname, "
             . 'website, confirmed email). A change here means either a sync trigger was '
             . 'dropped or the unconfirmed-email branch gained one (#1873)'

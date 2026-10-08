@@ -186,6 +186,9 @@ if (!empty($_POST)) {
         try {
             // Inside the try: PDO runs in ERRMODE_EXCEPTION, so a failed BEGIN
             // throws, and the catch below must give the owner a message.
+            // Read before the clear: an empty $resumedCars can still mean the
+            // profile flag was cleared, so the message needs both.
+            $profileWasSuppressed = (int) ($profiledetails->email_suppressed ?? 0) === 1;
             $repo->beginTransaction();
             $resumedCars = $verifier->clearSuppressedForOwnerByOwner($userId);
             foreach ($resumedCars as $beforeCar) {
@@ -213,7 +216,14 @@ if (!empty($_POST)) {
             // The owner cannot clear a Brevo complaint (only an admin can),
             // so say which cars stay paused instead of a plain "resumed".
             $complaintCarCount = count($verifier->findBrevoComplaintCarIds($userId));
-            if ($complaintCarCount > 0) {
+            $resumedAnything = $profileWasSuppressed || $resumedCars !== [];
+            if ($complaintCarCount > 0 && !$resumedAnything) {
+                usError(sprintf(
+                    'No cars were resumed. %s paused because our email provider flagged the address. Please contact the registry to turn %s back on.',
+                    $complaintCarCount === 1 ? 'Your car was' : 'Your cars were',
+                    $complaintCarCount === 1 ? 'it' : 'them'
+                ));
+            } elseif ($complaintCarCount > 0) {
                 usSuccess(sprintf(
                     'Verification emails have been resumed where you paused them. %d of your cars %s paused because our email provider flagged the address. Please contact the registry to turn %s back on.',
                     $complaintCarCount,
@@ -913,6 +923,9 @@ try {
     logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
         "user_settings.php: owner car suppression lookup failed for owner {$userId}: " . $e->getMessage());
 }
+// The owner cannot clear a Brevo complaint, so the button shows only when
+// at least one paused car is not a complaint.
+$ownerClearable = $profileSuppressed || ($pausedCarCount ?? 0) > $complaintPausedCount;
 
 ?>
 <div id="page-wrapper">
@@ -931,15 +944,15 @@ try {
                                     Verification emails are currently paused for your cars.
                                 <?php endif; ?>
                             </p>
-                            <form name='resumeVerificationEmails' action='user_settings.php' method='post'>
-                                <input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8') ?>" />
-                                <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume verification emails</button>
-                            </form>
-                            <?= $complaintPausedCount > 0
-                                ? '<p class="mt-2 mb-0">' . (int) $complaintPausedCount
-                                    . (($complaintPausedCount === 1) ? ' car was' : ' cars were')
-                                    . ' paused because our email provider flagged the address. This button does not turn those back on. Please contact the registry for help.</p>'
-                                : '' ?>
+                            <?php if ($ownerClearable): ?>
+                                <form name='resumeVerificationEmails' action='user_settings.php' method='post'>
+                                    <input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8') ?>" />
+                                    <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume verification emails</button>
+                                </form>
+                            <?php endif; ?>
+                            <?php if ($complaintPausedCount > 0): ?>
+                                <p class="mt-2 mb-0"><?= (int) $complaintPausedCount ?> <?= $complaintPausedCount === 1 ? 'car was' : 'cars were' ?> paused because our email provider flagged the address.<?= $ownerClearable ? ' This button does not turn those back on.' : '' ?> Please contact the registry for help.</p>
+                            <?php endif; ?>
                         </section>
                     <?php endif; ?>
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -12,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * Redirect::to() always calls exit(), so each request runs in its own
  * `php -r` subprocess, and a shutdown function captures the usSuccess()
- * flash to a temp file. POST tests assert on that flash and database state.
+ * and usError() flashes to a temp file. POST tests assert on that flash and database state.
  *
  * securePage() needs SCRIPT_FILENAME set before users/init.php (for
  * $php_self) and a real permission_id 1 match for the fixture user.
@@ -121,7 +122,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
      * @param bool $omitCsrfKey Leave out the 'csrf' key entirely; overrides $withValidCsrf
      * @param bool $asGet Plain GET page load; the POST options are ignored
      * @param bool $withResumeField False sends the ordinary profile-update POST
-     * @return array{exitCode: int, raw: string, successFlash: string}
+     * @return array{exitCode: int, raw: string, successFlash: string, errorFlash: string}
      */
     private function invokeResumeEndpoint(
         int $loggedInUserId,
@@ -173,7 +174,10 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             '$__captureFile = %s; ' .
             'register_shutdown_function(function () use ($__captureFile) { ' .
             '    $sn = \Config::get("session/session_name"); ' .
-            '    file_put_contents($__captureFile, json_encode($_SESSION[$sn . "valSuc"] ?? null)); ' .
+            '    file_put_contents($__captureFile, json_encode([ ' .
+            '        "success" => $_SESSION[$sn . "valSuc"] ?? null, ' .
+            '        "error" => $_SESSION[$sn . "valErr"] ?? null, ' .
+            '    ])); ' .
             '}); ' .
             'require %s;',
             var_export($endpointFile, true),
@@ -196,22 +200,24 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
 
         [$body, $exitMarker] = array_pad(explode('___EXIT:', $raw), 2, '0');
 
-        $successFlash = '';
         $captured = file_exists($captureFile) ? file_get_contents($captureFile) : '';
-        if (is_string($captured) && $captured !== '') {
-            $decoded = json_decode($captured, true);
-            if (is_string($decoded)) {
-                $successFlash = $decoded;
-            } elseif (is_array($decoded)) {
-                $successFlash = implode(' ', array_map('strval', $decoded));
-            }
-        }
+        $decoded = is_string($captured) && $captured !== '' ? json_decode($captured, true) : null;
 
         return [
             'exitCode' => (int) trim($exitMarker),
             'raw' => trim($body),
-            'successFlash' => $successFlash,
+            'successFlash' => self::flashText(is_array($decoded) ? ($decoded['success'] ?? null) : null),
+            'errorFlash' => self::flashText(is_array($decoded) ? ($decoded['error'] ?? null) : null),
         ];
+    }
+
+    /** A session flash value (a string or a list of strings) as one string. */
+    private static function flashText(mixed $flash): string
+    {
+        if (is_string($flash)) {
+            return $flash;
+        }
+        return is_array($flash) ? implode(' ', array_map('strval', $flash)) : '';
     }
 
     #[Group('fast')]
@@ -418,6 +424,42 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         $this->assertSame(0, $this->profileEmailSuppressed($ownerId));
         $this->assertSame(['SUPPRESSION CLEARED BY OWNER'], $this->suppressionCarsHistOperations($suppressedCarId));
         $this->assertStringContainsString('Verification emails have been resumed for your cars.', $result['successFlash']);
+    }
+
+    /**
+     * Every paused car is a Brevo complaint, which only an admin can clear.
+     * The page must hide the button, and a forced POST must say that no car
+     * was resumed instead of a plain success message.
+     */
+    #[Group('fast')]
+    #[Group('regression')]
+    public function testAllComplaintCarsHidesButtonAndPostReportsNothingResumed(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $email = 'all-complaint-' . uniqid() . '@example.com';
+        $carId = $this->createTestCar($ownerId, ['email' => $email, 'email_suppressed' => 1]);
+        (new CarRepository($this->db))->insertEmailEvent($carId, $email, 'spam', null, 'all-complaint-msg', '2026-03-10 09:30:00');
+
+        $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
+
+        $this->assertSame(0, $page['exitCode'], 'Subprocess must exit cleanly: ' . $page['raw']);
+        $this->assertStringContainsString('id="resume-emails"', $page['raw'], 'The section must still explain the pause');
+        $this->assertStringNotContainsString(
+            'name="resume_verification_emails"',
+            $page['raw'],
+            'The button must not render when it would clear nothing'
+        );
+        $this->assertStringContainsString('1 car was paused because our email provider flagged the address', $page['raw']);
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertSame(1, $this->emailSuppressed($carId), 'A Brevo complaint must stay suppressed');
+        $this->assertSame([], $this->suppressionCarsHistOperations($carId));
+        $this->assertStringNotContainsString('resumed where you paused', $result['successFlash']);
+        $this->assertStringNotContainsString('have been resumed', $result['successFlash']);
+        $this->assertStringContainsString('No cars were resumed', $result['errorFlash']);
+        $this->assertStringContainsString('contact the registry', $result['errorFlash']);
     }
 
     #[Group('fast')]

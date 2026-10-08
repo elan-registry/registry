@@ -124,8 +124,9 @@ final class EmailNoticeBuilder
             // The profile flag counts too: a car added after a profile-level
             // opt-out has car flag 0 but still gets no email. The admin chip
             // and user_settings.php read both flags, so this must as well.
-            $suppressed = self::isFlagSet($car->email_suppressed ?? null)
-                || self::isFlagSet($car->profile_email_suppressed ?? null);
+            $carFlag     = self::isFlagSet($car->email_suppressed ?? null);
+            $profileOnly = !$carFlag && self::isFlagSet($car->profile_email_suppressed ?? null);
+            $suppressed  = $carFlag || $profileOnly;
             $bounced    = self::isFlagSet($car->email_bounced ?? null);
             if ($carId === null || (!$suppressed && !$bounced)) {
                 continue;
@@ -153,7 +154,11 @@ final class EmailNoticeBuilder
                 continue;
             }
 
-            $flagged[$carId] = ['suppressedAddress' => $suppressedAddress, 'bouncedAddress' => $bouncedAddress];
+            $flagged[$carId] = [
+                'suppressedAddress' => $suppressedAddress,
+                'bouncedAddress'    => $bouncedAddress,
+                'profileOnly'       => $profileOnly,
+            ];
         }
 
         if ($flagged === []) {
@@ -181,7 +186,15 @@ final class EmailNoticeBuilder
                 $key = strtolower($flags['suppressedAddress']);
                 $byAddress[$key] ??= ['address' => $flags['suppressedAddress'], 'suppressed' => null, 'bounced' => null];
 
-                $cause = self::resolveSuppressionCause($suppressionEvents[$carId] ?? null, $suppressedHist[$carId] ?? null);
+                // A suppression from the profile flag alone is an owner
+                // opt-out. A Brevo event sets the car flag, so with that flag
+                // at 0 any spam event on this car is stale (for example, from
+                // before a merge). findBrevoComplaintCarIds() does not keep
+                // this car paused, so the notice must not tell the owner that
+                // only the registry can turn it back on.
+                $cause = $flags['profileOnly']
+                    ? ['cause' => self::CAUSE_OWNER_OPTOUT, 'at' => self::toDateTime($suppressedHist[$carId]->timestamp ?? null)]
+                    : self::resolveSuppressionCause($suppressionEvents[$carId] ?? null, $suppressedHist[$carId] ?? null);
                 $entry = ['cause' => $cause['cause'], 'date' => $cause['at']?->format('Y-m-d')];
                 $byAddress[$key]['suppressed'] = self::mergeSuppressed($byAddress[$key]['suppressed'], $entry);
             }

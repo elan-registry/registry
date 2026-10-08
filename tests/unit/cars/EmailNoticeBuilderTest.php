@@ -167,6 +167,30 @@ final class EmailNoticeBuilderTest extends TestCase
         $this->assertSame(EmailNoticeBuilder::CAUSE_OWNER_OPTOUT, $result['addresses'][0]['suppressed']['cause']);
     }
 
+    /**
+     * A profile-only suppression is an owner opt-out, even when the car has
+     * an old spam event and no `EMAIL SUPPRESSED` history row. The owner
+     * resume path clears this car (findBrevoComplaintCarIds() reads only the
+     * car flag), so the notice must not tell the owner to contact the
+     * registry.
+     */
+    #[Group('regression')]
+    public function testProfileOnlySuppressionIgnoresStaleSpamEvent(): void
+    {
+        $car = self::car(1, 'owner@example.com', false, false);
+        $car->profile_email_suppressed = '1';
+        $builder = new EmailNoticeBuilder($this->repoReturning(
+            [$car],
+            suppressionEvents: [1 => self::eventRow(1, 'spam', '2025-01-10 09:00:00')]
+        ));
+
+        $result = $builder->buildForOwner(1);
+
+        $this->assertNotNull($result);
+        $this->assertSame(EmailNoticeBuilder::CAUSE_OWNER_OPTOUT, $result['addresses'][0]['suppressed']['cause']);
+        $this->assertNull($result['addresses'][0]['suppressed']['date'], 'With no history row, no date gives the cause');
+    }
+
     // --- bounced-only -----------------------------------------------------
 
     public function testBouncedOnlyCarProducesBouncedEntryAndNoSuppressed(): void

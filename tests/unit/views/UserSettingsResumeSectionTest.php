@@ -18,7 +18,7 @@ use PHPUnit\Framework\TestCase;
  * source-inspection tests for this same file). The control's own markup
  * block is a self-contained "if ($emailSuppressed) ... endif" fragment,
  * though, with no dependency beyond $emailSuppressed, $pausedCarCount,
- * $complaintPausedCount and
+ * $complaintPausedCount, $ownerClearable and
  * Token::generate() (stubbed by tests/bootstrap-unit.php). This test
  * extracts that exact fragment from the live file by tag balancing (never
  * retyped by hand, so it cannot drift from the real markup) and actually
@@ -34,13 +34,15 @@ use PHPUnit\Framework\TestCase;
 final class UserSettingsResumeSectionTest extends TestCase
 {
     private const START_MARKER = "<?php if (\$emailSuppressed): ?>";
-    private const END_MARKER = "<?php endif; ?>";
+
+    /** A template-syntax open (`<?php if (...): ?>`) or close (`<?php endif; ?>`) tag. */
+    private const IF_TAG_PATTERN = '/<\?php\s+(?:(if)\s*\((?:(?!\?>).)*\)\s*:|(endif)\s*;?)\s*\?>/s';
 
     /**
-     * Extract the "if ($emailSuppressed) ... endif" fragment (the first
-     * endif after the start marker — the section has no nested if/endif of
-     * the same shape other than the inner $pausedCarCount check, which is
-     * INSIDE this fragment and must stay there).
+     * Extract the "if ($emailSuppressed) ... endif" fragment by tag
+     * balancing: each template-syntax `if` adds one level and each `endif`
+     * removes one. `else:` and `elseif (...):` do not change the depth. The
+     * fragment ends at the `endif` that brings the depth back to 0.
      */
     private function extractResumeSectionFragment(): string
     {
@@ -53,16 +55,20 @@ final class UserSettingsResumeSectionTest extends TestCase
         $start = strpos($content, self::START_MARKER);
         $this->assertIsInt($start, 'Could not locate the resume-emails if ($emailSuppressed) marker');
 
-        // The fragment contains one nested closing-endif tag (closing the
-        // inner $pausedCarCount !== null check) before its own closing one,
-        // so the SECOND occurrence after $start is the real end of this
-        // fragment, not the first.
-        $innerEndif = strpos($content, self::END_MARKER, $start + strlen(self::START_MARKER));
-        $this->assertIsInt($innerEndif, 'Could not locate the inner endif (the $pausedCarCount check)');
-        $outerEndif = strpos($content, self::END_MARKER, $innerEndif + strlen(self::END_MARKER));
-        $this->assertIsInt($outerEndif, 'Could not locate the outer endif closing the resume-emails section');
+        preg_match_all(self::IF_TAG_PATTERN, $content, $tags, PREG_SET_ORDER | PREG_OFFSET_CAPTURE, $start);
 
-        $fragment = substr($content, $start, $outerEndif + strlen(self::END_MARKER) - $start);
+        $depth = 0;
+        $end = null;
+        foreach ($tags as $tag) {
+            $depth += ($tag[1][0] ?? '') === 'if' ? 1 : -1;
+            if ($depth === 0) {
+                $end = $tag[0][1] + strlen($tag[0][0]);
+                break;
+            }
+        }
+        $this->assertIsInt($end, 'Could not locate the endif closing the resume-emails section');
+
+        $fragment = substr($content, $start, $end - $start);
 
         $this->assertStringContainsString(
             'resume-emails',
@@ -82,9 +88,14 @@ final class UserSettingsResumeSectionTest extends TestCase
 
     /**
      * Render the extracted fragment as a real PHP template, with only the
-     * three variables the fragment itself reads.
+     * variables the fragment itself reads.
      */
-    private function renderFragment(bool $emailSuppressed, ?int $pausedCarCount, int $complaintPausedCount = 0): string
+    private function renderFragment(
+        bool $emailSuppressed,
+        ?int $pausedCarCount,
+        int $complaintPausedCount = 0,
+        bool $ownerClearable = true
+    ): string
     {
         $fragment = $this->extractResumeSectionFragment();
 
@@ -94,7 +105,7 @@ final class UserSettingsResumeSectionTest extends TestCase
         try {
             $emailSuppressedVar = $emailSuppressed; // extracted into scope under its real name below
             ob_start();
-            (function () use ($tmpFile, $emailSuppressedVar, $pausedCarCount, $complaintPausedCount): void {
+            (function () use ($tmpFile, $emailSuppressedVar, $pausedCarCount, $complaintPausedCount, $ownerClearable): void {
                 $emailSuppressed = $emailSuppressedVar;
                 include $tmpFile;
             })();
@@ -145,6 +156,27 @@ final class UserSettingsResumeSectionTest extends TestCase
         $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3, complaintPausedCount: 2);
 
         $this->assertStringContainsString('2 cars were paused because our email provider flagged the address', $html);
+        $this->assertStringContainsString('contact the registry', $html);
+    }
+
+    /**
+     * When every paused car is a Brevo complaint, the button would clear
+     * nothing, so it must not render. The complaint note must still render.
+     */
+    #[Group('regression')]
+    public function testButtonIsAbsentWhenEveryPausedCarIsAComplaint(): void
+    {
+        $html = $this->renderFragment(
+            emailSuppressed: true,
+            pausedCarCount: 2,
+            complaintPausedCount: 2,
+            ownerClearable: false
+        );
+
+        $this->assertStringContainsString('id="resume-emails"', $html);
+        $this->assertStringNotContainsString('name="resume_verification_emails"', $html);
+        $this->assertStringContainsString('2 cars were paused because our email provider flagged the address', $html);
+        $this->assertStringNotContainsString('This button', $html, 'The note must not refer to a button that is not there');
         $this->assertStringContainsString('contact the registry', $html);
     }
 
