@@ -18,7 +18,8 @@ use PHPUnit\Framework\TestCase;
 #[Group('regression')]
 final class Issue2326HtaccessErrorLogRegressionTest extends TestCase
 {
-    private const HTACCESS = __DIR__ . '/../../../.htaccess';
+    private const ROOT = __DIR__ . '/../../..';
+    private const HTACCESS = self::ROOT . '/.htaccess';
 
     private function htaccess(): string
     {
@@ -26,6 +27,39 @@ final class Issue2326HtaccessErrorLogRegressionTest extends TestCase
         $this->assertIsString($contents, '.htaccess must be readable');
 
         return $contents;
+    }
+
+    /**
+     * Every .htaccess in the tree, because PHP writes the leaked file into the
+     * directory of the failing script, so a subfolder line has the same effect.
+     * The walk also reads untracked files, such as the users/ upstream, which a
+     * CI checkout does not have.
+     *
+     * @return list<string> paths relative to the repo root
+     */
+    private function htaccessFiles(): array
+    {
+        $root = realpath(self::ROOT);
+        $this->assertIsString($root, 'Repo root must resolve');
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveCallbackFilterIterator(
+                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                static fn (SplFileInfo $file): bool =>
+                    !in_array($file->getFilename(), ['.git', 'vendor', 'node_modules', '.phpstan-cache', 'db-backups', 'playwright-report'], true)
+            )
+        );
+
+        $files = [];
+        foreach ($iterator as $file) {
+            if ($file instanceof SplFileInfo && $file->getFilename() === '.htaccess') {
+                $files[] = substr($file->getPathname(), strlen($root) + 1);
+            }
+        }
+        sort($files);
+        $this->assertContains('.htaccess', $files, 'The scan must include the root .htaccess');
+
+        return $files;
     }
 
     /**
@@ -40,14 +74,33 @@ final class Issue2326HtaccessErrorLogRegressionTest extends TestCase
         return array_values(preg_grep('/^[^#]/', $lines) ?: []);
     }
 
+    /**
+     * @param callable(string): bool $matches
+     * @return list<string> "path: line" for each matching directive line
+     */
+    private function offendingLines(callable $matches): array
+    {
+        $offending = [];
+        foreach ($this->htaccessFiles() as $path) {
+            $contents = file_get_contents(self::ROOT . '/' . $path);
+            $this->assertIsString($contents, "{$path} must be readable");
+            foreach ($this->directiveLines($contents) as $line) {
+                if ($matches($line)) {
+                    $offending[] = "{$path}: {$line}";
+                }
+            }
+        }
+
+        return $offending;
+    }
+
     public function testNoPhpIniDirectiveUsesServerVariableSyntax(): void
     {
-        $offending = array_values(array_filter(
-            $this->directiveLines($this->htaccess()),
+        $offending = $this->offendingLines(
             static fn (string $line): bool =>
                 preg_match('/^php_(admin_)?(value|flag)\s/i', $line) === 1
                 && str_contains($line, '%{')
-        ));
+        );
 
         $this->assertSame(
             [],
@@ -59,11 +112,10 @@ final class Issue2326HtaccessErrorLogRegressionTest extends TestCase
 
     public function testHtaccessDoesNotSetErrorLog(): void
     {
-        $offending = array_values(array_filter(
-            $this->directiveLines($this->htaccess()),
+        $offending = $this->offendingLines(
             static fn (string $line): bool =>
                 preg_match('/^php_(admin_)?value\s+error_log\b/i', $line) === 1
-        ));
+        );
 
         $this->assertSame(
             [],

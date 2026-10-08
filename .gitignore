@@ -48,6 +48,7 @@ usersc/vericode_secret.php
 .phpstan-cache/
 .scannerwork/*
 error_log
+# Leaked PHP error log from the removed #1768 rule (#2326)
 %{ENV*
 
 ########################################

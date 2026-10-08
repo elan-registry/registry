@@ -711,12 +711,11 @@ test.describe('Origin deny rules for private files (#2326, #2212, #2121)', () =>
   });
 
   // #1768 made PHP write errors to a file literally named %{ENV:PHP_ERROR_LOG}.
-  // Locally the deny rule answers 403 even for a missing file, so only 403
-  // proves it. A host may answer 404 for a missing file.
-  //
-  // .git/HEAD and docker-compose.yml exist in the local checkout, so locally
-  // only a deny rule gives 403. Deploys remove both (.deployignore and the
-  // post-receive hook), so a host may answer 404. Never 200.
+  // Locally each path gets 403 only from a deny rule: the %{ENV rule denies
+  // even a missing file, and .git/HEAD and docker-compose.yml exist in the
+  // checkout. On a host the files may be absent (.deployignore strips
+  // docker-compose.yml, and the post-receive hook keeps .git outside the
+  // docroot), so 404 also passes there. Never 200.
   [
     '%25%7BENV:PHP_ERROR_LOG%7D',
     'users/%25%7BENV:PHP_ERROR_LOG%7D',

@@ -87,11 +87,11 @@ RewriteRule ^FIX/(?!index\.php$|[0-9]+-.*\.php$|[A-Za-z]+-.*\.php$) - [F,L]
 RewriteRule ^vendor/ - [F,L]
 RewriteRule ^backups/ - [F,L]
 
-# Origin-level block for .git/ (#2066). Deploy deletes any .git directory
-# from the docroot, so this should never match in normal operation — it
-# exists as defense-in-depth in case a deploy step ever skips that removal,
-# independent of whatever edge/host-level rule (Cloudflare, LiteSpeed) is
-# also blocking this path.
+# Origin-level block for .git/ (#2066). The post-receive hook checks out with
+# a separate --git-dir, so no .git directory is in the docroot in normal
+# operation. This is defense-in-depth in case a .git directory gets there
+# some other way, independent of whatever edge/host-level rule (Cloudflare,
+# LiteSpeed) is also blocking this path.
 RewriteRule (^|/)\.git(/|$) - [F,L]
 
 # Test subdomain: serve a blocking robots.txt without affecting production (#1369)

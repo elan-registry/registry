@@ -794,6 +794,10 @@ After each deployment, verify:
       is byte-identical between test and prod only if verification codes are
       meant to be portable between them (they normally are not — each
       environment should have its own secret).
+- [ ] `.user.ini` exists in the docroot and sets `error_log` to this host's
+      log (`grep error_log <docroot>/.user.ini`). Git does not track it. If it
+      is missing, PHP stops writing to that log, and nothing reports it.
+      Paths: [ENVIRONMENT.md](ENVIRONMENT.md#php-error-logging).
 - [ ] Image upload and display working
 - [ ] Search and filtering functionality
 - [ ] Mobile responsiveness maintained
