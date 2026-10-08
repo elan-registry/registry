@@ -10,26 +10,9 @@ use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeDatabase;
 
 /**
- * Integration tests for #1961: 26-Reconcile-Owner-Fields.php's drift-detection
- * query functions.
- *
- * `26-Reconcile-Owner-Fields.php` is a full page script gated by a top-level
- * `securePage($php_self)` check (plus CSRF + `isAdmin()` for its AJAX branch)
- * before any of its functions are reachable — same shape as
- * `21-Fix-Page-Permissions.php`. Following that file's precedent (see
- * FixPagePermissionsAnalyzeRunTest::loadAnalyzePermissions()), this test
- * loads only the testable query functions
- * (findOwnerFieldDriftSummary/findOrphanedOwnerCarCount/findOwnerIdsWithDrift/
- * findDriftedCarDetails, plus their private helpers and the two shared
- * constants they depend on) via
- * {@see IntegrationTestCase::loadOwnerFieldDriftFunctions()}'s require()'d
- * temp-file slice, rather than requiring the whole securePage()-gated script.
- * That helper is shared with ReconcileOwnerFieldsExecuteTest, which needs the
- * same functions.
- *
- * @see usersc/classes/Owner.php Owner::syncOwnerFieldsToCars() — the write-side
- *      counterpart these functions detect drift against, covered by
- *      OwnerSyncOwnerFieldsToCarsTest.php.
+ * #1961: drift-detection query functions of 26-Reconcile-Owner-Fields.php.
+ * The page is securePage()-gated, so the functions are loaded with
+ * IntegrationTestCase::loadOwnerFieldDriftFunctions().
  */
 #[Group('integration')]
 #[Group('database')]
@@ -76,11 +59,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * Create a profile row for a test user with optional overrides. Tracked
-     * for cleanup in tearDown(). Mirrors
-     * OwnerSyncOwnerFieldsToCarsTest::createTestProfile() — createTestUser()
-     * does not create a profiles row, so any car whose owner fields include
-     * city/state/country/lat/lon/website needs one created directly.
+     * createTestUser() does not create a profiles row; owner fields such as
+     * city and website need one.
      *
      * @param array<string, mixed> $overrides
      */
@@ -106,11 +86,7 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
         $this->createdProfileIds[] = (int) $row->id;
     }
 
-    /**
-     * Baseline: a car whose nine owner-contact fields exactly match its
-     * owner's current users/profiles values must be reported as drift-free
-     * everywhere.
-     */
+    /** A car that matches its owner exactly reports no drift. */
     public function testCarMatchingOwnerExactlyReportsNoDrift(): void
     {
         $userId = $this->createTestUser([
@@ -138,15 +114,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
             'website' => 'https://matching.example.com',
         ]);
 
-        // ID-scoped, not a whole-table before/after delta: the global
-        // aggregates findOwnerFieldDriftSummary()/findOrphanedOwnerCarCount()
-        // return are not safe to diff across a fixture's creation, since any
-        // OTHER test running earlier or later in this same (non-isolated,
-        // shared-schema, single-process) suite run can legitimately create a
-        // car with mismatched owner fields — a common, valid fixture shape
-        // used throughout tests/integration/ — which shifts the same global
-        // counts this test would otherwise be diffing against (see #2005).
-        // Checking this test's own car/owner IDs directly is immune to that.
+        // Check this test's own IDs, not global counts: other tests in the
+        // shared schema can change the global aggregates (#2005).
         $this->assertNotContains(
             $carId,
             array_column($this->findAllDriftedCarDetails(), 'carId'),
@@ -198,14 +167,7 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
             'website' => 'https://salem.example.com',
         ]);
 
-        // ID-scoped checks below, not a whole-table before/after delta — see
-        // testCarMatchingOwnerExactlyReportsNoDrift()'s comment and #2005:
-        // the global aggregates are not safe to diff across a fixture's
-        // creation when other tests in this shared-schema suite run can
-        // independently shift the same counts. findDriftedCarDetails()
-        // (via findAllDriftedCarDetails() below) already proves exactly
-        // which fields drifted on this test's own car, which is a strictly
-        // more precise check than the removed field-count deltas were.
+        // ID-scoped checks, not global count deltas (#2005).
 
         $ownerIds = findOwnerIdsWithDrift(dbi());
         $this->assertContains($userId, $ownerIds, 'The drifted owner must appear in the work list');
@@ -229,16 +191,10 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
         $this->assertSame('44.9429', $row['fields']['lat']['owner']);
     }
 
-    /**
-     * A car whose user_id references a nonexistent user is counted as an
-     * orphan, but its (nonexistent) "owner" must never appear in the
-     * drift-repair work list — there is nothing to sync it against.
-     */
+    /** An orphan car is counted, but its missing owner is never worklisted. */
     public function testOrphanedUserIdIsCountedButExcludedFromDriftWorklist(): void
     {
-        // A user_id value guaranteed not to correspond to a real row: no
-        // fixture in this suite ever creates a user with this ID, and it
-        // is far outside the auto-increment range any test run reaches.
+        // Far outside the auto-increment range of any test run.
         $orphanUserId = 999_999_999;
 
         $ownerIdsBefore = findOwnerIdsWithDrift(dbi());
@@ -246,9 +202,7 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
 
         $carId = $this->createTestCar($this->createTestUser(), ['user_id' => $orphanUserId]);
 
-        // ID-scoped, not a whole-table before/after delta on
-        // findOrphanedOwnerCarCount()'s global count — see
-        // testCarMatchingOwnerExactlyReportsNoDrift()'s comment and #2005.
+        // ID-scoped, not a global count delta (#2005).
         $this->assertTrue(
             $this->isCarOrphaned($carId),
             'findOrphanedOwnerCarCount()\'s predicate must classify this car as orphaned'
@@ -261,18 +215,10 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
             'An orphaned user_id must never appear in the drift-repair work list — it cannot be compared to a nonexistent owner'
         );
 
-        // Cleanup note: createTestCar()'s user_id override does not match the
-        // user actually created via createTestUser() above (that user IS
-        // tracked and cleaned up normally); the car itself is tracked via
-        // trackCarId() inside createTestCar() and is cleaned up in
-        // IntegrationTestCase::tearDown() regardless of its user_id value.
         $this->assertGreaterThan(0, $carId);
     }
 
-    /**
-     * An owner with two cars, only one of which is drifted, must be counted
-     * (and worklisted) exactly once — not once per drifted car.
-     */
+    /** An owner with one drifted car of two is counted and worklisted once. */
     public function testMultiCarOwnerWithOneDriftedCarDedupsToOneOwner(): void
     {
         $userId = $this->createTestUser([
@@ -315,8 +261,7 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
             'website' => 'https://bend.example.com',
         ]);
 
-        // ID-scoped checks below, not a whole-table before/after delta — see
-        // testCarMatchingOwnerExactlyReportsNoDrift()'s comment and #2005.
+        // ID-scoped checks, not global count deltas (#2005).
 
         $ownerIds = findOwnerIdsWithDrift(dbi());
         $matches = array_values(array_filter($ownerIds, static fn ($id) => $id === $userId));
@@ -329,24 +274,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * admin_script_record_completion() itself — the zero-drift Analyze
-     * branch's completion recording — is directly callable the same way
-     * FixPagePermissionsAnalyzeRunTest exercises it for 21's own zero-issues
-     * branch: it is a shared helper from fix-script-core.php (already
-     * require_once'd above) taking (__FILE__, $userId), entirely independent
-     * of the AJAX request/response plumbing around it in
-     * 26-Reconcile-Owner-Fields.php's `action === 'analyze'` branch.
-     *
-     * This proves admin_script_record_completion() inserts a fix_script_runs
-     * row keyed to this script's basename when called with a zero-drift
-     * result. It does NOT prove that the AJAX handler's own
-     * `if ($summary['carsWithDrift'] === 0) { admin_script_record_completion(...) }`
-     * guard is actually reached at runtime — exercising that would require
-     * driving the full securePage()/CSRF/isAdmin()-gated HTTP request, which
-     * this suite (like FixPagePermissionsAnalyzeRunTest before it) has no
-     * harness for. Given the guard is a single `if` around an
-     * already-covered helper call with an already-covered function's output,
-     * this is judged adequate on the same basis as that precedent.
+     * The zero-drift Analyze branch records completion with this shared
+     * helper. The gated AJAX handler itself has no harness.
      */
     public function testZeroDriftCompletionIsRecordedViaSharedHelper(): void
     {
@@ -403,8 +332,7 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
             'country' => 'United States',
             'lat'     => 45.5231,
             'lon'     => -122.6765,
-            // The scenario from the review that prompted this guard: both
-            // values are real sites, and neither is obviously the stale one.
+            // Both values are real sites, and neither is obviously the stale one.
             'website' => 'https://www.myoldies.net',
         ]);
 
@@ -423,12 +351,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * An empty owner website against a real car website is NOT a conflict:
-     * the owner has no website of their own to compete with the car's, so
-     * there is nothing worth protecting by holding the owner back — it syncs
-     * normally like any other field. (A car website is only ever protected
-     * when the owner's website is ALSO real and genuinely different — see
-     * testCarWebsiteDifferingFromOwnersIsDetectedAsAConflict().)
+     * An empty owner website against a real car website is not a conflict:
+     * the owner has no competing value, so it syncs normally.
      */
     public function testEmptyOwnerWebsiteAgainstRealCarWebsiteIsNotAConflict(): void
     {
@@ -453,10 +377,7 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
         $this->assertContains($userId, findOwnerIdsWithDrift(dbi()));
     }
 
-    /**
-     * An empty car website is not a conflict — there is nothing to lose, so
-     * the owner's value syncs normally.
-     */
+    /** An empty car website is not a conflict: there is nothing to lose. */
     public function testEmptyCarWebsiteIsNotAConflict(): void
     {
         $userId = $this->createTestUser([
@@ -481,20 +402,9 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * A car with a NULL website and an owner with a NULL website must never
-     * be reported as drift, even though `Owner::find()` (usersc/classes/Owner.php)
-     * normalizes a NULL `profiles.website` to '' before any sync ever writes
-     * it — meaning `syncOwnerFieldsToCars()` can only ever write '', never
-     * NULL, to `cars.website`. Comparing the car's raw value against the raw
-     * `profiles.website` without accounting for that normalization on BOTH
-     * sides created a permanent, unresolvable false-positive here: a car
-     * whose own website happens to be stored as NULL (not '') could never
-     * reach a state the null-safe `<=>` comparison would recognize as
-     * matching, because the fix that coalesces one side without the other
-     * turns a legitimate NULL-matches-NULL pair into a false NULL-vs-''
-     * mismatch. This regression was caught live against production-shaped
-     * data during #1961's review — not by this test suite, which is why it
-     * exists now.
+     * NULL car website vs NULL owner website is not drift. Owner::find()
+     * normalizes NULL to '', so a one-sided coalesce made a permanent false
+     * positive (found live during #1961 review).
      */
     public function testNullCarWebsiteAgainstNullOwnerWebsiteIsNotDrift(): void
     {
@@ -511,12 +421,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
             'lon'     => null,
             'website' => null,
         ]);
-        // createTestCar()'s own defaults omit fname/lname/email/city/state/
-        // country/lat/lon entirely, leaving them NULL — every field but
-        // website must be given explicitly here so the only thing under test
-        // is website, not incidental drift on fields this fixture didn't set
-        // (including lat/lon, whose createTestProfile() default is a real
-        // coordinate pair, not NULL).
+        // createTestCar() leaves the other owner fields NULL; set them so that
+        // only website is under test.
         $carId = $this->createTestCar($userId, [
             'fname'   => 'Null',
             'lname'   => 'BothSides',
@@ -541,15 +447,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * A car with a NULL website and an owner with an EMPTY STRING website
-     * (or vice versa) must also not be reported as drift on the website
-     * field — the two representations of "no website" are equivalent for
-     * this field regardless of which side holds which representation. Other
-     * fields are intentionally left drifted here so the assertion can target
-     * the website field specifically rather than relying on total-drift
-     * absence, which a NULL-website-only fixture cannot safely assert (every
-     * other field defaults to NULL on the car and a real value on the owner,
-     * which is itself drift unrelated to this test).
+     * NULL vs '' website is not drift, in either direction. Other fields are
+     * left drifted, so the assertion targets the website field only.
      */
     public function testNullCarWebsiteAgainstEmptyOwnerWebsiteIsNotDrift(): void
     {
@@ -559,9 +458,6 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
             'email' => 'null-car-empty-owner@example.com',
         ]);
         $this->createTestProfile($userId, ['website' => '']);
-        // fname/lname/email deliberately left off createTestCar() here — this
-        // car IS expected to show ordinary drift on those fields; the
-        // assertion below targets only the website field specifically.
         $carId = $this->createTestCar($userId, ['website' => null]);
 
         $details = $this->findAllDriftedCarDetails();
@@ -575,14 +471,9 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * Cars parked on the `noowner` system account are excluded from drift
-     * detection entirely.
-     *
-     * That account holds placeholder contact data rather than a real owner's,
-     * so every car on it reads as drifted, and a sync would overwrite the
-     * car's last-known real owner details with the placeholder. It is a real
-     * positive user ID, so the shared clause's `c.user_id > 0` filter does not
-     * catch it — this test is the guard against that.
+     * Cars on the `noowner` account are excluded from drift detection: its
+     * placeholder data would overwrite the last real owner details. Its ID
+     * is positive, so the `c.user_id > 0` filter does not catch it.
      */
     public function testNoOwnerAccountCarsAreExcludedFromDriftAndCountedSeparately(): void
     {
@@ -593,9 +484,7 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
 
         $countBefore = findNoOwnerAccountCarCount(dbi(), $noOwnerId);
 
-        // Placeholder-versus-real data that would read as drift on any other
-        // owner: a real-looking email and city against the account's own
-        // "No Owner"/noowner@invalid placeholders.
+        // Real-looking data against the account's placeholders.
         $carId = $this->createTestCar($this->createTestUser(), [
             'user_id' => $noOwnerId,
             'email'   => 'last-known-real-owner@example.com',
@@ -616,11 +505,7 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
             'The `noowner` system account must never appear in the drift-repair work list'
         );
 
-        // Note: no global carsWithDrift before/after delta here — see
-        // testCarMatchingOwnerExactlyReportsNoDrift()'s comment and #2005.
-        // This ID-scoped assertNotContains() already proves the same
-        // guarantee (this specific car never appears as repairable drift)
-        // without depending on the whole-table aggregate staying stable.
+        // ID-scoped, not a global count delta (#2005).
         $this->assertNotContains(
             $carId,
             array_column($this->findAllDriftedCarDetails(), 'carId'),
@@ -629,14 +514,9 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * A failed drift query must throw, not silently read as "zero drift".
-     *
-     * This project's DB::query() never throws on a failed statement — it
-     * returns a result whose error() is true and whose row set is empty. Both
-     * bugs already found in this script (a collation mismatch, a LIMIT binding
-     * error) failed exactly that way, reporting no drift over real drift. The
-     * error() check is the guard against a third instance of it, so it gets a
-     * test of its own rather than resting on the two fixes that prompted it.
+     * A failed drift query must throw, not read as zero drift. DB::query()
+     * does not throw on failure; two earlier bugs (collation, LIMIT binding)
+     * hid real drift that way.
      */
     public function testFailedDriftSummaryQueryThrowsRatherThanReportingZeroDrift(): void
     {
@@ -649,13 +529,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * A DatabaseInterface double that reports every query as failed, exactly
-     * as \DB does: query() returns itself (it never throws), error() is true,
-     * and the result set is empty — the precise shape that made the collation
-     * and LIMIT bugs read as "zero drift".
-     *
-     * Extends the shared FakeDatabase (whose defaults are all-succeeding),
-     * overriding only the two methods this test needs.
+     * Reports every query as failed the way \DB does: query() returns
+     * itself, error() is true, and the result set is empty.
      */
     private function makeFailingDatabase(): DatabaseInterface
     {
@@ -699,9 +574,6 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * Convenience: findOwnerIdsWithDrift() results as a plain array, used by
-     * the no-drift test's assertNotContains-style checks.
-     *
      * @return list<int>
      */
     private function allOwnerIdsWithDrift(): array
@@ -710,14 +582,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * Whether one specific car is currently orphaned (its `user_id` matches
-     * no real `users` row) — mirrors findOrphanedOwnerCarCount()'s exact
-     * predicate (`c.user_id > 0 AND u.id IS NULL`), scoped to a single car ID
-     * rather than a whole-table count. Used instead of diffing
-     * findOrphanedOwnerCarCount()'s global aggregate before/after a fixture,
-     * which is not safe when another test elsewhere in this shared-schema
-     * suite run can independently create or resolve an orphaned car (see
-     * #2005).
+     * Whether one car is orphaned, with the same predicate as
+     * findOrphanedOwnerCarCount(), scoped to one car ID (#2005).
      */
     private function isCarOrphaned(int $carId): bool
     {
@@ -734,9 +600,8 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * Paginate through findDriftedCarDetails() until exhausted, so tests
-     * don't depend on the fixed 50-row page size or on there being fewer
-     * than 50 drifted cars in a shared test database.
+     * Pages through findDriftedCarDetails(), so tests do not depend on the
+     * 50-row page size.
      *
      * @return list<array{carId: int, ownerId: int, ownerName: string, fields: array<string, array{car: string|null, owner: string|null}>}>
      */

@@ -7,19 +7,14 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration 20260817033111_update_settings_baseline_defaults
- *
- * Verifies the migration writes ElanRegistry's real defaults onto the
- * `settings` row UserSpice's install wizard creates (row id=1) — the row
- * this migration is the sole source of truth for on a real install (issue
- * #1679). Covers all 23 columns the migration sets, not just the 9 the
- * issue originally called out.
+ * #1679: migration 20260817033111 is the only source of ElanRegistry's
+ * defaults on the install wizard's `settings` row (id=1).
  */
 #[Group('integration')]
 #[Group('migration')]
 final class UpdateSettingsBaselineDefaultsMigrationTest extends IntegrationTestCase
 {
-    /** Column => expected value, mirrors the migration's UPDATE statement exactly. */
+    /** Column => expected value; mirrors the migration's UPDATE statement. */
     private const EXPECTED = [
         'site_name' => 'Lotus Elan Registry',
         'template' => 'customizer',
@@ -63,10 +58,6 @@ final class UpdateSettingsBaselineDefaultsMigrationTest extends IntegrationTestC
         }
     }
 
-    /**
-     * Every column the migration sets must match its expected default on
-     * settings row id=1.
-     */
     #[Group('integration')]
     #[Group('migration')]
     public function test_settingsRowOneHasBaselineDefaults(): void

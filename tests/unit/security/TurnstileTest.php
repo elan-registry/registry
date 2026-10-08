@@ -9,19 +9,8 @@ use PHPUnit\Framework\Attributes\Group;
 require_once __DIR__ . '/../../../usersc/includes/turnstile.php';
 
 /**
- * Unit tests for verifyTurnstile()'s empty-token logging (issue #1798).
- *
- * Every other failure path in turnstile.php logs (Cloudflare rejection,
- * cURL failure, invalid JSON); the empty-token branch previously returned
- * false silently. These tests lock in that it now logs via logger() with
- * LogCategories::LOG_CATEGORY_SECURITY and the client IP, matching the
- * sibling rejection-log's category and message-wording convention.
- *
- * Known gap: no test here exercises verifyTurnstile() with a non-empty
- * token, because the very next line in that function falls through to
- * _verifyTurnstileToken(), a real network call to Cloudflare's siteverify
- * endpoint with no mock seam (plain function, not a class/interface) —
- * a fast unit test can't safely depend on that. Not closed in this PR.
+ * Issue #1798. A non-empty token is not tested: _verifyTurnstileToken() calls
+ * Cloudflare over the network with no mock seam.
  */
 #[Group('fast')]
 #[Group('unit')]
@@ -95,23 +84,10 @@ class TurnstileTest extends TestCase
 
         verifyTurnstile();
 
-        // The existing Cloudflare-rejection log (turnstile.php's
-        // _verifyTurnstileToken()) reads "Turnstile rejected token from
-        // <ip>: <codes>" — the empty-token message must not collide with
-        // that wording, so the two failure classes stay distinguishable
-        // when triaging Security-category logs.
+        // Keeps the empty-token line distinct from "Turnstile rejected token from <ip>".
         $this->assertStringNotContainsString('rejected', $mockLogEntries[0]['message']);
     }
 
-    /**
-     * Deterministic coverage of addTurnstile(true)'s actual HTML output —
-     * independent of live Cloudflare keys/HTTPS, unlike the Playwright
-     * attribute-wiring test which skips whenever Turnstile isn't configured
-     * (no TURNSTILE_SITE_KEY/TURNSTILE_SECRET_KEY in this repo's CI). Proves
-     * addTurnstile(true) itself works correctly — testLoginHook... below
-     * proves the login hook actually calls it with true, which this test
-     * alone does not.
-     */
     #[Group('fast')]
     public function testAddTurnstileWithFailureCallbacksEmitsCallbackAttributesAndScriptId(): void
     {
@@ -125,15 +101,8 @@ class TurnstileTest extends TestCase
     }
 
     /**
-     * The exact regression #1798 fixes: login_form_turnstile.php must call
-     * addTurnstile(true), not addTurnstile() — a revert back to the no-arg
-     * form would leave the login widget with no working reset path again,
-     * but every other test in this suite would stay green (they test
-     * addTurnstile() itself, not this hook file's call to it). This is the
-     * only CI-enforced (non-skippable) guard against that specific revert —
-     * the Playwright attribute-wiring test would also catch it, but that one
-     * skips whenever live Turnstile keys aren't configured, which CI never
-     * sets.
+     * The Playwright check of this wiring skips in CI (no Turnstile keys),
+     * so this is the only CI guard against a revert to addTurnstile().
      */
     #[Group('fast')]
     public function testLoginHookCallsAddTurnstileWithFailureCallbacksEnabled(): void

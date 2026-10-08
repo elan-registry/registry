@@ -18,8 +18,7 @@
   ownership transfer workflow
 - **Factory Data**: `elan_factory_info` reference table for Lotus Elan
   specifications
-- **System Tables**: `audit`, `country`, `fix_script_runs` for system operations
-  and reference data
+- **System Tables**: `audit`, `fix_script_runs` for system operations
 
 ## Database Naming Conventions
 
@@ -38,7 +37,7 @@
 - `er_cron_job_runs` (v2.30.2) — generic "when did this job last run" table for `CronJobGuard`, replacing per-job bespoke settings columns (#2034)
 - Any future feature-config, workflow state, or application-owned table created after this issue
 
-**Upstream tables (not renamed):** `settings`, `users`, `users_session`, `us_*`, etc. (UserSpice), and `cars`, `car_transfer_requests`, `deleted_accounts_archive`, `elan_factory_info`, `car_models`, `fix_script_runs`, `country` (pre-existing project tables).
+**Upstream tables (not renamed):** `settings`, `users`, `users_session`, `us_*`, etc. (UserSpice), and `cars`, `car_transfer_requests`, `deleted_accounts_archive`, `elan_factory_info`, `car_models`, `fix_script_runs` (pre-existing project tables).
 
 ---
 
@@ -167,7 +166,7 @@ creation.
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `int` | PRIMARY KEY |
-| `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE) |
+| `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE/VERIFIED/VERIFIED SOLD/EMAIL SUPPRESSED/EMAIL BOUNCED/EMAIL BOUNCE CLEARED/EMAIL SUPPRESSION CLEARED/SUPPRESSION CLEARED BY OWNER) |
 | `car_id` | `int UNSIGNED` | Original car ID |
 | `timestamp` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Change timestamp (INDEXED as `idx_cars_hist_timestamp`) |
 | *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, `verification_attempts`, `verification_attempts_since`, `email_bounced`, `email_bounced_address`, and `email_suppressed`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
@@ -322,13 +321,6 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 | `timestamp` | `timestamp` | Action timestamp |
 | `ip` | `varchar(255)` | IP address of user |
 | `viewed` | `int(1)` | View status flag |
-
-#### `country` - Country reference data
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | `int` | PRIMARY KEY, AUTO_INCREMENT |
-| `name` | `varchar(100)` | Country name |
 
 #### `fix_script_runs` - Database maintenance tracking
 

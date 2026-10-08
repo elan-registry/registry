@@ -10,16 +10,8 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Tests for CarTransferRepository.
- *
- * Mixes two DatabaseInterface doubles: the happy-path/not-found tests run
- * against the healthy-but-empty stub from makeEmptyResultDb() (query() reports
- * no rows, insert() returns true, lastId() returns 1) — SQL correctness
- * (column names, WHERE clauses, JOINs) is NOT verified there. The "Database
- * error paths" tests below inject a per-test double whose error() returns
- * true, proving each method fails closed with CarDatabaseException. Real-DB
- * behavioral coverage lives in
- * tests/integration/transfer/CarTransferRepositoryIntegrationTest.php.
+ * The stubs do not check SQL. integration/transfer/CarTransferRepositoryIntegrationTest
+ * covers the queries against a real database.
  */
 #[Group('fast')]
 #[Group('transfer')]
@@ -33,11 +25,7 @@ final class CarTransferRepositoryTest extends TestCase
     }
 
     /**
-     * A database double standing in for a healthy connection with no matching
-     * rows: query() returns the double itself (the real \DB contract — query()
-     * always returns $this for chaining), error() is false, and the result
-     * accessors report an empty result set. first() returns [] rather than
-     * null, matching the real \DB::first() contract.
+     * first() returns [], not null, to match the real \DB::first().
      *
      * @return \PHPUnit\Framework\MockObject\Stub&DatabaseInterface
      */
@@ -67,18 +55,6 @@ final class CarTransferRepositoryTest extends TestCase
         $this->assertNull($result);
     }
 
-    public function testHasPendingForCarReturnsFalseForMissingCar(): void
-    {
-        $result = $this->repo->hasPendingForCar(PHP_INT_MAX, PHP_INT_MAX);
-        $this->assertFalse($result);
-    }
-
-    public function testFindByIdReturnsNullForMissingId(): void
-    {
-        $result = $this->repo->findById(PHP_INT_MAX);
-        $this->assertNull($result);
-    }
-
     public function testCreateReturnsPositiveInt(): void
     {
         $result = $this->repo->create([
@@ -98,30 +74,6 @@ final class CarTransferRepositoryTest extends TestCase
         $this->assertGreaterThan(0, $result);
     }
 
-    public function testUpdateStatusReturnsBool(): void
-    {
-        $id = $this->repo->create([
-            'existing_car_id'     => 1,
-            'requested_by_user_id' => 2,
-            'security_token'      => 'TESTTOKEN_UPDATE_STATUS_1234567890123456789012',
-            'expires_at'          => '2026-08-01 00:00:00',
-            'submitted_model'     => 'Elan',
-            'submitted_series'    => 'S4',
-            'submitted_variant'   => 'SE',
-            'submitted_year'      => '1973',
-            'submitted_type'      => '26R',
-            'submitted_chassis'   => 'TEST_CTR_002',
-            'created_by'          => 2,
-        ]);
-        $this->assertGreaterThan(0, $id, 'Precondition: create must succeed');
-
-        // Mock query() always returns empty results, so rows-affected = 0.
-        // That rows-affected=0 → false path is the correct behavior (no row matched).
-        // True/False with real rows is verified by the integration tests.
-        $result = $this->repo->updateStatus($id, TransferStatus::Denied, 'Test denial');
-        $this->assertIsBool($result);
-    }
-
     public function testCountPendingReturnsInt(): void
     {
         $result = $this->repo->countPending();
@@ -134,14 +86,7 @@ final class CarTransferRepositoryTest extends TestCase
         $this->assertIsArray($result);
     }
 
-    // =========================================================================
-    // Database error paths (issue #1441)
-    //
-    // The healthy stub above always reports error() = false, so these guards were
-    // unreachable from it. Each test injects a per-test DB double whose error()
-    // returns true, proving the repository fails closed with a
-    // CarDatabaseException rather than returning a healthy-looking empty result.
-    // =========================================================================
+    // Database error paths: each method must fail closed (#1441).
 
     /** @return \PHPUnit\Framework\MockObject\MockObject&DatabaseInterface */
     private function makeDbMock(): object
@@ -149,11 +94,6 @@ final class CarTransferRepositoryTest extends TestCase
         return $this->createMock(DatabaseInterface::class);
     }
 
-    /**
-     * Assert that calling $action on a repository wired to an erroring DB throws
-     * CarDatabaseException. Shared by every "*ThrowsOnDatabaseError" test below —
-     * they differ only in which repository method $action invokes.
-     */
     private function assertThrowsOnDatabaseError(callable $action): void
     {
         $db = $this->makeDbMock();
@@ -209,14 +149,7 @@ final class CarTransferRepositoryTest extends TestCase
         );
     }
 
-    // =========================================================================
-    // create() failure paths (issue #1441)
-    //
-    // create() doesn't fit assertThrowsOnDatabaseError() above — it calls
-    // insert()/lastId() directly, not query()/error(). Two distinct failure
-    // branches: the insert itself failing, and the insert "succeeding" but
-    // returning no usable ID.
-    // =========================================================================
+    // create() uses insert()/lastId(), not query()/error().
 
     public function testCreateThrowsOnInsertFailure(): void
     {

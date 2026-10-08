@@ -1,27 +1,18 @@
 #!/bin/bash
 #
-# Regression test for scripts/render-deploy-sheet.sh (#2225, #2250).
-# #2225: a match early in a large (>64 KB) diff must still be detected. A
-# piped `grep -q` under `pipefail` returned 141 there, which read as "no
-# match".
-# #2250: false-flag fixes — modified (not added) migrations must not read
-# as `migration: TRUE`; `trigger-migration` must key off an added
-# migration's own content, not the whole diff; `new-pages` must only count
-# added PHP files outside tests/, database/, scripts/, vendor/ and users/
-# whose branch content has `securePage(`; `admin-scripts` must only count
-# added files under app/admin/scripts/fix/ or maintenance/; a non-ASCII
-# path must be listed unquoted; a failed read of a branch file must exit 2;
-# and the base ref must prefer `origin/main` over a possibly-stale local
-# `main`.
+# Regression test for scripts/render-deploy-sheet.sh: matches in a large
+# (>64 KB) diff (#2225), and no false flags from modified files (#2250).
 #
 # HERMETIC: builds a throwaway git repo under a temp dir and runs the real
 # script against synthetic branches there. Never touches this repo's own
 # branches or history.
 #
 # Usage: bash tests/hooks/test-render-deploy-sheet.sh
-# Exit code: 0 if all scenarios pass, 1 otherwise.
 
 set -u
+
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
 
 REAL_REPO="$(git rev-parse --show-toplevel)" || exit 1
 SCRIPT="$REAL_REPO/scripts/render-deploy-sheet.sh"
@@ -31,25 +22,6 @@ if [ ! -f "$SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
-# shellcheck disable=SC2329 # called only through the EXIT trap below
-cleanup() {
-    cd / || true
-    [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
-}
 
 # --- Build a throwaway git repo -------------------------------------------
 
@@ -762,12 +734,4 @@ fi
 
 git checkout -q main
 
-# --- Report ------------------------------------------------------------
-
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

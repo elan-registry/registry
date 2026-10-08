@@ -20,22 +20,12 @@ require_once __DIR__ . '/../../Support/FakeBrevoEventReconciliationClient.php';
 require_once __DIR__ . '/../../Support/SpyEmailEventApplier.php';
 
 /**
- * Unit tests for BrevoEventReconciliationJob (#1889).
+ * BrevoEventReconciliationJob (#1889). The applier and client are recording
+ * Support doubles: tests check call order and the exact window/limit/offset.
+ * The Brevo SDK is not in the unit autoloader.
  *
- * CarRepository is a PHPUnit double, matching BrevoWebhookEventProcessorTest's
- * convention for that collaborator type. EmailEventApplier and the Brevo
- * client are named Support doubles instead, because both need to record and
- * replay more than an expectation asserts conveniently: the applier's tests
- * turn on the *order* of calls across a page, and the client's on the exact
- * window/limit/offset it was handed and how many times. The vendored Brevo
- * SDK is also absent from the unit suite's autoloader, so the client's
- * returned model objects have to be stubbed regardless.
- *
- * Tests drive execute() via runNow(), which reaches it without the enabled
- * check or the guard claim — those belong to AbstractCronJob and are covered
- * by AbstractCronJobTest. runNow()'s crash isolation is identical to run()'s,
- * so anything escaping execute() would still be caught and logged; tests that
- * care assert on $mockLogEntries rather than on an exception.
+ * runNow() skips the enabled check and guard claim (AbstractCronJobTest covers
+ * them) but keeps crash isolation, so tests assert on $mockLogEntries.
  */
 #[Group('fast')]
 final class BrevoEventReconciliationJobTest extends TestCase
@@ -44,12 +34,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
     private const NOW = '2026-09-09 03:00:00';
 
     /**
-     * Brevo's `date` is UTC, but occurred_at is stored in PHP's default
-     * timezone (see resolveOccurredAt()) — so this test's expected value is
-     * timezone-dependent and would silently pass under a UTC CI runner while
-     * the real production conversion differed. Pinning the app's timezone
-     * (users/init.php sets America/Los_Angeles) makes the conversion the
-     * assertion actually exercises, regardless of the runner's system clock.
+     * Pinned to the app timezone (users/init.php) so the UTC conversion is
+     * tested even on a UTC runner.
      */
     private const APP_TIMEZONE = 'America/Los_Angeles';
 
@@ -59,13 +45,11 @@ final class BrevoEventReconciliationJobTest extends TestCase
     /** self::EVENT_DATE_UTC rendered in self::APP_TIMEZONE (UTC-7, PDT). */
     private const EVENT_DATE_LOCAL = '2026-09-08 05:00:00';
 
-    /** Restores the process timezone after each test pins it. */
     private string $originalTimezone = 'UTC';
 
     /**
-     * The repository double. Created as a stub by default and swapped for a
-     * mock only by the tests that assert on how it was called — PHPUnit emits
-     * a notice for a mock carrying no expectations.
+     * A stub unless a test calls expectRepoCalls(): PHPUnit warns on a mock
+     * with no expectations.
      *
      * @var CarRepository&\PHPUnit\Framework\MockObject\Stub
      */
@@ -91,8 +75,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * Upgrade the repository double from a stub to a mock, for the tests that
-     * assert on how it was called. Must be called before makeJob().
+     * Call before makeJob().
      *
      * @return CarRepository&\PHPUnit\Framework\MockObject\MockObject
      */
@@ -106,11 +89,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     /**
      * @param list<object>|null $events Null scripts a poll failure.
-     * @param FakeBrevoEventReconciliationClient|null $client Receives the fake
-     *        client this job was built with, so callers can assert on it.
-     * @param AbstractCronJobFakeDatabase|null $db Receives the fake database
-     *        this job was built with, so callers can assert on it (e.g. how
-     *        many times the unmatched-recipient counter UPDATE fired).
+     * @param FakeBrevoEventReconciliationClient|null $client Out: the job's client
+     * @param AbstractCronJobFakeDatabase|null $db Out: the job's database
      * @param-out FakeBrevoEventReconciliationClient $client
      * @param-out AbstractCronJobFakeDatabase $db
      */
@@ -217,10 +197,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertSame([], $this->applier->calls);
     }
 
-    /**
-     * The tag gate must not stop the page — an untagged event sitting between
-     * two verification events is routine traffic, not a reason to stop.
-     */
+    /** Untagged events between verification events are routine traffic. */
     public function testUntaggedEventDoesNotBlockLaterTaggedEvents(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
@@ -247,10 +224,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     // --- Per-event failure isolation -------------------------------------
 
-    /**
-     * The retry model (48h window + idempotent writes) covers a skipped
-     * event, so one bad write must not starve the events behind it.
-     */
+    /** The 48h window and idempotent writes cover a skipped event. */
     public function testWriteFailureForOneEventDoesNotAbortTheRest(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
@@ -296,8 +270,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
 
-        // A page full of events must not induce a second fetch — this job is
-        // one bounded page per invocation, never a pagination walk.
+        // One bounded page per run, never a pagination walk.
         $events = array_map(
             static fn (int $i): FakeBrevoEvent => new FakeBrevoEvent(messageId: 'm' . $i),
             range(1, 25)
@@ -344,8 +317,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->mockRepo->method('deleteEmailEventsOlderThan')
             ->willThrowException(new CarDatabaseException('delete failed'));
 
-        // No expectException(): a prune failure must not escape execute() —
-        // it is logged distinctly so it is not conflated with a backfill failure.
+        // A prune failure is logged apart from a backfill failure, not thrown.
         $this->makeJob([new FakeBrevoEvent()])->runNow();
 
         $this->assertCount(1, $this->applier->calls, 'The backfill must have completed before the prune ran');
@@ -370,9 +342,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
         $this->assertSame([], $this->applier->calls);
 
-        // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: an oversized value is a Brevo
-        // payload-contract warning, and the job itself is healthy. Same
-        // category BrevoWebhookEventProcessor uses for its identical check.
+        // A payload-contract warning: the job itself is healthy.
         $log = $this->logsContaining('exceeds storage width');
         $this->assertNotEmpty($log);
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
@@ -395,9 +365,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
         $this->assertSame([], $this->applier->calls);
 
-        // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: an oversized value is a Brevo
-        // payload-contract warning, and the job itself is healthy. Same
-        // category BrevoWebhookEventProcessor uses for its identical check.
+        // A payload-contract warning: the job itself is healthy.
         $log = $this->logsContaining('exceeds storage width');
         $this->assertNotEmpty($log);
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
@@ -420,9 +388,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
         $this->assertSame([], $this->applier->calls);
 
-        // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: an empty required field is a
-        // Brevo payload-contract warning, and the job itself is healthy. Same
-        // category the non-string and oversized-value branches use.
+        // A payload-contract warning: the job itself is healthy.
         $log = $this->logsContaining('empty required field in event payload');
         $this->assertNotEmpty($log, 'A skipped event must be logged, not silent');
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
@@ -431,10 +397,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
     // --- Non-string payload fields ---------------------------------------
 
     /**
-     * The SDK's getters are untyped, so a payload-contract change could yield
-     * an array or an int. A bare (string) cast would record an array as the
-     * literal "Array" and an int as a numeric string, feeding garbage into
-     * EmailEventApplier::apply()'s escalation logic — these must be skipped.
+     * The SDK getters are untyped. A (string) cast would turn an array into
+     * "Array" and feed garbage to EmailEventApplier::apply().
      *
      * @param array{email?: mixed, event?: mixed, messageId?: mixed} $overrides
      */
@@ -447,8 +411,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
         $this->assertSame([], $this->applier->calls, 'A non-string payload field must not be applied');
 
-        // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: a shape change in Brevo's
-        // payload is a data-contract warning, and the job itself is healthy.
+        // A payload-contract warning: the job itself is healthy.
         $log = $this->logsContaining('non-string field in event payload');
         $this->assertNotEmpty($log, 'A skipped event must be logged, not silent');
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
@@ -465,13 +428,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
         ];
     }
 
-    /**
-     * getTag() is untyped at the SDK boundary like the three fields above,
-     * and hits the tag gate before those checks even run. Unlike them, a
-     * non-string tag needs no data-hygiene log: it can never equal
-     * VERIFICATION_EMAIL_TAG, so it is routine non-matching traffic, not a
-     * payload-contract warning — same as any other tag that doesn't match.
-     */
+    /** A non-string tag never matches, so it is routine traffic and needs no log. */
     public function testNonStringTagIsSkippedWithoutLogging(): void
     {
         $this->expectRepoCalls()->expects($this->never())->method('findByEmail');
@@ -482,10 +439,6 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertSame([], $this->logsContaining('non-string field in event payload'));
     }
 
-    /**
-     * A malformed event must not stop the page — the same containment the tag
-     * gate and per-event write failures already have.
-     */
     public function testNonStringPayloadFieldDoesNotBlockLaterEvents(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
@@ -512,12 +465,9 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * er_email_events.occurred_at is a naive DATETIME written by both this job
-     * and BrevoWebhookEventProcessor, and compared across them by
-     * CarRepository::countSoftBouncesSinceLastDelivered(). Brevo's `date` is
-     * UTC, so a backfilled row is only comparable if it is converted to the
-     * same clock the webhook writes (PHP's default timezone) rather than kept
-     * at its source offset.
+     * The webhook writes occurred_at in PHP's timezone and
+     * countSoftBouncesSinceLastDelivered() compares rows, so backfilled UTC dates
+     * must be converted.
      */
     public function testUtcDateIsStoredInThePhpDefaultTimezoneLikeTheWebhook(): void
     {
@@ -534,12 +484,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertSame([], $this->logsContaining('no usable date'), 'A valid date must not log a fallback');
     }
 
-    /**
-     * The SDK's getDate() is untyped, so an int (the shape the webhook's
-     * `ts_event` carries) is a plausible payload-contract change. resolveOccurredAt()
-     * only trusts strings, so anything else must take the logged "now" fallback
-     * rather than being coerced.
-     */
+    /** An int date (the webhook's `ts_event` shape) is not trusted. */
     public function testNonStringDateFallsBackToRunTimeAndLogs(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
@@ -564,13 +509,10 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * An absurd but *parseable* date is the case an unbounded
-     * `new DateTimeImmutable()` would let through: it yields a DATETIME string
-     * MySQL rejects, failing every write for that event. Clamped to the same
-     * year-9999 ceiling BrevoWebhookEventProcessor applies to `ts_event`.
+     * A parseable but absurd date gives a DATETIME MySQL rejects. Clamped to
+     * year 9999, as BrevoWebhookEventProcessor does.
      *
-     * @param string $date A date string that parses but lands outside the
-     *                     plausible range
+     * @param string $date
      */
     #[\PHPUnit\Framework\Attributes\DataProvider('outOfRangeDates')]
     public function testOutOfRangeDateFallsBackToRunTimeAndLogs(string $date): void
@@ -592,11 +534,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
         ];
     }
 
-    /**
-     * A date problem is a Brevo data-hygiene warning, not a broken job.
-     * Keeping it out of CRON_JOB_FAILURE is what makes that category usable
-     * as an operator's "something is actually wrong" filter.
-     */
+    /** CRON_JOB_FAILURE must stay an operator's "really broken" filter. */
     public function testDateFallbackIsNotLoggedAsAJobFailure(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
@@ -611,12 +549,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     // --- Empty / failed poll ---------------------------------------------
 
-    /**
-     * fetchEvents() returning [] means the poll succeeded with no events for
-     * the window — distinct from null, which means the poll failed (see
-     * testPollFailureIsReflectedInTheSummaryWithoutThrowing, which asserts
-     * the null case still prunes too). Either way the job must still prune.
-     */
+    /** [] is an empty poll; null is a failed poll. Both must still prune. */
     public function testEmptyPollStillPrunes(): void
     {
         $this->expectRepoCalls()->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
@@ -627,12 +560,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * execute() (the nightly cron path, unlike runNowWithSummary()) logs its
-     * summary and discards it — nobody renders `$summary->pollFailed`. Without
-     * a distinguishing suffix, a failed poll (all counts 0) and a genuinely
-     * quiet night (also all counts 0) log byte-for-byte identical lines,
-     * silently misrepresenting a failed run as a clean one on the one path
-     * nobody is actively watching. Guards against that regression.
+     * On the nightly path the log line is the only record, so a failed poll
+     * must not log the same line as a quiet night.
      */
     public function testNightlyRunLogsAPollFailureDistinctlyFromAnEmptyRun(): void
     {
@@ -659,15 +588,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * #2085 (pr-test-analyzer follow-up): execute() — the unattended nightly
-     * cron path — appends a warning clause to its "incremental run complete"
-     * summary line whenever counterFailureCount > 0. That line is the ONLY
-     * artifact the nightly run leaves behind (no admin page renders it), so
-     * this drives execute() itself via runNow() rather than
-     * runNowWithSummary(), and asserts on the actual logged text rather than
-     * only on the returned summary object — which is all
-     * testApplyEventUnmatchedRecipientCounterFailureIsReportedInSummary above
-     * covers.
+     * The nightly log line is the only record of a counter failure, so this
+     * checks the logged text, not only the summary (#2085).
      */
     public function testNightlyRunLogsTheCounterFailureWarningClause(): void
     {
@@ -690,12 +612,6 @@ final class BrevoEventReconciliationJobTest extends TestCase
         );
     }
 
-    /**
-     * The other side of the same behavior (#2085): a clean run — the counter
-     * healthy — must not carry the warning clause, so a genuinely quiet or
-     * fully-successful night reads as clean in the one artifact the nightly
-     * path leaves behind.
-     */
     public function testNightlyRunOmitsTheCounterFailureClauseWhenCounterSucceeds(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([]);
@@ -732,11 +648,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertFalse($summary->pollFailed);
     }
 
-    /**
-     * findByEmail() returning [] is a routine "Brevo knows an address the
-     * registry doesn't" outcome, not an error — must count as unmatched, and
-     * must not touch matchedCount.
-     */
+    /** An address Brevo knows and the registry does not is routine. */
     public function testUnmatchedEventIncrementsUnmatchedCountNotMatchedCount(): void
     {
         $this->expectRepoCalls()->expects($this->once())->method('findByEmail')->willReturn([]);
@@ -747,14 +659,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertSame(1, $summary->unmatchedCount);
     }
 
-    /**
-     * #2085: applyEvent()'s unmatched branch also calls
-     * VerificationSettings::incrementUnmatchedRecipientCounter() before
-     * returning. N unmatched events in one page must fire the counter UPDATE
-     * exactly N times — this is the one behavior the summary's own
-     * unmatchedCount assertion above cannot distinguish from a counter call
-     * that silently never fires.
-     */
+    /** unmatchedCount alone cannot show a counter UPDATE that never fires (#2085). */
     public function testApplyEventUnmatchedRecipientIncrementsCounter(): void
     {
         $this->expectRepoCalls()->expects($this->exactly(3))->method('findByEmail')->willReturn([]);
@@ -770,18 +675,9 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * A failed counter increment must not corrupt the job's own bookkeeping or
-     * abort the run — the event is still counted as unmatched, nothing is
-     * counted as skipped, and events after it in the page are still processed.
-     *
-     * But it is NOT invisible: counterFailureCount reports every unmatched
-     * event that did not reach the dashboard counter, so execute()'s summary
-     * line cannot read as a clean run while the counter silently
-     * under-reports. The increment itself is attempted only once — after the
-     * first failure the call is skipped for the rest of the run (the fault is
-     * settings-row-level, not per-event, and VerificationSettings logs a
-     * warning row on every failed call) — while the tally keeps counting, so
-     * the reported figure stays the true number missing.
+     * A counter failure must not abort the run, but counterFailureCount must
+     * report it. After the first failure the increment is skipped (the fault is
+     * in the settings row) while the tally keeps counting.
      */
     public function testApplyEventUnmatchedRecipientCounterFailureIsReportedInSummary(): void
     {
@@ -807,11 +703,6 @@ final class BrevoEventReconciliationJobTest extends TestCase
         );
     }
 
-    /**
-     * The other side of the same behavior: with a healthy counter, every
-     * unmatched event is both attempted and recorded, so counterFailureCount
-     * stays 0 and the summary line carries no failure clause.
-     */
     public function testApplyEventUnmatchedRecipientCounterSuccessReportsNoFailures(): void
     {
         $this->expectRepoCalls()->expects($this->exactly(2))->method('findByEmail')->willReturn([]);
@@ -826,10 +717,6 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertSame(2, $db->unmatchedCounterIncrementCalls());
     }
 
-    /**
-     * A tag-mismatched event must still be silently skipped (no new log line)
-     * — only the count is new behavior.
-     */
     public function testTagMismatchedEventIncrementsIgnoredByTagCountWithoutLogging(): void
     {
         $this->expectRepoCalls()->expects($this->never())->method('findByEmail');
@@ -845,18 +732,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * The multi-car partial-failure case this issue exists for (#2061):
-     * matchedCount/skippedCount are counted per car-write, not per event. One
-     * event matching 3 cars where 1 write succeeds and 2 throw must
-     * contribute +1 matched and +2 skipped — not "the whole event counted as
-     * skipped", and eventsExamined must stay 1.
-     *
-     * Two (not one) failing car-writes deliberately, so skippedCount is
-     * distinguishable from a plausible event-granularity bug: with only one
-     * failing car, "skippedCount = 1" is what BOTH per-car-write counting AND
-     * a wrong "flag the whole event as skipped if any write failed"
-     * implementation would produce. A 1-matched/2-skipped split only comes
-     * out of genuine per-car-write counting.
+     * Counts are per car-write, not per event (#2061). Two failing writes, not
+     * one: with one, an event-level bug also gives skippedCount = 1.
      */
     public function testOneEventMatchingThreeCarsWithTwoFailedWritesCountsPerCar(): void
     {
@@ -865,9 +742,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
             (object) ['id' => 2],
             (object) ['id' => 3],
         ]);
-        // All three calls share this event's single message-id, so failOn()
-        // alone cannot isolate individual calls — failOnCarId() targets cars
-        // 2 and 3 specifically.
+        // One message-id for all three calls, so failOnCarId() targets cars 2 and 3.
         $this->applier->failOnCarId(2, 3);
 
         $summary = $this->makeJob([
@@ -883,17 +758,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * fetchEvents() returning null (poll failure, #2061) is not a thrown
-     * exception in this design — runNowWithSummary() must still return a
-     * summary, with pollFailed set and nothing counted, matching
-     * BrevoSuppressionSyncJob::syncPage()'s identical null-poll handling.
-     *
-     * Also asserts pruneExpiredEvents() still runs on a poll failure — the
-     * job's own docblock is explicit that "a Brevo outage must not stop
-     * retention pruning", and the null-poll branch is a new early return
-     * (#2061) sitting ahead of that call, so this is the one place a future
-     * refactor could silently short-circuit 24-month retention pruning
-     * during every Brevo outage without any test catching it.
+     * A null poll returns a summary, not an exception (#2061). Pruning must
+     * still run: a Brevo outage must not stop 24-month retention.
      */
     public function testPollFailureIsReflectedInTheSummaryWithoutThrowing(): void
     {
@@ -912,11 +778,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertSame(0, $summary->pagesFetched);
     }
 
-    /**
-     * runNowWithSummary() rethrows rather than fabricating an all-zero
-     * summary, which would be indistinguishable from a genuinely successful
-     * empty run — mirrors BrevoSuppressionSyncJob::runNowWithSummary().
-     */
+    /** An all-zero summary would look like a successful empty run. */
     public function testRunNowWithSummaryLogsAndRethrowsAnUnexpectedFailure(): void
     {
         $this->expectRepoCalls()->expects($this->once())
@@ -938,11 +800,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * runNowWithSummary() bypasses run()/runNow() entirely (see class
-     * docblock) so it cannot inherit their site-wide verification-switch
-     * check and must repeat it. An operator triggering a manual run while the
-     * switch is off needs to know why, not see a fabricated all-zero summary
-     * — hence a thrown exception rather than a silent no-op summary.
+     * runNowWithSummary() bypasses run(), so it repeats the verification-switch
+     * check and throws so the operator sees why.
      */
     public function testRunNowWithSummaryThrowsWhenVerificationSwitchIsOff(): void
     {

@@ -7,18 +7,10 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Tests for IntegrationTestCase's own loginAsTestUser()/restoreGlobalUser() helpers.
- *
- * The snapshot/restore bookkeeping (snapshot-on-first-call-only, idempotent restore,
- * unset-vs-restore branching) is the only non-trivial logic in the helper, and none of
- * the call sites that use it exercise those branches — each logs in exactly once and
- * lets tearDown() restore. This file covers them directly, since a regression there
- * reintroduces exactly the cross-test session leak #1572 fixed.
- *
- * Every test here deliberately manipulates $GLOBALS['user'] itself to set up the
- * precondition it needs, so setUp()/tearDown() snapshot and restore the process-wide
- * ambient value around each test — otherwise this file would leak the very state it
- * exists to protect.
+ * IntegrationTestCase's loginAsTestUser()/restoreGlobalUser() snapshot logic.
+ * A regression reintroduces the cross-test session leak fixed in #1572.
+ * setUp()/tearDown() save and restore $GLOBALS['user'], because these tests
+ * change it themselves.
  */
 #[Group('integration')]
 final class IntegrationTestCaseAuthHelperTest extends IntegrationTestCase
@@ -46,10 +38,8 @@ final class IntegrationTestCaseAuthHelperTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        // Snapshot BEFORE requireDatabase(): markTestSkipped() returns from setUp() early,
-        // but tearDown() still runs — with no snapshot taken it would fall into the
-        // unset($GLOBALS['user']) branch and wipe the ambient session for the rest of
-        // the process, which is the exact leak this file exists to guard against.
+        // Snapshot BEFORE requireDatabase(): tearDown() runs even after a skip, and
+        // without a snapshot it would unset the ambient session for the whole process.
         $this->ambientUserWasSet = array_key_exists('user', $GLOBALS);
         $this->ambientUser = $GLOBALS['user'] ?? null;
 
@@ -138,19 +128,15 @@ final class IntegrationTestCaseAuthHelperTest extends IntegrationTestCase
     }
 
     /**
-     * When nothing was ambient before the login, restore must remove the key entirely —
-     * leaving it set to null would make `isset($GLOBALS['user'])` behave the same but
-     * `array_key_exists()` checks see a different state than they did before the test.
+     * With no ambient session, restore must remove the key, not set it to null:
+     * array_key_exists() would otherwise see a different state.
      */
     public function test_restoreUnsetsGlobalWhenNothingWasAmbient(): void
     {
-        // Create the fixture first: the "no ambient session" window must be as narrow
-        // as possible, since DB fixture helpers may consult the global.
+        // Keep the "no ambient session" window narrow: fixture helpers may read the global.
         $userId = $this->createTestUser();
 
-        // tests/bootstrap-integration.php seeds a non-null $GLOBALS['user'] once per
-        // process, so the no-ambient-value case has to be forced here. setUp() captured
-        // the real ambient value and tearDown() puts it back.
+        // bootstrap-integration.php seeds a user, so unset it here.
         unset($GLOBALS['user']);
 
         $this->loginAsTestUser($userId);
@@ -164,11 +150,7 @@ final class IntegrationTestCaseAuthHelperTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * A user ID with no `users` row must fail loudly. Silently returning a User that
-     * find() left unpopulated would publish a hollow session to $GLOBALS['user'] and
-     * surface later as a confusing null-property error in whatever the test asserts.
-     */
+    /** An unknown user ID must fail loudly, not publish a hollow session. */
     public function test_loginAsTestUserThrowsWhenUserIdDoesNotExist(): void
     {
         $missingUserId = $this->firstUnusedUserId();
@@ -180,12 +162,9 @@ final class IntegrationTestCaseAuthHelperTest extends IntegrationTestCase
     }
 
     /**
-     * tearDown() must restore the global session *before* it deletes fixtures, so a
-     * cleanup failure cannot strand the fake session in $GLOBALS['user'] for every test
-     * that follows. The cleanup loops swallow their own RuntimeExceptions, so the failure
-     * is invisible from outside: the DB handle is swapped for a probe that records what
-     * $GLOBALS['user'] holds the moment cleanup starts and then fails the delete.
-     * tearDown() above asserts on the recording.
+     * tearDown() must restore the session before it deletes fixtures. Cleanup
+     * swallows its own errors, so a probe DB handle records $GLOBALS['user']
+     * when cleanup starts and then fails the delete.
      */
     public function test_tearDownRestoresGlobalBeforeRunningCleanup(): void
     {
@@ -196,12 +175,9 @@ final class IntegrationTestCaseAuthHelperTest extends IntegrationTestCase
         $session = $this->loginAsTestUser($userId);
         $this->assertSame($session, $GLOBALS['user'], 'Login must publish to the global');
 
-        // Delete the fixture through the real handle now — the probe below intercepts
-        // every query tearDown() would otherwise use to clean it up.
+        // The probe intercepts tearDown()'s cleanup, so delete through the real handle.
         $this->deleteTestUser($userId);
 
-        // Give the car cleanup loop one iteration to run. The ID is deliberately one no
-        // fixture created; the probe never reaches the database with it anyway.
         $this->trackCarId(self::UNUSED_CAR_ID);
 
         $recordGlobal = function () use ($ambientSentinel): void {

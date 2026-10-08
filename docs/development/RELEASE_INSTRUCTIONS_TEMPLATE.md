@@ -302,7 +302,6 @@ gh release edit <version> --draft=false --repo elan-registry/registry
 
 26. Housekeeping
 
-- Delete the sprint plan for <version> in the Plans repo, if still present
 - Confirm the milestone is closed: gh api repos/elan-registry/registry/milestones --jq '.[] | select(.title|startswith("<version>"))'
 
 Recovery if a migration aborts on either host: fix the privileges in step 3,

@@ -8,17 +8,8 @@ use ElanRegistry\Car\Car;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for chassis_override flag persistence (issue #915)
- *
- * Verifies that:
- * - New cars default chassis_override to 0
- * - Car::update() persists chassis_override = 1
- * - Car::update() clears chassis_override back to 0
- * - The cars_update DB trigger captures chassis_override into cars_hist
- *
- * Requires the chassis_override column to be present in both the `cars` and
- * `cars_hist` tables. Run `composer migrate` first if the column is missing —
- * the baseline migration creates it on both tables.
+ * chassis_override persistence and cars_hist capture (#915). Needs the column
+ * in `cars` and `cars_hist`; run `composer migrate` if it is missing.
  */
 #[Group('integration')]
 #[Group('chassis-override')]
@@ -31,9 +22,7 @@ final class ChassisOverridePersistenceTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        // Verify the chassis_override column exists before running any test.
-        // If the fix script has not been run the column will be absent and all
-        // four tests should be skipped rather than failing with a DB error.
+        // Skip, rather than fail with a DB error, when the column is absent.
         $columnCheck = $this->db->query(
             "SELECT 1
              FROM information_schema.COLUMNS
@@ -51,13 +40,9 @@ final class ChassisOverridePersistenceTest extends IntegrationTestCase
 
         $this->testUserId = $this->createTestUser();
 
-        // Set up an authenticated user context (mirrors CarDatabaseOperationsTest pattern).
         $this->loginAsTestUser($this->testUserId);
     }
 
-    /**
-     * Cars created without specifying chassis_override must default to 0 in the DB.
-     */
     #[Group('integration')]
     #[Group('chassis-override')]
     public function testCreateCarDefaultsChassisOverrideToZero(): void
@@ -78,9 +63,6 @@ final class ChassisOverridePersistenceTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * Calling Car::update() with chassis_override = 1 must persist that value.
-     */
     #[Group('integration')]
     #[Group('chassis-override')]
     public function testUpdateCarPersistsChassisOverrideOne(): void
@@ -111,26 +93,20 @@ final class ChassisOverridePersistenceTest extends IntegrationTestCase
     }
 
     /**
-     * Calling Car::update() with chassis_override = 0 after it was 1 must clear the flag.
-     *
-     * Note: Car::update() strips fields with empty-string or null values via array_filter,
-     * but the integer 0 passes that filter, so chassis_override = 0 is persisted correctly.
+     * Integer 0 passes update()'s array_filter, which strips '' and null.
      */
     #[Group('integration')]
     #[Group('chassis-override')]
     public function testUpdateCarClearsChassisOverride(): void
     {
-        // Create car with chassis_override already set to 1
         $carId = $this->createTestCar($this->testUserId, ['chassis_override' => 1]);
 
-        // Verify the starting state is actually 1
         $before = $this->db->query(
             'SELECT chassis_override FROM cars WHERE id = ?',
             [$carId]
         )->first();
         $this->assertSame(1, (int) $before->chassis_override, 'Pre-condition: chassis_override must be 1 before clear');
 
-        // Now clear it
         $car    = new Car($carId);
         $result = $car->update([
             'id'               => $carId,
@@ -154,17 +130,10 @@ final class ChassisOverridePersistenceTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * The cars_update trigger must capture chassis_override into cars_hist.
-     *
-     * Performs one UPDATE that sets chassis_override = 1, then reads the most
-     * recent UPDATE row from cars_hist and asserts the captured value is 1.
-     */
     #[Group('integration')]
     #[Group('chassis-override')]
     public function testCarsHistTriggerCapturesChassisOverride(): void
     {
-        // Verify the chassis_override column also exists in cars_hist
         $histColCheck = $this->db->query(
             "SELECT 1
              FROM information_schema.COLUMNS

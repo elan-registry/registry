@@ -8,13 +8,8 @@ use ElanRegistry\Car\Car;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for Registry Link workflow in factory page
- *
- * Tests that CarDataTablesService embeds car_id in elan_factory_info rows
- * via a correlated subquery, removing the need for separate AJAX lookups.
- *
- * @author Elan Registry Development Team
- * @copyright 2025
+ * CarDataTablesService embeds car_id in elan_factory_info rows with a
+ * correlated subquery, so the factory page needs no separate lookups.
  */
 #[Group('integration')]
 #[Group('factories')]
@@ -30,8 +25,7 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        // elan_factory_info.serial is varchar(5); use a 5-char value that
-        // cannot collide with real factory serials (all numeric like '26060').
+        // varchar(5); non-numeric, so it cannot collide with real (numeric) serials.
         $this->testChassis = 'X' . substr(uniqid(), -4);
 
         $this->testUserId = $this->createTestUser();
@@ -110,8 +104,7 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
 
     public function testFactoryRowCarIdIsNullWhenNoChassisMatch(): void
     {
-        // Y-prefix serial cannot match any car chassis (all real chassis are
-        // 11+ chars; Y-prefix serials never appear in real factory data).
+        // A Y-prefix serial cannot match any real car chassis.
         $unmatchedSerial = 'Y' . substr(uniqid(), -4);
 
         $inserted = $this->db->insert('elan_factory_info', [

@@ -8,24 +8,9 @@ use ElanRegistry\Database\DbAdapter;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Contract test: DbAdapter behaves the way DatabaseInterface documents, against a real \DB.
- *
- * DbAdapter is a 1:1 delegation wrapper with no logic of its own, so nothing here
- * can fail because of a bug in the adapter. What it *can* catch is drift: the
- * adapter's return types (`self` from query(), `self|false` from get(), `bool` from
- * insert()/update()) and DatabaseInterface's documented behaviours (`first()` yields
- * `[]` and never null, `results()` always an array, `\stdClass` vs. plain array for
- * the two fetch modes) are hardcoded assumptions about what the real UserSpice `\DB`
- * does. A UserSpice upgrade that changes `\DB` — throwing where it used to set
- * `error()`, returning null where it used to return `[]` — would silently break every
- * production caller typed against DatabaseInterface while unit tests, which use
- * purpose-built doubles rather than the real class, keep passing. These assertions
- * are the only place the assumptions are checked against the actual framework.
- *
- * Fixtures use IntegrationTestCase's tracked helpers (createTestUser(),
- * createTestCar(), trackCarId()) so every row is removed by the base tearDown().
- *
- * @issue 1585
+ * #1585: DbAdapter behaves as DatabaseInterface documents, against the real \DB.
+ * Unit tests use doubles, so this is the only check that a UserSpice upgrade
+ * has not changed \DB behavior (for example, throwing instead of setting error()).
  */
 #[Group('integration')]
 final class DbAdapterContractTest extends IntegrationTestCase
@@ -44,12 +29,7 @@ final class DbAdapterContractTest extends IntegrationTestCase
         $this->userId = $this->createTestUser();
     }
 
-    /**
-     * Narrow IntegrationTestCase::$db (declared untyped, so `mixed` to static analysis)
-     * to the concrete adapter under test. The base class already wraps the real \DB
-     * singleton, so this is the same connection the fixture helpers and tearDown() use —
-     * no second adapter, and therefore no second connection, is created.
-     */
+    /** Narrows the untyped IntegrationTestCase::$db; same connection, no second adapter. */
     private function adapter(): DbAdapter
     {
         $adapter = $this->db;
@@ -99,10 +79,8 @@ final class DbAdapterContractTest extends IntegrationTestCase
     }
 
     /**
-     * `BackupManager::isTableNotFoundError()` distinguishes a missing-table error from
-     * every other database failure by reading this exact SQLSTATE/driver-code pair
-     * off errorInfo() rather than parsing errorString(). Pinning the real shape here
-     * protects that dependency from an unnoticed PDO/MySQL driver change.
+     * BackupManager::isTableNotFoundError() reads this SQLSTATE/driver-code pair;
+     * a PDO/MySQL driver change would break it silently.
      */
     public function test_query_reportsTableNotFound_viaErrorInfoSqlstateAndDriverCode(): void
     {
@@ -115,13 +93,7 @@ final class DbAdapterContractTest extends IntegrationTestCase
         $this->assertSame(1146, (int) ($errorInfo[1] ?? 0), 'errorInfo()[1] must be the MySQL "table not found" driver code');
     }
 
-    /**
-     * Real \DB::query() resets $_errorInfo to [0, null, null] — the literal integer
-     * 0, not the PDO "no error" SQLSTATE string '00000' — at the start of every call,
-     * and only overwrites it with the statement's real errorInfo() on failure. A
-     * successful query therefore leaves errorInfo()[0] as int 0, distinguishable from
-     * both a real SQLSTATE string and PHP's usual falsy-but-stringy defaults.
-     */
+    /** \DB::query() resets errorInfo to [0, null, null]: int 0, not '00000'. */
     public function test_query_errorInfo_isIntegerZero_afterSuccessfulStatement(): void
     {
         $db = $this->adapter();
@@ -216,11 +188,8 @@ final class DbAdapterContractTest extends IntegrationTestCase
     }
 
     /**
-     * The reachable `false` return. `\DB::action()` produces `false` from two branches:
-     * an unusable WHERE clause, or a query that errors. Every unusable-WHERE branch in
-     * `\DB::_calcWhere()` throws InvalidArgumentException before `$is_ok = false` can be
-     * observed (see the sibling test below), so a failing query is the only path that
-     * actually returns `false` today.
+     * A failing query is the only reachable `false` path: every unusable-WHERE
+     * branch in \DB::_calcWhere() throws first.
      */
     public function test_get_returnsFalse_whenUnderlyingQueryFails(): void
     {
@@ -233,11 +202,8 @@ final class DbAdapterContractTest extends IntegrationTestCase
     }
 
     /**
-     * DatabaseInterface documents an invalid WHERE clause as a `false` return, but the
-     * real `\DB::_calcWhere()` throws first. Pinning the actual behaviour here means a
-     * future UserSpice change in either direction — throwing where it used to, or
-     * falling through to `false` — is caught rather than silently changing how every
-     * `get()` caller must handle bad input.
+     * DatabaseInterface documents `false` for an invalid WHERE, but \DB throws.
+     * A UserSpice change in either direction must be caught.
      */
     public function test_get_throwsInvalidArgumentException_onMalformedWhereClause(): void
     {
@@ -260,17 +226,10 @@ final class DbAdapterContractTest extends IntegrationTestCase
         $db->query('SELECT id FROM cars WHERE id = ?', [$carId]);
         $this->assertSame(0, $db->count(), 'The row must actually be gone after delete()');
 
-        // Row is already gone — stop tearDown() from deleting it a second time.
         $this->untrackCarId($carId);
     }
 
-    /**
-     * Mirrors test_get_returnsFalse_whenUnderlyingQueryFails: \DB::delete() delegates
-     * to the same action()/query() machinery as get(), so a query against a table that
-     * cannot exist is the only reachable `false` path here too — an empty $where
-     * short-circuits to false before any query runs (not exercised: it never reaches
-     * the DbAdapter), and a malformed WHERE array throws rather than returning false.
-     */
+    /** As for get(): a failing query is the only reachable `false` path. */
     public function test_delete_returnsFalse_whenUnderlyingQueryFails(): void
     {
         $db = $this->adapter();
@@ -281,11 +240,6 @@ final class DbAdapterContractTest extends IntegrationTestCase
         $this->assertTrue($db->error());
     }
 
-    /**
-     * Same SQLSTATE/driver-code pin as test_query_reportsTableNotFound_viaErrorInfoSqlstateAndDriverCode,
-     * proven independently through delete()'s own action()/query() path rather than assumed
-     * from query() alone.
-     */
     public function test_delete_errorInfo_reportsTableNotFound_afterFailedDelete(): void
     {
         $db = $this->adapter();
@@ -297,18 +251,7 @@ final class DbAdapterContractTest extends IntegrationTestCase
         $this->assertSame(1146, (int) ($errorInfo[1] ?? 0), 'errorInfo()[1] must be the MySQL "table not found" driver code after a failed delete()');
     }
 
-    /**
-     * The real \DB::query() (which delete()'s action() call delegates to) resets
-     * `_errorInfo` to the literal `[0, null, null]` — integer zero, not the PDO
-     * "00000" SQLSTATE string — at the start of every call, and only overwrites it
-     * with the real PDO triple when the statement fails. It is therefore never
-     * actually set to `'00000'` on a successful statement, despite the class's own
-     * property default suggesting otherwise — see the matching
-     * test_query_errorInfo_isIntegerZero_afterSuccessfulStatement for query() itself.
-     * Verified directly against a real successful
-     * delete() rather than assumed, since this is the shape a caller like
-     * BackupManager would actually observe.
-     */
+    /** As for query(): errorInfo()[0] is int 0, not '00000', after a successful delete(). */
     public function test_delete_errorInfo_reportsIntegerZeroTriple_afterSuccessfulDelete(): void
     {
         $db = $this->adapter();
@@ -407,8 +350,7 @@ final class DbAdapterContractTest extends IntegrationTestCase
                 'ctime' => date('Y-m-d H:i:s'),
             ]));
 
-            // Tracked before the rollback so the row is still cleaned up if the rollback
-            // itself is what has drifted and the insert survives.
+            // Tracked before rollback so the row is cleaned up if rollback has drifted.
             $this->trackCarId($db->lastId());
 
             $this->assertTrue($db->rollBack());

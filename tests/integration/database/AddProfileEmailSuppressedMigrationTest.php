@@ -7,22 +7,11 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for migration 20260914093000_add_profile_email_suppressed
- * (issue #1883).
+ * Migration 20260914093000_add_profile_email_suppressed (#1883).
  *
- * Verifies the post-migration schema of `profiles.email_suppressed`:
- * TINYINT(1) NOT NULL DEFAULT 0, matching `cars.email_suppressed`'s type
- * exactly, and that a bare insert (no explicit value) actually gets the
- * default rather than relying on application code to always supply one.
- *
- * The NOT NULL/DEFAULT 0 assertions are load-bearing, not cosmetic:
- * CarRepository::findProfileEmailSuppressed() does `(int) $row->email_suppressed`
- * with no null handling. If the column were nullable and a row held NULL,
- * that cast silently reads as 0 ("not opted out") — re-enabling verification
- * email for an owner who explicitly opted out. This mirrors the reasoning in
- * CarVerificationTimestampMigrationTest, whose own docblock explains that the
- * #1953 defect shipped because no prior test asserted nullability/defaults,
- * only column existence or type.
+ * NOT NULL DEFAULT 0 is load-bearing: findProfileEmailSuppressed() casts with
+ * (int), so a NULL would read as "not opted out" and re-enable email for an
+ * owner who opted out.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -93,9 +82,7 @@ final class AddProfileEmailSuppressedMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Type parity with cars.email_suppressed, read from information_schema on
-     * both sides rather than hardcoding the expected type twice, so the two
-     * columns cannot silently drift apart from each other.
+     * Reads both types from information_schema so the columns cannot drift apart.
      */
     #[Group('fast')]
     public function testColumnTypeMatchesCarsEmailSuppressedExactly(): void
@@ -121,10 +108,7 @@ final class AddProfileEmailSuppressedMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Proves the DEFAULT actually applies on a real insert, not merely that
-     * information_schema reports one. createTestUser($withProfile: true)
-     * relies on this: it inserts a profiles row without specifying
-     * email_suppressed at all.
+     * The DEFAULT must apply on a real insert; createTestUser($withProfile: true) relies on it.
      */
     #[Group('fast')]
     public function testBareInsertGetsDefaultZero(): void
@@ -158,17 +142,14 @@ final class AddProfileEmailSuppressedMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * up()/down() are both guarded with hasColumn(), so re-running up() after
-     * it has already applied must be a safe no-op rather than an error.
-     * Exercises the real migration class rather than paraphrasing its logic.
+     * Re-running up() must be a safe no-op (hasColumn() guard).
      */
     #[Group('fast')]
     public function testUpIsIdempotentWhenColumnAlreadyExists(): void
     {
         $this->requireMigrationApplied();
 
-        // The migration class is not PSR-4 autoloaded (Phinx loads it itself
-        // at migrate-time) — require the file directly to reach the class.
+        // Not PSR-4 autoloaded: Phinx loads migrations itself.
         require_once __DIR__ . '/../../../database/migrations/20260914093000_add_profile_email_suppressed.php';
 
         $this->assertTrue(
@@ -176,9 +157,7 @@ final class AddProfileEmailSuppressedMigrationTest extends IntegrationTestCase
             'Migration class AddProfileEmailSuppressed must be defined by its file'
         );
 
-        // No assertion beyond "no exception" — up()'s hasColumn() guard means
-        // a second call is a no-op. Constructing and invoking it directly
-        // exercises the real guarded code path without a Phinx harness.
+        // No assertion beyond "no exception".
         $migration = new AddProfileEmailSuppressed('test', 20260914093000);
         $migration->setAdapter($this->phinxAdapter());
         $migration->up();
@@ -188,28 +167,20 @@ final class AddProfileEmailSuppressedMigrationTest extends IntegrationTestCase
     }
 
     /**
-     * Phinx's Table API needs an Adapter to operate against — build one over
-     * the existing PDO connection this test case already holds, rather than
-     * opening a second connection or standing up a full Phinx harness.
+     * Builds a Phinx Adapter over this test's PDO connection, not a second connection.
      */
     private function phinxAdapter(): \Phinx\Db\Adapter\MysqlAdapter
     {
         $name = (string) ($_ENV['DB_NAME'] ?? getenv('DB_NAME'));
         $pdo = $this->pdoForPhinx();
-        // 'name' is the schema-name option Phinx's hasTable()/hasColumn() read
-        // internally (MysqlAdapter::hasTable() falls back to $options['name']
-        // when the table name carries no explicit schema prefix) — required
-        // for the Table API to resolve INFORMATION_SCHEMA queries correctly.
+        // Phinx's hasTable()/hasColumn() need the schema name in 'name'.
         $adapter = new \Phinx\Db\Adapter\MysqlAdapter(['name' => $name]);
         $adapter->setConnection($pdo);
         return $adapter;
     }
 
     /**
-     * A raw PDO connection to the same test database $this->db uses, built
-     * from the same DB_* env vars IntegrationTestCase itself relies on.
-     * Phinx's Adapter needs a bare PDO instance, not this project's
-     * DatabaseInterface wrapper.
+     * Phinx's Adapter needs a bare PDO, not DatabaseInterface.
      */
     private function pdoForPhinx(): \PDO
     {

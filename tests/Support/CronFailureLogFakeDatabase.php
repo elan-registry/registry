@@ -15,11 +15,7 @@ namespace Tests\Support;
  * known-good count when only the detail query fails, and that behaviour cannot
  * be exercised by a double whose `error()` answers both queries at once.
  *
- * Deliberately a *named* class rather than `new class extends FakeDatabase { ... }`:
- * PHPStan reports `impureMethod.pure` when an anonymous class overrides one of
- * DatabaseInterface's `@phpstan-impure` methods with a body that doesn't depend
- * on mutable state. See CronJobGuardFakeDatabase's docblock for the same
- * rationale.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.3

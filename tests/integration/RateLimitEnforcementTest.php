@@ -5,17 +5,10 @@ declare(strict_types=1);
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration test proving the 'registration_recovery_email' rate limit
- * (#1406) actually enforces, not just that it's configured.
- *
- * checkRateLimit() is read-only — it only counts rows already written by
- * recordRateLimit()/handleAuthFailure()/handleAuthSuccess(). A config entry
- * alone (see tests/unit/system/RateLimitConfigTest.php, which pins the
- * exact email_max/email_window values used below — keep both in sync if
- * either changes) proves nothing about enforcement if nothing at the call
- * site actually records an attempt. This test exercises the real
- * check -> record -> check loop against the live `us_rate_limits` table to
- * close that gap.
+ * #1406: the 'registration_recovery_email' limit enforces through the real
+ * check -> record -> check loop. checkRateLimit() only counts recorded rows, so
+ * config alone proves nothing. Keep email_max/email_window in step with
+ * tests/unit/system/RateLimitConfigTest.php.
  */
 #[Group('database')]
 final class RateLimitEnforcementTest extends IntegrationTestCase
@@ -33,13 +26,8 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
                 checkRateLimit('registration_recovery_email', null, $email),
                 'Attempt ' . ($i + 1) . ' of ' . self::EMAIL_MAX . ' should be allowed (within the configured limit)'
             );
-            // Mirrors usersc/join.php's call: RateLimit::check() counts
-            // success=false rows toward the tight email_max cap and only
-            // counts success=true rows toward the much higher total_max, so
-            // recording success=false is what makes email_max actually
-            // engage regardless of whether a given attempt's notification
-            // itself succeeded or failed — see the comment at the join.php
-            // call site for the full reasoning.
+            // Mirrors usersc/join.php: success=false rows count toward email_max;
+            // success=true rows count only toward the higher total_max.
             recordRateLimit('registration_recovery_email', false, null, $email);
         }
 
@@ -56,7 +44,6 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
 
         $exhaustedEmail = 'rate-limit-exhausted-' . uniqid('', true) . '@example.com';
         for ($i = 0; $i < self::EMAIL_MAX; $i++) {
-            // success=false — see the comment in the test above for why.
             recordRateLimit('registration_recovery_email', false, null, $exhaustedEmail);
         }
         $this->assertFalse(checkRateLimit('registration_recovery_email', null, $exhaustedEmail));
@@ -69,14 +56,8 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
     }
 
     /**
-     * usersc/join.php normalizes the rate-limit key to lowercase before calling
-     * checkRateLimit()/recordRateLimit() (see the call site comment for why:
-     * users.email uses a case-insensitive collation, so the account lookup
-     * already treats 'Victim@x.com' and 'victim@x.com' as the same account).
-     * This test proves that IF a caller normalizes case consistently — as
-     * join.php does — attempts recorded under different casings of the same
-     * email collapse into the same rate-limit bucket instead of each getting
-     * their own fresh allowance.
+     * Different casings of one email, normalized as join.php does, share one
+     * bucket (users.email uses a case-insensitive collation).
      */
     public function testCaseVariationsOfSameEmailShareOneRateLimitBucketWhenNormalized(): void
     {
@@ -85,8 +66,6 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
         $baseEmail = 'rate-limit-case-' . uniqid('', true) . '@example.com';
         $casings = [$baseEmail, strtoupper($baseEmail), ucfirst($baseEmail)];
 
-        // Record EMAIL_MAX attempts split across different casings of the same
-        // email, normalized exactly as join.php does before recording.
         for ($i = 0; $i < self::EMAIL_MAX; $i++) {
             recordRateLimit('registration_recovery_email', false, null, mb_strtolower($casings[$i % count($casings)]));
         }

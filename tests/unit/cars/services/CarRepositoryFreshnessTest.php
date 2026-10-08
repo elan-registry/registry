@@ -352,6 +352,74 @@ final class CarRepositoryFreshnessTest extends TestCase
         $this->assertLessThanOrEqual($after, $cutoff);
     }
 
+    /**
+     * freshnessSql() writes the window as `INTERVAL 1 YEAR`. If the constant
+     * changes, the SQL must change with it.
+     */
+    public function testFreshnessMonthsMatchesTheSqlInterval(): void
+    {
+        $this->assertStringContainsString(
+            'INTERVAL ' . (CarRepository::FRESHNESS_MONTHS / 12) . ' YEAR',
+            CarRepository::freshnessSql()
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // freshnessSource()
+    // ------------------------------------------------------------------
+
+    public function testFreshnessSourceFreshLastVerifiedIsConfirmedWithThatDate(): void
+    {
+        $lastVerified = self::daysAgo(10);
+
+        $source = CarRepository::freshnessSource($lastVerified, self::daysAgo(900));
+
+        $this->assertNotNull($source);
+        $this->assertSame('confirmed', $source['source']);
+        $this->assertSame($lastVerified, $source['date']->format('Y-m-d H:i:s'));
+    }
+
+    public function testFreshnessSourceBothFreshIsConfirmed(): void
+    {
+        $source = CarRepository::freshnessSource(self::daysAgo(100), self::daysAgo(10));
+
+        $this->assertNotNull($source);
+        $this->assertSame('confirmed', $source['source']);
+    }
+
+    /** @return array<string, array{?string}> */
+    public static function lastVerifiedNotInWindowProvider(): array
+    {
+        return [
+            'never verified'       => [null],
+            'verified 370 days ago' => [self::daysAgo(370)],
+        ];
+    }
+
+    #[DataProvider('lastVerifiedNotInWindowProvider')]
+    public function testFreshnessSourceFreshOwnerOnlyIsCurrentWithOwnerDate(?string $lastVerified): void
+    {
+        $ownerLastUpdated = self::daysAgo(10);
+
+        $source = CarRepository::freshnessSource($lastVerified, $ownerLastUpdated);
+
+        $this->assertNotNull($source);
+        $this->assertSame('current', $source['source']);
+        $this->assertSame($ownerLastUpdated, $source['date']->format('Y-m-d H:i:s'));
+    }
+
+    public function testFreshnessSourceBothStaleIsNull(): void
+    {
+        $this->assertNull(CarRepository::freshnessSource(self::daysAgo(370), self::daysAgo(900)));
+        $this->assertNull(CarRepository::freshnessSource(null, self::daysAgo(370)));
+    }
+
+    public function testFreshnessSourceMalformedLastVerifiedThrowsEvenWhenOwnerIsFresh(): void
+    {
+        $this->expectException(CarValidationException::class);
+        CarRepository::freshnessSource('garbage', self::daysAgo(10));
+    }
+
     // ------------------------------------------------------------------
     // Alias rejection — freshnessSql() / stalenessSql()
     // ------------------------------------------------------------------

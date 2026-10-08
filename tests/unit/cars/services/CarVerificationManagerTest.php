@@ -1019,7 +1019,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 30;
 
-        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressedForUpdate')
             ->with($ownerId)->willReturn(1);
         $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
             ->with($ownerId, false)->willReturn(true);
@@ -1057,7 +1057,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 31;
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(1);
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(1);
         $this->mockRepo->method('updateProfileEmailSuppressed')->willReturn(true);
 
         $this->mockRepo->method('findByOwner')->willReturn([
@@ -1085,7 +1085,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 32;
 
-        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressed')
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressedForUpdate')
             ->with($ownerId)->willReturn(0);
         $this->mockRepo->expects($this->never())->method('updateProfileEmailSuppressed');
 
@@ -1107,7 +1107,7 @@ final class CarVerificationManagerTest extends TestCase
     {
         $ownerId = 33;
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->with($ownerId)->willReturn(null);
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->with($ownerId)->willReturn(null);
 
         $this->mockRepo->expects($this->never())->method('findByOwner');
         $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
@@ -1116,5 +1116,287 @@ final class CarVerificationManagerTest extends TestCase
         $this->expectException(CarDatabaseException::class);
 
         $this->manager->clearSuppressedForOwner($ownerId);
+    }
+
+    // ------------------------------------------------------------------
+    // clearSuppressedForOwnerByOwner() — #1895 owner self-service resume
+    // ------------------------------------------------------------------
+
+    public function testClearSuppressedForOwnerByOwnerClearsProfileAndFansOutToCars(): void
+    {
+        $ownerId = 40;
+
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressedForUpdate')
+            ->with($ownerId)->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
+            ->with($ownerId, false)->willReturn(true);
+
+        $this->mockRepo->expects($this->once())->method('findByOwner')
+            ->with($ownerId)
+            ->willReturn([
+                (object) ['id' => 1],
+                (object) ['id' => 2],
+            ]);
+        $this->mockRepo->method('findById')->willReturnMap([
+            [1, (object) ['id' => 1, 'email_suppressed' => 1]],
+            [2, (object) ['id' => 2, 'email_suppressed' => 1]],
+        ]);
+
+        $this->mockRepo->expects($this->exactly(2))->method('updateEmailSuppressed')
+            ->willReturnCallback(function (int $carId, bool $suppressed): bool {
+                $this->assertFalse($suppressed);
+                $this->assertContains($carId, [1, 2]);
+                return true;
+            });
+
+        $changed = $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+
+        $this->assertCount(2, $changed);
+        foreach ($changed as $car) {
+            $this->assertSame(1, (int) $car->email_suppressed, 'Returned rows are PRE-change snapshots');
+        }
+    }
+
+    /**
+     * A car already at email_suppressed=0 is skipped — no write attempted for it.
+     */
+    public function testClearSuppressedForOwnerByOwnerSkipsAlreadyClearedCars(): void
+    {
+        $ownerId = 41;
+
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(1);
+        $this->mockRepo->method('updateProfileEmailSuppressed')->willReturn(true);
+
+        $this->mockRepo->method('findByOwner')->willReturn([
+            (object) ['id' => 1],
+            (object) ['id' => 2],
+        ]);
+        $this->mockRepo->method('findById')->willReturnMap([
+            [1, (object) ['id' => 1, 'email_suppressed' => 1]],
+            [2, (object) ['id' => 2, 'email_suppressed' => 0]],
+        ]);
+
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->with(1, false)->willReturn(true);
+
+        $changed = $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+
+        $this->assertCount(1, $changed);
+        $this->assertSame(1, $changed[0]->id);
+    }
+
+    /**
+     * The profile flag is skipped when already 0, but the fan-out still runs.
+     */
+    public function testClearSuppressedForOwnerByOwnerSkipsProfileWriteWhenAlreadyClearedButStillFansOut(): void
+    {
+        $ownerId = 42;
+
+        $this->mockRepo->expects($this->once())->method('findProfileEmailSuppressedForUpdate')
+            ->with($ownerId)->willReturn(0);
+        $this->mockRepo->expects($this->never())->method('updateProfileEmailSuppressed');
+
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 1]);
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->with(1, false)->willReturn(true);
+
+        $changed = $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+
+        $this->assertCount(1, $changed);
+    }
+
+    /**
+     * No profiles row aborts the whole reversal before the fan-out — zero car
+     * writes attempted.
+     */
+    public function testClearSuppressedForOwnerByOwnerThrowsAndTouchesNoCarWhenOwnerHasNoProfilesRow(): void
+    {
+        $ownerId = 43;
+
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->with($ownerId)->willReturn(null);
+
+        $this->mockRepo->expects($this->never())->method('findByOwner');
+        $this->mockRepo->expects($this->never())->method('updateEmailSuppressed');
+        $this->mockRepo->expects($this->never())->method('updateProfileEmailSuppressed');
+
+        $this->expectException(CarDatabaseException::class);
+
+        $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+    }
+
+    /**
+     * AC 6: this path must never read or write any bounce-column repository
+     * method, on the profile or on any car.
+     */
+    public function testClearSuppressedForOwnerByOwnerNeverTouchesBounceColumns(): void
+    {
+        $ownerId = 44;
+
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(1);
+        $this->mockRepo->method('updateProfileEmailSuppressed')->willReturn(true);
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 1]);
+        $this->mockRepo->method('updateEmailSuppressed')->willReturn(true);
+
+        $this->mockRepo->expects($this->never())->method('updateEmailBounced');
+        $this->mockRepo->expects($this->never())->method('updateProfileEmailBounced');
+        $this->mockRepo->expects($this->never())->method('findProfileEmailBounced');
+        $this->mockRepo->expects($this->never())->method('findProfileEmailBouncedAddress');
+        $this->mockRepo->expects($this->never())->method('clearBouncedForUser');
+        $this->mockRepo->expects($this->never())->method('carIdsWithBouncedFlagButNoAddress');
+        $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
+
+        $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+    }
+
+    // ------------------------------------------------------------------
+    // Milestone v2.30.5 review findings: exception contract, Brevo-complaint gate
+    // ------------------------------------------------------------------
+
+    /**
+     * The technical detail goes into getMessage() and the friendly text into
+     * getUserMessage(). The method writes no logger() row: it runs inside the
+     * caller's transaction, and a rollback would delete that row.
+     */
+    #[Group('regression')]
+    public function testClearSuppressedForOwnerByOwnerNoProfileRowPutsDetailInMessageAndFriendlyTextInUserMessage(): void
+    {
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(null);
+        $this->mockRepo->expects($this->never())->method('findByOwner');
+
+        try {
+            $this->manager->clearSuppressedForOwnerByOwner(45);
+            $this->fail('Expected CarDatabaseException');
+        } catch (CarDatabaseException $e) {
+            $this->assertStringContainsString('owner 45 has no profiles row', $e->getMessage());
+            $this->assertStringContainsString('clearSuppressedForOwnerByOwner', $e->getMessage());
+            $this->assertSame(
+                'Verification emails could not be resumed. Please try again or contact support.',
+                $e->getUserMessage()
+            );
+        }
+    }
+
+    #[Group('regression')]
+    public function testClearSuppressedForOwnerProfileUpdateFailurePutsDetailInMessage(): void
+    {
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(1);
+        $this->mockRepo->method('updateProfileEmailSuppressed')->willReturn(false);
+        $this->mockRepo->method('errorString')->willReturn('lock wait timeout');
+        $this->mockRepo->expects($this->never())->method('findByOwner');
+
+        try {
+            $this->manager->clearSuppressedForOwner(46);
+            $this->fail('Expected CarDatabaseException');
+        } catch (CarDatabaseException $e) {
+            $this->assertStringContainsString('affected 0 rows for owner 46', $e->getMessage());
+            $this->assertStringContainsString('lock wait timeout', $e->getMessage());
+            $this->assertSame(
+                'The opt-out could not be cleared. Please try again or contact support.',
+                $e->getUserMessage()
+            );
+        }
+    }
+
+    /**
+     * persist() chains the repository's exception and keeps the friendly
+     * text as the user message.
+     */
+    #[Group('regression')]
+    public function testPersistChainsPreviousExceptionAndKeepsFriendlyUserMessage(): void
+    {
+        $cause = new \RuntimeException('deadlock found');
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')->willThrowException($cause);
+
+        try {
+            $this->manager->clearSuppressed((object) ['id' => 7, 'email_suppressed' => 1]);
+            $this->fail('Expected CarDatabaseException');
+        } catch (CarDatabaseException $e) {
+            $this->assertSame($cause, $e->getPrevious());
+            $this->assertStringContainsString('car 7', $e->getMessage());
+            $this->assertStringContainsString('deadlock found', $e->getMessage());
+            $this->assertNotSame('', $e->getUserMessage());
+            $this->assertStringNotContainsString('deadlock', $e->getUserMessage());
+        }
+    }
+
+    /**
+     * Owner self-service must not clear a car whose current suppression is a
+     * Brevo complaint. The profile flag (an owner opt-out) is still cleared.
+     */
+    #[Group('regression')]
+    public function testClearSuppressedForOwnerByOwnerSkipsBrevoComplaintCars(): void
+    {
+        $ownerId = 47;
+
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('updateProfileEmailSuppressed')
+            ->with($ownerId, false)->willReturn(true);
+        $this->mockRepo->method('findVerificationStateByOwner')->willReturn([
+            (object) ['id' => 1, 'email_suppressed' => 1],
+            (object) ['id' => 2, 'email_suppressed' => '1'],
+        ]);
+        // Car 1: spam event, no later EMAIL SUPPRESSED row -> Brevo complaint.
+        $this->mockRepo->method('findLatestEmailEventsByCarIdsAndEvents')->willReturn([
+            1 => (object) ['car_id' => 1, 'event' => 'spam', 'occurred_at' => '2026-05-01 10:00:00'],
+        ]);
+        // Car 2: owner opt-out history row only.
+        $this->mockRepo->method('findLatestHistoryOperationByCarIds')->willReturn([
+            2 => (object) ['car_id' => 2, 'operation' => 'EMAIL SUPPRESSED', 'timestamp' => '2026-05-02 10:00:00'],
+        ]);
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1], (object) ['id' => 2]]);
+        $this->mockRepo->method('findById')->willReturnMap([
+            [1, (object) ['id' => 1, 'email_suppressed' => 1]],
+            [2, (object) ['id' => 2, 'email_suppressed' => 1]],
+        ]);
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->with(2, false)->willReturn(true);
+
+        $changed = $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+
+        $this->assertCount(1, $changed);
+        $this->assertSame(2, $changed[0]->id);
+    }
+
+    /**
+     * The admin path still clears a Brevo-complaint car.
+     */
+    #[Group('regression')]
+    public function testClearSuppressedForOwnerAdminPathStillClearsBrevoComplaintCars(): void
+    {
+        $this->mockRepo->method('findProfileEmailSuppressedForUpdate')->willReturn(0);
+        $this->mockRepo->expects($this->never())->method('findLatestEmailEventsByCarIdsAndEvents');
+        $this->mockRepo->method('findByOwner')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn((object) ['id' => 1, 'email_suppressed' => 1]);
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->with(1, false)->willReturn(true);
+
+        $this->assertCount(1, $this->manager->clearSuppressedForOwner(48));
+    }
+
+    /**
+     * A spam event older than the latest EMAIL SUPPRESSED row is stale: the
+     * current suppression is an owner opt-out.
+     */
+    #[Group('regression')]
+    public function testFindBrevoComplaintCarIdsIgnoresStaleEventsAndUnsuppressedCars(): void
+    {
+        $this->mockRepo->method('findVerificationStateByOwner')->willReturn([
+            (object) ['id' => 1, 'email_suppressed' => 1],
+            (object) ['id' => 2, 'email_suppressed' => 0],
+            (object) ['id' => 3, 'email_suppressed' => 1],
+        ]);
+        $this->mockRepo->expects($this->once())->method('findLatestEmailEventsByCarIdsAndEvents')
+            ->with([1, 3], ['spam', 'unsubscribed'])
+            ->willReturn([
+                1 => (object) ['car_id' => 1, 'event' => 'spam', 'occurred_at' => '2026-01-01 00:00:00'],
+                3 => (object) ['car_id' => 3, 'event' => 'unsubscribed', 'occurred_at' => '2026-03-01 00:00:00'],
+            ]);
+        $this->mockRepo->method('findLatestHistoryOperationByCarIds')->willReturn([
+            1 => (object) ['car_id' => 1, 'operation' => 'EMAIL SUPPRESSED', 'timestamp' => '2026-02-01 00:00:00'],
+        ]);
+
+        $this->assertSame([3], $this->manager->findBrevoComplaintCarIds(49));
     }
 }

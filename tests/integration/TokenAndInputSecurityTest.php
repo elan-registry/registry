@@ -6,31 +6,11 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Real CSRF and input-sanitization behavior of the upstream UserSpice Token/Input classes.
+ * #1554: the real UserSpice Token/Input classes. users/ is gitignored, so the unit
+ * tier has only stubs; the integration bootstrap loads the genuine classes.
  *
- * These assertions live in the integration tier because they cannot live anywhere else:
- * the whole users/ tree is .gitignore'd (`users/**`), so users/classes/Token.php and
- * users/classes/Input.php are absent from every CI checkout and from `composer install`.
- * tests/bootstrap-unit.php therefore declares raw stubs for both, and the unit tier can
- * only ever assert those stubs' own contract. This is a file-availability constraint, not
- * a runtime one — Token and Input touch nothing but superglobals.
- *
- * tests/bootstrap-integration.php loads the full framework via users/init.php, so the
- * classes exercised here are the genuine ones the application runs against in production.
- *
- * Deliberately extends plain TestCase, not IntegrationTestCase: this suite's coverage is
- * the whole point of #1554 (CSRF crypto, real htmlspecialchars() sanitization), and neither
- * Token nor Input touches the database — gating them behind
- * IntegrationTestCase::requireDatabase() would be a false dependency, silently skipping
- * this coverage whenever the unrelated DB connectivity probe fails for any reason.
- * phpunit-integration.xml's testsuite is scoped by directory (tests/integration), not by
- * base class, so this still runs under tests/bootstrap-integration.php and still gets the
- * genuine upstream classes regardless of which class it extends.
- *
- * Note: .github/workflows/tests.yml never runs phpunit-integration.xml at all (unit and
- * regression only) — this coverage is enforced by `composer test:integration`/`test:full`
- * before merge, not by CI. That's a pre-existing, separately-tracked gap (#1591), not
- * something this file's base class can fix.
+ * Extends plain TestCase: neither class uses the database, and requireDatabase()
+ * would skip this coverage whenever the DB probe fails. CI does not run this tier (#1591).
  */
 #[Group('integration')]
 #[Group('security')]
@@ -58,16 +38,12 @@ final class TokenAndInputSecurityTest extends TestCase
     {
         $_POST = $this->originalPost;
         $_GET = $this->originalGet;
-        // Token::generate()/check() write $_SESSION['token'] — restore it so a test that
-        // clears the session token cannot leak into the next test.
+        // Token::generate()/check() write $_SESSION['token'].
         $_SESSION = $this->originalSession;
 
         parent::tearDown();
     }
 
-    /**
-     * A freshly generated token is accepted by Token::check().
-     */
     public function testGeneratedTokenIsAccepted(): void
     {
         $token = Token::generate();
@@ -77,11 +53,7 @@ final class TokenAndInputSecurityTest extends TestCase
     }
 
     /**
-     * A single-character mutation is rejected.
-     *
-     * The substituted character stays hex so the tampered token still clears
-     * Token::check()'s format guard and actually reaches the hash_equals() comparison —
-     * proving the comparison covers the full token, not a prefix or substring.
+     * The substitute stays hex so the token passes the format guard and reaches hash_equals().
      */
     public function testSingleCharacterTamperIsRejected(): void
     {
@@ -95,12 +67,6 @@ final class TokenAndInputSecurityTest extends TestCase
         $this->assertFalse(Token::check($tampered));
     }
 
-    /**
-     * A well-formed token is rejected when no token exists in the session.
-     *
-     * Exercises Token::check()'s Session::exists() branch: format alone must never be
-     * enough to pass CSRF validation.
-     */
     public function testWellFormedTokenIsRejectedWhenSessionHasNoToken(): void
     {
         unset($_SESSION['token']);
@@ -108,9 +74,6 @@ final class TokenAndInputSecurityTest extends TestCase
         $this->assertFalse(Token::check(bin2hex(random_bytes(32))));
     }
 
-    /**
-     * Missing, empty, and malformed tokens are rejected by the format guard.
-     */
     public function testMissingOrMalformedTokenIsRejected(): void
     {
         Token::generate();
@@ -122,12 +85,6 @@ final class TokenAndInputSecurityTest extends TestCase
         $this->assertFalse(Token::check(str_repeat('z', 64)));
     }
 
-    /**
-     * Input::get() HTML-encodes XSS payloads on the way out.
-     *
-     * Real htmlspecialchars($value, ENT_QUOTES, 'UTF-8'), so markup in the request body
-     * is already inert by the time a caller sees it.
-     */
     public function testInputGetEncodesXssPayloads(): void
     {
         $_POST = [
@@ -140,25 +97,19 @@ final class TokenAndInputSecurityTest extends TestCase
         $website = Input::get('website');
         $color = Input::get('color');
 
-        // Angle brackets and quotes come back HTML-encoded, never raw
         $this->assertSame('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;Safe comment', $comments);
         $this->assertStringNotContainsString('<', $comments);
 
         $this->assertSame('&lt;img src=x onerror=alert(&quot;xss&quot;)&gt;Red', $color);
         $this->assertStringNotContainsString('<img', $color);
 
-        // htmlspecialchars() has no HTML-special character to encode in a javascript:
-        // URL, so the scheme survives — protocol allowlisting, not encoding, is what
-        // defends this field.
+        // Encoding cannot neutralize a javascript: URL; protocol allowlisting must.
         $this->assertSame('javascript:alert(&quot;xss&quot;)', $website);
         $this->assertStringContainsString('javascript:', $website);
     }
 
     /**
-     * Input::get() encodes quotes in SQL-injection payloads but is not a SQL escaper.
-     *
-     * Quotes come back as &#039; while keywords pass through untouched. Prepared
-     * statements and integer casts are what actually keep these payloads out of a query.
+     * Input::get() is not a SQL escaper; prepared statements and int casts are the defense.
      */
     public function testInputGetEncodesQuotesButNotSqlKeywords(): void
     {
@@ -172,25 +123,18 @@ final class TokenAndInputSecurityTest extends TestCase
         $year = Input::get('year');
         $userId = Input::get('user_id');
 
-        // Single quotes are HTML-encoded; the SQL keywords themselves are unchanged
         $this->assertSame('&#039;; DROP TABLE cars; --', $chassis);
         $this->assertStringContainsString('DROP TABLE', $chassis);
 
         $this->assertSame('1970&#039; OR &#039;1&#039;=&#039;1', $year);
         $this->assertStringNotContainsString("'", $year);
 
-        // No HTML-special characters here, so this one passes through verbatim —
-        // Input::get() is not what keeps this payload out of a query; the integer cast
-        // at the call site and the prepared statement below it are.
         $this->assertSame('1; DELETE FROM users; --', $userId);
         $this->assertStringContainsString('DELETE FROM', $userId);
     }
 
     /**
-     * Input::get() recurses into arrays and encodes every leaf value.
-     *
-     * DataTables posts its search term as a nested array, so the endpoint must receive
-     * the array shape intact with its leaves already neutralized.
+     * DataTables posts its search term as a nested array.
      */
     public function testInputGetEncodesNestedArrayValues(): void
     {
@@ -209,10 +153,7 @@ final class TokenAndInputSecurityTest extends TestCase
     }
 
     /**
-     * A CSRF token round-trips through Input::get() and still validates.
-     *
-     * Token values are hex, so encoding leaves them untouched — the pairing used by every
-     * POST handler (Token::check(Input::get('csrf'))) works end to end.
+     * Every POST handler uses Token::check(Input::get('csrf')).
      */
     public function testCsrfTokenRoundTripsThroughInputGet(): void
     {

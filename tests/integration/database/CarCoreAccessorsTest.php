@@ -8,12 +8,7 @@ use ElanRegistry\Car\Car;
 use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\Attributes\Group;
 
-/**
- * Integration tests for Car's basic lifecycle/accessor behavior against the
- * real class — find(), exists(), history(), findByOwner() edge cases that
- * were previously only implicitly exercised as test setup elsewhere, never
- * explicitly asserted (see issue #1440).
- */
+/** #1440: Car find(), exists(), history(), and findByOwner() edge cases. */
 #[Group('integration')]
 final class CarCoreAccessorsTest extends IntegrationTestCase
 {
@@ -27,9 +22,6 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
         $this->testUserId = $this->createTestUser();
     }
 
-    /**
-     * find() on a nonexistent car ID returns false
-     */
     #[Group('integration')]
     public function testFindReturnsFalseForNonexistentId(): void
     {
@@ -39,9 +31,6 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
         $this->assertFalse($result);
     }
 
-    /**
-     * exists() is false before any find() has succeeded
-     */
     #[Group('integration')]
     public function testExistsReturnsFalseBeforeFind(): void
     {
@@ -50,9 +39,6 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
         $this->assertFalse($car->exists());
     }
 
-    /**
-     * exists() is true after a successful find() via the constructor
-     */
     #[Group('integration')]
     public function testExistsReturnsTrueAfterFind(): void
     {
@@ -62,9 +48,6 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
         $this->assertTrue($car->exists());
     }
 
-    /**
-     * history() defaults to an empty array for a Car instance with no loaded data
-     */
     #[Group('integration')]
     public function testHistoryDefaultsToEmptyArrayForNewCarInstance(): void
     {
@@ -73,17 +56,13 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
         $this->assertSame([], $car->history());
     }
 
-    /**
-     * history() returns populated records after a real DB-trigger-backed update
-     */
     #[Group('integration')]
     public function testHistoryReturnsPopulatedRecordsAfterUpdate(): void
     {
         $carId = $this->createTestCar($this->testUserId);
         $car = new Car($carId);
 
-        // Car::update() reloads via find() internally, so history() reflects the
-        // trigger-inserted cars_hist row without a separate find() call.
+        // update() reloads via find(), so history() shows the trigger row.
         $car->update([
             'id'    => $carId,
             'token' => Token::generate(),
@@ -97,9 +76,6 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
         $this->assertContains('UPDATE', $operations, 'Expected an UPDATE operation record in history');
     }
 
-    /**
-     * findByOwner() returns an empty array for a user with zero cars
-     */
     #[Group('integration')]
     public function testFindByOwnerReturnsEmptyArrayWhenNoCars(): void
     {
@@ -110,15 +86,10 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
         $this->assertSame([], $cars);
     }
 
-    /**
-     * findByOwner() returns populated, correctly-owned Car instances for a real owner
-     */
     #[Group('integration')]
     public function testFindByOwnerReturnsPopulatedCarsForOwner(): void
     {
-        // A decoy car owned by a different user proves the WHERE clause actually
-        // filters by owner — without it, an implementation that ignored $ownerId
-        // and returned every car would pass just as easily.
+        // A decoy car for another user proves the WHERE clause filters by owner.
         $otherOwnerId = $this->createTestUser();
         $decoyCarId = $this->createTestCar($otherOwnerId);
 
@@ -145,9 +116,6 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
         $this->assertSame($expectedIds, $returnedIds);
     }
 
-    /**
-     * findByOwner() throws CarValidationException for a non-positive owner ID
-     */
     #[Group('integration')]
     public function testFindByOwnerThrowsOnInvalidOwnerId(): void
     {

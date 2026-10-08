@@ -336,16 +336,114 @@ class Owner
         // than the write itself failing, so it's caught and logged rather than
         // propagated — matching Car::find()'s treatment of its own subordinate
         // lookups (#1505 PR A).
+        //
+        // The outer catch is \Throwable and never rethrows: the write has
+        // committed, so any throw from here (an Error from find(), or a
+        // PDOException from logger()) would reach updateProfileAndSync()'s
+        // pre-commit catch and tell the owner that nothing was saved.
         try {
-            $this->find($userId);
-        } catch (OwnerDatabaseException $e) {
-            logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                "Owner::update() post-commit reload failed for userId={$userId}: " . $e->getMessage());
+            try {
+                $this->find($userId);
+            } catch (OwnerDatabaseException $e) {
+                logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    "Owner::update() post-commit reload failed for userId={$userId}: " . $e->getMessage());
+            }
+            $fieldsUpdated = array_merge(array_keys($userFields), array_keys($profileFields));
+            logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner updated - fields: " . implode(', ', $fieldsUpdated));
+        } catch (\Throwable $e) {
+            $message = 'Owner::update() post-commit step failed for userId=' . $userId
+                . ' [' . get_class($e) . '] (the write committed): ' . $e->getMessage();
+            try {
+                logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $message);
+            } catch (\Throwable $logFailure) {
+                // logger() writes to the database. If that fails too, the
+                // PHP error log is the only record left.
+                error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+            }
         }
-        $fieldsUpdated = array_merge(array_keys($userFields), array_keys($profileFields));
-        logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner updated - fields: " . implode(', ', $fieldsUpdated));
 
         return true;
+    }
+
+    /**
+     * Update this owner's profile fields, then copy them onto every car the
+     * owner has.
+     *
+     * This is the one write path for the owner-contact fields (name,
+     * location, website, email). Callers must not write these columns
+     * directly, because the cars then keep stale copies. The update commits
+     * before the sync starts: syncOwnerFieldsToCars() refuses to run inside
+     * an outer transaction.
+     *
+     * The ID comes from the loaded owner, never from $fields. An 'id' key in
+     * $fields is overwritten. If this Owner did not load, update() rejects
+     * the null ID and the sync does not run.
+     *
+     * A partial sync is not an exception. The caller reads the returned
+     * result and decides how to report failed or skipped cars.
+     *
+     * @param array<string, mixed> $fields Owner fields keyed by column name
+     *        (fname, lname, email, city, state, country, lat, lon, website).
+     *        update() drops unknown keys and empty values.
+     * @return OwnerSyncResult Per-car outcome of the sync
+     * @throws OwnerValidationException If this Owner did not load, or a field
+     *         fails validation. Nothing was written.
+     * @throws OwnerUpdateException If the users or profiles write fails, or
+     *         any other error happens before that write commits. Nothing
+     *         was written.
+     * @throws OwnerDatabaseException If the sync cannot read the car list, an
+     *         ownership check fails, or update()'s own post-commit reload
+     *         failed (this Owner is left unloaded rather than risk syncing
+     *         stale pre-update values). The profile write already committed.
+     * @throws CarDatabaseException If a per-car UPDATE fails at the DB level.
+     *         The profile write already committed.
+     */
+    public function updateProfileAndSync(array $fields): OwnerSyncResult
+    {
+        $fields['id'] = $this->_data->id ?? null;
+
+        // update()'s post-commit reload failure is deliberately non-fatal there
+        // (#1505 PR A: the write already succeeded, so a reload failure is a
+        // lower-severity, logged-not-thrown condition) — but that means _data
+        // can be left holding its PRE-update values if the reload fails. Left
+        // alone, syncOwnerFieldsToCars() below would then read those stale
+        // values and copy them onto every owned car while reporting success.
+        // Clearing _data first means a reload failure leaves it null, which
+        // syncOwnerFieldsToCars()'s own "not loaded" guard turns into a thrown
+        // OwnerDatabaseException instead of a silent stale sync. _carsOwned is
+        // not cleared: it caches which cars this owner has, not their contact
+        // fields, and editing name/location/website never changes that list.
+        $previousData = $this->_data;
+        $this->_data = null;
+
+        try {
+            $this->update($fields);
+        } catch (OwnerValidationException | OwnerUpdateException $e) {
+            // Nothing was written, so the pre-call snapshot is still accurate.
+            // Restore it rather than leave this Owner looking unloaded — a
+            // caller that retries syncOwnerFieldsToCars() on a field it wrote
+            // outside this call (e.g. a website clear written directly, since
+            // update() drops empty values) would otherwise always hit the
+            // "not loaded" guard, even though this Owner really is loaded.
+            $this->_data = $previousData;
+            throw $e;
+        } catch (\Throwable $e) {
+            // Anything else from update() (e.g. a PDOException from a failed
+            // BEGIN or COMMIT) is not one of update()'s own exception types,
+            // so a caller's catch ladder built on those types would wrongly
+            // treat it as a post-commit sync failure and report "Owner
+            // details saved" when nothing was. Converting it here keeps that
+            // distinction true for every caller, not just this one.
+            $this->_data = $previousData;
+            throw new OwnerUpdateException(
+                'Owner update failed before commit: ' . $e->getMessage(),
+                0,
+                $e,
+                'Your changes could not be saved. Please try again.'
+            );
+        }
+
+        return $this->syncOwnerFieldsToCars();
     }
 
     /**
@@ -923,6 +1021,25 @@ class Owner
     }
 
     /**
+     * Reject a non-string, non-null value for a field that every later check
+     * in its switch case (InputSanitizer::normalize(), trim(), strlen(), ...)
+     * assumes is already a string. Without this, an array/object/int value
+     * reaches one of those string-typed helpers and throws an uncaught
+     * TypeError instead of this class's own OwnerValidationException.
+     *
+     * @param string $key Field name, used in the internal (non-user-facing) message
+     * @param mixed $value The value to check
+     * @param string $userMessage Shown to the end user if $value is rejected
+     * @throws OwnerValidationException If $value is neither a string nor null
+     */
+    private function rejectNonStringField(string $key, mixed $value, string $userMessage): void
+    {
+        if (!is_string($value) && $value !== null) {
+            throw OwnerValidationException::withUserMessage("{$key} must be a string", $userMessage);
+        }
+    }
+
+    /**
      * Validate and sanitize owner fields
      *
      * @param array $fields Fields to validate and sanitize
@@ -938,6 +1055,7 @@ class Owner
             switch ($key) {
                 case 'fname':
                 case 'lname':
+                    $this->rejectNonStringField($key, $value, 'A name field has an invalid value.');
                     if (!empty($value)) {
                         $validatedFields[$key] = InputSanitizer::normalize($value, 25);
                         if ($validatedFields[$key] === '') {
@@ -955,6 +1073,7 @@ class Owner
                     break;
 
                 case 'email':
+                    $this->rejectNonStringField($key, $value, 'Invalid email format.');
                     if (!empty($value)) {
                         $email = filter_var(trim($value), FILTER_VALIDATE_EMAIL);
                         if ($email === false) {
@@ -972,12 +1091,18 @@ class Owner
                 case 'city':
                 case 'state':
                 case 'country':
+                    $this->rejectNonStringField($key, $value, 'A location field has an invalid value.');
                     if (!empty($value)) {
                         $validatedFields[$key] = InputSanitizer::normalize($value, 100);
                     }
                     break;
 
                 case 'website':
+                    $this->rejectNonStringField(
+                        $key,
+                        $value,
+                        'Website URL must start with http:// or https:// (e.g. https://example.com)'
+                    );
                     if (!empty($value)) {
                         $trimmed = trim($value);
                         if (!filter_var($trimmed, FILTER_VALIDATE_URL)) {
@@ -998,6 +1123,7 @@ class Owner
                     break;
 
                 case 'password':
+                    $this->rejectNonStringField($key, $value, 'Password must be at least 6 characters long.');
                     if (!empty($value)) {
                         // Basic password validation - UserSpice handles detailed requirements
                         if (strlen($value) < 6) {

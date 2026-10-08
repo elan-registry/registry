@@ -281,6 +281,71 @@ SKIP_INTEGRATION_GATE=1 git push       # Bypass integration gate only
    production site
 6. **Complete post-deployment verification** (see checklist below)
 
+### Patch Release from main
+
+A patch release ships a hotfix outside the open milestone. Use it only when
+production is broken, data is at risk, or there is a security exposure
+([ISSUE_WORKFLOW.md](ISSUE_WORKFLOW.md#interrupts-and-the-hotfix-track)).
+`/start-issue <N> --hotfix` and `/finish-issue` merge the fix into `main`
+through a PR. Then do these steps by hand. Never push to `test` or `prod`
+until the user asks for that deploy.
+
+1. **Find the newest release tag and what ships.** Every commit on `main`
+   after that tag ships in the patch, not only the hotfix:
+
+   ```bash
+   git fetch origin --tags
+   git describe --tags --abbrev=0 origin/main
+   git log --oneline <newest-tag>..origin/main
+   ```
+
+2. **Choose the version.** Add a fourth number to the newest tag, for example
+   `v2.30.4` → `v2.30.4.1` (as `v2.30.1.1` did). The next `vX.Y.Z` belongs to
+   the open milestone. Confirm the version with the user.
+   `/release-milestone` Step 3 accepts four-part tags
+   (`scripts/check-version-newer.sh`).
+3. **Tag `main` and push the tag to `origin`.** Use an annotated tag. Here
+   `HEAD` is the commit to release, so tag `HEAD`. `git describe HEAD` must
+   print the new tag with no suffix:
+
+   ```bash
+   git checkout main
+   git pull --ff-only origin main
+   git tag -a vX.Y.Z.N -m "Release vX.Y.Z.N: hotfix for #NNN"
+   git describe HEAD
+   git push origin vX.Y.Z.N
+   ```
+
+4. **Create the GitHub release as a draft:**
+
+   ```bash
+   gh release create vX.Y.Z.N --draft --verify-tag \
+     --title "Elan Registry vX.Y.Z.N — Production Hotfix" \
+     --generate-notes --notes-start-tag <newest-tag> \
+     --repo elan-registry/registry
+   ```
+
+5. **Deploy the tag when the user asks.** Test first, then production. Push
+   the tag before the branch, and deploy the tagged commit, never `main`
+   (see [Production Deployment Commands](#-critical-production-deployment-commands)):
+
+   ```bash
+   git push test vX.Y.Z.N && git push test 'vX.Y.Z.N^{commit}:main'
+   git push prod vX.Y.Z.N && git push prod 'vX.Y.Z.N^{commit}:main'
+   gh release edit vX.Y.Z.N --draft=false --repo elan-registry/registry
+   ```
+
+   Then do the [Deployment Verification Checklist](#deployment-verification-checklist).
+6. **Merge `main` into the open milestone branch,** so the milestone keeps the
+   fix and its next release does not undo it:
+
+   ```bash
+   git checkout milestone/vX.Y.Z
+   git pull origin milestone/vX.Y.Z
+   git merge origin/main
+   git push origin milestone/vX.Y.Z
+   ```
+
 ### Database Migrations
 
 After every deployment, run pending migrations:
@@ -382,7 +447,10 @@ environment, exactly like any other deploy.
 - Issue branches: `issue/{number}-brief-description` (created by `/start-issue`)
 - Bug fix branches: `bug/{number}-brief-description` (created by `/start-issue`)
 - Feature branches: `feature/{number}-brief-description` (created by `/start-issue`)
-- Hotfix branches: `hotfix/issue-{number}-brief-description`
+- Hotfix branches: the same `issue/`, `bug/` or `feature/` names, created by
+  `/start-issue {number} --hotfix` from `origin/main`. The PR base `main`
+  marks a hotfix. The commands get the issue number from these three
+  prefixes, so a hotfix has no prefix of its own.
 
 #### Version Management & Git Tag-Based Versioning
 

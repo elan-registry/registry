@@ -132,12 +132,8 @@ final class CarImageOwnerFreshnessTest extends IntegrationTestCase
     }
 
     /**
-     * #1929 (CLASSES.md row "Owner edit, including image upload and reorder"):
-     * an owner-initiated edit that changes only the image list, saved the way
-     * app/api/cars/save.php's updateCar() saves it — Car::update($cardetails,
-     * true) with the new image JSON under the 'image' key — must reset
-     * owner_last_updated in the same UPDATE as the image write, producing
-     * exactly one cars_hist row.
+     * #1929: an owner edit that changes only the image list, saved as save.php
+     * does, resets owner_last_updated in the same UPDATE (one cars_hist row).
      */
     public function testOwnerEditThatChangesImagesResetsOwnerLastUpdated(): void
     {
@@ -162,11 +158,7 @@ final class CarImageOwnerFreshnessTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * #1929 twin of the above: the same image-only edit with
-     * $isOwnerInitiated = false (an admin or editor editing another owner's
-     * car) must leave owner_last_updated untouched.
-     */
+    /** #1929: the same edit by an admin or editor leaves owner_last_updated unchanged. */
     public function testAdminEditThatChangesImagesDoesNotResetOwnerLastUpdated(): void
     {
         $car = new Car($this->testCarId);

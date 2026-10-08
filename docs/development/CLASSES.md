@@ -305,6 +305,13 @@ $score = $owner->getProfileQualityScore(); // Returns 0-100
 
 // Search owners (admin function)
 $results = (new Owner())->searchOwners('Portland');
+
+// Update name, location, or website and sync the change to every owned car
+$syncResult = $owner->updateProfileAndSync([
+    'fname' => 'Jane',
+    'lname' => 'Doe',
+    'website' => 'https://example.com',
+]);
 ```
 
 **Database Tables**:
@@ -362,6 +369,42 @@ deliberately does not call it — it stays silent on a skip-only outcome since
 a car the owner no longer owns isn't actionable for them; this is intentional
 divergence, not drift. Callers with a real failure build their own message
 from `failedCarsPhrase()` instead.
+
+`updateProfileAndSync(array $fields): OwnerSyncResult` writes an owner's
+name, location, website, and email, then pushes them onto the owner's cars.
+Its caller is `usersc/user_settings.php`. It cannot clear the website to
+empty, because `update()` drops empty values. `user_settings.php` handles
+that one case with its own direct write, then calls
+`syncOwnerFieldsToCars()`. `app/admin/includes/process-owner-update.php`
+does not use this method yet. It calls `update()` and then
+`syncOwnerFieldsToCars()` itself, with the same effect. Any new write to
+these fields must also sync the cars, through this method or the same two
+calls, or the cars keep stale copies.
+
+It calls `update($fields)`, then `syncOwnerFieldsToCars()`, and returns that
+call's `OwnerSyncResult`. The owner ID comes from the already-loaded `Owner`,
+not from `$fields` — an `id` key in `$fields` is overwritten. It throws
+`OwnerValidationException` or `OwnerUpdateException` for any failure before
+the `users`/`profiles` write commits — nothing is written in that case. Once
+that write commits, `syncOwnerFieldsToCars()` can still throw
+`OwnerDatabaseException` or `CarDatabaseException`; the profile write already
+committed in that case, so the caller must not re-raise it as a reason to
+also fail the surrounding request. A result where `isCompleteSuccess()` is
+`false` is not an exception — the caller reads the returned
+`OwnerSyncResult` and decides how to report it.
+
+`update()`'s post-commit reload failure is deliberately non-fatal there
+(the write already succeeded, so a reload failure is logged, not thrown) —
+but a stale `_data` left behind by that failure would otherwise feed
+pre-update values into the sync, below. `updateProfileAndSync()` clears
+`_data` before calling `update()` (not `_carsOwned`, which caches only which
+cars the owner has, not their contact fields), so a failed reload leaves
+`_data` null, and `syncOwnerFieldsToCars()`'s own "not loaded" guard turns
+that into a thrown `OwnerDatabaseException` instead of silently syncing
+stale values while reporting success. When `update()` fails before the
+commit, nothing was written, so the method restores the old `_data` before
+it throws. A caller can then still call `syncOwnerFieldsToCars()` on the
+same `Owner`, as `user_settings.php` does for a website clear.
 
 `ownerContactFields()` is the single definition of the nine denormalized
 owner-contact columns (`fname`, `lname`, `email` from `users`; `city`,
@@ -572,6 +615,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `updateEmailBounced(int $carId, bool $bounced, ?string $bouncedAddress = null): bool` -
   Set or clear a car's email-bounced flag, and the address it bounced against (#1887)
 - `updateEmailSuppressed(int $carId, bool $suppressed): bool` - Set or clear a car's email-suppressed flag (#1887)
+- `findProfileEmailSuppressedForUpdate(int $userId): ?int` -
+  Read and row-lock `profiles.email_suppressed` (`SELECT ... FOR UPDATE`); must be called inside an
+  active transaction (#1895). Returns 0, 1, or null if no row. Used by the owner-level suppression
+  reversal so a double-submit waits for the first request and reads its committed value.
 - `findProfileEmailBounced(int $userId): ?int` -
   Read the owner-level bounce flag from `profiles.email_bounced` (#1884).
   Returns the flag value (0 or 1) or null if no row.
@@ -653,17 +700,25 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `CarValidationException` if either is empty, malformed, or not a real
   calendar date (`2026-02-30` is rejected rather than rolled over to March 2),
   because a malformed value there is a programming error, not a data state.
-  It reads `freshnessCutoff()` one time and compares both parsed operands to
-  that one value, so both comparisons use the same second. The hook catches this per-car and renders an isolated "Unknown" badge for
+  It returns `freshnessSource(...) !== null`, so it reads `freshnessCutoff()`
+  one time and compares both parsed operands to that one value. The hook catches this per-car and renders an isolated "Unknown" badge for
   that row rather than failing the whole panel.
 - `isWithinFreshnessWindow(string $timestamp, string $column): bool` -
   Decide if one datetime string is inside the 1-year freshness window. It
   compares the result of `parseTimestamp()` with `freshnessCutoff()`. Throws
   `CarValidationException` if $timestamp is empty, malformed, or not a real
   calendar date. The required `$column` parameter names the column in the
-  exception message. `CarBadges::verifiedStatus()` uses it to pick the shown
-  date after `isFresh()` says the car is fresh. Uses PHP's clock (see the
-  timezone note on `isFresh()`).
+  exception message. Uses PHP's clock (see the timezone note on `isFresh()`).
+- `freshnessSource(?string $lastVerified, string $ownerLastUpdated): ?array` -
+  The rule of `isFresh()`, with the operand that makes the car fresh. Returns
+  `['source' => 'confirmed', 'date' => <last_verified>]` when `last_verified`
+  is inside the window, else `['source' => 'current', 'date' =>
+  <owner_last_updated>]` when `owner_last_updated` is inside the window, else
+  null. The dates are `parseTimestamp()` results. It reads `freshnessCutoff()`
+  one time, so the fresh decision and the source use the same second. It
+  parses both operands before it compares, and throws
+  `CarValidationException` the same way as `isFresh()`.
+  `CarBadges::verifiedStatus()` returns its result.
 - `parseTimestamp(string $value, string $column): DateTimeImmutable` - The one
   parser for `last_verified` and `owner_last_updated`. Accepts `Y-m-d H:i:s`
   (a `T` separator is also accepted) and rejects an empty value, a relative
@@ -673,16 +728,26 @@ to provide a focused, testable data access layer wrapping the `cars`,
   example `CarBadges::verifiedStatus()`) shows the returned object, so the
   shown date is the validated date.
 - `freshnessCutoff(): int` - The one PHP definition of the window start: the
-  Unix timestamp of one year ago, from PHP's clock. Each call reads the clock
-  again. `isFresh()` reads it one time for both of its comparisons. Throws
-  `CarValidationException` if `strtotime('-1 year')` returns false, because a
-  cast to 0 would make every car fresh.
+  Unix timestamp of `FRESHNESS_MONTHS` (12) months ago, from PHP's clock. Each
+  call reads the clock again. `freshnessSource()` reads it one time for both
+  of its comparisons. Throws `CarValidationException` if `strtotime()` returns
+  false, because a cast to 0 would make every car fresh.
+- `FRESHNESS_MONTHS` - Public constant, `12`. The length of the freshness
+  window. `freshnessCutoff()` and the Verified badge tooltip
+  (`CarBadges::verifiedTooltip()`) use it. `freshnessSql()` writes the same
+  window as `INTERVAL 1 YEAR`; a unit test pins the two together.
+- `QUEUE_STATUSES` - Public constant, `['all', 'eligible', 'pending',
+  'bounced', 'suppressed', 'verified', 'sold']`. The statuses
+  `findVerificationQueue()` accepts. Public so the admin dashboard can check
+  a `?status=` URL value against the same list (#1896).
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
   bounce/suppression state for every car a user owns (`id`, `model`, `series`,
   `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
-  `email_suppressed`, `owner_last_updated`, `last_verified`), ordered
-  `model, year`. Backs the admin user-view's "Verification & Email" card
-  (#1924). Tinyint flag columns come back as `int|string` per PDO's driver
+  `email_suppressed`, `profile_email_suppressed`, `owner_last_updated`,
+  `last_verified`), ordered `model, year`. `profile_email_suppressed` is the
+  owner's profile-level opt-out flag, the same on every row. Backs the admin
+  user-view's "Verification & Email" card (#1924) and
+  `EmailNoticeBuilder::buildForOwner()`. Tinyint flag columns come back as `int|string` per PDO's driver
   typing, not native bool — cast at the call site.
 - `findLatestEmailEventsByCarIds(array $carIds): array` - Latest (max
   `occurred_at`) `er_email_events` row per car id, keyed by `(int) car_id`; a
@@ -691,10 +756,67 @@ to provide a focused, testable data access layer wrapping the `cars`,
   subquery). Used alongside `findVerificationStateByOwner()` to back the
   Bounced/Suppressed columns' event detail (#1924). No-ops to `[]` with no
   query issued on an empty `$carIds` array.
+- `findLatestEmailEventsByCarIdsAndEvents(array $carIds, array $events): array` -
+  Latest (max `occurred_at`) `er_email_events` row per car id, limited to the
+  given `event` values, keyed by `(int) car_id`; a car with no matching row is
+  absent from the map. Same self-join-on-`MAX(occurred_at)` technique as
+  `findLatestEmailEventsByCarIds()`, filtered in both the subquery and the
+  outer query. Used by `EmailNoticeBuilder` to find each car's latest
+  suppression (`spam`/`unsubscribed`) or hard-bounce event, so a later,
+  unrelated event (`opened`, `click`, `delivered`) cannot outrank the actual
+  suppression or bounce event (#1899). No-ops to `[]` with no query issued
+  when `$carIds` or `$events` is empty.
+- `findLatestHistoryOperationByCarIds(array $carIds, array $operations): array` -
+  Latest (max `timestamp`) `cars_hist` row per car id, limited to the given
+  `operation` values, keyed by `(int) car_id`; a car with no matching row is
+  absent from the map. Same self-join-on-`MAX(timestamp)` technique as
+  `findLatestEmailEventsByCarIds()`. Used by `EmailNoticeBuilder` to date the
+  `'EMAIL SUPPRESSED'`/`'EMAIL BOUNCED'` cause lines on the account-page
+  notice (#1899). No-ops to `[]` with no query issued when `$carIds` or
+  `$operations` is empty.
 - `findVerificationEligible(int $limit, int $offset): array` - Paginated
   query for cars eligible for a verification email: not sold, deliverable
   email, and stale — neither verified nor updated by its owner within the last
   year (see `stalenessSql()`). No longer falls back to `cars.mtime`.
+- `countVerificationSummary(?int $windowDays): array` - Count cars in each
+  verification dashboard state: `all`, `eligible`, `pending`, `bounced`,
+  `suppressed`, `verified`, `sold`. Backs the admin dashboard's summary cards
+  and filter-pill counts (#1896). `eligible`, `pending`, `bounced`, and
+  `suppressed` are current state; `verified` and `sold` count distinct
+  existing cars with a matching `cars_hist` row in the `$windowDays` window
+  (`null` for all time). `all` counts distinct cars that are eligible,
+  pending, bounced, or suppressed — it excludes verified and sold, since
+  those are history, not a queue state. Bounced and suppressed can overlap,
+  so `all` can be less than the sum of the four. Throws
+  `CarValidationException` if `$windowDays` is zero or negative, and
+  `CarDatabaseException` on a query failure.
+- `findVerificationQueue(string $status, ?int $windowDays, int $limit): array` -
+  List the cars for one verification queue filter pill. `$status` must be
+  one of `QUEUE_STATUSES`; each status uses the same definition as its count
+  in `countVerificationSummary()`. `$windowDays` applies only to `verified`
+  and `sold`. Row order depends on status: `pending` is longest-waiting
+  first, `eligible` is oldest-verified first, `verified`/`sold` is most
+  recent history row first, and `all`/`bounced`/`suppressed` is car id
+  ascending. Throws `CarValidationException` for an unknown `$status` or an
+  invalid `$windowDays`, and `CarDatabaseException` on a query failure.
+- `findRecentVerificationActivity(?int $windowDays, int $limit = 20): array` -
+  List the most recent `VERIFIED` and `VERIFIED SOLD` `cars_hist` rows,
+  newest first. Backs the dashboard's Recent Activity panel (#1896). Reads
+  `cars_hist` only, with no join to `cars` — a car merged or deleted after
+  the event still appears, with the year/chassis/owner name values recorded
+  at the time of the event. This is why Recent Activity can list a car that
+  no longer exists, while `countVerificationSummary()`'s `verified`/`sold`
+  counts (which join to `cars`) do not. Throws `CarValidationException` if
+  `$windowDays` is zero or negative, and `CarDatabaseException` on a query
+  failure.
+- `findLatestEmailEventPerCarWithPrecedence(array $carIds): array` - Find the
+  `er_email_events` row that sets each car's dashboard Status chip (#1896).
+  Scopes to the car's current send cycle (from its latest `sent` event
+  onward, or all events if it has none); within the cycle, a terminal event
+  (hard bounce or suppression) outranks any later non-terminal event, and
+  otherwise the latest event wins. Keyed by car id; a car with no event in
+  its cycle is absent from the result. Throws `CarValidationException` for a
+  non-positive car id, and `CarDatabaseException` on a query failure.
 - `updateSoldDate(int $carId, string $soldDate): bool` - **Deprecated** (#2107), no
   production callers — `CarVerificationManager::markSold()` writes `solddate` via
   `updateCar()` directly to set `owner_last_updated` atomically alongside it
@@ -768,6 +890,10 @@ row. Add a row and a test here when you add one.
 - Sitemap generation (`getAllForSitemap()`)
 - `BrevoWebhookEventProcessor` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#1887)
 - `BrevoEventReconciliationJob` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`, `deleteEmailEventsOlderThan()`) (#1889)
+- `app/admin/includes/tab-verification.php` (`countVerificationSummary()`,
+  `findVerificationQueue()`, `findRecentVerificationActivity()`,
+  `findLatestEmailEventPerCarWithPrecedence()`, `QUEUE_STATUSES`) — the
+  admin Verification dashboard (#1896)
 
 **See Also**:
 
@@ -922,6 +1048,19 @@ on success.
 - `clearSuppressedForOwner(int $ownerId): array` -
   Owner-level Clear Suppression action: clears `profiles.email_suppressed` and fans out to clear
   `email_suppressed` on every car owned by that user (#1884). Returns array of pre-change car snapshots.
+- `clearSuppressedForOwnerByOwner(int $ownerId): array` -
+  Owner self-service reversal of suppression via Account Settings. Clears `profiles.email_suppressed`
+  (skips the write if already 0) and calls `clearSuppressed()` on every car from `findByOwner()`
+  (sold included, skips cars already 0). Skips a car whose current suppression is a Brevo
+  complaint: only the admin method can clear it. Returns pre-change car snapshots for `cars_hist`. Throws
+  `CarDatabaseException` when the owner has no profiles row. Never touches bounce columns. Shares
+  one body with `clearSuppressedForOwner()`, which reads the profile flag with a locking read, so a
+  double-submit succeeds instead of failing on a 0-row UPDATE. Separate
+  from the admin method so logs and `cars_hist` separate the two paths. Used by `usersc/user_settings.php`.
+- `findBrevoComplaintCarIds(int $ownerId): array` -
+  IDs of the owner's suppressed cars whose current suppression is a Brevo spam or unsubscribe
+  complaint, by `EmailNoticeBuilder::resolveSuppressionCause()`. Used by the owner resume path
+  and by `usersc/user_settings.php` to tell the owner which cars need an admin.
 - `markSold(object $carData, ?string $soldDate): bool` - Record a car as sold (`null` defaults to today)
 
 **Exceptions**:
@@ -981,7 +1120,9 @@ months." The Verified row help button on the Vehicle Information card uses
 the same sentence. The `new` tooltip gets its
 numbers (90 days, 5 newest) from `CarShowcaseService::NEW_DAYS` and
 `CarShowcaseService::NEW_FLOOR`, the same constants that
-`getNewCarIds()` uses.
+`getNewCarIds()` uses. The `verified` tooltip gets its number (12 months)
+from `CarRepository::FRESHNESS_MONTHS`, the constant that
+`CarRepository::freshnessCutoff()` uses.
 
 **Methods**:
 
@@ -993,10 +1134,16 @@ public static function html(array $keys, string $style = 'flat'): string
 public static function isSold(mixed $solddate): bool
 public static function soldDate(mixed $solddate, int|string|null $carId = null): ?DateTimeImmutable
 public static function verifiedStatus(object $car): ?array
+public static function verifiedTooltip(): string
 ```
 
 - `resolve()` is a pure function. It applies the "Shows when" rule in the
-  table above and returns the badge keys in display order.
+  table above and returns the badge keys in display order. It is marked
+  `@internal`: pages call `forCar()` or `decorateRows()`. It stays public
+  only because `CarBadgesTest` tests the rule directly.
+- `verifiedTooltip()` returns the tooltip text of the Verified badge, not
+  escaped. The Vehicle Information card uses it for the help button on its
+  Verified row, so the badge and the row show the same text.
 - `forCar()` takes a car record (for example `Car::data()`). Sold comes
   from `isSold()`. Fresh comes from `CarRepository::isFresh()` with
   `last_verified` and `owner_last_updated`. It never adds the `new` badge,
@@ -1038,11 +1185,12 @@ public static function verifiedStatus(object $car): ?array
   freshness dates are valid strings. Returns null otherwise (sold car, stale car,
   or missing/malformed dates). On malformed dates it logs one entry to the car
   errors category. It never reads `mtime`. `CarRepository::isFresh()` decides
-  if the car is fresh, so the rule is not copied here. For a fresh car, the
-  source is `'confirmed'` when `last_verified` is not null and
-  `CarRepository::isWithinFreshnessWindow()` is true for it, else `'current'`.
-  The date is the `CarRepository::parseTimestamp()` result for the column of
-  that source, so it is the validated date. The return shape is `array{source: 'confirmed'|'current', date: DateTimeImmutable}`.
+  if the car is fresh, so the rule is not copied here. It returns the result
+  of `CarRepository::freshnessSource()`, which reads the clock one time. For a
+  fresh car, the source is `'confirmed'` when `last_verified` is not null and
+  inside the freshness window, else `'current'`. The date is the
+  `CarRepository::parseTimestamp()` result for the column of that source, so
+  it is the validated date. The return shape is `array{source: 'confirmed'|'current', date: DateTimeImmutable}`.
   Used by the Vehicle Information card.
 
 **Behavior on bad date data**: `forCar()` does not throw. When
@@ -1087,6 +1235,79 @@ any key in `BADGES`, and the cars list JS needs no change.
 **See Also**:
 
 - [UI_STANDARDS.md](UI_STANDARDS.md#car-status-badges) - Tokens, classes, and accessibility rules
+
+---
+
+### EmailNoticeBuilder
+
+**Location**: `/usersc/classes/Car/EmailNoticeBuilder.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Assembles the data for the account-page notice that tells an
+owner one of their car's delivery addresses is suppressed or bounced
+(#1899). Pure data assembler — returns a plain array, renders no HTML. The
+partial `app/views/_email_paused_notice.php` escapes every field at render
+time.
+
+**Key Features**:
+
+- `buildForOwner(int $ownerId): ?array` - `null` when the owner has no car
+  with `email_suppressed=1` or `email_bounced=1`. Otherwise returns
+  `array{addresses: list<array{address: string, suppressed: array{cause:
+  'owner_optout'|'brevo_complaint', date: ?string}|null, bounced:
+  array{date: ?string}|null}>, overflowCount: int, hasSuppressed: bool,
+  hasBounced: bool, contentHash: string}`.
+- Takes `CarRepository` by constructor injection, so a test can supply a
+  mock.
+- Dedupes by address, lowercased, not the owner's profile email — a car's
+  registered delivery address can differ from the account email. Each flag
+  uses its own address: suppressed uses the car's own `email` column;
+  bounced uses `email_bounced_address`, falling back to the car's `email`
+  when that is empty (`CarVerificationManager::setBouncedForOwner()` writes
+  one owner-level address to every car's `email_bounced_address`, so it can
+  differ from a given car's own `email`). When a car's two addresses
+  differ, it contributes to two separate entries. A flag with no usable
+  address for it is dropped and logged, not merged into the other flag's
+  address.
+- Suppression cause: an `er_email_events` row with `event` in
+  (`spam`, `unsubscribed`) means `brevo_complaint`, but only when that
+  event is not older than the car's latest `'EMAIL SUPPRESSED'` cars_hist
+  row — otherwise the event is stale (from before an intervening clear and
+  resuppress) and is ignored. No current event means `owner_optout` (the
+  opt-out POST handler in `verify_car.php` writes no event row). Two cars
+  sharing one address: `brevo_complaint` wins over `owner_optout`; same
+  cause, the later date wins.
+- Dates: the suppressed-cause date comes from `cars_hist`
+  (`'EMAIL SUPPRESSED'`) for `owner_optout`, or from the event's
+  `occurred_at` for `brevo_complaint` (the webhook path never writes an
+  `'EMAIL SUPPRESSED'` history row). The bounced date is the later of the
+  latest `'EMAIL BOUNCED'` cars_hist row (only `app/admin/index.php` writes
+  it) and the latest hard-bounce event
+  (`EmailEventApplier::HARD_BOUNCE_EVENTS`) — not simply "history, else
+  event" — because a webhook hard-bounce (which writes no history row) can
+  arrive after an admin-marked bounce was cleared and the car bounced
+  again. Both recency comparisons use full datetime precision, not the
+  truncated `Y-m-d` display date, so a same-day clear-and-resuppress isn't
+  missed. A flag with neither signal (legacy data) defaults to
+  `owner_optout` with a `null` date; the partial omits the date clause
+  rather than show one.
+- Caps the address list at `MAX_ADDRESSES` (3), sorted by lowercase
+  address; `overflowCount` is the remainder. `hasSuppressed`/`hasBounced`/
+  `contentHash` cover the full set, including addresses past the cap.
+- `contentHash` is a sha256 of the full sorted address/cause/date set.
+  `account.php` uses it in the per-owner `sessionStorage` dismissal key, so
+  a change to the underlying flags makes the notice reappear.
+
+**Exceptions**:
+
+- `CarDatabaseException` - propagated from `CarRepository` on any query
+  failure.
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Suppression/bounce semantics and the
+  email-paused notice section
 
 ---
 
@@ -1348,7 +1569,7 @@ verification-email send attempt (#1884). Returned by
 
 **Used By**:
 
-- `CarVerificationSendService::sendOne()` and `sendBatch()` (#1884)
+- `CarVerificationSendService::sendOne()` (#1884)
 - `VerificationBatchSender::processBatch()` (Verification System tab in
   `app/admin/index.php`) to build the result report
 
@@ -1391,8 +1612,6 @@ sequences from drifting.
   verification email; delegates to `CarRepository::findVerificationEligible()`
 - `sendOne(object $carData): SendResult` - Send one car's verification email,
   return sent/failed
-- `sendBatch(array $cars): array` - Map `sendOne()` over multiple cars,
-  return array of `SendResult`
 
 **Constructor Dependencies**:
 
@@ -1861,7 +2080,10 @@ handler already calls, so the two paths can never drift apart.
 **Configuration Constants**:
 
 - `JOB_NAME = 'send_verification_batch'` — `er_cron_job_runs.job_name` value
-- `GUARD_INTERVAL_HOURS = 20` — Claim interval (same 20-not-24 rationale as `BrevoEventReconciliationJob`)
+- `GUARD_INTERVAL_HOURS = 20` — **Public.** Claim interval (same 20-not-24
+  rationale as `BrevoEventReconciliationJob`). Public so the admin
+  Verification tab can show the next-eligible time from the same value the
+  guard uses.
 
 **Constructor**:
 

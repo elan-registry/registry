@@ -20,6 +20,14 @@ paths:
   clones/sessions; everything else here is scratch space for the current
   session or an in-progress plan.
 - Layout summary for a fresh clone: `issues/issue-<NNN>-<slug>.md`,
-  `sprints/<version>.md`, `features/<name>/`, `spikes/<issue>-<slug>/`,
-  `analysis/`, `summaries/`, `releases/`. Only `README.md` and `HANDOFF.md`
+  `features/<name>/`, `spikes/<issue>-<slug>/`, `analysis/`, `summaries/`,
+  `releases/`. Only `README.md` and `HANDOFF.md`
   belong at the top level. Use `analysis/` when no other subdirectory fits.
+- `summaries/` holds one folder per series: `<series>/prompt.md` (front
+  matter `title`, `category`, `refresh_days`, then the regenerate prompt)
+  and `<series>/<YYYY-MM-DD>.html` pages. Write a `/summary` page into its
+  series folder, never at the top of `summaries/` or the repo root. Then run
+  `python3 scripts/build-summary-index.py`, which rebuilds `index.html` and
+  keeps the newest 3 pages per series. `summaries/health/` holds the
+  `scripts/project-health.py` snapshots for the index's Project health
+  section. It is not a series.

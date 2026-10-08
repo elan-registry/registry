@@ -23,7 +23,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Tests\\": "tests/"
+            "Tests\\": "tests/",
+            "ElanRegistry\\PHPStan\\": "tools/phpstan/"
         }
     },
     "require-dev": {

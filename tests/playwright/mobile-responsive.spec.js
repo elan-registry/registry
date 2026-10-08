@@ -1,4 +1,3 @@
-// tests/playwright/mobile-responsive.test.js
 const { test, expect } = require('@playwright/test');
 const { navigateAndWait } = require('./auth-helper.js');
 const { CAR_ID_WITH_HISTORY } = require('./fixtures.js');

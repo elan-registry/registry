@@ -1,26 +1,20 @@
 #!/bin/bash
 #
-# Regression test for scripts/commit-push-pr.sh — the mechanical half of
-# /commit-push-pr (branch-safety refusal, forbidden-path refusal, and the
-# dry-run command sequence for commit/push/PR create-or-reuse).
+# Regression test for scripts/commit-push-pr.sh: branch-safety and
+# forbidden-path refusals, and the dry-run commit/push/PR command sequence.
 #
-# Hermetic: every scenario runs inside a throwaway `git clone --local` of
-# this repo in a temp directory. No `git checkout`, `commit`, or `branch` is
-# ever run against the real working tree this test was launched from — only
-# read-only queries (`git rev-parse --show-toplevel`) touch it, to find the
-# repo to clone. `git clone --local` sets the clone's "origin" to the real
-# repo's working directory, so this test repoints "origin" at a throwaway
-# bare repo right after cloning — otherwise a regression in the script under
-# test (a real `git push`) would land a branch in the real repo. A stub `gh`
-# is put first on PATH so no scenario reaches the real GitHub CLI either.
-# The clone, the bare repo, and all temp files are removed on exit (even on
-# failure, via a trap), so this test is safe to run concurrently with other
-# work in the real checkout.
+# SAFETY: every scenario runs in a throwaway `git clone --local` of this repo,
+# never in the working tree this test was launched from. The clone's "origin"
+# is repointed at a throwaway bare repo and a stub `gh` is first on PATH, so
+# even a regression that does a real push cannot reach this checkout or
+# GitHub. This makes the test safe to run beside other work in the checkout.
 #
 # Usage: bash tests/hooks/test-commit-push-pr.sh
-# Exit code: 0 if all scenarios pass, 1 otherwise.
 
 set -u
+
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
 
 SOURCE_REPO_ROOT="$(git rev-parse --show-toplevel)"
 
@@ -30,14 +24,12 @@ if [ ! -f "$SOURCE_REPO_ROOT/$SCRIPT_REL" ]; then
     exit 1
 fi
 
-TESTS_RUN=0
-TESTS_FAILED=0
-
 SCRATCH_PARENT=""
 BARE_ORIGIN_DIR=""
 STUB_BIN_DIR=""
 TMP_FILES=()
 
+# shellcheck disable=SC2329 # called only through the EXIT trap in lib/harness.sh
 cleanup() {
     if [ -n "$SCRATCH_PARENT" ]; then
         rm -rf "$SCRATCH_PARENT"
@@ -47,7 +39,6 @@ cleanup() {
         [ -n "$f" ] && rm -f "$f"
     done
 }
-trap cleanup EXIT
 
 SCRATCH_PARENT="$(mktemp -d)"
 CLONE_DIR="$SCRATCH_PARENT/repo"
@@ -93,10 +84,48 @@ STUB_BIN_DIR="$SCRATCH_PARENT/stub-bin"
 mkdir -p "$STUB_BIN_DIR"
 cat > "$STUB_BIN_DIR/gh" <<'EOF'
 #!/bin/bash
-# Stub gh for test-commit-push-pr.sh: no scenario in that test expects an
-# existing PR, and none should reach the real GitHub CLI.
-case "$1 $2" in
-    "pr view") echo "" ; exit 1 ;;
+# Stub gh for test-commit-push-pr.sh. No scenario reaches the real GitHub CLI.
+# STUB_PRS names a file of "<branch> <STATE> <url>" lines (STATE is OPEN,
+# MERGED or CLOSED). Unset means no PRs. The stub prints what the real
+# command prints after its --jq filter.
+#   pr list --head <b> --state open  first OPEN PR for <b>, or nothing
+#   pr view <b>                       last PR for <b> in any state, as the
+#                                     real gh does, or exit 1
+# STUB_GH_FAIL=1 makes every call exit 1.
+[ "${STUB_GH_FAIL:-0}" = 1 ] && { echo "stub gh: synthetic failure" >&2; exit 1; }
+sub="$1 $2"
+shift 2
+head="" state="open" positional=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --head) head="$2"; shift 2 ;;
+        --state) state="$2"; shift 2 ;;
+        --json|--jq|--base|--title|--body-file) shift 2 ;;
+        --*) shift ;;
+        *) positional="$1"; shift ;;
+    esac
+done
+prs="${STUB_PRS:-/dev/null}"
+case "$sub" in
+    "pr list")
+        want="$(printf '%s' "$state" | tr '[:lower:]' '[:upper:]')"
+        while read -r b s u; do
+            if [ "$b" = "$head" ] && { [ "$want" = ALL ] || [ "$s" = "$want" ]; }; then
+                echo "$u"
+                break
+            fi
+        done < "$prs"
+        exit 0
+        ;;
+    "pr view")
+        found=""
+        while read -r b s u; do
+            [ "$b" = "$positional" ] && found="$u"
+        done < "$prs"
+        [ -n "$found" ] || { echo "no pull requests found for branch \"$positional\"" >&2; exit 1; }
+        echo "$found"
+        exit 0
+        ;;
     "pr create") echo "https://example.invalid/pr/stub" ; exit 0 ;;
     *) exit 1 ;;
 esac
@@ -288,20 +317,16 @@ assert_exit \
 
 git checkout milestone/__test_refused4 >/dev/null 2>&1
 CURRENT_SHA_S3B="$(git rev-parse HEAD)"
-TESTS_RUN=$((TESTS_RUN + 1))
 if [ "$CURRENT_SHA_S3B" = "$(git rev-parse milestone/__test_refused4)" ]; then
-    echo "PASS: Scenario 3b: no commit landed on the starting branch"
+    pass "Scenario 3b: no commit landed on the starting branch"
 else
-    echo "FAIL: Scenario 3b: no commit landed on the starting branch"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "Scenario 3b: no commit landed on the starting branch"
 fi
 
-TESTS_RUN=$((TESTS_RUN + 1))
 if [ "$(git rev-parse __test_existing_target)" = "$BEFORE_SHA_S3B" ]; then
-    echo "PASS: Scenario 3b: the existing target branch was not moved"
+    pass "Scenario 3b: the existing target branch was not moved"
 else
-    echo "FAIL: Scenario 3b: the existing target branch was not moved"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "Scenario 3b: the existing target branch was not moved"
 fi
 
 assert_output_matches \
@@ -391,13 +416,10 @@ SYNTH_BRANCHES+=("__test_scratch_dryrun")
 BEFORE_SHA="$(git rev-parse HEAD)"
 bash "$SCRIPT" --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" >/dev/null 2>&1
 AFTER_SHA="$(git rev-parse HEAD)"
-TESTS_RUN=$((TESTS_RUN + 1))
 if [ "$BEFORE_SHA" = "$AFTER_SHA" ]; then
-    echo "PASS: Scenario 6: --dry-run does not create a commit"
+    pass "Scenario 6: --dry-run does not create a commit"
 else
-    echo "FAIL: Scenario 6: --dry-run does not create a commit"
-    echo "      HEAD moved from $BEFORE_SHA to $AFTER_SHA"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "Scenario 6: --dry-run does not create a commit" "HEAD moved from $BEFORE_SHA to $AFTER_SHA"
 fi
 git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
 
@@ -444,21 +466,16 @@ fi
 
 AFTER_SHA_S7="$(git rev-parse HEAD)"
 AFTER_ORIGIN_HEAD_S7="$(git ls-remote origin main | cut -f1)"
-TESTS_RUN=$((TESTS_RUN + 1))
 if [ "$BEFORE_SHA_S7" = "$AFTER_SHA_S7" ] && [ "$BEFORE_ORIGIN_HEAD_S7" = "$AFTER_ORIGIN_HEAD_S7" ]; then
-    echo "PASS: Scenario 7: no commit and no push happened after a failing git status"
+    pass "Scenario 7: no commit and no push happened after a failing git status"
 else
-    echo "FAIL: Scenario 7: no commit and no push happened after a failing git status"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "Scenario 7: no commit and no push happened after a failing git status"
 fi
 
-TESTS_RUN=$((TESTS_RUN + 1))
 if printf '%s' "$OUTPUT_S7" | grep -qE '^(git status failed|Refused:)'; then
-    echo "PASS: Scenario 7: prints a clear error rather than 'Nothing to commit'"
+    pass "Scenario 7: prints a clear error rather than 'Nothing to commit'"
 else
-    echo "FAIL: Scenario 7: prints a clear error rather than 'Nothing to commit'"
-    echo "      output: $OUTPUT_S7"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
+    fail "Scenario 7: prints a clear error rather than 'Nothing to commit'" "output: $OUTPUT_S7"
 fi
 
 TESTS_RUN=$((TESTS_RUN + 1))
@@ -503,12 +520,46 @@ else
 fi
 rm -f -- "${S8_FILES[@]}"
 
-# --- Report ---------------------------------------------------
+# --- Scenario 9: reuse only an OPEN PR for the branch ----------------------
+# Round-5 review of PR #2315: `gh pr view <branch>` also returns a merged or
+# closed PR. A reused branch name then printed the old merged PR URL, exited
+# 0, and opened no new PR. The stub gh returns a merged PR from `pr view`,
+# as the real gh does, so a return to `gh pr view` fails 9a.
+# --base main skips scripts/resolve-base-branch.sh, so its state cannot
+# change the result.
 
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
+git checkout -b __test_reused_branch >/dev/null 2>&1
+SYNTH_BRANCHES+=("__test_reused_branch")
+S9_PRS="$(mktemp)"
+TMP_FILES+=("$S9_PRS")
+export STUB_PRS="$S9_PRS"
 
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+printf '__test_reused_branch MERGED https://example.invalid/pr/merged\n' > "$S9_PRS"
+assert_output_matches \
+    "Scenario 9a: a branch with only a merged PR gets a new PR" \
+    "gh pr create" \
+    -- --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --base main
+assert_output_not_matches \
+    "Scenario 9a: a branch with only a merged PR does not report the merged PR" \
+    "pr/merged" \
+    -- --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --base main
+
+printf '__test_reused_branch MERGED https://example.invalid/pr/merged\n__test_reused_branch OPEN https://example.invalid/pr/open\n' > "$S9_PRS"
+assert_output_matches \
+    "Scenario 9b: a branch with an open PR reuses it" \
+    "pr/open" \
+    -- --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --base main
+assert_output_not_matches \
+    "Scenario 9b: a branch with an open PR does not create another PR" \
+    "gh pr create" \
+    -- --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --base main
+
+STUB_GH_FAIL=1 assert_exit \
+    "Scenario 9c: a failing gh pr list exits 2 and creates no PR" \
+    2 \
+    -- --dry-run --message-file "$MESSAGE_FILE" --title "t" --body-file "$BODY_FILE" --base main
+
+unset STUB_PRS
+git checkout "$ORIGINAL_BRANCH" >/dev/null 2>&1
+
+harness_report

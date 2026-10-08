@@ -24,6 +24,43 @@ use ElanRegistry\LogCategories;
  */
 class CarRepository
 {
+    /**
+     * Length of the freshness window, in months.
+     *
+     * freshnessCutoff() and the Verified badge tooltip (CarBadges) use this
+     * value, so the rule and the text cannot disagree. freshnessSql() writes
+     * the same window as `INTERVAL 1 YEAR`.
+     */
+    public const FRESHNESS_MONTHS = 12;
+
+    /**
+     * Verification queue pills accepted by findVerificationQueue().
+     *
+     * Public so the dashboard can check a `?status=` value against the same list.
+     */
+    public const QUEUE_STATUSES = ['all', 'eligible', 'pending', 'bounced', 'suppressed', 'verified', 'sold'];
+
+    /**
+     * Dashboard window choices: URL value => `$windowDays` argument (null = all time).
+     *
+     * One list for the queue `?window=` and the recent-activity
+     * `?activity_window=` values. app/admin/index.php checks both against it,
+     * and the tab renders its select options from it.
+     */
+    public const QUEUE_WINDOW_CHOICES = [7 => 7, 30 => 30, 90 => 90, 365 => 365, 0 => null];
+
+    /** Dashboard queue `?show=` row-limit choices, checked by app/admin/index.php. */
+    public const QUEUE_SHOW_CHOICES = [10, 25, 50, 100];
+
+    /** cars_hist.operation that app/verify/verify_car.php writes when an owner clicks Verify. */
+    private const OPERATION_VERIFIED = 'VERIFIED';
+
+    /** cars_hist.operation that app/verify/verify_car.php writes when an owner confirms Sold. */
+    private const OPERATION_VERIFIED_SOLD = 'VERIFIED SOLD';
+
+    /** er_email_events.event that CarVerificationSendService writes for each send. It starts a send cycle. */
+    private const EVENT_SENT = 'sent';
+
     /** @var array<string, string> Factory suffix code to description mapping */
     private const SUFFIX_MAP = [
         'A' => 'S4 FHC UK Market',
@@ -502,6 +539,47 @@ class CarRepository
     }
 
     /**
+     * Read an owner's profile-level email-suppressed flag and lock the row for
+     * the rest of the current transaction (InnoDB SELECT...FOR UPDATE, #1895).
+     * Call it only inside an active transaction.
+     *
+     * The locking counterpart of {@see findProfileEmailSuppressed()}. A
+     * read-then-write caller needs it so that two concurrent requests cannot
+     * both read the flag as 1. The second request waits for the first to
+     * commit, then reads the committed value. A plain read under REPEATABLE
+     * READ returns the transaction's snapshot, so the second request would
+     * still see 1 and its UPDATE would then affect 0 rows.
+     *
+     * @param int $userId Owner user ID
+     * @return int|null 0 or 1 as stored, or null when the owner has no profiles row
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findProfileEmailSuppressedForUpdate(int $userId): ?int
+    {
+        // MAX(), not first(): profiles.user_id has no UNIQUE index, so an
+        // owner can have more than one row. MAX() matches
+        // profileEmailSuppressedSql(), which the eligibility queries use, so
+        // a resume cannot report success while a second row still blocks
+        // sends. An aggregate always returns one row, so "no profiles row"
+        // shows as NULL, not as count() === 0.
+        $result = $this->db->query(
+            'SELECT MAX(email_suppressed) AS email_suppressed FROM profiles WHERE user_id = ? FOR UPDATE',
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findProfileEmailSuppressedForUpdate failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+        $row = $this->db->count() === 0 ? null : $result->first();
+        if ($row === null || $row->email_suppressed === null) {
+            return null;
+        }
+
+        return (int) $row->email_suppressed;
+    }
+
+    /**
      * Set an owner's profile-level email-suppressed flag (#1883)
      *
      * The owner-level counterpart to {@see updateEmailSuppressed()}: that flag
@@ -836,6 +914,31 @@ class CarRepository
      */
     public static function isFresh(?string $lastVerified, string $ownerLastUpdated): bool
     {
+        return self::freshnessSource($lastVerified, $ownerLastUpdated) !== null;
+    }
+
+    /**
+     * Get the operand that makes a car fresh, with its parsed date.
+     *
+     * This is the rule of isFresh(), which calls this method. It reads the
+     * clock one time, so the fresh decision and the source use the same
+     * cutoff second.
+     * - `confirmed`: `last_verified` is not null and is inside the window.
+     *   The date is `last_verified`.
+     * - `current`: `last_verified` is null or outside the window, and
+     *   `owner_last_updated` is inside the window. The date is
+     *   `owner_last_updated`.
+     *
+     * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
+     *
+     * @param string|null $lastVerified     Datetime string, or null if never verified
+     * @param string      $ownerLastUpdated Datetime string (NOT NULL by schema)
+     * @return array{source: 'confirmed'|'current', date: DateTimeImmutable}|null The source and its date, or null when the car is not fresh
+     * @throws CarValidationException If either argument is an empty or unparseable date string,
+     *                                or if PHP cannot calculate the freshness cutoff
+     */
+    public static function freshnessSource(?string $lastVerified, string $ownerLastUpdated): ?array
+    {
         // Both operands are always parsed before the method returns. It does not
         // short-circuit on a fresh owner_last_updated. A malformed value is a
         // programming error or data corruption, and it must surface whichever
@@ -853,8 +956,14 @@ class CarRepository
         // Read the clock once, so both operands are compared to the same second.
         $cutoff = self::freshnessCutoff();
 
-        return $ownerDate->getTimestamp() >= $cutoff
-            || ($verifiedDate !== null && $verifiedDate->getTimestamp() >= $cutoff);
+        if ($verifiedDate !== null && $verifiedDate->getTimestamp() >= $cutoff) {
+            return ['source' => 'confirmed', 'date' => $verifiedDate];
+        }
+        if ($ownerDate->getTimestamp() >= $cutoff) {
+            return ['source' => 'current', 'date' => $ownerDate];
+        }
+
+        return null;
     }
 
     /**
@@ -878,23 +987,25 @@ class CarRepository
     /**
      * Get the start of the 1-year freshness window as a Unix timestamp.
      *
-     * This is the one PHP definition of the window. isFresh() and
-     * isWithinFreshnessWindow() compare parsed dates to it. isFresh() reads it
-     * once, so both of its comparisons use the same second. Each call reads the
+     * This is the one PHP definition of the window. freshnessSource() (and so
+     * isFresh()) and isWithinFreshnessWindow() compare parsed dates to it.
+     * freshnessSource() reads it once, so both of its comparisons use the same
+     * second. Each call reads the
      * clock again, so two calls can return different values.
      *
      * Uses PHP's clock. See the CLOCK CONSISTENCY note on isFresh().
      *
-     * @return int Unix timestamp of the time one year ago
-     * @throws CarValidationException If strtotime() cannot calculate the time one year ago
+     * @return int Unix timestamp of the time FRESHNESS_MONTHS months ago
+     * @throws CarValidationException If strtotime() cannot calculate the cutoff
      */
     public static function freshnessCutoff(): int
     {
-        $cutoff = strtotime('-1 year');
+        $relative = '-' . self::FRESHNESS_MONTHS . ' months';
+        $cutoff = strtotime($relative);
         // A cast would turn false into 0, the Unix epoch, and every car would be fresh.
         if ($cutoff === false) {
             throw new CarValidationException(
-                'CarRepository freshness check could not calculate the cutoff: strtotime(\'-1 year\') returned false.'
+                "CarRepository freshness check could not calculate the cutoff: strtotime('{$relative}') returned false."
             );
         }
 
@@ -1024,6 +1135,35 @@ class CarRepository
         $limit  = max(0, $limit);
         $offset = max(0, $offset);
 
+        $from = self::verificationEligibleFromSql();
+
+        $result = $this->db->query(
+            "SELECT cars.* {$from}
+              ORDER BY cars.last_verified ASC
+              LIMIT {$limit} OFFSET {$offset}"
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findVerificationEligible failed (limit={$limit} offset={$offset}): "
+                . $this->db->errorString()
+            );
+        }
+        return $result->results();
+    }
+
+    /**
+     * Build the FROM/JOIN/WHERE clause that selects verification-eligible cars
+     *
+     * The one definition of eligibility. findVerificationEligible() selects
+     * rows with it, and countVerificationSummary() counts rows with it, so the
+     * Eligible card and the batch preview cannot disagree. The clause binds no
+     * parameters. It uses the aliases `cars` and `users`.
+     *
+     * @return string SQL that starts with `FROM cars` and ends with the last WHERE condition
+     * @throws CarValidationException If the freshness alias is rejected (unreachable — literal)
+     */
+    private static function verificationEligibleFromSql(): string
+    {
         // solddate is a DATE column; under STRICT_TRANS_TABLES, comparing it to ''
         // is a hard SQL error (ERROR 1525: Incorrect DATE value), not a no-op — the
         // column has no empty-string state, only NULL. email similarly needs an
@@ -1031,7 +1171,6 @@ class CarRepository
         // for a NULL email under SQL's three-valued logic. UNKNOWN excludes the
         // row from this WHERE just as FALSE would, so the effect is the desired
         // one, but the mechanism is not the obvious one.
-        $stale = self::stalenessSql('cars');
 
         // email_suppressed is a standing owner request not to be emailed —
         // set via a Brevo spam-complaint webhook or the one-click verification
@@ -1056,17 +1195,22 @@ class CarRepository
         // own header ("could become eligible again despite this flag being
         // set... tracked as a follow-up"); this clause closes it.
         //
-        // LEFT JOIN with COALESCE, NOT the INNER JOIN used for users below,
-        // and the difference is deliberate. For `users` a missing row means the
-        // owner is gone and the car MUST be excluded, so INNER JOIN's implicit
-        // rejection is the wanted behaviour. For `profiles` a missing row means
-        // only that the owner never filled in a profile: `users` and `profiles`
-        // are NOT 1:1 in this schema (see findProfileEmailSuppressed()'s
-        // docblock, which returns null precisely to distinguish the two cases,
-        // and updateProfileEmailSuppressed(), which deliberately refuses to
+        // profileEmailSuppressedSql()'s correlated subquery, NOT a join, and
+        // NOT the INNER JOIN used for users below — the difference is
+        // deliberate twice over. First, `users` vs `profiles`: for `users` a
+        // missing row means the owner is gone and the car MUST be excluded,
+        // so INNER JOIN's implicit rejection is the wanted behaviour. For
+        // `profiles` a missing row means only that the owner never filled in
+        // a profile: `users` and `profiles` are NOT 1:1 in this schema (see
+        // findProfileEmailSuppressed()'s docblock, which returns null
+        // precisely to distinguish the two cases, and
+        // updateProfileEmailSuppressed(), which deliberately refuses to
         // synthesise a row). An INNER JOIN here would silently make every
-        // profile-less owner permanently un-emailable — a far larger behaviour
-        // change than the consent fix, and one no opt-out ever asked for.
+        // profile-less owner permanently un-emailable — a far larger
+        // behaviour change than the consent fix, and one no opt-out ever
+        // asked for. Second, subquery vs LEFT JOIN: `profiles.user_id` has no
+        // UNIQUE index, so a LEFT JOIN can match more than one row and
+        // duplicate the car row in a list result; the scalar subquery cannot.
         // COALESCE(..., 0) then supplies the column's own DEFAULT 0 for the
         // no-row case, matching the null-safety reasoning behind the explicit
         // `cars.email IS NOT NULL` clause above: absence is treated as the
@@ -1111,14 +1255,14 @@ class CarRepository
         // car waits out the rest of the year), per the FRD's Eligibility
         // Criteria. Without this clause the counter is written but never
         // read, and a stale car re-enters every batch with no limit.
-        $result = $this->db->query(
-            "SELECT cars.* FROM cars
+        $stale = self::stalenessSql('cars');
+
+        return "FROM cars
               INNER JOIN users ON users.id = cars.user_id
-              LEFT JOIN profiles ON profiles.user_id = cars.user_id
               WHERE cars.solddate IS NULL
                 AND cars.email_bounced = 0
                 AND cars.email_suppressed = 0
-                AND COALESCE(profiles.email_suppressed, 0) = 0
+                AND " . self::profileEmailSuppressedSql() . " = 0
                 AND cars.email IS NOT NULL AND cars.email != ''
                 AND cars.user_id IS NOT NULL
                 AND users.username != 'noowner'
@@ -1127,16 +1271,324 @@ class CarRepository
                      OR cars.vericode_sent_at < NOW() - INTERVAL 60 DAY)
                 AND (cars.verification_attempts_since IS NULL
                      OR cars.verification_attempts_since < NOW() - INTERVAL 1 YEAR
-                     OR cars.verification_attempts < 2)
-              ORDER BY cars.last_verified ASC
-              LIMIT {$limit} OFFSET {$offset}"
+                     OR cars.verification_attempts < 2)";
+    }
+
+    /**
+     * Build the scalar expression for an owner's profile-level suppression flag
+     *
+     * A correlated subquery, not a `LEFT JOIN profiles`: `profiles.user_id`
+     * has no UNIQUE index, so a join can match more than one profile row and
+     * silently duplicate the car row in a list result.
+     * This expression needs only the `cars` alias — no `profiles` join.
+     *
+     * @return string SQL scalar expression, 0 or 1
+     */
+    private static function profileEmailSuppressedSql(): string
+    {
+        return 'COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0)';
+    }
+
+    /**
+     * Build the WHERE condition for a Pending car: sent, link still live, no response yet
+     *
+     * A car is Pending when all of these are true:
+     * - It has a live verification link: `vericode` is set and
+     *   `vericode_sent_at` is within {@see CarVerificationEmailComposer::LINK_TTL_DAYS}.
+     *   A transfer clears `vericode` but keeps `vericode_sent_at`, so the
+     *   `vericode` check removes a car whose link no longer works.
+     * - The owner did not respond: `last_verified` is NULL or earlier than
+     *   the send, and `solddate` is NULL. Verify and Sold do not clear
+     *   `vericode_sent_at`, so this check is what removes a car that answered.
+     * - The car is not Bounced and not Suppressed (car flag or profile flag).
+     *   Those cars show under their own pill.
+     *
+     * The condition binds no parameters. It needs only the `cars` alias.
+     *
+     * @return string SQL boolean expression
+     */
+    private static function verificationPendingWhereSql(): string
+    {
+        $ttlDays = CarVerificationEmailComposer::LINK_TTL_DAYS;
+
+        return "(cars.vericode IS NOT NULL
+                 AND cars.vericode_sent_at IS NOT NULL
+                 AND cars.vericode_sent_at >= NOW() - INTERVAL {$ttlDays} DAY
+                 AND (cars.last_verified IS NULL OR cars.last_verified < cars.vericode_sent_at)
+                 AND cars.solddate IS NULL
+                 AND cars.email_bounced = 0
+                 AND cars.email_suppressed = 0
+                 AND " . self::profileEmailSuppressedSql() . ' = 0)';
+    }
+
+    /**
+     * Build the WHERE condition for a Suppressed car (car flag or owner profile flag)
+     *
+     * Either flag stops a send (see verificationEligibleFromSql()), so either
+     * flag puts the car under the Suppressed pill. The condition needs only
+     * the `cars` alias.
+     *
+     * @return string SQL boolean expression
+     */
+    private static function verificationSuppressedWhereSql(): string
+    {
+        return '(cars.email_suppressed = 1 OR ' . self::profileEmailSuppressedSql() . ' = 1)';
+    }
+
+    /**
+     * Build the SQL condition and parameters for a cars_hist time window
+     *
+     * @param string $column Qualified timestamp column (literal from this class only)
+     * @param int|null $windowDays Days back from now, or null for all time
+     * @return array{0: string, 1: array<int>} SQL fragment that starts with ` AND` (or ''), and its bound values
+     */
+    private static function windowSql(string $column, ?int $windowDays): array
+    {
+        if ($windowDays === null) {
+            return ['', []];
+        }
+
+        return [" AND {$column} >= NOW() - INTERVAL ? DAY", [$windowDays]];
+    }
+
+    /**
+     * Reject a window that is not null and not a positive number of days
+     *
+     * @throws CarValidationException If $windowDays is zero or negative
+     */
+    private static function assertValidWindowDays(?int $windowDays, string $method): void
+    {
+        if ($windowDays !== null && $windowDays < 1) {
+            throw new CarValidationException(
+                "CarRepository::{$method} received an invalid window of {$windowDays} days. "
+                . 'Use a positive number of days, or null for all time.'
+            );
+        }
+    }
+
+    /**
+     * Count the cars in each verification dashboard state
+     *
+     * Definitions (the queue pills use the same ones, see findVerificationQueue()):
+     * - `eligible`: the predicate of findVerificationEligible(), counted.
+     * - `pending`: see verificationPendingWhereSql(). Current state.
+     * - `bounced`: `cars.email_bounced = 1`. Current state.
+     * - `suppressed`: `cars.email_suppressed = 1` or `profiles.email_suppressed = 1`. Current state.
+     * - `verified`: distinct existing cars with a `cars_hist` `VERIFIED` row in the window.
+     * - `sold`: distinct existing cars with a `cars_hist` `VERIFIED SOLD` row in the window.
+     * - `all`: distinct cars in eligible, pending, bounced or suppressed.
+     *   Verified and Sold are history, not a queue state, so they are not in `all`.
+     *
+     * Bounced and Suppressed can overlap, so `all` can be less than the sum.
+     *
+     * @param int|null $windowDays Window for `verified` and `sold`, in days back from now. Null = all time.
+     * @return array{all: int, eligible: int, pending: int, bounced: int, suppressed: int, verified: int, sold: int}
+     * @throws CarValidationException If $windowDays is zero or negative
+     * @throws CarDatabaseException If the query fails
+     */
+    public function countVerificationSummary(?int $windowDays): array
+    {
+        self::assertValidWindowDays($windowDays, 'countVerificationSummary');
+
+        $eligibleFrom = self::verificationEligibleFromSql();
+        $pending      = self::verificationPendingWhereSql();
+        $suppressed   = self::verificationSuppressedWhereSql();
+        [$window, $windowParams] = self::windowSql('h.timestamp', $windowDays);
+
+        $carsFrom = 'FROM cars';
+        $histFrom = 'FROM cars_hist h INNER JOIN cars ON cars.id = h.car_id';
+
+        $this->db->query(
+            "SELECT
+                (SELECT COUNT(*) {$eligibleFrom}) AS eligible,
+                (SELECT COUNT(*) {$carsFrom} WHERE {$pending}) AS pending,
+                (SELECT COUNT(*) {$carsFrom} WHERE cars.email_bounced = 1) AS bounced,
+                (SELECT COUNT(*) {$carsFrom} WHERE {$suppressed}) AS suppressed,
+                (SELECT COUNT(DISTINCT h.car_id) {$histFrom} WHERE h.operation = ?{$window}) AS verified,
+                (SELECT COUNT(DISTINCT h.car_id) {$histFrom} WHERE h.operation = ?{$window}) AS sold,
+                (SELECT COUNT(*) {$carsFrom}
+                  WHERE cars.id IN (SELECT cars.id {$eligibleFrom})
+                     OR {$pending}
+                     OR cars.email_bounced = 1
+                     OR {$suppressed}) AS all_count",
+            array_merge(
+                [self::OPERATION_VERIFIED],
+                $windowParams,
+                [self::OPERATION_VERIFIED_SOLD],
+                $windowParams
+            )
         );
+
         if ($this->db->error()) {
             throw new CarDatabaseException(
-                "CarRepository::findVerificationEligible failed (limit={$limit} offset={$offset}): "
+                'CarRepository::countVerificationSummary failed (window=' . ($windowDays ?? 'all') . '): '
                 . $this->db->errorString()
             );
         }
+
+        $row = $this->db->first();
+        if (!is_object($row) || !isset($row->eligible)) {
+            // Scalar subqueries always give one row. No row means the query
+            // did not run as written, so do not show zero counts.
+            throw new CarDatabaseException('CarRepository::countVerificationSummary returned no count row');
+        }
+
+        return [
+            'all'        => (int) $row->all_count,
+            'eligible'   => (int) $row->eligible,
+            'pending'    => (int) $row->pending,
+            'bounced'    => (int) $row->bounced,
+            'suppressed' => (int) $row->suppressed,
+            'verified'   => (int) $row->verified,
+            'sold'       => (int) $row->sold,
+        ];
+    }
+
+    /**
+     * Find the cars for one verification queue pill
+     *
+     * Each status uses the same definition as its count in
+     * countVerificationSummary(). Order per status:
+     * - `pending`: longest-waiting first (`vericode_sent_at` ASC).
+     * - `eligible`: oldest-verified first, the same as findVerificationEligible().
+     * - `verified` / `sold`: most recent history row first.
+     * - `all` / `bounced` / `suppressed`: car id ASC.
+     *
+     * `$windowDays` applies only to `verified` and `sold`. The other statuses
+     * are current state. For `verified` / `sold`, each car shows once, with the
+     * time of its latest matching `cars_hist` row in `hist_timestamp`. For the
+     * other statuses `hist_timestamp` is null.
+     *
+     * The Eligible view keeps its preview-before-send through
+     * findVerificationEligible(). This method only lists the rows for the table.
+     *
+     * @param string $status One of {@see self::QUEUE_STATUSES}
+     * @param int|null $windowDays Window for `verified` and `sold`, in days back from now. Null = all time.
+     * @param int $limit Maximum rows to return (values below 1 return no rows)
+     * @return array<object{id: int|string, year: int|string|null, chassis: string, fname: ?string, lname: ?string,
+     *         user_id: int|string|null, vericode_sent_at: ?string, last_verified: ?string, solddate: ?string,
+     *         email_bounced: int|string, email_suppressed: int|string, profile_email_suppressed: int|string,
+     *         hist_timestamp: ?string}>
+     * @throws CarValidationException If $status is not in QUEUE_STATUSES, or $windowDays is zero or negative
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findVerificationQueue(string $status, ?int $windowDays, int $limit): array
+    {
+        if (!in_array($status, self::QUEUE_STATUSES, true)) {
+            throw new CarValidationException(
+                "CarRepository::findVerificationQueue received an unknown status '{$status}'. "
+                . 'Use one of: ' . implode(', ', self::QUEUE_STATUSES) . '.'
+            );
+        }
+        self::assertValidWindowDays($windowDays, 'findVerificationQueue');
+
+        // Interpolated, not bound, for the reason in findVerificationEligible().
+        $limit = max(0, $limit);
+
+        $columns = 'cars.id, cars.year, cars.chassis, cars.fname, cars.lname, cars.user_id,
+                    cars.vericode_sent_at, cars.last_verified, cars.solddate,
+                    cars.email_bounced, cars.email_suppressed,
+                    ' . self::profileEmailSuppressedSql() . ' AS profile_email_suppressed';
+        $carsFrom   = 'FROM cars';
+        $pending    = self::verificationPendingWhereSql();
+        $suppressed = self::verificationSuppressedWhereSql();
+        $params     = [];
+
+        switch ($status) {
+            case 'eligible':
+                $sql = "SELECT {$columns}, NULL AS hist_timestamp " . self::verificationEligibleFromSql()
+                    . ' ORDER BY cars.last_verified ASC';
+                break;
+            case 'pending':
+                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$pending}"
+                    . ' ORDER BY cars.vericode_sent_at ASC, cars.id ASC';
+                break;
+            case 'bounced':
+                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE cars.email_bounced = 1"
+                    . ' ORDER BY cars.id ASC';
+                break;
+            case 'suppressed':
+                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$suppressed}"
+                    . ' ORDER BY cars.id ASC';
+                break;
+            case 'verified':
+            case 'sold':
+                [$window, $params] = self::windowSql('timestamp', $windowDays);
+                array_unshift(
+                    $params,
+                    $status === 'verified' ? self::OPERATION_VERIFIED : self::OPERATION_VERIFIED_SOLD
+                );
+                $sql = "SELECT {$columns}, h.hist_timestamp
+                          FROM cars
+                          INNER JOIN (
+                                SELECT car_id, MAX(timestamp) AS hist_timestamp
+                                  FROM cars_hist
+                                 WHERE operation = ?{$window}
+                                 GROUP BY car_id
+                               ) h ON h.car_id = cars.id
+                         ORDER BY h.hist_timestamp DESC, cars.id DESC";
+                break;
+            default: // 'all'
+                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom}
+                         WHERE cars.id IN (SELECT cars.id " . self::verificationEligibleFromSql() . ")
+                            OR {$pending}
+                            OR cars.email_bounced = 1
+                            OR {$suppressed}
+                         ORDER BY cars.id ASC";
+                break;
+        }
+
+        $result = $this->db->query("{$sql} LIMIT {$limit}", $params);
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findVerificationQueue failed (status={$status} window="
+                . ($windowDays ?? 'all') . " limit={$limit}): " . $this->db->errorString()
+            );
+        }
+
+        return $result->results();
+    }
+
+    /**
+     * Find the most recent `VERIFIED` and `VERIFIED SOLD` history rows
+     *
+     * Reads the `cars_hist` row only, so the year, chassis and owner name are
+     * the values at the time of the event. A later merge or deletion of the
+     * car does not remove the row from this list. Newest first, with `id`
+     * as the tiebreak for equal timestamps.
+     *
+     * @param int|null $windowDays Days back from now, or null for all time
+     * @param int $limit Maximum rows to return (values below 1 return no rows)
+     * @return array<object{id: int|string, car_id: int|string, operation: string, timestamp: string,
+     *         year: int|string|null, chassis: string, fname: ?string, lname: ?string}>
+     * @throws CarValidationException If $windowDays is zero or negative
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findRecentVerificationActivity(?int $windowDays, int $limit = 20): array
+    {
+        self::assertValidWindowDays($windowDays, 'findRecentVerificationActivity');
+
+        // Interpolated, not bound, for the reason in findVerificationEligible().
+        $limit = max(0, $limit);
+        [$window, $windowParams] = self::windowSql('h.timestamp', $windowDays);
+
+        $result = $this->db->query(
+            "SELECT h.id, h.car_id, h.operation, h.timestamp, h.year, h.chassis, h.fname, h.lname
+               FROM cars_hist h
+              WHERE h.operation IN (?, ?){$window}
+              ORDER BY h.timestamp DESC, h.id DESC
+              LIMIT {$limit}",
+            array_merge([self::OPERATION_VERIFIED, self::OPERATION_VERIFIED_SOLD], $windowParams)
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::findRecentVerificationActivity failed (window=' . ($windowDays ?? 'all')
+                . " limit={$limit}): " . $this->db->errorString()
+            );
+        }
+
         return $result->results();
     }
 
@@ -1314,15 +1766,19 @@ class CarRepository
      * @return array<object{
      *   id: int|string, model: string, series: ?string, variant: ?string, year: int|string|null,
      *   email: ?string, email_bounced: int|string, email_bounced_address: ?string,
-     *   email_suppressed: int|string, owner_last_updated: string, last_verified: ?string
+     *   email_suppressed: int|string, profile_email_suppressed: int|string,
+     *   owner_last_updated: string, last_verified: ?string
      * }> One row per car owned by this user, ordered like the existing button list
      *    (model, year) for visual consistency with the row above it.
+     *    `profile_email_suppressed` is the owner's profile-level opt-out flag
+     *    ({@see self::profileEmailSuppressedSql()}), the same on every row.
      * @throws CarDatabaseException If the query fails
      */
     public function findVerificationStateByOwner(int $ownerId): array
     {
         $result = $this->db->query(
             'SELECT id, model, series, variant, year, email, email_bounced, email_bounced_address,
+                    ' . self::profileEmailSuppressedSql() . ' AS profile_email_suppressed,
                     email_suppressed, owner_last_updated, last_verified
                FROM cars
               WHERE user_id = ?
@@ -1548,6 +2004,251 @@ class CarRepository
         }
 
         return $latest;
+    }
+
+    /**
+     * Find the most recent er_email_events row of one of the given event types, for each of a set of car ids
+     *
+     * Same self-join technique as {@see findLatestEmailEventsByCarIds()}, but
+     * scoped to a given set of `event` values (e.g. `EmailEventApplier::SUPPRESSION_EVENTS`)
+     * instead of the latest event of any type. A caller that needs "was the
+     * suppression a Brevo complaint" cannot use the unfiltered method: the
+     * latest event for a car can be a later, unrelated event (`opened`,
+     * `click`, `delivered`) that is newer than the `spam`/`unsubscribed`
+     * event that actually caused the suppression, which would misattribute
+     * the cause. The event filter is in both the subquery and the outer
+     * query, for the same reason {@see findLatestHistoryOperationByCarIds()}
+     * filters both. No-ops on an empty `$carIds` or `$events` array.
+     *
+     * @param array<int> $carIds
+     * @param array<string> $events er_email_events.event values to match
+     * @return array<int, object{car_id: int|string, event: string, occurred_at: string, reason: ?string}>
+     *         Keyed by car_id. A car with no matching event is absent from
+     *         the returned array — callers must treat a missing key as "no
+     *         matching event," not as an error.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findLatestEmailEventsByCarIdsAndEvents(array $carIds, array $events): array
+    {
+        if ($carIds === [] || $events === []) {
+            return [];
+        }
+
+        $ids              = array_values($carIds);
+        $eventValues      = array_values($events);
+        $idPlaceholders   = implode(',', array_fill(0, count($ids), '?'));
+        $evtPlaceholders  = implode(',', array_fill(0, count($eventValues), '?'));
+
+        $result = $this->db->query(
+            "SELECT e.car_id, e.event, e.occurred_at, e.reason
+               FROM er_email_events e
+               JOIN (
+                     SELECT car_id, MAX(occurred_at) AS max_occurred_at
+                       FROM er_email_events
+                      WHERE car_id IN ({$idPlaceholders})
+                        AND event IN ({$evtPlaceholders})
+                      GROUP BY car_id
+                    ) latest
+                 ON latest.car_id = e.car_id
+                AND latest.max_occurred_at = e.occurred_at
+              WHERE e.car_id IN ({$idPlaceholders})
+                AND e.event IN ({$evtPlaceholders})",
+            array_merge($ids, $eventValues, $ids, $eventValues)
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::findLatestEmailEventsByCarIdsAndEvents failed for car_ids=' . implode(',', $ids)
+                . ' events=' . implode(',', $eventValues) . ': ' . $this->db->errorString()
+            );
+        }
+
+        $latest = [];
+        foreach ($result->results() as $row) {
+            $latest[(int) $row->car_id] = $row;
+        }
+
+        return $latest;
+    }
+
+    /**
+     * Find the most recent cars_hist row with one of the given operations, for each of a set of car ids
+     *
+     * Uses the same self-join on a `(car_id, MAX(timestamp))` aggregate as
+     * {@see findLatestEmailEventsByCarIds()}. The operation filter is in both
+     * the subquery and the outer query. Without the outer filter, a
+     * non-matching row with the same timestamp as the matching row could
+     * join. If two matching rows for one car share the maximum timestamp,
+     * the later one in the result wins the array key. Either row is equally
+     * "latest". No-ops on an empty `$carIds` or `$operations` array rather
+     * than issuing a query with an empty IN() list.
+     *
+     * @param array<int> $carIds
+     * @param array<string> $operations cars_hist.operation values to match (e.g. 'EMAIL SUPPRESSED')
+     * @return array<int, object{car_id: int|string, operation: string, timestamp: string}>
+     *         Keyed by car_id. A car with no matching row is absent from the
+     *         returned array. Callers must treat a missing key as "no matching
+     *         history", not as an error.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findLatestHistoryOperationByCarIds(array $carIds, array $operations): array
+    {
+        if ($carIds === [] || $operations === []) {
+            return [];
+        }
+
+        $ids            = array_values($carIds);
+        $ops            = array_values($operations);
+        $idPlaceholders = implode(',', array_fill(0, count($ids), '?'));
+        $opPlaceholders = implode(',', array_fill(0, count($ops), '?'));
+
+        $result = $this->db->query(
+            "SELECT h.car_id, h.operation, h.timestamp
+               FROM cars_hist h
+               JOIN (
+                     SELECT car_id, MAX(timestamp) AS max_timestamp
+                       FROM cars_hist
+                      WHERE car_id IN ({$idPlaceholders})
+                        AND operation IN ({$opPlaceholders})
+                      GROUP BY car_id
+                    ) latest
+                 ON latest.car_id = h.car_id
+                AND latest.max_timestamp = h.timestamp
+              WHERE h.car_id IN ({$idPlaceholders})
+                AND h.operation IN ({$opPlaceholders})",
+            array_merge($ids, $ops, $ids, $ops)
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::findLatestHistoryOperationByCarIds failed for car_ids=' . implode(',', $ids)
+                . ' operations=' . implode(',', $ops) . ': ' . $this->db->errorString()
+            );
+        }
+
+        $latest = [];
+        foreach ($result->results() as $row) {
+            $latest[(int) $row->car_id] = $row;
+        }
+
+        return $latest;
+    }
+
+    /**
+     * Find the er_email_events row that sets each car's Status chip
+     *
+     * This is the rule in the car-owner-verification FRD §10.10.
+     *
+     * 1. Scope to the current send cycle. The cycle starts at the car's
+     *    latest `sent` row and holds that row and every later event. A car
+     *    with no `sent` row (for example, only suppression-import rows) uses
+     *    all of its events.
+     * 2. In the cycle, a terminal event wins over all other events, at any
+     *    timestamp. Terminal events are EmailEventApplier::HARD_BOUNCE_EVENTS
+     *    and EmailEventApplier::SUPPRESSION_EVENTS. A message that was
+     *    delivered and then hard-bounced shows the bounce.
+     * 3. Then the latest row wins: `occurred_at DESC, id DESC`. The `id`
+     *    tiebreak stops the chip from changing between two rows that share
+     *    a timestamp.
+     *
+     * Why the cycle is not a `brevo_message_id` match: the `sent` row that
+     * CarVerificationSendService writes has a local id
+     * (`local:` + SHA-256 of the code), because the mailer returns no Brevo
+     * id. Webhook rows carry Brevo's own `message-id`. The two ids never
+     * match, and `cars` has no message-id column. The `sent` row's
+     * `occurred_at` is the send time (it equals `cars.vericode_sent_at`),
+     * and webhook times use the same server clock, so the time boundary
+     * gives the cycle.
+     *
+     * A webhook event matches cars by email, so it is recorded on every car
+     * of that owner. An event for one car's message can therefore show on
+     * another car of the same owner if that car's cycle is open.
+     *
+     * Ranking happens in SQL. PHP keeps the first row for each car. A cycle
+     * holds only a few rows, so this is less complex than a three-level
+     * MAX() self-join and needs no window function.
+     *
+     * @param array<int> $carIds Positive car ids. Duplicates are removed.
+     * @return array<int, object{car_id: int|string, event: string, occurred_at: string, reason: ?string,
+     *         brevo_message_id: string}>
+     *         Keyed by car_id. A car with no event in its cycle is absent.
+     *         Callers must treat a missing key as "no events", not as an error.
+     * @throws CarValidationException If an element of $carIds is not a positive int
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findLatestEmailEventPerCarWithPrecedence(array $carIds): array
+    {
+        $ids = self::normalizeCarIds($carIds, 'findLatestEmailEventPerCarWithPrecedence');
+        if ($ids === []) {
+            return [];
+        }
+
+        $terminal = array_values(array_unique(array_merge(
+            EmailEventApplier::HARD_BOUNCE_EVENTS,
+            EmailEventApplier::SUPPRESSION_EVENTS
+        )));
+
+        $idPlaceholders       = implode(',', array_fill(0, count($ids), '?'));
+        $terminalPlaceholders = implode(',', array_fill(0, count($terminal), '?'));
+
+        $result = $this->db->query(
+            "SELECT e.car_id, e.event, e.occurred_at, e.reason, e.brevo_message_id
+               FROM er_email_events e
+               LEFT JOIN (
+                     SELECT car_id, MAX(occurred_at) AS cycle_start
+                       FROM er_email_events
+                      WHERE car_id IN ({$idPlaceholders})
+                        AND event = ?
+                      GROUP BY car_id
+                    ) cycle
+                 ON cycle.car_id = e.car_id
+              WHERE e.car_id IN ({$idPlaceholders})
+                AND (cycle.cycle_start IS NULL OR e.occurred_at >= cycle.cycle_start)
+              ORDER BY e.car_id ASC,
+                       CASE WHEN e.event IN ({$terminalPlaceholders}) THEN 1 ELSE 0 END DESC,
+                       e.occurred_at DESC,
+                       e.id DESC",
+            array_merge($ids, [self::EVENT_SENT], $ids, $terminal)
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::findLatestEmailEventPerCarWithPrecedence failed for car_ids=' . implode(',', $ids)
+                . ': ' . $this->db->errorString()
+            );
+        }
+
+        $chosen = [];
+        foreach ($result->results() as $row) {
+            $carId = (int) $row->car_id;
+            if (!isset($chosen[$carId])) {
+                $chosen[$carId] = $row;
+            }
+        }
+
+        return $chosen;
+    }
+
+    /**
+     * Check, dedupe and re-index a list of car ids before they are bound
+     *
+     * @param array<mixed> $carIds Values to check
+     * @param string $method Calling method name, for the error message
+     * @return list<int> Unique positive car ids
+     * @throws CarValidationException If an element is not an int, or is less than 1
+     */
+    private static function normalizeCarIds(array $carIds, string $method): array
+    {
+        foreach ($carIds as $carId) {
+            if (!is_int($carId) || $carId < 1) {
+                throw new CarValidationException(
+                    "CarRepository::{$method} received an invalid car id of type " . get_debug_type($carId)
+                    . '. Each car id must be a positive int.'
+                );
+            }
+        }
+
+        return array_values(array_unique($carIds));
     }
 
     /**

@@ -9,27 +9,9 @@ use ElanRegistry\Owner;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration regression test for Owner::create()/update()'s transaction
- * integrity (#1505 PR B).
- *
- * Before this fix, create()/update() wrapped their writes in raw
- * `$this->_db->query("START TRANSACTION")` / "COMMIT" / "ROLLBACK" string
- * calls inside `catch (Exception $e)` blocks. A PHP-level \Error or
- * \TypeError thrown mid-transaction — not a plain \Exception — would skip
- * the catch entirely, leaving any partial writes uncommitted-but-not-rolled-
- * back. These tests inject a DatabaseInterface stub whose insert()/update()
- * throws \TypeError instead of returning false, and assert the real PDO
- * transaction (via Owner's beginTransaction()/commit()/rollback() wrappers,
- * mirroring CarRepository's pattern) is rolled back — something the old
- * `catch (Exception $e)` could not guarantee.
- *
- * Mirrors CarCreateRepositoryFailureTest / CarUpdateRepositoryFailureTest's
- * pattern: real class, stubbed collaborator, DB-backed assertions. Unlike
- * those tests (which stub Car's CarRepository), Owner has no swappable
- * repository — DatabaseInterface is injected directly via the constructor
- * — so this test stubs DatabaseInterface itself rather than using Reflection.
- *
- * @see usersc/classes/Owner.php Owner::create(), Owner::update()
+ * #1505: Owner::create()/update() must roll back the real transaction when a
+ * PHP \Error (not an \Exception) is thrown mid-transaction. The old
+ * `catch (Exception $e)` around raw SQL missed it.
  */
 #[Group('integration')]
 #[Group('owner')]
@@ -42,13 +24,8 @@ final class OwnerCreateUpdateTransactionRollbackTest extends IntegrationTestCase
     }
 
     /**
-     * A DatabaseInterface proxy backed by the real connection for
-     * beginTransaction()/commit()/rollBack()/inTransaction() (and all other
-     * methods), but with insert()/update() overridden to throw \TypeError —
-     * simulating a PHP-level error (not a plain \Exception) mid-transaction.
-     *
-     * DatabaseInterface has no concrete base class to inherit real behavior
-     * from, so every method is proxied to the real connection explicitly.
+     * Proxies the real connection, but insert()/update() throw \TypeError.
+     * DatabaseInterface has no base class, so every method is proxied.
      */
     private function dbThrowingTypeErrorOnInsert(): DatabaseInterface
     {
@@ -126,13 +103,7 @@ final class OwnerCreateUpdateTransactionRollbackTest extends IntegrationTestCase
         };
     }
 
-    /**
-     * Core assertion: a \TypeError thrown mid-transaction during create()'s
-     * user insert triggers a real rollback (inTransaction() is false
-     * afterward), proving the \Throwable catch + checked
-     * beginTransaction()/commit()/rollback() wrappers work where the old
-     * `catch (Exception $e)` around raw SQL strings could not.
-     */
+    /** A \TypeError during create()'s user insert must roll back the transaction. */
     public function testCreateRollsBackOnMidTransactionTypeError(): void
     {
         $db = $this->dbThrowingTypeErrorOnInsert();
@@ -154,10 +125,7 @@ final class OwnerCreateUpdateTransactionRollbackTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * Core assertion: a \TypeError thrown mid-transaction during update()'s
-     * user update triggers a real rollback.
-     */
+    /** A \TypeError during update()'s user update must roll back the transaction. */
     public function testUpdateRollsBackOnMidTransactionTypeError(): void
     {
         $userId = $this->createTestUser();

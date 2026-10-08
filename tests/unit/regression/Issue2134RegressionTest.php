@@ -7,29 +7,13 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Regression test for Issue #2134: every PHPUnit config must set its own
- * memory_limit, and nothing may set it anywhere else.
- *
- * With no explicit limit, a run inherited the ambient php.ini. At the host
- * CLI's 128M default the unit suite (one process, peak about 128MB) died
- * mid-run with "Premature end of PHP process" and no summary line, which
- * looks like nothing at all to the review workflow's summary-line check.
- *
- * PHPUnit applies `<php><ini>` values with ini_set(), so the XML value
- * overrides php.ini and any `php -d memory_limit`. That makes the configs
- * the single source of truth, and this test pins it:
- *
- * - every phpunit*.xml in the project root declares exactly one
- *   memory_limit, found by glob so a new config is covered automatically;
- * - they all agree, and the value leaves real headroom (not unlimited);
- * - no composer script or git hook passes its own `-d memory_limit` to
- *   PHPUnit, which would be inert today but a second place to change.
- *
+ * Issue #2134: with no explicit memory_limit, the unit suite inherited the
+ * host's 128M and died with no summary line. PHPUnit applies <php><ini> with
+ * ini_set(), so the phpunit*.xml configs are the single source of truth.
  * See tests/README.md, "Suite Dies with ...".
  *
  * @issue 2134
  * @link https://github.com/elan-registry/registry/issues/2134
- * @category regression
  */
 #[Group('regression')]
 final class Issue2134RegressionTest extends TestCase
@@ -42,7 +26,6 @@ final class Issue2134RegressionTest extends TestCase
 
     private static function projectRoot(): string
     {
-        // tests/unit/regression/ is three levels below the project root
         return dirname(__DIR__, 3);
     }
 

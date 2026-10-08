@@ -8,22 +8,9 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Regression coverage for Issue #1413.
- *
- * robots.txt previously gave every named AI crawler a uniform, unconditional
- * `Disallow: /` — nothing to regress. Issue #1413 replaced that with a single
- * shared `User-agent` group carrying real Allow/Disallow precedence logic
- * (longest-prefix-match wins, per RFC 9309 / Google's documented algorithm),
- * so the group's claims match what /llms.txt tells AI crawlers they may
- * index. This is the first order-dependent policy robots.txt has ever had in
- * this repo, so unlike the old file, a future edit (reordered lines, a typo
- * in one of the path overrides, a broadened Allow without a matching
- * re-Disallow) can now silently change what's actually reachable.
- *
- * This test reads the raw file via file_get_contents() (never requires or
- * executes it) and reimplements just enough of the longest-prefix-match
- * algorithm to check policy outcomes for a representative bot — it verifies
- * the *policy*, not that any given crawler actually honors robots.txt.
+ * #1413: the AI-bot group's Allow/Disallow lines depend on order
+ * (longest-prefix match), so an edit can silently change what is reachable.
+ * This checks the policy, not whether crawlers obey it.
  */
 #[Group('system')]
 class RobotsTxtPolicyTest extends TestCase
@@ -33,7 +20,7 @@ class RobotsTxtPolicyTest extends TestCase
     private const LLMS_FILE = 'llms.txt';
     private const LLMS_TEST_FILE = 'llms-test.txt';
 
-    /** A crawler with its own dedicated group in the AI-bot policy — representative of all 17. */
+    /** Represents every crawler in the AI-bot group. */
     private const AI_BOT = 'GPTBot';
 
     private string $rootDir = '';
@@ -58,24 +45,19 @@ class RobotsTxtPolicyTest extends TestCase
     public static function pathAllowanceProvider(): array
     {
         return [
-            // Allowed: public car listings and docs — what /llms.txt claims AI crawlers may index.
+            // Allowed: what /llms.txt says AI crawlers may index.
             'car detail page' => ['/app/owner/cars/details.php?car_id=1', true],
             'docs hub' => ['/docs/', true],
             'nested reference doc' => ['/docs/reference/paint-colors.php', true],
             'car histories' => ['/docs/stories/', true],
-            // Blocked: the override-wins case — most likely to silently regress.
+            // Blocked by an override: the case most likely to regress.
             'login-gated edit page' => ['/app/owner/cars/edit.php', false],
             'owner contact form' => ['/app/owner/contact/', false],
-            // Blocked: unrelated paths fall through to the catch-all Disallow: /.
             'admin area' => ['/app/admin/', false],
             'api endpoint' => ['/app/api/cars/list.php', false],
         ];
     }
 
-    /**
-     * Verifies the shared AI-bot group's Allow/Disallow precedence for a
-     * representative crawler against the paths /llms.txt claims are open.
-     */
     #[DataProvider('pathAllowanceProvider')]
     public function testAiBotPathAllowance(string $path, bool $expectedAllowed): void
     {
@@ -93,14 +75,8 @@ class RobotsTxtPolicyTest extends TestCase
         );
     }
 
-    /**
-     * The new AI-bot group must not alter the default (*) group's existing
-     * exclusions for non-AI crawlers.
-     */
     public function testDefaultUserAgentGroupIsUnchanged(): void
     {
-        // The AI-bot policy change must not touch the default (*) group's
-        // existing exclusions for non-AI crawlers.
         $this->assertFalse($this->isAllowed('SomeSearchEngine', '/users/'));
         $this->assertFalse($this->isAllowed('SomeSearchEngine', '/app/admin/'));
         $this->assertFalse($this->isAllowed('SomeSearchEngine', '/app/owner/cars/edit.php'));
@@ -108,13 +84,8 @@ class RobotsTxtPolicyTest extends TestCase
     }
 
     /**
-     * Every static page SitemapService (#1373) advertises to crawlers must
-     * actually be reachable per robots.txt's default (search-engine) group —
-     * otherwise Google Search Console reports "Submitted URL blocked by
-     * robots.txt", the exact class of noise this milestone (#1373 + #1413)
-     * set out to eliminate. Reads SitemapService::STATIC_PAGES via
-     * reflection (rather than duplicating the path list here) so this test
-     * can't silently drift from the actual sitemap content.
+     * A sitemap URL blocked by robots.txt gives a Search Console error.
+     * STATIC_PAGES is read by reflection so the list cannot drift.
      */
     public function testSitemapStaticPagesAreCrawlable(): void
     {
@@ -133,15 +104,8 @@ class RobotsTxtPolicyTest extends TestCase
     }
 
     /**
-     * llms.txt (#1413) is designed to be a self-contained summary an LLM
-     * doesn't need to cross-reference against robots.txt — so its Allow/
-     * Disallow claims must actually be true of the AI-bot group's enforced
-     * policy, not just happen to look similar today. This is a semantic
-     * consistency check, not exact-set equality: llms.txt may legitimately
-     * list a path (e.g. `/docs/stories/`) that robots.txt covers only via a
-     * broader Allow rule (`/docs/`) — what matters is that every path
-     * llms.txt claims is open really is allowed, and every path it claims
-     * is closed really is blocked, per the actual enforced robots.txt policy.
+     * llms.txt must not contradict the enforced policy. Not set equality:
+     * llms.txt may list a path that a broader robots.txt rule covers.
      */
     public function testLlmsTxtAgreesWithRobotsTxtAiBotPolicy(): void
     {
@@ -167,12 +131,8 @@ class RobotsTxtPolicyTest extends TestCase
     }
 
     /**
-     * scripts/server-hooks/post-receive swaps these files over the
-     * production robots.txt/llms.txt on every Test-environment deploy —
-     * test.elanregistry.org has no basic auth and relies entirely on this
-     * swap to stay unindexed. If either tracked source file is ever
-     * deleted or renamed, that swap silently fails (robots.txt) or halts
-     * the deploy (llms.txt) with no CI signal today.
+     * post-receive swaps these in on Test deploys. Test has no basic auth, so
+     * without them it gets indexed.
      */
     public function testTestEnvironmentLockdownFilesExist(): void
     {
@@ -187,19 +147,9 @@ class RobotsTxtPolicyTest extends TestCase
     }
 
     /**
-     * Longest-prefix-match wins (RFC 9309 §2.2.2): among all Allow/Disallow
-     * rules in the bot's matching group whose path prefixes the URL, the
-     * longest one applies. A crawler with no dedicated group falls back to
-     * `User-agent: *`. Absent any matching rule, the path is allowed.
-     *
-     * Simplification: on an exact tie in prefix length, this keeps whichever
-     * rule appears first in the file, rather than Google's documented
-     * "least-restrictive-wins" tie-break. No path/rule combination in the
-     * current robots.txt actually ties, so this doesn't affect the
-     * assertions above — but it means this helper is not a full RFC 9309
-     * tie-break implementation, and a future robots.txt edit that introduces
-     * an equal-length Allow/Disallow pair could pass here while behaving
-     * differently for a real crawler.
+     * Longest prefix wins (RFC 9309 §2.2.2); no dedicated group falls back to `*`.
+     * On a tie the first rule wins, not Google's least-restrictive rule. No
+     * current rule pair ties, but a new equal-length pair could.
      */
     private function isAllowed(string $userAgent, string $path): bool
     {
@@ -254,8 +204,7 @@ class RobotsTxtPolicyTest extends TestCase
             }
 
             if (preg_match('/^User-agent:\s*(.+)$/i', $line, $matches) === 1) {
-                // A User-agent line after directives have already been seen for the
-                // current group starts a NEW group (RFC 9309 §2.2.1).
+                // A User-agent line after rules starts a new group (RFC 9309 §2.2.1).
                 if ($currentRules !== []) {
                     $groups[] = ['agents' => $pendingAgents, 'rules' => $currentRules];
                     $pendingAgents = [];
@@ -276,13 +225,7 @@ class RobotsTxtPolicyTest extends TestCase
         return $groups;
     }
 
-    /**
-     * Parses llms.txt's `## Allow` / `## Disallow` markdown sections into
-     * flat path lists. Each entry is a `- /path/ — description` bullet;
-     * only the path (up to the first whitespace or em-dash) is extracted.
-     *
-     * @return array{allow: list<string>, disallow: list<string>}
-     */
+    /** @return array{allow: list<string>, disallow: list<string>} */
     private function parseLlmsTxt(string $content): array
     {
         $allow = [];
@@ -297,8 +240,6 @@ class RobotsTxtPolicyTest extends TestCase
                 continue;
             }
             if ($line !== '' && str_starts_with($line, '#')) {
-                // A different heading (e.g. a new ## section, or the H1 title) ends
-                // the current Allow/Disallow list.
                 $currentSection = null;
                 continue;
             }

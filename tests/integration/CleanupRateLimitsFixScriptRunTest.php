@@ -7,39 +7,10 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration test for #1775: script #25
- * (`app/admin/scripts/maintenance/25-Cleanup-Rate-Limits.php`) previously never
- * wrote to `fix_script_runs` at all, so the "Last Run" column on the
- * maintenance dashboard always showed "Never" for it regardless of how many
- * times it had actually run. The fix added a single
- * `admin_script_record_completion(__FILE__, (int) $user->data()->id)` call
- * inside the script's existing try block, immediately after
- * `(new \RateLimit())->cleanup(24)` succeeds and its result is logged, before
- * the success `<div>` is rendered — see the plan at
- * docs/plans/issue-1776-fix-page-permissions-last-run.md.
- *
- * What this test does and does not prove: script #25's cleanup/record logic
- * is plain inline PHP directly inside the page — it is not gated behind its
- * own AJAX action or extracted into a separately-callable function, and it is
- * only reached once `admin_script_exec_requested()` (a POST + CSRF + isAdmin()
- * check in app/admin/includes/fix-script-core.php) returns true. There is no
- * existing precedent anywhere in tests/integration/ for executing a full
- * app/admin/scripts/ page file directly (confirmed via grep for
- * "require.*app/admin" across the suite — no hits), and simulating the
- * page's POST/CSRF/session/template-rendering machinery just to reach three
- * lines of business logic would add a lot of fragile scaffolding for no
- * extra assurance. This test instead reproduces the script's exact sequence
- * of calls — `(new \RateLimit())->cleanup(24)` followed by
- * `admin_script_record_completion(__FILE__, $userId)` — directly, using a
- * real `us_rate_limits` table seeded with rows older than the 24-hour cutoff
- * and a real `fix_script_runs` table. It proves that this call sequence, with
- * a genuine expired-row cleanup in between, results in exactly one
- * `fix_script_runs` row with the correct `script_name` and a fresh
- * `completed_at`. It does NOT prove that the page's own gating condition
- * (`$is_exec`/`admin_script_exec_requested()`) is wired correctly, or that
- * the HTML actually renders — those are template/routing concerns outside
- * this test's scope, not part of the #1775 bug (which was purely "the insert
- * was never written").
+ * #1775: script #25 (25-Cleanup-Rate-Limits.php) records a fix_script_runs
+ * row. The logic is inline in a gated page, so the test runs its call
+ * sequence directly: cleanup(24), then admin_script_record_completion().
+ * The page gating and HTML are not covered.
  */
 #[Group('integration')]
 #[Group('database')]
@@ -72,10 +43,7 @@ final class CleanupRateLimitsFixScriptRunTest extends IntegrationTestCase
                 $this->db->query('DELETE FROM fix_script_runs WHERE id = ?', [$id]);
             }
             foreach ($this->seededRateLimitIds as $id) {
-                // Defensive: cleanup() should already have deleted these (they're
-                // seeded older than its 24-hour cutoff), but a future change to
-                // the cutoff or a failed cleanup call must not leak rows into
-                // later tests either way.
+                // cleanup() should delete these, but a cutoff change must not leak rows.
                 $this->db->query('DELETE FROM us_rate_limits WHERE id = ?', [$id]);
             }
         }
@@ -83,12 +51,6 @@ final class CleanupRateLimitsFixScriptRunTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    /**
-     * Reproduces script #25's exact call sequence (cleanup, then record
-     * completion) and confirms exactly one fix_script_runs row appears with
-     * the correct script_name and a fresh completed_at — matching the
-     * issue's own acceptance criteria wording ("exactly one row").
-     */
     public function testCompletedCleanupRunInsertsExactlyOneFixScriptRunsRow(): void
     {
         $this->seedExpiredRateLimitRow();
@@ -96,10 +58,7 @@ final class CleanupRateLimitsFixScriptRunTest extends IntegrationTestCase
 
         $beforeCount = $this->countFixScriptRunsRows();
 
-        // Mirrors 25-Cleanup-Rate-Limits.php's try block exactly:
-        // $removed = (new \RateLimit())->cleanup(24);
-        // logger(...);
-        // admin_script_record_completion(__FILE__, (int) $user->data()->id);
+        // Same sequence as the script's try block.
         $removed = (new \RateLimit())->cleanup(24);
         $this->assertGreaterThanOrEqual(
             2,
@@ -149,13 +108,7 @@ final class CleanupRateLimitsFixScriptRunTest extends IntegrationTestCase
         );
     }
 
-    /**
-     * Confirms a fresh, empty us_rate_limits state — no rows to remove — still
-     * counts as a successful cleanup run (RateLimit::cleanup() returns 0, not
-     * an error, per users/classes/RateLimit.php:276-286) and still records a
-     * completion row, since the script's try block has no branch that skips
-     * the record call based on $removed being zero.
-     */
+    /** Zero rows removed is still a successful run and still records completion. */
     public function testCleanupWithNoExpiredRowsStillRecordsCompletion(): void
     {
         $beforeCount = $this->countFixScriptRunsRows();
@@ -183,10 +136,6 @@ final class CleanupRateLimitsFixScriptRunTest extends IntegrationTestCase
         $this->insertedFixScriptRunIds[] = (int) $rows[0]['id'];
     }
 
-    /**
-     * Seeds one us_rate_limits row with attempt_time older than the script's
-     * 24-hour cutoff, so RateLimit::cleanup(24) has real expired data to remove.
-     */
     private function seedExpiredRateLimitRow(): void
     {
         $identifier = 'test:' . uniqid('fix-script-run-test-', true);

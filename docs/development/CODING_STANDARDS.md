@@ -173,9 +173,9 @@ See [CLAUDE.md](../../CLAUDE.md) for directory structure.
 ## PHPStan Baseline Hygiene
 
 The project runs a single `phpstan.neon` config at level 5. It analyses an
-explicit list of project-owned paths (see the `paths` block in the config);
-`users/` upstream and `tests/` are out of scope. Pre-existing errors are
-captured in `phpstan-baseline.neon`.
+explicit list of project-owned paths in the `paths` block of the config.
+Upstream `users/` is out of scope. `tests/` and `tools/phpstan/` are in scope.
+`phpstan-baseline.neon` holds the pre-existing errors.
 
 **When you touch any project-owned PHP file:** run PHPStan on it and fix
 **all** errors it reports. The baseline silently suppresses pre-existing errors,
@@ -201,6 +201,48 @@ file, not a substitute for what the hook does at commit time.
 
 The goal is to reduce the baseline over time. Target: below 100 entries → upgrade
 to level 8 (nullable property/method access checks).
+
+## Project PHPStan Rules
+
+`phpstan.neon` registers custom rules from `tools/phpstan/Rules/`. They run in
+every PHPStan run (CI, pre-commit hook, `composer check:php`). They check every
+file in the `paths` block of `phpstan.neon`, including `tests/`, and no other
+file. PHPStan does not analyse upstream `users/` (apart from `users/cron/`) or
+most of `usersc/plugins/`, `usersc/templates/`, and `usersc/widgets/`. So
+`elanRegistry.serializeCall` and the `\DB` type rule do not check those files.
+Do not add a baseline entry or an ignore for one of these errors. Fix the code.
+
+| Identifier | Rule |
+| --- | --- |
+| `elanRegistry.logCategoryLiteral` | The category argument of `logger()` and `withLogging()` must not be a string literal. Use a `LogCategories::LOG_CATEGORY_*` constant. |
+| `elanRegistry.serializeCall` | Do not call `serialize()` or `unserialize()`. Use `json_encode()` and `json_decode()`. |
+| `elanRegistry.concreteDbType` | In `app/` and `usersc/`, do not type a parameter or property as `\DB`. Use `ElanRegistry\DatabaseInterface`. Only `DbAdapter` may use `\DB`. |
+| `elanRegistry.globalDbDouble` | Do not declare a global `DB` or `QueryResult` class. Build a small `DatabaseInterface` test double. |
+| `elanRegistry.rawDomainLookup` | The action files in the `files:` list of the rule must not contain `FROM cars` or `FROM users`. Use `new Car()` or `new Owner()`. An `ignoreErrors` entry with `count: 1` permits the one #1014 IDOR query in `app/api/contact/send-owner-email.php`. `reportUnmatchedIgnoredErrors` is on, so PHPStan fails if that file gets a second raw lookup or loses the one lookup. |
+| `elanRegistry.pageMetadataMissing`, `elanRegistry.pageMetadataAfterInit`, `elanRegistry.pageMetadataNoInit` | A page must assign `$pageTitle` and `$pageDescription` before `require_once '.../users/init.php'`. A page is a file under `app/`, `docs/`, or `error/` that calls `securePage()`. `app/api/`, `app/admin/includes/`, and `app/admin/scripts/` are not pages. |
+| `elanRegistry.pageMetadataStaleExemption` | A page on the `exemptPages` list in `phpstan.neon` now sets `$pageTitle`. Remove it from the list. |
+
+A call to a `\DB`-only method on a `DatabaseInterface` receiver needs no custom
+rule. PHPStan reports it as `method.notFound`.
+
+To add a rule:
+
+1. Put the class in `tools/phpstan/Rules/` (namespace
+   `ElanRegistry\PHPStan\Rules`).
+2. Register it under `services:` in `phpstan.neon` with the
+   `phpstan.rules.rule` tag.
+3. Add a `RuleTestCase` in `tests/unit/phpstan/` with fixtures in
+   `tests/unit/phpstan/fixtures/`. `phpstan.neon` excludes the fixtures from
+   analysis because they hold deliberate violations.
+
+Run the rule tests:
+
+```bash
+vendor/bin/phpunit -c phpunit-unit.xml tests/unit/phpstan
+```
+
+Prefer a PHPStan rule to a test that scans source text. A rule checks every
+analysed file and a text scan checks only a fixed list.
 
 ---
 
@@ -248,12 +290,12 @@ can correctly carry a `bug` label, and a `fix:`-preambled issue rarely needs
 
 ### Where this is enforced
 
-- `/new-issue` always drafts a fully-scoped issue (acceptance criteria +
-  technical notes) before creating it, so its titles use a scoped type
-  (`fix:`, `feat:`, `test:`, etc.) — never bare `bug:`.
-- `/found` creates issues from a one-line description with no acceptance
-  criteria, so its titles use `bug:` (or the closest matching type for a
-  non-defect finding) and keep the `triage` label until someone scopes it.
+- `/new-issue` and `/found` capture issues without acceptance criteria, so
+  their titles use `bug:` for a defect (or the closest matching type for a
+  non-defect finding) and keep the `triage` label.
+- `/plan-milestone` writes the acceptance criteria when it selects an issue
+  for a milestone. Give the title its scoped type (`fix:`, `feat:`, `test:`,
+  etc.) at that point.
 
 ---
 

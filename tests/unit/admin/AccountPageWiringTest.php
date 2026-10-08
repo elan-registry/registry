@@ -140,6 +140,28 @@ final class AccountPageWiringTest extends TestCase
     }
 
     // =========================================================================
+    // account.php — Uncloak CSRF check (source inspection)
+    // =========================================================================
+
+    /**
+     * The Uncloak form (tokenHere()) emits a hidden field named "csrf". The
+     * POST handler must read that same field name. Reading any other name
+     * (e.g. "token") makes Token::check() always receive null, so the check
+     * always fails and the button silently does nothing (regression test
+     * for the fix: it previously read Input::get('token')).
+     */
+    public function testUncloakHandlerChecksTheCsrfFieldTokenHereEmits(): void
+    {
+        $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+
+        $this->assertMatchesRegularExpression(
+            '/if\s*\(\s*!empty\(\$_POST\[\'uncloak\'\]\)\s*&&\s*Token::check\(\\\\?Input::get\(\'csrf\'\)\)\s*\)\s*{/',
+            $content,
+            'The uncloak POST handler must check Token::check(Input::get(\'csrf\')), matching the field name tokenHere() emits'
+        );
+    }
+
+    // =========================================================================
     // account.php — status badges in the hero <h3> (#1900, source inspection)
     // =========================================================================
 

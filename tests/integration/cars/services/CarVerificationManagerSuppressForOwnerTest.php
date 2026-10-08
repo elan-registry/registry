@@ -11,17 +11,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB integration tests for CarVerificationManager::setSuppressedForOwner()
- * (#1883 — one-click opt-out fan-out).
- *
- * Unit coverage (tests/unit/cars/services/CarVerificationManagerTest.php)
- * exercises the method against a mocked CarRepository; this file proves the
- * same behavior against a real database: every one of an owner's cars ends
- * up suppressed, a different owner's car is untouched, a re-run is a no-op,
- * and a genuine database failure propagates CarDatabaseException.
- *
- * @see usersc/classes/Car/CarVerificationManager.php
- * @see https://github.com/elan-registry/registry/issues/1883
+ * #1883: CarVerificationManager::setSuppressedForOwner() (one-click opt-out) against real SQL.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -47,11 +37,7 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
     }
 
     /**
-     * The owner-level counterpart to emailSuppressed() (#1883).
-     *
-     * @return int|null 0 or 1 as stored, or null when the owner has no
-     *                  profiles row (a state this test file creates
-     *                  deliberately in one case).
+     * @return int|null 0 or 1 as stored, or null when the owner has no profiles row
      */
     private function profileEmailSuppressed(int $ownerId): ?int
     {
@@ -93,10 +79,7 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
         );
     }
 
-    /**
-     * #1929: opting out confirms nothing about the car, so the opt-out
-     * fan-out must leave owner_last_updated exactly as it was.
-     */
+    /** #1929: opting out confirms nothing about the car. */
     #[Group('fast')]
     public function testOptOutDoesNotChangeOwnerLastUpdated(): void
     {
@@ -160,10 +143,7 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
     }
 
     /**
-     * The profile flag is written independently of the per-car fan-out: an
-     * owner whose cars are already suppressed (e.g. by the Brevo path, before
-     * this column existed) must still have the opt-out recorded on their
-     * profile.
+     * Cars may already be suppressed by the Brevo path; the profile flag is written independently.
      */
     #[Group('fast')]
     public function testProfileFlagIsSetEvenWhenEveryCarWasAlreadySuppressed(): void
@@ -185,14 +165,8 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
     }
 
     /**
-     * setSuppressedForOwner() fans out to EVERY car the owner has, sold cars
-     * included, per #1883's acceptance criteria ("syncs email_suppressed = 1
-     * to every car they have"). A sold car is never a verification-email
-     * candidate (findVerificationEligible() excludes solddate IS NOT NULL),
-     * so this has no effect on future sends for that car — but the fan-out
-     * and its EMAIL SUPPRESSED cars_hist audit row must still cover it,
-     * matching what the confirmation page's car count (built from the same
-     * findByOwner()) promises the owner.
+     * #1883: every car, sold included, so the audit rows match the car count the
+     * confirmation page shows.
      */
     #[Group('fast')]
     public function testSoldCarIsSuppressedAlongsideUnsoldCars(): void
@@ -222,12 +196,6 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
         );
     }
 
-    /**
-     * An owner whose only car is sold gets that car suppressed too (see
-     * testSoldCarIsSuppressedAlongsideUnsoldCars() above for why) — an empty
-     * $changed here would mean the fan-out silently skipped the owner's one
-     * car, which is not the intended behavior.
-     */
     #[Group('fast')]
     public function testOwnerWithOnlySoldCarStillGetsItSuppressed(): void
     {
@@ -246,13 +214,8 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
     }
 
     /**
-     * An owner with no profiles row has nowhere to record the opt-out. The
-     * operation must fail loudly BEFORE any car is touched, rather than
-     * suppressing cars and silently losing the owner-level decision.
-     *
-     * The schema permits this state (users and profiles are not enforced 1:1)
-     * even though no real car owner is in it, so this is the one test here
-     * that deliberately omits createTestUser()'s $withProfile flag.
+     * Must fail before touching a car, or the owner-level decision is silently lost.
+     * The schema allows a user without a profiles row.
      */
     #[Group('fast')]
     public function testOwnerWithNoProfilesRowThrowsAndSuppressesNoCar(): void
@@ -276,16 +239,8 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
     }
 
     /**
-     * A DatabaseInterface proxy backed by the real connection, except that
-     * update('cars', ...) always reports failure — forcing
-     * CarRepository::updateCar() (via updateEmailSuppressed()) to return
-     * false, which CarVerificationManager::setSuppressed()'s persist()
-     * helper turns into a thrown CarDatabaseException, exactly as a genuine
-     * deadlock or constraint violation would. Every other call delegates to
-     * the real connection unchanged. Mirrors
-     * SyncOwnerEmailOnVerifyHookIntegrationTest::dbFailingUpdateCarForOwner(),
-     * adapted to intercept update() rather than query() since
-     * CarRepository::updateCar() calls $this->db->update(), not query().
+     * Real connection, except update('cars', ...) reports failure.
+     * Intercepts update() because CarRepository::updateCar() does not use query().
      */
     private function dbFailingUpdateCar(): DatabaseInterface
     {
@@ -398,20 +353,13 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
         try {
             $failingManager->setSuppressedForOwner($ownerId);
         } finally {
-            // Confirm the simulated failure never actually reached the real
-            // row — the proxy intercepted the UPDATE before it touched the
-            // real connection.
             $this->assertSame(
                 0,
                 $this->emailSuppressed($carId),
                 'A simulated database failure must leave the car unsuppressed'
             );
-            // The profile write runs before the fan-out and is not intercepted
-            // by this proxy (it goes through query(), not update()), so it has
-            // already committed by the time the car UPDATE fails. Asserted
-            // rather than left implicit: this method runs no transaction of its
-            // own — the caller wraps it — so the partial write is expected here
-            // and is rolled back one level up, not by this method.
+            // The profile write is not intercepted and commits first. The method has
+            // no transaction of its own; the caller rolls back.
             $this->assertSame(
                 1,
                 $this->profileEmailSuppressed($ownerId),

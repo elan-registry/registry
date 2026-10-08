@@ -40,6 +40,7 @@ eslint.config.mjs
 phpstan.neon
 phpstan-baseline.neon
 phpstan-bootstrap.php
+tools/
 .markdownlint.json
 .markdownlintignore
 .semgrepignore

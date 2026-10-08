@@ -19,8 +19,7 @@ use ElanRegistry\Cron\BrevoEventReconciliationClient;
  * call): it takes a DatabaseInterface only to read the Brevo API key, and
  * nothing in the overridden method path touches it.
  *
- * Deliberately a *named* class rather than an anonymous one, per the
- * `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2

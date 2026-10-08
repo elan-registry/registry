@@ -26,19 +26,10 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
-/**
- * Test cases for the ElanRegistry exception hierarchy
- *
- * Verifies that all exceptions properly extend ElanRegistryException
- * and implement required methods correctly.
- */
 #[Group('unit')]
 #[Group('exceptions')]
 class ExceptionHierarchyTest extends TestCase
 {
-    /**
-     * All exception classes that should extend ElanRegistryException
-     */
     private const EXCEPTION_CLASSES = [
         AdminContactException::class,
         AdminOperationException::class,
@@ -60,9 +51,6 @@ class ExceptionHierarchyTest extends TestCase
         LocationServiceException::class,
     ];
 
-    /**
-     * Test that ElanRegistryException is abstract and cannot be instantiated
-     */
     public function testBaseClassIsAbstract(): void
     {
         $reflection = new ReflectionClass(ElanRegistryException::class);
@@ -72,11 +60,6 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that all exceptions extend ElanRegistryException
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('exceptionClassProvider')]
     public function testExceptionExtendsBase(string $className): void
     {
@@ -91,11 +74,6 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that all exceptions have required methods
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('exceptionClassProvider')]
     public function testExceptionHasRequiredMethods(string $className): void
     {
@@ -117,11 +95,6 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that HTTP status codes are valid
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('exceptionClassProvider')]
     public function testHttpStatusCodeIsValid(string $className): void
     {
@@ -141,11 +114,6 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that user messages are non-empty and user-friendly
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('exceptionClassProvider')]
     public function testUserMessageIsUserFriendly(string $className): void
     {
@@ -178,9 +146,6 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that log categories match expected values
-     */
     #[DataProvider('exceptionWithCategoryProvider')]
     public function testLogCategoryMatchesExpected(
         string $className,
@@ -195,9 +160,6 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that HTTP status codes match expected values
-     */
     #[DataProvider('exceptionWithStatusProvider')]
     public function testHttpStatusMatchesExpected(
         string $className,
@@ -212,33 +174,20 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test backward compatibility - existing constructor signature works
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('exceptionClassProvider')]
     public function testBackwardCompatibility(string $className): void
     {
-        // Test with message only
         $e1 = new $className('Custom message');
         $this->assertEquals('Custom message', $e1->getMessage());
 
-        // Test with message and code
         $e2 = new $className('Custom message', 42);
         $this->assertEquals(42, $e2->getCode());
 
-        // Test with message, code, and previous
         $previous = new Exception('Previous');
         $e3 = new $className('Custom message', 42, $previous);
         $this->assertSame($previous, $e3->getPrevious());
     }
 
-    /**
-     * Test withUserMessage factory method
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('exceptionClassProvider')]
     public function testWithUserMessageFactory(string $className): void
     {
@@ -260,11 +209,6 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that previous exception uses Throwable type (not just Exception)
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('exceptionClassProvider')]
     public function testPreviousAcceptsThrowable(string $className): void
     {
@@ -278,17 +222,11 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that specific exceptions have correct status codes
-     */
     public function testStatusCodesAre404ForNotFound(): void
     {
         $this->assertEquals(404, (new CarNotFoundException())->getHttpStatusCode());
     }
 
-    /**
-     * Test that validation exceptions have 422 status code
-     */
     public function testStatusCodesAre422ForValidation(): void
     {
         $this->assertEquals(422, (new CarValidationException())->getHttpStatusCode());
@@ -296,17 +234,11 @@ class ExceptionHierarchyTest extends TestCase
         $this->assertEquals(422, (new ValidationException())->getHttpStatusCode());
     }
 
-    /**
-     * Test that security exceptions have correct status codes
-     */
     public function testStatusCodesForSecurityExceptions(): void
     {
         $this->assertEquals(403, (new CarPermissionException())->getHttpStatusCode());
     }
 
-    /**
-     * Test that all server errors have 500 status code
-     */
     public function testStatusCodesAre500ForServerErrors(): void
     {
         $this->assertEquals(500, (new CarCreationException())->getHttpStatusCode());
@@ -322,8 +254,6 @@ class ExceptionHierarchyTest extends TestCase
     }
 
     /**
-     * Test that CarTransferException returns 409 Conflict
-     *
      * Transfer failures are conflict-class errors (concurrent admin actions,
      * state conflicts) rather than server faults.
      */
@@ -332,9 +262,6 @@ class ExceptionHierarchyTest extends TestCase
         $this->assertEquals(409, (new CarTransferException())->getHttpStatusCode());
     }
 
-    /**
-     * Test that default user message is used when no message provided
-     */
     public function testDefaultUserMessageUsedWhenNoMessageProvided(): void
     {
         $exception = new CarNotFoundException();
@@ -345,9 +272,6 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that custom user message can be provided
-     */
     public function testCustomUserMessageCanBeProvided(): void
     {
         $exception = CarNotFoundException::withUserMessage(
@@ -361,11 +285,7 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Data provider for exception classes
-     *
-     * @return array<string, array<int, string>>
-     */
+    /** @return array<string, array<int, string>> */
     public static function exceptionClassProvider(): array
     {
         $data = [];
@@ -375,11 +295,7 @@ class ExceptionHierarchyTest extends TestCase
         return $data;
     }
 
-    /**
-     * Data provider for exception classes with expected log categories
-     *
-     * @return array<string, array<int, string>>
-     */
+    /** @return array<string, array<int, string>> */
     public static function exceptionWithCategoryProvider(): array
     {
         return [
@@ -404,11 +320,7 @@ class ExceptionHierarchyTest extends TestCase
         ];
     }
 
-    /**
-     * Data provider for exception classes with expected HTTP status codes
-     *
-     * @return array<string, array<int, int|string>>
-     */
+    /** @return array<string, array<int, int|string>> */
     public static function exceptionWithStatusProvider(): array
     {
         return [

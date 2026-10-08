@@ -8,18 +8,8 @@ use ElanRegistry\Car\VerificationSettings;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB behavioral test for VerificationSettings::cronReady() /
- * lastCronRequestAt() / recordCronRequest() (#1974).
- *
- * Originally a test of lastCronRequestAt()'s `NOT LIKE '%DENIED%'` filter
- * against the `logs` table (#1926) — that filter and its entire rationale no
- * longer exist. #1974 replaced the log-based signal with a dedicated
- * `er_verification_settings.last_cron_request_at` column, written only by
- * recordCronRequest() from cron.php's non-denied path, so there is no
- * "denied row" state for this column to ever see. This file now exercises
- * that column directly against the real DB — real MySQL `datetime`
- * round-tripping through `DateTimeImmutable` is exactly the kind of thing a
- * mocked unit test cannot fully prove.
+ * #1974: VerificationSettings cronReady()/lastCronRequestAt()/
+ * recordCronRequest() with a real `datetime` round trip.
  */
 #[Group('integration')]
 final class VerificationSettingsCronReadyTest extends IntegrationTestCase
@@ -98,12 +88,7 @@ final class VerificationSettingsCronReadyTest extends IntegrationTestCase
         $this->assertFalse($settings->cronReady());
     }
 
-    /**
-     * recordCronRequest()'s UPDATE against a real row — proves the write
-     * itself is valid SQL against the real schema/column types, which a
-     * mocked-DB unit test cannot prove (this repo's own convention for new
-     * SQL: execute it, don't just read it).
-     */
+    /** recordCronRequest()'s UPDATE is valid SQL against the real schema. */
     public function testRecordCronRequestUpdatesTheRealColumn(): void
     {
         $this->setLastCronRequestAt(null);

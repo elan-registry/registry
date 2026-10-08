@@ -1,5 +1,3 @@
-// tests/playwright/global-setup.js
-//
 // Fails fast with a clear error if the target server isn't reachable, instead
 // of letting every test in the run time out individually and burying the
 // real cause (server not running, wrong PLAYWRIGHT_BASE_URL) under dozens of

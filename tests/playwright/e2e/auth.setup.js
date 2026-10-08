@@ -1,5 +1,3 @@
-// tests/playwright/e2e/auth.setup.js
-
 const fs = require('fs');
 const { test } = require('@playwright/test');
 const { login } = require('../auth-helper');

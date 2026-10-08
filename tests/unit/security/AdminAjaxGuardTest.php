@@ -7,32 +7,10 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Source-level pins for the admin AJAX endpoint guards in app/admin/includes/.
- *
- * The endpoint files require the full users/init.php bootstrap, and their
- * guard rejection paths terminate the process (exit/die, directly or inside
- * the guard helper), so they cannot be executed inside PHPUnit. These tests
- * instead pin, against the live source:
- *
- *  1. every process-*.php / load-*.php endpoint directly in
- *     app/admin/includes/ is guarded — discovered by a non-recursive glob, so
- *     a new top-level endpoint is covered the moment it lands (subdirectories
- *     such as partials/ and system/ are not scanned). The originally pinned
- *     endpoints must call requireAdminAjax(); others may call
- *     requireAdminAjax() or securePage() plus their own Token::check(); and
- *  2. requireAdminAjax() itself (usersc/includes/custom_functions.php) still
- *     performs the admin-role check and the CSRF Token::check().
- *
- * Matching is token-based: comments are ignored (a commented-out guard does
- * not count) and only real function-call syntax matches, not the name inside
- * a string literal. The pin proves the call is present, not that it runs
- * first or unconditionally.
- *
- * Of these endpoints, only process-user-details.php has an HTTP-level
- * rejection test (unauthenticated and non-admin, in the Playwright suite);
- * the others are exercised over HTTP, if at all, only on their success paths.
- *
- * @see usersc/includes/custom_functions.php requireAdminAjax()
+ * Source pins for the admin AJAX guards. The endpoints need users/init.php and
+ * exit on rejection, so PHPUnit cannot run them. Matching is token-based, so a
+ * commented-out guard does not count. It proves the call exists, not that it
+ * runs first. Only process-user-details.php has an HTTP rejection test (Playwright).
  */
 #[Group('fast')]
 #[Group('unit')]
@@ -41,10 +19,7 @@ final class AdminAjaxGuardTest extends TestCase
 {
     private const ENDPOINT_DIR = 'app/admin/includes';
 
-    /**
-     * The endpoints this pin was originally written against. The glob must
-     * find at least these, so a broken glob pattern cannot pass vacuously.
-     */
+    /** The glob must find at least these, so a broken pattern cannot pass vacuously. */
     private const KNOWN_ENDPOINTS = [
         'process-owner-search.php',
         'process-owner-update.php',
@@ -63,8 +38,7 @@ final class AdminAjaxGuardTest extends TestCase
     }
 
     /**
-     * Glob app/admin/includes/{process,load}-*.php. Two globs rather than
-     * GLOB_BRACE, which is unavailable on some libc builds.
+     * Two globs rather than GLOB_BRACE, which some libc builds lack.
      *
      * @return array<string, array{string}> endpoint basename => [relative path]
      */
@@ -86,9 +60,6 @@ final class AdminAjaxGuardTest extends TestCase
         return $cases;
     }
 
-    /**
-     * Guard against a glob mistake silently shrinking the data provider.
-     */
     public function testProviderDiscoversAllKnownEndpoints(): void
     {
         $discovered = array_keys(self::adminEndpointProvider());
@@ -103,13 +74,8 @@ final class AdminAjaxGuardTest extends TestCase
     }
 
     /**
-     * Every admin AJAX endpoint must be guarded.
-     *
-     * The KNOWN_ENDPOINTS rely on requireAdminAjax() for auth, admin role,
-     * CSRF and rate limiting, so they must call it specifically — swapping
-     * it for securePage() would silently drop the CSRF check. Any other
-     * endpoint may use requireAdminAjax(), or securePage() together with its
-     * own Token::check() call, since securePage() does not check CSRF.
+     * KNOWN_ENDPOINTS must call requireAdminAjax() itself: securePage() does
+     * not check CSRF, so a swap would silently drop it.
      */
     #[DataProvider('adminEndpointProvider')]
     public function testEndpointCallsAdminGuard(string $relativePath): void
@@ -138,9 +104,7 @@ final class AdminAjaxGuardTest extends TestCase
     }
 
     /**
-     * requireAdminAjax() must contain both the admin-role check and the CSRF
-     * check. Matching is scoped to the function body, so the same calls
-     * elsewhere in custom_functions.php cannot satisfy it.
+     * Scoped to the function body, so calls elsewhere in the file cannot satisfy it.
      */
     public function testRequireAdminAjaxContainsRoleAndCsrfChecks(): void
     {
@@ -161,9 +125,6 @@ final class AdminAjaxGuardTest extends TestCase
     }
 
     /**
-     * Return the significant tokens of the body of function $name (between
-     * its outer braces), or null if the function is not declared in $source.
-     *
      * @return list<array{int, string, int}|string>|null
      */
     public static function extractFunctionBodyTokens(string $source, string $name): ?array
@@ -204,9 +165,7 @@ final class AdminAjaxGuardTest extends TestCase
     }
 
     /**
-     * Whether $tokens contain a real call to function $name (case-insensitive),
-     * ignoring string literals, declarations and method calls. Comments are
-     * already absent from significant tokens.
+     * Ignores string literals, declarations, and method calls.
      *
      * @param list<array{int, string, int}|string> $tokens Significant tokens
      */
@@ -259,8 +218,6 @@ final class AdminAjaxGuardTest extends TestCase
     }
 
     /**
-     * Tokenize $source, dropping whitespace, comments and docblocks.
-     *
      * @return list<array{int, string, int}|string>
      */
     private static function significantTokens(string $source): array

@@ -1,5 +1,3 @@
-// tests/playwright/auth-helper.js
-
 /**
  * Enhanced authentication helper for Playwright tests
  * Consolidates all authentication patterns and page state detection

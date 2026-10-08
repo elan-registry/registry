@@ -10,20 +10,10 @@ use Tests\Support\BrevoOverrideStub;
 use Tests\Support\PhpBuiltinServer;
 
 /**
- * Behavioral (real-process, real-DB) tests for app/api/webhooks/brevo.php —
- * the real Brevo webhook receiver built by #1887, replacing the gate-only
- * placeholder stub previously covered by BrevoWebhookStubTest.php (retired:
- * the stub it tested no longer exists, git history preserves it).
+ * Behavioral tests for app/api/webhooks/brevo.php (#1887).
  *
- * Unlike the old stub (which never parsed a request body and was invoked via
- * a `php -r` subprocess with no real HTTP layer), the real endpoint requires
- * a genuine request body and a real Authorization header — `php://input` is
- * empty when piped via `php -r '...' <<< $body` (a CLI SAPI limitation,
- * confirmed empirically), so this harness instead starts PHP's built-in web
- * server (`php -S`) for the endpoint file and drives it with real HTTP
- * requests via curl. Verified empirically that the built-in server correctly
- * populates both `php://input` and `$_SERVER['HTTP_AUTHORIZATION']` from a
- * real POST.
+ * Uses `php -S` and curl: under the CLI SAPI, php://input is empty, so a
+ * `php -r` subprocess cannot send a request body or Authorization header.
  */
 #[Group('integration')]
 final class BrevoWebhookEndpointTest extends IntegrationTestCase
@@ -69,13 +59,9 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             $this->cleanUpBrevoReadyFixture();
             $this->db->query('UPDATE er_verification_settings SET enabled = 0, unmatched_recipient_count = 0 WHERE id = 1');
 
-            // Clear rate-limit rows this test may have seeded/generated for the
-            // brevo_webhook action so runs stay independent.
+            // Keep runs independent: clear both rate-limit keys separately.
             $this->db->query("DELETE FROM us_rate_limits WHERE action = 'brevo_webhook'");
 
-            // Same, for the auth-failure gate's own rate-limit key — kept
-            // separate from the cleanup above so neither key's rows ever leak
-            // into the other's tests.
             $this->db->query("DELETE FROM us_rate_limits WHERE action = 'brevo_webhook_auth_failure'");
         }
 
@@ -94,30 +80,16 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     private static function routerBody(): string
     {
         $projectRoot = self::$projectRoot;
-        // TEST_TOKEN is a fixed alphanumeric/dash/underscore literal (see the
-        // class constant above) — no escaping beyond the single-quote wrap
-        // is needed for safe embedding in the generated PHP source below.
+        // TEST_TOKEN is a fixed safe literal, so the single-quote wrap is enough.
         $defaultToken = self::TEST_TOKEN;
 
-        // Reads a test-only override header (X-Test-Brevo-Webhook-Token) so
-        // individual requests can simulate BREVO_WEBHOOK_TOKEN being empty —
-        // a real env var, once set at server-process spawn time, cannot be
-        // changed per-request from the PHPUnit process (a later putenv()/
-        // $_ENV write in the test process never reaches the already-running
-        // `php -S` child process). This header is a test harness construct
-        // only; the real endpoint (app/api/webhooks/brevo.php) has no
-        // knowledge of it — it still reads $_ENV['BREVO_WEBHOOK_TOKEN']
-        // exactly as in production, this router script just overrides that
-        // value before requiring it. The sentinel value "__EMPTY__" (rather
-        // than a literal empty header value) works around curl/PHP's
-        // built-in server silently omitting a header sent with an empty
-        // value (confirmed empirically) — the router below maps that
-        // sentinel back to an actually-empty value.
+        // Test-only header X-Test-Brevo-Webhook-Token: an env var cannot change per
+        // request in the running `php -S` child. The endpoint does not know this
+        // header. "__EMPTY__" stands for an empty value because an empty header
+        // is dropped in transit.
         return <<<PHP
         require '{$projectRoot}/vendor/autoload.php';
         \\Dotenv\\Dotenv::createMutable('{$projectRoot}', '.env.test.local')->load();
-        // Default configured token for every request; the per-request test
-        // header (below) can override it to simulate a wrong/empty value.
         \$_ENV['BREVO_WEBHOOK_TOKEN'] = '{$defaultToken}';
         if (isset(\$_SERVER['HTTP_X_TEST_BREVO_WEBHOOK_TOKEN'])) {
             \$testToken = \$_SERVER['HTTP_X_TEST_BREVO_WEBHOOK_TOKEN'] === '__EMPTY__'
@@ -132,13 +104,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     private function exposeTestDatabaseAndTokenToEnvironment(): void
     {
-        // NOTE: putenv() here affects only this PHPUnit process's own real
-        // process environment; it does NOT reach the already-running (or
-        // not-yet-started) `php -S` child process's $_ENV, since this app's
-        // .env loading reads $_ENV (populated by phpdotenv), not getenv() —
-        // see routerBody()'s BREVO_WEBHOOK_TOKEN default and header
-        // override for how the subprocess actually gets its token/DB config
-        // (via the router script's own Dotenv::createMutable() load).
+        // putenv() does not reach the `php -S` child, which reads $_ENV via phpdotenv.
+        // The router script loads the token and DB config itself.
         foreach (self::DB_ENV_VARS as $var) {
             $value = $_ENV[$var] ?? getenv($var);
             if ($value !== false && $value !== '') {
@@ -206,10 +173,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     private bool $brevoRowInsertedByTest = false;
     private bool $brevoOverrideCreatedByTest = false;
 
-    /**
-     * Makes VerificationSettings::brevoReady() report true — mirrors
-     * BrevoWebhookStubTest's makeBrevoReady() precedent.
-     */
+    /** Makes VerificationSettings::brevoReady() report true. */
     private function makeBrevoReady(): void
     {
         $overridePath = self::$projectRoot . '/usersc/plugins/sendinblue/override.php';
@@ -279,8 +243,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     }
 
     // ------------------------------------------------------------------
-    // Gate tests (preserved/adapted from the retired stub test)
-    // ------------------------------------------------------------------
+    // Gate tests
 
     public function testSwitchOffRespondsSuccessfullyWithNoWrites(): void
     {
@@ -317,7 +280,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         );
         $this->assertSame($before + 1, $after, 'Brevo-not-ready must log exactly one refusal');
 
-        // Restore readiness for any subsequent assertions in this test run.
         $this->makeBrevoReady();
     }
 
@@ -369,11 +331,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     public function testEmptyConfiguredTokenRejectsEverythingFailClosed(): void
     {
-        // Simulate BREVO_WEBHOOK_TOKEN being empty in the environment via the
-        // router script's test-only override header (see the comments in
-        // routerBody() for why a real env var can't be changed per-request against
-        // an already-running php -S child process) — even a "valid-looking"
-        // provided token must be rejected (fail closed, not fail open).
+        // An empty configured token must reject even a valid-looking token (fail closed).
         $result = $this->postToWebhook($this->taggedPayload(), [
             'Authorization' => 'Bearer ' . self::TEST_TOKEN,
             'X-Test-Brevo-Webhook-Token' => '__EMPTY__',
@@ -467,8 +425,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertSame('hard_bounce', $eventRow->event);
         $this->assertSame('Mailbox does not exist', $eventRow->reason);
 
-        // Single SELECT so email_bounced and email_bounced_address can never be
-        // observed in disagreement.
+        // One SELECT, so the two columns cannot be read in disagreement.
         $carRow = $this->db->query('SELECT email_bounced, email_bounced_address FROM cars WHERE id = ?', [$carId])->first();
         $this->assertSame(1, (int) $carRow->email_bounced, 'cars.email_bounced must be set');
         $this->assertSame($email, $carRow->email_bounced_address, 'cars.email_bounced_address must equal the event email');
@@ -571,28 +528,11 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     // ------------------------------------------------------------------
 
     /**
-     * Drives the configured ip_max for 'brevo_webhook' past its limit by
-     * seeding us_rate_limits directly (matching RateLimit's own
-     * identifier_key = sha256("ip::<ip>") scheme and its window/count
-     * semantics), rather than firing hundreds of real HTTP requests — the
-     * configured ip_max is 500 (see RateLimitConfigTest), which would make a
-     * real-request approach slow and not meaningfully more faithful, since
-     * this test's real target is the endpoint's *handling* of a rate-limited
-     * response, not RateLimit's own counting logic (already covered
-     * elsewhere).
+     * Seeds us_rate_limits directly: ip_max is 500, too many real requests.
      *
-     * RateLimit::getRealIP() reports `false` (no usable IP) for a request
-     * whose REMOTE_ADDR is 127.0.0.1 — PHP's FILTER_FLAG_NO_RES_RANGE treats
-     * loopback as a "reserved" range — which every request from this test
-     * harness necessarily has. With no `ip` identifier, RateLimit::check()
-     * has nothing to check and trivially allows every request, so testing
-     * this from a bare loopback request can never observe a 429 (confirmed
-     * empirically). To exercise the real code path, this test turns on
-     * `settings.behind_reverse_proxy`, registers 127.0.0.1 (this harness's
-     * real REMOTE_ADDR) as a trusted proxy reading X-Forwarded-For, and sends
-     * a spoofed public IP in that header — exactly the configuration a real
-     * deployment behind a reverse proxy would use. Both settings are
-     * restored in tearDown().
+     * RateLimit::getRealIP() rejects 127.0.0.1 (reserved range), so a loopback
+     * request is never limited. The test trusts 127.0.0.1 as a reverse proxy
+     * and sends a public IP in X-Forwarded-For. tearDown() restores both settings.
      */
     public function testRateLimitExceededRespondsWithTooManyRequests(): void
     {
@@ -617,29 +557,20 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             require self::$projectRoot . '/usersc/includes/rate_limits.php';
             $ipMax = (int) $rateLimits['brevo_webhook']['ip_max'];
 
-            // usersc/includes/rate_limits_dev_override.php multiplies every
-            // *_max threshold by 100x when US_ENVIRONMENT=development (this
-            // repo's default local .env setting) — the webhook server
-            // subprocess applies that same override, so the seeded row count
-            // must match its EFFECTIVE ip_max, not the raw configured value,
-            // or this test would seed 500 rows against an actual 50,000
-            // threshold and never trip it.
+            // rate_limits_dev_override.php multiplies *_max by 100 in development, and
+            // the server subprocess applies it, so seed the effective ip_max.
             $envUsEnvironment = $_ENV['US_ENVIRONMENT'] ?? getenv('US_ENVIRONMENT') ?: 'production';
             if ($envUsEnvironment === 'development') {
                 $ipMax = (int) min($ipMax * 100, PHP_INT_MAX);
             }
 
-            // RateLimit::check()'s ip_max/ip_window branch counts only
-            // success=0 (failed) rows (see RateLimit::getAttemptCount()'s
-            // $success=false argument) — success=1 rows would only count
-            // toward total_max/total_window instead, never tripping ip_max.
+            // ip_max counts only success=0 rows.
             $now = date('Y-m-d H:i:s');
             $rows = [];
             for ($i = 0; $i < $ipMax; $i++) {
                 $rows[] = [$identifierKey, 'brevo_webhook', 0, $now, '{}'];
             }
 
-            // Bulk-insert directly for speed rather than $ipMax separate ->insert() calls.
             $placeholders = implode(',', array_fill(0, count($rows), '(?, ?, ?, ?, ?)'));
             $params = array_merge(...$rows);
             $this->db->query(
@@ -661,25 +592,13 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     }
 
     /**
-     * The test above proves checkRateLimit() correctly reads pre-seeded
-     * us_rate_limits rows — it does NOT prove the endpoint's own
-     * recordRateLimit() calls write anything, since it never sends a normal
-     * (non-seeded) request and checks the table afterward. That gap matters
-     * because RateLimit::check()'s ip_max/total_max paths count ONLY rows
-     * written by record() (see the endpoint's own docblock) — without a
-     * working recordRateLimit() call, the configured limit can silently
-     * never trip, and a passing test suite would not catch a regression that
-     * removed those calls or typo'd the action string on just those two call
-     * sites. This test closes that gap directly.
+     * Proves the endpoint writes rate-limit rows. Without record() calls the
+     * limit never trips, and the seeded-row test above cannot see that.
      */
     public function testEndpointRecordsRateLimitAttemptsForBothOutcomes(): void
     {
-        // RateLimit::getRealIP() rejects 127.0.0.1 (FILTER_FLAG_NO_RES_RANGE
-        // treats loopback as a reserved range) even off the reverse-proxy
-        // path, so record()'s single identifier ('ip') resolves to nothing
-        // and it silently writes zero rows for a same-machine test request
-        // unless a trusted-proxy + X-Forwarded-For fixture is set up, exactly
-        // like the ip_max exhaustion test above.
+        // Loopback has no usable IP, so record() writes nothing without the
+        // trusted-proxy fixture.
         $spoofedPublicIp = '203.0.113.77'; // TEST-NET-3 (RFC 5737)
 
         $this->db->query('UPDATE settings SET behind_reverse_proxy = 1 WHERE id = 1');
@@ -704,7 +623,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             $successBefore = $countFor(1);
             $failureBefore = $countFor(0);
 
-            // A normal, authorized, allowed request must record a success=1 row.
             $result = $this->postToWebhook($this->taggedPayload(), [
                 'Authorization' => 'Bearer ' . self::TEST_TOKEN,
                 'X-Forwarded-For' => $spoofedPublicIp,
@@ -719,11 +637,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
                     . 'without this, checkRateLimit() would see zero attempts and the configured limit could never trip'
             );
 
-            // A rejected request (wrong auth) must not write a row under the
-            // 'brevo_webhook' action — that key's record() calls only run
-            // after auth passes. The auth-failure path does record under its
-            // own separate 'brevo_webhook_auth_failure' key (#2087); see
-            // testAuthFailureRateLimitRecordsAttemptRegardless().
+            // The 'brevo_webhook' key records only after auth passes. Auth failures use
+            // 'brevo_webhook_auth_failure' (#2087).
             $rejectedResult = $this->postToWebhook($this->taggedPayload(), [
                 'Authorization' => 'Bearer wrong-token',
                 'X-Forwarded-For' => $spoofedPublicIp,
@@ -741,18 +656,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * The auth-failure branch gates ONLY its LOG line via the
-     * 'brevo_webhook_auth_failure' rate-limit key — the 401 response itself
-     * always fires unconditionally regardless of rate-limit state (see the
-     * endpoint's own docblock at the top of the auth-failure branch). This
-     * seeds ip_max worth of prior failed attempts for a spoofed IP (matching
-     * the ip_max-exhaustion pattern in testRateLimitExceededRespondsWithTooManyRequests()
-     * above, but against the 'brevo_webhook_auth_failure' key instead of
-     * 'brevo_webhook'), then sends one more wrong-token request from that
-     * same IP and asserts the 401 still fires and that no new
-     * LOG_CATEGORY_SECURITY row is written for it.
-     */
+    /** Over ip_max, the auth-failure branch suppresses only its log line; the 401 always fires. */
     public function testAuthFailureLoggingIsSuppressedAfterRateLimitExceeded(): void
     {
         $spoofedPublicIp = '203.0.113.88'; // TEST-NET-3 (RFC 5737)
@@ -776,10 +680,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             require self::$projectRoot . '/usersc/includes/rate_limits.php';
             $ipMax = (int) $rateLimits['brevo_webhook_auth_failure']['ip_max'];
 
-            // Match the effective (dev-multiplied) threshold the webhook
-            // server subprocess actually enforces — see
-            // testRateLimitExceededRespondsWithTooManyRequests()'s docblock
-            // for why this multiplier must be applied here too.
+            // Effective (dev-multiplied) threshold; see testRateLimitExceededRespondsWithTooManyRequests().
             $envUsEnvironment = $_ENV['US_ENVIRONMENT'] ?? getenv('US_ENVIRONMENT') ?: 'production';
             if ($envUsEnvironment === 'development') {
                 $ipMax = (int) min($ipMax * 100, PHP_INT_MAX);
@@ -816,23 +717,11 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * Companion to the suppression test above: proves the gate does not
-     * accidentally suppress logging for a normal, under-the-limit
-     * auth-failure — i.e. that the rate limit key doesn't misfire and
-     * silently blind LOG_CATEGORY_SECURITY under ordinary conditions.
-     */
+    /** An under-limit auth failure must still be logged. */
     public function testAuthFailureLoggingOccursUnderRateLimit(): void
     {
-        // Without the reverse-proxy fixture, this request's REMOTE_ADDR is
-        // 127.0.0.1 — RateLimit::getRealIP() reports `false` for loopback
-        // (FILTER_FLAG_NO_RES_RANGE treats it as a reserved range), so the
-        // rate limiter has no 'ip' identifier, trivially allows every
-        // request, and this test would pass for the wrong reason (it never
-        // actually exercises the gate). Use the same trusted-proxy +
-        // X-Forwarded-For fixture as the suppression/recording tests below,
-        // with a fresh spoofed IP distinct from theirs, so the limiter is
-        // genuinely live and genuinely under threshold.
+        // Loopback has no usable IP, so without the trusted-proxy fixture the
+        // limiter is not live and the test passes for the wrong reason.
         $spoofedPublicIp = '203.0.113.111'; // TEST-NET-3 (RFC 5737)
 
         $this->db->query('UPDATE settings SET behind_reverse_proxy = 1 WHERE id = 1');
@@ -866,25 +755,9 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     }
 
     /**
-     * Proves recordRateLimit('brevo_webhook_auth_failure', false) fires
-     * unconditionally on every auth failure — not only while under the
-     * limit, but ALSO once logging is already being suppressed for having
-     * exceeded ip_max — which is the specific design decision behind this
-     * issue: the rolling window's count must stay accurate regardless of
-     * whether the log line itself was suppressed (see the endpoint's own
-     * comment on its recordRateLimit() call in the auth-failure branch).
-     *
-     * Mutation-verified gap this closes: a prior version of this test sent
-     * only ONE request from a fresh IP with no prior seeded attempts, so
-     * $shouldLog was always true — a mutation making the recordRateLimit()
-     * call conditional on $shouldLog (i.e. only recording while NOT
-     * suppressed) was behaviorally invisible to that scenario and the suite
-     * stayed green. This version first seeds the effective (dev-multiplied)
-     * ip_max worth of prior failed attempts — matching
-     * testAuthFailureLoggingIsSuppressedAfterRateLimitExceeded()'s fixture —
-     * so the request under test is genuinely SUPPRESSED ($shouldLog ===
-     * false), then asserts a NEW success=0 row still appears, proving
-     * recording happens even while suppressed.
+     * Auth failures are recorded even while logging is suppressed, so the
+     * window count stays accurate. Seeds past ip_max so the request is
+     * suppressed: a single fresh request did not catch a conditional record().
      */
     public function testAuthFailureRateLimitRecordsAttemptRegardless(): void
     {
@@ -909,10 +782,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             require self::$projectRoot . '/usersc/includes/rate_limits.php';
             $ipMax = (int) $rateLimits['brevo_webhook_auth_failure']['ip_max'];
 
-            // Match the effective (dev-multiplied) threshold the webhook
-            // server subprocess actually enforces — see
-            // testRateLimitExceededRespondsWithTooManyRequests()'s docblock
-            // for why this multiplier must be applied here too.
+            // Effective (dev-multiplied) threshold; see testRateLimitExceededRespondsWithTooManyRequests().
             $envUsEnvironment = $_ENV['US_ENVIRONMENT'] ?? getenv('US_ENVIRONMENT') ?: 'production';
             if ($envUsEnvironment === 'development') {
                 $ipMax = (int) min($ipMax * 100, PHP_INT_MAX);
@@ -965,14 +835,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     // ------------------------------------------------------------------
 
     /**
-     * A genuine transient DB error surfacing as 5xx. Forces this by
-     * temporarily dropping the unique index that insertEmailEvent()'s
-     * ON DUPLICATE KEY UPDATE clause depends on — without it, the same
-     * INSERT still succeeds (there's no longer a conflict to resolve), so
-     * instead this test forces the failure via a column rename, matching the
-     * plan's "if you can force a genuine transient DB error cleanly" allowance.
-     * Restored in a finally block so this never leaks a broken schema into
-     * subsequent tests.
+     * Forces a real DB error by renaming a column. Restored in finally so a
+     * broken schema never leaks into later tests.
      */
     public function testGenuineDbWriteFailureRespondsWithServerError(): void
     {

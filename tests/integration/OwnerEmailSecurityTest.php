@@ -16,13 +16,10 @@ use PHPUnit\Framework\Attributes\Group;
  * The #971 sender-impersonation contract (from_user_id is never read from POST)
  * is pinned at source level in tests/unit/security/SerializedDataRemovalTest.php.
  *
- * IDOR guard coverage gap: tests/playwright/security/contact-owner-idor.spec.js
- * posts a nonexistent car_id (999999), so its 403 comes from the car-not-found
- * half of the check (`!$carOwner`, send-owner-email.php:98), not the
- * owner-mismatch comparison `(int)$carOwner->user_id !== $toUserId` on the
- * same line. tests/unit/regression/Issue1014RegressionTest.php pins the
- * ownership query and its ordering, not the comparison. The :98 owner-mismatch
- * comparison (a real car owned by someone other than to_user_id) has no test.
+ * IDOR guard coverage gap (#1014): the owner-mismatch comparison in
+ * send-owner-email.php (a real car owned by another user) has no test.
+ * tests/playwright/security/contact-owner-idor.spec.js posts a nonexistent
+ * car_id (999999), so it covers only the car-not-found case.
  */
 #[Group('integration')]
 #[Group('security')]
@@ -34,25 +31,7 @@ final class OwnerEmailSecurityTest extends IntegrationTestCase
         $this->requireDatabase();
     }
 
-    /**
-     * Privacy + injection fix (issue #1322, Bug B): $fromName uses only fname.
-     *
-     * ROOT CAUSE
-     * ----------
-     * Before the fix, $fromName was $fromData->fname . ' ' . $fromData->lname,
-     * exposing the sender's surname in reply-to headers and the email template,
-     * and bypassing the CR/LF strip that was already applied to $toEmail.
-     *
-     * TESTING GAP
-     * -----------
-     * No test verified which name fields flow into email headers or the
-     * reply_name parameter, so the regression was invisible to CI.
-     *
-     * PREVENTION
-     * ----------
-     * This test pins the contract: $fromName is derived from $fromData->fname
-     * alone, stripped of CR/LF/tab, and must not contain lname.
-     */
+    /** #1322: the sender name must not expose lname and must not carry CR/LF/tab. */
     public function testFromNameIsFirstNameOnly(): void
     {
         $fromUserId = $this->createTestUser([
@@ -61,14 +40,10 @@ final class OwnerEmailSecurityTest extends IntegrationTestCase
             'email' => 'alice_fromname@example.com',
         ]);
 
-        // Raw SQL intentionally bypasses Owner::data() to isolate the string-derivation
-        // logic under test. Owner::data() is tested separately; we're pinning what
-        // send-owner-email.php does with the data it receives, not how it loads it.
         $fromOwnerResult = $this->db->query('SELECT fname, lname, email FROM users WHERE id = ?', [$fromUserId]);
         $fromData        = $fromOwnerResult->first();
 
-        // Call the real helper send-owner-email.php uses — not a mirrored regex —
-        // so this test can't silently drift from production behavior (#1759).
+        // The same helper send-owner-email.php calls; a mirrored regex can drift (#1759).
         $fromName = InputSanitizer::stripHeaderInjectionChars($fromData->fname);
 
         $this->assertSame('Alice', $fromName, '$fromName must equal fname only');

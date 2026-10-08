@@ -15,8 +15,7 @@ namespace Tests\Support;
  * types the generated model declares (all `string`, nullable in practice
  * because the SDK leaves unset container keys as null).
  *
- * Deliberately a *named* class rather than an anonymous one, per the
- * `impureMethod.pure` rationale in CronJobGuardFakeDatabase's docblock.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2

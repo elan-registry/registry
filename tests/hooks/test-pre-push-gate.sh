@@ -16,6 +16,9 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 # Run from inside a hook or rebase, these would point every git command
 # below at the real repo instead of the throwaway one.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
@@ -37,24 +40,6 @@ HOOK_TEXT="$(cat "$HOOK_SRC")"
 REAL_GIT="$(command -v git)"
 
 TMPROOT="$(mktemp -d)" || exit 1
-cleanup() {
-    cd / || true
-    [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
-}
 
 assert_eq() {
     local description="$1" expected="$2" actual="$3"
@@ -546,7 +531,10 @@ OUT15="$(STUB_EXIT=0 run_hook "$PUSH_LINE")"
 CALLS15="$(composer_calls)"
 if [ "$(hook_exit)" -eq 0 ] && [ "$CALLS15" -eq 0 ] \
     && printf '%s' "$OUT15" | grep -qi 'skip' \
-    && printf '%s' "$OUT15" | grep -q 'rm "\$(git rev-parse --git-path integration-passed)"'; then
+    && {
+        # shellcheck disable=SC2016 # the hint text is matched literally
+        printf '%s' "$OUT15" | grep -q 'rm "\$(git rev-parse --git-path integration-passed)"'
+    }; then
     pass "Case 15: a second identical push hits the cache and prints the rm hint"
 else
     fail "Case 15: a second identical push hits the cache and prints the rm hint" \
@@ -828,14 +816,24 @@ fi
 # --- Case D5: DB_HOST=db + INTEGRATION_GATE_RUNNER=host -> host run ---------
 clear_pass; : > "$DOCKER_LOG"
 OUTD5="$(INTEGRATION_GATE_RUNNER=host STUB_DOCKER_RUNNING=1 STUB_EXIT=0 run_hook "$DK_LINE")"
-assert_eq "Case D5: INTEGRATION_GATE_RUNNER=host runs on the host even with DB_HOST=db" \
-    "0 1 0" "$(hook_exit) $(composer_calls) $(docker_exec_calls)"
+ACTD5="$(hook_exit) $(composer_calls) $(docker_exec_calls)"
+if [ "$ACTD5" = "0 1 0" ]; then
+    pass "Case D5: INTEGRATION_GATE_RUNNER=host runs on the host even with DB_HOST=db"
+else
+    fail "Case D5: INTEGRATION_GATE_RUNNER=host runs on the host even with DB_HOST=db" \
+        "expected: [0 1 0]" "actual:   [${ACTD5}]" "output: [$OUTD5]"
+fi
 
 # --- Case D6: DB_HOST=localhost -> host run, docker never called ------------
 set_test_db_host "localhost"; clear_pass; : > "$DOCKER_LOG"
 OUTD6="$(STUB_DOCKER_RUNNING=1 STUB_EXIT=0 run_hook "$DK_LINE")"
-assert_eq "Case D6: a non-db DB_HOST (localhost) runs on the host and never calls docker" \
-    "0 1 0" "$(hook_exit) $(composer_calls) $(wc -l < "$DOCKER_LOG" | tr -d ' ')"
+ACTD6="$(hook_exit) $(composer_calls) $(wc -l < "$DOCKER_LOG" | tr -d ' ')"
+if [ "$ACTD6" = "0 1 0" ]; then
+    pass "Case D6: a non-db DB_HOST (localhost) runs on the host and never calls docker"
+else
+    fail "Case D6: a non-db DB_HOST (localhost) runs on the host and never calls docker" \
+        "expected: [0 1 0]" "actual:   [${ACTD6}]" "output: [$OUTD6]"
+fi
 
 # --- Case D7: DB_HOST=db but no docker binary -> blocked --------------------
 # PATH = a stub dir holding only composer, then the real PATH with docker
@@ -917,12 +915,4 @@ OUT32="$(STUB_EXIT=0 run_hook "refs/heads/issue/orphaned $ORPH_C1 refs/heads/iss
 assert_hook "Case 32: an unresolvable parent runs the suite once (fail-safe)" \
     1 0 "$OUT32" "fail-safe"
 
-# --- Report ---------------------------------------------------------------
-
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

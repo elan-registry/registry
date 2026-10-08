@@ -11,21 +11,11 @@ use PHPUnit\Framework\TestCase;
 
 use PHPUnit\Framework\Attributes\Group;
 
-/**
- * Unit tests for CarRepository service class
- */
 #[Group('fast')]
 final class CarRepositoryTest extends TestCase
 {
     /**
-     * A database double standing in for a healthy connection with an empty
-     * result set: query() and get() return the double itself (the real \DB
-     * contract — both return $this for chaining), error() is false, the result
-     * accessors report no rows (first() returns [], never null), writes
-     * succeed, and no transaction is active.
-     *
-     * A stub rather than a mock: the tests using it assert on what the
-     * repository returns, not on how it calls the database.
+     * first() returns [], not null, to match the real \DB.
      *
      * @return \PHPUnit\Framework\MockObject\Stub&DatabaseInterface
      */
@@ -60,11 +50,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertEquals(1, $result->id);
     }
 
-    /**
-     * findById() must throw CarDatabaseException — not fatal, and not silently
-     * report "not found" — when get() itself fails (real \DB::get() returns the
-     * literal false on a failed query, per DatabaseInterface's documented contract).
-     */
+    /** The real \DB::get() returns false on a failed query. */
     public function testFindByIdThrowsCarDatabaseExceptionWhenGetFails(): void
     {
         $db = $this->createStub(DatabaseInterface::class);
@@ -77,11 +63,8 @@ final class CarRepositoryTest extends TestCase
     }
 
     /**
-     * findById() must return null — not the raw array — when count() reports a row
-     * but first() yields the real \DB empty-row value ([]) rather than an object.
-     * This should be unreachable against a real connection (count()>0 implies first()
-     * is an object), but the is_object() guard exists to fail closed instead of
-     * returning a caller-facing array where an object is documented.
+     * Unreachable on a real connection; the is_object() guard fails closed
+     * instead of returning an array.
      */
     public function testFindByIdReturnsNullWhenFirstYieldsNonObject(): void
     {
@@ -133,28 +116,13 @@ final class CarRepositoryTest extends TestCase
         $this->expectNotToPerformAssertions();
     }
 
-    // =========================================================================
-    // Transaction nesting tests (issue #1175)
-    //
-    // CarRepository tracks whether it started the transaction via $transactionOwner.
-    // When beginTransaction() is called while a transaction is already active
-    // (inTransaction() = true), it is a no-op and $transactionOwner stays false.
-    // commit() and rollback() are then also no-ops, leaving the outer transaction
-    // in control of commit/rollback.
-    // =========================================================================
+    // Transaction nesting (#1175): inside an outer transaction, begin/commit/rollback are no-ops.
 
-    /**
-     * When no outer transaction exists, beginTransaction() calls through to the DB
-     * and commit() calls through to the DB exactly once.
-     */
     public function testStandaloneTransactionOwnsCommit(): void
     {
         $db = $this->createMock(DatabaseInterface::class);
 
-        // No outer transaction — beginTransaction() should call through and flip the
-        // state; commit() then sees inTransaction()=true and commits. Modeling actual
-        // state via a callback (not willReturnOnConsecutiveCalls) means this doesn't
-        // depend on inTransaction() being called exactly twice in exactly this order.
+        // State via a callback, so the test does not depend on the inTransaction() call count.
         $inTransaction = false;
         $db->method('inTransaction')->willReturnCallback(function () use (&$inTransaction): bool {
             return $inTransaction;
@@ -171,20 +139,11 @@ final class CarRepositoryTest extends TestCase
         $repo->commit();
     }
 
-    /**
-     * When an outer transaction is already active, beginTransaction() is a no-op
-     * and commit() is a no-op — the DB commit() is never called.
-     *
-     * This is the nested-transaction scenario in process-transfer-approve.php:
-     * the outer $db->beginTransaction() is called first, then Car::transfer()
-     * internally calls CarRepository::beginTransaction() which must not start
-     * a second transaction or commit prematurely.
-     */
+    /** The process-transfer-approve.php case: Car::transfer() runs inside an outer transaction. */
     public function testNestedTransactionDoesNotCommit(): void
     {
         $db = $this->createMock(DatabaseInterface::class);
 
-        // Outer transaction already active — every inTransaction() call returns true.
         $db->method('inTransaction')->willReturn(true);
         $db->expects($this->never())->method('beginTransaction');
         $db->expects($this->never())->method('commit');
@@ -194,20 +153,10 @@ final class CarRepositoryTest extends TestCase
         $repo->commit();           // no-op: $transactionOwner was never set to true
     }
 
-    /**
-     * When no outer transaction exists, rollback() calls through to the DB.
-     *
-     * This is the symmetric counterpart to testStandaloneTransactionOwnsCommit:
-     * when the repository began the transaction itself, rollback() must fire and
-     * commit() must never be called.
-     */
     public function testStandaloneTransactionOwnsRollback(): void
     {
         $db = $this->createMock(DatabaseInterface::class);
 
-        // beginTransaction() flips state to "in transaction"; rollback() then sees
-        // inTransaction()=true and rolls back. State-modeled, not call-count-modeled —
-        // see testStandaloneTransactionOwnsCommit's comment for why.
         $inTransaction = false;
         $db->method('inTransaction')->willReturnCallback(function () use (&$inTransaction): bool {
             return $inTransaction;
@@ -225,12 +174,6 @@ final class CarRepositoryTest extends TestCase
         $repo->rollback();
     }
 
-    /**
-     * When an outer transaction is already active, rollback() is also a no-op.
-     *
-     * The outer caller is responsible for rolling back; CarRepository must not
-     * interfere by issuing its own rollBack().
-     */
     public function testRollbackIsNoOpWhenNotOwner(): void
     {
         $db = $this->createMock(DatabaseInterface::class);
@@ -253,11 +196,8 @@ final class CarRepositoryTest extends TestCase
 
     public function testGetHistoryExcludesPII(): void
     {
-        // Security contract: email, lname, user_id, lat, and lon must not appear in the
-        // SELECT clause — this method backs the public, unauthenticated
-        // app/api/cars/history.php endpoint (see #1501). vericode and last_verified are
-        // not asserted here because cars_hist has no such columns — they exist only on
-        // the cars table and can never leak from this path even under SELECT *.
+        // This SELECT backs the public history.php endpoint (#1501). vericode and
+        // last_verified are not checked: cars_hist has no such columns.
         $capturedSql = null;
         $db = $this->makeDbMock();
         $db->expects($this->once())
@@ -287,8 +227,7 @@ final class CarRepositoryTest extends TestCase
             'user_id', $capturedSql,
             'getHistory() SELECT must not include user_id column (#1501)'
         );
-        // Word-boundary match, not substring: 'lat'/'lon' are short enough to
-        // false-positive against a future column like 'plate' or 'longitude'.
+        // Word boundary: 'lat'/'lon' would match 'plate' or 'longitude'.
         $this->assertDoesNotMatchRegularExpression(
             '/\blat\b/i', $capturedSql,
             'getHistory() SELECT must not include lat column (#1501)'
@@ -357,19 +296,9 @@ final class CarRepositoryTest extends TestCase
         $this->assertIsArray($result['variants']);
     }
 
-    // =========================================================================
-    // reassignCarsByUser tests (issue #1148)
-    // =========================================================================
+    // reassignCarsByUser() (#1148)
 
-    /**
-     * A bare database double for tests that shape the result themselves.
-     *
-     * query() must be stubbed with willReturnSelf() (or a callback returning
-     * the double) wherever the repository chains off it — the real \DB::query()
-     * always returns $this.
-     *
-     * @return \PHPUnit\Framework\MockObject\MockObject&DatabaseInterface
-     */
+    /** @return \PHPUnit\Framework\MockObject\MockObject&DatabaseInterface */
     private function makeDbMock(): object
     {
         return $this->createMock(DatabaseInterface::class);
@@ -422,14 +351,9 @@ final class CarRepositoryTest extends TestCase
         $repo->reassignCarsByUser(42, 7);
     }
 
-    // =========================================================================
-    // updateCarForOwner() tests (issue #1873)
-    // =========================================================================
+    // updateCarForOwner() (#1873)
 
-    /**
-     * On success, updateCarForOwner() returns the row count reported by
-     * DB::count() — rows *changed*, not matched (no MYSQL_ATTR_FOUND_ROWS).
-     */
+    /** count() is rows changed, not matched (no MYSQL_ATTR_FOUND_ROWS). */
     public function testUpdateCarForOwnerReturnsRowCountOnSuccess(): void
     {
         $db = $this->makeDbMock();
@@ -443,13 +367,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame(1, $result);
     }
 
-    /**
-     * The SQL must pin both id and user_id in the WHERE clause — that scoping
-     * is the security fix (#1873): it prevents writing one owner's data onto a
-     * car reassigned to someone else mid-loop. Column names are backtick-quoted
-     * (matching DB::update()'s own quoting), values bound positionally in
-     * fields-then-carId-then-userId order.
-     */
+    /** The id + user_id scope stops a write onto a car reassigned mid-loop (#1873). */
     public function testUpdateCarForOwnerPinsIdAndUserIdInWhereClause(): void
     {
         $db = $this->makeDbMock();
@@ -467,10 +385,7 @@ final class CarRepositoryTest extends TestCase
         $repo->updateCarForOwner(101, 42, ['city' => 'Portland', 'state' => 'Oregon']);
     }
 
-    /**
-     * A query error must log and throw CarDatabaseException so an enclosing
-     * transaction can roll back rather than commit over a partial state.
-     */
+    /** Throws so an enclosing transaction rolls back. */
     public function testUpdateCarForOwnerThrowsOnDatabaseError(): void
     {
         $db = $this->makeDbMock();
@@ -486,12 +401,7 @@ final class CarRepositoryTest extends TestCase
         $repo->updateCarForOwner(101, 42, ['city' => 'Portland']);
     }
 
-    /**
-     * A 0-row change (either a no-op UPDATE that matched but changed nothing,
-     * or a car no longer owned by this user) must return 0 without throwing —
-     * disambiguating the two is the caller's job (Owner::carBelongsToOwner()),
-     * not this method's.
-     */
+    /** The caller (Owner::carBelongsToOwner()) tells the two zero cases apart. */
     public function testUpdateCarForOwnerReturnsZeroWithoutThrowingWhenNothingChanged(): void
     {
         $db = $this->makeDbMock();
@@ -505,13 +415,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame(0, $result);
     }
 
-    /**
-     * A malformed column name (not a valid SQL identifier) must throw
-     * CarDatabaseException rather than being interpolated into the SET
-     * clause — this is the injection-prevention check on the structured
-     * $fields array, since column names (unlike values) cannot be bound as
-     * placeholders. No query should be issued once a bad key is found.
-     */
+    /** Column names cannot be bound, so a bad key must throw before any query. */
     public function testUpdateCarForOwnerThrowsOnInvalidColumnName(): void
     {
         $db = $this->makeDbMock();
@@ -525,12 +429,6 @@ final class CarRepositoryTest extends TestCase
         $repo->updateCarForOwner(101, 42, ['city; DROP TABLE cars' => 'x']);
     }
 
-    /**
-     * A column name starting with a digit is also not a valid SQL identifier
-     * and must be rejected the same way as an injection attempt — distinct
-     * failure mode from the previous test (malformed-but-innocuous vs.
-     * malformed-and-malicious), both must be caught by the same regex guard.
-     */
     public function testUpdateCarForOwnerThrowsOnColumnNameStartingWithDigit(): void
     {
         $db = $this->makeDbMock();
@@ -545,10 +443,8 @@ final class CarRepositoryTest extends TestCase
     }
 
     /**
-     * Empty $fields must throw rather than return 0 without issuing SQL: a 0
-     * return is already ambiguous between "matched but nothing changed" and "no
-     * row matched", so an empty write would pass the caller's ownership check
-     * and be reported as a successful sync having written nothing.
+     * A 0 return would pass the caller's ownership check and report a sync
+     * that wrote nothing.
      */
     public function testUpdateCarForOwnerThrowsWhenFieldsEmpty(): void
     {
@@ -563,14 +459,9 @@ final class CarRepositoryTest extends TestCase
         $repo->updateCarForOwner(101, 42, []);
     }
 
-    // =========================================================================
-    // updateImage() CAS semantics tests (issue #1311)
-    // =========================================================================
+    // updateImage() CAS (#1311)
 
-    /**
-     * updateImage() returns false when the UPDATE matches 0 rows, indicating that
-     * the image column was modified concurrently after the caller read it.
-     */
+    /** 0 rows means a concurrent change to the image column. */
     public function testUpdateImageReturnsFalseOnConcurrentModification(): void
     {
         $db = $this->makeDbMock();
@@ -584,10 +475,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertFalse($result);
     }
 
-    /**
-     * updateImage() throws CarDatabaseException when the DB query itself fails
-     * (e.g. connection lost, constraint violation).
-     */
     public function testUpdateImageThrowsCarDatabaseExceptionOnQueryError(): void
     {
         $db = $this->makeDbMock();
@@ -600,15 +487,9 @@ final class CarRepositoryTest extends TestCase
         $repo->updateImage(1, '["new.jpg"]', '["old.jpg"]');
     }
 
-    // =========================================================================
-    // updateImage() owner_last_updated tests (issue #1929)
-    // =========================================================================
+    // updateImage() owner_last_updated (#1929)
 
-    /**
-     * An owner photo removal writes owner_last_updated in the same UPDATE as
-     * the image, so the cars_update trigger writes one cars_hist row. The CAS
-     * guard stays on the WHERE clause.
-     */
+    /** One UPDATE, so the cars_update trigger writes one cars_hist row. */
     public function testUpdateImageWithTimestampIncludesOwnerLastUpdatedInSql(): void
     {
         $db = $this->makeDbMock();
@@ -627,9 +508,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($repo->updateImage(1, '["new.jpg"]', '["old.jpg"]', '2026-09-29 10:00:00'));
     }
 
-    /**
-     * Without a timestamp, the query must not touch owner_last_updated.
-     */
     public function testUpdateImageWithoutTimestampSqlUnchanged(): void
     {
         $db = $this->makeDbMock();
@@ -648,10 +526,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($repo->updateImage(1, '["new.jpg"]', '["old.jpg"]'));
     }
 
-    /**
-     * The timestamp does not weaken the CAS guard: 0 rows changed still
-     * returns false.
-     */
     public function testUpdateImageCasFailureReturnsFalseWithTimestampArgSet(): void
     {
         $db = $this->makeDbMock();
@@ -664,14 +538,9 @@ final class CarRepositoryTest extends TestCase
         $this->assertFalse($repo->updateImage(1, '["new.jpg"]', '["old.jpg"]', '2026-09-29 10:00:00'));
     }
 
-    // =========================================================================
-    // deleteCar() rows-affected guard tests (issue #1311)
-    // =========================================================================
+    // deleteCar() rows-affected guard (#1311)
 
-    /**
-     * deleteCar() throws CarNotFoundException when the DELETE affects 0 rows,
-     * meaning the car was already deleted by a concurrent request.
-     */
+    /** 0 rows means a concurrent request already deleted the car. */
     public function testDeleteCarThrowsCarNotFoundExceptionWhenNoRowsAffected(): void
     {
         $db = $this->makeDbMock();
@@ -685,10 +554,6 @@ final class CarRepositoryTest extends TestCase
         $repo->deleteCar(999);
     }
 
-    /**
-     * deleteCar() returns false when the DB query itself errors out
-     * (distinct from the 0-rows-affected CarNotFoundException path).
-     */
     public function testDeleteCarReturnsFalseOnQueryError(): void
     {
         $db = $this->makeDbMock();
@@ -699,13 +564,8 @@ final class CarRepositoryTest extends TestCase
         $this->assertFalse($repo->deleteCar(42));
     }
 
-    // =========================================================================
-    // findByIdForUpdate() tests (issue #1311)
-    // =========================================================================
+    // findByIdForUpdate() (#1311)
 
-    /**
-     * findByIdForUpdate() returns null when the SELECT FOR UPDATE finds no row.
-     */
     public function testFindByIdForUpdateReturnsNullWhenNotFound(): void
     {
         $db = $this->makeDbMock();
@@ -718,9 +578,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertNull($repo->findByIdForUpdate(1));
     }
 
-    /**
-     * findByIdForUpdate() returns the car stdClass object when a row is found.
-     */
     public function testFindByIdForUpdateReturnsCarObjectWhenFound(): void
     {
         $car = (object) ['id' => 1, 'chassis' => 'TEST001'];
@@ -739,10 +596,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame('TEST001', $result->chassis);
     }
 
-    /**
-     * findByIdForUpdate() throws CarDatabaseException when the query fails
-     * (e.g. no active transaction, connection error).
-     */
     public function testFindByIdForUpdateThrowsCarDatabaseExceptionOnQueryError(): void
     {
         $db = $this->makeDbMock();
@@ -755,15 +608,9 @@ final class CarRepositoryTest extends TestCase
         $repo->findByIdForUpdate(1);
     }
 
-    // =========================================================================
-    // getAllForSitemap tests (issue #1373)
-    // =========================================================================
+    // getAllForSitemap() (#1373)
 
-    /**
-     * getAllForSitemap() throws CarDatabaseException when the query fails, rather than
-     * silently returning an empty array — a real DB outage must produce a visible 500 via
-     * sitemap.php's catch block, not a healthy-looking sitemap missing every car.
-     */
+    /** An outage must give sitemap.php a 500, not a sitemap with no cars. */
     public function testGetAllForSitemapThrowsCarDatabaseExceptionOnQueryError(): void
     {
         $db = $this->makeDbMock();
@@ -777,13 +624,6 @@ final class CarRepositoryTest extends TestCase
         $repo->getAllForSitemap();
     }
 
-    /**
-     * getAllForSitemap() returns the rows from DB::results() on the happy path.
-     *
-     * Regression guard for #1441: the shared mock DB previously had no results()
-     * method at all, so this call would have fatally errored ("Call to undefined
-     * method DB::results()") the first time a unit test actually exercised it.
-     */
     public function testGetAllForSitemapReturnsRows(): void
     {
         $db = $this->makeDbMock();
@@ -798,14 +638,8 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame(1, $result[0]->id);
     }
 
-    // =========================================================================
-    // findByChassisKey() tests (issue #1764)
-    // =========================================================================
+    // findByChassisKey() (#1764)
 
-    /**
-     * findByChassisKey() returns the car object (id, user_id) when a matching
-     * row is found.
-     */
     public function testFindByChassisKeyReturnsObjectWhenFound(): void
     {
         $car = (object) ['id' => 1, 'user_id' => 42];
@@ -829,10 +663,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame(42, $result->user_id);
     }
 
-    /**
-     * findByChassisKey() returns null when no matching row exists (real \DB
-     * returns [] from first() rather than null when zero rows match).
-     */
     public function testFindByChassisKeyReturnsNullWhenNotFound(): void
     {
         $db = $this->makeDbMock();
@@ -845,9 +675,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertNull($repo->findByChassisKey('1973', '36', 'NOMATCH'));
     }
 
-    /**
-     * findByChassisKey() throws CarDatabaseException when the query itself fails.
-     */
     public function testFindByChassisKeyThrowsCarDatabaseExceptionOnQueryError(): void
     {
         $db = $this->makeDbMock();
@@ -862,9 +689,7 @@ final class CarRepositoryTest extends TestCase
         $repo->findByChassisKey('1973', '36', 'TEST001');
     }
 
-    // =========================================================================
-    // Verification system backend tests (issue #1155)
-    // =========================================================================
+    // Verification backend (#1155)
 
     public function testUpdateVerificationSentAtReturnsTrue(): void
     {
@@ -901,9 +726,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
-    // =========================================================================
-    // incrementVerificationAttempts() tests (#1884)
-    // =========================================================================
+    // incrementVerificationAttempts() (#1884)
 
     public function testIncrementVerificationAttemptsReturnsTrueWhenRowMatched(): void
     {
@@ -924,12 +747,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
-    /**
-     * The SQL passed to query() must carry the CASE-based reset/increment
-     * structure the plan specifies — asserted via stringContains() fragments
-     * rather than a full-string match, matching this file's existing style
-     * (see testFindVerificationEligibleQueryContainsExpectedConditions()).
-     */
     public function testIncrementVerificationAttemptsSendsExpectedCaseStructure(): void
     {
         $capturedSql = null;
@@ -956,11 +773,8 @@ final class CarRepositoryTest extends TestCase
     }
 
     /**
-     * Zero rows affected means no car matched $carId — unambiguous for this
-     * method (unlike updateProfileEmailBounced()'s/updateProfileEmailSuppressed()'s
-     * ambiguous-zero contract), because the CASE always changes at least one
-     * column for any row it matches. Logged and returned false, not thrown,
-     * because the only caller runs this after the email has already been sent.
+     * Zero rows is unambiguous here: the CASE always changes a matched row.
+     * Not thrown: the only caller runs after the email is sent.
      */
     public function testIncrementVerificationAttemptsReturnsFalseAndLogsWhenNoRowMatched(): void
     {
@@ -989,17 +803,11 @@ final class CarRepositoryTest extends TestCase
         $repo->incrementVerificationAttempts(7);
     }
 
-    // =========================================================================
-    // restoreVerificationCodeState() tests (#1884)
-    // =========================================================================
+    // restoreVerificationCodeState() (#1884)
 
     /**
-     * Pins the exact bind-parameter order against the exact placeholder
-     * order in the SQL. A swap here (vericode/vericodeSentAt reversed, or
-     * either swapped with $carId) would silently write a vericode string
-     * into vericode_sent_at (or vice versa) for the matched row, and no
-     * other test in this suite exercises the real method closely enough to
-     * catch it — CarVerificationSendServiceTest only mocks this method.
+     * A swapped bind order would write a vericode into vericode_sent_at.
+     * CarVerificationSendServiceTest only mocks this method.
      */
     public function testRestoreVerificationCodeStateBindsParametersInDeclaredOrder(): void
     {
@@ -1040,13 +848,8 @@ final class CarRepositoryTest extends TestCase
     }
 
     /**
-     * rowCount() after an UPDATE reports rows CHANGED, not rows MATCHED, so
-     * restoring the values a row already holds yields count() === 0 on a row
-     * that is perfectly present. That is the common case, not an anomaly: a
-     * car never sent to before has vericode/vericode_sent_at NULL, and the
-     * restore writes NULL/NULL back. Before the confirm-read was added this
-     * returned false, and CarVerificationSendService::sendOne() logged a
-     * CRITICAL "manual repair required" on a routine healthy path.
+     * Restoring unchanged values (often NULL/NULL) gives count() === 0 on a
+     * present row. That once logged a false CRITICAL in sendOne().
      */
     public function testRestoreVerificationCodeStateReturnsTrueWhenWriteChangedNothingButRowExists(): void
     {
@@ -1140,9 +943,7 @@ final class CarRepositoryTest extends TestCase
         $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
     }
 
-    // =========================================================================
-    // updateProfileEmailBounced() tests (#1884)
-    // =========================================================================
+    // updateProfileEmailBounced() (#1884)
 
     public function testUpdateProfileEmailBouncedThrowsWhenBouncedTrueWithNoAddress(): void
     {
@@ -1167,8 +968,7 @@ final class CarRepositoryTest extends TestCase
         try {
             $repo->updateProfileEmailBounced(1, true, '');
             $this->fail('Expected CarDatabaseException was not thrown');
-        } catch (CarDatabaseException $e) {
-            // Expected — assert no query was ever issued (see expects(never) above).
+        } catch (CarDatabaseException) {
         }
     }
 
@@ -1210,9 +1010,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
-    /**
-     * $db->count() > 0 means a profiles row was actually updated.
-     */
     public function testUpdateProfileEmailBouncedReturnsTrueWhenRowsAffected(): void
     {
         $db = $this->makeDbMock();
@@ -1226,13 +1023,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
-    /**
-     * $db->count() === 0 is the ambiguous-zero contract shared with
-     * updateProfileEmailSuppressed(): "no profiles row" and "value unchanged"
-     * both report 0 affected rows, so this method returns false rather than
-     * throwing, leaving disambiguation to the caller (bounceOwnerProfile()'s
-     * read-then-skip idempotency check).
-     */
+    /** 0 means "no row" or "unchanged"; bounceOwnerProfile() tells them apart. */
     public function testUpdateProfileEmailBouncedReturnsFalseWhenNoRowsAffected(): void
     {
         $db = $this->makeDbMock();
@@ -1260,9 +1051,7 @@ final class CarRepositoryTest extends TestCase
         $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
     }
 
-    // =========================================================================
-    // findProfileEmailBounced() tests (#1884)
-    // =========================================================================
+    // findProfileEmailBounced() (#1884)
 
     public function testFindProfileEmailBouncedReturnsNullWhenNoRow(): void
     {
@@ -1308,9 +1097,7 @@ final class CarRepositoryTest extends TestCase
         $repo->findProfileEmailBounced(42);
     }
 
-    // =========================================================================
-    // findProfileEmailBouncedAddress() tests (#1884)
-    // =========================================================================
+    // findProfileEmailBouncedAddress() (#1884)
 
     public function testFindProfileEmailBouncedAddressReturnsNullWhenNoRow(): void
     {
@@ -1370,15 +1157,7 @@ final class CarRepositoryTest extends TestCase
         $repo->findProfileEmailBouncedAddress(42);
     }
 
-    /**
-     * findVerificationEligible() must build a WHERE clause covering every
-     * eligibility condition: not sold, deliverable email, never-verified or
-     * stale verification, and a stale owner-driven update, ordered oldest first.
-     * It must also exclude ownerless cars — no user_id, an owner row that no
-     * longer exists, or an owner that is the `noowner` system account —
-     * resolved by requiring a live users row via an INNER JOIN and checking
-     * its username.
-     */
+    /** Ownerless cars (no user, deleted user, `noowner`) are excluded through an INNER JOIN. */
     public function testFindVerificationEligibleQueryContainsExpectedConditions(): void
     {
         $capturedSql = null;
@@ -1424,11 +1203,8 @@ final class CarRepositoryTest extends TestCase
             $capturedSql,
             'A car with no owner at all must be excluded explicitly, not via three-valued logic'
         );
-        // Asserted as the whole clause, not fragments: an OR between "no join
-        // match" and "username != noowner" would still pass narrower
-        // 'username !=' and 'user_id IS NOT NULL' checks while admitting an
-        // orphaned user_id as eligible. Pinning the full AND clause is what
-        // distinguishes correct INNER JOIN semantics from that bug.
+        // The whole clause, not fragments: an OR here would still match the
+        // fragments but admit an orphaned user_id.
         $this->assertStringContainsString(
             "AND users.username != 'noowner'",
             $capturedSql,
@@ -1442,29 +1218,19 @@ final class CarRepositoryTest extends TestCase
             'findVerificationEligible() must filter on stalenessSql(), the exact negation of freshnessSql()'
         );
         $this->assertStringContainsString(
-            'LEFT JOIN profiles ON profiles.user_id = cars.user_id',
+            'AND COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0) = 0',
             $capturedSql,
-            'The owner-level opt-out must be joined as a LEFT JOIN, not an INNER JOIN — users and '
-                . 'profiles are not 1:1 in this schema (see CarRepository::findProfileEmailSuppressed()\'s '
-                . 'docblock), so an INNER JOIN would silently make every owner who never filled in a '
-                . 'profile permanently un-emailable'
+            'The owner-level opt-out must be read via a correlated subquery, not a LEFT JOIN — '
+                . 'profiles.user_id has no UNIQUE index, so a join could duplicate the car row in a list '
+                . 'result. An owner who opted out (profiles.email_suppressed = 1) must be excluded '
+                . 'regardless of the per-car flag — setSuppressedForOwner() only fans out to the cars held '
+                . 'at opt-out time, so a car acquired later reads cars.email_suppressed = 0 and would '
+                . 'otherwise re-enter the eligible set (the gap named in '
+                . '20260914093000_add_profile_email_suppressed.php). COALESCE supplies the column default '
+                . 'for an owner with no profiles row at all, and MAX treats "suppressed in any profiles '
+                . 'row" as suppressed if an owner somehow has more than one'
         );
-        $this->assertStringContainsString(
-            'AND COALESCE(profiles.email_suppressed, 0) = 0',
-            $capturedSql,
-            'An owner who opted out (profiles.email_suppressed = 1) must be excluded regardless of the '
-                . 'per-car flag — setSuppressedForOwner() only fans out to the cars held at opt-out time, '
-                . 'so a car acquired later reads cars.email_suppressed = 0 and would otherwise re-enter '
-                . 'the eligible set (the gap named in 20260914093000_add_profile_email_suppressed.php). '
-                . 'COALESCE supplies the column default for an owner with no profiles row at all'
-        );
-        // Narrowed from a blanket assertStringNotContainsString('COALESCE'):
-        // that banned the token outright, which only ever stood in for "the
-        // #1953 mtime fallback is gone" and broke the moment an unrelated
-        // COALESCE (the profiles opt-out clause asserted above) entered the
-        // query. Pinning the actual removed expression keeps the #1953
-        // regression guard exact instead of coupling it to every future use of
-        // the function.
+        // Pins the removed #1953 mtime fallback, not every COALESCE.
         $this->assertStringNotContainsString(
             'COALESCE(cars.owner_last_updated',
             $capturedSql,
@@ -1501,10 +1267,6 @@ final class CarRepositoryTest extends TestCase
         );
     }
 
-    /**
-     * LIMIT/OFFSET are cast with max(0, ...) before interpolation — negative
-     * inputs must render as 0 in the query, never as a negative number.
-     */
     public function testFindVerificationEligibleClampsNegativeLimitAndOffset(): void
     {
         $capturedSql = null;
@@ -1527,9 +1289,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertStringContainsString('LIMIT 0 OFFSET 0', $capturedSql);
     }
 
-    /**
-     * findVerificationEligible() returns the rows from DB::results() on the happy path.
-     */
     public function testFindVerificationEligibleReturnsRows(): void
     {
         $db = $this->makeDbMock();
@@ -1544,9 +1303,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame(1, $result[0]->id);
     }
 
-    /**
-     * findVerificationEligible() throws CarDatabaseException when the query fails.
-     */
     public function testFindVerificationEligibleThrowsCarDatabaseExceptionOnQueryError(): void
     {
         $db = $this->makeDbMock();
@@ -1561,17 +1317,9 @@ final class CarRepositoryTest extends TestCase
         $repo->findVerificationEligible(10, 0);
     }
 
-    // =========================================================================
-    // clearBouncedForUser() / carIdsWithBouncedFlagButNoAddress() tests (issue #1890)
-    // =========================================================================
+    // clearBouncedForUser() / carIdsWithBouncedFlagButNoAddress() (#1890)
 
-    /**
-     * clearBouncedForUser() must issue exactly the parameterized UPDATE the
-     * plan specifies, with $userId then $currentEmail bound in that order —
-     * the WHERE clause's LOWER() comparison and NULL/empty-address OR-branch
-     * are the entire correctness surface of this method, so the exact SQL
-     * text is worth pinning rather than just the return value.
-     */
+    /** The LOWER() match and the NULL/empty-address branch are the whole method. */
     public function testClearBouncedForUserSendsExpectedSqlAndParams(): void
     {
         $db = $this->makeDbMock();
@@ -1597,11 +1345,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame(2, $result, 'Must return DB::count() — rows changed by the UPDATE');
     }
 
-    /**
-     * A no-op run (nothing matched the WHERE clause) must return 0 without
-     * throwing — this is the "stale re-click" / "join-time verification"
-     * acceptance-criteria case from the plan, at the repository level.
-     */
+    /** A stale re-click matches nothing. */
     public function testClearBouncedForUserReturnsZeroWhenNothingMatches(): void
     {
         $db = $this->makeDbMock();
@@ -1615,13 +1359,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame(0, $result);
     }
 
-    /**
-     * On a DB error, clearBouncedForUser() must log under
-     * LOG_CATEGORY_DATABASE_ERROR — matching reassignCarsByUser()'s own
-     * convention of logging infrastructure faults under the generic
-     * database-error category rather than an operation-specific one — and
-     * throw CarDatabaseException.
-     */
     public function testClearBouncedForUserThrowsAndLogsOnDatabaseError(): void
     {
         global $mockLogEntries;
@@ -1646,11 +1383,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertStringContainsString('clearBouncedForUser failed (userId=42)', $mockLogEntries[0]['message']);
     }
 
-    /**
-     * carIdsWithBouncedFlagButNoAddress() must issue the plain integrity-check
-     * SELECT and map every returned row's ->id to an int — the SQL text and
-     * the row-to-int mapping are both part of the contract callers rely on.
-     */
     public function testCarIdsWithBouncedFlagButNoAddressReturnsListOfInts(): void
     {
         $db = $this->makeDbMock();
@@ -1677,11 +1409,7 @@ final class CarRepositoryTest extends TestCase
         }
     }
 
-    /**
-     * No matching rows must return an empty array, not null or false — the
-     * hook's `!empty($integrityCarIds)` check relies on this being a real
-     * empty array.
-     */
+    /** The hook checks `!empty($integrityCarIds)`. */
     public function testCarIdsWithBouncedFlagButNoAddressReturnsEmptyArrayWhenNoneMatch(): void
     {
         $db = $this->makeDbMock();
@@ -1695,12 +1423,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame([], $result);
     }
 
-    /**
-     * A DB error must throw CarDatabaseException. Unlike clearBouncedForUser(),
-     * this method does NOT log its own error (per the plan) — the hook's own
-     * \Throwable/\CarDatabaseException catch blocks are the logging point for
-     * this method's failures, so no logger() call is asserted here.
-     */
+    /** No log here: the hook's catch blocks log this failure. */
     public function testCarIdsWithBouncedFlagButNoAddressThrowsOnDatabaseError(): void
     {
         $db = $this->makeDbMock();
@@ -1716,31 +1439,18 @@ final class CarRepositoryTest extends TestCase
     }
 
     /**
-     * A row missing the expected ->id property (an unexpected shape, e.g.
-     * schema drift or a wrong query) does NOT fail predictably today.
-     * `array_map(static fn (object $row): int => (int) $row->id, ...)`
-     * accesses an undefined property, which PHP 8 treats as a non-fatal
-     * E_WARNING ("Undefined property: stdClass::$id") rather than a
-     * \Throwable, and `(int) null` silently coerces to 0 — producing a
-     * *plausible-looking but bogus* car id (0) instead of surfacing the
-     * malformed row. This test pins that actual (undesirable) behavior
-     * rather than asserting a throw that does not happen — a real,
-     * low-severity gap (SELECT-only; the id is only ever used in a log
-     * message) worth hardening, not silently papering over.
+     * Pins a known gap: a row without ->id gives an E_WARNING and car id 0,
+     * not an exception. Low severity: the id goes only into a log message.
      */
     public function testCarIdsWithBouncedFlagButNoAddressSilentlyCoercesUnexpectedRowShapeToZero(): void
     {
         $db = $this->makeDbMock();
         $db->expects($this->once())->method('query')->willReturnSelf();
         $db->method('error')->willReturn(false);
-        // Row shape missing 'id' entirely.
         $db->method('results')->willReturn([(object) ['not_id' => 999]]);
 
         $repo = new CarRepository($db);
 
-        // @ suppresses the non-fatal "Undefined property" warning this
-        // mapping emits — the warning itself (visible without suppression)
-        // is the evidence backing this test's docblock finding.
         $result = @$repo->carIdsWithBouncedFlagButNoAddress(42);
 
         $this->assertSame(
@@ -1752,16 +1462,9 @@ final class CarRepositoryTest extends TestCase
         );
     }
 
-    // =========================================================================
-    // findVerificationStateByOwner() / findLatestEmailEventsByCarIds() tests
-    // (issue #1924)
-    // =========================================================================
+    // findVerificationStateByOwner() / findLatestEmailEventsByCarIds() (#1924)
 
-    /**
-     * findVerificationStateByOwner() must issue exactly the documented SELECT,
-     * ordered `model, year` to match the car-button list's own ordering in
-     * user_form_hook.php, and return the rows from DB::results() unmodified.
-     */
+    /** Ordered `model, year` to match the car-button list in user_form_hook.php. */
     public function testFindVerificationStateByOwnerSendsExpectedSqlAndReturnsRows(): void
     {
         $rows = [
@@ -1785,6 +1488,7 @@ final class CarRepositoryTest extends TestCase
             ->method('query')
             ->with(
                 'SELECT id, model, series, variant, year, email, email_bounced, email_bounced_address,
+                    COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0) AS profile_email_suppressed,
                     email_suppressed, owner_last_updated, last_verified
                FROM cars
               WHERE user_id = ?
@@ -1801,12 +1505,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame($rows, $result);
     }
 
-    /**
-     * Spot-checks every column of the returned row, and specifically pins
-     * email_bounced/email_suppressed as ints (tinyint columns), not bool —
-     * a correction made during implementation of #1924 and worth guarding
-     * against regressing back to a bool assumption.
-     */
+    /** email_bounced/email_suppressed are ints (tinyint), not bool. */
     public function testFindVerificationStateByOwnerMapsAllColumnsAndKeepsBounceFlagsAsInt(): void
     {
         $row = (object) [
@@ -1852,10 +1551,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertFalse(is_bool($car->email_suppressed), 'email_suppressed must not be a bool');
     }
 
-    /**
-     * A user with no cars must yield an empty array — no special-casing of
-     * zero rows, just DB::results()'s own empty-array behavior passed through.
-     */
     public function testFindVerificationStateByOwnerReturnsEmptyArrayWhenNoCars(): void
     {
         $db = $this->makeDbMock();
@@ -1869,10 +1564,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame([], $result);
     }
 
-    /**
-     * A query error must throw CarDatabaseException rather than silently
-     * returning an empty/partial verification-state list.
-     */
     public function testFindVerificationStateByOwnerThrowsOnDatabaseError(): void
     {
         $db = $this->makeDbMock();
@@ -1887,13 +1578,7 @@ final class CarRepositoryTest extends TestCase
         $repo->findVerificationStateByOwner(42);
     }
 
-    /**
-     * findLatestEmailEventsByCarIds() must return the latest (max occurred_at)
-     * event per car id, keyed by (int) car_id — simulating the self-join's
-     * output directly, since the join logic itself lives in SQL and this test
-     * only needs to verify the PHP-side keying/mapping of whatever rows the
-     * query returns.
-     */
+    /** The self-join is SQL; this checks only the PHP keying by (int) car_id. */
     public function testFindLatestEmailEventsByCarIdsKeysResultByCarId(): void
     {
         $rows = [
@@ -1917,22 +1602,9 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame('mailbox full', $result[20]->reason);
     }
 
-    /**
-     * When one car has multiple events on record, only the row carrying the
-     * max occurred_at for that car_id must survive in the returned map — the
-     * self-join is expected to have already filtered to that row before PHP
-     * ever sees it, so this test asserts the max-occurred_at row wins when it
-     * is the only one DB::results() returns for that car id (mirroring what
-     * the real self-join would produce), and that an earlier-dated row for
-     * the same car id would be overwritten if it appeared after in the result
-     * set — pinning the "later-joined row wins on a tie" documented behavior.
-     */
+    /** On a tie, the later row in the result set wins. */
     public function testFindLatestEmailEventsByCarIdsReturnsMaxOccurredAtRowWhenMultipleEventsExist(): void
     {
-        // Simulates the self-join already having picked the max-occurred_at
-        // row per car_id (that filtering is SQL, not PHP) — but exercises the
-        // documented "later-joined row wins" tie-break by returning two rows
-        // for the same car_id with equal occurred_at values.
         $rows = [
             (object) ['car_id' => 10, 'event' => 'soft_bounce', 'occurred_at' => '2026-03-01 00:00:00', 'reason' => 'first'],
             (object) ['car_id' => 10, 'event' => 'hard_bounce', 'occurred_at' => '2026-03-01 00:00:00', 'reason' => 'second'],
@@ -1951,16 +1623,9 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame('second', $result[10]->reason);
     }
 
-    /**
-     * A car with zero er_email_events rows must simply be absent from the
-     * returned map — callers must treat a missing key as "no events
-     * recorded," not as an error.
-     */
+    /** A missing key means "no events", not an error. */
     public function testFindLatestEmailEventsByCarIdsOmitsCarWithNoEvents(): void
     {
-        // Only car_id 10 has an event; car_id 30 (also requested) has none,
-        // matching what the self-join would produce (an INNER JOIN naturally
-        // omits car ids with no rows in er_email_events).
         $rows = [
             (object) ['car_id' => 10, 'event' => 'delivered', 'occurred_at' => '2026-01-01 00:00:00', 'reason' => null],
         ];
@@ -1977,10 +1642,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertArrayNotHasKey(30, $result);
     }
 
-    /**
-     * An empty $carIds array must return an empty array with NO query issued
-     * at all — the no-op path documented alongside deleteEmailEventsForCarIds().
-     */
     public function testFindLatestEmailEventsByCarIdsReturnsEmptyArrayAndIssuesNoQueryOnEmptyInput(): void
     {
         $db = $this->makeDbMock();
@@ -1992,10 +1653,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame([], $result);
     }
 
-    /**
-     * A query error must throw CarDatabaseException rather than silently
-     * returning an empty/partial event map.
-     */
     public function testFindLatestEmailEventsByCarIdsThrowsOnDatabaseError(): void
     {
         $db = $this->makeDbMock();

@@ -622,13 +622,8 @@ abstract class IntegrationTestCase extends TestCase
      * safely trigger outside a real HTTP request.
      *
      * Shared by ReconcileOwnerFieldsAnalyzeTest and
-     * ReconcileOwnerFieldsExecuteTest (both need the same functions), following
-     * FixPagePermissionsAnalyzeRunTest::loadAnalyzePermissions()'s precedent
-     * for script #21. The extracted slice is written to a real temp file and
-     * require()'d — not eval()'d — so it is subject to normal PHP file
-     * compilation/opcache semantics like any other included file, and the
-     * function_exists() guard makes calling this from both test classes in the
-     * same PHPUnit process safe.
+     * ReconcileOwnerFieldsExecuteTest. The function_exists() guard makes a call
+     * from both test classes in the same PHPUnit process safe.
      */
     protected function loadOwnerFieldDriftFunctions(): void
     {

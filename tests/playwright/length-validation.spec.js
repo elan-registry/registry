@@ -1,5 +1,3 @@
-// tests/playwright/length-validation.spec.js
-//
 // Regression tests for issue #1107: length-validation boundary coverage for
 // chassis-availability.php and transfer-request.php (hardened in #1081).
 //
@@ -18,8 +16,6 @@
 // on length) consumes a rate-limit slot. The over-limit tests guard against
 // this: if the endpoint responds with a rate-limit message the test skips
 // rather than failing with a misleading assertion error.
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

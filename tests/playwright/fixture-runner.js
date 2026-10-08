@@ -1,5 +1,3 @@
-// tests/playwright/fixture-runner.js
-//
 // Runs a PHP seed fixture that needs the application database. The local
 // stack is Docker only (DB_HOST=db does not resolve on the host), so the
 // runner runs the fixture in the app container. It uses the host `php` only

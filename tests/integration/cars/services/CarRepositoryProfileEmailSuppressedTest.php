@@ -8,27 +8,10 @@ use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB integration tests for CarRepository::findProfileEmailSuppressed()
- * and CarRepository::updateProfileEmailSuppressed() (#1883).
- *
- * CarVerificationManager::suppressOwnerProfile()'s entire read-then-skip
- * design rests on a specific MySQL/PDO behavior: an UPDATE that sets a
- * column to the value it already holds reports 0 affected rows, which is
- * otherwise indistinguishable from "no matching row" (no profiles row for
- * this user). That behavior is asserted about at length in both classes'
- * docblocks but, before this file, was exercised only through mocks
- * (CarVerificationManagerTest.php) or a private test-local re-implementation
- * of the query (CarVerificationManagerSuppressForOwnerTest.php's
- * profileEmailSuppressed() helper) — never through the repository methods
- * themselves against a real connection. If PDO were ever configured with
- * MYSQL_ATTR_FOUND_ROWS (flipping rowCount() to matched-rows semantics), the
- * entire suppressOwnerProfile() read-then-skip guard would silently stop
- * doing anything useful, and nothing here or in the mocked tests would catch
- * it. These tests pin the actual runtime behavior directly.
- *
- * @see usersc/classes/Car/CarRepository.php
- * @see usersc/classes/Car/CarVerificationManager.php::suppressOwnerProfile()
- * @see https://github.com/elan-registry/registry/issues/1883
+ * #1883, #1895: CarRepository profile email-suppressed reads and writes
+ * against a real connection. suppressOwnerProfile()'s read-then-skip guard
+ * depends on a same-value UPDATE reporting 0 affected rows; the mocks
+ * cannot show that.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -99,21 +82,15 @@ final class CarRepositoryProfileEmailSuppressedTest extends IntegrationTestCase
     }
 
     /**
-     * The load-bearing assertion this whole file exists for: a same-value
-     * UPDATE against an EXISTING row must report false (0 affected rows) —
-     * this is the exact MySQL/PDO behavior suppressOwnerProfile()'s
-     * read-then-skip guard is built around. If this assertion ever starts
-     * failing (e.g. because PDO gained MYSQL_ATTR_FOUND_ROWS), the guard in
-     * CarVerificationManager::suppressOwnerProfile() becomes dead code and
-     * every comment describing it becomes incorrect.
+     * A same-value UPDATE on an existing row must report false (0 rows). If
+     * PDO gains MYSQL_ATTR_FOUND_ROWS, suppressOwnerProfile()'s guard breaks.
      */
     #[Group('fast')]
     public function testUpdateToSameValueOnExistingRowReturnsFalse(): void
     {
         $userId = $this->createTestUser([], true);
 
-        // Confirm the starting value first — the row exists with the flag
-        // already at 0 (createTestUser($withProfile: true)'s default).
+        // The row exists with the flag already at 0.
         $this->assertSame(0, $this->repo->findProfileEmailSuppressed($userId));
 
         $result = $this->repo->updateProfileEmailSuppressed($userId, false);
@@ -143,5 +120,53 @@ final class CarRepositoryProfileEmailSuppressedTest extends IntegrationTestCase
             'An UPDATE that actually changes a value on an existing row must report true'
         );
         $this->assertSame(1, $this->repo->findProfileEmailSuppressed($userId));
+    }
+
+    /**
+     * The locking read returns the same null/0/1 values as the plain read.
+     * CarVerificationManagerSuppressForOwnerByOwnerTest covers its
+     * concurrency behavior.
+     */
+    #[Group('fast')]
+    public function testFindForUpdateReturnsNullZeroAndOneInsideTransaction(): void
+    {
+        $noProfileUserId = $this->createTestUser();
+        $userId = $this->createTestUser([], true);
+
+        $this->repo->beginTransaction();
+        try {
+            $this->assertNull($this->repo->findProfileEmailSuppressedForUpdate($noProfileUserId));
+            $this->assertSame(0, $this->repo->findProfileEmailSuppressedForUpdate($userId));
+            $this->assertTrue($this->repo->updateProfileEmailSuppressed($userId, true));
+            $this->assertSame(1, $this->repo->findProfileEmailSuppressedForUpdate($userId));
+        } finally {
+            $this->repo->rollback();
+        }
+    }
+
+    /**
+     * profiles.user_id is not UNIQUE. With two rows, the first at 0 and a
+     * second at 1, the locking read must report 1, like the MAX() in the
+     * eligibility queries. A first()-based read reported 0, so a resume
+     * reported success while the second row still blocked every send.
+     */
+    #[Group('fast')]
+    #[Group('regression')]
+    public function testFindForUpdateUsesMaxAcrossDuplicateProfilesRows(): void
+    {
+        $userId = $this->createTestUser([], true);
+        $this->db->query(
+            'INSERT INTO profiles (user_id, bio, city, state, country, email_suppressed)
+             SELECT user_id, bio, city, state, country, 1 FROM profiles WHERE user_id = ?',
+            [$userId]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: the duplicate profiles row must insert');
+
+        $this->repo->beginTransaction();
+        try {
+            $this->assertSame(1, $this->repo->findProfileEmailSuppressedForUpdate($userId));
+        } finally {
+            $this->repo->rollback();
+        }
     }
 }

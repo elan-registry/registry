@@ -1,102 +1,20 @@
-// tests/playwright/e2e/car-edit-owner-refresh.spec.js
+// Real save.php path for the #1962 owner-contact refresh. Other coverage
+// mocks save.php or calls Car::update() directly; this one runs
+// buildCarDetails() through a real request.
 //
-// Real-HTTP-path coverage for the #1962 fix: editing a car through the
-// actual owner-facing form must run the real buildCarDetails() in
-// app/api/cars/save.php, which refreshes the car's denormalized
-// owner-contact columns (fname, lname, email, city, state, country, lat,
-// lon) from the owner's CURRENT profile.
+// It cannot build a stale owner snapshot: user_settings.php syncs profile
+// changes to every car in the same request (#1873). So it edits an unrelated
+// field (comments) and asserts the car shows the owner's current name.
+// WARNING: this test writes to a real car row.
 //
-// Why this file exists: tests/playwright/car-edit-text-save.spec.js is the
-// only Playwright coverage of the car-edit form's save flow, but every one
-// of its tests intercepts app/api/cars/save.php with page.route() and
-// returns a mocked JSON response — the real save.php process, and therefore
-// the real buildCarDetails(), never executes. tests/integration/
-// CarEditOwnerColumnRefreshTest.php and tests/unit/classes/
-// OwnerContactFieldsTest.php both exercise the underlying logic directly
-// (Car::update()/Owner::ownerContactFields()) rather than through save.php
-// as an HTTP endpoint, and tests/unit/cars/CarActionsSaveWiringTest.php
-// inspects save.php's source text rather than running it. So as of #1962,
-// zero test coverage actually executes buildCarDetails() end-to-end via a
-// real request. This file closes that gap with ONE focused scenario.
-//
-// IMPORTANT LIMITATION — please read before extending this test:
-// This test does NOT reproduce "a car with a stale owner-contact snapshot"
-// the way the integration test does. It cannot: issue #1873 added
-// Owner::syncOwnerFieldsToCars(), which usersc/user_settings.php calls
-// synchronously, in the SAME request, whenever any profile field (name,
-// location, etc.) changes — and it immediately pushes the new values onto
-// EVERY car the owner has. There is no UI-reachable window, using only
-// public forms, in which a real owner's profile has changed but a real car
-// row has not yet caught up; the sync closes that window before the
-// request finishes. Constructing genuine staleness would require writing
-// to `cars` directly via SQL, which no existing Playwright test in this
-// suite does (they all drive only HTTP/browser actions — see
-// car-edit-missing-car.spec.js's header comment on why even a second test
-// *account* was chosen over any DB shortcut).
-//
-// What this test proves instead: editing an UNRELATED field (comments)
-// through the real car-edit form, via the real fetch() to save.php (see
-// app/assets/js/car-edit.js's submitCarForm()), causes the saved car's
-// publicly-visible owner-contact fields (owner name and location, the two
-// buildCarDetails() writes that details.php actually renders) to reflect
-// E2E_DEV_ADMIN_USERNAME's CURRENT profile. That is only true if the real
-// buildCarDetails() executed and its Owner refresh ran — a save.php that
-// merely persisted the submitted form fields (comments) without touching
-// owner columns, or a broken refresh that wrote null/wrong values, would
-// fail this assertion. The integration test suite already proves the
-// refresh discards a genuinely stale snapshot in favor of the current
-// profile; this test's job is narrower and complementary: proving the real
-// HTTP endpoint actually runs that code at all.
-//
-// Runs against Local/Dev only: the local Docker site, default
-// http://localhost:$APP_HOST_PORT/ (see tests/playwright/base-url.js).
-// Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md.
-// Requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in .env.local.
-//
-// NOT enrolled on Test or Production (see playwright.config.test.js /
-// playwright.config.prod.js testMatch, which excludes this file). Enrollment
-// was attempted and reverted: this test still FAILS on those tiers. Root
-// cause is a timing race, not a permanently-disabled field: on page load,
-// app/assets/js/car-edit.js's isUpdate block re-enables #model via the
-// #year change handler (triggered synchronously at load) and then, in a
-// separate 500ms setTimeout, calls ModelLoader.populateModelDropdown() to
-// actually set #model's value. This test clicks #submit as soon as
-// #comments is visible, without waiting for that async chain to settle —
-// so the real (unmocked) save.php's updateModel() rejects the still-empty
-// model value. Tracked by #2045 — do not re-enroll until fixed (the correct
-// fix is waiting for #model to have a value before submitting, not
-// re-enabling a field that's already enabled by the time submit fires).
-//
-// The target car is discovered dynamically via usersc/account.php's "Update
-// Car" button rather than a hardcoded fixture id (car ownership differs per
-// account — a hardcoded CAR_ID_STANDARD previously hit an unowned/nonexistent
-// car on Test). The credential gate below is tier-aware (E2E_AUTH_TIER) for
-// the same reason — both are preparatory groundwork for #2045's fix, kept
-// even though the test isn't enrolled yet.
+// Local/Dev only for now; Test/Production enrollment is #2301.
 
 const { test, expect } = require('@playwright/test');
 
 test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)', () => {
-  // Skip unless running in the authenticated `admin` project AND,
-  // for Local/Dev only, real credentials are configured. The project-name
-  // check alone (the pattern mirrored from
-  // tests/playwright/e2e/admin.spec.js) is not sufficient on Local/Dev:
-  // per playwright.config.js's own `hasCredentials` guard, when
-  // E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD are unset, auth.setup.js skips cleanly with
-  // no storageState file — but the `admin` project itself still runs,
-  // unauthenticated, rather than being skipped (see CLAUDE.md's
-  // "Local Playwright tests" note). Without this check, this test's own
-  // preconditions (an authenticated fname on user_settings.php, an editable
-  // car) would fail rather than skip, misreporting a missing local
-  // credential as a real regression.
-  //
-  // Test/Production authenticate via a saved storageState, not
-  // E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD, and are already gated by check-auth-admin
-  // failing loudly before `admin` runs (see docs/testing/PLAYWRIGHT_E2E.md)
-  // — so the credential check below only applies when E2E_AUTH_TIER is unset
-  // (Local/Dev). This is preparatory: this test isn't enrolled on Test/
-  // Production yet (see the file header — #2045), but gating it
-  // unconditionally would still incorrectly skip it there once it is.
+  // Skip outside the admin project. On Local/Dev without credentials,
+  // auth.setup.js skips but `admin` still runs unauthenticated, so skip here
+  // rather than report a false failure. E2E_AUTH_TIER tiers use storageState.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'admin') {
       testInfo.skip(true, 'Only runs under the admin project');
@@ -108,27 +26,15 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
   });
 
   test('editing an unrelated field writes the owner\'s current name and location onto the car', async ({ page }) => {
-    // Read E2E_DEV_ADMIN_USERNAME's current profile fname/location from account.php's
-    // account summary before touching anything, so the assertion below is
-    // against a value this test observed rather than one baked into
-    // .env.local (which can drift independently of the live DB).
+    // Read fname from the live DB, not .env.local, which can drift.
     await page.goto('usersc/user_settings.php');
     await page.waitForLoadState('domcontentloaded');
 
     const currentFname = await page.locator('#fname').inputValue();
     expect(currentFname, 'Precondition: E2E_DEV_ADMIN_USERNAME must have a first name set').not.toBe('');
 
-    // Discover a car the logged-in account actually owns via
-    // usersc/account.php's per-car "Update Car" button (same pattern as
-    // tests/playwright/e2e/admin.spec.js's "Update Car" test) rather
-    // than a hardcoded CAR_ID_STANDARD fixture — car ownership on Local/Dev
-    // differs from Test/Production, and CAR_ID_STANDARD (fixtures.js,
-    // defaults to 1) is not guaranteed to belong to whichever account each
-    // tier's storageState/credentials authenticate as. Confirmed directly:
-    // car_id=1 does not belong to the Test account as of this test's most
-    // recent fix — edit.php silently falls into "Add Car" mode for an
-    // unowned/nonexistent id, which then fails validation rather than
-    // failing this test's own precondition assertion clearly.
+    // Find an owned car from account.php, not a fixture id: ownership differs
+    // per tier, and edit.php falls back to "Add Car" mode for an unowned id.
     await page.goto('usersc/account.php');
     await page.waitForLoadState('domcontentloaded');
 
@@ -142,41 +48,22 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
     const commentField = page.locator('#comments');
     await expect(commentField, "Precondition: the account's own car edit page must render the comments field").toBeVisible();
 
-    // Capture the actual car id the edit page loaded (edit.php's hidden
-    // #car_id field — see app/owner/cars/edit.php) rather than assuming
-    // CAR_ID_STANDARD, since the "Update Car" button above may resolve to
-    // any car the account owns, not necessarily that fixture's id.
     const editedCarId = await page.locator('#car_id').inputValue();
     expect(editedCarId, 'Precondition: edit.php must render a car_id for the discovered car').not.toBe('');
 
     const marker = `owner-refresh-e2e ${new Date().toISOString()}`;
     await commentField.fill(marker);
 
-    // NOTE: this same accordion-expand step ('#heading-section2 button' /
-    // '#section2') no longer matches app/owner/cars/edit.php's actual
-    // markup (verified: the Photos section, line ~368, is a plain <h5>
-    // heading, not a collapsible accordion; #submit and #myPond are
-    // directly visible with no expand step required). Dropped here since
-    // it only caused this test to time out waiting for a nonexistent
-    // element. admin.spec.js's identical stale selector was the same
-    // finding, applied later in this same milestone (#1949/#1950).
-    // The form submits via a real fetch() to app/api/cars/save.php (see
-    // car-edit.js's submitCarForm()), not a plain form POST — on success it
-    // does window.location = details.php?car_id=... itself; on failure it
-    // stays on this page and injects .alert-danger into #message client-side
-    // (car-edit.js's displayValidationErrors()). waitForLoadState() after the
-    // click does NOT wait for that fetch to resolve (there's no navigation to
-    // wait for on the current page), so it was a no-op that let this
-    // assertion pass vacuously regardless of outcome — wait for the actual
-    // redirect instead, which fails loudly (with the alert still visible for
-    // debugging) if the save was rejected.
+    // Submit is a fetch(); waitForLoadState() would not wait for it. Wait for
+    // the redirect, which does not occur if save.php rejects the save.
+    // #submit stays disabled until the saved model is selected (#2295).
+    await expect(page.locator('#model')).not.toHaveValue('');
+    await expect(page.locator('#submit')).toBeEnabled();
     await page.locator('#submit').click();
     await page.waitForURL(/details\.php\?car_id=/, { timeout: 10000 });
     await page.waitForLoadState('domcontentloaded');
 
-    // Owner Information card's "Owner Name" value — see
-    // app/owner/cars/details.php's dl.row markup. ucfirst() is applied at
-    // render time, so compare case-insensitively rather than assume casing.
+    // details.php applies ucfirst(), so compare case-insensitively.
     const ownerNameText = await page.locator('dt:has-text("Owner Name") + dd').first().innerText();
     expect(
       ownerNameText.trim().toLowerCase(),

@@ -17,20 +17,11 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
-/**
- * Test cases for the CarException hierarchy
- *
- * Verifies that all car-related exceptions properly extend CarException,
- * which in turn extends ElanRegistryException, maintaining backward
- * compatibility with existing catch blocks.
- */
+/** Existing catch (CarException) blocks depend on this hierarchy. */
 #[Group('unit')]
 #[Group('exceptions')]
 class CarExceptionHierarchyTest extends TestCase
 {
-    /**
-     * All car exception classes that should extend CarException
-     */
     private const CAR_EXCEPTION_CLASSES = [
         CarNotFoundException::class,
         CarCreationException::class,
@@ -42,9 +33,6 @@ class CarExceptionHierarchyTest extends TestCase
         CarPermissionException::class,
     ];
 
-    /**
-     * Test that CarException is abstract and cannot be instantiated
-     */
     public function testCarExceptionIsAbstract(): void
     {
         $reflection = new ReflectionClass(CarException::class);
@@ -54,22 +42,11 @@ class CarExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that CarException extends ElanRegistryException
-     */
     public function testCarExceptionExtendsElanRegistryException(): void
     {
-        $this->assertTrue(
-            is_subclass_of(CarException::class, ElanRegistryException::class),
-            'CarException should extend ElanRegistryException'
-        );
+        $this->assertSame(ElanRegistryException::class, get_parent_class(CarException::class));
     }
 
-    /**
-     * Test that all car exceptions extend CarException
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('carExceptionClassProvider')]
     public function testCarExceptionExtendsCarException(string $className): void
     {
@@ -79,11 +56,6 @@ class CarExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test backward compatibility - all car exceptions are instanceof CarException
-     *
-     * @param string $className Exception class name to test
-     */
     #[DataProvider('carExceptionClassProvider')]
     public function testAllCarExceptionsAreInstanceOfCarException(string $className): void
     {
@@ -95,30 +67,7 @@ class CarExceptionHierarchyTest extends TestCase
         );
     }
 
-    /**
-     * Test that CarException catch block catches all car exceptions
-     */
-    public function testCarExceptionCatchBlockCatchesAllCarExceptions(): void
-    {
-        foreach (self::CAR_EXCEPTION_CLASSES as $className) {
-            $caught = false;
-            try {
-                throw new $className('Test');
-            } catch (CarException $e) {
-                $caught = true;
-            }
-            $this->assertTrue(
-                $caught,
-                "{$className} should be caught by catch (CarException)"
-            );
-        }
-    }
-
-    /**
-     * Data provider for car exception classes
-     *
-     * @return array<string, array<int, string>>
-     */
+    /** @return array<string, array<int, string>> */
     public static function carExceptionClassProvider(): array
     {
         $data = [];

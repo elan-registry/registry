@@ -13,6 +13,9 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 export GIT_AUTHOR_NAME="test-check-plan-state"
@@ -28,24 +31,6 @@ if [ ! -x "$SCRIPT" ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
-cleanup() {
-    cd / || true
-    [ -n "${TMPROOT:-}" ] && rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
-}
 
 REPO="$TMPROOT/repo"
 git init -q "$REPO" >/dev/null 2>&1
@@ -98,6 +83,21 @@ git checkout -q main >/dev/null 2>&1
 git branch -D issue/501-widget >/dev/null 2>&1
 rm -f docs/plans/issues/issue-501-widget.md
 
+# --- Scenario 1b: an item marked N/A counts as done --------------------------
+git checkout -q -b issue/502-widget >/dev/null 2>&1
+write_plan docs/plans/issues/issue-502-widget.md \
+    "Approved — ready for /execute-plan" 1 1
+echo "- [ ] not needed item — N/A: covered by the existing guard" >> docs/plans/issues/issue-502-widget.md
+OUT1B="$("$SCRIPT" 2>/dev/null)"
+if printf '%s' "$OUT1B" | grep -q "checklist: 2/3"; then
+    pass "Scenario 1b: an N/A item counts as done -> checklist 2/3"
+else
+    fail "Scenario 1b: an N/A item counts as done -> checklist 2/3" "output: [$OUT1B]"
+fi
+git checkout -q main >/dev/null 2>&1
+git branch -D issue/502-widget >/dev/null 2>&1
+rm -f docs/plans/issues/issue-502-widget.md
+
 # --- Scenario 2: draft (not approved) plan, explicit issue number -----------
 write_plan docs/plans/issues/issue-502-gadget.md "Draft — pending approval" 0 4
 OUT2="$("$SCRIPT" 502 2>/dev/null)"
@@ -113,13 +113,22 @@ fi
 rm -f docs/plans/issues/issue-502-gadget.md
 
 # --- Scenario 3: no plan file at all -----------------------------------------
-OUT3="$("$SCRIPT" 777 2>/dev/null)"
+OUT3="$("$SCRIPT" 777 2>"$TMPROOT/err3")"
 STATUS3=$?
-if [ "$STATUS3" -eq 1 ] && printf '%s' "$OUT3" | grep -q "path: (none)"; then
-    pass "Scenario 3: no matching plan file -> exit 1"
+ERR3="$(cat "$TMPROOT/err3")"
+if [ "$STATUS3" -eq 1 ] && printf '%s' "$OUT3" | grep -q "path: (none)" \
+    && ! printf '%s' "$OUT3" | grep -q "worktree"; then
+    pass "Scenario 3: no matching plan file -> exit 1, stdout fields only"
 else
-    fail "Scenario 3: no matching plan file -> exit 1" \
+    fail "Scenario 3: no matching plan file -> exit 1, stdout fields only" \
         "exit: $STATUS3 (want 1)" "output: [$OUT3]"
+fi
+if printf '%s' "$ERR3" | grep -q "clone or worktree" \
+    && printf '%s' "$ERR3" | grep -q "$REPO/docs/plans/"; then
+    pass "Scenario 3b: no plan file -> stderr names the directory and the wrong-checkout cause"
+else
+    fail "Scenario 3b: no plan file -> stderr names the directory and the wrong-checkout cause" \
+        "stderr: [$ERR3]"
 fi
 
 # --- Scenario 4: cannot derive issue number from a non-issue branch ---------
@@ -160,12 +169,4 @@ else
     fail "Scenario 6: too many arguments -> exit 3 (usage)" "exit: $STATUS6 (want 3)"
 fi
 
-# --- Report ------------------------------------------------------------
-
-echo ""
-echo "$TESTS_RUN scenario(s) run, $TESTS_FAILED failed."
-
-if [ "$TESTS_FAILED" -gt 0 ]; then
-    exit 1
-fi
-exit 0
+harness_report

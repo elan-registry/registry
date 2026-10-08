@@ -8,6 +8,21 @@
         const car_id = $('#car_id').val();
         $('#message').addClass('d-none');
 
+        // Several async paths (photo hydration, model repopulation, save) can each
+        // need the button off; it re-enables only when none of them still does.
+        const submitBtn = document.getElementById('submit');
+        const submitBlockers = new Set();
+        function blockSubmit(reason) {
+            submitBlockers.add(reason);
+            submitBtn.disabled = true;
+        }
+        function unblockSubmit(reason) {
+            submitBlockers.delete(reason);
+            if (submitBlockers.size === 0) {
+                submitBtn.disabled = false;
+            }
+        }
+
         const solddateRow = document.getElementById('solddate-row');
         const solddateInput = document.getElementById('solddate');
 
@@ -96,7 +111,7 @@
                         '<div class="alert alert-warning">Existing photos could not be loaded. ' +
                         'Please refresh the page before making changes to avoid losing photo data.</div>'
                     );
-                    document.getElementById('submit').disabled = true;
+                    blockSubmit('images');
                     return;
                 }
                 if (!Array.isArray(data.images)) {
@@ -105,7 +120,7 @@
                         '<div class="alert alert-warning">Existing photos could not be loaded. ' +
                         'Please refresh the page before making changes to avoid losing photo data.</div>'
                     );
-                    document.getElementById('submit').disabled = true;
+                    blockSubmit('images');
                     return;
                 }
                 // Chain serially so FilePond receives files in server-defined order.
@@ -143,7 +158,7 @@
                     '<div class="alert alert-warning">Existing photos could not be loaded. ' +
                     'Please refresh the page before making changes to avoid losing photo data.</div>'
                 );
-                document.getElementById('submit').disabled = true;
+                blockSubmit('images');
             });
         }
 
@@ -178,7 +193,6 @@
             }
         });
 
-        const submitBtn = document.getElementById('submit');
         submitBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             e.preventDefault();
@@ -192,7 +206,7 @@
                 return;
             }
 
-            submitBtn.disabled = true;
+            blockSubmit('saving');
             submitBtn.textContent = 'Saving…';
 
             // Only process new files — LOCAL files (already on server) don't need
@@ -204,7 +218,7 @@
             const handleProcessError = function(err) {
                 console.error('[edit.php] Photo processing error:', err);
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
-                submitBtn.disabled = false;
+                unblockSubmit('saving');
                 submitBtn.textContent = submitBtn.dataset.label;
             };
 
@@ -266,13 +280,13 @@
                 if (data.success === true) {
                     window.location = cfg.urlRoot + 'app/owner/cars/details.php?car_id=' + data.cardetails.id;
                 } else {
-                    submitBtn.disabled = false;
+                    unblockSubmit('saving');
                     submitBtn.textContent = submitBtn.dataset.label;
                     displayValidationErrors(data);
                 }
             } catch (err) {
                 console.error('[car-edit] submitCarForm failed:', err);
-                submitBtn.disabled = false;
+                unblockSubmit('saving');
                 submitBtn.textContent = submitBtn.dataset.label;
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
             }
@@ -335,14 +349,46 @@
             const year = cfg.year;
             const modelValue = cfg.model;
 
-            // Set year and trigger change to load models
-            $('#year').val(year).trigger('change');
-
-            // After models load, set the model value
-            setTimeout(function() {
+            // Await the model list instead of guessing its load time: a slow
+            // models.php left #model empty and save.php rejected the form (#2295).
+            // ModelLoader swallows a models.php failure and resolves with an empty
+            // list rather than rejecting, so a failed load must be detected here by
+            // checking the option list, not by catching a rejection.
+            blockSubmit('models');
+            $('#year').val(year);
+            onYearChange().then(function() {
+                // Only the placeholder option means the list for this year never
+                // loaded — ModelLoader swallowed the failure. A saved model that is
+                // simply not valid for this year is a different, recoverable case:
+                // the list did load, so #model stays enabled for the owner to pick
+                // a model, rather than locking Save with no way out.
+                if ($('#model option').length <= 1) {
+                    throw new Error('Model list for year ' + year + ' failed to load');
+                }
                 $('#model').val(modelValue).trigger('change');
+                if ($('#model').val() !== modelValue) {
+                    console.warn('[edit.php] Saved model "' + modelValue + '" is not valid for year ' + year);
+                    // .val(modelValue) with no matching option leaves selectedIndex
+                    // -1, so .val() reads back null and a later save would send the
+                    // string "null" instead of an empty selection. Clear it explicitly
+                    // so the owner sees an unselected dropdown, not a stuck one.
+                    $('#model').val('').trigger('change');
+                    $('#message').removeClass('d-none').html(
+                        '<div class="alert alert-warning">The saved model is not valid for this year. ' +
+                        'Please select a model.</div>'
+                    );
+                }
                 $('#chassis').trigger('blur');
-            }, 500);
+                unblockSubmit('models');
+            }).catch(function(err) {
+                console.error('[edit.php] Model repopulation failed:', err);
+                $('#message').removeClass('d-none').html(
+                    '<div class="alert alert-warning">The model list could not be loaded. ' +
+                    'Please refresh the page before making changes to avoid losing your saved model.</div>'
+                );
+                // 'models' blocker stays set on purpose: saving now would send an
+                // empty model, which save.php rejects.
+            });
 
             // Show all fields
             $('#color, #engine, #purchasedate, #solddate, #comments').prop('disabled', false);
@@ -380,7 +426,9 @@
     /*
      * When year changes, update the model list and show the appropriate chassis help text
      */
-    $('#year').change(async function() {
+    $('#year').change(onYearChange);
+
+    async function onYearChange() {
         validYear = $('#year option:selected').val();
         $('#year_icon').toggleClass('fa-thumbs-up', Boolean(validYear)).toggleClass('fa-thumbs-down', !Boolean(validYear)).toggleClass('is-valid', Boolean(validYear)).toggleClass('is-invalid', !Boolean(validYear));
         $('#year').toggleClass('is-valid', Boolean(validYear)).toggleClass('is-invalid', !Boolean(validYear));
@@ -428,7 +476,7 @@
                 $('#chassis').trigger('blur');
             }
         }
-    });
+    }
     // Validate Model
     $('#model').change(function() {
         validModel = $('#model option:selected').val();

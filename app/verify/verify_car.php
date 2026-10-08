@@ -442,7 +442,7 @@ function verifyHistoryFields(object $carData, string $operation, string $comment
         'model'                 => $carData->model ?? '',
         'series'                => $carData->series ?? '',
         'variant'               => $carData->variant ?? '',
-        'year'                  => $carData->year ?? '',
+        'year'                  => $carData->year ?? null,
         'type'                  => $carData->type ?? '',
         'chassis'               => $carData->chassis ?? '',
         'color'                 => $carData->color ?? '',

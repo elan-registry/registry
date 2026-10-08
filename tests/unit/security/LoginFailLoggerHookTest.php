@@ -8,17 +8,8 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit tests for usersc/plugins/hooker/hooks/login_fail_logger.php (issue
- * #2189).
- *
- * Pins the hook's one security rule: an unmatched login attempt's
- * `$username` is untrusted free text — a member who types their password
- * into the username box must not have that value written to `logs`. The
- * submitted `$username` is logged only when it matched a real account
- * (`$userId` resolves to a positive int); every unmatched case gets a fixed,
- * value-free message instead.
- *
- * @see usersc/plugins/hooker/hooks/login_fail_logger.php
+ * Issue #2189: an unmatched username is untrusted free text (often a password
+ * typed in the wrong box), so it is logged only when it matched an account.
  */
 #[Group('fast')]
 #[Group('unit')]
@@ -37,18 +28,14 @@ final class LoginFailLoggerHookTest extends TestCase
         $userId = null;
     }
 
-    /**
-     * The hook is `require`d (not `require_once`) so each test gets a fresh
-     * run with its own globals.
-     */
+    // Not require_once, so each test gets a fresh run.
     private function fireHook(): void
     {
         require self::HOOK;
     }
 
     /**
-     * A password typed into the username field must never reach the log,
-     * whether raw or in the HTML-encoded form Input::get() produces.
+     * Checks both the raw value and the HTML-encoded form Input::get() produces.
      */
     public function testUnmatchedUsernameIsNeverLoggedEvenWhenItLooksLikeAPassword(): void
     {
@@ -132,8 +119,7 @@ final class LoginFailLoggerHookTest extends TestCase
     }
 
     /**
-     * DB drivers can return an id column as a numeric string rather than an
-     * int; the hook's `(int)` cast must still treat it as a match.
+     * DB drivers can return the id column as a numeric string.
      */
     public function testNumericStringUserIdIsTreatedAsMatched(): void
     {

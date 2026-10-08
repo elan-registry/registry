@@ -1,4 +1,3 @@
-// tests/playwright/functionality.test.js
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn, navigateAndWait, waitForDataTables, handleAuthRequired } = require('./auth-helper.js');
 

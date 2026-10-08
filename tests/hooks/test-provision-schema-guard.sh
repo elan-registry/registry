@@ -14,6 +14,9 @@
 
 set -u
 
+# shellcheck source=/dev/null
+. "$(dirname "$0")/lib/harness.sh"
+
 REPO_ROOT="$(git rev-parse --show-toplevel)" || exit 1
 SCRIPT="$REPO_ROOT/scripts/provision-schema.sh"
 
@@ -25,7 +28,6 @@ if [ -f /.dockerenv ]; then
 fi
 
 TMPROOT="$(mktemp -d)" || exit 1
-trap 'rm -rf "$TMPROOT"' EXIT
 
 MYSQL_LOG="$TMPROOT/mysql.log"
 mkdir -p "$TMPROOT/bin"
@@ -38,19 +40,6 @@ exit 1
 EOF
 printf '#!/bin/bash\nexit 0\n' > "$TMPROOT/bin/composer"
 chmod +x "$TMPROOT/bin/mysql" "$TMPROOT/bin/composer"
-
-TESTS_RUN=0
-TESTS_FAILED=0
-
-pass() { TESTS_RUN=$((TESTS_RUN + 1)); echo "PASS: $1"; }
-fail() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: $1"
-    shift
-    local line
-    for line in "$@"; do echo "      $line"; done
-}
 
 # Runs the script against a temp env file with the given DB_HOST. Sets
 # RUN_EXIT, RUN_OUTPUT and MYSQL_CALLS.
@@ -105,6 +94,4 @@ else
     pass "Case 4: DB_HOST=127.0.0.1 does not trigger the guard"
 fi
 
-echo ""
-echo "$TESTS_RUN case(s), $TESTS_FAILED failure(s)."
-[ "$TESTS_FAILED" -eq 0 ]
+harness_report

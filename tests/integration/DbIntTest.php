@@ -7,18 +7,9 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration test proving the real global dbInt() (usersc/includes/custom_functions.php)
- * is actually callable and correct — not just its extracted TypeHelpers::toInt() logic
- * (covered directly in tests/unit/helpers/TypeHelpersTest.php) or the source-inspection
- * guard that dbInt() delegates to it (also in TypeHelpersTest.php, which only reads the
- * file's text and never executes it).
- *
- * Without this test, dropping the `use ElanRegistry\TypeHelpers;` import from
- * custom_functions.php would make the real dbInt() fatal at call time
- * (Class "ElanRegistry\TypeHelpers" not found) while every other test in the
- * suite still passed — this test is what actually closes that gap (#1599).
- *
- * @issue 1599
+ * #1599: the real global dbInt() must run. Without this, a dropped
+ * `use ElanRegistry\TypeHelpers;` in custom_functions.php would fatal at
+ * call time while every other test passed.
  */
 #[Group('integration')]
 final class DbIntTest extends IntegrationTestCase

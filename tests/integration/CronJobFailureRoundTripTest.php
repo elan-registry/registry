@@ -10,26 +10,12 @@ use ElanRegistry\Cron\CronJobRunsReader;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Real-DB round trip for the write-then-read path that makes a crashed cron
- * run visible: {@see CronJobGuard::recordFailure()} stamps
- * `er_cron_job_runs.last_failure_at`, {@see CronJobRunsReader::status()} reads
- * it back, and {@see CronJobRunsReader::badgeFor()} renders the failure badge.
+ * Real-DB round trip: CronJobGuard::recordFailure() -> CronJobRunsReader
+ * status() -> badgeFor(). Both timestamps come from MySQL NOW() at
+ * one-second resolution, so only a real connection proves that a claim
+ * followed at once by a failure still shows "Last run failed".
  *
- * Each of those three is unit-tested in isolation against fakes, which is
- * where the branch coverage lives. What no fake can prove is the seam the
- * original bug lived in: the two timestamps are compared against each other,
- * and both are written by MySQL's own `NOW()` at one-second resolution and
- * round-tripped through a `datetime` column into DateTimeImmutable. A fake
- * hands back whatever string the test wrote; only a real connection can show
- * that a claim followed immediately by a failure — the exact sequence
- * AbstractCronJob::run() produces when execute() throws on its first statement
- * — still resolves to "Last run failed" rather than losing the tie and
- * rendering green.
- *
- * Follows CronJobRunsReaderDatabaseTest's snapshot/restore discipline for the
- * shared seeded row: every column this test writes is captured in setUp() and
- * put back in tearDown(), so a failure here cannot leave the row altered for
- * tests that run after it.
+ * setUp()/tearDown() snapshot and restore the shared seeded row.
  */
 #[Group('integration')]
 final class CronJobFailureRoundTripTest extends IntegrationTestCase
@@ -72,12 +58,7 @@ final class CronJobFailureRoundTripTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    /**
-     * Skip rather than fail on a schema that predates the column — the same
-     * convention every other migration-dependent test in this suite uses, so
-     * a developer who has not run `composer migrate` gets an actionable skip
-     * instead of a confusing assertion failure.
-     */
+    /** Skip, not fail, when the column is absent (run `composer migrate`). */
     private function requireMigrationApplied(): void
     {
         $this->db->query(
@@ -104,10 +85,8 @@ final class CronJobFailureRoundTripTest extends IntegrationTestCase
     }
 
     /**
-     * The whole path, in the order AbstractCronJob::run() walks it on a failed
-     * run: claim (which stamps last_run_at), then recordFailure() from the
-     * catch block. A reader that ran afterwards used to report this as a clean
-     * "Ran" — the Critical bug — because it had only last_run_at to look at.
+     * Claim, then recordFailure(), as AbstractCronJob::run() does on a failed
+     * run. The reader used to report this as a clean "Ran".
      */
     public function testClaimThenRecordFailureRendersTheFailureBadge(): void
     {
@@ -145,16 +124,12 @@ final class CronJobFailureRoundTripTest extends IntegrationTestCase
     }
 
     /**
-     * The recovery half: a later successful run out-dates the earlier failure
-     * with no explicit clearing step, because the badge compares timestamps
-     * rather than reading a flag someone has to remember to reset — a crashing
-     * job being the party least able to do that bookkeeping.
+     * A later successful run out-dates the failure with no clearing step:
+     * the badge compares timestamps, not a flag.
      */
     public function testASubsequentClaimSupersedesAnEarlierFailure(): void
     {
-        // A failure from yesterday, and no run since. Written as literals
-        // rather than by calling recordFailure() so the two are unambiguously
-        // ordered a day apart — the tie-at-one-second case is the test above.
+        // Literals, not recordFailure(), so the two are a day apart.
         $this->setRowState(
             enabled: true,
             lastRunAt: '2026-09-01 02:00:00',
@@ -172,8 +147,6 @@ final class CronJobFailureRoundTripTest extends IntegrationTestCase
             'Test precondition: the row must start in the failed state'
         );
 
-        // A real claim now — NOW() is necessarily later than the 2026-09-01
-        // fixture, so last_run_at moves ahead of last_failure_at.
         $this->assertTrue((new CronJobGuard($this->db))->claim(self::JOB_NAME, 24));
 
         $recoveredStatus = (new CronJobRunsReader($this->db))->status(self::JOB_NAME);
@@ -196,10 +169,8 @@ final class CronJobFailureRoundTripTest extends IntegrationTestCase
     }
 
     /**
-     * A row that has never failed must round-trip a real NULL back as null,
-     * not as a zero-date or an epoch value — the badge compares timestamps,
-     * and a bogus year -1 last_failure_at would silently lose every comparison
-     * while a 1970 one would win them all.
+     * A never-failed row must round-trip NULL as null, not a zero-date or
+     * epoch, or every timestamp comparison goes wrong.
      */
     public function testNeverFailedRowReadsBackAsNull(): void
     {
@@ -215,26 +186,12 @@ final class CronJobFailureRoundTripTest extends IntegrationTestCase
     }
 
     /**
-     * The pre-migration deploy, against a real connection with the column
-     * genuinely absent.
+     * Pre-migration deploy with the column really absent. With emulated
+     * prepares, DB::query() reports the missing column through error(), not
+     * a PDOException; the first fallback assumed a throw and never ran. Only
+     * a real connection can show this.
      *
-     * This is the one case unit tests structurally cannot settle, because the
-     * answer depends on how *this* connection reports a missing column — and
-     * getting that wrong is precisely how the first version of `fetchRow()`'s
-     * fallback became dead code. It assumed the fault escapes `query()` as a
-     * PDOException from `prepare()`; in reality `users/classes/DB.php` leaves
-     * `ATTR_EMULATE_PREPARES` at PDO's default of ON, so `prepare()` is
-     * client-side, the fault lands at `execute()` inside `DB::query()`'s own
-     * `catch (Exception)`, and `query()` returns normally with `error()` true.
-     * Branching only on the throw meant the retry never ran and every job on
-     * the Verification tab rendered "Status unavailable" on exactly the deploy
-     * the fallback was written to survive. A fake can be made to agree with
-     * whichever premise the test author held; only a real connection can
-     * falsify it.
-     *
-     * Drops and restores the column in a `finally`, so a failed assertion
-     * cannot leave the shared test schema without a column every other cron
-     * test depends on.
+     * The column is restored in a `finally`: other cron tests depend on it.
      */
     public function testStatusDegradesGracefullyWhenTheColumnIsGenuinelyAbsent(): void
     {

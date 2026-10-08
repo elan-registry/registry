@@ -7,38 +7,16 @@ namespace Tests\Support;
 /**
  * CronJobRunsReaderFakeDatabase - FakeDatabase double for CronJobRunsReaderTest
  *
- * `CronJobRunsReader::fetchRow()` issues a single query shape — `SELECT
- * enabled, last_run_at FROM er_cron_job_runs WHERE job_name = ?` — and reads
- * the result with `first(true)` (associative array). All four
- * `CronJobEnabledState` cases fall out of two independent axes this double
- * exposes per job_name: whether the query itself fails (`error()` true, the
- * UNREADABLE case) and whether a row exists for that job_name (MISSING when
- * it doesn't; DISABLED/ENABLED per the row's `enabled` column when it does).
+ * State is configured per job_name and keyed by the bound `job_name`
+ * parameter, because every status call shares one query shape. A job_name
+ * with no configured row and no error reads as "no row" (MISSING).
  *
- * Row/error state is configured per job_name via {@see self::withRow()} and
- * {@see self::withError()}, mirroring `AbstractCronJobFakeDatabase`'s SQL
- * dispatch but keyed by the bound `job_name` parameter instead of the SQL
- * text, since every call here shares one query shape and differs only in
- * which job is being asked about. A job_name with no configured row and no
- * configured error defaults to "no row" (MISSING) — the same
- * safest-default convention `AbstractCronJobFakeDatabase`'s `$rowExists`
- * and `FakeDatabase::$firstRow` both use.
+ * The status SELECT ({@see self::withRow()}, {@see self::withError()}) and
+ * the lastOutcomeCounts() SELECT ({@see self::withOutcomeCounts()} and its
+ * fault configurators) are configured separately, because
+ * lastOutcomeCounts() has its own never-throws contract.
  *
- * `lastOutcomeCounts()` issues a second, distinct query shape (`SELECT
- * last_sent_count, last_skipped_count, last_failed_count FROM
- * er_cron_job_runs WHERE job_name = ?`), configured independently via
- * {@see self::withOutcomeCounts()} and {@see self::withOutcomeCountsError()}
- * / {@see self::withOutcomeCountsThrowing()} — kept separate from
- * `withRow()`/`withError()` above because `lastOutcomeCounts()` has its own
- * never-throws contract (a query that throws mid-`query()` call, distinct
- * from one that merely reports `error()`) that `status()`/`fetchRow()` do
- * not need to model.
- *
- * Deliberately a *named* class rather than `new class extends FakeDatabase { ... }`:
- * PHPStan reports `impureMethod.pure` when an anonymous class overrides one of
- * DatabaseInterface's `@phpstan-impure` methods (`query()`, `error()`,
- * `first()` here) with a body that doesn't depend on mutable state. See
- * AbstractCronJobFakeDatabase's docblock for the same rationale.
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2
@@ -83,13 +61,10 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
     private bool $lastQuerySelectedLastFailureAt = false;
 
     /**
-     * Configure the row returned for a given job_name — an ENABLED or
-     * DISABLED case depending on $enabled, with $lastRunAt as the raw
-     * `last_run_at` column value (null for "has never run") and
-     * $lastFailureAt as the raw `last_failure_at` value (null for "has never
-     * failed"). The two are separate parameters because `badgeFor()` decides
-     * which of them is current by comparing them, so a test has to be able to
-     * set either one without the other and to order them both ways.
+     * Configure the row returned for a given job_name (ENABLED or DISABLED).
+     * Null $lastRunAt means "has never run"; null $lastFailureAt means "has
+     * never failed". They are separate because `badgeFor()` compares them, so
+     * a test must be able to set either one and order them both ways.
      */
     public function withRow(
         string $jobName,
@@ -121,17 +96,10 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
     }
 
     /**
-     * Configure lastOutcomeCounts()'s row for a given job_name. Pass null for
-     * any of the three counts to model a row where that column is still NULL
-     * — in particular, $sentCount === null models "this job has a row but has
-     * never recorded outcome counts", the load-bearing distinction the class
-     * docblock calls out. All-zero ($sentCount = 0, etc.) models a run that
-     * genuinely sent/skipped/failed nothing, which must read back distinctly
-     * from the null case.
-     *
-     * Either way this is a successful read, so `lastOutcomeCounts()` reports
-     * `unreadable => false` — the two fault configurators below are what set
-     * it true.
+     * Configure lastOutcomeCounts()'s row for a given job_name. A null count
+     * models a NULL column: $sentCount === null means "has a row but never
+     * recorded outcome counts", which must read back differently from an
+     * all-zero run. Both are successful reads (`unreadable => false`).
      */
     public function withOutcomeCounts(
         string $jobName,
@@ -184,14 +152,12 @@ class CronJobRunsReaderFakeDatabase extends FakeDatabase
      * configured by {@see self::withRow()} — minus its `last_failure_at` key,
      * exactly as MySQL would return it.
      *
-     * MODELS error(), NOT A THROW, and that distinction is the whole value of
-     * this double. This connection leaves ATTR_EMULATE_PREPARES at PDO's
-     * default of ON (users/classes/DB.php never sets it), so prepare() is
-     * client-side and cannot detect an unknown column; the fault surfaces at
-     * execute(), inside DB::query()'s own `catch (Exception)`, and is reported
-     * via error()/errorInfo() with nothing propagating. An earlier version of
-     * this double threw instead — which made the fallback it was "covering"
-     * dead code in production while the tests stayed green.
+     * MODELS error(), NOT A THROW. This connection leaves ATTR_EMULATE_PREPARES
+     * at PDO's default of ON (users/classes/DB.php never sets it), so prepare()
+     * cannot detect an unknown column; the fault surfaces at execute(), inside
+     * DB::query()'s own `catch (Exception)`, and is reported via
+     * error()/errorInfo(). A throwing double here would let the production
+     * fallback be dead code while the tests stay green.
      * {@see self::withLastFailureAtColumnMissingAsThrow()} covers the
      * non-emulated variant.
      *

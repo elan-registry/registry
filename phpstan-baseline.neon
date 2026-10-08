@@ -37,18 +37,6 @@ parameters:
 			path: app/admin/includes/partials/maintenance-scripts.php
 
 		-
-			message: '#^Variable \$activeTab might not be defined\.$#'
-			identifier: variable.undefined
-			count: 5
-			path: app/admin/includes/tab-placeholder.php
-
-		-
-			message: '#^Variable \$validTabs might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/includes/tab-placeholder.php
-
-		-
 			message: '#^Unreachable statement \- code above always terminates\.$#'
 			identifier: deadCode.unreachable
 			count: 2
@@ -115,12 +103,6 @@ parameters:
 			path: app/views/email/_member_to_owner.php
 
 		-
-			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
-			identifier: notIdentical.alwaysTrue
-			count: 1
-			path: tests/integration/LogDeploymentScriptTest.php
-
-		-
 			message: '#^Parameter \#1 \$card of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderDocumentCard\(\) expects array\{title\: string, icon\: string, url\: string, buttonText\: string, headerClass\?\: string, buttonClass\?\: string, cardClass\?\: string, description\?\: string, \.\.\.\}, array\{icon\: ''fa\-car'', url\: ''/test'', buttonText\: ''View''\} given\.$#'
 			identifier: argument.type
 			count: 1
@@ -167,132 +149,6 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\AdminContactException'' and ElanRegistry\\Exceptions\\AdminContactException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/AdminExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\AdminOperationException'' and ElanRegistry\\Exceptions\\AdminOperationException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/AdminExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\ElanRegistryException'' and ElanRegistry\\Exceptions\\AdminContactException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/AdminExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\ElanRegistryException'' and ElanRegistry\\Exceptions\\AdminOperationException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/AdminExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\ElanRegistryException'' and ElanRegistry\\Exceptions\\OwnerSearchException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/AdminExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\OwnerSearchException'' and ElanRegistry\\Exceptions\\OwnerSearchException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/AdminExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertTrue\(\) with true and ''AdminContactExcepti…'' will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/AdminExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertTrue\(\) with true and ''AdminOperationExcep…'' will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/AdminExceptionsTest.php
-
-		-
-			message: '#^Call to function is_subclass_of\(\) with ''ElanRegistry\\\\Exceptions\\\\CarException'' and ''ElanRegistry\\\\Exceptions\\\\ElanRegistryException'' will always evaluate to true\.$#'
-			identifier: function.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/CarExceptionHierarchyTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertTrue\(\) with true and ''ElanRegistry…'' will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/CarExceptionHierarchyTest.php
-
-		-
-			message: '#^Call to function is_subclass_of\(\) with ''ElanRegistry\\\\Exceptions\\\\OwnerException'' and ''ElanRegistry\\\\Exceptions\\\\ElanRegistryException'' will always evaluate to true\.$#'
-			identifier: function.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionHierarchyTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertTrue\(\) with true and ''ElanRegistry…'' will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionHierarchyTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\ElanRegistryException'' and ElanRegistry\\Exceptions\\OwnerCreationException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\ElanRegistryException'' and ElanRegistry\\Exceptions\\OwnerUpdateException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\ElanRegistryException'' and ElanRegistry\\Exceptions\\OwnerValidationException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\OwnerCreationException'' and ElanRegistry\\Exceptions\\OwnerCreationException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\OwnerUpdateException'' and ElanRegistry\\Exceptions\\OwnerUpdateException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertInstanceOf\(\) with ''ElanRegistry\\\\Exceptions\\\\OwnerValidationException'' and ElanRegistry\\Exceptions\\OwnerValidationException will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertTrue\(\) with true and ''ElanRegistry…'' will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/exceptions/OwnerExceptionsTest.php
-
-		-
-			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertSame\(\) with arguments ''FileError'', ''FileError'' and ''LOG_CATEGORY_FILE…'' will always evaluate to true\.$#'
-			identifier: method.alreadyNarrowedType
-			count: 1
-			path: tests/unit/location/LocationServiceCacheTest.php
-
-		-
-			message: '#^If condition is always true\.$#'
-			identifier: if.alwaysTrue
-			count: 1
-			path: tests/unit/location/LocationServiceCacheTest.php
 
 		-
 			message: '#^File ends with a trailing whitespace\. This may cause problems when running the code in the web browser\. Remove the closing \?\> mark or remove the whitespace\.$#'

@@ -15,27 +15,12 @@ use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
 
 /**
- * Real-DB proof that BrevoEventReconciliationJob::runNow() (via
- * AbstractCronJob) actually bypasses CronJobGuard::claim() against the real
- * `er_cron_job_runs` table — the path `app/admin/scripts/maintenance/
- * 27-Reconcile-Brevo-Events.php` depends on to let an operator force an
- * immediate run regardless of the guard's schedule.
+ * #1889, #2034: BrevoEventReconciliationJob::runNow() bypasses
+ * CronJobGuard::claim() against the real `er_cron_job_runs` table (the unit
+ * test uses a fake DB). Used by 27-Reconcile-Brevo-Events.php "run now".
  *
- * tests/unit/cron/AbstractCronJobTest.php's
- * testRunNowExecutesEvenWhenDisabledAndClaimWouldFail() already proves this
- * against a fake database — this file exists to prove it against the real
- * `er_cron_job_runs` schema, the same rationale
- * CronJobGuardIntegrationTest.php gives for re-proving claim() itself against
- * real MySQL rather than trusting the fake-DB unit test alone (this repo's
- * convention for new SQL: execute it, don't just read it).
- *
- * Uses the seeded `brevo_reconciliation` row (originally 'reconciliation',
- * renamed by migration 20260918133038_rename_reconciliation_job, #2129),
- * snapshotting and restoring its `enabled`/`last_run_at` columns exactly as
- * CronJobGuardIntegrationTest does, since both mutate the same fixture row.
- *
- * @see https://github.com/elan-registry/registry/issues/1889
- * @see https://github.com/elan-registry/registry/issues/2034
+ * Snapshots and restores the seeded `brevo_reconciliation` row, which
+ * CronJobGuardIntegrationTest also changes.
  */
 #[Group('integration')]
 final class BrevoEventReconciliationRunNowBypassIntegrationTest extends IntegrationTestCase
@@ -77,10 +62,8 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
         $this->originalEnabled = (bool) $row->enabled;
         $this->originalLastRunAt = !empty($row->last_run_at) ? (string) $row->last_run_at : null;
 
-        // This job's run()/runNow() both check the site-wide verification
-        // switch first (since v2.30.2) and it ships off by default — force it
-        // on so this file's job-behavior assertions aren't short-circuited by
-        // an unrelated switch. Restored in tearDown().
+        // run()/runNow() check the site-wide verification switch first and it
+        // ships off, so force it on. Restored in tearDown().
         $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
@@ -153,11 +136,8 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
     }
 
     /**
-     * A last_run_at set to "just now" means CronJobGuard::claim() would
-     * definitely fail (nowhere close to the 20-hour guard interval having
-     * elapsed) if run() were used instead. runNow() must still do the real
-     * work — proven by an actual er_email_events row appearing, not just by
-     * the absence of an exception.
+     * last_run_at = now makes claim() fail, but runNow() must still do the
+     * work: an er_email_events row must appear.
      */
     public function testRunNowExecutesRealWorkWhenClaimWouldFailDueToRecentRun(): void
     {
@@ -185,13 +165,7 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
         );
     }
 
-    /**
-     * er_cron_job_runs.enabled = 0 means both CronJobGuard::claim() and
-     * AbstractCronJob::run()'s own enabled check would refuse to run this
-     * job. runNow() bypasses both, which is the entire point of the
-     * maintenance script's "run now" button — an operator overriding a
-     * paused job to run it once regardless.
-     */
+    /** enabled = 0 blocks run(); runNow() must bypass it (an operator override). */
     public function testRunNowExecutesRealWorkWhenJobIsDisabled(): void
     {
         $this->setFixtureState(enabled: false, lastRunAt: null);
@@ -216,12 +190,7 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
         );
     }
 
-    /**
-     * Sanity check that run() (the guarded entry point) really is blocked by
-     * the same disabled row runNow() just bypassed above — otherwise this
-     * test file would only be proving runNow() does *something*, not that it
-     * specifically bypasses a guard that would otherwise refuse.
-     */
+    /** Control: run() is blocked by the same disabled row, so the bypass is real. */
     public function testRunIsBlockedByTheSameDisabledRowRunNowBypasses(): void
     {
         $this->setFixtureState(enabled: false, lastRunAt: null);

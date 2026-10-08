@@ -1,5 +1,3 @@
-// tests/playwright/contact-owner-page.spec.js
-//
 // Coverage for app/owner/contact/owner.php (issue #1585).
 //
 // Before #1585, this page called `$db->findById(...)` — a method that exists
@@ -15,8 +13,6 @@
 // file exercises it directly: the golden path (a real car_id renders the
 // contact form) and the empty($carResults) redirect path (a nonexistent
 // car_id never renders the form).
-//
-// Requires the local Docker site. Default: http://localhost:$APP_HOST_PORT/ — see tests/playwright/base-url.js. Override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
