@@ -46,7 +46,8 @@ use ElanRegistry\LogCategories;
  *   cars_hist row, no er_email_events row), then was opted out again by the
  *   owner, would still show the stale, since-cleared Brevo event as the
  *   cause of the *current* suppression — the event is retained for 24
- *   months and is never deleted by a clear. An event this old is treated as
+ *   months ({@see \ElanRegistry\Cron\BrevoEventReconciliationJob::RETENTION_MONTHS}) and is
+ *   never deleted by a clear. An event this old is treated as
  *   if it did not exist.
  * - Otherwise: the owner clicked the opt-out link
  *   ({@see self::CAUSE_OWNER_OPTOUT}). The opt-out handler in
@@ -55,6 +56,9 @@ use ElanRegistry\LogCategories;
  *   suppression event older than the 24-month retention window
  *   (pruned by `BrevoEventReconciliationJob::pruneExpiredEvents()`), both
  *   get a null date, so the notice omits the date instead of inventing one.
+ * - A car counts as suppressed when its own `email_suppressed` flag or its
+ *   owner's `profiles.email_suppressed` flag is set, the same rule as the
+ *   admin Status chip and user_settings.php.
  *
  * The bounce date is the later of the latest `EMAIL BOUNCED` cars_hist row
  * (admin path) and the latest hard-bounce er_email_events row (webhook
@@ -117,7 +121,11 @@ final class EmailNoticeBuilder
         $flagged = [];
         foreach ($this->repo->findVerificationStateByOwner($ownerId) as $car) {
             $carId      = self::toInt($car->id ?? null);
-            $suppressed = self::isFlagSet($car->email_suppressed ?? null);
+            // The profile flag counts too: a car added after a profile-level
+            // opt-out has car flag 0 but still gets no email. The admin chip
+            // and user_settings.php read both flags, so this must as well.
+            $suppressed = self::isFlagSet($car->email_suppressed ?? null)
+                || self::isFlagSet($car->profile_email_suppressed ?? null);
             $bounced    = self::isFlagSet($car->email_bounced ?? null);
             if ($carId === null || (!$suppressed && !$bounced)) {
                 continue;

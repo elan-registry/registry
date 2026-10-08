@@ -143,4 +143,30 @@ final class CarRepositoryProfileEmailSuppressedTest extends IntegrationTestCase
             $this->repo->rollback();
         }
     }
+
+    /**
+     * profiles.user_id is not UNIQUE. With two rows, the first at 0 and a
+     * second at 1, the locking read must report 1, like the MAX() in the
+     * eligibility queries. A first()-based read reported 0, so a resume
+     * reported success while the second row still blocked every send.
+     */
+    #[Group('fast')]
+    #[Group('regression')]
+    public function testFindForUpdateUsesMaxAcrossDuplicateProfilesRows(): void
+    {
+        $userId = $this->createTestUser([], true);
+        $this->db->query(
+            'INSERT INTO profiles (user_id, bio, city, state, country, email_suppressed)
+             SELECT user_id, bio, city, state, country, 1 FROM profiles WHERE user_id = ?',
+            [$userId]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: the duplicate profiles row must insert');
+
+        $this->repo->beginTransaction();
+        try {
+            $this->assertSame(1, $this->repo->findProfileEmailSuppressedForUpdate($userId));
+        } finally {
+            $this->repo->rollback();
+        }
+    }
 }

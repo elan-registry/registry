@@ -743,9 +743,11 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
   bounce/suppression state for every car a user owns (`id`, `model`, `series`,
   `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
-  `email_suppressed`, `owner_last_updated`, `last_verified`), ordered
-  `model, year`. Backs the admin user-view's "Verification & Email" card
-  (#1924). Tinyint flag columns come back as `int|string` per PDO's driver
+  `email_suppressed`, `profile_email_suppressed`, `owner_last_updated`,
+  `last_verified`), ordered `model, year`. `profile_email_suppressed` is the
+  owner's profile-level opt-out flag, the same on every row. Backs the admin
+  user-view's "Verification & Email" card (#1924) and
+  `EmailNoticeBuilder::buildForOwner()`. Tinyint flag columns come back as `int|string` per PDO's driver
   typing, not native bool — cast at the call site.
 - `findLatestEmailEventsByCarIds(array $carIds): array` - Latest (max
   `occurred_at`) `er_email_events` row per car id, keyed by `(int) car_id`; a
@@ -1049,11 +1051,16 @@ on success.
 - `clearSuppressedForOwnerByOwner(int $ownerId): array` -
   Owner self-service reversal of suppression via Account Settings. Clears `profiles.email_suppressed`
   (skips the write if already 0) and calls `clearSuppressed()` on every car from `findByOwner()`
-  (sold included, skips cars already 0). Returns pre-change car snapshots for `cars_hist`. Throws
+  (sold included, skips cars already 0). Skips a car whose current suppression is a Brevo
+  complaint: only the admin method can clear it. Returns pre-change car snapshots for `cars_hist`. Throws
   `CarDatabaseException` when the owner has no profiles row. Never touches bounce columns. Shares
   one body with `clearSuppressedForOwner()`, which reads the profile flag with a locking read, so a
   double-submit succeeds instead of failing on a 0-row UPDATE. Separate
   from the admin method so logs and `cars_hist` separate the two paths. Used by `usersc/user_settings.php`.
+- `findBrevoComplaintCarIds(int $ownerId): array` -
+  IDs of the owner's suppressed cars whose current suppression is a Brevo spam or unsubscribe
+  complaint, by `EmailNoticeBuilder::resolveSuppressionCause()`. Used by the owner resume path
+  and by `usersc/user_settings.php` to tell the owner which cars need an admin.
 - `markSold(object $carData, ?string $soldDate): bool` - Record a car as sold (`null` defaults to today)
 
 **Exceptions**:

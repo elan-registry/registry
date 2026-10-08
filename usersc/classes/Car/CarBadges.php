@@ -139,7 +139,8 @@ final class CarBadges
      *
      * CarRepository::freshnessSource() decides if the car is fresh and which
      * date to show. This method does not apply the freshness rule itself.
-     * The method reads the clock one time. When the car is fresh, the status
+     * It calls CarRepository::freshnessSource(), which reads the clock one
+     * time. When the car is fresh, the status
      * says which date to show:
      * - `confirmed`: `last_verified` is not null and is inside the freshness
      *   window. The date is `last_verified`.

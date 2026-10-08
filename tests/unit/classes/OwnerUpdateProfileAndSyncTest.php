@@ -74,7 +74,8 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
         bool $failProfileUpdate = false,
         ?int $failHistoryForCarId = null,
         bool $failReload = false,
-        bool $failCommit = false
+        bool $failCommit = false,
+        bool $reloadThrowsError = false
     ) {
         return new class (
             $carCount,
@@ -82,7 +83,8 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
             $failProfileUpdate,
             $failHistoryForCarId,
             $failReload,
-            $failCommit
+            $failCommit,
+            $reloadThrowsError
         ) extends FakeDatabase {
             private string $lastSql = '';
             private bool $inTransaction = false;
@@ -96,7 +98,8 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
                 private bool $failProfileUpdate,
                 private ?int $failHistoryForCarId,
                 private bool $failReload,
-                private bool $failCommit
+                private bool $failCommit,
+                private bool $reloadThrowsError
             ) {
             }
 
@@ -195,6 +198,12 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
 
             public function first(bool $assoc = false): object
             {
+                if ($this->reloadThrowsError && str_starts_with($this->lastSql, 'SELECT u.*')) {
+                    // An Error, not OwnerDatabaseException: update()'s inner
+                    // catch does not handle it, so only the outer post-commit
+                    // guard stops it.
+                    throw new \TypeError('simulated post-commit reload error');
+                }
                 $this->ownerRow ??= (object) [
                     'id'      => OwnerUpdateProfileAndSyncTest::OWNER_ID,
                     'fname'   => 'Synced',
@@ -382,6 +391,28 @@ final class OwnerUpdateProfileAndSyncTest extends TestCase
         $this->expectException(\ElanRegistry\Exceptions\OwnerDatabaseException::class);
         $this->expectExceptionMessage('failed to load');
         $owner->updateProfileAndSync(['fname' => 'Synced']);
+    }
+
+    /**
+     * Regression guard (milestone v2.30.5 review): an Error thrown after
+     * update() commits must not reach updateProfileAndSync()'s pre-commit
+     * catch, which would report "Your changes could not be saved" (and
+     * restore the stale pre-update $_data) for a write that DID save.
+     */
+    #[Group('regression')]
+    public function testErrorAfterCommitIsNotReportedAsNothingSaved(): void
+    {
+        $db = $this->makeDatabase(carCount: 2, reloadThrowsError: true);
+        $owner = $this->ownerLoadedWithId($db);
+
+        try {
+            $owner->updateProfileAndSync(['fname' => 'Synced']);
+            $this->fail('Expected the sync to refuse the unloaded owner');
+        } catch (\ElanRegistry\Exceptions\OwnerUpdateException $e) {
+            $this->fail('A post-commit Error must not be reported as a pre-commit failure: ' . $e->getMessage());
+        } catch (\ElanRegistry\Exceptions\OwnerDatabaseException $e) {
+            $this->assertStringContainsString('failed to load', $e->getMessage());
+        }
     }
 
     // -------------------------------------------------------------------

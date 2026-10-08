@@ -17,7 +17,8 @@ use PHPUnit\Framework\TestCase;
  * UserSettingsWiringTest's class docblock for the established precedent of
  * source-inspection tests for this same file). The control's own markup
  * block is a self-contained "if ($emailSuppressed) ... endif" fragment,
- * though, with no dependency beyond $emailSuppressed, $pausedCarCount and
+ * though, with no dependency beyond $emailSuppressed, $pausedCarCount,
+ * $complaintPausedCount and
  * Token::generate() (stubbed by tests/bootstrap-unit.php). This test
  * extracts that exact fragment from the live file by tag balancing (never
  * retyped by hand, so it cannot drift from the real markup) and actually
@@ -81,9 +82,9 @@ final class UserSettingsResumeSectionTest extends TestCase
 
     /**
      * Render the extracted fragment as a real PHP template, with only the
-     * two variables the fragment itself reads.
+     * three variables the fragment itself reads.
      */
-    private function renderFragment(bool $emailSuppressed, ?int $pausedCarCount): string
+    private function renderFragment(bool $emailSuppressed, ?int $pausedCarCount, int $complaintPausedCount = 0): string
     {
         $fragment = $this->extractResumeSectionFragment();
 
@@ -93,7 +94,7 @@ final class UserSettingsResumeSectionTest extends TestCase
         try {
             $emailSuppressedVar = $emailSuppressed; // extracted into scope under its real name below
             ob_start();
-            (function () use ($tmpFile, $emailSuppressedVar, $pausedCarCount): void {
+            (function () use ($tmpFile, $emailSuppressedVar, $pausedCarCount, $complaintPausedCount): void {
                 $emailSuppressed = $emailSuppressedVar;
                 include $tmpFile;
             })();
@@ -132,6 +133,26 @@ final class UserSettingsResumeSectionTest extends TestCase
             $html,
             'The paused-car-count copy must be rendered when the count is known'
         );
+    }
+
+    /**
+     * The button cannot clear a Brevo-complaint suppression, so the section
+     * must say so instead of implying that one click fixes every car.
+     */
+    #[Group('regression')]
+    public function testComplaintNoteTellsOwnerToContactTheRegistry(): void
+    {
+        $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3, complaintPausedCount: 2);
+
+        $this->assertStringContainsString('2 cars were paused because our email provider flagged the address', $html);
+        $this->assertStringContainsString('contact the registry', $html);
+    }
+
+    public function testComplaintNoteIsAbsentWithoutComplaintCars(): void
+    {
+        $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3);
+
+        $this->assertStringNotContainsString('flagged', $html);
     }
 
     public function testControlFallsBackToGenericCopyWhenCarCountIsUnavailable(): void

@@ -28,29 +28,44 @@ class CarVerificationManager
      * Execute a repository update, translating failures into CarDatabaseException
      *
      * @param callable $update Repository call to execute; returns true on success
-     * @param string $logCategory LogCategories constant to log failures under
-     * @param string $failureMessage User-facing message thrown if the update call itself throws
-     * @param string $context Log message prefix used when the update call throws
-     * @param int $carId Car id being updated, included in the logged message for traceability
+     * @param string $logCategory LogCategories constant, put in the exception message as a prefix
+     * @param string $failureMessage User message ($userMessage) of the exception if the update call itself throws
+     * @param string $context Exception message prefix used when the update call throws
+     * @param int $carId Car id being updated, included in the exception message for traceability
      * @return bool True on success
-     * @throws CarDatabaseException If the update call throws or the repository reports failure
+     * @throws CarDatabaseException If the update call throws (chained as previous) or the
+     *                              repository reports failure. The technical message holds
+     *                              the detail. The caller logs it after any rollback.
      */
     private function persist(callable $update, string $logCategory, string $failureMessage, string $context, int $carId): bool
     {
+        // No logger() call here: callers often run this inside a transaction,
+        // and logger() writes through the same connection, so a rollback
+        // would delete the log row. The detail goes into the exception
+        // message instead. Every caller logs getMessage() after the rollback.
         try {
             $updateSuccess = $update();
         } catch (\Throwable $e) {
-            logger(0, $logCategory, sprintf('%s for car %d (%s): %s', $context, $carId, get_class($e), $e->getMessage()));
-            throw new CarDatabaseException($failureMessage);
+            throw new CarDatabaseException(
+                sprintf('[%s] %s for car %d (%s): %s', $logCategory, $context, $carId, get_class($e), $e->getMessage()),
+                0,
+                $e,
+                $failureMessage
+            );
         }
 
         if (!$updateSuccess) {
-            logger(0, $logCategory, sprintf(
-                'Database update failed for car %d: Repository returned false: %s',
-                $carId,
-                $this->repo->errorString() ?: 'unknown'
-            ));
-            throw new CarDatabaseException('Unable to save changes. Please try again.');
+            throw new CarDatabaseException(
+                sprintf(
+                    '[%s] Database update failed for car %d: Repository returned false: %s',
+                    $logCategory,
+                    $carId,
+                    $this->repo->errorString() ?: 'unknown'
+                ),
+                0,
+                null,
+                'Unable to save changes. Please try again.'
+            );
         }
 
         return true;
@@ -745,7 +760,8 @@ class CarVerificationManager
             $ownerId,
             'clearSuppressedForOwner',
             'opt-out reversal',
-            'The opt-out could not be cleared. Please try again or contact support.'
+            'The opt-out could not be cleared. Please try again or contact support.',
+            false
         );
     }
 
@@ -763,8 +779,15 @@ class CarVerificationManager
      * could not be resumed" exception text, so log greps and tests still
      * separate the two call paths.
      *
+     * The owner can clear only a suppression the owner caused. The profile
+     * flag is always an owner opt-out, so it is cleared. A car whose current
+     * suppression is a Brevo spam or unsubscribe complaint
+     * ({@see findBrevoComplaintCarIds()}) is not cleared and stays
+     * suppressed. Only the admin path can clear it.
+     *
      * @param int $ownerId Owner user ID (the logged-in user, from the session)
-     * @return array<object> See {@see clearSuppressedForOwnerShared()}
+     * @return array<object> See {@see clearSuppressedForOwnerShared()}. A car
+     *                       kept suppressed for a Brevo complaint is not in it.
      * @throws CarDatabaseException See {@see clearSuppressedForOwnerShared()}
      */
     public function clearSuppressedForOwnerByOwner(int $ownerId): array
@@ -773,8 +796,55 @@ class CarVerificationManager
             $ownerId,
             'clearSuppressedForOwnerByOwner',
             'owner resume',
-            'Verification emails could not be resumed. Please try again or contact support.'
+            'Verification emails could not be resumed. Please try again or contact support.',
+            true
         );
+    }
+
+    /**
+     * Find the owner's suppressed cars whose current suppression is a Brevo
+     * complaint (spam or unsubscribe), not an owner opt-out
+     *
+     * The cause comes from {@see EmailNoticeBuilder::resolveSuppressionCause()},
+     * the same rule as the account notice and the admin Status chip. Only a
+     * car with its own `email_suppressed` flag set can have this cause. A
+     * suppression from the profile flag alone is an owner opt-out.
+     *
+     * @param int $ownerId Owner user ID
+     * @return list<int> Car IDs, in the order of
+     *                   {@see CarRepository::findVerificationStateByOwner()}
+     * @throws CarDatabaseException If a repository query fails
+     */
+    public function findBrevoComplaintCarIds(int $ownerId): array
+    {
+        $suppressedIds = [];
+        foreach ($this->repo->findVerificationStateByOwner($ownerId) as $car) {
+            if ((int) ($car->email_suppressed ?? 0) === 1) {
+                $suppressedIds[] = (int) $car->id;
+            }
+        }
+        if ($suppressedIds === []) {
+            return [];
+        }
+
+        $events = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
+            $suppressedIds,
+            EmailEventApplier::SUPPRESSION_EVENTS
+        );
+        $hist = $this->repo->findLatestHistoryOperationByCarIds(
+            $suppressedIds,
+            [EmailNoticeBuilder::OPERATION_SUPPRESSED]
+        );
+
+        $complaintIds = [];
+        foreach ($suppressedIds as $carId) {
+            $cause = EmailNoticeBuilder::resolveSuppressionCause($events[$carId] ?? null, $hist[$carId] ?? null);
+            if ($cause['cause'] === EmailNoticeBuilder::CAUSE_BREVO_COMPLAINT) {
+                $complaintIds[] = $carId;
+            }
+        }
+
+        return $complaintIds;
     }
 
     /**
@@ -794,7 +864,8 @@ class CarVerificationManager
      *
      * SUPPRESSION ONLY. This method never reads or writes the bounce columns
      * (`email_bounced`, `email_bounced_address`) on the profile or on any car.
-     * A bounce is a deliverability fact that only an admin can clear.
+     * A bounce is cleared only by an admin action or by a confirmed email
+     * change (sync_owner_email_on_verify.php).
      *
      * TWO WRITES, TWO MEANINGS, as in setSuppressedForOwner(): the profile flag
      * is the authoritative owner-level record, the per-car flags are the fan-out
@@ -810,8 +881,12 @@ class CarVerificationManager
      *                          log greps separate the admin and owner paths.
      * @param string $logContext Short phrase describing the action in log
      *                           text (e.g. "opt-out reversal", "owner resume").
-     * @param string $userMessage Exception message shown to the caller on
-     *                            failure.
+     * @param string $userMessage User message ($userMessage) of the exception
+     *                            on failure.
+     * @param bool $keepBrevoComplaints True for the owner path: a car whose
+     *                                  current suppression is a Brevo
+     *                                  complaint ({@see findBrevoComplaintCarIds()})
+     *                                  is skipped and stays suppressed.
      * @return array<object> PRE-CHANGE snapshots of the car rows actually
      *                        changed — each is a clone taken before
      *                        clearSuppressed() wrote email_suppressed=0 onto it,
@@ -824,26 +899,37 @@ class CarVerificationManager
      * @throws CarDatabaseException If a database read or update fails, or if
      *                              the owner has no `profiles` row (nothing is
      *                              written in that case — the check runs
-     *                              before the fan-out). The message is
-     *                              $userMessage.
+     *                              before the fan-out). getUserMessage()
+     *                              returns $userMessage. getMessage() holds
+     *                              the technical detail.
      */
     private function clearSuppressedForOwnerShared(
         int $ownerId,
         string $logPrefix,
         string $logContext,
-        string $userMessage
+        string $userMessage,
+        bool $keepBrevoComplaints
     ): array {
         $currentFlag = $this->repo->findProfileEmailSuppressedForUpdate($ownerId);
 
+        // No logger() calls before a throw in this method: it runs inside the
+        // caller's transaction, and logger() writes through the same
+        // connection, so the caller's rollback would delete the log row. The
+        // detail goes into the exception message. The caller logs it after
+        // the rollback.
         if ($currentFlag === null) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::%s: owner %d has no profiles row; '
-                . '%s aborted before any car was cleared',
-                $logPrefix,
-                $ownerId,
-                $logContext
-            ));
-            throw new CarDatabaseException($userMessage);
+            throw new CarDatabaseException(
+                sprintf(
+                    'CarVerificationManager::%s: owner %d has no profiles row; '
+                    . '%s aborted before any car was cleared',
+                    $logPrefix,
+                    $ownerId,
+                    $logContext
+                ),
+                0,
+                null,
+                $userMessage
+            );
         }
 
         // Skipped when already 0 — both to keep a repeat reversal a true no-op
@@ -851,25 +937,35 @@ class CarVerificationManager
         // rows, indistinguishable from a missing row. The fan-out below runs
         // either way.
         if ($currentFlag === 1 && !$this->repo->updateProfileEmailSuppressed($ownerId, false)) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::%s: profiles.email_suppressed update '
-                . 'affected 0 rows for owner %d (row read as %d moments earlier): %s',
-                $logPrefix,
-                $ownerId,
-                $currentFlag,
-                $this->repo->errorString() ?: 'unknown'
-            ));
-            throw new CarDatabaseException($userMessage);
+            throw new CarDatabaseException(
+                sprintf(
+                    'CarVerificationManager::%s: profiles.email_suppressed update '
+                    . 'affected 0 rows for owner %d (row read as %d moments earlier): %s',
+                    $logPrefix,
+                    $ownerId,
+                    $currentFlag,
+                    $this->repo->errorString() ?: 'unknown'
+                ),
+                0,
+                null,
+                $userMessage
+            );
         }
 
         $changed = [];
+        $keptCarIds = $keepBrevoComplaints ? array_flip($this->findBrevoComplaintCarIds($ownerId)) : [];
 
         foreach ($this->repo->findByOwner($ownerId) as $carRef) {
+            if (isset($keptCarIds[(int) $carRef->id])) {
+                continue; // Brevo complaint: only an admin may clear it.
+            }
+
             $carData = $this->repo->findById((int) $carRef->id);
 
             if ($carData === null) {
                 // findByOwner() listed this id moments ago — see the same case
                 // in setSuppressedForOwner(). Skipping is correct, but never silent.
+                // This logger() row survives only if the caller commits.
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
                     'CarVerificationManager::%s: car %d listed for owner %d '
                     . 'but no longer readable; skipped from %s fan-out',

@@ -502,8 +502,10 @@ final class VehicleInfoCardTest extends TestCase
         );
         $this->assertSame(
             "This owner's address is on the email suppression list, so no verification emails are sent. "
-            . 'An admin can use Clear Suppression on the Verification System tab, '
-            . 'or the owner can use Resume verification emails in their Account Settings.',
+            . 'An admin can use Clear Suppression on the Verification System tab. '
+            . 'If the cause is an owner opt-out, the owner can also use Resume verification emails in their '
+            . 'Account Settings — this does not cover a suppression caused by a spam complaint, '
+            . 'which only an admin can clear.',
             $suppressed
         );
         $this->assertStringContainsString('Clear Suppression', $suppressed);

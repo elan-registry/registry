@@ -608,7 +608,10 @@ The Account Settings page shows a control (anchor id `resume-emails`) when
   `cars.email_suppressed` on the one car. The profile flag stays 0.
 
 A control keyed on the profile flag alone would hide from the second owner,
-for example an owner whose spam complaint was a mistake.
+for example an owner whose spam complaint was a mistake. The button does not
+clear that second kind, but the section still tells the owner about it: below
+the button, it says how many cars stay paused for a Brevo complaint and asks
+the owner to contact the registry.
 
 The control displays "Verification emails are currently paused for {N} of your
 cars." With the profile flag at 1, N is every owned car, because the profile
@@ -617,12 +620,19 @@ flag blocks all cars, including cars added after the opt-out whose own
 of cars with `cars.email_suppressed = 1`. The `findVerificationEligible()` query
 excludes a car when either flag is 1.
 
-The button POSTs with CSRF. The handler clears both `profiles.email_suppressed`
-and every owned car's `cars.email_suppressed` in one transaction (mirrors the admin
-action), via `CarVerificationManager::clearSuppressedForOwnerByOwner()`. It writes
-one `cars_hist` row per car with operation `'SUPPRESSION CLEARED BY OWNER'` and does
+The button POSTs with CSRF. The handler clears `profiles.email_suppressed` and
+each owned car's `cars.email_suppressed` in one transaction, via
+`CarVerificationManager::clearSuppressedForOwnerByOwner()`. It writes one
+`cars_hist` row per car with operation `'SUPPRESSION CLEARED BY OWNER'` and does
 not touch bounce state. Resumed cars go back into the normal cron schedule. There
 is no immediate send.
+
+The owner can clear only a suppression the owner caused. A car whose current
+suppression is a Brevo spam or unsubscribe complaint (the cause rule of
+`EmailNoticeBuilder::resolveSuppressionCause()`, found by
+`CarVerificationManager::findBrevoComplaintCarIds()`) is skipped and stays
+suppressed. Only the admin Clear Suppression action can clear it. The success
+message names how many cars stay paused for this reason.
 
 The manager reads the profile flag with a locking read, so a double-submit is
 safe: the second request waits for the first to commit, reads 0, and succeeds.
@@ -834,6 +844,13 @@ A no-op confirmation (address never bounced, or a stale re-click) writes no log 
 separate from the owner-field sync. A database failure in the bounce-clear does not
 prevent the sync from running, and vice versa; all failures are logged and the
 hook continues silently (this is a background repair, not a user-facing operation).
+
+**Direct email change:** when email verification is off (`email_act = 0`),
+`usersc/user_settings.php` writes the new `users.email` at once through
+`Owner::updateProfileAndSync()`, and no `verifySuccess` hook runs. After that
+call returns, the page calls `clearBouncedForUser()` with the new address
+itself, so both paths clear the bounce flags. A failure is logged and does not
+change the messages the owner sees.
 
 **Related**:
 

@@ -183,8 +183,10 @@ if (!empty($_POST)) {
         // Redirect::to() must not roll back (a no-op) or tell the owner that
         // nothing was changed.
         $committed = false;
-        $repo->beginTransaction();
         try {
+            // Inside the try: PDO runs in ERRMODE_EXCEPTION, so a failed BEGIN
+            // throws, and the catch below must give the owner a message.
+            $repo->beginTransaction();
             $resumedCars = $verifier->clearSuppressedForOwnerByOwner($userId);
             foreach ($resumedCars as $beforeCar) {
                 if (!$repo->insertHistory(userSettingsHistoryFields(
@@ -208,7 +210,19 @@ if (!empty($_POST)) {
                 $userId,
                 count($resumedCars)
             ));
-            usSuccess('Verification emails have been resumed for your cars.');
+            // The owner cannot clear a Brevo complaint (only an admin can),
+            // so say which cars stay paused instead of a plain "resumed".
+            $complaintCarCount = count($verifier->findBrevoComplaintCarIds($userId));
+            if ($complaintCarCount > 0) {
+                usSuccess(sprintf(
+                    'Verification emails have been resumed where you paused them. %d of your cars %s paused because our email provider flagged the address. Please contact the registry to turn %s back on.',
+                    $complaintCarCount,
+                    $complaintCarCount === 1 ? 'stays' : 'stay',
+                    $complaintCarCount === 1 ? 'it' : 'them'
+                ));
+            } else {
+                usSuccess('Verification emails have been resumed for your cars.');
+            }
             Redirect::to($us_url_root . 'usersc/user_settings.php');
             exit;
         } catch (\Throwable $e) {
@@ -224,7 +238,21 @@ if (!empty($_POST)) {
                 ));
                 $errors[] = 'Verification emails were resumed, but the confirmation could not be shown. Reload this page to check.';
             } else {
-                $repo->rollback();
+                // Guard the rollback: on a dropped connection ROLLBACK throws
+                // too, and an unguarded call would lose $e. Same pattern as
+                // Owner::syncOwnerFieldsToCars().
+                try {
+                    $repo->rollback();
+                } catch (\Throwable $rollbackFailure) {
+                    logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                        'user_settings.php: SUPPRESSION CLEARED BY OWNER rollback failed for owner %d '
+                        . 'while handling [%s] %s (rollback error: %s)',
+                        $userId,
+                        get_class($e),
+                        $e->getMessage(),
+                        $rollbackFailure->getMessage()
+                    ));
+                }
                 if ($e instanceof ElanRegistryException) {
                     // CarDatabaseException from the manager or the audit
                     // insert, and OwnerDatabaseException from the history
@@ -251,6 +279,9 @@ if (!empty($_POST)) {
         // The success messages and log lines for these fields are held back
         // until that write succeeds.
         $ownerFields = [];
+        // The new address when the email_act == 0 branch writes users.email
+        // directly. Null otherwise.
+        $directNewEmail = null;
         $websiteCleared = false;
         $ownerSuccesses = [];
         $ownerLogLines = [];
@@ -506,7 +537,8 @@ if (!empty($_POST)) {
                                 // the user confirms via users/verify.php, so it must
                                 // NOT queue the address. Input::raw(), not $email:
                                 // $email is HTML-encoded by Input::get().
-                                $ownerFields['email'] = Input::raw('email') ?? '';
+                                $directNewEmail = Input::raw('email') ?? '';
+                                $ownerFields['email'] = $directNewEmail;
                                 $ownerSuccesses[] = 'Email updated.';
                                 $ownerLogLines[] = "Changed email from $userdetails->email to $email.";
                             }
@@ -667,6 +699,23 @@ if (!empty($_POST)) {
                 logger($userId, LogCategories::LOG_CATEGORY_USER, "Changed website from {$profiledetails->website} to (empty).");
             };
 
+            // The profile write committed before this runs. A failure here must
+            // not tell the owner that the email change failed, so log it only.
+            $clearBouncedForNewEmail = function (string $newEmail) use ($repo, $userId): void {
+                try {
+                    $cleared = $repo->clearBouncedForUser($userId, $newEmail);
+                    if ($cleared > 0) {
+                        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+                            "user_settings.php: cleared bounce flag on {$cleared} car(s) "
+                            . "for user {$userId} after direct email change.");
+                    }
+                } catch (\Throwable $bounceException) {
+                    logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                        "user_settings.php: bounce-clear after direct email change failed for user {$userId}: "
+                        . $bounceException->getMessage());
+                }
+            };
+
             try {
                 $owner = new Owner($userId);
             } catch (OwnerDatabaseException $e) {
@@ -701,6 +750,14 @@ if (!empty($_POST)) {
                         ? $owner->updateProfileAndSync($ownerFields)
                         : $owner->syncOwnerFieldsToCars();
                     $reportOwnerWrite();
+                    if ($ownerFields !== [] && $directNewEmail !== null) {
+                        // The email_act == 0 path changed users.email directly.
+                        // Clear the bounce flags the same way the confirmed-change
+                        // hook (sync_owner_email_on_verify.php) does, so the
+                        // account notice's "updating your email address will start
+                        // them again" is true on both paths.
+                        $clearBouncedForNewEmail($directNewEmail);
+                    }
                     // Cars in $syncResult's skipped bucket (no longer owned by this user) are
                     // intentionally not reported here — there's nothing actionable for the
                     // owner, since the car isn't theirs anymore. isCompleteSuccess() already
@@ -741,7 +798,21 @@ if (!empty($_POST)) {
                         // reaches a committed clear.
                         $reportWebsiteCleared();
                         try {
-                            $owner->syncOwnerFieldsToCars();
+                            // Check the result the same way as the main path: a
+                            // per-car failure is in the result, not thrown.
+                            $clearSyncResult = $owner->syncOwnerFieldsToCars();
+                            if (!$clearSyncResult->isCompleteSuccess()) {
+                                $clearSyncError = sprintf(
+                                    'Website removed, but synchronized to only %d of %d car(s). %s',
+                                    $clearSyncResult->updatedCount(),
+                                    $clearSyncResult->totalCount(),
+                                    $clearSyncResult->failedCarsPhrase()
+                                );
+                                if ($clearSyncResult->skippedCount() > 0) {
+                                    $clearSyncError .= ' ' . $clearSyncResult->skippedCarsPhrase();
+                                }
+                                $errors[] = $clearSyncError . ' Please contact support if this persists.';
+                            }
                         } catch (\Throwable $syncException) {
                             logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
                                 "user_settings.php: website-clear sync failed for user {$userId}: " . $syncException->getMessage());
@@ -820,17 +891,21 @@ if ($userQ2->count() > 0) {
 //   A Brevo spam or unsubscribe event sets only the flag on that one car
 //   (EmailEventApplier::apply()). So the count is those cars only.
 // clearSuppressedForOwnerByOwner() clears both kinds: its fan-out reads each
-// car's own flag, whatever the profile flag is. PDO returns the columns as
-// int|string, so cast before the strict comparisons.
+// car's own flag, whatever the profile flag is. The one exception is a car
+// whose suppression is a Brevo complaint: only an admin can clear it, so
+// $complaintPausedCount tells the owner to contact the registry. PDO
+// returns the columns as int|string, so cast before the strict comparisons.
 $profileSuppressed = (int) ($profiledetails->email_suppressed ?? 0) === 1;
 $emailSuppressed = $profileSuppressed;
 $pausedCarCount = null;
+$complaintPausedCount = 0;
 try {
     $ownedCars = $repo->findVerificationStateByOwner($userId);
     $pausedCarCount = $profileSuppressed
         ? count($ownedCars)
         : count(array_filter($ownedCars, static fn(object $car): bool => (int) $car->email_suppressed === 1));
     $emailSuppressed = $profileSuppressed || $pausedCarCount > 0;
+    $complaintPausedCount = count($verifier->findBrevoComplaintCarIds($userId));
 } catch (ElanRegistryException $e) {
     // With the profile flag set, the count is copy, not a gate: keep the
     // control and show generic text. With the profile flag at 0, the per-car
@@ -860,6 +935,11 @@ try {
                                 <input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8') ?>" />
                                 <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume verification emails</button>
                             </form>
+                            <?= $complaintPausedCount > 0
+                                ? '<p class="mt-2 mb-0">' . (int) $complaintPausedCount
+                                    . (($complaintPausedCount === 1) ? ' car was' : ' cars were')
+                                    . ' paused because our email provider flagged the address. This button does not turn those back on. Please contact the registry for help.</p>'
+                                : '' ?>
                         </section>
                     <?php endif; ?>
 

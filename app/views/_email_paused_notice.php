@@ -167,7 +167,11 @@ $_enLabelledBy  = trim(
         <?php if ($_enOptOut === [] && $_enComplaint === []): ?>
         <p class="mb-2">Verification emails are paused for one or more of your email addresses.</p>
         <?php endif; ?>
+        <?php if ($_enComplaint === []): ?>
         <p class="mb-2">Nothing is wrong with your account. You can turn them back on whenever you like.</p>
+        <?php else: ?>
+        <p class="mb-2">Nothing is wrong with your account. For an address our email provider flagged, please contact the registry and an admin can turn them back on.</p>
+        <?php endif; ?>
         <?php if ($_enOptOut !== [] || $_enComplaint !== []): ?>
         <p class="mb-2">
             <button type="button" class="btn btn-link er-email-notice__why" data-bs-toggle="collapse"
@@ -182,14 +186,16 @@ $_enLabelledBy  = trim(
                 <?php endforeach; ?>
                 <?php foreach ($_enComplaint as $_enEntry): ?>
                     <?php $_enWhen = $_enDate($_enEntry['suppressed']['date']); ?>
-                <li><?= $_enWhen !== null ? 'On ' . $_enWhen . ' our' : 'Our' ?> email provider flagged <strong><?= $_en($_enEntry['address']) ?></strong> as unreachable or unwanted. To respect that, we stopped sending. If it was accidental (spam filters sometimes do this on their own), one click on your Account Settings page starts them again.</li>
+                <li><?= $_enWhen !== null ? 'On ' . $_enWhen . ' our' : 'Our' ?> email provider flagged <strong><?= $_en($_enEntry['address']) ?></strong> as unreachable or unwanted. To respect that, we stopped sending. If it was accidental (spam filters sometimes do this on their own), please contact the registry and an admin can start them again.</li>
                 <?php endforeach; ?>
             </ul>
         </div>
         <?php endif; ?>
+        <?php if ($_enOptOut !== [] || $_enComplaint === []): ?>
         <div class="d-grid d-sm-block">
             <a class="btn btn-primary" href="<?= $_enSettingsUrl ?>#resume-emails">Turn emails back on</a>
         </div>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
 

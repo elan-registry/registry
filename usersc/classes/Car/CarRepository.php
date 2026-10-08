@@ -556,8 +556,14 @@ class CarRepository
      */
     public function findProfileEmailSuppressedForUpdate(int $userId): ?int
     {
+        // MAX(), not first(): profiles.user_id has no UNIQUE index, so an
+        // owner can have more than one row. MAX() matches
+        // profileEmailSuppressedSql(), which the eligibility queries use, so
+        // a resume cannot report success while a second row still blocks
+        // sends. An aggregate always returns one row, so "no profiles row"
+        // shows as NULL, not as count() === 0.
         $result = $this->db->query(
-            'SELECT email_suppressed FROM profiles WHERE user_id = ? FOR UPDATE',
+            'SELECT MAX(email_suppressed) AS email_suppressed FROM profiles WHERE user_id = ? FOR UPDATE',
             [$userId]
         );
         if ($this->db->error()) {
@@ -565,11 +571,12 @@ class CarRepository
                 "CarRepository::findProfileEmailSuppressedForUpdate failed for user={$userId}: " . $this->db->errorString()
             );
         }
-        if ($this->db->count() === 0) {
+        $row = $this->db->count() === 0 ? null : $result->first();
+        if ($row === null || $row->email_suppressed === null) {
             return null;
         }
 
-        return (int) $result->first()->email_suppressed;
+        return (int) $row->email_suppressed;
     }
 
     /**
@@ -1268,6 +1275,21 @@ class CarRepository
     }
 
     /**
+     * Build the scalar expression for an owner's profile-level suppression flag
+     *
+     * A correlated subquery, not a `LEFT JOIN profiles`: `profiles.user_id`
+     * has no UNIQUE index, so a join can match more than one profile row and
+     * silently duplicate the car row in a list result.
+     * This expression needs only the `cars` alias — no `profiles` join.
+     *
+     * @return string SQL scalar expression, 0 or 1
+     */
+    private static function profileEmailSuppressedSql(): string
+    {
+        return 'COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0)';
+    }
+
+    /**
      * Build the WHERE condition for a Pending car: sent, link still live, no response yet
      *
      * A car is Pending when all of these are true:
@@ -1285,22 +1307,6 @@ class CarRepository
      *
      * @return string SQL boolean expression
      */
-    /**
-     * Build the scalar expression for an owner's profile-level suppression flag
-     *
-     * A correlated subquery, not a `LEFT JOIN profiles`: `profiles.user_id`
-     * has no UNIQUE index, so a join can match more than one profile row and
-     * silently duplicate the car row in a list result (the count methods
-     * dodge this with `COUNT(DISTINCT cars.id)`, which a list cannot use).
-     * This expression needs only the `cars` alias — no `profiles` join.
-     *
-     * @return string SQL scalar expression, 0 or 1
-     */
-    private static function profileEmailSuppressedSql(): string
-    {
-        return 'COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0)';
-    }
-
     private static function verificationPendingWhereSql(): string
     {
         $ttlDays = CarVerificationEmailComposer::LINK_TTL_DAYS;
@@ -1760,15 +1766,19 @@ class CarRepository
      * @return array<object{
      *   id: int|string, model: string, series: ?string, variant: ?string, year: int|string|null,
      *   email: ?string, email_bounced: int|string, email_bounced_address: ?string,
-     *   email_suppressed: int|string, owner_last_updated: string, last_verified: ?string
+     *   email_suppressed: int|string, profile_email_suppressed: int|string,
+     *   owner_last_updated: string, last_verified: ?string
      * }> One row per car owned by this user, ordered like the existing button list
      *    (model, year) for visual consistency with the row above it.
+     *    `profile_email_suppressed` is the owner's profile-level opt-out flag
+     *    ({@see self::profileEmailSuppressedSql()}), the same on every row.
      * @throws CarDatabaseException If the query fails
      */
     public function findVerificationStateByOwner(int $ownerId): array
     {
         $result = $this->db->query(
             'SELECT id, model, series, variant, year, email, email_bounced, email_bounced_address,
+                    ' . self::profileEmailSuppressedSql() . ' AS profile_email_suppressed,
                     email_suppressed, owner_last_updated, last_verified
                FROM cars
               WHERE user_id = ?

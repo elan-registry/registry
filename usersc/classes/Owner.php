@@ -336,14 +336,31 @@ class Owner
         // than the write itself failing, so it's caught and logged rather than
         // propagated — matching Car::find()'s treatment of its own subordinate
         // lookups (#1505 PR A).
+        //
+        // The outer catch is \Throwable and never rethrows: the write has
+        // committed, so any throw from here (an Error from find(), or a
+        // PDOException from logger()) would reach updateProfileAndSync()'s
+        // pre-commit catch and tell the owner that nothing was saved.
         try {
-            $this->find($userId);
-        } catch (OwnerDatabaseException $e) {
-            logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                "Owner::update() post-commit reload failed for userId={$userId}: " . $e->getMessage());
+            try {
+                $this->find($userId);
+            } catch (OwnerDatabaseException $e) {
+                logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    "Owner::update() post-commit reload failed for userId={$userId}: " . $e->getMessage());
+            }
+            $fieldsUpdated = array_merge(array_keys($userFields), array_keys($profileFields));
+            logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner updated - fields: " . implode(', ', $fieldsUpdated));
+        } catch (\Throwable $e) {
+            $message = 'Owner::update() post-commit step failed for userId=' . $userId
+                . ' [' . get_class($e) . '] (the write committed): ' . $e->getMessage();
+            try {
+                logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $message);
+            } catch (\Throwable $logFailure) {
+                // logger() writes to the database. If that fails too, the
+                // PHP error log is the only record left.
+                error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+            }
         }
-        $fieldsUpdated = array_merge(array_keys($userFields), array_keys($profileFields));
-        logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner updated - fields: " . implode(', ', $fieldsUpdated));
 
         return true;
     }

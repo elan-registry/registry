@@ -148,6 +148,25 @@ final class EmailNoticeBuilderTest extends TestCase
         $this->assertNull($result['addresses'][0]['bounced']);
     }
 
+    /**
+     * A car added after a profile-level opt-out keeps its own flag at 0 but
+     * still gets no email. The notice must agree with the admin chip and
+     * user_settings.php, which both read the profile flag too.
+     */
+    #[Group('regression')]
+    public function testProfileLevelSuppressionAloneProducesSuppressedEntry(): void
+    {
+        $car = self::car(1, 'owner@example.com', false, false);
+        $car->profile_email_suppressed = '1';
+        $builder = new EmailNoticeBuilder($this->repoReturning([$car]));
+
+        $result = $builder->buildForOwner(1);
+
+        $this->assertNotNull($result, 'A profile-level opt-out must show the notice');
+        $this->assertTrue($result['hasSuppressed']);
+        $this->assertSame(EmailNoticeBuilder::CAUSE_OWNER_OPTOUT, $result['addresses'][0]['suppressed']['cause']);
+    }
+
     // --- bounced-only -----------------------------------------------------
 
     public function testBouncedOnlyCarProducesBouncedEntryAndNoSuppressed(): void

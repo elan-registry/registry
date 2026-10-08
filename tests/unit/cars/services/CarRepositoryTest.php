@@ -1488,6 +1488,7 @@ final class CarRepositoryTest extends TestCase
             ->method('query')
             ->with(
                 'SELECT id, model, series, variant, year, email, email_bounced, email_bounced_address,
+                    COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0) AS profile_email_suppressed,
                     email_suppressed, owner_last_updated, last_verified
                FROM cars
               WHERE user_id = ?
