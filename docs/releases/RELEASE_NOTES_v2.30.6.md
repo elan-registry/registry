@@ -25,4 +25,4 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - WIP: [#2184](https://github.com/elan-registry/registry/issues/2184) — Send all mail through a project-owned, tagged Brevo mailer.
 - WIP: [#2253](https://github.com/elan-registry/registry/issues/2253) — Upgrade UserSpice from 6.1.4 to 6.1.7.
 - WIP: [#2321](https://github.com/elan-registry/registry/issues/2321) — Close #2208 and retire the cleanup-ledger label.
-- WIP: [#2326](https://github.com/elan-registry/registry/issues/2326) — Stop `.htaccess` from writing a web-readable error log into the docroot, and deny that filename.
+- [#2326](https://github.com/elan-registry/registry/issues/2326) — Stop `.htaccess` from writing a web-readable error log into the docroot, and deny that filename.
