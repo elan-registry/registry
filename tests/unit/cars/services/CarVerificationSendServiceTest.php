@@ -7,11 +7,17 @@ use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
 use ElanRegistry\Car\SendResult;
+use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\EmailTemplate;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\BrevoSiteRoot;
+
+require_once __DIR__ . '/../../../Support/FakeDatabase.php';
+require_once __DIR__ . '/../../../Support/VerificationSettingsFakeDatabase.php';
 
 /**
  * Unit tests for CarVerificationSendService (#1884)
@@ -57,16 +63,23 @@ final class CarVerificationSendServiceTest extends TestCase
 
     private CarVerificationSendService $service;
 
+    private VerificationSettings $brevoReadySettings;
+
+    /** Temp site root that holds the sendinblue plugin files, or null when none was made. */
+    private ?BrevoSiteRoot $brevoSiteRoot = null;
+
     protected function setUp(): void
     {
         $this->mockRepo = $this->createMock(CarRepository::class);
         $this->mockVerifier = $this->createMock(CarVerificationManager::class);
         $this->composer = new CarVerificationEmailComposer(new EmailTemplate());
+        $this->brevoReadySettings = $this->makeBrevoReadySettings();
 
         $this->service = new CarVerificationSendService(
             $this->mockRepo,
             $this->mockVerifier,
-            $this->composer
+            $this->composer,
+            $this->brevoReadySettings
         );
 
         // Fresh mocks each test, and reset the global email-mock state
@@ -81,7 +94,16 @@ final class CarVerificationSendServiceTest extends TestCase
     protected function tearDown(): void
     {
         unset($GLOBALS['mockSentEmails'], $GLOBALS['mockEmailSendResult'], $GLOBALS['hookTestDb']);
+        $this->brevoSiteRoot?->remove();
         parent::tearDown();
+    }
+
+    /** Brevo-ready settings on a fresh temp site root. tearDown() removes the root. */
+    private function makeBrevoReadySettings(): VerificationSettings
+    {
+        $this->brevoSiteRoot = BrevoSiteRoot::create('send_service_test_');
+
+        return $this->brevoSiteRoot->readySettings();
     }
 
     /**
@@ -233,6 +255,76 @@ final class CarVerificationSendServiceTest extends TestCase
 
         $this->assertCount(1, $GLOBALS['mockSentEmails'], 'email() must have been called exactly once');
         $this->assertSame('owner@example.com', $GLOBALS['mockSentEmails'][0][0]);
+        $this->assertSame(
+            ['tags' => 'car_verification'],
+            $GLOBALS['mockSentEmails'][0][3],
+            'The verification tag must reach email() as $opts, or the Brevo webhook never records the send (#2184)'
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // sendOne() — Brevo not ready (#2184)
+    // ------------------------------------------------------------------
+
+    /**
+     * A sendinblue plugin older than 1.8.0 drops $opts['tags'], so the email
+     * would go out untagged. sendOne() must refuse before Scope A: no email,
+     * and the vericode is not rotated.
+     */
+    public function testSendOneReturnsFailedAndSendsNothingWhenBrevoPluginIsTooOld(): void
+    {
+        $this->brevoSiteRoot?->writePluginVersion('1.6.2');
+        $GLOBALS['mockLogEntries'] = [];
+        $carData = $this->eligibleCar();
+
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('updateCar');
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
+        $this->mockVerifier->expects($this->never())->method('setVerificationCode');
+        $this->mockVerifier->expects($this->never())->method('setVerificationSentAt');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame(100, $result->carId);
+        $this->assertStringStartsWith('No email was sent. ', (string) $result->reason);
+        $this->assertStringContainsString('1.6.2', (string) $result->reason, 'The reason must name the installed version');
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent while Brevo is not ready');
+        $refusals = array_values(array_filter(
+            $GLOBALS['mockLogEntries'] ?? [],
+            static fn (array $entry): bool => str_contains($entry['message'], 'Brevo is not ready: ')
+        ));
+        $this->assertCount(1, $refusals, 'One log line per refused send');
+        $this->assertStringContainsString('1.6.2', $refusals[0]['message']);
+        $this->assertSame('oldhashedvalue', $carData->vericode, 'The vericode must not be rotated');
+    }
+
+    /**
+     * A plugin update leaves the old override.php in place. That override can
+     * drop $opts['tags'] even on plugin 1.8.0, so sendOne() must refuse.
+     */
+    public function testSendOneReturnsFailedAndSendsNothingWhenBrevoOverrideIsStale(): void
+    {
+        $this->brevoSiteRoot?->writeStaleOverride();
+        $GLOBALS['mockLogEntries'] = [];
+        $carData = $this->eligibleCar();
+
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('updateCar');
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
+        $this->mockVerifier->expects($this->never())->method('setVerificationCode');
+        $this->mockVerifier->expects($this->never())->method('setVerificationSentAt');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame(100, $result->carId);
+        $this->assertSame(
+            'No email was sent. The Brevo override file is out of date. On the Brevo plugin page, open "Show file contents" under "Override Update Available", then click "Replace my override.php with the bundled version".',
+            $result->reason
+        );
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent while Brevo is not ready');
+        $this->assertSame('oldhashedvalue', $carData->vericode, 'The vericode must not be rotated');
     }
 
     // ------------------------------------------------------------------
@@ -452,6 +544,53 @@ final class CarVerificationSendServiceTest extends TestCase
     }
 
     /**
+     * Without the plugin's sendinblueLastError(), the failed-send log line
+     * still says that no mailer error was reported.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFailedSendLogSaysNoMailerErrorWhenPluginReportsNone(): void
+    {
+        $this->assertFalse(function_exists('sendinblueLastError'), 'This test needs a process without the plugin helper');
+
+        $this->assertStringEndsWith('Mailer error: none reported', $this->failedSendLogLine());
+    }
+
+    /**
+     * The plugin logs its reason in a separate row with no car id, so the
+     * failed-send log line must carry it.
+     */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFailedSendLogIncludesTheMailerError(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-error.php';
+
+        $this->assertStringEndsWith('Mailer error: Brevo API error 401: Key not found', $this->failedSendLogLine());
+    }
+
+    /** Runs a send where email() returns false and returns the one failed-send log line. */
+    private function failedSendLogLine(): string
+    {
+        $GLOBALS['mockEmailSendResult'] = false;
+        $GLOBALS['mockLogEntries'] = [];
+        $this->mockVerifier->method('generateVerificationCode')->willReturn('newcode1234567890');
+        $this->mockVerifier->method('setVerificationCode')->willReturn(true);
+        $this->mockVerifier->method('setVerificationSentAt')->willReturn(true);
+        $this->mockRepo->method('restoreVerificationCodeState')->willReturn(true);
+
+        $result = $this->service->sendOne($this->eligibleCar());
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $lines = array_values(array_filter(
+            $GLOBALS['mockLogEntries'] ?? [],
+            static fn (array $entry): bool => str_contains($entry['message'], 'email() returned false')
+        ));
+        $this->assertCount(1, $lines, 'One failed-send log line per send');
+
+        return $lines[0]['message'];
+    }
+
+    /**
      * restoreVerificationCodeState() returning false (the car no longer
      * exists — deleted between the vericode rotation and this restore
      * attempt) must not be silent: it must be logged, and sendOne() must
@@ -521,7 +660,8 @@ final class CarVerificationSendServiceTest extends TestCase
         $service = new CarVerificationSendService(
             $this->mockRepo,
             $this->mockVerifier,
-            new CarVerificationEmailComposer($throwingTemplate)
+            new CarVerificationEmailComposer($throwingTemplate),
+            $this->brevoReadySettings
         );
 
         $this->mockVerifier->method('generateVerificationCode')->willReturn('newcode1234567890');

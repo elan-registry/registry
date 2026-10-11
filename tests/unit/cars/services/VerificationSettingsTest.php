@@ -8,6 +8,7 @@ use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\BatchSizeRoundTripFakeDatabase;
+use Tests\Support\BrevoSiteRoot;
 use Tests\Support\VerificationSettingsFakeDatabase;
 
 require_once __DIR__ . '/../../../Support/FakeDatabase.php';
@@ -18,17 +19,17 @@ require_once __DIR__ . '/../../../Support/BatchSizeRoundTripFakeDatabase.php';
  * Unit tests for VerificationSettings — the feature switch and readiness
  * probes for the car verification system (#1926).
  *
- * `brevoReady()`'s override-file check calls the real `file_exists()` against
- * a path built from the `$abs_us_root`/`$us_url_root` globals — a filesystem
+ * `brevoReady()`'s override-file and plugin-version checks read real files at
+ * paths built from the `$abs_us_root`/`$us_url_root` globals — a filesystem
  * boundary that cannot be mocked through the DatabaseInterface double. Rather
  * than reach for a namespaced `file_exists()` override (which would only
  * intercept calls made from within the ElanRegistry\Car namespace — which
  * VerificationSettings::brevoReady() is, so this would actually work, but the
  * plan calls this out as a judgment call and the simpler, more realistic
  * option is used instead), the brevoReady()-dependent tests exercise the real
- * filesystem: they point $abs_us_root/$us_url_root at a throwaway temp
- * directory and create/delete the override file there for the duration of
- * each test, with guaranteed cleanup in tearDown(). This is the same strategy
+ * filesystem: {@see BrevoSiteRoot} points $abs_us_root/$us_url_root at a
+ * throwaway temp directory and creates the override file and info.xml there
+ * for the duration of each test, with guaranteed cleanup in tearDown(). This is the same strategy
  * the implementing agent used to verify the class against the real dev DB
  * (see the plan file's Test Plan section).
  */
@@ -41,8 +42,8 @@ final class VerificationSettingsTest extends TestCase
     /** @var string|false Snapshot of the ambient $us_url_root global, restored in tearDown(). */
     private string|false $originalUsUrlRoot = false;
 
-    /** Throwaway directory standing in for the site root for file_exists() checks. */
-    private ?string $tempRoot = null;
+    /** Throwaway directory standing in for the site root for the Brevo file checks. */
+    private ?BrevoSiteRoot $tempRoot = null;
 
     protected function setUp(): void
     {
@@ -56,49 +57,28 @@ final class VerificationSettingsTest extends TestCase
 
     protected function tearDown(): void
     {
+        $this->tempRoot?->remove();
+
         global $abs_us_root, $us_url_root;
         $abs_us_root = $this->originalAbsUsRoot === false ? null : $this->originalAbsUsRoot;
         $us_url_root = $this->originalUsUrlRoot === false ? null : $this->originalUsUrlRoot;
-
-        if ($this->tempRoot !== null && is_dir($this->tempRoot)) {
-            $overrideDir = $this->tempRoot . '/usersc/plugins/sendinblue';
-            $overrideFile = $overrideDir . '/override.php';
-            if (file_exists($overrideFile)) {
-                unlink($overrideFile);
-            }
-            if (is_dir($overrideDir)) {
-                rmdir($overrideDir);
-            }
-            if (is_dir($this->tempRoot . '/usersc/plugins')) {
-                rmdir($this->tempRoot . '/usersc/plugins');
-            }
-            if (is_dir($this->tempRoot . '/usersc')) {
-                rmdir($this->tempRoot . '/usersc');
-            }
-            rmdir($this->tempRoot);
-        }
 
         parent::tearDown();
     }
 
     /**
      * Points $abs_us_root/$us_url_root at a fresh temp directory (so
-     * brevoReady()'s file_exists() check is against a controlled location)
-     * and optionally creates the override file there.
+     * brevoReady()'s file checks are against a controlled location),
+     * optionally creates the override file there, and writes info.xml with
+     * the given plugin version (null writes no info.xml).
      */
-    private function useTempSiteRoot(bool $withOverrideFile): void
-    {
-        $this->tempRoot = sys_get_temp_dir() . '/verification_settings_test_' . uniqid('', true);
-        $overrideDir = $this->tempRoot . '/usersc/plugins/sendinblue';
-        mkdir($overrideDir, 0777, true);
+    private function useTempSiteRoot(
+        bool $withOverrideFile,
+        ?string $pluginVersion = BrevoSiteRoot::READY_VERSION,
+    ): BrevoSiteRoot {
+        $this->tempRoot = BrevoSiteRoot::create('verification_settings_test_', $withOverrideFile, $pluginVersion);
 
-        if ($withOverrideFile) {
-            file_put_contents($overrideDir . '/override.php', "<?php\n");
-        }
-
-        global $abs_us_root, $us_url_root;
-        $abs_us_root = $this->tempRoot . '/';
-        $us_url_root = '';
+        return $this->tempRoot;
     }
 
     // =========================================================================
@@ -516,8 +496,10 @@ final class VerificationSettingsTest extends TestCase
         $this->useTempSiteRoot(withOverrideFile: true);
 
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => '']);
+        $settings = new VerificationSettings($db);
 
-        $this->assertFalse((new VerificationSettings($db))->brevoReady());
+        $this->assertFalse($settings->brevoReady());
+        $this->assertSame('No API key is saved in the Brevo plugin.', $settings->brevoNotReadyReason());
     }
 
     public function testBrevoReadyFalseWhenKeyPresentAndOverrideMissing(): void
@@ -525,8 +507,13 @@ final class VerificationSettingsTest extends TestCase
         $this->useTempSiteRoot(withOverrideFile: false);
 
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key']);
+        $settings = new VerificationSettings($db);
 
-        $this->assertFalse((new VerificationSettings($db))->brevoReady());
+        $this->assertFalse($settings->brevoReady());
+        $this->assertSame(
+            'The Brevo override file (usersc/plugins/sendinblue/override.php) is not in place.',
+            $settings->brevoNotReadyReason()
+        );
     }
 
     public function testBrevoReadyFalseWhenBothMissing(): void
@@ -534,8 +521,10 @@ final class VerificationSettingsTest extends TestCase
         $this->useTempSiteRoot(withOverrideFile: false);
 
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => '']);
+        $settings = new VerificationSettings($db);
 
-        $this->assertFalse((new VerificationSettings($db))->brevoReady());
+        $this->assertFalse($settings->brevoReady());
+        $this->assertSame('No API key is saved in the Brevo plugin.', $settings->brevoNotReadyReason());
     }
 
     public function testBrevoReadyTrueOnlyWhenBothHold(): void
@@ -545,6 +534,168 @@ final class VerificationSettingsTest extends TestCase
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key']);
 
         $this->assertTrue((new VerificationSettings($db))->brevoReady());
+    }
+
+    /**
+     * Plugin versions before 1.8.0 drop $opts['tags'] without an error, so a
+     * verification email would go out untagged (#2184).
+     */
+    public function testBrevoNotReadyWhenPluginVersionIsBelowMinimumAndReasonNamesTheVersion(): void
+    {
+        $this->useTempSiteRoot(withOverrideFile: true, pluginVersion: '1.6.2');
+
+        $settings = new VerificationSettings(
+            new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
+        );
+
+        $this->assertFalse($settings->brevoReady());
+        $reason = $settings->brevoNotReadyReason();
+        $this->assertNotNull($reason);
+        $this->assertStringContainsString('1.6.2', $reason);
+        $this->assertStringContainsString('1.8.0', $reason);
+    }
+
+    public function testBrevoNotReadyWhenInfoXmlIsMissing(): void
+    {
+        $this->useTempSiteRoot(withOverrideFile: true, pluginVersion: null);
+
+        $settings = new VerificationSettings(
+            new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
+        );
+
+        $this->assertFalse($settings->brevoReady());
+        $this->assertSame(
+            'The Brevo plugin version could not be read from usersc/plugins/sendinblue/info.xml. '
+            . 'Version 1.8.0 or later is required.',
+            $settings->brevoNotReadyReason()
+        );
+    }
+
+    public function testBrevoNotReadyWhenInfoXmlHasNoParseableVersion(): void
+    {
+        $this->useTempSiteRoot(withOverrideFile: true)
+            ->writeInfoXml("<plugin>\n  <version><script>x</script></version>\n</plugin>\n");
+
+        $settings = new VerificationSettings(
+            new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
+        );
+
+        $this->assertFalse($settings->brevoReady());
+        $this->assertStringNotContainsString('<script>', (string) $settings->brevoNotReadyReason());
+    }
+
+    /**
+     * 1.10.0 is the case a string comparison gets wrong ("1.10.0" < "1.8.0").
+     *
+     * @return array<string, array{string}>
+     */
+    public static function readyPluginVersionProvider(): array
+    {
+        return [
+            'minimum 1.8.0' => ['1.8.0'],
+            'two-digit minor 1.10.0' => ['1.10.0'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('readyPluginVersionProvider')]
+    public function testBrevoReadyWhenPluginVersionIsAtLeastMinimum(string $version): void
+    {
+        $this->useTempSiteRoot(withOverrideFile: true, pluginVersion: $version);
+
+        $settings = new VerificationSettings(
+            new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
+        );
+
+        $this->assertNull($settings->brevoNotReadyReason());
+        $this->assertTrue($settings->brevoReady());
+    }
+
+    /**
+     * UserSpice includes override.php only for `sendinblue = 1`. Any other
+     * state means core PHPMailer sends the mail and drops the tag (#2184).
+     *
+     * @return array<string, array{callable(BrevoSiteRoot): void}>
+     */
+    public static function inactivePluginProvider(): array
+    {
+        return [
+            'plugin value 2 (deactivated)' => [static fn (BrevoSiteRoot $root) => $root->deactivatePlugin()],
+            'plugin key absent' => [static fn (BrevoSiteRoot $root) => $root->writePluginsIni(";<?php die();?>\nhooker = 1\n")],
+            'plugins.ini.php missing' => [static fn (BrevoSiteRoot $root) => $root->removePluginsIni()],
+            'plugins.ini.php has a syntax error' => [static fn (BrevoSiteRoot $root) => $root->writePluginsIni("sendinblue = (1\n")],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('inactivePluginProvider')]
+    public function testBrevoNotReadyWhenPluginIsNotActive(callable $breakPluginsIni): void
+    {
+        $breakPluginsIni($this->useTempSiteRoot(withOverrideFile: true));
+
+        $settings = new VerificationSettings(
+            new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
+        );
+
+        $this->assertFalse($settings->brevoReady());
+        $this->assertSame(
+            'The Brevo plugin is not active. Activate it on the Plugins page.',
+            $settings->brevoNotReadyReason()
+        );
+    }
+
+    /**
+     * A plugin update never touches override.php, so an override from an
+     * older version can stay in place and drop the tag (#2184).
+     */
+    public function testBrevoNotReadyWhenOverrideDiffersFromBundledCopy(): void
+    {
+        $this->useTempSiteRoot(withOverrideFile: true)->writeStaleOverride();
+
+        $settings = new VerificationSettings(
+            new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
+        );
+
+        $this->assertFalse($settings->brevoReady());
+        $this->assertSame(
+            'The Brevo override file is out of date. On the Brevo plugin page, open "Show file contents" under "Override Update Available", then click "Replace my override.php with the bundled version".',
+            $settings->brevoNotReadyReason()
+        );
+    }
+
+    public function testBrevoNotReadyWhenBundledOverrideIsMissing(): void
+    {
+        $this->useTempSiteRoot(withOverrideFile: true)->removeBundledOverride();
+
+        $settings = new VerificationSettings(
+            new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
+        );
+
+        $this->assertFalse($settings->brevoReady());
+        $this->assertSame(
+            'The Brevo override file cannot be compared with the copy that ships with the plugin. '
+            . 'Check that usersc/plugins/sendinblue/override.php and '
+            . 'usersc/plugins/sendinblue/override.RENAME.php exist and are readable.',
+            $settings->brevoNotReadyReason()
+        );
+    }
+
+    /**
+     * verification-toggle.php returns this user message as its 422 message,
+     * so the admin who tries to enable sees why Brevo is not ready.
+     */
+    public function testSetEnabledTrueUserMessageNamesTheOldPluginVersion(): void
+    {
+        $this->useTempSiteRoot(withOverrideFile: true, pluginVersion: '1.6.2');
+
+        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key']);
+
+        try {
+            (new VerificationSettings($db))->setEnabled(true);
+            $this->fail('Expected VerificationConfigException');
+        } catch (VerificationConfigException $e) {
+            $this->assertStringContainsString('1.6.2', $e->getUserMessage());
+            $this->assertStringContainsString('1.8.0', $e->getUserMessage());
+            $this->assertFalse($db->wasUpdateCalled());
+        }
     }
 
     /**
@@ -563,7 +714,9 @@ final class VerificationSettingsTest extends TestCase
             errorInfoValue: ['42S02', 1146, "Table 'test.plg_sendinblue' doesn't exist"],
         );
 
-        $this->assertFalse((new VerificationSettings($db))->brevoReady());
+        // brevoReady() is brevoNotReadyReason() === null. Call the probe once so
+        // the single log line below stays exact.
+        $this->assertSame('The Brevo plugin is not installed.', (new VerificationSettings($db))->brevoNotReadyReason());
 
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
@@ -586,7 +739,10 @@ final class VerificationSettingsTest extends TestCase
             errorInfoValue: ['HY000', 2006, 'MySQL server has gone away'],
         );
 
-        $this->assertFalse((new VerificationSettings($db))->brevoReady());
+        $this->assertSame(
+            'The Brevo settings could not be read. Check the system log for VerificationConfigWarning.',
+            (new VerificationSettings($db))->brevoNotReadyReason()
+        );
 
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);

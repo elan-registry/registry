@@ -41,11 +41,23 @@ use ElanRegistry\Owner;
  */
 final class CarVerificationSendService
 {
+    private VerificationSettings $settings;
+
+    /**
+     * @param CarRepository $repo Car data access
+     * @param CarVerificationManager $verifier Rotates the vericode
+     * @param CarVerificationEmailComposer $composer Builds the email subject and body
+     * @param VerificationSettings|null $settings Brevo readiness probe; null uses the shared
+     *                                            connection. Last, so the production callers
+     *                                            need not pass it.
+     */
     public function __construct(
         private CarRepository $repo,
         private CarVerificationManager $verifier,
         private CarVerificationEmailComposer $composer,
+        ?VerificationSettings $settings = null,
     ) {
+        $this->settings = $settings ?? new VerificationSettings(dbi());
     }
 
     /**
@@ -186,6 +198,24 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'Owner has opted out of verification emails.');
         }
 
+        // Send only when Brevo is ready (key, active plugin, override file,
+        // plugin 1.8.0 or later, override matches the bundled copy). Otherwise
+        // email() is the core PHPMailer fallback, or an override that ignores
+        // $opts['tags'], and the mail can report success with no verification
+        // tag, so the webhook never records its delivery. Checked
+        // before Scope A so a refused send leaves the vericode untouched and
+        // costs no attempt.
+        $brevoNotReadyReason = $this->settings->brevoNotReadyReason();
+        if ($brevoNotReadyReason !== null) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: Brevo is not ready: %s Send skipped for car %d.',
+                $brevoNotReadyReason,
+                $carId
+            ));
+
+            return SendResult::failed($carId, 'No email was sent. ' . $brevoNotReadyReason);
+        }
+
         // Scope A — durable new code BEFORE the network call.
         $this->repo->beginTransaction();
 
@@ -232,29 +262,34 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'The verification email could not be composed.');
         }
 
-        $sendOk = email((string) $carData->email, $composed['subject'], $composed['html']);
+        $sendOk = email(
+            (string) $carData->email,
+            $composed['subject'],
+            $composed['html'],
+            ['tags' => AppConstants::VERIFICATION_EMAIL_TAG]
+        );
 
-        // Strict `!== true` rather than `=== false`: email() has no single
-        // typed contract across the mailers this app can run with. Today
-        // it's bool either way — the currently-active core fallback
-        // (users/helpers/helpers.php) returns PHPMailer::send()'s typed
-        // bool return directly, and the Brevo override (activated by
-        // renaming usersc/plugins/sendinblue/override.RENAME.php into
-        // place, not currently active in this checkout) only ever returns
-        // true/false from sendinblue(). But a future or site-local mailer
+        // The tag is how the webhook receiver tells verification events apart
+        // from other mail. The readiness check above requires a plugin that forwards it.
+        //
+        // Strict `!== true` rather than `=== false`: a site-local mailer
         // override could return something else on failure (a message-id
-        // string, null, 0 — a very common convention) that would pass
+        // string, null, 0 — a common convention) that would pass
         // `=== false` and be misreported as a successful send, incrementing
         // the attempt count and consuming the yearly cap with no email
         // actually delivered.
         if ($sendOk !== true) {
             $this->restoreAfterFailedSend($carId, $previousVericode, $previousVericodeSentAt);
 
+            // The plugin logs its own reason in a separate row with no car id.
+            // Copy it here so one row names both the car and the cause.
+            $mailerError = function_exists('sendinblueLastError') ? sendinblueLastError() : null;
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: email() returned %s (expected true) for car %d; '
-                . 'treating as failure, verification_attempts deliberately not incremented',
+                . 'treating as failure, verification_attempts deliberately not incremented. Mailer error: %s',
                 var_export($sendOk, true),
-                $carId
+                $carId,
+                is_scalar($mailerError) && (string) $mailerError !== '' ? (string) $mailerError : 'none reported'
             ));
 
             return SendResult::failed($carId, 'The email could not be sent.');

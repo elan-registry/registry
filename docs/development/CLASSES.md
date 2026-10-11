@@ -1460,7 +1460,14 @@ shared state or dependency exists between the two.
 
 - `isEnabled(): bool` - Whether verification is currently switched on
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
-- `brevoReady(): bool` - True only if the Brevo API key is configured AND the plugin override file is active
+- `brevoReady(): bool` - True only if `brevoNotReadyReason()` returns `null`:
+  the plugin table is readable, the API key is saved, `plugins.ini.php` has
+  `sendinblue = 1`, `override.php` is in place, `info.xml` shows plugin
+  version 1.8.0 or later, and `override.php` matches the bundled
+  `override.RENAME.php` (SHA-256)
+- `brevoNotReadyReason(): ?string` - `null` when Brevo is ready. Otherwise a
+  message that says why not. The admin Verification tab and the 422 response
+  of the enable toggle show it
 - `cronReady(): bool` - True if `lastCronRequestAt()` reports a timestamp
   within twice `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`;
   20 minutes today)
@@ -1618,6 +1625,14 @@ sequences from drifting.
 - `CarRepository $repo` - For `findVerificationEligible()`, car writes, event insertion
 - `CarVerificationManager $verifier` - For code generation and writes
 - `CarVerificationEmailComposer $composer` - For email composition
+- `?VerificationSettings $settings = null` - Optional 4th argument. For the
+  `brevoReady()` check before each send. When `null`, the constructor uses
+  `new VerificationSettings(dbi())`
+
+**Mail tag**: `sendOne()` calls `email()` with
+`['tags' => AppConstants::VERIFICATION_EMAIL_TAG]` (`car_verification`). It
+returns a failed `SendResult` and leaves the vericode unrotated when
+`brevoReady()` is false.
 
 **Exceptions**:
 
@@ -2133,6 +2148,41 @@ public function __construct(
 - `CronJobGuard` — Atomic claim semantics
 - [DATABASE.md](DATABASE.md) — `er_cron_job_runs` schema (`last_sent_count`/`last_skipped_count`/`last_failed_count`)
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_CAR_VERIFICATION`
+
+---
+
+### BrevoDevOverride
+
+**Location**: `/usersc/classes/Email/BrevoDevOverride.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: Routes the Brevo SDK to a local mock (mock-brevo) in the
+development environment. It never changes the host in test or production.
+
+**Methods**:
+
+- `hostOverride(): ?string` - Returns `BREVO_API_HOST` when
+  `US_ENVIRONMENT` is `development` and the value is not empty. Returns `null`
+  in all other cases. Pure function
+- `applyToSdk(string $autoloadPath): bool` - Loads the plugin's
+  `vendor/autoload.php` and sets the override host on the Brevo SDK's shared
+  default `Configuration`. The sendinblue plugin uses the same object, so its
+  sends and delivery-status checks reach mock-brevo. Returns `true` when it set
+  the host. Returns `false` when the override is inactive, the autoloader is
+  not a readable file, or the SDK class is missing. Never throws. Logs
+  `EmailError` when loading the SDK fails (#2184)
+
+**Used By**:
+
+- `usersc/includes/rate_limits_dev_override.php` (`applyToSdk()`, loaded by
+  `usersc/includes/loader.php` on each request)
+- `BrevoEventReconciliationClient`, `BrevoSuppressionSyncClient`
+  (`hostOverride()`)
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#local-development) - Local mock setup
 
 ---
 

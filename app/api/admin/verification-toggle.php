@@ -21,7 +21,8 @@ use ElanRegistry\LogCategories;
  *   csrf    — CSRF token
  *   enabled — '1'/'0', 'true'/'false', or 'on'/'off'; anything else is rejected
  *
- * Enabling is refused with 422 when Brevo is not configured; disabling is never
+ * Enabling is refused with 422 when Brevo is not ready (the message names the
+ * reason, from VerificationSettings::brevoNotReadyReason()); disabling is never
  * gated (see VerificationSettings' asymmetric-gate contract).
  *
  * @since v2.30.2

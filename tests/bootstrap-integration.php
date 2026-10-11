@@ -459,10 +459,11 @@ try {
 // ============================================================
 // usersc/plugins/sendinblue/override.php is gitignored and shared with the
 // dev app running on the same checkout — a run that dies mid-test before
-// restoring it leaves the 6-byte stub in place. brevoReady() needs only a key
-// row plus the file's existence, so a dev DB with a real key then sees Brevo
-// as "ready" with an empty override — a test artifact changing dev email
-// routing, invisible to `git status`. #2160's purge above
+// restoring it leaves the 6-byte stub in place. brevoReady() needs a key row,
+// the file's existence, and the plugin's own info.xml at 1.8.0 or later, so a
+// dev DB with a real key then sees Brevo as "ready" with an empty override —
+// a test artifact changing dev email routing, invisible to `git status`.
+// #2160's purge above
 // only covered the DB half of this same leak; this covers the file half.
 // Touches no DB, so it runs outside that block's try: a DB failure inside the
 // purge block above doesn't skip this, and an unreachable DB or a failed
