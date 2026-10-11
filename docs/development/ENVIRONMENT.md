@@ -446,7 +446,7 @@ The stack has five services, plus the opt-in `cron` service (see step 6 of
 [Development Setup](#development-setup)). `app` runs PHP 8.4. `db` runs
 MySQL 8.0 and has no host port. `phpmyadmin` provides database inspection.
 `mock-brevo` runs the local mock of Brevo's transactional email API
-(`ghcr.io/unibrain1/mock-brevo:1.3.0`) and provides a web inbox. `landing`
+(`ghcr.io/unibrain1/mock-brevo:1.4.0`) and provides a web inbox. `landing`
 serves the landing page. Use the port table above. The `app` container reaches
 `mock-brevo` at `http://mock-brevo:8080/v3` on the `elan` network.
 
