@@ -19,6 +19,12 @@ always open.
 
 **Plugin location:** `usersc/plugins/sendinblue/`
 
+**Plugin version:** The registry uses the upstream plugin unmodified. It needs
+version 1.8.0 or later. Git tracks no file under `usersc/plugins/sendinblue/`
+(the whole plugin is gitignored), and the project has no fork. Install and
+update the plugin with the plugin manager. Deploy steps are in
+[DEPLOYMENT.md](DEPLOYMENT.md#brevo-sendinblue-plugin).
+
 **How it works:** The plugin's `override.php` file globally overrides UserSpice's built-in
 `email()` function. When the plugin is active, all calls to `email()` throughout the codebase
 are routed through Brevo's API. When the plugin is deactivated, UserSpice's native
@@ -81,8 +87,71 @@ After your Brevo account is set up and DNS is verified:
 6. Set the sender email address (must match a verified sender in Brevo)
 7. Set the reply-to address (where replies to registry emails should go)
 8. Click Save Configuration
-9. Click Activate Override to route all `email()` calls through Brevo
-10. Click Test Email to send a test message to your email address and verify end-to-end delivery
+9. Set Tag untagged mail to "Calling file name". See
+   [Mail Tags](#mail-tags).
+10. Click Activate Override to route all `email()` calls through Brevo
+    (`override.php` equals `override.RENAME.php`)
+11. Click Test Email to send a test message to your email address and verify end-to-end delivery
+
+## Mail Tags
+
+Brevo tags let the registry tell verification mail from all other mail. The
+webhook receiver and the reconciliation job keep only events that carry the tag
+`car_verification` (`AppConstants::VERIFICATION_EMAIL_TAG`).
+
+### The `tags` option
+
+The `email()` override in plugin 1.8.0 and later accepts `$opts['tags']`. The
+value is a string or an array of strings. A tag that the caller passes always
+wins.
+
+```php
+// Explicit tag: used for verification mail
+email($to, $subject, $body, ['tags' => AppConstants::VERIFICATION_EMAIL_TAG]);
+```
+
+### The "Tag untagged mail" setting
+
+The plugin setting "Tag untagged mail" (`plg_sendinblue.tag_mode`) tags mail
+that has no explicit tags.
+
+| Value | Option label | Effect |
+| --- | --- | --- |
+| `off` | Off (no tag) | Default. Untagged mail has no tag. |
+| `fixed` | Fixed tag | Every untagged message gets the text in `tag_fixed`. |
+| `caller` | Calling file name | The tag is the base name of the file that called `email()`, without `.php`. |
+
+The registry uses `caller`. The plugin function `sendinblueTagFromFile()`
+(`usersc/plugins/sendinblue/functions.php`) builds the tag. It removes every
+character outside `A-Za-z0-9_.-` and cuts the result to 64 characters. The
+setting is database state. Set it once for each environment. Later deploys keep
+it. Without it, all mail except verification mail has no tag.
+
+### Tags in `caller` mode
+
+| Mail | Calling file | Tag |
+| --- | --- | --- |
+| Car verification | `usersc/classes/Car/CarVerificationSendService.php` | `car_verification` (explicit) |
+| Feedback form | `app/api/contact/send-feedback.php` | `send-feedback` |
+| Owner contact form | `app/api/contact/send-owner-email.php` | `send-owner-email` |
+| Admin contact | `app/admin/includes/process-admin-contact.php` | `process-admin-contact` |
+| Registration recovery | `usersc/classes/RegistrationRecoveryNotifier.php` | `RegistrationRecoveryNotifier` |
+| Join | `usersc/join.php` | `join` |
+| Account settings | `usersc/user_settings.php` | `user_settings` |
+| Password reset | `users/forgot_password.php` | `forgot_password` |
+| Passwordless login | `users/passwordless.php` | `passwordless` |
+| Re-authentication | `users/reauth.php` | `reauth` |
+| Resend verification link | `users/verify_resend.php` | `verify_resend` |
+| Admin user manager | `users/views/_admin_user.php`, `users/views/_admin_users.php` | `_admin_user`, `_admin_users` |
+| Admin test email | `users/views/_admin_email_test.php` | `_admin_email_test` |
+
+Core `users/join.php` and `users/user_settings.php` also call `email()`. Their
+tags are `join` and `user_settings`. To find new callers, run
+`grep -rn "email(" app usersc users --include='*.php'`.
+
+The webhook and reconciliation tag filters did not change. Every mail now
+carries a tag, and only `car_verification` is kept. The nightly reconciliation
+job therefore reports a higher `ignoredByTag` count than before.
 
 ## Environment Setup
 
@@ -121,37 +190,39 @@ without calls to the real Brevo API. See
 `docs/development/ENVIRONMENT.md`'s "Docker Dev Environment" section for the
 image and version it runs, and for how to pick up a new release.
 
-**What routes to mock-brevo today:**
+**What routes to mock-brevo:**
 
-Only two clients honor `BREVO_API_HOST` and route to mock-brevo:
+With the prerequisites below, all Brevo traffic from the app goes to
+mock-brevo:
 
+- The plugin's sends from `email()` (Test Email, password reset, and so on)
+- The plugin's delivery-status checks
 - `usersc/classes/Cron/BrevoEventReconciliationClient.php`
 - `usersc/classes/Cron/BrevoSuppressionSyncClient.php`
 
-Both call `BrevoDevOverride::hostOverride()` before they build their API
-client, and both need `US_ENVIRONMENT=development` in `.env` for the
-override to apply.
+The two cron clients call `BrevoDevOverride::hostOverride()` before they build
+their API client. The plugin does not know `BREVO_API_HOST`. Instead,
+`BrevoDevOverride::applyToSdk()` sets the host on the Brevo SDK's shared default
+`Configuration` object. The plugin gets the same object and only sets the API key
+on it, so the mock host stays. `usersc/includes/rate_limits_dev_override.php`
+makes this call. `usersc/includes/loader.php` loads that file on each request.
 
-**The app's send path does not route to mock-brevo yet.** `email()` ignores
-`BREVO_API_HOST`. Without the plugin's `override.php` (the local default),
-`email()` is UserSpice's core function, which uses the SMTP settings. With
-`override.php` active, it calls the real Brevo API, so do not turn it on
-locally to test with mock-brevo. In both cases a send from the app (Test
-Email, password reset, and so on) does not reach mock-brevo. [Issue #2184](https://github.com/elan-registry/registry/issues/2184)
-changes the send path to honor `BREVO_API_HOST`.
+`applyToSdk()` does nothing when `US_ENVIRONMENT` is not `development`, when
+`BREVO_API_HOST` is empty, or when the plugin's `vendor/` directory is absent.
+If it fails, it logs an `EmailError` message.
 
-Git does not track the plugin (`usersc/plugins/*` is in `.gitignore`), so
-this repository cannot show its code. The statement above is true of the
-installed plugin checked on 2026-09-28. To check your install, run
-`grep -n BrevoDevOverride usersc/plugins/sendinblue/functions.php`. No
-output means the send path ignores `BREVO_API_HOST`.
+**Warning:** Without `BREVO_API_HOST` in `.env`, local mail goes to the REAL
+Brevo with the API key saved in the plugin. Use a dummy key locally.
 
 **Prerequisites:**
 
-1. `US_ENVIRONMENT=development` must be set in `.env`. This is already the
-   default for local dev, and it is what the reconciliation and
-   suppression-sync clients check before they apply `BREVO_API_HOST`.
-2. `BREVO_API_HOST=http://mock-brevo:8080/v3` must be set in `.env`.
+1. `US_ENVIRONMENT=development` must be set in `.env`. `BrevoDevOverride`
+   checks it before it applies `BREVO_API_HOST`.
+2. `BREVO_API_HOST=http://mock-brevo:8080/v3` must be set in `.env`
+   (see `.env.example`).
+3. The sendinblue plugin 1.8.0 or later is installed and its override is
+   active. Save a dummy API key. See
+   [ENVIRONMENT.md](ENVIRONMENT.md#brevo-plugin-local-setup).
 
 **Setup:**
 
@@ -160,6 +231,9 @@ The mock-brevo service is always included in the Docker Compose stack
 automatically alongside the `app`, `db`, `phpmyadmin` and `landing` services. See
 `docs/development/ENVIRONMENT.md`'s "Docker Dev Environment" section for the
 full Docker setup.
+
+To send a test email from the app, use Admin → Plugins → Brevo Sendinblue →
+Test Email. The message shows in the mock-brevo inbox.
 
 To send a test email straight to mock-brevo, bypassing the app's send path:
 
@@ -173,8 +247,8 @@ docker compose exec -T -u www-data app curl -s -X POST http://mock-brevo:8080/v3
 A response with a `messageId` means mock-brevo accepted the message. It then
 shows in the web inbox.
 
-To check what the reconciliation or suppression-sync clients sent or
-received, read the logs:
+To check what the app, the reconciliation client, or the suppression-sync
+client sent or received, read the logs:
 
 - Via logs: `docker compose logs mock-brevo` (shows all HTTP requests and responses)
 - Via web UI: open the checkout's `MOCK_BREVO_HOST_PORT` to browse
@@ -221,9 +295,17 @@ The `VerificationSettings` class gates the entire verification system via a sing
   switch; throws `VerificationConfigException` if attempting to enable while
   `brevoReady()` is false. `$actingUserId` attributes the change in the audit
   log — the class performs no session lookups itself
-- `brevoReady(): bool` — computed live; true only if **both** conditions hold:
-  1. `plg_sendinblue.key` is non-empty (API key configured)
-  2. `usersc/plugins/sendinblue/override.php` exists (plugin override active)
+- `brevoNotReadyReason(): ?string` — computed live; returns `null` when Brevo
+  is ready, or a message that says why it is not. The admin Verification tab
+  and the 422 response of the enable toggle show this message.
+- `brevoReady(): bool` — computed live; true only if `brevoNotReadyReason()`
+  returns `null`. All of these conditions must hold:
+  1. `plg_sendinblue` is readable
+  2. `plg_sendinblue.key` is non-empty (API key configured)
+  3. `usersc/plugins/sendinblue/override.php` exists (plugin override active)
+  4. `usersc/plugins/sendinblue/info.xml` shows version 1.8.0 or later.
+     Older versions drop the `tags` option, so the verification tag never
+     reaches Brevo.
 - `cronReady(): bool` — computed live; true if `lastCronRequestAt()` reports a
   timestamp within the last 20 minutes (2× the documented 10-minute cron
   transport interval — see
@@ -250,7 +332,7 @@ always reflect current state.
 
 **Brevo Readiness:**
 
-- `brevoReady()` checks only that the plugin's configuration exists and the override file is active
+- `brevoReady()` checks only that the plugin's configuration exists, the override file is active, and the plugin version is 1.8.0 or later
 - It does **not** validate the API key by calling Brevo, since that would
   add latency to every status check and introduce a hard dependency on
   external availability
@@ -299,7 +381,11 @@ and expanded at the top when it is not. See
 
 **Status Indicators:**
 
-- `brevoReady()` — badge `text-bg-danger` if false while the switch is on; muted text if switch is off
+- `brevoReady()` (row "Brevo ready") — badge `text-bg-success` ("Ready") if
+  true. If false while the switch is on: badge `text-bg-danger` ("Not ready")
+  with the text of `brevoNotReadyReason()`. If the probe itself threw, the text
+  is "The Brevo status could not be checked." plus a hint to check the system
+  log for `VerificationConfigWarning`. Muted text if the switch is off
 - `cronReady()` — badge `text-bg-warning` if false; muted if true
 - Last webhook received — muted "Not yet implemented (#1887)" (placeholder for the real webhook implementation)
 - Last reconciliation run — muted "Not yet implemented (#1889)"
@@ -312,7 +398,7 @@ and expanded at the top when it is not. See
 
 - Located on the Verification System tab
 - Disabled (with explanatory text) when current user is not admin, or when admin but attempting to enable while `brevoReady()` is false
-- Label always explains which prerequisite failed if the enable direction is blocked
+- Label always explains which prerequisite failed if the enable direction is blocked (for Brevo, the `brevoNotReadyReason()` text)
 - Disabling is never blocked — the switch can always be turned off
 
 **Dashboard Banner:**
@@ -694,7 +780,10 @@ environment belongs in `app/admin/index.php` (the Verification tab's POST comman
 - `findEligible(int $limit, int $offset): array` — delegates to
   `CarRepository::findVerificationEligible()` verbatim; the single query both
   callers use
-- `sendOne(object $carData): SendResult` — send one car's email, return sent/failed
+- `sendOne(object $carData): SendResult` — send one car's email, return sent/failed.
+  It passes `['tags' => AppConstants::VERIFICATION_EMAIL_TAG]` to `email()`.
+  It does not send when `VerificationSettings::brevoReady()` is false. It
+  returns a failed `SendResult`, and the vericode stays unrotated.
 
 **Intended Reuse by #1885:** The cron job that follows this issue will call
 `sendOne()` in the same sequence, with the same eligibility rules. This prevents
@@ -1294,10 +1383,10 @@ file-replacement performed once per environment (local dev, test, prod).
    conflict with PHP 8.2 or the root project's dependencies.
 
 4. **Re-verify the `email()` override behavior** documented above still
-   holds — in particular, that `reply_name` and `attachments` remain
-   unsupported via the `email()` override (only available calling
-   `sendinblue()` directly). Diff the new `override.php`/`functions.php`
-   against the backup if anything seems off.
+   holds. In particular, check that `$opts['tags']` still reaches Brevo and
+   that "Tag untagged mail" is still "Calling file name". Run the plugin's
+   pending migrations on its plugin page. Diff the new
+   `override.php`/`functions.php` against the backup if anything seems off.
 
 5. **Smoke test before promoting to the next environment:** Admin → Plugins
    → Brevo Sendinblue → Test Email, and a full password-reset flow (the
@@ -1449,6 +1538,7 @@ the override.
 | `template` | int | Brevo template ID for templated emails |
 | `params` | array | Template variable substitutions (key => value pairs) |
 | `attachments` | array | Array of `['content' => base64string, 'name' => 'filename.pdf']` |
+| `tags` | string or array | Brevo tags for the message. Explicit tags win over the "Tag untagged mail" setting. See [Mail Tags](#mail-tags). |
 
 ### Recommended Calling Pattern
 
@@ -1473,8 +1563,13 @@ shim translates UserSpice's `email()` option keys to Brevo option keys:
 | `email` | `from` |
 | `name` | `from_name` |
 | `replyTo` | `reply` |
+| `reply_name` | `reply_name` |
+| `altBody` | `textContent` |
+| `tags` | `tags` |
 
-> **Note:** `reply_name` is not forwarded by the override. Pass it only when calling `sendinblue()` directly.
+The fifth argument of `email()` is a file path. The override reads the file and
+sends it as an attachment named with the file's base name. It drops an
+unreadable file and still sends the message.
 
 Example using `email()`:
 
@@ -1522,7 +1617,9 @@ sendinblue('owner@example.com', 'Your Car Registration', '(template)', '', $opti
 
 ### Sending Attachments
 
-The `email()` override does not forward the `attachments` key — use `sendinblue()` directly:
+The `email()` override does not forward the `attachments` key. It accepts a file
+path as its fifth argument instead. To send base64 content, use `sendinblue()`
+directly:
 
 ```php
 $attachmentContent = base64_encode(file_get_contents('/path/to/receipt.pdf'));

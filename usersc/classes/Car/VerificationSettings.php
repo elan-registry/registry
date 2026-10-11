@@ -85,6 +85,23 @@ final class VerificationSettings
      */
     private const BREVO_OVERRIDE_RELATIVE_PATH = 'usersc/plugins/sendinblue/override.php';
 
+    /**
+     * Path of the Brevo plugin's manifest, relative to the site root.
+     *
+     * Its `<version>` element is the installed plugin version that
+     * {@see self::BREVO_MIN_PLUGIN_VERSION} is compared against.
+     */
+    private const BREVO_INFO_XML_RELATIVE_PATH = 'usersc/plugins/sendinblue/info.xml';
+
+    /**
+     * Lowest sendinblue plugin version that verification email can use.
+     *
+     * 1.8.0 added `$opts['tags']` to the plugin's `email()` override. Older
+     * versions drop the tag without an error, so a verification email goes out
+     * untagged and the Brevo webhook never records its delivery (#2184).
+     */
+    private const BREVO_MIN_PLUGIN_VERSION = '1.8.0';
+
     public function __construct(private DatabaseInterface $db) {}
 
     /**
@@ -348,13 +365,19 @@ final class VerificationSettings
      *                          session lookups itself, so the caller — who has
      *                          already authenticated the request — passes it.
      * @return bool True if the setting was written successfully
-     * @throws VerificationConfigException If enabling is requested while Brevo is not configured
+     * @throws VerificationConfigException If enabling is requested while Brevo is not
+     *                                     ready; its user message names the reason
+     *                                     from {@see brevoNotReadyReason()}
      */
     public function setEnabled(bool $enabled, int $actingUserId = 0): bool
     {
-        if ($enabled && !$this->brevoReady()) {
-            $this->logWarning('Refused to enable verification: Brevo is not configured.', $actingUserId);
-            throw new VerificationConfigException();
+        if ($enabled && ($brevoNotReadyReason = $this->brevoNotReadyReason()) !== null) {
+            $refusal = 'Refused to enable verification: ' . $brevoNotReadyReason;
+            $this->logWarning($refusal, $actingUserId);
+            throw new VerificationConfigException(
+                $refusal,
+                userMessage: 'Verification cannot be enabled. ' . $brevoNotReadyReason
+            );
         }
 
         $this->db->query(
@@ -462,17 +485,39 @@ final class VerificationSettings
     /**
      * Whether the Brevo email integration is configured well enough to send
      *
-     * Both halves must hold: an API key is saved in `plg_sendinblue`, and the
-     * plugin's override file is in place so UserSpice actually routes mail
-     * through Brevo. A key without the override sends nothing.
+     * True only when {@see brevoNotReadyReason()} finds no problem: an API key
+     * is saved in `plg_sendinblue`, the plugin's override file is in place so
+     * UserSpice routes mail through Brevo, and the installed plugin is version
+     * {@see self::BREVO_MIN_PLUGIN_VERSION} or later so the verification tag
+     * reaches Brevo.
      *
-     * Never throws. A missing `plg_sendinblue` table (plugin never installed) or
-     * a failed query reports "not ready", which is the same answer an empty key
-     * gives and the safe one for the enable gate.
+     * Never throws. Every failure, including a missing `plg_sendinblue` table
+     * or an unreadable `info.xml`, reports "not ready", which is the safe answer
+     * for the enable gate and for the send guard.
      *
-     * @return bool True if Brevo is configured and active
+     * @return bool True if Brevo is configured, active, and new enough
      */
     public function brevoReady(): bool
+    {
+        return $this->brevoNotReadyReason() === null;
+    }
+
+    /**
+     * Why Brevo is not ready to send verification email, or null when it is
+     *
+     * Checks run in this order and the first failure wins: the `plg_sendinblue`
+     * query, the saved API key, the override file, then the plugin version in
+     * `usersc/plugins/sendinblue/info.xml`. A missing, unreadable, or
+     * unparseable `info.xml` counts as not ready.
+     *
+     * The reason is one or two plain sentences for an admin. It can contain the
+     * version string read from `info.xml`, so escape it at render time.
+     *
+     * Never throws.
+     *
+     * @return string|null Admin-facing reason, or null if Brevo is ready
+     */
+    public function brevoNotReadyReason(): ?string
     {
         $this->db->query('SELECT * FROM plg_sendinblue');
         if ($this->db->error()) {
@@ -489,19 +534,70 @@ final class VerificationSettings
                     : 'Brevo readiness probe FAILED querying plg_sendinblue — reporting "not ready", but Brevo may in fact be configured. Check DB connectivity/grants on plg_sendinblue. %s',
                 $this->db->errorString() ?: 'unknown'
             ));
-            return false;
+
+            return $sqlState === '42S02'
+                ? 'The Brevo plugin is not installed.'
+                : 'The Brevo settings could not be read. Check the system log for VerificationConfigWarning.';
         }
 
         $settings = $this->db->first();
         if (!is_object($settings) || empty($settings->key)) {
-            return false;
+            return 'No API key is saved in the Brevo plugin.';
         }
 
         global $abs_us_root, $us_url_root;
+        $siteRoot = ($abs_us_root ?? '') . ($us_url_root ?? '');
 
-        return file_exists(
-            ($abs_us_root ?? '') . ($us_url_root ?? '') . self::BREVO_OVERRIDE_RELATIVE_PATH
-        );
+        if (!file_exists($siteRoot . self::BREVO_OVERRIDE_RELATIVE_PATH)) {
+            return 'The Brevo override file (' . self::BREVO_OVERRIDE_RELATIVE_PATH . ') is not in place.';
+        }
+
+        $installedVersion = $this->brevoPluginVersion($siteRoot . self::BREVO_INFO_XML_RELATIVE_PATH);
+        if ($installedVersion === null) {
+            return sprintf(
+                'The Brevo plugin version could not be read from %s. Version %s or later is required.',
+                self::BREVO_INFO_XML_RELATIVE_PATH,
+                self::BREVO_MIN_PLUGIN_VERSION
+            );
+        }
+
+        if (!version_compare($installedVersion, self::BREVO_MIN_PLUGIN_VERSION, '>=')) {
+            return sprintf(
+                'The Brevo plugin is version %s. Version %s or later is required, '
+                . 'because older versions drop the verification tag.',
+                $installedVersion,
+                self::BREVO_MIN_PLUGIN_VERSION
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * The `<version>` value from the plugin's info.xml, or null if unavailable
+     *
+     * A regex rather than an XML parser: the file is small and upstream-owned,
+     * and a parse error must give "not ready", never an exception or warning.
+     * Only a dotted version string matches, so nothing else from the file
+     * reaches an admin-facing reason.
+     *
+     * @param string $infoXmlPath Absolute path to info.xml
+     * @return string|null The version, or null if the file is missing,
+     *                     unreadable, or has no parseable version
+     */
+    private function brevoPluginVersion(string $infoXmlPath): ?string
+    {
+        $contents = is_file($infoXmlPath) && is_readable($infoXmlPath)
+            ? file_get_contents($infoXmlPath)
+            : false;
+
+        if ($contents === false
+            || preg_match('#<version>\s*(\d+(?:\.\d+)*)\s*</version>#', $contents, $match) !== 1
+        ) {
+            return null;
+        }
+
+        return $match[1];
     }
 
     /**

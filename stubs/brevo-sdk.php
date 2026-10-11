@@ -97,6 +97,16 @@ namespace Brevo\Client {
         public function setHost($host)
         {
         }
+
+        /**
+         * Confirmed at Configuration.php:265 (plugin 1.8.0). Used by the
+         * BrevoDevOverride tests (#2184).
+         *
+         * @return string Host
+         */
+        public function getHost()
+        {
+        }
     }
 }
 

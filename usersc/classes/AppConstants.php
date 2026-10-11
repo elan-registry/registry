@@ -25,10 +25,13 @@ class AppConstants
     public const DATETIME_FORMAT = 'Y-m-d H:i:s';
 
     /**
-     * Brevo tag attached to every transactional verification email
+     * Brevo tag on every transactional verification email
      *
-     * Used by the Brevo webhook receiver to filter inbound delivery-status
-     * events down to those relevant to the car verification system.
+     * Attached explicitly by `CarVerificationSendService`, which passes it to
+     * `email()` as `$opts['tags']`; the sendinblue plugin's override maps that
+     * to Brevo `tags`. The Brevo webhook receiver uses it to filter inbound
+     * delivery-status events down to those relevant to the car verification
+     * system.
      *
      * @since v2.30.2
      * @see https://github.com/elan-registry/registry/issues/1887

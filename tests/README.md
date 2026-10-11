@@ -237,7 +237,8 @@ private static function routerBody(): string
 
 Two integration tests (`BrevoWebhookEndpointTest`, `VerificationToggleEndpointBehaviorTest`) write
 the 6-byte `BrevoOverrideStub::CONTENT` to `usersc/plugins/sendinblue/override.php` to make
-`brevoReady()` return true (it checks only for a key row plus the file's existence). That path is
+`brevoReady()` return true (it checks for a key row, the file's existence, and plugin version 1.8.0
+or later in `info.xml`). That path is
 gitignored, so a stub left behind by a crashed run becomes invisible to `git status` and silently
 changes the dev site's email routing: if the dev DB has a Brevo key row, the site sees Brevo as
 "ready" with an empty override.
@@ -247,7 +248,7 @@ At the start of each integration run, `tests/bootstrap-integration.php` calls
 stub, and prints a `NOTE:`. If the stub is present but cannot be removed, the bootstrap prints a
 `WARNING:` instead (checked with `BrevoOverrideStub::matches()`).
 
-A real override (a 1,193-byte copy of `override.RENAME.php`) and any near-miss such as `"<?php\n\n"`
+A real override (a copy of `override.RENAME.php`) and any near-miss such as `"<?php\n\n"`
 are never touched: deleting a real override would be far worse than leaving a stub behind. The class
 itself prints nothing, so the bootstrap owns the messages. Tests:
 `tests/unit/system/BrevoOverrideStubTest.php`.

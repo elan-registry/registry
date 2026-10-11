@@ -63,9 +63,10 @@ use ElanRegistry\LogCategories;
  * Routes through {@see \ElanRegistry\Email\BrevoDevOverride} — in local dev
  * (`US_ENVIRONMENT=development` with `BREVO_API_HOST` set), this polls
  * mock-brevo instead of the real Brevo API, so a suppression sync triggered
- * locally cannot make a live outbound call. The sendinblue plugin's own send
- * path does not route this way yet: see
- * `docs/development/EMAIL_SYSTEM.md`, "What routes to mock-brevo today", and
+ * locally cannot make a live outbound call. The sendinblue
+ * plugin's send path reaches mock-brevo too: in development,
+ * {@see \ElanRegistry\Email\BrevoDevOverride::applyToSdk()} sets the host on
+ * the SDK's shared default `Configuration`, which `sendinblue()` uses. See
  * [Issue #2184](https://github.com/elan-registry/registry/issues/2184).
  *
  * @package ElanRegistry\Cron

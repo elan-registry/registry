@@ -94,6 +94,15 @@ after an item is written.
 - [ ] Delete the directory (capture receiver, send-test CLI, README). Its README says it stays "until #1887 ships its own fixtures". #1887 is closed, and the Brevo payload fixtures now live in `BrevoWebhookEventProcessorTest.php` and `EmailEventApplierTest.php`. `scripts/spike-1888/brevo-webhook-capture.php` covers the same capture job. (found in the #2208 audit)
 - [ ] Update the two pointers in `docs/development/EMAIL_SYSTEM.md` (~746, ~814). (found in the #2208 audit)
 
+### `tests/Support/BrevoOverrideStub.php`
+
+- [ ] The docblock says a real override is "1,193 bytes". Plugin 1.8.0's `override.RENAME.php` is 1,589 bytes. Say "any file other than the 6-byte stub" instead of a byte count. (found in #2184)
+
+### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
+
+- [ ] Both tests make Brevo ready by writing only `override.php`, so they depend on the checkout's gitignored `usersc/plugins/sendinblue/info.xml` being 1.8.0 or later. Write a known `info.xml` in fixture setup and restore it in teardown, as for the override stub. (found in #2184)
+- [ ] No test covers the webhook gate (`app/api/webhooks/brevo.php`, `brevoReady()`) with a plugin below 1.8.0: a 200 response, the dropped event, and the `VerificationConfigWarning` log line. (found in #2184)
+
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
@@ -109,6 +118,10 @@ after an item is written.
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
 - [ ] The `action=fetchImages`/`action=removeImages` string match used to filter `save.php` route interception (5 call sites, e.g. ~line 985) checks for the literal substring `action=fetchImages` in the raw POST body. The real body is `multipart/form-data`, where the field looks like `name="action"\r\n\r\nfetchImages`, so the substring check can never match. Each site is safe today only because of request-timing luck (the matched call runs before the route is registered, or no other `save.php` call happens in that window) — found during #2295's review. Switch each to `postData.includes('fetchImages')` / `includes('removeImages')` (or parse the multipart `action` field) so the filter is correct on its own, not by accident of timing. (found in #2295)
+
+### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
+
+- [ ] No test asserts the Brevo row of the Verification tab: "Ready" / "Not ready" badge, the `brevoNotReadyReason()` text, and the log hint that shows only when the probe threw. (found in #2184)
 
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
@@ -127,6 +140,10 @@ after an item is written.
 ### `usersc/classes/ApiResponse.php`
 
 - [ ] In `buildAndEmitHeaders()`, the `JsonException` fallback keeps the status code that was set before `json_encode()`, so a `success()` response can send HTTP 200 with a `success:false` body. Set 500 in the fallback when headers are not sent (from #1793)
+
+### `usersc/classes/Car/VerificationBatchSender.php` (test coverage)
+
+- [ ] No test covers a batch while Brevo is not ready (plugin below 1.8.0): no email sent, every car in `failed` with the Brevo reason, no vericode rotation. Only `CarVerificationSendService::sendOne()` has that test. (found in #2184)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 

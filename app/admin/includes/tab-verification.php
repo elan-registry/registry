@@ -66,6 +66,9 @@ $vsIsEligibleView = $queueStatus === 'eligible';
 // ---------------------------------------------------------------------------
 $vsEnabled         = false;
 $vsBrevoReady      = false;
+// Admin-facing reason Brevo is not ready; null when ready or when the probe
+// block below threw before it could ask.
+$vsBrevoNotReadyReason = null;
 $vsCronReady       = false;
 $vsLastCronAt      = null;
 $vsUnmatchedCount  = 0;
@@ -80,7 +83,8 @@ $vsProbeFailed     = false;
 try {
     $vsSettings       = new VerificationSettings(dbi());
     $vsEnabled        = $vsSettings->isEnabled();
-    $vsBrevoReady     = $vsSettings->brevoReady();
+    $vsBrevoNotReadyReason = $vsSettings->brevoNotReadyReason();
+    $vsBrevoReady     = $vsBrevoNotReadyReason === null;
     $vsCronReady      = $vsSettings->cronReady();
     $vsLastCronAt     = $vsSettings->lastCronRequestAt();
 
@@ -316,13 +320,16 @@ $vsCanToggle = hasPerm([2], $currentUserId);
 // Turning ON is blocked while Brevo is unconfigured. Turning OFF is never
 // blocked — an admin must always be able to switch verification off mid-incident.
 $vsToggleDisabled = VerificationSettings::toggleShouldBeDisabled($vsCanToggle, $vsEnabled, $vsBrevoReady);
+// A null reason with Brevo not ready means the probe block above threw.
+$vsBrevoReasonText = $vsBrevoNotReadyReason ?? 'The Brevo status could not be checked.';
 
 $vsDisabledReason = '';
 if (!$vsCanToggle) {
     $vsDisabledReason = 'Only administrators can change this setting.';
 } elseif ($vsToggleDisabled) {
-    $vsDisabledReason = 'Verification cannot be enabled until Brevo is configured. '
-        . 'Save an API key in the Brevo plugin and put its override file in place, then reload this page.';
+    $vsDisabledReason = 'Verification cannot be enabled until Brevo is ready. '
+        . $vsBrevoReasonText
+        . ' Fix this, then reload this page.';
 }
 
 if (!function_exists('vsEsc')) {
@@ -624,7 +631,7 @@ ob_start();
         <h6 class="text-primary mb-3"><i class="fas fa-heartbeat"></i> Status</h6>
         <dl class="row mb-4">
 
-            <dt class="col-sm-4">Brevo configured</dt>
+            <dt class="col-sm-4">Brevo ready</dt>
             <dd class="col-sm-8">
                 <?php if (!$vsEnabled && !$vsBrevoReady) { ?>
                     <span class="text-muted">
@@ -632,16 +639,18 @@ ob_start();
                     </span>
                 <?php } elseif ($vsBrevoReady) { ?>
                     <span class="badge text-bg-success">
-                        <i class="fas fa-check-circle"></i> Configured
+                        <i class="fas fa-check-circle"></i> Ready
                     </span>
                 <?php } else { ?>
                     <span class="badge text-bg-danger">
-                        <i class="fas fa-exclamation-circle"></i> Not configured
+                        <i class="fas fa-exclamation-circle"></i> Not ready
                     </span>
                     <small class="text-muted ms-1">
-                        Save an API key in the Brevo plugin and put its override file in
-                        place. If both are already present, check the system log for
-                        <strong>VerificationConfigWarning</strong>.
+                        <?= vsEsc($vsBrevoReasonText) ?>
+                        <?php if ($vsBrevoNotReadyReason === null) { ?>
+                            Check the system log for
+                            <strong>VerificationConfigWarning</strong>.
+                        <?php } ?>
                     </small>
                 <?php } ?>
             </dd>

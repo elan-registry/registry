@@ -446,7 +446,7 @@ The stack has five services, plus the opt-in `cron` service (see step 6 of
 [Development Setup](#development-setup)). `app` runs PHP 8.4. `db` runs
 MySQL 8.0 and has no host port. `phpmyadmin` provides database inspection.
 `mock-brevo` runs the local mock of Brevo's transactional email API
-(`ghcr.io/unibrain1/mock-brevo:1.2.0`) and provides a web inbox. `landing`
+(`ghcr.io/unibrain1/mock-brevo:1.3.0`) and provides a web inbox. `landing`
 serves the landing page. Use the port table above. The `app` container reaches
 `mock-brevo` at `http://mock-brevo:8080/v3` on the `elan` network.
 
@@ -490,6 +490,25 @@ integration tests run `SET GLOBAL`, which needs this permission. See the
 comment in `docker/mysql-init/01-grant-all-elanregi-schemas.sql` for the
 test, mechanism, and failure mode. Add the same permission to the grant file
 for each new checkout.
+
+### Brevo Plugin Local Setup
+
+Git does not track the sendinblue plugin. A fresh clone does not have it. Do
+these steps once per clone, after the stack runs:
+
+1. Install the sendinblue plugin, version 1.8.0 or later, with the plugin
+   manager (Admin → Spice Shaker). Run its pending migrations on the plugin
+   page.
+2. Activate the override. The file `usersc/plugins/sendinblue/override.php`
+   must equal `override.RENAME.php`.
+3. Set "Tag untagged mail" to "Calling file name".
+4. Save a dummy API key (for example `local-test`) in the plugin.
+5. Set `BREVO_API_HOST=http://mock-brevo:8080/v3` in `.env`. Keep
+   `US_ENVIRONMENT=development`.
+
+**Warning:** Without `BREVO_API_HOST`, local mail goes to the REAL Brevo with
+the key you saved. With it, mail goes to mock-brevo and shows in its inbox.
+See [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#local-development) for details.
 
 ### PHP Version
 

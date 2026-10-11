@@ -7,12 +7,17 @@ use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
 use ElanRegistry\Car\VerificationBatchSender;
+use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\EmailTemplate;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\BrevoSiteRoot;
+
+require_once __DIR__ . '/../../../Support/FakeDatabase.php';
+require_once __DIR__ . '/../../../Support/VerificationSettingsFakeDatabase.php';
 
 /**
  * Unit tests for VerificationBatchSender (#1884, PR review gap-closing pass)
@@ -63,13 +68,21 @@ final class VerificationBatchSenderTest extends TestCase
 
     private VerificationBatchSender $sender;
 
+    /** Temp site root that holds the sendinblue plugin files, or null when none was made. */
+    private ?BrevoSiteRoot $brevoSiteRoot = null;
+
     protected function setUp(): void
     {
         $this->mockRepo = $this->createMock(CarRepository::class);
         $this->mockVerifier = $this->createMock(CarVerificationManager::class);
         $composer = new CarVerificationEmailComposer(new EmailTemplate());
 
-        $this->sendSvc = new CarVerificationSendService($this->mockRepo, $this->mockVerifier, $composer);
+        $this->sendSvc = new CarVerificationSendService(
+            $this->mockRepo,
+            $this->mockVerifier,
+            $composer,
+            $this->makeBrevoReadySettings()
+        );
 
         $this->sender = new VerificationBatchSender(
             $this->mockRepo,
@@ -102,7 +115,16 @@ final class VerificationBatchSenderTest extends TestCase
     protected function tearDown(): void
     {
         unset($GLOBALS['mockSentEmails'], $GLOBALS['mockEmailSendResult'], $GLOBALS['hookTestDb']);
+        $this->brevoSiteRoot?->remove();
         parent::tearDown();
+    }
+
+    /** Brevo-ready settings on a fresh temp site root. tearDown() removes the root. */
+    private function makeBrevoReadySettings(): VerificationSettings
+    {
+        $this->brevoSiteRoot = BrevoSiteRoot::create('batch_sender_test_');
+
+        return $this->brevoSiteRoot->readySettings();
     }
 
     /**

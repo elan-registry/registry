@@ -538,6 +538,27 @@ Run `./scripts/update-version.sh` to generate VERSION file locally after creatin
   permission entries in UserSpice's `pages` table
 - **Required whenever:** A new page, admin script, or route is added or renamed
 
+### Brevo Sendinblue Plugin
+
+Git tracks no file under `usersc/plugins/sendinblue/`. The registry uses the
+upstream plugin unmodified. It needs version 1.8.0 or later. Do these steps once
+in each environment (test, then production). Do them before you turn on the
+verification switch. The switch refuses to turn on until they are done.
+
+1. Install the plugin, or update it to version 1.8.0 or later, with the plugin
+   manager (Admin → Spice Shaker).
+2. Open the plugin page (Admin → Plugins → Brevo Sendinblue). Run its pending
+   migrations. Version 1.8.0 adds the table `plg_sendinblue_messages`.
+3. Activate the override. The file `usersc/plugins/sendinblue/override.php`
+   must equal `override.RENAME.php`.
+4. Set "Tag untagged mail" to "Calling file name". This is database state.
+   Later deploys keep it.
+5. Send a test email (Test Email on the plugin page). Check in Brevo that the
+   message has a tag.
+
+The admin Verification tab shows the reason when Brevo is not ready. See
+[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#mail-tags) for the tag table.
+
 ### Cron Transport (UserSpice Cron Manager)
 
 UserSpice's Cron Manager (Admin → Settings → Cron Manager) only maintains the
@@ -822,8 +843,10 @@ See [ENVIRONMENT.md](ENVIRONMENT.md) for `.env` setup steps.
 - `getSettings Function` - Provides global settings access via getSettings()
   function
 - `hooker` - Custom hooks system for code injection points
-- `Brevo Sendinblue` - API-based email delivery replacing phpmailer
-  (300 emails/day free)
+- `Brevo Sendinblue` (version 1.8.0 or later) - API-based email delivery
+  replacing phpmailer (300 emails/day free). Git does not track it. Install
+  and configure it as in
+  [Brevo Sendinblue Plugin](#brevo-sendinblue-plugin).
 
 ## 🚨 Troubleshooting
 
@@ -834,7 +857,7 @@ See [ENVIRONMENT.md](ENVIRONMENT.md) for `.env` setup steps.
 3. **Map not rendering**: Check browser console for CSP violations; verify
    `usersc/js/maplibre-gl.min.js`, `usersc/css/maplibre-gl.css`, and
    `usersc/js/versatiles-colorful.json` are deployed
-4. **Email not working**: Check Brevo/Sendinblue API configuration
+4. **Email not working**: Check the Brevo/Sendinblue API configuration and the plugin version (1.8.0 or later)
 5. **Database connection**: Verify production database credentials
 
 ### Rollback Procedure
