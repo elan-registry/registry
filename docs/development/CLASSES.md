@@ -1461,8 +1461,10 @@ shared state or dependency exists between the two.
 - `isEnabled(): bool` - Whether verification is currently switched on
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
 - `brevoReady(): bool` - True only if `brevoNotReadyReason()` returns `null`:
-  the plugin table is readable, the API key is saved, `override.php` is in
-  place, and `info.xml` shows plugin version 1.8.0 or later
+  the plugin table is readable, the API key is saved, `plugins.ini.php` has
+  `sendinblue = 1`, `override.php` is in place, `info.xml` shows plugin
+  version 1.8.0 or later, and `override.php` matches the bundled
+  `override.RENAME.php` (SHA-256)
 - `brevoNotReadyReason(): ?string` - `null` when Brevo is ready. Otherwise a
   message that says why not. The admin Verification tab and the 422 response
   of the enable toggle show it

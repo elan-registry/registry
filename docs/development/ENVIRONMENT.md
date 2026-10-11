@@ -499,16 +499,27 @@ these steps once per clone, after the stack runs:
 1. Install the sendinblue plugin, version 1.8.0 or later, with the plugin
    manager (Admin → Spice Shaker). Run its pending migrations on the plugin
    page.
-2. Activate the override. The file `usersc/plugins/sendinblue/override.php`
-   must equal `override.RENAME.php`.
-3. Set "Tag untagged mail" to "Calling file name".
-4. Save a dummy API key (for example `local-test`) in the plugin.
-5. Set `BREVO_API_HOST=http://mock-brevo:8080/v3` in `.env`. Keep
+2. Activate the plugin on the Plugins page. UserSpice loads `override.php`
+   only for an active plugin (`sendinblue = 1` in
+   `usersc/plugins/plugins.ini.php`).
+3. Activate the override. The file `usersc/plugins/sendinblue/override.php`
+   must equal `override.RENAME.php`. A plugin update does not change
+   `override.php`. After each update, open "Show file contents" under
+   "Override Update Available" on the plugin page. Then click "Replace my
+   override.php with the bundled version".
+4. Set "Tag untagged mail" to "Calling file name".
+5. Save a dummy API key (for example `local-test`) in the plugin.
+6. Set `BREVO_API_HOST=http://mock-brevo:8080/v3` in `.env`. Keep
    `US_ENVIRONMENT=development`.
 
 **Warning:** Without `BREVO_API_HOST`, local mail goes to the REAL Brevo with
 the key you saved. With it, mail goes to mock-brevo and shows in its inbox.
 See [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#local-development) for details.
+
+The Verification tab shows "Brevo ready" only in this state. The Brevo
+integration tests (`BrevoWebhookEndpointTest`,
+`VerificationToggleEndpointBehaviorTest`) also need it. See
+[tests/README.md](../../tests/README.md#brevooverridestub--sweep-leaked-brevo-test-stub).
 
 ### PHP Version
 

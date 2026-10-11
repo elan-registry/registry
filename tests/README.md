@@ -237,8 +237,11 @@ private static function routerBody(): string
 
 Two integration tests (`BrevoWebhookEndpointTest`, `VerificationToggleEndpointBehaviorTest`) write
 the 6-byte `BrevoOverrideStub::CONTENT` to `usersc/plugins/sendinblue/override.php` to make
-`brevoReady()` return true (it checks for a key row, the file's existence, and plugin version 1.8.0
-or later in `info.xml`). That path is
+`brevoReady()` return true. They do this only when the checkout has no `override.php`. `brevoReady()`
+also checks that the plugin is active in `plugins.ini.php`, that `info.xml` shows version 1.8.0 or
+later, and that `override.php` matches `override.RENAME.php`. The 6-byte stub does not match a real
+`override.RENAME.php`, so these tests need a checkout with the real plugin files, set up as in
+[ENVIRONMENT.md](../docs/development/ENVIRONMENT.md#brevo-plugin-local-setup). That path is
 gitignored, so a stub left behind by a crashed run becomes invisible to `git status` and silently
 changes the dev site's email routing: if the dev DB has a Brevo key row, the site sees Brevo as
 "ready" with an empty override.

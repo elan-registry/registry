@@ -198,10 +198,11 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'Owner has opted out of verification emails.');
         }
 
-        // Send only when Brevo is ready (key, override file, plugin 1.8.0 or
-        // later). Otherwise email() is the core PHPMailer fallback, or a plugin
-        // that ignores $opts['tags'], and the mail can report success with no
-        // verification tag, so the webhook never records its delivery. Checked
+        // Send only when Brevo is ready (key, active plugin, override file,
+        // plugin 1.8.0 or later, override matches the bundled copy). Otherwise
+        // email() is the core PHPMailer fallback, or an override that ignores
+        // $opts['tags'], and the mail can report success with no verification
+        // tag, so the webhook never records its delivery. Checked
         // before Scope A so a refused send leaves the vericode untouched and
         // costs no attempt.
         $brevoNotReadyReason = $this->settings->brevoNotReadyReason();
@@ -280,11 +281,15 @@ final class CarVerificationSendService
         if ($sendOk !== true) {
             $this->restoreAfterFailedSend($carId, $previousVericode, $previousVericodeSentAt);
 
+            // The plugin logs its own reason in a separate row with no car id.
+            // Copy it here so one row names both the car and the cause.
+            $mailerError = function_exists('sendinblueLastError') ? sendinblueLastError() : null;
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: email() returned %s (expected true) for car %d; '
-                . 'treating as failure, verification_attempts deliberately not incremented',
+                . 'treating as failure, verification_attempts deliberately not incremented. Mailer error: %s',
                 var_export($sendOk, true),
-                $carId
+                $carId,
+                is_scalar($mailerError) && (string) $mailerError !== '' ? (string) $mailerError : 'none reported'
             ));
 
             return SendResult::failed($carId, 'The email could not be sent.');

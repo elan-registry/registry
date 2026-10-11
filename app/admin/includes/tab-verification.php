@@ -317,7 +317,7 @@ $autoSendDesiredState = $autoSendState === CronJobEnabledState::ENABLED ? 'disab
 // Admins may toggle; editors see the same status read-only.
 $vsCanToggle = hasPerm([2], $currentUserId);
 
-// Turning ON is blocked while Brevo is unconfigured. Turning OFF is never
+// Turning ON is blocked while Brevo is not ready. Turning OFF is never
 // blocked — an admin must always be able to switch verification off mid-incident.
 $vsToggleDisabled = VerificationSettings::toggleShouldBeDisabled($vsCanToggle, $vsEnabled, $vsBrevoReady);
 // A null reason with Brevo not ready means the probe block above threw.

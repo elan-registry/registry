@@ -161,7 +161,11 @@ Both `elanregistry.org` and `test.elanregistry.org` use the same Brevo account a
 
 ### Local Development
 
-Two options are available, depending on your development need:
+Two options are available, depending on your development need. The plugin
+state picks the path. With the Brevo plugin and its override active, `email()`
+goes to mock-brevo (Option B). With the plugin deactivated, UserSpice's
+PHPMailer `email()` sends the mail (Option A). In Option A, the Verification
+tab reports Brevo not ready, so verification cannot be turned on or send.
 
 #### Option A: Mailtrap (Simpler—Recommended for Most Work)
 
@@ -302,10 +306,19 @@ The `VerificationSettings` class gates the entire verification system via a sing
   returns `null`. All of these conditions must hold:
   1. `plg_sendinblue` is readable
   2. `plg_sendinblue.key` is non-empty (API key configured)
-  3. `usersc/plugins/sendinblue/override.php` exists (plugin override active)
-  4. `usersc/plugins/sendinblue/info.xml` shows version 1.8.0 or later.
+  3. `usersc/plugins/plugins.ini.php` has `sendinblue = 1` (plugin active).
+     UserSpice loads the override only for an active plugin. Otherwise core
+     PHPMailer sends the mail without the tag.
+  4. `usersc/plugins/sendinblue/override.php` exists (plugin override active)
+  5. `usersc/plugins/sendinblue/info.xml` shows version 1.8.0 or later.
      Older versions drop the `tags` option, so the verification tag never
      reaches Brevo.
+  6. `override.php` has the same SHA-256 hash as the bundled
+     `override.RENAME.php`. A plugin update does not change `override.php`,
+     so an old override can stay in place and drop the tag. After each update,
+     open "Show file contents" under "Override Update Available" on the
+     plugin page. Then click "Replace my override.php with the bundled
+     version".
 - `cronReady(): bool` — computed live; true if `lastCronRequestAt()` reports a
   timestamp within the last 20 minutes (2× the documented 10-minute cron
   transport interval — see
@@ -332,7 +345,9 @@ always reflect current state.
 
 **Brevo Readiness:**
 
-- `brevoReady()` checks only that the plugin's configuration exists, the override file is active, and the plugin version is 1.8.0 or later
+- `brevoReady()` checks only that the plugin's configuration exists, the
+  plugin is active, the override file is in place and matches the bundled
+  copy, and the plugin version is 1.8.0 or later
 - It does **not** validate the API key by calling Brevo, since that would
   add latency to every status check and introduce a hard dependency on
   external availability
@@ -1534,7 +1549,7 @@ the override.
 | `from` | string | Override sender email address |
 | `from_name` | string | Override sender display name |
 | `reply` | string | Override reply-to email address |
-| `reply_name` | string | Override reply-to display name (only honoured when calling `sendinblue()` directly — not forwarded by the `email()` override) |
+| `reply_name` | string | Override reply-to display name. The `email()` override forwards it. |
 | `template` | int | Brevo template ID for templated emails |
 | `params` | array | Template variable substitutions (key => value pairs) |
 | `attachments` | array | Array of `['content' => base64string, 'name' => 'filename.pdf']` |

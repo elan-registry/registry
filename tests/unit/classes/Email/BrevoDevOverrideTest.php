@@ -12,8 +12,9 @@ use PHPUnit\Framework\TestCase;
  * Unit tests for BrevoDevOverride::hostOverride() (#2127) and
  * BrevoDevOverride::applyToSdk() (#2184).
  *
- * Pure static guard — no I/O, no collaborators. Covers the two-part gate
- * that keeps this dev-only override from ever affecting production/staging:
+ * hostOverride() is a pure static guard with no I/O. Its tests cover the
+ * two-part gate that keeps this dev-only override from ever affecting
+ * production/staging:
  * `US_ENVIRONMENT` must be exactly `'development'` AND `BREVO_API_HOST`
  * must be a non-empty value, otherwise the real Brevo host is used
  * (signaled here by a `null` return).
@@ -160,10 +161,14 @@ final class BrevoDevOverrideTest extends TestCase
     public function testApplyToSdk_DevelopmentWithAutoloadMissingSdk_ReturnsFalseAndLogs(): void
     {
         global $mockLogEntries;
+        // logFailure() always writes error_log(). Keep it out of the PHPUnit output.
+        $errorLog = tempnam(sys_get_temp_dir(), 'brevo_dev_override_log_');
+        ini_set('error_log', (string) $errorLog);
         define('US_ENVIRONMENT', 'development');
         $_ENV['BREVO_API_HOST'] = self::MOCK_HOST;
 
         $this->assertFalse(BrevoDevOverride::applyToSdk(__DIR__ . '/fixtures/brevo-sdk/autoload-without-sdk.php'));
+        @unlink((string) $errorLog);
 
         $this->assertCount(1, $mockLogEntries ?? []);
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_ERROR, $mockLogEntries[0]['category']);

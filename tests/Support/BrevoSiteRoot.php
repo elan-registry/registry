@@ -9,12 +9,17 @@ use ElanRegistry\Car\VerificationSettings;
 /**
  * BrevoSiteRoot - temp site root that holds the sendinblue plugin files
  *
- * `VerificationSettings::brevoNotReadyReason()` reads two files under the site
- * root: `usersc/plugins/sendinblue/override.php` (must exist) and
- * `usersc/plugins/sendinblue/info.xml` (its `<version>` must be 1.8.0 or
- * later). This class makes a throwaway root with those files and points the
- * `$abs_us_root` / `$us_url_root` globals at it, so a unit test does not depend
- * on the checkout's gitignored plugin directory.
+ * `VerificationSettings::brevoNotReadyReason()` reads these files under the
+ * site root:
+ *
+ * - `usersc/plugins/plugins.ini.php` (must give `sendinblue = 1`)
+ * - `usersc/plugins/sendinblue/override.php` (must exist)
+ * - `usersc/plugins/sendinblue/info.xml` (its `<version>` must be 1.8.0 or later)
+ * - `usersc/plugins/sendinblue/override.RENAME.php` (must match override.php)
+ *
+ * This class makes a throwaway root with those files in the ready state and
+ * points the `$abs_us_root` / `$us_url_root` globals at it. A unit test then
+ * does not depend on the checkout's gitignored plugin directory.
  *
  * Call {@see remove()} in tearDown(). It restores the two globals and deletes
  * only the files and directories this class made.
@@ -29,6 +34,14 @@ final class BrevoSiteRoot
 
     private const PLUGIN_DIR = '/usersc/plugins/sendinblue';
 
+    private const PLUGINS_INI = '/usersc/plugins/plugins.ini.php';
+
+    /** Plugin state file content that marks the Brevo plugin active, in the upstream file's shape. */
+    private const ACTIVE_PLUGINS_INI = ";<?php die();?>\nhooker = 1\nsendinblue = 1\n";
+
+    /** Plugin files that {@see remove()} deletes. */
+    private const PLUGIN_FILES = ['override.php', 'override.RENAME.php', 'info.xml'];
+
     private ?string $root;
 
     private function __construct(
@@ -41,6 +54,9 @@ final class BrevoSiteRoot
 
     /**
      * Make the temp root and point the site-root globals at it
+     *
+     * The bundled override.RENAME.php and an active plugins.ini.php are always
+     * written. Use the helper methods to break them.
      *
      * @param string $prefix Directory name prefix, for a readable temp path
      * @param bool $withOverrideFile True to write override.php
@@ -59,6 +75,8 @@ final class BrevoSiteRoot
 
         $siteRoot = new self($root, $abs_us_root ?? null, $us_url_root ?? null);
 
+        file_put_contents($root . self::PLUGIN_DIR . '/override.RENAME.php', BrevoOverrideStub::CONTENT);
+        $siteRoot->writePluginsIni(self::ACTIVE_PLUGINS_INI);
         if ($withOverrideFile) {
             file_put_contents($root . self::PLUGIN_DIR . '/override.php', BrevoOverrideStub::CONTENT);
         }
@@ -113,6 +131,54 @@ final class BrevoSiteRoot
     }
 
     /**
+     * Write plugins.ini.php with exactly this content
+     *
+     * @param string $contents Full file content
+     */
+    public function writePluginsIni(string $contents): void
+    {
+        file_put_contents($this->root . self::PLUGINS_INI, $contents);
+    }
+
+    /**
+     * Give the Brevo plugin the value 2 in plugins.ini.php, as the Plugins page does on deactivate
+     */
+    public function deactivatePlugin(): void
+    {
+        $this->writePluginsIni(";<?php die();?>\nhooker = 1\nsendinblue = 2\n");
+    }
+
+    /**
+     * Delete plugins.ini.php
+     */
+    public function removePluginsIni(): void
+    {
+        if (is_file($this->root . self::PLUGINS_INI)) {
+            unlink($this->root . self::PLUGINS_INI);
+        }
+    }
+
+    /**
+     * Write an override.php that differs from the bundled override.RENAME.php
+     *
+     * This is the state after a plugin update when nobody replaces override.php with the bundled version.
+     */
+    public function writeStaleOverride(): void
+    {
+        file_put_contents($this->pluginFile('override.php'), "<?php\n// override from an older plugin version\n");
+    }
+
+    /**
+     * Delete the bundled override.RENAME.php
+     */
+    public function removeBundledOverride(): void
+    {
+        if (is_file($this->pluginFile('override.RENAME.php'))) {
+            unlink($this->pluginFile('override.RENAME.php'));
+        }
+    }
+
+    /**
      * Restore the site-root globals and delete the temp root. Safe to call twice.
      */
     public function remove(): void
@@ -125,11 +191,12 @@ final class BrevoSiteRoot
         $abs_us_root = $this->originalAbsUsRoot;
         $us_url_root = $this->originalUsUrlRoot;
 
-        foreach (['override.php', 'info.xml'] as $file) {
+        foreach (self::PLUGIN_FILES as $file) {
             if (is_file($this->pluginFile($file))) {
                 unlink($this->pluginFile($file));
             }
         }
+        $this->removePluginsIni();
         rmdir($this->root . self::PLUGIN_DIR);
         rmdir($this->root . '/usersc/plugins');
         rmdir($this->root . '/usersc');

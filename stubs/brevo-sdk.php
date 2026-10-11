@@ -87,9 +87,8 @@ namespace Brevo\Client {
         }
 
         /**
-         * Fluent-return setter — confirmed at
-         * usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib/Configuration.php:254
-         * (v1.6.2, the version installed on this checkout as of #2127).
+         * Fluent-return setter. Mirrors the SDK's Configuration::setHost()
+         * (usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib/Configuration.php).
          *
          * @param string $host
          * @return $this
@@ -99,7 +98,7 @@ namespace Brevo\Client {
         }
 
         /**
-         * Confirmed at Configuration.php:265 (plugin 1.8.0). Used by the
+         * Mirrors the SDK's Configuration::getHost(). Used by the
          * BrevoDevOverride tests (#2184).
          *
          * @return string Host

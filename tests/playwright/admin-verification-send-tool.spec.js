@@ -8,8 +8,8 @@
 // SAFETY: never submit the "Send batch" form unless automatic sending is
 // confirmed PAUSED. The pause-check in app/admin/index.php
 // (`case "verification_send_batch"`) breaks out before VerificationBatchSender
-// is constructed, so email() cannot run. Locally email() is undefined (no
-// sendinblue override.php), so a send would fatal the request.
+// is constructed, so email() cannot run. A real local send would reach
+// mock-brevo, or the real Brevo API when BREVO_API_HOST is not set.
 
 const { test, expect } = require('@playwright/test');
 const { runPhpFixture } = require('./fixture-runner.js');

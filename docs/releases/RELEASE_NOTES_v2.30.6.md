@@ -18,8 +18,12 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 
 - **Deploy step:** update the sendinblue plugin to 1.8.0 or later, run its
   migrations, activate the override, and set "Tag untagged mail" to "Calling
-  file name". Below 1.8.0, Brevo reports not ready: verification cannot be
-  turned on and sends nothing. If the switch is already on, the Brevo webhook
+  file name". After each plugin update, open "Show file contents" under
+  "Override Update Available" on the plugin page, then click "Replace my
+  override.php with the bundled version". Brevo reports not ready below 1.8.0,
+  when the plugin is inactive, or when `override.php` differs from
+  `override.RENAME.php`. Then verification cannot be turned on
+  and sends nothing. If the switch is already on, the Brevo webhook
   drops events and logs a `VerificationConfigWarning`. See
   [DEPLOYMENT.md](../development/DEPLOYMENT.md#brevo-sendinblue-plugin).
   ([#2184](https://github.com/elan-registry/registry/issues/2184))

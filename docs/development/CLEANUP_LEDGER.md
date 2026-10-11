@@ -100,7 +100,6 @@ after an item is written.
 
 ### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
 
-- [ ] Both tests make Brevo ready by writing only `override.php`, so they depend on the checkout's gitignored `usersc/plugins/sendinblue/info.xml` being 1.8.0 or later. Write a known `info.xml` in fixture setup and restore it in teardown, as for the override stub. (found in #2184)
 - [ ] No test covers the webhook gate (`app/api/webhooks/brevo.php`, `brevoReady()`) with a plugin below 1.8.0: a 200 response, the dropped event, and the `VerificationConfigWarning` log line. (found in #2184)
 
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`

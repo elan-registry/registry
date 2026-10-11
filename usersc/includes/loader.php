@@ -21,6 +21,7 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';
 // Load Cloudflare Turnstile CAPTCHA functions
 require_once $abs_us_root . $us_url_root . 'usersc/includes/turnstile.php';
 
-// Apply local/dev rate-limit relaxation (survives Rate Limiting Dashboard
-// regeneration, which fully overwrites usersc/includes/rate_limits.php).
+// Local-dev overrides: rate-limit relaxation (survives Rate Limiting Dashboard
+// regeneration, which fully overwrites usersc/includes/rate_limits.php) and
+// the Brevo SDK host for mock-brevo. Both do nothing outside development.
 require_once $abs_us_root . $us_url_root . 'usersc/includes/rate_limits_dev_override.php';
