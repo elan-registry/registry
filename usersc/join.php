@@ -27,6 +27,7 @@ require_once '../users/init.php';
 require_once $abs_us_root.$us_url_root.'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Input;
+use ElanRegistry\InputSanitizer;
 use ElanRegistry\LogCategories;
 
 $pw_settings = $db->query("SELECT * FROM us_password_strength WHERE id = 1")->first();
@@ -64,7 +65,7 @@ if ($act == 1 || $settings->no_passwords == 1) {
     $pre = 1;
 }
 
-if (Input::existsPost()) {
+if (Input::existsPost() && $settings->registration == 1) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         logger(0, LogCategories::LOG_CATEGORY_REGISTRATION_FAILED,
@@ -223,7 +224,11 @@ if (Input::existsPost()) {
                         $email_result = email($to, $subject, $body);
                         $emailSent = ($email_result === true);
                         if (!$emailSent) {
-                            $safeToLog = preg_replace('/[\r\n\t]/', '', $email);
+                            try {
+                                $safeToLog = InputSanitizer::stripHeaderInjectionChars($email);
+                            } catch (\Throwable $sanitizeException) {
+                                $safeToLog = '(unloggable address — ' . $sanitizeException->getMessage() . ')';
+                            }
                             logger($theNewId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
                                 'join.php: Registration verification email SEND FAILED to ' . $safeToLog);
                             $errors[] = 'Email could not be sent. Please try again or contact the administrator.';

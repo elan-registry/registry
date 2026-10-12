@@ -379,6 +379,18 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Random address in 2001:db8::/32 (RFC 3849) for a RateLimit 'ip'
+     * identifier. Since UserSpice 6.1.6, RateLimit::getRealIP() uses
+     * ClientIP, which returns 127.0.0.1 under the CLI SAPI, so tests without
+     * an explicit IP share one bucket. The 254 TEST-NET-3 addresses let two
+     * tests in one run collide. The IPv6 range makes a collision unlikely.
+     */
+    protected function fakeDocumentationIp(): string
+    {
+        return '2001:db8::' . dechex(random_int(1, 0xffff)) . ':' . dechex(random_int(1, 0xffff));
+    }
+
+    /**
      * Seed a car's owner_last_updated to a known value, so a test can later
      * assert whether an operation changed it. Pins the #1929 freshness
      * contract's precondition.

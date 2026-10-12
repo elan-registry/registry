@@ -94,4 +94,18 @@ else
     pass "Case 4: DB_HOST=127.0.0.1 does not trigger the guard"
 fi
 
+# The vendored UserSpice SQL named by VENDOR_SQL must exist. A rename of the
+# file without an update to the script would fail only at provision time.
+vendor_line="$(grep -E '^VENDOR_SQL=' "$SCRIPT")"
+vendor_rel="${vendor_line#*/database/vendor/}"
+vendor_rel="${vendor_rel%\"*}"
+vendor_path="$REPO_ROOT/database/vendor/$vendor_rel"
+if [ -z "$vendor_line" ] || [ -z "$vendor_rel" ] || [ "$vendor_rel" = "$vendor_line" ]; then
+    fail "Case 5: VENDOR_SQL names a vendored file that exists" "could not read VENDOR_SQL from $SCRIPT"
+elif [ ! -f "$vendor_path" ]; then
+    fail "Case 5: VENDOR_SQL names a vendored file that exists" "missing file: $vendor_path"
+else
+    pass "Case 5: VENDOR_SQL names a vendored file that exists ($vendor_rel)"
+fi
+
 harness_report

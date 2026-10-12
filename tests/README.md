@@ -235,6 +235,15 @@ private static function routerBody(): string
 - Tests: `tests/unit/system/PhpBuiltinServerTest.php` (pure helpers) and
   `PhpBuiltinServerProcessTest.php` (real processes; runs in CI).
 
+### `UserscPageClient` — Session-Aware Requests to a `usersc/` Page
+
+A trait for an integration test that needs a real session and a session-bound CSRF token from a
+`usersc/` page (`login.php`, `join.php`). It starts one `PhpBuiltinServer` per test class and
+sends requests through a curl cookie jar. Call `startPageClient($page, $remoteAddr)` in `setUp()`,
+`stopPageClient()` in `tearDown()`, and `self::stopPageServer()` in `tearDownAfterClass()`. Then
+call `$this->request('GET'|'POST', $body)`. Examples: `LoginFailureLoggingTest`,
+`JoinRegistrationClosedTest`.
+
 ### `BrevoOverrideStub` — Sweep Leaked Brevo Test Stub
 
 Two integration tests (`BrevoWebhookEndpointTest`, `VerificationToggleEndpointBehaviorTest`) write

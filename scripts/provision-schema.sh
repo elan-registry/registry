@@ -6,7 +6,7 @@
 #
 #   1. DROP + CREATE the target schema
 #   2. Apply the vendored stock UserSpice structure
-#      (database/vendor/userspice-6.1.4-base.sql)
+#      (database/vendor/userspice-6.1.7-base.sql)
 #   3. composer migrate  — the ElanRegistry baseline migration + deltas
 #   4. phinx seed:run    — reference/config data
 #
@@ -51,7 +51,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
-VENDOR_SQL="${REPO_ROOT}/database/vendor/userspice-6.1.4-base.sql"
+VENDOR_SQL="${REPO_ROOT}/database/vendor/userspice-6.1.7-base.sql"
 SEEDS_DIR="${REPO_ROOT}/database/seeds"
 
 # Seed excluded from the default run — bulk display data, not needed by tests.
@@ -282,7 +282,7 @@ mysql_target -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;
 
 # --- 2. Apply the vendored stock UserSpice structure --------------------------
 
-echo "  → Applying stock UserSpice structure (database/vendor/userspice-6.1.4-base.sql)..."
+echo "  → Applying stock UserSpice structure (database/vendor/userspice-6.1.7-base.sql)..."
 mysql_target "${DB_NAME}" < "${VENDOR_SQL}"
 
 # --- 3. Migrations ------------------------------------------------------------
@@ -341,7 +341,7 @@ fi
 
 echo ""
 echo "Done. Schema '${DB_NAME}' provisioned from:"
-echo "  • database/vendor/userspice-6.1.4-base.sql (stock UserSpice 6.1.4)"
+echo "  • database/vendor/userspice-6.1.7-base.sql (stock UserSpice 6.1.4 structure, unchanged through 6.1.7)"
 echo "  • database/migrations/ (composer migrate)"
 if [[ ${SKIP_SEEDS} -eq 1 ]]; then
     echo "  • seeds skipped — run this script again without --skip-seeds to load them"

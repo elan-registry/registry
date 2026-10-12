@@ -193,36 +193,6 @@ parameters:
 			path: usersc/lang/en-US.php
 
 		-
-			message: '#^Variable \$bottomClass might not be defined\.$#'
-			identifier: variable.undefined
-			count: 2
-			path: usersc/login.php
-
-		-
-			message: '#^Variable \$config might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Variable \$currentSessionName might not be defined\.$#'
-			identifier: variable.undefined
-			count: 29
-			path: usersc/login.php
-
-		-
-			message: '#^Variable \$forgotClass might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Variable \$regClass might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/login.php
-
-		-
 			message: '#^Variable \$oSettings might not be defined\.$#'
 			identifier: variable.undefined
 			count: 2

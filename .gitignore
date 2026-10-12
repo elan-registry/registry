@@ -39,6 +39,8 @@ Elanegistry.sublime-project
 .user.ini
 USER.INI
 usersc/vericode_secret.php
+# UserSpice updater temp file (spiceUpdateBegins writes it, the update deletes it)
+usersc/scripts/langFiles.json
 
 ########################################
 # Build & Cache Files
