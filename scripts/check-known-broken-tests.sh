@@ -31,7 +31,9 @@
 #       row's state as "closed" or "open"
 set -uo pipefail
 
-MATCHES="$(grep -rn "Group('known-broken')" tests/ 2>/dev/null || true)"
+# Only PHP test files can carry the attribute. tests/README.md describes the
+# tag and tests/hooks/*.sh hold it in heredoc fixtures; both are noise here.
+MATCHES="$(grep -rn --include='*.php' "Group('known-broken')" tests/ 2>/dev/null || true)"
 
 if [ -z "$MATCHES" ]; then
   exit 0
