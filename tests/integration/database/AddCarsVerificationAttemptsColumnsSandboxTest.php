@@ -37,9 +37,13 @@ final class AddCarsVerificationAttemptsColumnsSandboxTest extends MigrationSandb
         $this->runDown(self::MIGRATION);
         $this->assertNull($this->columnInfo('cars', 'verification_attempts'), 'down() must drop cars.verification_attempts');
         $this->assertNull($this->columnInfo('cars', 'verification_attempts_since'), 'down() must drop cars.verification_attempts_since');
+        $this->assertNull($this->columnInfo('cars_hist', 'verification_attempts'), 'down() must drop cars_hist.verification_attempts');
+        $this->assertNull($this->columnInfo('cars_hist', 'verification_attempts_since'), 'down() must drop cars_hist.verification_attempts_since');
 
-        // 3. The DML must still succeed and write history.
+        // 3. The DML must still succeed and write history. The operation alone does not
+        //    prove the restored trigger bodies, so the audit columns must also reach cars_hist.
         $this->assertDmlWritesHistory('after down()');
+        $this->assertAuditColumnsReachHistory();
 
         // 4. The three triggers exist.
         $this->assertSame(
@@ -48,8 +52,15 @@ final class AddCarsVerificationAttemptsColumnsSandboxTest extends MigrationSandb
             'down() must leave the three cars audit triggers in place'
         );
 
-        // 5. up() adds the columns again.
+        // 5. up() adds the columns again. The migration names a re-run of up() as the
+        //    recovery path after a partial failure, so a second up() must succeed too.
         $this->runUp(self::MIGRATION);
+        $this->runUp(self::MIGRATION);
+        $this->assertSame(
+            ['cars_delete', 'cars_insert', 'cars_update'],
+            $this->sandbox()->triggerNames('cars'),
+            'a second up() must leave the three cars audit triggers in place'
+        );
         $this->assertNotNull($this->columnInfo('cars', 'verification_attempts'), 'up() must add cars.verification_attempts');
         $this->assertNotNull($this->columnInfo('cars', 'verification_attempts_since'), 'up() must add cars.verification_attempts_since');
 
@@ -98,6 +109,64 @@ final class AddCarsVerificationAttemptsColumnsSandboxTest extends MigrationSandb
             ['INSERT', 'UPDATE', 'DELETE'],
             $statement->fetchAll(\PDO::FETCH_COLUMN),
             "INSERT, UPDATE and DELETE on cars must each write a cars_hist row {$stage}"
+        );
+    }
+
+    /**
+     * Check that the restored trigger bodies copy the pre-migration audit columns into
+     * cars_hist: NEW values on INSERT, OLD values on UPDATE and DELETE.
+     *
+     * The car goes A -> B -> C, then is deleted. A and C are not the column defaults, so
+     * the INSERT, first UPDATE and DELETE rows each fail when their trigger leaves a
+     * column out. The second UPDATE row (OLD = B) fails when the trigger copies NEW.
+     */
+    private function assertAuditColumnsReachHistory(): void
+    {
+        $this->pdo()->prepare(
+            'INSERT INTO cars (model, series, variant, type, chassis, owner_last_updated, vericode_sent_at,
+                               email_bounced, email_bounced_address, email_suppressed)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 1)'
+        )->execute([
+            'Elan', 'S3', 'SE', 'DHC', '45/' . random_int(1000, 9999),
+            '2026-03-04 05:06:07', '2026-03-05 06:07:08', 'bounced@example.com',
+        ]);
+        $carId = (int) $this->pdo()->lastInsertId();
+
+        $update = $this->pdo()->prepare(
+            'UPDATE cars SET owner_last_updated = ?, vericode_sent_at = ?, email_bounced = ?,
+                             email_bounced_address = ?, email_suppressed = ?
+              WHERE id = ?'
+        );
+        $update->execute(['2026-04-04 05:06:07', '2026-04-05 06:07:08', 0, null, 0, $carId]);
+        $update->execute(['2026-05-04 05:06:07', '2026-05-05 06:07:08', 1, 'other@example.com', 1, $carId]);
+        $this->pdo()->prepare('DELETE FROM cars WHERE id = ?')->execute([$carId]);
+
+        $statement = $this->pdo()->prepare(
+            'SELECT operation, owner_last_updated, vericode_sent_at, email_bounced,
+                    email_bounced_address, email_suppressed
+               FROM cars_hist WHERE car_id = ? ORDER BY id'
+        );
+        $statement->execute([$carId]);
+        $rows = array_map(
+            static fn (array $row): array => array_map(
+                static fn (mixed $value): ?string => $value === null ? null : (string) $value,
+                $row
+            ),
+            $statement->fetchAll(\PDO::FETCH_NUM)
+        );
+
+        $a = ['2026-03-04 05:06:07', '2026-03-05 06:07:08', '1', 'bounced@example.com', '1'];
+        $b = ['2026-04-04 05:06:07', '2026-04-05 06:07:08', '0', null, '0'];
+        $c = ['2026-05-04 05:06:07', '2026-05-05 06:07:08', '1', 'other@example.com', '1'];
+        $this->assertSame(
+            [
+                ['INSERT', ...$a],
+                ['UPDATE', ...$a],
+                ['UPDATE', ...$b],
+                ['DELETE', ...$c],
+            ],
+            $rows,
+            'after down(), the cars triggers must copy the audit columns into cars_hist'
         );
     }
 

@@ -76,4 +76,18 @@ final class AddCronJobRunsLastFailureAtSandboxTest extends MigrationSandboxTestC
             'A second down() must be a no-op and leave ' . self::COLUMN . ' dropped'
         );
     }
+
+    /**
+     * up() runs again when the column exists but phinxlog has no row for it, so the hasColumn() guard must hold.
+     */
+    #[Depends('testDownTwiceIsANoOp')]
+    public function testUpTwiceIsANoOp(): void
+    {
+        $this->runUp(self::MIGRATION);
+        $this->runUp(self::MIGRATION);
+
+        $column = $this->columnInfo(self::TABLE, self::COLUMN);
+        $this->assertNotNull($column, 'A second up() must be a no-op and leave ' . self::COLUMN . ' in place');
+        $this->assertSame('datetime', strtolower($column['COLUMN_TYPE']), self::COLUMN . ' must still be a datetime');
+    }
 }

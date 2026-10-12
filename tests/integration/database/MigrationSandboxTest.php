@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/MigrationSandbox.php';
 
+use Phinx\Migration\AbstractMigration;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -102,25 +103,68 @@ final class MigrationSandboxTest extends TestCase
         }
     }
 
-    public function testDropRemovesSchemaAfterAFailingCallback(): void
+    public function testDropRemovesSchemaAndIsIdempotent(): void
     {
         $sandbox = $this->newSandbox()->create();
         $name = $sandbox->name();
 
-        try {
-            (static function (): void {
-                throw new \DomainException('simulated test failure');
-            })();
-        } catch (\DomainException) {
-            // Proves that drop() still removes the schema after a test failure, and that a
-            // second drop() is a no-op.
-        } finally {
-            $sandbox->drop();
-        }
+        $sandbox->drop();
 
         $this->assertFalse($this->schemaExists($name), "{$name} must be gone after drop()");
         $sandbox->drop();
         $this->assertFalse($this->schemaExists($name), 'A second drop() must be a no-op');
+    }
+
+    public function testRunFailsWhenATableBuilderIsNotSaved(): void
+    {
+        $sandbox = $this->newSandbox()->create();
+        $migration = $sandbox->bind(new class ('default', 20990101000000) extends AbstractMigration {
+            public function up(): void
+            {
+                // No ->update(): composer migrate rejects this, so the sandbox must too.
+                $this->table('settings')->addColumn('migtest_unsaved', 'integer', ['null' => true]);
+            }
+        });
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('pending actions');
+        $sandbox->run($migration, 'up');
+    }
+
+    public function testRunUsesChangeOverUpAndInvertsChangeOnDown(): void
+    {
+        $sandbox = $this->newSandbox()->create();
+        $migration = $sandbox->bind(new class ('default', 20990101000001) extends AbstractMigration {
+            public function change(): void
+            {
+                $this->table('settings')->addColumn('migtest_change', 'integer', ['null' => true])->update();
+            }
+
+            public function up(): void
+            {
+                throw new \LogicException('Phinx ignores up() when change() exists, so the sandbox must too.');
+            }
+        });
+
+        $sandbox->run($migration, 'up');
+        $this->assertTrue($this->columnExists($sandbox, 'settings', 'migtest_change'), 'up must run change()');
+
+        $sandbox->run($migration, 'down');
+        $this->assertFalse($this->columnExists($sandbox, 'settings', 'migtest_change'), 'down must invert change()');
+    }
+
+    public function testRunRefusesAMigrationWithoutTheDirectionMethod(): void
+    {
+        $sandbox = $this->newSandbox()->create();
+        $migration = $sandbox->bind(new class ('default', 20990101000002) extends AbstractMigration {
+            public function up(): void
+            {
+            }
+        });
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('has no change() or down() method');
+        $sandbox->run($migration, 'down');
     }
 
     public function testFingerprintDetectsAColumnChange(): void
@@ -173,12 +217,40 @@ final class MigrationSandboxTest extends TestCase
 
     public function testCreateFailureThrowsAndDoesNotSkip(): void
     {
+        $sandbox = $this->sandboxWhoseCreateFails(1044);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(MigrationSandbox::GRANT_FILE);
+
+        $sandbox->create();
+    }
+
+    public function testCreateFailureNamesTheGrantOnlyForAccessDenied(): void
+    {
+        // 1007: the schema exists. The grant is not the cause, so the message must not name it.
+        $sandbox = $this->sandboxWhoseCreateFails(1007);
+
+        try {
+            $sandbox->create();
+            $this->fail('create() must throw when CREATE DATABASE fails');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('(simulated 1007)', $e->getMessage());
+            $this->assertStringNotContainsString(MigrationSandbox::GRANT_FILE, $e->getMessage());
+        }
+    }
+
+    /**
+     * A sandbox whose CREATE DATABASE throws a PDOException with the given MySQL error code.
+     */
+    private function sandboxWhoseCreateFails(int $mysqlCode): MigrationSandbox
+    {
         $default = MigrationSandbox::defaultPdoFactory();
-        $sandbox = $this->newSandbox(static function (?string $dbName) use ($default): \PDO {
+
+        return $this->newSandbox(static function (?string $dbName) use ($default, $mysqlCode): \PDO {
             $real = $default($dbName);
 
-            return new class ($real) extends \PDO {
-                public function __construct(private \PDO $real)
+            return new class ($real, $mysqlCode) extends \PDO {
+                public function __construct(private \PDO $real, private int $mysqlCode)
                 {
                     // The real connection does the work. No parent connection is made.
                 }
@@ -191,18 +263,15 @@ final class MigrationSandboxTest extends TestCase
                 public function exec(string $statement): int|false
                 {
                     if (str_starts_with($statement, 'CREATE DATABASE')) {
-                        throw new \PDOException("SQLSTATE[42000]: Access denied for user to database (simulated)");
+                        $e = new \PDOException("SQLSTATE[42000]: CREATE DATABASE failed (simulated {$this->mysqlCode})");
+                        $e->errorInfo = ['42000', $this->mysqlCode, 'simulated'];
+                        throw $e;
                     }
 
                     return $this->real->exec($statement);
                 }
             };
         });
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage(MigrationSandbox::GRANT_FILE);
-
-        $sandbox->create();
     }
 
     /**
@@ -214,6 +283,17 @@ final class MigrationSandboxTest extends TestCase
         $this->sandboxes[] = $sandbox;
 
         return $sandbox;
+    }
+
+    private function columnExists(MigrationSandbox $sandbox, string $table, string $column): bool
+    {
+        $statement = $sandbox->pdo()->prepare(
+            'SELECT COUNT(*) FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+        );
+        $statement->execute([$table, $column]);
+
+        return (int) $statement->fetchColumn() === 1;
     }
 
     private function schemaExists(string $name): bool
@@ -230,8 +310,12 @@ final class MigrationSandboxTest extends TestCase
     {
         $statement = $pdo->query($sql);
         $this->assertNotFalse($statement);
+        $value = $statement->fetchColumn();
+        // An int cast would turn no row or NULL into 0 and hide it.
+        $this->assertNotFalse($value, "The query returned no row: {$sql}");
+        $this->assertNotNull($value, "The query returned NULL: {$sql}");
 
-        return (int) $statement->fetchColumn();
+        return (int) $value;
     }
 
     /**

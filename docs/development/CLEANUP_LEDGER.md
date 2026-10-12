@@ -76,6 +76,10 @@ after an item is written.
 - [ ] No dedicated unit test for the partial's own escaping/copy branches: a hostile address string, date-omitted text when no audit row exists, overflow pluralization ("is"/"are"), "and N more" join text. Playwright covers some rendering end to end but does not target these branches directly. (found while working on #1899)
 - [ ] No Playwright test that changing the underlying flagged-car data re-shows a notice the owner already dismissed in the same session — the `contentHash`-driven re-show behavior `EmailNoticeBuilder`'s own docblock promises. (found while working on #1899)
 
+### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
+
+- [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
+
 ### `docs/development/CLASSES.md` + `usersc/classes/Cron/BrevoEventReconciliationClient.php` + `usersc/classes/Cron/BrevoSuppressionSyncClient.php`
 
 - [ ] Say "no API key" in place of "Brevo unconfigured" / "not configured" in the docblocks and comments (clients ~L33, 36, 191, 200, 212 and ~L44, 208, 217, 229; CLASSES.md ~L2206). The clients check only the key, so "configured" now reads like the six-check readiness gate. (found in /finish-milestone v2.30.6)
@@ -129,9 +133,9 @@ after an item is written.
 
 ### `tests/integration/database/MigrationSandbox.php` + `tests/integration/database/MigrationSandboxTest.php` (test coverage)
 
-- [ ] No self-test covers the `migrateTo()` unknown-version pre-check (~L182) or the `phinxlog` post-check (~L201), the non-PDO guard in `connect()` (~L374), or the drop-on-failure path in `MigrationSandboxTestCase::setUpBeforeClass()`. A later edit can remove a guard and the suite stays green (found in #2167)
+- [ ] No self-test covers the `migrateTo()` unknown-version pre-check (~L190) or the `phinxlog` post-check (~L209), the non-PDO guard in `connect()` (~L455), or the drop-on-failure path in `MigrationSandboxTestCase::setUpBeforeClass()`. A later edit can remove a guard and the suite stays green (found in #2167)
 - [ ] `testFingerprintDetectsAColumnChange` changes a column only. Add a `DROP TRIGGER` case, so a broken `TRIGGERS` query in `fingerprint()` fails a test (found in #2167)
-- [ ] When the cleanup drop also fails, `create()` (~L124) and `MigrationSandboxTestCase::setUpBeforeClass()` keep the drop error as message text only, and the second message does not name the leaked schema. `getMigrations('default')` (~L182) runs outside the `try`, so a Phinx error there has no sandbox or version context. `migrateTo(0)` is refused, although Phinx reads 0 as "roll back all": document it in `@throws` (found in #2167)
+- [ ] When the cleanup drop also fails, `create()` (~L132) and `MigrationSandboxTestCase::setUpBeforeClass()` keep the drop error as message text only, and the second message does not name the leaked schema. `getMigrations('default')` (~L190) runs outside the `try`, so a Phinx error there has no sandbox or version context. `migrateTo(0)` is refused, although Phinx reads 0 as "roll back all": document it in `@throws` (found in #2167)
 
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 

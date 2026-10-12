@@ -109,29 +109,19 @@ abstract class MigrationSandboxTestCase extends TestCase
     }
 
     /**
-     * Run up() of a migration file on the sandbox.
+     * Run a migration file up on the sandbox, as `composer migrate` would.
      */
     protected function runUp(string $file): void
     {
-        $migration = $this->migration($file);
-        // Phinx declares none of change(), up() and down() on the base class, so a
-        // migration may define only change(). runUp() refuses such a migration.
-        if (!method_exists($migration, 'up')) {
-            throw new \LogicException($file . ' has no up() method.');
-        }
-        $migration->up();
+        $this->sandbox()->run($this->migration($file), 'up');
     }
 
     /**
-     * Run down() of a migration file on the sandbox.
+     * Run a migration file down on the sandbox, as `composer migrate:rollback` would.
      */
     protected function runDown(string $file): void
     {
-        $migration = $this->migration($file);
-        if (!method_exists($migration, 'down')) {
-            throw new \LogicException($file . ' has no down() method.');
-        }
-        $migration->down();
+        $this->sandbox()->run($this->migration($file), 'down');
     }
 
     protected function pdo(): \PDO
@@ -169,13 +159,20 @@ abstract class MigrationSandboxTestCase extends TestCase
      * The first column of the first row of a query on the sandbox, as an int.
      *
      * @param list<mixed> $params
+     *
+     * @throws \UnexpectedValueException When the query returns no row or NULL. An int cast
+     *         would make either one 0, and an assertSame(0, ...) would then pass.
      */
     protected function scalar(string $sql, array $params = []): int
     {
         $statement = $this->pdo()->prepare($sql);
         $statement->execute($params);
+        $value = $statement->fetchColumn();
+        if ($value === false || $value === null) {
+            throw new \UnexpectedValueException("The query returned no value: {$sql}");
+        }
 
-        return (int) $statement->fetchColumn();
+        return (int) $value;
     }
 
     private static function sharedSchemaName(): string

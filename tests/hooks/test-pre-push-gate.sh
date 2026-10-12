@@ -61,7 +61,7 @@ git config user.email "$GIT_AUTHOR_EMAIL"
 git config commit.gpgsign false
 git symbolic-ref HEAD refs/heads/main
 
-mkdir -p app usersc/classes tests/integration docs
+mkdir -p app usersc/classes tests/integration database/migrations docs
 
 commit_all() {
     git add -A >/dev/null 2>&1
@@ -303,6 +303,16 @@ ISSUE_C4="$(commit_all "issue: docs only")"
 BASE4="$(_gate_base_for_ref "$ISSUE_C4" "refs/heads/issue/one" "$ISSUE_C3" 2>/dev/null)"
 assert_eq "Case 4: a docs-only follow-up to an existing ref is not gated" \
     "" "$(_gated_files_for_ref "$BASE4" "$ISSUE_C4")"
+
+# --- Case 4b: existing ref + migration-only commit (#2167) ----------------
+# On its own branch, so issue/one and the later cases that push it are unchanged.
+git checkout -q -b issue/mig "$ISSUE_C4"
+write_file database/migrations/20990101000000_probe.php "<?php // migration"
+MIG_C1="$(commit_all "mig: migration only")"
+BASE4B="$(_gate_base_for_ref "$MIG_C1" "refs/heads/issue/mig" "$ISSUE_C4" 2>/dev/null)"
+assert_eq "Case 4b: a migration-only follow-up to an existing ref is gated" \
+    "database/migrations/20990101000000_probe.php" "$(_gated_files_for_ref "$BASE4B" "$MIG_C1")"
+git checkout -q issue/one
 
 # --- Case 5: merge commit that ALSO edits the branch's own app/ file ------
 git checkout -q -b issue/five "$MS_C1"

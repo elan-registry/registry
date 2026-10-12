@@ -43,7 +43,10 @@ remote_name="${1:-}"
 # database), so when in doubt it RUNS the suite: a wrongful skip is the worst
 # outcome, an unnecessary ~20s run is acceptable.
 #
-# A push is gated when its diff touches ^(app|usersc/classes|tests/integration)/.*\.php$.
+# A push is gated when its diff touches
+# ^(app|usersc/classes|tests/integration|database/migrations)/.*\.php$.
+# database/migrations is gated because the migration sandbox tests (#2167)
+# are the only place a migration's up() and down() run before deploy.
 # The diff for each ref is:
 #
 #   - refs/heads/main: remote_sha..local_sha, or the merge-base with
@@ -93,7 +96,7 @@ remote_name="${1:-}"
 
 # The optional quotes match a path git still C-quotes under
 # core.quotepath=false (one containing a tab, newline, quote or backslash).
-integration_gate_paths='^"?(app|usersc/classes|tests/integration)/.*\.php"?$'
+integration_gate_paths='^"?(app|usersc/classes|tests/integration|database/migrations)/.*\.php"?$'
 zero_sha="0000000000000000000000000000000000000000"
 gate_failed=0
 

@@ -137,6 +137,10 @@ Rules:
   version before the migration. To test `down()`, use the migration's own
   version.
 - Write one class for each start version.
+- Run the migration with `runUp()` and `runDown()`. They do the same steps as
+  Phinx: a migration with `change()` runs `change()`, and a table builder that
+  was not saved fails the test. They write no `phinxlog` row, so a test can run
+  the same direction twice.
 - Tests that change the sandbox run in one method or in a `#[Depends]` chain,
   so their order is fixed.
 - Run no DDL on the shared test schema. The base class compares the shared
@@ -176,12 +180,15 @@ final class AddExampleColumnSandboxTest extends MigrationSandboxTestCase
 }
 ```
 
-The sandbox tests run with the integration
-tests: `composer test:integration`, `composer test:medium`, and the pre-push
-hook when the push changes PHP under `app/`, `usersc/classes/`, or
-`tests/integration/`. They do not run in CI. For full examples, see
-`RenameErVerificationSettingsUnmatchedCounterMigrationTest` and
-`AddCarsVerificationAttemptsColumnsSandboxTest`.
+The sandbox tests run with the integration tests: `composer test:integration`,
+`composer test:medium` (which also runs the unit tests), and the pre-push hook
+when the push changes PHP under `app/`, `usersc/classes/`, `tests/integration/`,
+or `database/migrations/`. They do not run in CI.
+
+For full examples, see `AddCarsVerificationAttemptsColumnsSandboxTest` and
+`RenameErVerificationSettingsUnmatchedCounterMigrationTest`. Both extend
+`MigrationSandboxTestCase`. The second keeps its original name from before the
+harness.
 
 ## Recovery from a Failed Migration
 

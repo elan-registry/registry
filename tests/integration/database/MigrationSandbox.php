@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 use Phinx\Config\Config;
+use Phinx\Db\Adapter\AdapterFactory;
 use Phinx\Db\Adapter\MysqlAdapter;
+use Phinx\Db\Adapter\ProxyAdapter;
 use Phinx\Migration\AbstractMigration;
 use Phinx\Migration\Manager;
+use Phinx\Migration\MigrationInterface;
 use Phinx\Util\Util;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -28,6 +31,9 @@ final class MigrationSandbox
 {
     /** Repo-relative path of the grant that lets the container user CREATE an elanregi_* schema. */
     public const GRANT_FILE = 'docker/mysql-init/01-grant-all-elanregi-schemas.sql';
+
+    /** MySQL ER_DBACCESS_DENIED_ERROR: the user has no privilege on the schema. */
+    private const MYSQL_ACCESS_DENIED_TO_SCHEMA = 1044;
 
     public const NAME_PREFIX = 'elanregi_migtest_';
 
@@ -105,15 +111,17 @@ final class MigrationSandbox
         $name = self::NAME_PREFIX . time() . '_' . bin2hex(random_bytes(4));
         $this->assertSandboxName($name);
 
+        // Outside the try: a connection error has its own message, and the grant hint would mislead.
+        $server = $this->connect(null);
         try {
-            $this->connect(null)->exec(
-                "CREATE DATABASE `{$name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-            );
+            $server->exec("CREATE DATABASE `{$name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         } catch (\PDOException $e) {
+            $hint = ($e->errorInfo[1] ?? null) === self::MYSQL_ACCESS_DENIED_TO_SCHEMA
+                ? ' The DB user needs CREATE and DROP on elanregi_% schemas. Check that the grant in '
+                    . self::GRANT_FILE . ' was applied (it runs only on a fresh db volume).'
+                : '';
             throw new \RuntimeException(
-                "Could not create migration sandbox schema {$name}: {$e->getMessage()}. "
-                . 'The DB user needs CREATE and DROP on elanregi_% schemas. Check that the grant in '
-                . self::GRANT_FILE . ' was applied (it runs only on a fresh db volume).',
+                "Could not create migration sandbox schema {$name}: {$e->getMessage()}.{$hint}",
                 0,
                 $e
             );
@@ -210,7 +218,7 @@ final class MigrationSandbox
     }
 
     /**
-     * Load one migration file and bind it to the sandbox. The caller runs up() or down().
+     * Load one migration file and bind it to the sandbox. The caller passes it to run().
      *
      * @param string $file The migration file name, for example `20260916000000_seed_x.php`.
      */
@@ -229,12 +237,65 @@ final class MigrationSandbox
             throw new \UnexpectedValueException("{$path} does not define migration class {$class}");
         }
 
-        $migration = new $class('default', Util::getVersionFromFileName(basename($path)));
+        return $this->bind(new $class('default', Util::getVersionFromFileName(basename($path))));
+    }
+
+    /**
+     * Give a migration an adapter on the sandbox connection.
+     */
+    public function bind(AbstractMigration $migration): AbstractMigration
+    {
         $adapter = new MysqlAdapter(['name' => $this->name()]);
         $adapter->setConnection($this->pdo());
         $migration->setAdapter($adapter);
 
         return $migration;
+    }
+
+    /**
+     * Run one direction of a bound migration, with the same steps as Phinx
+     * Environment::executeMigration(). A migration with change() runs change() and
+     * ignores up() and down(), as in Phinx, so the test runs the code that
+     * `composer migrate` runs.
+     *
+     * No phinxlog row is written, so a test can run the same direction twice.
+     * preFlightCheck() is left out: it only writes a warning, and the migration has no output.
+     *
+     * @param 'up'|'down' $direction
+     *
+     * @throws \LogicException When the migration has neither change() nor the direction's method.
+     * @throws \RuntimeException From postFlightCheck(), when a table builder was not saved.
+     */
+    public function run(AbstractMigration $migration, string $direction): void
+    {
+        $migration->setMigratingUp($direction === MigrationInterface::UP);
+
+        if (method_exists($migration, MigrationInterface::INIT)) {
+            $migration->{MigrationInterface::INIT}();
+        }
+
+        if (method_exists($migration, MigrationInterface::CHANGE)) {
+            if ($direction === MigrationInterface::DOWN) {
+                $adapter = $migration->getAdapter();
+                $proxy = AdapterFactory::instance()->getWrapper('proxy', $adapter);
+                if (!$proxy instanceof ProxyAdapter) {
+                    throw new \UnexpectedValueException('The Phinx proxy wrapper is not a ProxyAdapter.');
+                }
+                $migration->setAdapter($proxy);
+                $migration->{MigrationInterface::CHANGE}();
+                $proxy->executeInvertedCommands();
+                $migration->setAdapter($adapter);
+            } else {
+                $migration->{MigrationInterface::CHANGE}();
+            }
+        } elseif (method_exists($migration, $direction)) {
+            $migration->{$direction}();
+        } else {
+            // Phinx declares none of change(), up() and down() on the base class.
+            throw new \LogicException(get_class($migration) . " has no change() or {$direction}() method.");
+        }
+
+        $migration->postFlightCheck();
     }
 
     /**
@@ -426,7 +487,8 @@ final class MigrationSandbox
 
     /**
      * The array that phinx.php returns. phinx.php calls exit(1) when DB_NAME, DB_USER or
-     * DB_PASS is missing. The integration bootstrap sets them before this runs.
+     * DB_PASS is missing. That ends the whole PHPUnit process, with one line on stderr and
+     * no test result. The integration bootstrap sets them before this runs.
      *
      * @return array<string, mixed>
      */
