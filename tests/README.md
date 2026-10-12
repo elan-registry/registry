@@ -24,6 +24,8 @@ tests/
 │
 ├── Support/                   # Shared test doubles (e.g. FakeDatabase)
 │
+├── fixtures/                  # Upstream patch files that tests load (e.g. sendinblue/)
+│
 ├── hooks/                     # Shell tests for scripts/ and git hooks
 │   └── lib/harness.sh         # Shared pass/fail harness (sourced, not run)
 │

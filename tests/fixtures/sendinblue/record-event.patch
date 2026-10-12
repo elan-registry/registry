@@ -1,0 +1,71 @@
+diff --git a/src/sendinblue/functions.php b/src/sendinblue/functions.php
+index 512c330..c5aeda9 100644
+--- a/src/sendinblue/functions.php
++++ b/src/sendinblue/functions.php
+@@ -278,4 +278,66 @@ function sendinblueDeliveryStatus($messageId){
+     return $row;
+   }
+ }
++
++// Records one Brevo event (for example from a webhook) on the message row that
++// sendinblue() wrote. Webhook event names are mapped to the names that
++// sendinblueDeliveryStatus() stores, so the delivery evidence page stays
++// consistent. An event older than the row's latest event does not replace it.
++// Returns true when the row is up to date (an older event leaves it as it is).
++// Returns false when an argument is invalid, there is no row, or a query fails.
++function sendinblueRecordEvent($messageId, $event, $occurredAt = null, $reason = ''){
++  global $db;
++  $names = [
++    'request' => 'requests', 'requests' => 'requests',
++    'delivered' => 'delivered',
++    'hard_bounce' => 'hardBounces', 'hardBounces' => 'hardBounces',
++    'soft_bounce' => 'softBounces', 'softBounces' => 'softBounces',
++    'blocked' => 'blocked',
++    'invalid_email' => 'invalid', 'invalid' => 'invalid',
++    'deferred' => 'deferred',
++    'spam' => 'spam',
++    'unsubscribed' => 'unsubscribed',
++    'opened' => 'opened', 'unique_opened' => 'opened',
++    'click' => 'clicks', 'clicks' => 'clicks',
++    'proxy_open' => 'loadedByProxy', 'unique_proxy_open' => 'loadedByProxy', 'loadedByProxy' => 'loadedByProxy',
++    'error' => 'error',
++  ];
++  if (!is_string($event) || !is_string($messageId)) return false;
++  if ($reason !== null && !is_string($reason)) return false;
++  if ($occurredAt !== null && !is_int($occurredAt) && !is_string($occurredAt)) return false;
++  $status = $names[$event] ?? null;
++  $messageId = trim($messageId);
++  if ($status === null || $messageId === '' || strlen($messageId) > 191) return false;
++
++  if (is_int($occurredAt) || (is_string($occurredAt) && ctype_digit($occurredAt))) {
++    $at = (int)$occurredAt;
++  } elseif ($occurredAt === null) {
++    $at = time();
++  } else {
++    // Only a date-time string. strtotime() would accept "yesterday" or "-5".
++    if (!preg_match('/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/D', $occurredAt)) return false;
++    $d = date_create_immutable($occurredAt);
++    if ($d === false) return false;
++    $at = $d->getTimestamp();
++  }
++  // A future time would pin the row's status; a pre-2000 one is malformed.
++  if ($at < 946684800 || $at > time() + 300) return false;
++  $atSql = date('Y-m-d H:i:s', $at);
++
++  $row = $db->query('SELECT id, accepted_at FROM plg_sendinblue_messages WHERE message_id = ? LIMIT 1', [$messageId])->first();
++  if ($db->error() || !$row) return false;
++  // An event cannot come more than a day before Brevo accepted the message.
++  if ($row->accepted_at !== null && $at < strtotime($row->accepted_at) - 86400) return false;
++
++  // One conditional UPDATE each, so concurrent writers cannot replace a newer event.
++  $db->query('UPDATE plg_sendinblue_messages SET status = ?, last_event_at = ?, last_reason = ?
++              WHERE id = ? AND (last_event_at IS NULL OR last_event_at <= ?)',
++             [$status, $atSql, mb_substr(mb_scrub((string)$reason, 'UTF-8'), 0, 255), $row->id, $atSql]);
++  if ($db->error()) return false;
++  if ($status === 'delivered') {
++    $db->query('UPDATE plg_sendinblue_messages SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL',
++               [$atSql, $row->id]);
++  }
++  return !$db->error();
++}
+ 
