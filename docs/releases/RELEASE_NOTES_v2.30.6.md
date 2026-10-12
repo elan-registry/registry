@@ -8,6 +8,11 @@ On local and test, every registry email carries a Brevo tag on sendinblue
 is current on local and test. Production receives all of this in v2.30.9.
 The upstream posts for #2347 and #2355 are pending (low priority).
 
+## User-Facing Changes
+
+- After you change your password, saved sign-ins on other devices are signed
+  out. ([#2253](https://github.com/elan-registry/registry/issues/2253))
+
 ## Admin-Facing Changes
 
 - Verification needs sendinblue plugin 1.8.0 or later with the bundled
