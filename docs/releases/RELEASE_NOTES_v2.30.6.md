@@ -43,4 +43,4 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - WIP: [#2253](https://github.com/elan-registry/registry/issues/2253) — Upgrade UserSpice from 6.1.4 to 6.1.7.
 - [#2321](https://github.com/elan-registry/registry/issues/2321) — Close #2208, move its last items to `CLEANUP_LEDGER.md`, and delete the `cleanup-ledger` label.
 - [#2326](https://github.com/elan-registry/registry/issues/2326) — Stop `.htaccess` from writing a web-readable error log into the docroot, and deny that filename.
-- WIP: [#2355](https://github.com/elan-registry/registry/issues/2355) — Propose `sendinblueRecordEvent()` to the sendinblue plugin upstream with a tested patch, and ask for a message-log retention setting. No change to the site.
+- [#2355](https://github.com/elan-registry/registry/issues/2355) — Add a tested patch for `sendinblueRecordEvent()` to propose to the sendinblue plugin upstream, with a request for a message-log retention setting. No change to the site. The upstream post is still to do.
