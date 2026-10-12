@@ -1,6 +1,6 @@
 # Elan Registry v2.30.6 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** October 12, 2026
 **Type:** Patch Release - Tagged Mail on Sendinblue 1.8.0
 
 On local and test, every registry email carries a Brevo tag on sendinblue
