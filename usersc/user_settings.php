@@ -630,9 +630,10 @@ if (!empty($_POST)) {
                         if ($db->query('DELETE FROM users_session WHERE user_id = ?', [$user->data()->id])->error()) {
                             // Signing out here does not clear another device's token. Only
                             // deleting its users_session row does, so an admin must do it.
+                            // Security, not DatabaseError: a stolen cookie still works until then.
                             $errors[] = 'Your password was changed, but saved sign-ins on other devices '
                                 . 'could not be cleared. Contact the site administrator.';
-                            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, sprintf(
+                            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, sprintf(
                                 'Failed to revoke remember-me tokens after password change for user %d. '
                                     . 'Delete this user\'s users_session rows: %s',
                                 (int)$user->data()->id,

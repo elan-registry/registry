@@ -254,10 +254,12 @@ the dev site reports Brevo as not ready.
 The tests that need a ready Brevo save a test API key and use the real plugin files on the
 checkout, set up as in
 [ENVIRONMENT.md](../docs/development/ENVIRONMENT.md#brevo-plugin-local-setup). If Brevo is still
-not ready, PHPUnit skips these tests. The skip message gives the reason from
-`brevoNotReadyReason()`.
+not ready, these tests fail, and the failure message gives the reason from
+`brevoNotReadyReason()`. They fail and do not skip, because a skip exits 0 and would hide a
+readiness bug from the pre-push gate. The not-ready tests empty the API key, so they run on every
+checkout.
 
-`BrevoSiteRoot` also writes `BrevoOverrideStub::CONTENT` as both `override.RENAME.php` and
+`BrevoSiteRoot` by default also writes `BrevoOverrideStub::CONTENT` as both `override.RENAME.php` and
 `override.php` in a temporary site root, so that the two files have the same hash.
 
 At the start of each integration run, `tests/bootstrap-integration.php` calls

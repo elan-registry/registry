@@ -857,7 +857,16 @@ final class UserSettingsWiringTest extends TestCase
             'A failed DELETE must be detected so the user is told the other devices stayed signed in'
         );
 
-        $failureBranch = substr($content, $deletePos, 900);
+        // Bound the failure branch at its `} else {`, so text growth cannot
+        // push an assertion target out of a fixed-size window.
+        $elsePos = strpos($content, '} else {', $deletePos);
+        $this->assertNotFalse($elsePos, 'The DELETE failure branch must have an else branch for success');
+        $failureBranch = substr($content, $deletePos, $elsePos - $deletePos);
+        $this->assertStringContainsString(
+            "\$errors[] = 'Your password was changed, but saved sign-ins",
+            $failureBranch,
+            'The failure message must go to $errors, not $successes'
+        );
         $this->assertStringContainsString(
             'Contact the site administrator.',
             $failureBranch,
@@ -869,9 +878,9 @@ final class UserSettingsWiringTest extends TestCase
             'Signing out does not clear another device\'s token, so the message must not suggest it'
         );
         $this->assertStringContainsString(
-            'LogCategories::LOG_CATEGORY_DATABASE_ERROR',
+            'LogCategories::LOG_CATEGORY_SECURITY',
             $failureBranch,
-            'A failed DELETE must be logged so an admin can remove the rows'
+            'A failed DELETE leaves a stolen cookie valid, so it must be logged as a security event'
         );
     }
 }

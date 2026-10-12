@@ -96,6 +96,7 @@ after an item is written.
 ### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
 
 - [ ] No test covers the webhook gate (`app/api/webhooks/brevo.php`, `brevoReady()`) with a plugin below 1.8.0: a 200 response, the dropped event, and the `VerificationConfigWarning` log line. (found in #2184)
+- [ ] `BrevoWebhookEndpointTest.php` ~L285: the not-ready log `LIKE` pattern includes an em dash, so a non-utf8mb4 `logs.lognote` column would show as a count mismatch, not a clear error. Match on the ASCII part of the text only. (found in /finish-milestone v2.30.6)
 
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
@@ -119,7 +120,7 @@ after an item is written.
 
 ### `tests/unit/cars/services/VerificationSettingsTest.php` + `tests/unit/classes/Email/BrevoDevOverrideTest.php` (test coverage)
 
-- [ ] `VerificationSettingsTest.php:284` matches only `/Brevo/i`, so any refusal reason passes; assert the exact reason. `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
+- [ ] `VerificationSettingsTest.php:290` matches only `/Brevo/i`, so any refusal reason passes; assert the exact reason. `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
 
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
@@ -202,7 +203,7 @@ after an item is written.
 ### `usersc/login.php` + `tests/bootstrap-integration.php`
 
 - [ ] Remove the pre-6.1.7 version guards after production runs UserSpice 6.1.7 (v2.30.9, #2088): `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)
-- [ ] No test runs a successful login and checks that `users.logins` goes up by exactly one (~L606, 632); only the text check in `LoginWiringTest.php:129` covers the version-guarded count. (found in /finish-milestone v2.30.6)
+- [ ] No test runs a successful login and checks that `users.logins` goes up by exactly one (`$recordCompletedLogin` ~L107, called at ~L192, 302, 356); only the text check in `LoginWiringTest.php:129` covers the version-guarded count. (found in /finish-milestone v2.30.6)
 
 ### `usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php`
 

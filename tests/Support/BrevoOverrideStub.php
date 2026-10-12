@@ -14,7 +14,7 @@ namespace Tests\Support;
  * on a checkout. That path is gitignored, so `git status` does not show it.
  * The integration bootstrap sweeps the path at the start of each run.
  *
- * {@see BrevoSiteRoot} also writes {@see self::CONTENT} as both
+ * {@see BrevoSiteRoot} by default also writes {@see self::CONTENT} as both
  * `override.RENAME.php` and `override.php` in a temporary site root, so that
  * the two files have the same hash.
  *
