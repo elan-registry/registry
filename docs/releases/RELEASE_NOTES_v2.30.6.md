@@ -12,6 +12,9 @@ The upstream posts for #2347 and #2355 are pending (low priority).
 
 - After you change your password, saved sign-ins on other devices are signed
   out. ([#2253](https://github.com/elan-registry/registry/issues/2253))
+- Repeated wrong TOTP codes now lock the login form for a short time. If the
+  TOTP key file is unreadable, the form shows a "temporarily unavailable"
+  message. ([#2253](https://github.com/elan-registry/registry/issues/2253))
 
 ## Admin-Facing Changes
 
@@ -30,8 +33,9 @@ The upstream posts for #2347 and #2355 are pending (low priority).
   Tag all mail sent through Brevo and require sendinblue plugin 1.8.0 or later.
 - [#2253](https://github.com/elan-registry/registry/issues/2253) —
   Upgrade UserSpice from 6.1.4 to 6.1.7 on local and test, and port its security
-  fixes into the project copies of `login.php`, `join.php` and
-  `user_settings.php`.
+  fixes into the project copies of `login.php`, `join.php`,
+  `user_settings.php`, `navigation.php` and `default_login.php`. Add
+  `session.use_strict_mode` to `users/init.php`.
 - [#2321](https://github.com/elan-registry/registry/issues/2321) —
   Move the last items of #2208 to `CLEANUP_LEDGER.md` and delete the
   `cleanup-ledger` label.
