@@ -10,8 +10,8 @@ The upstream posts for #2347 and #2355 are pending (low priority).
 
 ## User-Facing Changes
 
-- After you change your password, saved sign-ins on other devices are signed
-  out. ([#2253](https://github.com/elan-registry/registry/issues/2253))
+- After you change your password, all saved sign-ins are cleared, on every
+  device. Your current session stays open. ([#2253](https://github.com/elan-registry/registry/issues/2253))
 - Repeated wrong TOTP codes now lock the login form for a short time. If the
   TOTP key file is unreadable, the form shows a "temporarily unavailable"
   message. ([#2253](https://github.com/elan-registry/registry/issues/2253))
