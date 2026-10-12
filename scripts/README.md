@@ -128,8 +128,9 @@ quality checks. Run once per developer after cloning the repo.
    a working `.env.test.local` — see `docs/development/ENVIRONMENT.md`) and
    blocks the push (exits non-zero) on any test failure or an unreachable
    test database. When it runs:
-   - **Gated files** are `*.php` files under `app/`, `usersc/classes/`, or
-     `tests/integration/`. A push with no gated-file changes skips the gate.
+   - **Gated files** are `*.php` files under `app/`, `usersc/classes/`,
+     `tests/integration/`, or `database/migrations/`. A push with no
+     gated-file changes skips the gate.
      Renames count as a delete plus an add (`--no-renames`), so moving a
      gated file out of those paths still runs it.
    - **What a push is diffed against:**
@@ -740,7 +741,7 @@ declarations, missing PHPDoc on public methods, SQL string concatenation.
 
 **Symptom:** `git push` blocked with an integration-suite failure or a
 "Could not connect to the test database" error, on a push that touches
-`app/`, `usersc/classes/`, or `tests/integration/`.
+`app/`, `usersc/classes/`, `tests/integration/`, or `database/migrations/`.
 
 ```bash
 # Confirm .env.test.local exists and points at a reachable, provisioned schema

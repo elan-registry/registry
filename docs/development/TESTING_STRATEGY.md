@@ -236,6 +236,13 @@ response headers, and status codes. **Never hand-roll `proc_open('php -S …')` 
 section](../../tests/README.md#test-support-helpers-testssupport)
 for usage and leak recovery of both.
 
+## Migration Tests
+
+A test that runs a migration's `up()` or `down()` uses its own throwaway
+schema, not the shared test schema. Extend `MigrationSandboxTestCase` in
+`tests/integration/database/`. The rules and an example are in
+[`database/migrations/README.md`, "Testing"](../../database/migrations/README.md#testing).
+
 ## PHPStan Rule Tests
 
 Rules that were once source-scanning tests now run as custom PHPStan rules in

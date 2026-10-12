@@ -43,7 +43,10 @@ remote_name="${1:-}"
 # database), so when in doubt it RUNS the suite: a wrongful skip is the worst
 # outcome, an unnecessary ~20s run is acceptable.
 #
-# A push is gated when its diff touches ^(app|usersc/classes|tests/integration)/.*\.php$.
+# A push is gated when its diff touches
+# ^(app|usersc/classes|tests/integration|database/migrations)/.*\.php$.
+# database/migrations is gated because a migration edit can break its
+# migration test, and no other check runs those tests before deploy.
 # The diff for each ref is:
 #
 #   - refs/heads/main: remote_sha..local_sha, or the merge-base with
@@ -93,7 +96,7 @@ remote_name="${1:-}"
 
 # The optional quotes match a path git still C-quotes under
 # core.quotepath=false (one containing a tab, newline, quote or backslash).
-integration_gate_paths='^"?(app|usersc/classes|tests/integration)/.*\.php"?$'
+integration_gate_paths='^"?(app|usersc/classes|tests/integration|database/migrations)/.*\.php"?$'
 zero_sha="0000000000000000000000000000000000000000"
 gate_failed=0
 
@@ -287,9 +290,10 @@ EOF
     if [ "$suite_ran" -eq 0 ]; then
         cat <<EOF
 
-  Integration-test gate: push to '$branch' touches app/, usersc/classes/, or
-  tests/integration/. Running the full integration suite before allowing this
-  push (composer test:integration, ~20s against the test schema)...
+  Integration-test gate: push to '$branch' touches app/, usersc/classes/,
+  tests/integration/, or database/migrations/. Running the full integration
+  suite before allowing this push (composer test:integration, ~20s against the
+  test schema)...
 
 EOF
         suite_ran=1
