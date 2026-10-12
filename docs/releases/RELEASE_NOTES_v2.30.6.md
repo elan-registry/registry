@@ -6,6 +6,7 @@
 On local and test, every registry email carries a Brevo tag on sendinblue
 1.8.0, so delivery events for verification mail reach the registry. UserSpice
 is current on local and test. Production receives all of this in v2.30.9.
+The upstream posts for #2347 and #2355 are pending (low priority).
 
 ## Admin-Facing Changes
 
