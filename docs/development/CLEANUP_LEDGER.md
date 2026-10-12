@@ -93,6 +93,10 @@ after an item is written.
 - [ ] Delete the directory (capture receiver, send-test CLI, README). Its README says it stays "until #1887 ships its own fixtures". #1887 is closed, and the Brevo payload fixtures now live in `BrevoWebhookEventProcessorTest.php` and `EmailEventApplierTest.php`. `scripts/spike-1888/brevo-webhook-capture.php` covers the same capture job. (found in the #2208 audit)
 - [ ] Update the two pointers in `docs/development/EMAIL_SYSTEM.md` (~746, ~814). (found in the #2208 audit)
 
+### `tests/integration/BrevoWebhookEndpointTest.php`
+
+- [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L901, renames `er_email_events.reason`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
+
 ### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
 
 - [ ] No test covers the webhook gate (`app/api/webhooks/brevo.php`, `brevoReady()`) with a plugin below 1.8.0: a 200 response, the dropped event, and the `VerificationConfigWarning` log line. (found in #2184)
@@ -103,13 +107,31 @@ after an item is written.
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
 
+### `tests/integration/CronJobFailureRoundTripTest.php`
+
+- [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L200, drops `er_cron_job_runs.last_failure_at`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
+
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
 - [ ] Replace the hand-written DB proxy (~L55) with `PassThroughDatabase` (from #2169)
 
+### `tests/integration/UserDeletionReassignmentTest.php`
+
+- [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L380, renames `car_transfer_requests.admin_notes`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
+
 ### `tests/integration/cars/services/CarVerificationManagerSuppressForOwnerTest.php`
 
 - [ ] Replace the hand-written DB proxy (~L271) with `PassThroughDatabase` (from #2169)
+
+### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php` + `tests/integration/database/AddProfileEmailSuppressedMigrationTest.php`
+
+- [ ] Each class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move the classes onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copies (found in #2167)
+
+### `tests/integration/database/MigrationSandbox.php` + `tests/integration/database/MigrationSandboxTest.php` (test coverage)
+
+- [ ] No self-test covers the `migrateTo()` unknown-version pre-check (~L182) or the `phinxlog` post-check (~L201), the non-PDO guard in `connect()` (~L374), or the drop-on-failure path in `MigrationSandboxTestCase::setUpBeforeClass()`. A later edit can remove a guard and the suite stays green (found in #2167)
+- [ ] `testFingerprintDetectsAColumnChange` changes a column only. Add a `DROP TRIGGER` case, so a broken `TRIGGERS` query in `fingerprint()` fails a test (found in #2167)
+- [ ] When the cleanup drop also fails, `create()` (~L124) and `MigrationSandboxTestCase::setUpBeforeClass()` keep the drop error as message text only, and the second message does not name the leaked schema. `getMigrations('default')` (~L182) runs outside the `try`, so a Phinx error there has no sandbox or version context. `migrateTo(0)` is refused, although Phinx reads 0 as "roll back all": document it in `@throws` (found in #2167)
 
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 

@@ -93,6 +93,11 @@ audit.
 - `CarModelTest.php` - CarModel reference data queries
 - `CarValidatorModelTest.php` - Model validation with real database
 - `FactoryRegistryLinkIntegrationTest.php` - Registry Link feature
+- `database/` - schema and migration tests. `MigrationSandbox` and
+  `MigrationSandboxTestCase` run a migration's `up()` and `down()` against a
+  throwaway `elanregi_migtest_*` schema. `MigrationSandboxTest` tests the
+  harness. See
+  [`database/migrations/README.md`, "Testing"](../database/migrations/README.md#testing).
 
 `RobotsTxtAsServedTest.php` in this directory is the one exception to the
 "database only" characterisation: it additionally performs a live outbound

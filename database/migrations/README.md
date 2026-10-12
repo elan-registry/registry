@@ -122,8 +122,66 @@ of how Phinx tracks the migration in `phinxlog`.
 
 ## Testing
 
-Always run `composer migrate:dry-run` locally first to confirm the migration
-does what you expect. Apply it against a copy of the schema before pushing.
+Run `composer migrate:dry-run` locally first to see what the migration does.
+
+To test `up()` and `down()`, write a sandbox test in
+`tests/integration/database/`. Extend `MigrationSandboxTestCase`. Before the
+first test of the class, the base class creates a throwaway schema
+(`elanregi_migtest_<unixtime>_<rand>`), loads
+`database/vendor/userspice-6.1.7-base.sql`, and runs the Phinx migrations in
+the test process up to `targetVersion()`. After the last test, it drops the schema.
+
+Rules:
+
+- Return the start version from `targetVersion()`. To test `up()`, use the
+  version before the migration. To test `down()`, use the migration's own
+  version.
+- Write one class for each start version.
+- Tests that change the sandbox run in one method or in a `#[Depends]` chain,
+  so their order is fixed.
+- Run no DDL on the shared test schema. The base class compares the shared
+  schema's columns and triggers before and after the class, and fails if they
+  changed.
+- Declare `#[Group('integration')]` and `#[Group('migration')]` on the class.
+  PHPUnit does not inherit groups from the base class.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/MigrationSandboxTestCase.php';
+
+use PHPUnit\Framework\Attributes\Group;
+
+#[Group('integration')]
+#[Group('migration')]
+final class AddExampleColumnSandboxTest extends MigrationSandboxTestCase
+{
+    protected static function targetVersion(): int
+    {
+        return 20260101000000; // the version before the migration under test
+    }
+
+    public function testUpThenDown(): void
+    {
+        $file = '20260102000000_add_example_column.php';
+
+        $this->runUp($file);
+        $this->assertNotNull($this->columnInfo('cars', 'example'));
+
+        $this->runDown($file);
+        $this->assertNull($this->columnInfo('cars', 'example'));
+    }
+}
+```
+
+The sandbox tests run with the integration
+tests: `composer test:integration`, `composer test:medium`, and the pre-push
+hook when the push changes PHP under `app/`, `usersc/classes/`, or
+`tests/integration/`. They do not run in CI. For full examples, see
+`RenameErVerificationSettingsUnmatchedCounterMigrationTest` and
+`AddCarsVerificationAttemptsColumnsSandboxTest`.
 
 ## Recovery from a Failed Migration
 
