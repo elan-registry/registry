@@ -94,6 +94,13 @@ do
     # Build frontend vendored assets BEFORE cleanup — .deployignore removes
     # package.json/package-lock.json/scripts/ (ADR-018)
     echo "Building frontend vendored assets..."
+    # The shared host (CloudLinux LVE) limits the account to 75 processes,
+    # and it counts each thread. On the host's 64 CPUs, esbuild's Go runtime
+    # keeps about 35 threads alive until the build exits. The live sites use
+    # threads too, so the build's first HTTPS fetch could not start a thread
+    # and Node aborted (NPROC faults on 2026-09-28 and 2026-10-12).
+    # GOMAXPROCS=2 caps esbuild at about 6 threads.
+    export GOMAXPROCS=2
     npm ci --omit=dev || {
         echo "ERROR: npm ci failed — deployment halted."
         exit 1
