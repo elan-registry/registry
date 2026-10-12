@@ -1,10 +1,11 @@
 # Elan Registry v2.30.6 Release Notes
 
 **Release Date:** [DATE]
-**Type:** Patch Release - Enable Verification System
+**Type:** Patch Release - Tagged Mail on Sendinblue 1.8.0
 
-An owner with a registered car gets a verification email in production that
-works, and can use it to confirm their car.
+On local and test, every registry email carries a Brevo tag on sendinblue
+1.8.0, so delivery events for verification mail reach the registry. UserSpice
+is current on local and test. Production receives all of this in v2.30.9.
 
 ## User-Facing Changes
 
@@ -50,8 +51,6 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 
 ## Issues Resolved
 
-- WIP: [#1875](https://github.com/elan-registry/registry/issues/1875) — Monitor the verification cron jobs with healthchecks.io.
-- WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — Register the production Brevo webhook and turn on the verification switch.
 - [#2184](https://github.com/elan-registry/registry/issues/2184) — Tag all mail sent through Brevo, and require sendinblue plugin 1.8.0 or later.
 - [#2253](https://github.com/elan-registry/registry/issues/2253) — Upgrade
   UserSpice from 6.1.4 to 6.1.7 on local and test (production in v2.30.9),
@@ -63,6 +62,10 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - [#2326](https://github.com/elan-registry/registry/issues/2326) — Stop
   `.htaccess` from writing a web-readable error log into the docroot, and deny
   that filename.
+- [#2347](https://github.com/elan-registry/registry/issues/2347) — Re-audit
+  the sendinblue 1.8.0 `configure.php` against audit Rules 02, 06 and 11, and
+  record the result in the issue. No change to the site. The upstream post is
+  still to do.
 - [#2355](https://github.com/elan-registry/registry/issues/2355) — Add a
   tested patch for `sendinblueRecordEvent()` to propose to the sendinblue
   plugin upstream, with a request for a message-log retention setting. No
