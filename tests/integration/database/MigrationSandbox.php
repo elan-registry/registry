@@ -261,10 +261,11 @@ final class MigrationSandbox
      * These Phinx steps are left out:
      * - The phinxlog row, so a test can run the same direction twice.
      * - preFlightCheck(): it only writes a warning, and the migration has no output.
-     * - The START TRANSACTION around the migration. The first DDL statement commits it,
-     *   and autocommit then applies. So under Phinx, a failed run discards only the DML
-     *   that ran before the first DDL statement. Here that DML stays. A transaction that
-     *   the migration opens itself behaves the same in both.
+     * - The START TRANSACTION around the migration. Phinx never rolls it back: after a
+     *   failure, the server discards the open transaction when the process ends. A DDL
+     *   statement commits the open transaction, so Phinx discards DML only when the
+     *   failure comes before the first DDL statement. Here that DML stays. A transaction
+     *   that the migration opens and does not commit stays open on pdo() until drop().
      * - The shouldExecute() skip in Manager::executeMigration(). No migration overrides it.
      *
      * @param 'up'|'down' $direction
