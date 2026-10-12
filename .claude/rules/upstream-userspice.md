@@ -26,6 +26,23 @@ files, except for the project-owned files listed below.
   UserSpice includes this file after it renders the footer.
 - To add header or navigation content, edit
   `usersc/templates/customizer/file_nav_custom.php`.
+- The project overrides these upstream pages with `usersc/` copies:
+  `login.php`, `join.php`, `user_settings.php`, and `account.php`.
+  UserSpice serves the `usersc/` copy, so an upstream fix to the
+  `users/` page does not reach the site. On each UserSpice upgrade, diff
+  each of these upstream pages between the old and the new version. Then
+  port each change into the `usersc/` copy by hand.
+- Diff these other `usersc/` copies of upstream files on each upgrade too:
+  `usersc/includes/system_messages_header.php`,
+  `usersc/includes/system_messages_footer.php`,
+  `usersc/includes/user_manager_columns.php`,
+  `usersc/templates/customizer/navigation.php`, and
+  `usersc/oauth_server/login_forms/default_login.php`. For the last two,
+  take the upstream version.
+- `users/init.php` also has one project line outside the config array:
+  `ini_set('session.use_strict_mode', '1')`. Upstream sets it in
+  `init.example.php`, not in an existing `init.php`. Keep it after each
+  upgrade.
 - A finding in a gitignored upstream file cannot be fixed in this repo (the
   fix does not deploy, and the next UserSpice update overwrites it). Report
   it upstream.

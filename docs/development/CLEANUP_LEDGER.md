@@ -35,11 +35,6 @@ after an item is written.
 
 ## Items
 
-### `.htaccess` + `usersc/login.php` (test coverage)
-
-- [ ] No unit test asserts that `index.php` starts with `<?php` (no leading bytes). (found in /finish-milestone v2.30.4)
-- [ ] The #2189 `login.php` change (`$knownIdentifier` and `(unrecognised)` in `checkRateLimit`/`handleAuthFailure`) has only integration coverage, which CI does not run. Add a source-wiring pin test under `tests/unit/security/`. (found in /finish-milestone v2.30.4)
-
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -196,9 +191,9 @@ after an item is written.
 - [ ] line 25 — same `(Issue #237)` pattern (from #1978)
 - [ ] line 34 — restates the line below it (from #1978)
 
-### `usersc/join.php`
+### `usersc/login.php` + `tests/bootstrap-integration.php`
 
-- [ ] Replace 2 inline `preg_replace('/[\r\n\t]/', '', ...)` calls with `InputSanitizer::stripHeaderInjectionChars()`. Catch its `\RuntimeException` as `app/api/contact/send-owner-email.php` does (from #1786)
+- [ ] Remove the pre-6.1.7 version guards after production runs UserSpice 6.1.7 (v2.30.9, #2088): `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`. (found in #2253)
 
 ### `usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php`
 

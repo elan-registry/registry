@@ -808,4 +808,53 @@ final class UserSettingsWiringTest extends TestCase
             'The success response must still carry the skipped car IDs for the caller'
         );
     }
+
+    // =========================================================================
+    // user_settings.php — remember-me token revocation after a password change
+    // (source inspection)
+    // =========================================================================
+
+    /**
+     * A password change must delete the user's `users_session` rows (the
+     * remember-me tokens), so that a stolen cookie stops working. The row
+     * delete is scoped to the acting user and runs after the password UPDATE.
+     *
+     * SOURCE-WIRING PIN, not a behavior test. A behavior test needs a real
+     * session, a CSRF token and the old password through the full page, which
+     * is too heavy here (see the class docblock). The pin fails if the DELETE
+     * is removed, loses its `user_id` scope, or moves before the password UPDATE.
+     */
+    public function testPasswordChangeRevokesRememberMeTokensAfterPasswordUpdate(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        $updatePos = strpos($content, "\$user->update(['password' => \$new_password_hash");
+        $this->assertNotFalse($updatePos, 'The password UPDATE must still exist in user_settings.php');
+
+        $deleteSql = "DELETE FROM users_session WHERE user_id = ?";
+        $deletePos = strpos($content, $deleteSql);
+        $this->assertNotFalse($deletePos, 'A password change must delete the user\'s users_session rows');
+        $this->assertSame(
+            $deletePos,
+            strrpos($content, $deleteSql),
+            'The users_session DELETE must appear exactly once'
+        );
+        $this->assertGreaterThan(
+            $updatePos,
+            $deletePos,
+            'The users_session DELETE must follow the password UPDATE'
+        );
+
+        $deleteStatement = substr($content, $deletePos, 160);
+        $this->assertStringContainsString(
+            '[$user->data()->id]',
+            $deleteStatement,
+            'The DELETE must bind the acting user\'s ID, not delete every user\'s tokens'
+        );
+        $this->assertStringContainsString(
+            '->error()',
+            $deleteStatement,
+            'A failed DELETE must be detected so the user is told the other devices stayed signed in'
+        );
+    }
 }

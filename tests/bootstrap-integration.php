@@ -240,10 +240,18 @@ if (!isset($GLOBALS['user'])) {
 try {
     if (class_exists('DB')) {
         // Reset the DB singleton cache to force reconnection with corrected config
-        // The DB class caches the PDO connection, so we need to clear it to force a new one
+        // The DB class caches the PDO connection, so we need to clear it to force a new one.
+        // UserSpice 6.1.7 replaced the static $_instance with a keyed $_instances pool and
+        // added closeShared(). The reflection fallback keeps a pre-6.1.7 users/ working.
+        // hasMethod(), not method_exists(): PHPStan does not scan users/, so it reads
+        // method_exists(DB::class, ...) as always false.
         $reflectionClass = new ReflectionClass(DB::class);
-        $instanceProperty = $reflectionClass->getProperty('_instance');
-        $instanceProperty->setValue(null, null); // static property: first arg is object (null), second is new value
+        if ($reflectionClass->hasMethod('closeShared')) {
+            DB::closeShared();
+        } else {
+            $instanceProperty = $reflectionClass->getProperty('_instance');
+            $instanceProperty->setValue(null, null); // static property: first arg is object (null), second is new value
+        }
         fwrite(STDERR, "NOTE: Reset DB singleton cache for reinitialization\n");
 
         // Now create a fresh DB instance with the corrected configuration

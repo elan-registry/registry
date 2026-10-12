@@ -9,10 +9,9 @@ use PHPUnit\Framework\Attributes\Group;
  * globally. Calls checkRateLimit()/recordRateLimit() directly; the
  * LocationService logic is in tests/unit/location/LocationServiceRateLimitTest.php.
  *
- * Fake IPs are from TEST-NET-3 (RFC 5737) with a random last octet.
- *
- * Trap: Server::get() memoizes REMOTE_ADDR for the process. Without
- * resetServerCache(), every "distinct" IP lands in one bucket.
+ * Each call passes IntegrationTestCase::fakeDocumentationIp() as the 'ip'
+ * identifier. A collision would let a seeded total_max bucket block the
+ * "fresh" IP.
  */
 #[Group('database')]
 final class LocationRateLimitIsolationTest extends IntegrationTestCase
@@ -21,23 +20,6 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
 
     /** Matches location_search total_max in usersc/includes/rate_limits.php (#2122). */
     private const TOTAL_MAX = 1500;
-
-    private function fakeTestNet3Ip(): string
-    {
-        return '203.0.113.' . random_int(1, 254);
-    }
-
-    /** See the class docblock: Server::get() memoizes REMOTE_ADDR. */
-    private function resetServerCache(): void
-    {
-        if (!class_exists(\Server::class)) {
-            return;
-        }
-        $reflection = new \ReflectionClass(\Server::class);
-        if ($reflection->hasProperty('cache')) {
-            $reflection->getProperty('cache')->setValue(null, []);
-        }
-    }
 
     /**
      * Seeds rows directly: 1000+ real recordRateLimit() calls are slow.
@@ -67,42 +49,25 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
     {
         $this->requireDatabase();
 
-        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $ipOne = $this->fakeDocumentationIp();
+        $this->seedTotalAttempts(self::ACTION, $ipOne, self::TOTAL_MAX);
 
-        try {
-            $ipOne = $this->fakeTestNet3Ip();
-            $this->resetServerCache();
-            $_SERVER['REMOTE_ADDR'] = $ipOne;
+        $this->assertFalse(
+            checkRateLimit(self::ACTION, null, null, ['ip' => $ipOne]),
+            'Attempt ' . (self::TOTAL_MAX + 1) . ' for IP #1 must be blocked — total_max exhausted (AC: budget enforcement).'
+        );
 
-            $this->seedTotalAttempts(self::ACTION, $ipOne, self::TOTAL_MAX);
-
-            $this->assertFalse(
-                checkRateLimit(self::ACTION, null),
-                'Attempt ' . (self::TOTAL_MAX + 1) . ' for IP #1 must be blocked — total_max exhausted (AC: budget enforcement).'
-            );
-
-            $ipTwo = $this->fakeTestNet3Ip();
-            // A random collision would make this a same-IP test.
-            while ($ipTwo === $ipOne) {
-                $ipTwo = $this->fakeTestNet3Ip();
-            }
-            $this->resetServerCache();
-            $_SERVER['REMOTE_ADDR'] = $ipTwo;
-
-            $this->assertTrue(
-                checkRateLimit(self::ACTION, null),
-                'A distinct anonymous IP must have its own independent location_search bucket — '
-                    . "it must not be blocked by IP #1 ({$ipOne}) exhausting its own budget (AC #1/#2, #1582)."
-            );
-        } finally {
-            if ($originalRemoteAddr === null) {
-                unset($_SERVER['REMOTE_ADDR']);
-            } else {
-                $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
-            }
-            // Clear the memoized value so later tests do not see this fake IP.
-            $this->resetServerCache();
+        $ipTwo = $this->fakeDocumentationIp();
+        // A random collision would make this a same-IP test.
+        while ($ipTwo === $ipOne) {
+            $ipTwo = $this->fakeDocumentationIp();
         }
+
+        $this->assertTrue(
+            checkRateLimit(self::ACTION, null, null, ['ip' => $ipTwo]),
+            'A distinct anonymous IP must have its own independent location_search bucket — '
+                . "it must not be blocked by IP #1 ({$ipOne}) exhausting its own budget (AC #1/#2, #1582)."
+        );
     }
 
     /** #2122: 20 requests (double the incident's 11) from one typing session are admitted. */
@@ -110,30 +75,17 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
     {
         $this->requireDatabase();
 
-        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $ip = ['ip' => $this->fakeDocumentationIp()];
+        $realisticRequestCount = 20;
 
-        try {
-            $this->resetServerCache();
-            $_SERVER['REMOTE_ADDR'] = $this->fakeTestNet3Ip();
-
-            $realisticRequestCount = 20;
-
-            for ($i = 0; $i < $realisticRequestCount; $i++) {
-                $this->assertTrue(
-                    checkRateLimit(self::ACTION, null),
-                    'Request ' . ($i + 1) . ' of ' . $realisticRequestCount . ' should be allowed — '
-                        . 'this is the exact volume that tripped the old 10/60 threshold and blocked a '
-                        . 'real registrant typing a full address (#2122).'
-                );
-                recordRateLimit(self::ACTION, true, null);
-            }
-        } finally {
-            if ($originalRemoteAddr === null) {
-                unset($_SERVER['REMOTE_ADDR']);
-            } else {
-                $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
-            }
-            $this->resetServerCache();
+        for ($i = 0; $i < $realisticRequestCount; $i++) {
+            $this->assertTrue(
+                checkRateLimit(self::ACTION, null, null, $ip),
+                'Request ' . ($i + 1) . ' of ' . $realisticRequestCount . ' should be allowed — '
+                    . 'this is the exact volume that tripped the old 10/60 threshold and blocked a '
+                    . 'real registrant typing a full address (#2122).'
+            );
+            recordRateLimit(self::ACTION, true, null, null, $ip);
         }
     }
 
@@ -145,47 +97,33 @@ final class LocationRateLimitIsolationTest extends IntegrationTestCase
     {
         $this->requireDatabase();
 
-        $originalRemoteAddr = $_SERVER['REMOTE_ADDR'] ?? null;
+        $testIp = $this->fakeDocumentationIp();
+        $this->seedTotalAttempts(self::ACTION, $testIp, self::TOTAL_MAX);
 
-        try {
-            $testIp = $this->fakeTestNet3Ip();
-            $this->resetServerCache();
-            $_SERVER['REMOTE_ADDR'] = $testIp;
+        $this->assertFalse(
+            checkRateLimit(self::ACTION, null, null, ['ip' => $testIp]),
+            'Request ' . (self::TOTAL_MAX + 1) . ' must be blocked — the raised threshold must '
+                . 'still refuse genuinely abusive volume, not just remove the limit entirely (#2122).'
+        );
 
-            $this->seedTotalAttempts(self::ACTION, $testIp, self::TOTAL_MAX);
+        recordRateLimit(self::ACTION, false, null, null, ['ip' => $testIp]);
 
-            $this->assertFalse(
-                checkRateLimit(self::ACTION, null),
-                'Request ' . (self::TOTAL_MAX + 1) . ' must be blocked — the raised threshold must '
-                    . 'still refuse genuinely abusive volume, not just remove the limit entirely (#2122).'
-            );
+        $identifierKey = hash('sha256', 'ip::' . $testIp);
+        $this->db->query(
+            'SELECT success FROM us_rate_limits '
+                . 'WHERE action = ? AND identifier_key = ? ORDER BY id DESC LIMIT 1',
+            [self::ACTION, $identifierKey]
+        );
+        $row = $this->db->first(true);
 
-            recordRateLimit(self::ACTION, false, null);
-
-            $identifierKey = hash('sha256', 'ip::' . $testIp);
-            $this->db->query(
-                'SELECT success FROM us_rate_limits '
-                    . 'WHERE action = ? AND identifier_key = ? ORDER BY id DESC LIMIT 1',
-                [self::ACTION, $identifierKey]
-            );
-            $row = $this->db->first(true);
-
-            $this->assertIsArray($row, 'Expected the just-recorded location_search attempt to be readable back');
-            $this->assertSame(
-                0,
-                (int) ($row['success'] ?? null),
-                'A blocked attempt must still be recorded with success=0 — the limiter counts every '
-                    . 'attempt toward the rolling window regardless of admission, matching the pattern '
-                    . 'this project uses everywhere else a rate limit gates admission separately from '
-                    . 'recording (#2122).'
-            );
-        } finally {
-            if ($originalRemoteAddr === null) {
-                unset($_SERVER['REMOTE_ADDR']);
-            } else {
-                $_SERVER['REMOTE_ADDR'] = $originalRemoteAddr;
-            }
-            $this->resetServerCache();
-        }
+        $this->assertIsArray($row, 'Expected the just-recorded location_search attempt to be readable back');
+        $this->assertSame(
+            0,
+            (int) ($row['success'] ?? null),
+            'A blocked attempt must still be recorded with success=0 — the limiter counts every '
+                . 'attempt toward the rolling window regardless of admission, matching the pattern '
+                . 'this project uses everywhere else a rate limit gates admission separately from '
+                . 'recording (#2122).'
+        );
     }
 }

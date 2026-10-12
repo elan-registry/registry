@@ -5,15 +5,14 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use PHPUnit\Framework\Attributes\Group;
-use Tests\Support\PhpBuiltinServer;
+use Tests\Support\UserscPageClient;
 
 /**
  * #2189: a password typed into the username box must not be stored in any
  * recoverable form (logs.lognote, us_rate_limits metadata, or an email-derived
  * identifier_key).
  *
- * Uses the built-in web server with a cookie jar: login.php needs a real
- * session and a session-bound CSRF token. Turnstile is off because
+ * Uses Tests\Support\UserscPageClient. Turnstile is off because
  * .env.test.local sets no Turnstile keys.
  *
  * @see usersc/login.php
@@ -23,25 +22,11 @@ use Tests\Support\PhpBuiltinServer;
 #[Group('integration')]
 final class LoginFailureLoggingTest extends IntegrationTestCase
 {
-    /** @var list<string> */
-    private const DB_ENV_VARS = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS'];
-
-    private static ?PhpBuiltinServer $server = null;
-    private static string $projectRoot = '';
-
-    private string $cookieJar = '';
-
-    public static function setUpBeforeClass(): void
-    {
-        parent::setUpBeforeClass();
-
-        self::$projectRoot = dirname(__DIR__, 2);
-    }
+    use UserscPageClient;
 
     public static function tearDownAfterClass(): void
     {
-        self::$server?->stop();
-        self::$server = null;
+        self::stopPageServer();
 
         parent::tearDownAfterClass();
     }
@@ -51,14 +36,10 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $this->exposeTestDatabaseToEnvironment();
-        self::$server ??= PhpBuiltinServer::start(self::$projectRoot, self::routerBody());
-
-        $jar = tempnam(sys_get_temp_dir(), 'login2189_cookies_');
-        if ($jar === false) {
-            throw new RuntimeException('Could not create a temp file for the curl cookie jar');
-        }
-        $this->cookieJar = $jar;
+        // RateLimit::getRealIP() rejects loopback (FILTER_FLAG_NO_RES_RANGE), so
+        // without a routable REMOTE_ADDR no 'ip' row is written and the
+        // us_rate_limits assertions check nothing. 203.0.113.0/24 is TEST-NET-3.
+        $this->startPageClient('login.php', '203.0.113.9');
 
         // Old 'login_attempt' rows for the fixed REMOTE_ADDR could trip the IP rate limit.
         $this->db->query("DELETE FROM us_rate_limits WHERE action = 'login_attempt'");
@@ -70,45 +51,9 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
             $this->db->query("DELETE FROM us_rate_limits WHERE action = 'login_attempt'");
         }
 
-        if ($this->cookieJar !== '' && is_file($this->cookieJar)) {
-            @unlink($this->cookieJar);
-        }
-
-        foreach (self::DB_ENV_VARS as $var) {
-            putenv($var);
-        }
+        $this->stopPageClient();
 
         parent::tearDown();
-    }
-
-    // ------------------------------------------------------------------
-    // Server lifecycle (Tests\Support\PhpBuiltinServer owns the process)
-    // ------------------------------------------------------------------
-
-    private static function routerBody(): string
-    {
-        $projectRoot = self::$projectRoot;
-
-        // RateLimit::getRealIP() rejects loopback (FILTER_FLAG_NO_RES_RANGE), so
-        // without a routable REMOTE_ADDR no 'ip' row is written and the
-        // us_rate_limits assertions check nothing. 203.0.113.0/24 is TEST-NET-3.
-        return <<<PHP
-        require '{$projectRoot}/vendor/autoload.php';
-        \\Dotenv\\Dotenv::createMutable('{$projectRoot}', '.env.test.local')->load();
-        \$_SERVER['REMOTE_ADDR'] = '203.0.113.9';
-        chdir('{$projectRoot}/usersc');
-        require '{$projectRoot}/usersc/login.php';
-        PHP;
-    }
-
-    private function exposeTestDatabaseToEnvironment(): void
-    {
-        foreach (self::DB_ENV_VARS as $var) {
-            $value = $_ENV[$var] ?? getenv($var);
-            if ($value !== false && $value !== '') {
-                putenv("$var=$value");
-            }
-        }
     }
 
     // ------------------------------------------------------------------
@@ -143,44 +88,6 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
             'username' => $username,
             'password' => $password,
         ]));
-    }
-
-    /**
-     * @return array{status: int, body: string}
-     */
-    private function request(string $method, ?string $body): array
-    {
-        $url = self::$server->url('/login.php');
-
-        $ch = curl_init($url);
-        $options = [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HEADER => false,
-            CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_TIMEOUT => 10,
-            CURLOPT_COOKIEJAR => $this->cookieJar,
-            CURLOPT_COOKIEFILE => $this->cookieJar,
-        ];
-
-        if ($method === 'POST') {
-            $options[CURLOPT_POST] = true;
-            $options[CURLOPT_POSTFIELDS] = $body ?? '';
-            $options[CURLOPT_HTTPHEADER] = ['Content-Type: application/x-www-form-urlencoded'];
-        }
-
-        curl_setopt_array($ch, $options);
-
-        $response = curl_exec($ch);
-        if ($response === false) {
-            $error = curl_error($ch);
-            curl_close($ch);
-            throw new RuntimeException("curl request to login.php failed: {$error}");
-        }
-
-        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        return ['status' => $status, 'body' => (string) $response];
     }
 
     // ------------------------------------------------------------------

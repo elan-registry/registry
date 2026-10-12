@@ -7,7 +7,7 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Migration 20260709000000_add_elanregistry_baseline: the 9 ElanRegistry tables
+ * Migration 20260709000000_add_elanregistry_baseline: its ElanRegistry tables
  * and the 3 car audit triggers exist. Trigger behavior is covered by
  * CarsYearSmallintMigrationTest.
  */
@@ -16,16 +16,17 @@ use PHPUnit\Framework\Attributes\Group;
 final class AddElanregistryBaselineMigrationTest extends IntegrationTestCase
 {
     /**
-     * The 9 tables the migration creates (phinxlog excluded). Match only the
-     * migration's CREATE TABLE statements: #1679 removed `notifications` (a
-     * settings column) and the plg_db_explainer_* tables (plugin-owned).
+     * The tables the migration creates (phinxlog excluded) that still exist.
+     * Match only the migration's CREATE TABLE statements: #1679 removed
+     * `notifications` (a settings column) and the plg_db_explainer_* tables
+     * (plugin-owned). `country` is left out because migration
+     * 20261007005444_drop_unused_country_table drops it.
      */
     private const REGISTRY_TABLES = [
         'car_models',
         'car_transfer_requests',
         'cars',
         'cars_hist',
-        'country',
         'deleted_accounts_archive',
         'elan_factory_info',
         'fix_script_runs',

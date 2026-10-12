@@ -9,11 +9,24 @@ use PHPUnit\Framework\Attributes\Group;
  * check -> record -> check loop. checkRateLimit() only counts recorded rows, so
  * config alone proves nothing. Keep email_max/email_window in step with
  * tests/unit/system/RateLimitConfigTest.php.
+ *
+ * Each test passes its own IntegrationTestCase::fakeDocumentationIp().
+ * Without an explicit IP, one shared bucket (ip_max) fills across tests and
+ * blocks before email_max.
  */
 #[Group('database')]
 final class RateLimitEnforcementTest extends IntegrationTestCase
 {
     private const EMAIL_MAX = 4;
+
+    /** @var array{ip: string} */
+    private array $ip;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->ip = ['ip' => $this->fakeDocumentationIp()];
+    }
 
     public function testEmailMaxLimitBlocksAfterConfiguredThreshold(): void
     {
@@ -23,16 +36,16 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
 
         for ($i = 0; $i < self::EMAIL_MAX; $i++) {
             $this->assertTrue(
-                checkRateLimit('registration_recovery_email', null, $email),
+                checkRateLimit('registration_recovery_email', null, $email, $this->ip),
                 'Attempt ' . ($i + 1) . ' of ' . self::EMAIL_MAX . ' should be allowed (within the configured limit)'
             );
             // Mirrors usersc/join.php: success=false rows count toward email_max;
             // success=true rows count only toward the higher total_max.
-            recordRateLimit('registration_recovery_email', false, null, $email);
+            recordRateLimit('registration_recovery_email', false, null, $email, $this->ip);
         }
 
         $this->assertFalse(
-            checkRateLimit('registration_recovery_email', null, $email),
+            checkRateLimit('registration_recovery_email', null, $email, $this->ip),
             'Attempt ' . (self::EMAIL_MAX + 1) . ' must be blocked — this is the control that prevents '
                 . 'email-bombing a victim via repeated registration attempts with their address (#1406)'
         );
@@ -44,13 +57,13 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
 
         $exhaustedEmail = 'rate-limit-exhausted-' . uniqid('', true) . '@example.com';
         for ($i = 0; $i < self::EMAIL_MAX; $i++) {
-            recordRateLimit('registration_recovery_email', false, null, $exhaustedEmail);
+            recordRateLimit('registration_recovery_email', false, null, $exhaustedEmail, $this->ip);
         }
-        $this->assertFalse(checkRateLimit('registration_recovery_email', null, $exhaustedEmail));
+        $this->assertFalse(checkRateLimit('registration_recovery_email', null, $exhaustedEmail, $this->ip));
 
         $freshEmail = 'rate-limit-fresh-' . uniqid('', true) . '@example.com';
         $this->assertTrue(
-            checkRateLimit('registration_recovery_email', null, $freshEmail),
+            checkRateLimit('registration_recovery_email', null, $freshEmail, $this->ip),
             'A different email must not be affected by another email exhausting its own limit'
         );
     }
@@ -67,11 +80,11 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
         $casings = [$baseEmail, strtoupper($baseEmail), ucfirst($baseEmail)];
 
         for ($i = 0; $i < self::EMAIL_MAX; $i++) {
-            recordRateLimit('registration_recovery_email', false, null, mb_strtolower($casings[$i % count($casings)]));
+            recordRateLimit('registration_recovery_email', false, null, mb_strtolower($casings[$i % count($casings)]), $this->ip);
         }
 
         $this->assertFalse(
-            checkRateLimit('registration_recovery_email', null, mb_strtolower($baseEmail)),
+            checkRateLimit('registration_recovery_email', null, mb_strtolower($baseEmail), $this->ip),
             'Attempts recorded under varied casing of the same email, once normalized, must exhaust '
                 . 'the single shared bucket for that email — proving case variation cannot be used to '
                 . 'dodge email_max.'

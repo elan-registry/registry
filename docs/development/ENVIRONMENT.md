@@ -427,7 +427,8 @@ therefore match the checkout.
 `http://localhost:<APP_HOST_PORT>/`. At `http://127.0.0.1:<APP_HOST_PORT>/`,
 every URL that the app builds is wrong (`http://[127.0.0.1:8001]:8001/`). This
 includes canonical links, the sitemap, and email links. The cause is
-`Server::sanitize_host()` in upstream `users/classes/Server.php`. It reads
+`Server::sanitize_host()` in upstream `users/classes/Server.php` (installed
+UserSpice version: 6.1.7). It reads
 `127.0.0.1:8001` as a bare IPv6 address. Do not edit that file (#2231).
 
 Worktrees under `Registry-worktrees/` get the same treatment: give the
@@ -722,7 +723,7 @@ dedicated test schema to protect the development database:
 - `.env.test.local.sample` — Template with safe defaults (tracked in repo)
 - `scripts/provision-schema.sh` — You can rerun this script when the schema
   changes, such as after a new migration. Each run drops and recreates only
-  the target schema. It then loads `database/vendor/userspice-6.1.4-base.sql`,
+  the target schema. It then loads `database/vendor/userspice-6.1.7-base.sql`,
   runs `composer migrate`, and loads the Phinx seeds. The script needs a
   `mysql` client on `$PATH` or a `MYSQL_BIN` value that points to one. Under
   Docker, run the script inside the `app` container (see "Docker Dev

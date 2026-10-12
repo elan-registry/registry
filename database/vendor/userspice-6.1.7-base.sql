@@ -10,10 +10,13 @@
 --
 -- Captured: 2026-08-07
 --
+-- Version:  The file is named for 6.1.7 because UserSpice 6.1.5 to 6.1.7
+--           change no table structure. The content is the 6.1.4 capture.
+--
 -- Contents: 58 CREATE TABLE statements. No data, no routines, no triggers,
 --           no views — stock UserSpice 6.1.4 defines none of those.
 --
--- Applied:  Directly via `mysql < database/vendor/userspice-6.1.4-base.sql`
+-- Applied:  Directly via `mysql < database/vendor/userspice-6.1.7-base.sql`
 --           by scripts/provision-schema.sh, BEFORE Phinx runs. It is
 --           deliberately not a Phinx migration: it is vendored third-party
 --           schema, not a change this project authored.
