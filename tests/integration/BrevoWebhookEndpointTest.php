@@ -532,8 +532,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
      *
      * The built-in server always sends REMOTE_ADDR 127.0.0.1, which other tests
      * share. So the test trusts 127.0.0.1 as a reverse proxy and sends its own
-     * IP in X-Forwarded-For, which ClientIP::get() then returns. tearDown()
-     * restores both settings.
+     * IP in X-Forwarded-For, which ClientIP::get() then returns. The finally
+     * block sets behind_reverse_proxy back to 0 and deletes the proxy fixture.
      */
     public function testRateLimitExceededRespondsWithTooManyRequests(): void
     {

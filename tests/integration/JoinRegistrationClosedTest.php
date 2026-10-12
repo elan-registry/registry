@@ -116,7 +116,7 @@ final class JoinRegistrationClosedTest extends IntegrationTestCase
     /**
      * The open-registration case creates a user and, through
      * usersc/scripts/during_user_creation.php, its profile, a remember-me
-     * session, an IP-list row, and log rows. Two of those log rows use
+     * session, an IP-list row, and log rows. Up to two of those log rows use
      * user_id 0. The test schema has no foreign keys, so nothing cascades.
      */
     private function deleteRegisteredUser(): void
