@@ -36,9 +36,9 @@ final class LoginFailureLoggingTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        // RateLimit::getRealIP() rejects loopback (FILTER_FLAG_NO_RES_RANGE), so
-        // without a routable REMOTE_ADDR no 'ip' row is written and the
-        // us_rate_limits assertions check nothing. 203.0.113.0/24 is TEST-NET-3.
+        // A fixed REMOTE_ADDR gives this class its own 'ip' rate-limit bucket.
+        // Without it, the built-in server sends 127.0.0.1, which other tests
+        // share. 203.0.113.0/24 is TEST-NET-3.
         $this->startPageClient('login.php', '203.0.113.9');
 
         // Old 'login_attempt' rows for the fixed REMOTE_ADDR could trip the IP rate limit.

@@ -17,7 +17,8 @@ use PHPUnit\Framework\TestCase;
  *   integration tests.
  * - The UserSpice 6.1.7 port: the TOTP rate limit, the TOTP-unavailable
  *   message, the version guard on `recordLogin`, the `loginEmail()` call that
- *   skips the early login count, and `$currentSessionName` set on every path.
+ *   skips the early login count, `$currentSessionName` set on every path, and
+ *   the session unset in each inline TOTP branch without a verified code.
  *
  * @see usersc/login.php
  * @see tests/integration/LoginFailureLoggingTest.php
@@ -48,6 +49,35 @@ final class LoginWiringTest extends TestCase
             $this->source,
             'The TOTP code sent with the password must pass the rate limit before it is verified'
         );
+    }
+
+    /**
+     * loginEmail() signs the user in before TOTP is checked. In each branch that
+     * stops short of a verified code, the unset is all that keeps a password-only
+     * session from surviving. A rate-limited code must also never reach
+     * verifyCode(), so the verify branch must be joined by elseif.
+     */
+    public function test_everyInlineTotpBranchWithoutAVerifiedCodeEndsTheSession(): void
+    {
+        $branches = [
+            'rate-limited code' => $this->sliceBetween(
+                "if (!empty(\$totpCode) && !checkRateLimit('totp_verify', \$tempUser->data()->id)) {",
+                '} elseif (!empty($totpCode)) {'
+            ),
+            'invalid code' => $this->sliceBetween(
+                "handleAuthFailure('totp_verify', \$tempUser->data()->id",
+                '$awaitingTOTP = false;'
+            ),
+            'start two-step verification' => $this->sliceBefore(
+                "\$_SESSION[\$currentSessionName . '_totp_user_id_to_verify'] = \$tempUser->data()->id;",
+                '} else {'
+            ),
+        ];
+
+        foreach ($branches as $name => $body) {
+            $this->assertStringContainsString('unset($_SESSION[$currentSessionName]);', $body, "The {$name} branch must end the password-only session");
+            $this->assertStringContainsString('$clearReauthConfirmation();', $body, "The {$name} branch must clear the reauth confirmation");
+        }
     }
 
     public function test_unreadableTotpKeyShowsUnavailableMessageInsteadOfInvalidCode(): void
@@ -119,6 +149,27 @@ final class LoginWiringTest extends TestCase
             "/handleAuthFailure\\('login_attempt',\\s*\\\$userId,\\s*\\\$knownIdentifier,/",
             $this->source
         );
+    }
+
+    private function sliceBetween(string $start, string $end): string
+    {
+        $from = strpos($this->source, $start);
+        $this->assertIsInt($from, "Not found in login.php: {$start}");
+        $to = strpos($this->source, $end, $from + strlen($start));
+        $this->assertIsInt($to, "Not found after the start marker: {$end}");
+
+        return substr($this->source, $from, $to - $from);
+    }
+
+    /** The text from the last $start before $anchor up to $anchor. */
+    private function sliceBefore(string $anchor, string $start): string
+    {
+        $to = strpos($this->source, $anchor);
+        $this->assertIsInt($to, "Not found in login.php: {$anchor}");
+        $from = strrpos(substr($this->source, 0, $to), $start);
+        $this->assertIsInt($from, "Not found before the anchor: {$start}");
+
+        return substr($this->source, $from, $to - $from);
     }
 
     public function test_unmatchedAttemptLogsFixedPlaceholderNotTheSubmittedValue(): void

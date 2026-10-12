@@ -226,8 +226,8 @@ if (Input::existsPost() && $settings->registration == 1) {
                         if (!$emailSent) {
                             try {
                                 $safeToLog = InputSanitizer::stripHeaderInjectionChars($email);
-                            } catch (\Throwable $e) {
-                                $safeToLog = '[unsanitizable]';
+                            } catch (\Throwable $sanitizeException) {
+                                $safeToLog = '(unloggable address — ' . $sanitizeException->getMessage() . ')';
                             }
                             logger($theNewId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
                                 'join.php: Registration verification email SEND FAILED to ' . $safeToLog);

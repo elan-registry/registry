@@ -530,9 +530,10 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     /**
      * Seeds us_rate_limits directly: ip_max is 500, too many real requests.
      *
-     * RateLimit::getRealIP() rejects 127.0.0.1 (reserved range), so a loopback
-     * request is never limited. The test trusts 127.0.0.1 as a reverse proxy
-     * and sends a public IP in X-Forwarded-For. tearDown() restores both settings.
+     * The built-in server always sends REMOTE_ADDR 127.0.0.1, which other tests
+     * share. So the test trusts 127.0.0.1 as a reverse proxy and sends its own
+     * IP in X-Forwarded-For, which ClientIP::get() then returns. tearDown()
+     * restores both settings.
      */
     public function testRateLimitExceededRespondsWithTooManyRequests(): void
     {

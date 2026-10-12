@@ -245,12 +245,22 @@ try {
         // added closeShared(). The reflection fallback keeps a pre-6.1.7 users/ working.
         // hasMethod(), not method_exists(): PHPStan does not scan users/, so it reads
         // method_exists(DB::class, ...) as always false.
-        $reflectionClass = new ReflectionClass(DB::class);
-        if ($reflectionClass->hasMethod('closeShared')) {
-            DB::closeShared();
-        } else {
-            $instanceProperty = $reflectionClass->getProperty('_instance');
-            $instanceProperty->setValue(null, null); // static property: first arg is object (null), second is new value
+        //
+        // A failed reset aborts the run. Otherwise the outer catch would skip the
+        // database-identity check below, and $GLOBALS['db'] would keep whatever
+        // connection users/init.php opened.
+        try {
+            $reflectionClass = new ReflectionClass(DB::class);
+            if ($reflectionClass->hasMethod('closeShared')) {
+                DB::closeShared();
+            } else {
+                $instanceProperty = $reflectionClass->getProperty('_instance');
+                $instanceProperty->setValue(null, null); // static property: first arg is object (null), second is new value
+            }
+        } catch (\Throwable $e) {
+            fwrite(STDERR, "ERROR: Could not reset the DB singleton: {$e->getMessage()}\n");
+            fwrite(STDERR, "Refusing to proceed: the database-identity check cannot run without the reset.\n");
+            exit(1);
         }
         fwrite(STDERR, "NOTE: Reset DB singleton cache for reinitialization\n");
 
@@ -353,9 +363,9 @@ try {
         }
     }
 } catch (Throwable $e) {
-    // Intentionally non-fatal (unlike the stricter inner catch above at the database-identity
-    // check, which does abort): this outer catch covers the DB-singleton-cache reset and
-    // reconnection attempt itself. If those steps fail, IntegrationTestCase::setUp()'s own
+    // Intentionally non-fatal (unlike the stricter inner catches above at the singleton reset
+    // and the database-identity check, which abort): this outer catch covers the reconnection
+    // attempt itself. If that step fails, IntegrationTestCase::setUp()'s own
     // DB::getInstance() + requireDatabase() will independently detect the same unreachable
     // database and skip tests gracefully — that's the authoritative check, this is just an
     // earlier best-effort reconnection step whose failure the real check will catch anyway.

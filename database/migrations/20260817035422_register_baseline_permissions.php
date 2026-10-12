@@ -13,7 +13,8 @@ use Phinx\Migration\AbstractMigration;
  * `permissions` table but inserts no rows, so a freshly provisioned schema
  * starts with none of them. On dev/prod, rows 1 and 2 were created by
  * UserSpice's install wizard and row 3 ("Editor", an ElanRegistry-specific
- * tier) by hand, all outside any tracked migration or seed. `scripts/provision-schema.sh` runs neither the wizard nor any manual
+ * tier) by hand, all outside any tracked migration or seed.
+ * `scripts/provision-schema.sh` runs neither the wizard nor any manual
  * step, so without this migration a fresh install has an empty table while
  * `PagePermissionClassifier`,
  * `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php`, and

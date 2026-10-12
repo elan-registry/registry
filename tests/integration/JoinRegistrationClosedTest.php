@@ -24,7 +24,7 @@ final class JoinRegistrationClosedTest extends IntegrationTestCase
 {
     use UserscPageClient;
 
-    /** A routable REMOTE_ADDR keeps the registration rate limit keyed to an IP. */
+    /** A fixed REMOTE_ADDR gives this class its own 'ip' rate-limit bucket. */
     private const TEST_IP = '203.0.113.10';
 
     private ?int $originalRegistration = null;
@@ -113,7 +113,12 @@ final class JoinRegistrationClosedTest extends IntegrationTestCase
         );
     }
 
-    /** The open-registration case creates a user, its permission row, and log rows. */
+    /**
+     * The open-registration case creates a user and, through
+     * usersc/scripts/during_user_creation.php, its profile, a remember-me
+     * session, an IP-list row, and log rows. Two of those log rows use
+     * user_id 0. The test schema has no foreign keys, so nothing cascades.
+     */
     private function deleteRegisteredUser(): void
     {
         // first() returns an empty array, not null, when no row matches.
@@ -121,9 +126,15 @@ final class JoinRegistrationClosedTest extends IntegrationTestCase
         if (!is_array($row) || !isset($row['id'])) {
             return;
         }
-        $this->db->query('DELETE FROM user_permission_matches WHERE user_id = ?', [$row['id']]);
-        $this->db->query('DELETE FROM logs WHERE user_id = ?', [$row['id']]);
-        $this->db->query('DELETE FROM users WHERE id = ?', [$row['id']]);
+        $id = (int) $row['id'];
+        foreach (['user_permission_matches', 'profiles', 'users_session', 'us_ip_list', 'logs'] as $table) {
+            $this->db->query("DELETE FROM {$table} WHERE user_id = ?", [$id]);
+        }
+        $this->db->query(
+            'DELETE FROM logs WHERE user_id = 0 AND (lognote LIKE ? OR lognote LIKE ?)',
+            ["New user {$id}:%", "%user_id={$id}"]
+        );
+        $this->db->query('DELETE FROM users WHERE id = ?', [$id]);
     }
 
     private function countUsersWithEmail(): int
