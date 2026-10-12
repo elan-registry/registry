@@ -474,7 +474,9 @@ Test and production servers have a single shared post-receive hook
 5. Run `npm ci --omit=dev && npm run build` to (re)generate vendored frontend
    assets in `usersc/js/`/`usersc/css/` (halts deployment on failure). These
    directories are gitignored build output, not committed — see
-   [ADR-018](adr/ADR-018-build-at-deploy-for-frontend-vendoring.md)
+   [ADR-018](adr/ADR-018-build-at-deploy-for-frontend-vendoring.md).
+   The hook sets `GOMAXPROCS=2` for this step. See "Process limit on the
+   shared host" below
 6. Self-update the installed hook from the newly deployed working tree
 7. Remove dev-only paths listed in `.deployignore` (e.g. `tests/`, `scripts/`,
    `utilities/`, `wiki/`) via `rm -rf`, then remove `.deployignore` itself
@@ -483,6 +485,17 @@ Test and production servers have a single shared post-receive hook
 resolvable non-interactively on the deploy host's login shell (no `nvm use`
 or similar interactive step). Verified against `test.elanregistry.org` during
 ADR-018's research: Node v18.20.8 / npm 10.8.2, no shell workaround needed.
+
+**Process limit on the shared host:** the host runs CloudLinux. LVE limits
+the account to 75 processes, and it counts each thread. The live sites,
+the ssh session and the build all count against the same limit. The host
+has 64 CPUs, so by default esbuild's Go runtime keeps about 35 threads alive
+until `npm run build` exits. Before the hook set `GOMAXPROCS=2`, the build's
+first HTTPS fetch could not start a thread, and Node aborted (`Failed to load
+CA certificates off thread: resource temporarily unavailable`, or only
+`Aborted`). cPanel → Resource Usage shows these as NPROC faults. With
+`GOMAXPROCS=2`, esbuild keeps about 6 threads. Keep the variable when you
+change the npm steps.
 
 **Important:** Never list a persistent, server-writable directory in
 `.deployignore` (e.g. `backups/`) — step 7's `rm -rf` would delete it wholesale
@@ -885,8 +898,9 @@ If deployment fails:
 If the hook stops after the checkout (for example `npm run build failed —
 deployment halted`), the new code is already live, but the steps after the
 failure did not run: the hook self-update, the deployment log and the
-`.deployignore` cleanup. On a shared host, `npm run build` can fail once from
-a resource limit (an esbuild runtime crash) and pass on the next run. To finish
+`.deployignore` cleanup. On the shared host, `npm run build` can fail once
+from the process limit (see "Process limit on the shared host") and pass on
+the next run. To finish
 the deploy without a new commit, run the hook again on the server for the same
 commit:
 
