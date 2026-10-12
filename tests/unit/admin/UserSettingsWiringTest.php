@@ -867,6 +867,11 @@ final class UserSettingsWiringTest extends TestCase
             $failureBranch,
             'The failure message must go to $errors, not $successes'
         );
+        $this->assertStringNotContainsString(
+            'Password updated.',
+            $failureBranch,
+            'The window must end at the failure branch\'s own else, before the success message'
+        );
         $this->assertStringContainsString(
             'Contact the site administrator.',
             $failureBranch,

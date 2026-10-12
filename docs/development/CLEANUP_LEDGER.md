@@ -96,7 +96,8 @@ after an item is written.
 ### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
 
 - [ ] No test covers the webhook gate (`app/api/webhooks/brevo.php`, `brevoReady()`) with a plugin below 1.8.0: a 200 response, the dropped event, and the `VerificationConfigWarning` log line. (found in #2184)
-- [ ] `BrevoWebhookEndpointTest.php` ~L285: the not-ready log `LIKE` pattern includes an em dash, so a non-utf8mb4 `logs.lognote` column would show as a count mismatch, not a clear error. Match on the ASCII part of the text only. (found in /finish-milestone v2.30.6)
+- [ ] `BrevoWebhookEndpointTest.php` ~L297: the not-ready log `LIKE` pattern includes an em dash, so a non-utf8mb4 `logs.lognote` column would show as a count mismatch, not a clear error. Match on the ASCII part of the text only. (found in /finish-milestone v2.30.6)
+- [ ] The not-ready tests empty the API key and restore it in `finally`. A fatal error or a killed run skips `finally` and leaves `key = ''`, which the bootstrap sweep does not report (it deletes only `sib-test-key` rows). Readiness does not change, but the toggle test's original key is lost. Update the crash-recovery comment in `tests/bootstrap-integration.php` (~L430-445) or make the sweep report empty-key rows. (found in /finish-milestone v2.30.6)
 
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
@@ -120,7 +121,7 @@ after an item is written.
 
 ### `tests/unit/cars/services/VerificationSettingsTest.php` + `tests/unit/classes/Email/BrevoDevOverrideTest.php` (test coverage)
 
-- [ ] `VerificationSettingsTest.php:290` matches only `/Brevo/i`, so any refusal reason passes; assert the exact reason. `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
+- [ ] `VerificationSettingsTest.php:291` matches only `/Brevo/i`, so any refusal reason passes; assert the exact reason. `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
 
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 

@@ -171,6 +171,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     /** @var object|array<string, mixed>|null Snapshot of the existing plg_sendinblue row (if any), for restoration. */
     private object|array|null $existingBrevoRow = null;
     private bool $brevoRowInsertedByTest = false;
+    /** Id of the plg_sendinblue row that makeBrevoReady() wrote. */
+    private ?int $brevoFixtureRowId = null;
 
     /** Why Brevo is not ready after makeBrevoReady(), or null if it is ready. */
     private ?string $brevoNotReadyReason = null;
@@ -190,9 +192,11 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         if (is_object($this->existingBrevoRow) && isset($this->existingBrevoRow->id)) {
             $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['sib-test-key', $this->existingBrevoRow->id]);
             $this->brevoRowInsertedByTest = false;
+            $this->brevoFixtureRowId = (int) $this->existingBrevoRow->id;
         } else {
             $this->db->insert('plg_sendinblue', ['key' => 'sib-test-key']);
             $this->brevoRowInsertedByTest = true;
+            $this->brevoFixtureRowId = (int) $this->db->lastId();
         }
         $this->assertFalse($this->db->error(), 'Brevo key fixture write failed: ' . $this->db->errorString());
 
@@ -280,9 +284,10 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->setSwitchEnabled(true);
 
         // An empty key makes Brevo not ready on every checkout, also one with
-        // ready plugin files. setUp() wrote 'sib-test-key'; put it back so
-        // tearDown() can restore or delete the row.
-        $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE `key` = ?', ['', 'sib-test-key']);
+        // ready plugin files. Change only the row setUp() wrote, and put
+        // 'sib-test-key' back so tearDown() can restore or delete it.
+        $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['', $this->brevoFixtureRowId]);
+        $this->assertFalse($this->db->error(), 'Emptying the Brevo key failed: ' . $this->db->errorString());
 
         try {
             $reason = (new VerificationSettings($this->db))->brevoNotReadyReason();
@@ -301,7 +306,11 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             $after = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $logPattern);
             $this->assertSame($before + 1, $after, 'Brevo-not-ready must log exactly one refusal that names the reason');
         } finally {
-            $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE `key` = ?', ['sib-test-key', '']);
+            // Report, do not assert: an assert in finally would hide the test's own failure.
+            $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['sib-test-key', $this->brevoFixtureRowId]);
+            if ($this->db->error()) {
+                fwrite(STDERR, 'Restoring the Brevo test key failed: ' . $this->db->errorString() . PHP_EOL);
+            }
         }
     }
 

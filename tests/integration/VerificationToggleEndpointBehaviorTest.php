@@ -221,7 +221,11 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
             $this->assertFalse($this->currentSwitchState(), 'Setting must remain unchanged after a rejected enable attempt');
         } finally {
             if ($hasKeyRow) {
+                // Report, do not assert: an assert in finally would hide the test's own failure.
                 $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', [$existingKeyRow->key, $existingKeyRow->id]);
+                if ($this->db->error()) {
+                    fwrite(STDERR, 'Restoring the Brevo key failed: ' . $this->db->errorString() . PHP_EOL);
+                }
             }
         }
     }

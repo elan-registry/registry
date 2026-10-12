@@ -44,9 +44,14 @@ final class VerificationBannerReasonTest extends TestCase
             'The banner must escape the reason with htmlspecialchars()'
         );
         $this->assertDoesNotMatchRegularExpression(
-            '/<\?=\s*\$verificationBrevoNotReadyReason\s*\?>/',
+            '/<\?=(?:(?!\?>|htmlspecialchars).)*\$verificationBrevoNotReadyReason/s',
             $source,
-            'The banner must never echo the reason unescaped'
+            'The banner must never echo the reason without htmlspecialchars()'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\b(?:echo|print)\b[^;]*\$verificationBrevoNotReadyReason/',
+            $source,
+            'The banner must never echo the reason without htmlspecialchars()'
         );
     }
 }
