@@ -626,7 +626,22 @@ if (!empty($_POST)) {
                         //process
                         $new_password_hash = password_hash(Input::get('password'), PASSWORD_BCRYPT, ['cost' => 12]);
                         $user->update(['password' => $new_password_hash, 'force_pr' => 0, 'vericode' => hashVericode(randomstring(15)),], $user->data()->id);
-                        $successes[] = 'Password updated.';
+                        // Revoke remember-me tokens so a stolen cookie stops working after the change.
+                        if ($db->query('DELETE FROM users_session WHERE user_id = ?', [$user->data()->id])->error()) {
+                            // Signing out here does not clear another device's token. Only
+                            // deleting its users_session row does, so an admin must do it.
+                            // Security, not DatabaseError: a stolen cookie still works until then.
+                            $errors[] = 'Your password was changed, but saved sign-ins on other devices '
+                                . 'could not be cleared. Contact the site administrator.';
+                            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, sprintf(
+                                'Failed to revoke remember-me tokens after password change for user %d. '
+                                    . 'Delete this user\'s users_session rows: %s',
+                                (int)$user->data()->id,
+                                $db->errorString()
+                            ));
+                        } else {
+                            $successes[] = 'Password updated.';
+                        }
                         logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Updated password.');
                         if ($settings->session_manager == 1) {
                             $passwordResetKillSessions = passwordResetKillSessions();

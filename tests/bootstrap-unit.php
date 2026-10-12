@@ -151,7 +151,7 @@ if (!function_exists('email')) {
         if (!isset($mockSentEmails)) {
             $mockSentEmails = [];
         }
-        $mockSentEmails[] = [$to, $subject, $body];
+        $mockSentEmails[] = [$to, $subject, $body, $opts];
 
         return $mockEmailSendResult ?? true;
     }

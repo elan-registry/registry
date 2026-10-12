@@ -25,6 +25,8 @@ if (!defined('USERSPICE_LOGIN_CALLED')) {
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php'; // ER: custom prep — replaces users/includes/template/prep.php
 
 // ER START: TOTP handler loading
+// Set before the TOTP check, so every path below has it.
+$currentSessionName = Config::get('session/session_name');
 // Ensure session is started for TOTP intermediate storage
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
@@ -34,7 +36,6 @@ if($settings->totp > 0 && version_compare(PHP_VERSION, '8.2.0', '>=')) {
     require_once $abs_us_root . $us_url_root . 'users/auth/TOTPHandler.php';
 }else{
     $settings->totp = 0; // Disable TOTP if not supported
-    $currentSessionName = $config['session']['session_name'];
 }
 // ER END
 
@@ -68,6 +69,10 @@ if ($showForgot == true && $settings->registration == 1) {
     $regClass = "text-end";
 } else {
     $showBottom = false;
+    // These are only read when $showBottom is true. Set them here too, so every branch defines them.
+    $bottomClass = "";
+    $forgotClass = "";
+    $regClass = "";
 }
 
 $errors = $successes = [];
@@ -86,6 +91,31 @@ if (isset($settings->totp) && ($settings->totp > 1)) {
         $totpEnabled = true;
 
 }
+
+// An unreadable/broken key file means authenticator codes can never verify.
+// Say that plainly instead of repeating "invalid code" forever; backup codes
+// are hashed rather than encrypted, so they still work as a way in.
+$totpUnavailableMsg = '';
+if ($totpHandler && method_exists($totpHandler, 'encryptionAvailable') && !$totpHandler->encryptionAvailable()) {
+    $totpUnavailableMsg = 'Two-factor authentication is temporarily unavailable due to a server configuration problem. Please use a backup code or contact the site administrator.';
+}
+
+// ER START: UserSpice version guards
+// UserSpice 6.1.7 counts a login only after TOTP passes, via User::recordLogin().
+// Before 6.1.7, loginEmail() counted the login itself at the password step,
+// so on such a host there is nothing left to record here.
+$recordCompletedLogin = static function (User $loginUser, int|string|null $userId = null): void {
+    if (method_exists($loginUser, 'recordLogin')) {
+        $loginUser->recordLogin($userId);
+    }
+};
+// reauthClearConfirmed() is new in 6.1.7. Older hosts keep their old behavior.
+$clearReauthConfirmation = static function (): void {
+    if (function_exists('reauthClearConfirmed')) {
+        reauthClearConfirmed();
+    }
+};
+// ER END
 
 // Check for pending TOTP verification state
 $awaitingTOTP = false;
@@ -139,7 +169,7 @@ if (!empty($_POST)) {
                         if ($userSecret && $totpHandler->verifyCode($userSecret, $totpCode)) {
                             $verified = true;
                         } else {
-                            $errors[] = lang("2FA_ERR_INVALID_CODE");
+                            $errors[] = $totpUnavailableMsg ?: lang("2FA_ERR_INVALID_CODE");
                         }
                     }
 
@@ -159,12 +189,7 @@ if (!empty($_POST)) {
                             $_SESSION[$currentSessionName . '_user_last_login'] = date("Y-m-d H:i:s");
                             $_SESSION[$currentSessionName . '_last_confirm'] = date("Y-m-d H:i:s");
                             $_SESSION[$currentSessionName . '_totp_verified'] = true;
-
-                            // Update last login in database
-                            $db->update('users', $tempUserId, [
-                                'last_login' => date("Y-m-d H:i:s"),
-                                'logins' => $userData->logins + 1
-                            ]);
+                            $recordCompletedLogin($user, $tempUserId);
 
                             // Execute login success hooks
                             $hooks = getMyHooks(['page' => 'loginSuccess']);
@@ -244,7 +269,7 @@ if (!empty($_POST)) {
                     // Attempt to login with credentials
                     $tempUser = new User();
                     $rawpassword = $_POST['password'];
-                    $login = $tempUser->loginEmail($username, $password, $remember, $rawpassword);
+                    $login = $tempUser->loginEmail($username, $password, $remember, $rawpassword, false);
 
                     if ($login) {
                         // ER START: TOTP enforcement after valid credentials
@@ -260,7 +285,11 @@ if (!empty($_POST)) {
 
                         if ($requireTOTP) {
                             // Check if TOTP code was provided in the same form
-                            if (!empty($totpCode)) {
+                            if (!empty($totpCode) && !checkRateLimit('totp_verify', $tempUser->data()->id)) {
+                                unset($_SESSION[$currentSessionName]);
+                                $clearReauthConfirmation();
+                                $errors[] = getRateLimitErrorMessage('totp_verify');
+                            } elseif (!empty($totpCode)) {
                                 $userSecret = $totpHandler->getUserSecret($tempUser->data()->id);
                                 if ($userSecret && $totpHandler->verifyCode($userSecret, $totpCode)) {
                                     // Record successful login with TOTP
@@ -270,6 +299,7 @@ if (!empty($_POST)) {
                                     ]);
 
                                     $user = $tempUser; // isLoggedIn() must reflect the authenticated user for hooks and redirect logic
+                                    $recordCompletedLogin($user);
 
                                     // TOTP verified, complete login immediately
                                     $hooks = getMyHooks(['page' => 'loginSuccess']);
@@ -294,7 +324,8 @@ if (!empty($_POST)) {
                                         'user_agent' => $user_agent ?? ''
                                     ]);
                                     unset($_SESSION[$currentSessionName]);
-                                    $errors[] = lang("2FA_ERR_INVALID_CODE");
+                                    $clearReauthConfirmation();
+                                    $errors[] = $totpUnavailableMsg ?: lang("2FA_ERR_INVALID_CODE");
                                     unset($_SESSION[$currentSessionName . '_totp_user_id_to_verify']);
                                     unset($_SESSION[$currentSessionName . '_totp_remember_me']);
                                     $awaitingTOTP = false;
@@ -303,6 +334,7 @@ if (!empty($_POST)) {
                                 // TOTP required but not provided — start two-step verification.
                                 // _login_dest was already set by securePage(); it carries through the form resubmit.
                                 unset($_SESSION[$currentSessionName]);
+                                $clearReauthConfirmation();
                                 $_SESSION[$currentSessionName . '_totp_user_id_to_verify'] = $tempUser->data()->id;
                                 $_SESSION[$currentSessionName . '_totp_remember_me'] = $remember;
 
@@ -321,6 +353,7 @@ if (!empty($_POST)) {
                                 'user_agent' => $user_agent ?? ''
                             ]);
                             $user = $tempUser; // isLoggedIn() must reflect the authenticated user for hooks and redirect logic
+                            $recordCompletedLogin($user);
 
                             // No TOTP required - complete normal login
                             $hooks = getMyHooks(['page' => 'loginSuccess']);
@@ -371,7 +404,7 @@ if (!empty($_POST)) {
 $dest = $_SESSION[$currentSessionName . '_login_dest'] ?? '';
 
 ?>
-<style media="screen">
+<style media="screen" nonce="<?=htmlspecialchars($userspice_nonce ?? '')?>">
     .img-responsive {
         width: 100% !important;
     }

@@ -10,7 +10,7 @@ use ElanRegistry\LogCategories;
  * VerificationConfigException
  *
  * Thrown when the verification system cannot be enabled because a required
- * prerequisite is not configured (currently the Brevo email integration).
+ * prerequisite is not ready (currently the Brevo email integration).
  *
  * Only raised by the "enable" gate — disabling verification never throws.
  * Consumed by ApiResponse::validationError() on the admin settings surface.
@@ -26,7 +26,7 @@ class VerificationConfigException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Verification cannot be enabled: the Brevo email integration is not configured.";
+        return "Verification cannot be enabled: the Brevo email integration is not ready.";
     }
 
     /**

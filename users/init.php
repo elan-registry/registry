@@ -15,6 +15,9 @@ session_set_cookie_params([
 ]);
 
 ini_set('session.cookie_httponly', 1);
+// UserSpice 6.1.7 sets strict mode only in its installer and init.example.php.
+// Existing installs keep their old init.php, so this file must set it.
+ini_set('session.use_strict_mode', '1');
 session_start();
 
 // Use Server::get() for validated, sanitized server variables

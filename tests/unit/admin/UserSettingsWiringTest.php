@@ -808,4 +808,84 @@ final class UserSettingsWiringTest extends TestCase
             'The success response must still carry the skipped car IDs for the caller'
         );
     }
+
+    // =========================================================================
+    // user_settings.php — remember-me token revocation after a password change
+    // (source inspection)
+    // =========================================================================
+
+    /**
+     * A password change must delete the user's `users_session` rows (the
+     * remember-me tokens), so that a stolen cookie stops working. The row
+     * delete is scoped to the acting user and runs after the password UPDATE.
+     *
+     * SOURCE-WIRING PIN, not a behavior test. A behavior test needs a real
+     * session, a CSRF token and the old password through the full page, which
+     * is too heavy here (see the class docblock). The pin fails if the DELETE
+     * is removed, loses its `user_id` scope, or moves before the password UPDATE.
+     */
+    public function testPasswordChangeRevokesRememberMeTokensAfterPasswordUpdate(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        $updatePos = strpos($content, "\$user->update(['password' => \$new_password_hash");
+        $this->assertNotFalse($updatePos, 'The password UPDATE must still exist in user_settings.php');
+
+        $deleteSql = "DELETE FROM users_session WHERE user_id = ?";
+        $deletePos = strpos($content, $deleteSql);
+        $this->assertNotFalse($deletePos, 'A password change must delete the user\'s users_session rows');
+        $this->assertSame(
+            $deletePos,
+            strrpos($content, $deleteSql),
+            'The users_session DELETE must appear exactly once'
+        );
+        $this->assertGreaterThan(
+            $updatePos,
+            $deletePos,
+            'The users_session DELETE must follow the password UPDATE'
+        );
+
+        $deleteStatement = substr($content, $deletePos, 160);
+        $this->assertStringContainsString(
+            '[$user->data()->id]',
+            $deleteStatement,
+            'The DELETE must bind the acting user\'s ID, not delete every user\'s tokens'
+        );
+        $this->assertStringContainsString(
+            '->error()',
+            $deleteStatement,
+            'A failed DELETE must be detected so the user is told the other devices stayed signed in'
+        );
+
+        // Bound the failure branch at its `} else {`, so text growth cannot
+        // push an assertion target out of a fixed-size window.
+        $elsePos = strpos($content, '} else {', $deletePos);
+        $this->assertNotFalse($elsePos, 'The DELETE failure branch must have an else branch for success');
+        $failureBranch = substr($content, $deletePos, $elsePos - $deletePos);
+        $this->assertStringContainsString(
+            "\$errors[] = 'Your password was changed, but saved sign-ins",
+            $failureBranch,
+            'The failure message must go to $errors, not $successes'
+        );
+        $this->assertStringNotContainsString(
+            'Password updated.',
+            $failureBranch,
+            'The window must end at the failure branch\'s own else, before the success message'
+        );
+        $this->assertStringContainsString(
+            'Contact the site administrator.',
+            $failureBranch,
+            'A failed DELETE must tell the user to contact the site administrator'
+        );
+        $this->assertStringNotContainsString(
+            'Sign out on other devices.',
+            $failureBranch,
+            'Signing out does not clear another device\'s token, so the message must not suggest it'
+        );
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_SECURITY',
+            $failureBranch,
+            'A failed DELETE leaves a stolen cookie valid, so it must be logged as a security event'
+        );
+    }
 }

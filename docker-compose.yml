@@ -129,7 +129,7 @@ services:
     # its web inbox at http://localhost:$MOCK_BREVO_HOST_PORT.
     # The maintained fork, pinned to an exact version so every checkout runs
     # the same mock. Why the fork, and how to upgrade: ENVIRONMENT.md.
-    image: ghcr.io/unibrain1/mock-brevo:1.2.0
+    image: ghcr.io/unibrain1/mock-brevo:1.4.0
     restart: "no"
     environment:
       MOCK_BREVO_DB_PATH: /app/data/brevo

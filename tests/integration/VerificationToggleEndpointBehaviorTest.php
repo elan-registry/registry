@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
-use Tests\Support\BrevoOverrideStub;
 
 /**
  * #1926: app/api/admin/verification-toggle.php at the HTTP layer. The key
@@ -191,7 +191,6 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
     // Admin POST enabling while brevoReady() false -> 422 naming the reason
     // =========================================================================
 
-    /** brevoReady() is false by construction in the integration test database. */
     public function testAdminEnablingWhileBrevoNotReadyGetsValidationErrorNamingBrevo(): void
     {
         $adminUserId = $this->createTestUser();
@@ -199,12 +198,36 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 
         $this->setSwitchEnabled(false);
 
-        $result = $this->invokeToggleEndpoint($adminUserId, '1');
+        // An empty API key makes Brevo not ready on every checkout, also one
+        // with ready plugin files. The finally block restores the key.
+        $existingKeyRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
+        $hasKeyRow = is_object($existingKeyRow) && isset($existingKeyRow->id);
+        if ($hasKeyRow) {
+            $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['', $existingKeyRow->id]);
+            $this->assertFalse($this->db->error(), 'Brevo key fixture write failed: ' . $this->db->errorString());
+        }
 
-        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertFalse($result['status'], 'Enabling must be refused when Brevo is not configured: ' . $result['raw']);
-        $this->assertStringContainsString('Brevo', $result['message'], 'The validation error must name Brevo as the failed prerequisite');
-        $this->assertFalse($this->currentSwitchState(), 'Setting must remain unchanged after a rejected enable attempt');
+        try {
+            $this->assertNotNull(
+                (new VerificationSettings($this->db))->brevoNotReadyReason(),
+                'Brevo must be not ready for this test'
+            );
+
+            $result = $this->invokeToggleEndpoint($adminUserId, '1');
+
+            $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+            $this->assertFalse($result['status'], 'Enabling must be refused when Brevo is not ready: ' . $result['raw']);
+            $this->assertStringContainsString('Brevo', $result['message'], 'The validation error must name Brevo as the failed prerequisite');
+            $this->assertFalse($this->currentSwitchState(), 'Setting must remain unchanged after a rejected enable attempt');
+        } finally {
+            if ($hasKeyRow) {
+                // Report, do not assert: an assert in finally would hide the test's own failure.
+                $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', [$existingKeyRow->key, $existingKeyRow->id]);
+                if ($this->db->error()) {
+                    fwrite(STDERR, 'Restoring the Brevo key failed: ' . $this->db->errorString() . PHP_EOL);
+                }
+            }
+        }
     }
 
     // =========================================================================
@@ -232,23 +255,28 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 
     public function testAdminCanEnableWhenBrevoIsReady(): void
     {
-        // Simulate a ready Brevo for this test only, with guaranteed cleanup.
-        $overridePath = dirname(__DIR__, 2) . '/usersc/plugins/sendinblue/override.php';
-        $overrideCreatedByThisTest = !file_exists($overridePath);
-
+        // The test saves an API key. The other readiness checks use the real
+        // plugin files on this checkout (see docs/development/ENVIRONMENT.md,
+        // "Brevo plugin local setup"). The finally block restores the key row.
         $keyInsertedByThisTest = false;
         $existingKeyRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
 
         try {
-            if ($overrideCreatedByThisTest) {
-                file_put_contents($overridePath, BrevoOverrideStub::CONTENT);
-            }
-
             if (is_object($existingKeyRow) && isset($existingKeyRow->id)) {
                 $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['sib-test-key', $existingKeyRow->id]);
             } else {
                 $this->db->insert('plg_sendinblue', ['key' => 'sib-test-key']);
                 $keyInsertedByThisTest = true;
+            }
+            $this->assertFalse($this->db->error(), 'Brevo key fixture write failed: ' . $this->db->errorString());
+
+            $brevoNotReadyReason = (new VerificationSettings($this->db))->brevoNotReadyReason();
+            if ($brevoNotReadyReason !== null) {
+                // A fail, not a skip: a skip would hide a bug that blocks enable.
+                $this->fail(
+                    'Brevo is not ready on this checkout (see ENVIRONMENT.md, "Brevo plugin local setup"): '
+                        . $brevoNotReadyReason
+                );
             }
 
             $adminUserId = $this->createTestUser();
@@ -261,9 +289,6 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
             $this->assertTrue($result['status'], 'Enabling must succeed when Brevo is fully ready: ' . $result['raw']);
             $this->assertTrue($this->currentSwitchState(), 'Switch must actually be on after a successful enable');
         } finally {
-            if ($overrideCreatedByThisTest && file_exists($overridePath)) {
-                unlink($overridePath);
-            }
             if ($keyInsertedByThisTest) {
                 $this->db->query('DELETE FROM plg_sendinblue WHERE `key` = ?', ['sib-test-key']);
             } elseif (is_object($existingKeyRow) && isset($existingKeyRow->id)) {

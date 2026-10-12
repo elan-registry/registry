@@ -35,12 +35,6 @@ after an item is written.
 
 ## Items
 
-### `.htaccess` + `usersc/login.php` (test coverage)
-
-- [ ] No test requests `/.git/HEAD` or `docker-compose.yml` (#2212, #2121 carried from Dev Environment). Add 403 checks to `tests/playwright/e2e/not-logged-in.spec.js`. (found in /finish-milestone v2.30.4)
-- [ ] No unit test asserts that `index.php` starts with `<?php` (no leading bytes). (found in /finish-milestone v2.30.4)
-- [ ] The #2189 `login.php` change (`$knownIdentifier` and `(unrecognised)` in `checkRateLimit`/`handleAuthFailure`) has only integration coverage, which CI does not run. Add a source-wiring pin test under `tests/unit/security/`. (found in /finish-milestone v2.30.4)
-
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -77,6 +71,15 @@ after an item is written.
 
 - [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Catch `CarDatabaseException`: an uncaught one turns a logged redirect into a 500. Keep the redirect to `/` on not-found (from #2002)
 
+### `app/views/_email_paused_notice.php`
+
+- [ ] No dedicated unit test for the partial's own escaping/copy branches: a hostile address string, date-omitted text when no audit row exists, overflow pluralization ("is"/"are"), "and N more" join text. Playwright covers some rendering end to end but does not target these branches directly. (found while working on #1899)
+- [ ] No Playwright test that changing the underlying flagged-car data re-shows a notice the owner already dismissed in the same session — the `contentHash`-driven re-show behavior `EmailNoticeBuilder`'s own docblock promises. (found while working on #1899)
+
+### `docs/development/CLASSES.md` + `usersc/classes/Cron/BrevoEventReconciliationClient.php` + `usersc/classes/Cron/BrevoSuppressionSyncClient.php`
+
+- [ ] Say "no API key" in place of "Brevo unconfigured" / "not configured" in the docblocks and comments (clients ~L33, 36, 191, 200, 212 and ~L44, 208, 217, 229; CLASSES.md ~L2206). The clients check only the key, so "configured" now reads like the six-check readiness gate. (found in /finish-milestone v2.30.6)
+
 ### `error/500.php`
 
 - [ ] Restore a unit pin: all nine status codes (400/401/403/404/405/408/500/502/504) have entries in both `$errorMessages` and `$logCategoryMap` (from #2169)
@@ -89,6 +92,12 @@ after an item is written.
 
 - [ ] Delete the directory (capture receiver, send-test CLI, README). Its README says it stays "until #1887 ships its own fixtures". #1887 is closed, and the Brevo payload fixtures now live in `BrevoWebhookEventProcessorTest.php` and `EmailEventApplierTest.php`. `scripts/spike-1888/brevo-webhook-capture.php` covers the same capture job. (found in the #2208 audit)
 - [ ] Update the two pointers in `docs/development/EMAIL_SYSTEM.md` (~746, ~814). (found in the #2208 audit)
+
+### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
+
+- [ ] No test covers the webhook gate (`app/api/webhooks/brevo.php`, `brevoReady()`) with a plugin below 1.8.0: a 200 response, the dropped event, and the `VerificationConfigWarning` log line. (found in #2184)
+- [ ] `BrevoWebhookEndpointTest.php` ~L297: the not-ready log `LIKE` pattern includes an em dash, so a non-utf8mb4 `logs.lognote` column would show as a count mismatch, not a clear error. Match on the ASCII part of the text only. (found in /finish-milestone v2.30.6)
+- [ ] The not-ready tests empty the API key and restore it in `finally`. A fatal error or a killed run skips `finally` and leaves `key = ''`, which the bootstrap sweep does not report (it deletes only `sib-test-key` rows). Readiness does not change, but the toggle test's original key is lost. Update the crash-recovery comment in `tests/bootstrap-integration.php` (~L430-445) or make the sweep report empty-key rows. (found in /finish-milestone v2.30.6)
 
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
@@ -105,6 +114,18 @@ after an item is written.
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
 - [ ] The `action=fetchImages`/`action=removeImages` string match used to filter `save.php` route interception (5 call sites, e.g. ~line 985) checks for the literal substring `action=fetchImages` in the raw POST body. The real body is `multipart/form-data`, where the field looks like `name="action"\r\n\r\nfetchImages`, so the substring check can never match. Each site is safe today only because of request-timing luck (the matched call runs before the route is registered, or no other `save.php` call happens in that window) — found during #2295's review. Switch each to `postData.includes('fetchImages')` / `includes('removeImages')` (or parse the multipart `action` field) so the filter is correct on its own, not by accident of timing. (found in #2295)
+
+### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
+
+- [ ] No test asserts the Brevo row of the Verification tab: "Ready" / "Not ready" badge, the `brevoNotReadyReason()` text, and the log hint that shows only when the probe threw. (found in #2184)
+
+### `tests/unit/admin/VerificationBannerReasonTest.php` (test coverage)
+
+- [ ] The "never echo unescaped" regexes miss `<?= htmlspecialchars($y) . $verificationBrevoNotReadyReason ?>` and `printf(...)`, and `[^;]*` can match across lines into comment text. Count the variable's uses in `app/admin/index.php` and assert each one is known. (found in /finish-milestone v2.30.6)
+
+### `tests/unit/cars/services/VerificationSettingsTest.php` + `tests/unit/classes/Email/BrevoDevOverrideTest.php` (test coverage)
+
+- [ ] `VerificationSettingsTest.php:291` matches only `/Brevo/i`, so any refusal reason passes; assert the exact reason. `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
 
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
@@ -123,6 +144,14 @@ after an item is written.
 ### `usersc/classes/ApiResponse.php`
 
 - [ ] In `buildAndEmitHeaders()`, the `JsonException` fallback keeps the status code that was set before `json_encode()`, so a `success()` response can send HTTP 200 with a `success:false` body. Set 500 in the fallback when headers are not sent (from #1793)
+
+### `usersc/classes/Car/VerificationBatchSender.php` (test coverage)
+
+- [ ] No test covers a batch while Brevo is not ready (plugin below 1.8.0): no email sent, every car in `failed` with the Brevo reason, no vericode rotation. Only `CarVerificationSendService::sendOne()` has that test. (found in #2184)
+
+### `usersc/classes/Car/VerificationSettings.php`
+
+- [ ] ~L556 comment says the Brevo state is "not 'not configured'"; say "not 'not ready'" to match `brevoNotReadyReason()`. (found in /finish-milestone v2.30.6)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
@@ -176,9 +205,14 @@ after an item is written.
 - [ ] line 25 — same `(Issue #237)` pattern (from #1978)
 - [ ] line 34 — restates the line below it (from #1978)
 
-### `usersc/join.php`
+### `usersc/includes/rate_limits_dev_override.php`
 
-- [ ] Replace 2 inline `preg_replace('/[\r\n\t]/', '', ...)` calls with `InputSanitizer::stripHeaderInjectionChars()`. Catch its `\RuntimeException` as `app/api/contact/send-owner-email.php` does (from #1786)
+- [ ] Rename to a general name such as `dev_overrides.php` and update its includes. The file also applies the Brevo SDK host override (#2184), so its name no longer describes its scope. (found in #2385)
+
+### `usersc/login.php` + `tests/bootstrap-integration.php`
+
+- [ ] Remove the pre-6.1.7 version guards after production runs UserSpice 6.1.7 (v2.30.9, #2088): `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)
+- [ ] No test runs a successful login and checks that `users.logins` goes up by exactly one (`$recordCompletedLogin` ~L107, called at ~L192, 302, 356); only the text check in `LoginWiringTest.php:129` covers the version-guarded count. (found in /finish-milestone v2.30.6)
 
 ### `usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php`
 

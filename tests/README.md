@@ -20,9 +20,9 @@ tests/
 │   ├── workflow/              # Multi-step workflows
 │   └── api/                   # API endpoints
 │
-├── regression/                # Legacy regression suite
-│
 ├── Support/                   # Shared test doubles (e.g. FakeDatabase)
+│
+├── fixtures/                  # Upstream patch files that tests load (e.g. sendinblue/)
 │
 ├── hooks/                     # Shell tests for scripts/ and git hooks
 │   └── lib/harness.sh         # Shared pass/fail harness (sourced, not run)
@@ -233,21 +233,41 @@ private static function routerBody(): string
 - Tests: `tests/unit/system/PhpBuiltinServerTest.php` (pure helpers) and
   `PhpBuiltinServerProcessTest.php` (real processes; runs in CI).
 
+### `UserscPageClient` — Session-Aware Requests to a `usersc/` Page
+
+A trait for an integration test that needs a real session and a session-bound CSRF token from a
+`usersc/` page (`login.php`, `join.php`). It starts one `PhpBuiltinServer` per test class and
+sends requests through a curl cookie jar. Call `startPageClient($page, $remoteAddr)` in `setUp()`,
+`stopPageClient()` in `tearDown()`, and `self::stopPageServer()` in `tearDownAfterClass()`. Then
+call `$this->request('GET'|'POST', $body)`. Examples: `LoginFailureLoggingTest`,
+`JoinRegistrationClosedTest`.
+
 ### `BrevoOverrideStub` — Sweep Leaked Brevo Test Stub
 
-Two integration tests (`BrevoWebhookEndpointTest`, `VerificationToggleEndpointBehaviorTest`) write
-the 6-byte `BrevoOverrideStub::CONTENT` to `usersc/plugins/sendinblue/override.php` to make
-`brevoReady()` return true (it checks only for a key row plus the file's existence). That path is
-gitignored, so a stub left behind by a crashed run becomes invisible to `git status` and silently
-changes the dev site's email routing: if the dev DB has a Brevo key row, the site sees Brevo as
-"ready" with an empty override.
+Before v2.30.6, two integration tests (`BrevoWebhookEndpointTest`,
+`VerificationToggleEndpointBehaviorTest`) wrote the 6-byte `BrevoOverrideStub::CONTENT` to
+`usersc/plugins/sendinblue/override.php`. The tests no longer write it. `brevoReady()` checks that
+`override.php` matches `override.RENAME.php`, so the stub cannot make Brevo ready. That path is
+gitignored, so `git status` does not show a stub that an older run leaked. While the stub is there,
+the dev site reports Brevo as not ready.
+
+The tests that need a ready Brevo save a test API key and use the real plugin files on the
+checkout, set up as in
+[ENVIRONMENT.md](../docs/development/ENVIRONMENT.md#brevo-plugin-local-setup). If Brevo is still
+not ready, these tests fail, and the failure message gives the reason from
+`brevoNotReadyReason()`. They fail and do not skip, because a skip exits 0 and would hide a
+readiness bug from the pre-push gate. The not-ready tests empty the API key, so they run on every
+checkout.
+
+`BrevoSiteRoot` by default also writes `BrevoOverrideStub::CONTENT` as both `override.RENAME.php` and
+`override.php` in a temporary site root, so that the two files have the same hash.
 
 At the start of each integration run, `tests/bootstrap-integration.php` calls
 `BrevoOverrideStub::sweep()`. It removes the file only on an exact byte-for-byte match with the
 stub, and prints a `NOTE:`. If the stub is present but cannot be removed, the bootstrap prints a
 `WARNING:` instead (checked with `BrevoOverrideStub::matches()`).
 
-A real override (a 1,193-byte copy of `override.RENAME.php`) and any near-miss such as `"<?php\n\n"`
+A real override (a copy of `override.RENAME.php`) and any near-miss such as `"<?php\n\n"`
 are never touched: deleting a real override would be far worse than leaving a stub behind. The class
 itself prints nothing, so the bootstrap owns the messages. Tests:
 `tests/unit/system/BrevoOverrideStubTest.php`.

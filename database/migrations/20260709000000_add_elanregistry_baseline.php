@@ -11,10 +11,10 @@ use Phinx\Migration\IrreversibleMigrationException;
  * This is the first migration in the chain and the schema-of-record for every
  * new environment. Provisioning is a two-step process:
  *
- *   1. `mysql < database/vendor/userspice-6.1.4-base.sql` — the vendored,
- *      unmodified stock UserSpice 6.1.4 structure (58 tables). Applied
- *      directly, not through Phinx, because it is third-party schema this
- *      project did not author.
+ *   1. `mysql < database/vendor/userspice-6.1.7-base.sql` — the vendored,
+ *      unmodified stock UserSpice 6.1.4 structure (58 tables), which is
+ *      unchanged through 6.1.7. Applied directly, not through Phinx,
+ *      because it is third-party schema this project did not author.
  *   2. `composer migrate` — this migration, then the deltas that follow it.
  *
  * Scope — 13 new tables, 3 audit triggers, and updates on 55 of the 58 stock

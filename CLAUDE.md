@@ -67,6 +67,8 @@ Cloudflare provides edge caching and CDN (US, EU, AU users).
   `docker compose exec -u www-data app <command>`. The container has no Node.js
   or git, so npm and git-hooks setup run on the host. Setup and ports:
   `ENVIRONMENT.md` "Docker Dev Environment".
+- Integration tests need the sendinblue plugin set up as in `ENVIRONMENT.md`,
+  "Brevo Plugin Local Setup". Without it, the Brevo tests fail.
 
 ```bash
 docker compose exec -u www-data app composer install

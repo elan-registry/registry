@@ -427,7 +427,8 @@ therefore match the checkout.
 `http://localhost:<APP_HOST_PORT>/`. At `http://127.0.0.1:<APP_HOST_PORT>/`,
 every URL that the app builds is wrong (`http://[127.0.0.1:8001]:8001/`). This
 includes canonical links, the sitemap, and email links. The cause is
-`Server::sanitize_host()` in upstream `users/classes/Server.php`. It reads
+`Server::sanitize_host()` in upstream `users/classes/Server.php` (installed
+UserSpice version: 6.1.7). It reads
 `127.0.0.1:8001` as a bare IPv6 address. Do not edit that file (#2231).
 
 Worktrees under `Registry-worktrees/` get the same treatment: give the
@@ -446,7 +447,7 @@ The stack has five services, plus the opt-in `cron` service (see step 6 of
 [Development Setup](#development-setup)). `app` runs PHP 8.4. `db` runs
 MySQL 8.0 and has no host port. `phpmyadmin` provides database inspection.
 `mock-brevo` runs the local mock of Brevo's transactional email API
-(`ghcr.io/unibrain1/mock-brevo:1.2.0`) and provides a web inbox. `landing`
+(`ghcr.io/unibrain1/mock-brevo:1.4.0`) and provides a web inbox. `landing`
 serves the landing page. Use the port table above. The `app` container reaches
 `mock-brevo` at `http://mock-brevo:8080/v3` on the `elan` network.
 
@@ -490,6 +491,36 @@ integration tests run `SET GLOBAL`, which needs this permission. See the
 comment in `docker/mysql-init/01-grant-all-elanregi-schemas.sql` for the
 test, mechanism, and failure mode. Add the same permission to the grant file
 for each new checkout.
+
+### Brevo Plugin Local Setup
+
+Git does not track the sendinblue plugin. A fresh clone does not have it. Do
+these steps once per clone, after the stack runs:
+
+1. Install the sendinblue plugin, version 1.8.0 or later, with the plugin
+   manager (Admin → Spice Shaker). Run its pending migrations on the plugin
+   page.
+2. Activate the plugin on the Plugins page. UserSpice loads `override.php`
+   only for an active plugin (`sendinblue = 1` in
+   `usersc/plugins/plugins.ini.php`).
+3. Activate the override. The file `usersc/plugins/sendinblue/override.php`
+   must equal `override.RENAME.php`. A plugin update does not change
+   `override.php`. After each update, open "Show file contents" under
+   "Override Update Available" on the plugin page. Then click "Replace my
+   override.php with the bundled version".
+4. Set "Tag untagged mail" to "Calling file name".
+5. Save a dummy API key (for example `local-test`) in the plugin.
+6. Set `BREVO_API_HOST=http://mock-brevo:8080/v3` in `.env`. Keep
+   `US_ENVIRONMENT=development`.
+
+**Warning:** Without `BREVO_API_HOST`, local mail goes to the REAL Brevo with
+the key you saved. With it, mail goes to mock-brevo and shows in its inbox.
+See [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#local-development) for details.
+
+The Verification tab shows "Brevo ready" only in this state. The Brevo
+integration tests (`BrevoWebhookEndpointTest`,
+`VerificationToggleEndpointBehaviorTest`) also need it. See
+[tests/README.md](../../tests/README.md#brevooverridestub--sweep-leaked-brevo-test-stub).
 
 ### PHP Version
 
@@ -692,7 +723,7 @@ dedicated test schema to protect the development database:
 - `.env.test.local.sample` — Template with safe defaults (tracked in repo)
 - `scripts/provision-schema.sh` — You can rerun this script when the schema
   changes, such as after a new migration. Each run drops and recreates only
-  the target schema. It then loads `database/vendor/userspice-6.1.4-base.sql`,
+  the target schema. It then loads `database/vendor/userspice-6.1.7-base.sql`,
   runs `composer migrate`, and loads the Phinx seeds. The script needs a
   `mysql` client on `$PATH` or a `MYSQL_BIN` value that points to one. Under
   Docker, run the script inside the `app` container (see "Docker Dev
@@ -808,26 +839,30 @@ for location geocoding. Nominatim does not need an API key.
 
 ## PHP Error Logging
 
-PHP logs errors, warnings, and fatal errors to separate files on test and
-production. Both servers use the mod_php SAPI.
+PHP writes errors, warnings, and fatal errors to a log outside the docroot.
 
-- **Test**: `/home/unibrain/php_error/test.elanregistry.org-php-error.log`
-- **Production**: `/home/unibrain/php_error/elanregistry.org-php-error.log`
+| Environment | `error_log` value | Set by |
+| --- | --- | --- |
+| Test | `/home/unibrain/php_error/test.elanregistry.org-php-error.log` | `.user.ini` in the test docroot |
+| Production | `/home/unibrain/php_error/elanregistry.org-php-error.log` | `.user.ini` in the production docroot |
+| Local Docker | empty (stderr). Read it with `docker compose logs app` | `docker/php.ini-overrides.ini` |
 
-The root `.htaccess` file selects the log destination during each Apache
-request. An `HTTP_HOST`-conditional `RewriteRule` sets the environment
-variable that `php_value error_log %{ENV:PHP_ERROR_LOG}` uses. The deploy
-process does not change this value. Git tracks one `.htaccess` file and
-deploys it to every environment. Search `.htaccess` for `PHP_ERROR_LOG` to
-find this rule.
+The test and production hosts run LiteSpeed with `lsphp`, not Apache
+mod_php (checked on the hosts on 2026-10-07, #2326). PHP reads the
+`.user.ini` file in each docroot. Each host has its own `.user.ini`, which
+exists only on the host. Git does not track it, so one tree deploys to both
+hosts. A deploy into the same docroot is expected to keep it, as for
+`usersc/vericode_secret.php`, which is also untracked (`DEPLOYMENT.md`). A
+deploy into a new directory needs a new `.user.ini`. lsphp reads `.user.ini`
+again only after `user_ini.cache_ttl` (default 300 seconds).
 
-The `<IfModule mod_php.c>` block does nothing if the server changes from
-mod_php to another SAPI, such as PHP-FPM. Apache skips unknown `IfModule`
-blocks without an error. If the error logs stop after a server or PHP change,
-check that the server still uses mod_php.
-
-Local Docker development uses PHP's default error log location inside the
-`app` container.
+Do not set `error_log` in `.htaccess`. On the hosts, LiteSpeed applied
+the #1768 `<IfModule mod_php.c>` block, and its `php_value` line overrode
+`.user.ini`. PHP did not expand the `%{ENV:...}` value. It wrote each error
+to a web-readable file named `%{ENV:PHP_ERROR_LOG}` in the directory of the
+failing script (#2326). `.htaccess` now denies that filename, and
+`tests/unit/regression/Issue2326HtaccessErrorLogRegressionTest.php` fails on
+any `php_value` or `php_flag` line that holds `%{`.
 
 ## Troubleshooting
 

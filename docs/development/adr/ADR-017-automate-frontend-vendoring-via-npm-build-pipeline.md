@@ -110,6 +110,8 @@ different, narrower terms:
    dependency to manage.** jQuery, Bootstrap, Font Awesome, and UserSpice's
    own DataTables/Chart.js copies (used only by UserSpice's own admin
    screens). Confirmed byte-identical to a stock UserSpice 6.1.4 install.
+   **Note (2026-10-12):** UserSpice 6.1.5 to 6.1.7 do not change
+   `users/js/`. The upstream diff has no `users/js` file.
 2. **Project-vendored via npm + `scripts/build.js`, drift-guarded by CI.**
    FilePond (core + 6 plugins), MapLibre GL, `@versatiles/style`, and — newly
    added by this ADR — DataTables (`datatables.net-bs5`,

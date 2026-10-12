@@ -7,18 +7,22 @@ namespace Tests\Support;
 /**
  * BrevoOverrideStub - byte-exact sweeper for the leaked Brevo override stub
  *
- * Two integration tests make `brevoReady()` return true by writing a 6-byte
- * file to `usersc/plugins/sendinblue/override.php`. That path is gitignored,
- * so `git status` never reveals a leaked copy, and a stub left behind by a
- * crashed or interrupted run silently changes the dev site's email routing.
- * Teardown/`finally` cleanup cannot cover a fatal, so the suite also sweeps
- * the path at bootstrap.
+ * Before v2.30.6, two integration tests wrote a 6-byte file to
+ * `usersc/plugins/sendinblue/override.php` to make `brevoReady()` return
+ * true. The tests no longer write it. The stub fails the override hash check,
+ * so it cannot make Brevo ready. A stub that an older run leaked can still be
+ * on a checkout. That path is gitignored, so `git status` does not show it.
+ * The integration bootstrap sweeps the path at the start of each run.
  *
- * The sweep is deliberately byte-exact: it removes only a file that is
- * precisely {@see self::CONTENT} and nothing else. A real override (a copy of
- * `override.RENAME.php`, 1,193 bytes) — or any hand-edited near-miss such as
- * `"<?php"`, `"<?php\r\n"` or `"<?php\n\n"` — is left untouched. Deleting
- * someone's real override would be far worse than leaving a stub behind.
+ * {@see BrevoSiteRoot} by default also writes {@see self::CONTENT} as both
+ * `override.RENAME.php` and `override.php` in a temporary site root, so that
+ * the two files have the same hash.
+ *
+ * The sweep is byte-exact: it removes only a file that is precisely
+ * {@see self::CONTENT}. It does not touch any other file: a real override (a
+ * copy of `override.RENAME.php`) or a hand-edited near-miss such as
+ * `"<?php"`, `"<?php\r\n"` or `"<?php\n\n"`. Deleting someone's real override
+ * would be far worse than leaving a stub behind.
  *
  * This class performs no output. When it deletes something it returns `true`
  * and the caller (`tests/bootstrap-integration.php`) emits the `NOTE:` to
@@ -38,11 +42,10 @@ namespace Tests\Support;
 final class BrevoOverrideStub
 {
     /**
-     * The exact byte sequence the integration tests write as the stub.
+     * The exact byte sequence of the stub.
      *
-     * Single definition of the literal: the tests that create the stub and the
-     * sweep that removes it must agree byte for byte, or the sweep stops working
-     * silently.
+     * Single definition of the literal: the sweep and the code that writes the
+     * stub must agree byte for byte, or the sweep stops working silently.
      *
      * @var string
      */

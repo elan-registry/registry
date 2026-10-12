@@ -15,6 +15,7 @@ use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\AbstractCronJobFakeDatabase;
+use Tests\Support\BrevoSiteRoot;
 use Tests\Support\VerificationSettingsFakeDatabase;
 
 require_once __DIR__ . '/../../Support/FakeDatabase.php';
@@ -60,6 +61,9 @@ final class SendVerificationBatchJobTest extends TestCase
 {
     private const CURRENT_USER_ID = 0;
 
+    /** Temp site root that holds the sendinblue plugin files, or null when none was made. */
+    private ?BrevoSiteRoot $brevoSiteRoot = null;
+
     protected function setUp(): void
     {
         global $mockLogEntries;
@@ -73,7 +77,19 @@ final class SendVerificationBatchJobTest extends TestCase
     protected function tearDown(): void
     {
         unset($GLOBALS['mockSentEmails'], $GLOBALS['mockEmailSendResult'], $GLOBALS['hookTestDb']);
+        $this->brevoSiteRoot?->remove();
         parent::tearDown();
+    }
+
+    /**
+     * Brevo-ready settings. The temp site root is made once per test, because
+     * makeSendSvc() can run more than once in a test. tearDown() removes it.
+     */
+    private function makeBrevoReadySettings(): VerificationSettings
+    {
+        $this->brevoSiteRoot ??= BrevoSiteRoot::create('send_batch_job_test_');
+
+        return $this->brevoSiteRoot->readySettings();
     }
 
     private function makeSettings(int $batchSize = 5): VerificationSettings
@@ -92,15 +108,14 @@ final class SendVerificationBatchJobTest extends TestCase
         // same repo double. CarVerificationEmailComposer is final and cannot
         // be doubled at all, so it too is constructed for real — with no
         // constructor args it builds its own EmailTemplate() internally.
-        // Neither is ever actually invoked by the tests in this file: every
-        // scenario here either fails/empties the eligibility query or is
-        // short-circuited before VerificationBatchSender::processBatch()
-        // reaches sendOne(), so these two collaborators exist only to satisfy
-        // CarVerificationSendService's constructor.
+        // The settings report Brevo ready, so a test that reaches sendOne()
+        // (testUnrecordedCarsAreFoldedIntoThePersistedFailedCount) gets past
+        // its Brevo guard to the send and the bookkeeping it asserts on.
         return new CarVerificationSendService(
             $repo,
             new CarVerificationManager($repo),
             new CarVerificationEmailComposer(),
+            $this->makeBrevoReadySettings(),
         );
     }
 

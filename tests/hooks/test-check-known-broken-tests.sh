@@ -128,4 +128,21 @@ else
     fail "failed lookup reports (lookup-failed)" "unexpected match line format: $OUTPUT"
 fi
 
+# --- Scenario 5: tag text in non-PHP files -> ignored, exit 0 ---------------
+# tests/README.md documents the tag and tests/hooks/*.sh hold it in heredoc
+# fixtures (this file included). Neither is a tagged test.
+rm -f "$SCRATCH_DIR/tests/LookupFailedTest.php"
+mkdir -p "$SCRATCH_DIR/tests/hooks"
+printf "Tag the test with \`#[Group('known-broken')]\`.\n" > "$SCRATCH_DIR/tests/README.md"
+printf "cat <<'EOF'\n#[Group('known-broken')]\nEOF\n" > "$SCRATCH_DIR/tests/hooks/test-fixture.sh"
+OUTPUT="$(cd "$SCRATCH_DIR" && "$SCRIPT" 2>/dev/null)"
+EXIT_CODE=$?
+assert "tag text in .md and .sh files exits 0" 0 "$EXIT_CODE"
+
+if [ -z "$OUTPUT" ]; then
+    pass "tag text in non-PHP files produces no output"
+else
+    fail "tag text in non-PHP files produces no output" "expected no output, got: $OUTPUT"
+fi
+
 harness_report

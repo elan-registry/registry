@@ -18,7 +18,7 @@ use PHPUnit\Framework\TestCase;
  * run under `US_ENVIRONMENT=development` would build a `Configuration` that
  * always points at the real Brevo API, and mock-brevo would never see the
  * request (see `docs/development/EMAIL_SYSTEM.md`, "What routes to
- * mock-brevo today").
+ * mock-brevo").
  *
  * Source inspection, not a behavioral test: the Brevo SDK ships inside the
  * gitignored sendinblue plugin (`usersc/plugins/sendinblue/vendor/`) and is

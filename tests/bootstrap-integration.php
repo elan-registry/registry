@@ -240,10 +240,28 @@ if (!isset($GLOBALS['user'])) {
 try {
     if (class_exists('DB')) {
         // Reset the DB singleton cache to force reconnection with corrected config
-        // The DB class caches the PDO connection, so we need to clear it to force a new one
-        $reflectionClass = new ReflectionClass(DB::class);
-        $instanceProperty = $reflectionClass->getProperty('_instance');
-        $instanceProperty->setValue(null, null); // static property: first arg is object (null), second is new value
+        // The DB class caches the PDO connection, so we need to clear it to force a new one.
+        // UserSpice 6.1.7 replaced the static $_instance with a keyed $_instances pool and
+        // added closeShared(). The reflection fallback keeps a pre-6.1.7 users/ working.
+        // hasMethod(), not method_exists(): PHPStan does not scan users/, so it reads
+        // method_exists(DB::class, ...) as always false.
+        //
+        // A failed reset aborts the run. Otherwise the outer catch would skip the
+        // database-identity check below, and $GLOBALS['db'] would keep whatever
+        // connection users/init.php opened.
+        try {
+            $reflectionClass = new ReflectionClass(DB::class);
+            if ($reflectionClass->hasMethod('closeShared')) {
+                DB::closeShared();
+            } else {
+                $instanceProperty = $reflectionClass->getProperty('_instance');
+                $instanceProperty->setValue(null, null); // static property: first arg is object (null), second is new value
+            }
+        } catch (\Throwable $e) {
+            fwrite(STDERR, "ERROR: Could not reset the DB singleton: {$e->getMessage()}\n");
+            fwrite(STDERR, "Refusing to proceed: the database-identity check cannot run without the reset.\n");
+            exit(1);
+        }
         fwrite(STDERR, "NOTE: Reset DB singleton cache for reinitialization\n");
 
         // Now create a fresh DB instance with the corrected configuration
@@ -345,9 +363,9 @@ try {
         }
     }
 } catch (Throwable $e) {
-    // Intentionally non-fatal (unlike the stricter inner catch above at the database-identity
-    // check, which does abort): this outer catch covers the DB-singleton-cache reset and
-    // reconnection attempt itself. If those steps fail, IntegrationTestCase::setUp()'s own
+    // Intentionally non-fatal (unlike the stricter inner catches above at the singleton reset
+    // and the database-identity check, which abort): this outer catch covers the reconnection
+    // attempt itself. If that step fails, IntegrationTestCase::setUp()'s own
     // DB::getInstance() + requireDatabase() will independently detect the same unreachable
     // database and skip tests gracefully — that's the authoritative check, this is just an
     // earlier best-effort reconnection step whose failure the real check will catch anyway.
@@ -458,12 +476,14 @@ try {
 // Sweep Leaked Brevo Override Stub (once per suite run)
 // ============================================================
 // usersc/plugins/sendinblue/override.php is gitignored and shared with the
-// dev app running on the same checkout — a run that dies mid-test before
-// restoring it leaves the 6-byte stub in place. brevoReady() needs only a key
-// row plus the file's existence, so a dev DB with a real key then sees Brevo
-// as "ready" with an empty override — a test artifact changing dev email
-// routing, invisible to `git status`. #2160's purge above
-// only covered the DB half of this same leak; this covers the file half.
+// dev app running on the same checkout. Before v2.30.6, two integration tests
+// wrote a 6-byte stub there, and a run that died mid-test left it in place.
+// The tests no longer write it, but an older run can have leaked one. The stub
+// fails the override hash check in brevoNotReadyReason(), so it cannot make
+// Brevo "ready". The dev site reports Brevo as not ready ("override file is
+// out of date") while the stub is there. git status does not show the file.
+// #2160's purge above covered the DB half of this same leak. This covers the
+// file half.
 // Touches no DB, so it runs outside that block's try: a DB failure inside the
 // purge block above doesn't skip this, and an unreachable DB or a failed
 // DB-identity check earlier in this file already exits loudly via exit(1)
@@ -474,8 +494,8 @@ if (\Tests\Support\BrevoOverrideStub::sweep($brevoOverridePath)) {
         . "(6-byte test artifact) — leftover from an interrupted run\n");
 } elseif (\Tests\Support\BrevoOverrideStub::matches($brevoOverridePath)) {
     fwrite(STDERR, "WARNING: Leaked Brevo override stub usersc/plugins/sendinblue/override.php "
-        . "could not be removed (check permissions) — the dev site will see Brevo as "
-        . "\"ready\" with an empty override\n");
+        . "could not be removed (check permissions) — the dev site will report Brevo "
+        . "as not ready until you remove it\n");
 }
 
 /**

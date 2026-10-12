@@ -308,8 +308,8 @@ Reasons:
   `scripts/ledger-orphans.sh` are gone.
 
 `scripts/ledger-items-for-files.sh` stays. It now reads the file and makes no
-`gh` call. Issue #2208 held the old ledger. Close it after v2.30.5 ships,
-because other branches still run the old commands.
+`gh` call. Issue #2208 held the old ledger. #2321 moved its last open items
+to the file, closed it, and deleted the `cleanup-ledger` label.
 
 ### The sprint file is gone
 

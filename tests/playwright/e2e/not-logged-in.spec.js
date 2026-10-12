@@ -703,6 +703,34 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
   });
 });
 
+test.describe('Origin deny rules for private files (#2326, #2212, #2121)', () => {
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'not-logged-in') {
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
+    }
+  });
+
+  // #1768 made PHP write errors to a file literally named %{ENV:PHP_ERROR_LOG}.
+  // Locally each path gets 403 only from a deny rule: the %{ENV rule denies
+  // even a missing file, and .git/HEAD and docker-compose.yml exist in the
+  // checkout. On a host the files may be absent (.deployignore strips
+  // docker-compose.yml, and the post-receive hook keeps .git outside the
+  // docroot), so 404 also passes there. Never 200.
+  [
+    '%25%7BENV:PHP_ERROR_LOG%7D',
+    'users/%25%7BENV:PHP_ERROR_LOG%7D',
+    '.git/HEAD',
+    'docker-compose.yml',
+  ].forEach((path) => {
+    test(`GET /${path} is denied`, async ({ request }) => {
+      const response = await request.get(path, { maxRedirects: 0 });
+      const allowed = IS_LOCAL_DEV_TIER ? [403] : [403, 404];
+      expect(allowed, `Expected ${allowed.join(' or ')} for /${path}, got ${response.status()}`)
+        .toContain(response.status());
+    });
+  });
+});
+
 test.describe('GSC 404 cleanup redirects (#1409)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
