@@ -140,8 +140,12 @@ Rules:
 - Run the migration with `runUp()` and `runDown()`. They call the migration as
   Phinx does: a migration with `change()` runs `change()`, and a table builder
   that was not saved fails the test. They write no `phinxlog` row, so a test can
-  run the same direction twice. They do not wrap the migration in a
-  transaction, so a migration that fails after some DML keeps those rows.
+  run the same direction twice. `MigrationSandbox::run()` lists the Phinx
+  steps they leave out, such as the transaction around the migration.
+- Insert the rows that the migration reads or changes. The sandbox runs no
+  seeds from `database/seeds/`, and the vendor SQL has no rows, so a table
+  holds only the rows that earlier migrations insert. An `UPDATE` on an empty
+  table changes 0 rows, and the test then passes without a real check.
 - Tests that change the sandbox run in one method or in a `#[Depends]` chain,
   so their order is fixed.
 - Run no DDL on the shared test schema. The base class compares the shared

@@ -261,8 +261,8 @@ final class MigrationSandbox
      * These Phinx steps are left out:
      * - The phinxlog row, so a test can run the same direction twice.
      * - preFlightCheck(): it only writes a warning, and the migration has no output.
-     * - The transaction around the migration. A migration that fails after some DML
-     *   keeps those rows here, where Phinx rolls them back.
+     * - The transaction around the migration. Under Phinx, DML after the last DDL
+     *   statement is discarded when a failed run's connection closes. Here it stays.
      * - The shouldExecute() skip in Manager::executeMigration(). No migration overrides it.
      *
      * @param 'up'|'down' $direction
