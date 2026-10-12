@@ -60,7 +60,7 @@
   },
   "homepage": "https://github.com/elan-registry/registry#readme",
   "dependencies": {
-    "@versatiles/style": "^6.0.1",
+    "@versatiles/style": "^6.4.0",
     "chart.js": "4.5.1",
     "datatables.net-bs5": "3.1.3",
     "datatables.net-fixedheader-bs5": "5.1.2",
