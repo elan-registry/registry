@@ -13,8 +13,8 @@ is current on local and test. Production receives all of this in v2.30.9.
   override active. ([#2184](https://github.com/elan-registry/registry/issues/2184))
 - The admin Verification tab and the enable toggle now show why Brevo is not
   ready. ([#2184](https://github.com/elan-registry/registry/issues/2184))
-- All mail now carries a Brevo tag, so the nightly reconciliation job reports
-  a higher `ignoredByTag` count. ([#2184](https://github.com/elan-registry/registry/issues/2184))
+- All mail now carries a Brevo tag, so once verification is enabled (v2.30.9)
+  the nightly reconciliation job reports a higher `ignoredByTag` count. ([#2184](https://github.com/elan-registry/registry/issues/2184))
 - Local and test run UserSpice 6.1.7, and production stays on 6.1.4 until v2.30.9.
   ([#2253](https://github.com/elan-registry/registry/issues/2253))
 

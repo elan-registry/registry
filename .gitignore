@@ -39,6 +39,8 @@ Elanegistry.sublime-project
 .user.ini
 USER.INI
 usersc/vericode_secret.php
+# UserSpice 6.1.7 per-host trusted proxy list (each host sets its own)
+usersc/includes/trusted_proxies.php
 # UserSpice updater temp file (spiceUpdateBegins writes it, the update deletes it)
 usersc/scripts/langFiles.json
 
