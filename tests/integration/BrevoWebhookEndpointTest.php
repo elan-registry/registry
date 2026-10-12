@@ -222,9 +222,16 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     private function cleanUpBrevoReadyFixture(): void
     {
         if ($this->brevoRowInsertedByTest) {
-            $this->db->query('DELETE FROM plg_sendinblue WHERE `key` = ?', ['sib-test-key']);
+            // By id, not by key: a failed restore can leave this row with an empty key.
+            $this->db->query('DELETE FROM plg_sendinblue WHERE id = ?', [$this->brevoFixtureRowId]);
         } elseif (is_object($this->existingBrevoRow) && isset($this->existingBrevoRow->id)) {
             $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', [$this->existingBrevoRow->key, $this->existingBrevoRow->id]);
+        } else {
+            return;
+        }
+        // Report, do not assert: this runs in tearDown(), after the test result.
+        if ($this->db->error()) {
+            fwrite(STDERR, 'Brevo fixture cleanup failed: ' . $this->db->errorString() . PHP_EOL);
         }
     }
 

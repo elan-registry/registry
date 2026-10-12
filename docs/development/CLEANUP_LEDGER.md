@@ -119,6 +119,10 @@ after an item is written.
 
 - [ ] No test asserts the Brevo row of the Verification tab: "Ready" / "Not ready" badge, the `brevoNotReadyReason()` text, and the log hint that shows only when the probe threw. (found in #2184)
 
+### `tests/unit/admin/VerificationBannerReasonTest.php` (test coverage)
+
+- [ ] The "never echo unescaped" regexes miss `<?= htmlspecialchars($y) . $verificationBrevoNotReadyReason ?>` and `printf(...)`, and `[^;]*` can match across lines into comment text. Count the variable's uses in `app/admin/index.php` and assert each one is known. (found in /finish-milestone v2.30.6)
+
 ### `tests/unit/cars/services/VerificationSettingsTest.php` + `tests/unit/classes/Email/BrevoDevOverrideTest.php` (test coverage)
 
 - [ ] `VerificationSettingsTest.php:291` matches only `/Brevo/i`, so any refusal reason passes; assert the exact reason. `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
