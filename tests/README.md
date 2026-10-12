@@ -20,8 +20,6 @@ tests/
 │   ├── workflow/              # Multi-step workflows
 │   └── api/                   # API endpoints
 │
-├── regression/                # Legacy regression suite
-│
 ├── Support/                   # Shared test doubles (e.g. FakeDatabase)
 │
 ├── fixtures/                  # Upstream patch files that tests load (e.g. sendinblue/)
@@ -246,16 +244,21 @@ call `$this->request('GET'|'POST', $body)`. Examples: `LoginFailureLoggingTest`,
 
 ### `BrevoOverrideStub` — Sweep Leaked Brevo Test Stub
 
-Two integration tests (`BrevoWebhookEndpointTest`, `VerificationToggleEndpointBehaviorTest`) write
-the 6-byte `BrevoOverrideStub::CONTENT` to `usersc/plugins/sendinblue/override.php` to make
-`brevoReady()` return true. They do this only when the checkout has no `override.php`. `brevoReady()`
-also checks that the plugin is active in `plugins.ini.php`, that `info.xml` shows version 1.8.0 or
-later, and that `override.php` matches `override.RENAME.php`. The 6-byte stub does not match a real
-`override.RENAME.php`, so these tests need a checkout with the real plugin files, set up as in
-[ENVIRONMENT.md](../docs/development/ENVIRONMENT.md#brevo-plugin-local-setup). That path is
-gitignored, so a stub left behind by a crashed run becomes invisible to `git status` and silently
-changes the dev site's email routing: if the dev DB has a Brevo key row, the site sees Brevo as
-"ready" with an empty override.
+Before v2.30.6, two integration tests (`BrevoWebhookEndpointTest`,
+`VerificationToggleEndpointBehaviorTest`) wrote the 6-byte `BrevoOverrideStub::CONTENT` to
+`usersc/plugins/sendinblue/override.php`. The tests no longer write it. `brevoReady()` checks that
+`override.php` matches `override.RENAME.php`, so the stub cannot make Brevo ready. That path is
+gitignored, so `git status` does not show a stub that an older run leaked. While the stub is there,
+the dev site reports Brevo as not ready.
+
+The tests that need a ready Brevo save a test API key and use the real plugin files on the
+checkout, set up as in
+[ENVIRONMENT.md](../docs/development/ENVIRONMENT.md#brevo-plugin-local-setup). If Brevo is still
+not ready, PHPUnit skips these tests. The skip message gives the reason from
+`brevoNotReadyReason()`.
+
+`BrevoSiteRoot` also writes `BrevoOverrideStub::CONTENT` as both `override.RENAME.php` and
+`override.php` in a temporary site root, so that the two files have the same hash.
 
 At the start of each integration run, `tests/bootstrap-integration.php` calls
 `BrevoOverrideStub::sweep()`. It removes the file only on an exact byte-for-byte match with the

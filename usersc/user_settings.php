@@ -628,9 +628,16 @@ if (!empty($_POST)) {
                         $user->update(['password' => $new_password_hash, 'force_pr' => 0, 'vericode' => hashVericode(randomstring(15)),], $user->data()->id);
                         // Revoke remember-me tokens so a stolen cookie stops working after the change.
                         if ($db->query('DELETE FROM users_session WHERE user_id = ?', [$user->data()->id])->error()) {
-                            $errors[] = 'Your password was changed. Sign out on other devices.';
-                            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                'Failed to revoke remember-me tokens after password change: ' . $db->errorString());
+                            // Signing out here does not clear another device's token. Only
+                            // deleting its users_session row does, so an admin must do it.
+                            $errors[] = 'Your password was changed, but saved sign-ins on other devices '
+                                . 'could not be cleared. Contact the site administrator.';
+                            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, sprintf(
+                                'Failed to revoke remember-me tokens after password change for user %d. '
+                                    . 'Delete this user\'s users_session rows: %s',
+                                (int)$user->data()->id,
+                                $db->errorString()
+                            ));
                         } else {
                             $successes[] = 'Password updated.';
                         }

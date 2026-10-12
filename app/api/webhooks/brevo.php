@@ -219,11 +219,15 @@ try {
         respondAndExit(200);
     }
 
-    if (!$settings->brevoReady()) {
+    // brevoReady() is brevoNotReadyReason() === null. One call gives the gate
+    // and the reason for the log from the same check.
+    $brevoNotReadyReason = $settings->brevoNotReadyReason();
+    if ($brevoNotReadyReason !== null) {
         respondAndExit(
             200,
             LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-            'Brevo webhook received but Brevo prerequisites are not met — event dropped.'
+            'Brevo webhook received but Brevo prerequisites are not met — event dropped. Reason: '
+                . $brevoNotReadyReason
         );
     }
 

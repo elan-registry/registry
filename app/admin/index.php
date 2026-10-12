@@ -96,13 +96,15 @@ try {
 }
 
 // Verification readiness banner. Only surfaces when the feature switch is ON:
-// an unconfigured Brevo means verification email has nowhere to go (danger),
+// a Brevo that is not ready means verification email has nowhere to go (danger),
 // a stalled cron only delays reminders (warning).
 $verificationBannerSeverity = null; // null | 'warning' | 'danger'
+$verificationBrevoNotReadyReason = null;
 try {
     $verificationSettings = new VerificationSettings(dbi());
     if ($verificationSettings->isEnabled()) {
-        if (!$verificationSettings->brevoReady()) {
+        $verificationBrevoNotReadyReason = $verificationSettings->brevoNotReadyReason();
+        if ($verificationBrevoNotReadyReason !== null) {
             $verificationBannerSeverity = 'danger';
         } elseif (!$verificationSettings->cronReady()) {
             $verificationBannerSeverity = 'warning';
@@ -1116,8 +1118,9 @@ if (ElanInput::existsPost()) {
                 <i class="fas fa-<?= $verificationBannerSeverity === 'danger' ? 'exclamation-circle' : 'exclamation-triangle' ?> me-2"></i>
                 <span>
                     <?php if ($verificationBannerSeverity === 'danger'): ?>
-                        <strong>Verification is enabled but Brevo is not configured.</strong>
+                        <strong>Verification is enabled but Brevo is not ready.</strong>
                         Verification emails cannot be sent.
+                        <?= htmlspecialchars((string) $verificationBrevoNotReadyReason, ENT_QUOTES, 'UTF-8') ?>
                     <?php else: ?>
                         <strong>Verification is enabled but the cron transport hasn't run recently.</strong>
                         Reminders may be delayed.

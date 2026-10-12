@@ -856,5 +856,22 @@ final class UserSettingsWiringTest extends TestCase
             $deleteStatement,
             'A failed DELETE must be detected so the user is told the other devices stayed signed in'
         );
+
+        $failureBranch = substr($content, $deletePos, 900);
+        $this->assertStringContainsString(
+            'Contact the site administrator.',
+            $failureBranch,
+            'A failed DELETE must tell the user to contact the site administrator'
+        );
+        $this->assertStringNotContainsString(
+            'Sign out on other devices.',
+            $failureBranch,
+            'Signing out does not clear another device\'s token, so the message must not suggest it'
+        );
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_DATABASE_ERROR',
+            $failureBranch,
+            'A failed DELETE must be logged so an admin can remove the rows'
+        );
     }
 }

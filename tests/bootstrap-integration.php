@@ -476,13 +476,14 @@ try {
 // Sweep Leaked Brevo Override Stub (once per suite run)
 // ============================================================
 // usersc/plugins/sendinblue/override.php is gitignored and shared with the
-// dev app running on the same checkout — a run that dies mid-test before
-// restoring it leaves the 6-byte stub in place. brevoReady() needs a key row,
-// the file's existence, and the plugin's own info.xml at 1.8.0 or later, so a
-// dev DB with a real key then sees Brevo as "ready" with an empty override —
-// a test artifact changing dev email routing, invisible to `git status`.
-// #2160's purge above
-// only covered the DB half of this same leak; this covers the file half.
+// dev app running on the same checkout. Before v2.30.6, two integration tests
+// wrote a 6-byte stub there, and a run that died mid-test left it in place.
+// The tests no longer write it, but an older run can have leaked one. The stub
+// fails the override hash check in brevoNotReadyReason(), so it cannot make
+// Brevo "ready". The dev site reports Brevo as not ready ("override file is
+// out of date") while the stub is there. git status does not show the file.
+// #2160's purge above covered the DB half of this same leak. This covers the
+// file half.
 // Touches no DB, so it runs outside that block's try: a DB failure inside the
 // purge block above doesn't skip this, and an unreachable DB or a failed
 // DB-identity check earlier in this file already exits loudly via exit(1)
@@ -493,8 +494,8 @@ if (\Tests\Support\BrevoOverrideStub::sweep($brevoOverridePath)) {
         . "(6-byte test artifact) — leftover from an interrupted run\n");
 } elseif (\Tests\Support\BrevoOverrideStub::matches($brevoOverridePath)) {
     fwrite(STDERR, "WARNING: Leaked Brevo override stub usersc/plugins/sendinblue/override.php "
-        . "could not be removed (check permissions) — the dev site will see Brevo as "
-        . "\"ready\" with an empty override\n");
+        . "could not be removed (check permissions) — the dev site will report Brevo "
+        . "as not ready until you remove it\n");
 }
 
 /**

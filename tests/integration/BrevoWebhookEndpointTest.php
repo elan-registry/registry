@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
-use Tests\Support\BrevoOverrideStub;
 use Tests\Support\PhpBuiltinServer;
 
 /**
@@ -171,17 +171,20 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     /** @var object|array<string, mixed>|null Snapshot of the existing plg_sendinblue row (if any), for restoration. */
     private object|array|null $existingBrevoRow = null;
     private bool $brevoRowInsertedByTest = false;
-    private bool $brevoOverrideCreatedByTest = false;
 
-    /** Makes VerificationSettings::brevoReady() report true. */
+    /** Why Brevo is not ready after makeBrevoReady(), or null if it is ready. */
+    private ?string $brevoNotReadyReason = null;
+
+    /**
+     * Saves a test API key in plg_sendinblue.
+     *
+     * The other readiness checks use the real plugin files on this checkout
+     * (see docs/development/ENVIRONMENT.md, "Brevo plugin local setup"). If
+     * they fail, brevoReady() stays false and a test that calls
+     * skipUnlessBrevoReady() is skipped.
+     */
     private function makeBrevoReady(): void
     {
-        $overridePath = self::$projectRoot . '/usersc/plugins/sendinblue/override.php';
-        $this->brevoOverrideCreatedByTest = !file_exists($overridePath);
-        if ($this->brevoOverrideCreatedByTest) {
-            file_put_contents($overridePath, BrevoOverrideStub::CONTENT);
-        }
-
         $this->existingBrevoRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
 
         if (is_object($this->existingBrevoRow) && isset($this->existingBrevoRow->id)) {
@@ -191,16 +194,22 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             $this->db->insert('plg_sendinblue', ['key' => 'sib-test-key']);
             $this->brevoRowInsertedByTest = true;
         }
+
+        $this->brevoNotReadyReason = (new VerificationSettings($this->db))->brevoNotReadyReason();
+    }
+
+    /** Skips a test that needs the webhook to pass the Brevo readiness gate. */
+    private function skipUnlessBrevoReady(): void
+    {
+        if ($this->brevoNotReadyReason !== null) {
+            $this->markTestSkipped(
+                'Brevo is not ready on this checkout, so the webhook drops the event: ' . $this->brevoNotReadyReason
+            );
+        }
     }
 
     private function cleanUpBrevoReadyFixture(): void
     {
-        $overridePath = self::$projectRoot . '/usersc/plugins/sendinblue/override.php';
-
-        if ($this->brevoOverrideCreatedByTest && file_exists($overridePath)) {
-            unlink($overridePath);
-        }
-
         if ($this->brevoRowInsertedByTest) {
             $this->db->query('DELETE FROM plg_sendinblue WHERE `key` = ?', ['sib-test-key']);
         } elseif (is_object($this->existingBrevoRow) && isset($this->existingBrevoRow->id)) {
@@ -264,21 +273,23 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->setSwitchEnabled(true);
         $this->cleanUpBrevoReadyFixture(); // undo setUp()'s makeBrevoReady() for this test only
 
-        $before = $this->countMatchingLogs(
-            LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-            '%Webhook received but Brevo prerequisites are not met%'
-        );
+        $reason = (new VerificationSettings($this->db))->brevoNotReadyReason();
+        if ($reason === null) {
+            $this->markTestSkipped('Brevo is ready on this checkout without the test key, so the gate cannot be tested.');
+        }
+
+        // The reason is part of the LIKE pattern, so escape its LIKE wildcards.
+        $logPattern = '%Webhook received but Brevo prerequisites are not met — event dropped. Reason: '
+            . addcslashes($reason, '%_\\') . '%';
+        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $logPattern);
 
         $result = $this->postAuthorized($this->taggedPayload());
 
         $this->assertGreaterThanOrEqual(200, $result['status']);
         $this->assertLessThan(300, $result['status'], 'Brevo-not-ready must still respond 2xx');
 
-        $after = $this->countMatchingLogs(
-            LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-            '%Webhook received but Brevo prerequisites are not met%'
-        );
-        $this->assertSame($before + 1, $after, 'Brevo-not-ready must log exactly one refusal');
+        $after = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $logPattern);
+        $this->assertSame($before + 1, $after, 'Brevo-not-ready must log exactly one refusal that names the reason');
 
         $this->makeBrevoReady();
     }
@@ -347,6 +358,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     public function testCorrectTokenWithListBodyIsMalformed(): void
     {
+        $this->skipUnlessBrevoReady();
+
         $result = $this->postAuthorized(json_encode([1, 2, 3]));
 
         $this->assertGreaterThanOrEqual(400, $result['status']);
@@ -355,6 +368,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     public function testCorrectTokenWithUntaggedPayloadIsAcceptedButNotRecorded(): void
     {
+        $this->skipUnlessBrevoReady();
+
         $email = 'untagged-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
 
@@ -381,6 +396,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     public function testCorrectTokenWithTaggedPayloadMatchingNoCarIncrementsUnmatchedCounter(): void
     {
+        $this->skipUnlessBrevoReady();
+
         $before = $this->unmatchedCounter();
 
         $result = $this->postAuthorized($this->taggedPayload());
@@ -398,6 +415,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     public function testCorrectTokenWithHardBounceMatchingCarSetsEmailBouncedAndAddressTogether(): void
     {
+        $this->skipUnlessBrevoReady();
+
         $email = 'hardbounce-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
         $messageId = 'msg-' . uniqid();
@@ -440,6 +459,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
      */
     public function testHardBounceWebhookExcludesCarFromVerificationEligibleSet(): void
     {
+        $this->skipUnlessBrevoReady();
+
         $email = 'bouncejourney-' . uniqid() . '@example.com';
         $staleDate = date('Y-m-d H:i:s', strtotime('-3 years'));
         $carId = $this->createFixtureCarWithEmail($email, [
@@ -473,6 +494,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     public function testCorrectTokenWithSpamMatchingCarSetsEmailSuppressed(): void
     {
+        $this->skipUnlessBrevoReady();
+
         $email = 'spam-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
         $messageId = 'msg-' . uniqid();
@@ -497,6 +520,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
     public function testDuplicateDeliveryProducesExactlyOneEventRow(): void
     {
+        $this->skipUnlessBrevoReady();
+
         $email = 'dup-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
         $messageId = 'msg-' . uniqid();
@@ -841,6 +866,8 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
      */
     public function testGenuineDbWriteFailureRespondsWithServerError(): void
     {
+        $this->skipUnlessBrevoReady();
+
         $email = 'dberror-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
 

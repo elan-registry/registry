@@ -21,7 +21,7 @@ always open.
 
 **Plugin version:** The registry uses the upstream plugin unmodified. It needs
 version 1.8.0 or later. Git tracks no file under `usersc/plugins/sendinblue/`
-(the whole plugin is gitignored), and the project has no fork. Install and
+(the whole plugin is gitignored), and the project has no fork of the plugin. Install and
 update the plugin with the plugin manager. Deploy steps are in
 [DEPLOYMENT.md](DEPLOYMENT.md#brevo-sendinblue-plugin).
 
@@ -376,7 +376,8 @@ try {
     $settings->setEnabled(true, $userId);  // throws if brevoReady() is false
 } catch (VerificationConfigException $e) {
     // The exception already logged the refusal internally; surface its
-    // user-facing message (e.g. "Brevo is not configured") in the response.
+    // user-facing message in the response, for example "Verification cannot
+    // be enabled. No API key is saved in the Brevo plugin."
     return ApiResponse::validationError(['enabled' => $e->getUserMessage()], $e->getUserMessage());
 }
 

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
-use Tests\Support\BrevoOverrideStub;
 
 /**
  * #1926: app/api/admin/verification-toggle.php at the HTTP layer. The key
@@ -202,7 +202,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         $result = $this->invokeToggleEndpoint($adminUserId, '1');
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertFalse($result['status'], 'Enabling must be refused when Brevo is not configured: ' . $result['raw']);
+        $this->assertFalse($result['status'], 'Enabling must be refused when Brevo is not ready: ' . $result['raw']);
         $this->assertStringContainsString('Brevo', $result['message'], 'The validation error must name Brevo as the failed prerequisite');
         $this->assertFalse($this->currentSwitchState(), 'Setting must remain unchanged after a rejected enable attempt');
     }
@@ -232,23 +232,25 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 
     public function testAdminCanEnableWhenBrevoIsReady(): void
     {
-        // Simulate a ready Brevo for this test only, with guaranteed cleanup.
-        $overridePath = dirname(__DIR__, 2) . '/usersc/plugins/sendinblue/override.php';
-        $overrideCreatedByThisTest = !file_exists($overridePath);
-
+        // The test saves an API key. The other readiness checks use the real
+        // plugin files on this checkout (see docs/development/ENVIRONMENT.md,
+        // "Brevo plugin local setup"). The finally block restores the key row.
         $keyInsertedByThisTest = false;
         $existingKeyRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
 
         try {
-            if ($overrideCreatedByThisTest) {
-                file_put_contents($overridePath, BrevoOverrideStub::CONTENT);
-            }
-
             if (is_object($existingKeyRow) && isset($existingKeyRow->id)) {
                 $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['sib-test-key', $existingKeyRow->id]);
             } else {
                 $this->db->insert('plg_sendinblue', ['key' => 'sib-test-key']);
                 $keyInsertedByThisTest = true;
+            }
+
+            $brevoNotReadyReason = (new VerificationSettings($this->db))->brevoNotReadyReason();
+            if ($brevoNotReadyReason !== null) {
+                $this->markTestSkipped(
+                    'Brevo is not ready on this checkout, so the enable path cannot be tested: ' . $brevoNotReadyReason
+                );
             }
 
             $adminUserId = $this->createTestUser();
@@ -261,9 +263,6 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
             $this->assertTrue($result['status'], 'Enabling must succeed when Brevo is fully ready: ' . $result['raw']);
             $this->assertTrue($this->currentSwitchState(), 'Switch must actually be on after a successful enable');
         } finally {
-            if ($overrideCreatedByThisTest && file_exists($overridePath)) {
-                unlink($overridePath);
-            }
             if ($keyInsertedByThisTest) {
                 $this->db->query('DELETE FROM plg_sendinblue WHERE `key` = ?', ['sib-test-key']);
             } elseif (is_object($existingKeyRow) && isset($existingKeyRow->id)) {
