@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
  * #[Depends] chain, so their order is fixed.
  *
  * This class does not extend IntegrationTestCase: that class binds to the shared
- * schema and skips when the database is absent. Here a missing database fails.
+ * schema and can skip when the database is absent. Here a missing database fails.
  *
  * The class also takes a fingerprint of the shared schema's columns and triggers
  * before and after the class, and fails when they differ. This detects column or

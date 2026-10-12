@@ -137,10 +137,11 @@ Rules:
   version before the migration. To test `down()`, use the migration's own
   version.
 - Write one class for each start version.
-- Run the migration with `runUp()` and `runDown()`. They do the same steps as
-  Phinx: a migration with `change()` runs `change()`, and a table builder that
-  was not saved fails the test. They write no `phinxlog` row, so a test can run
-  the same direction twice.
+- Run the migration with `runUp()` and `runDown()`. They call the migration as
+  Phinx does: a migration with `change()` runs `change()`, and a table builder
+  that was not saved fails the test. They write no `phinxlog` row, so a test can
+  run the same direction twice. They do not wrap the migration in a
+  transaction, so a migration that fails after some DML keeps those rows.
 - Tests that change the sandbox run in one method or in a `#[Depends]` chain,
   so their order is fixed.
 - Run no DDL on the shared test schema. The base class compares the shared
@@ -181,7 +182,7 @@ final class AddExampleColumnSandboxTest extends MigrationSandboxTestCase
 ```
 
 The sandbox tests run with the integration tests: `composer test:integration`,
-`composer test:medium` (which also runs the unit tests), and the pre-push hook
+`composer test:medium` (the unit tests plus `tests/integration/database`), and the pre-push hook
 when the push changes PHP under `app/`, `usersc/classes/`, `tests/integration/`,
 or `database/migrations/`. They do not run in CI.
 

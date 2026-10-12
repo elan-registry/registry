@@ -253,13 +253,17 @@ final class MigrationSandbox
     }
 
     /**
-     * Run one direction of a bound migration, with the same steps as Phinx
+     * Run one direction of a bound migration, with the same method dispatch as Phinx
      * Environment::executeMigration(). A migration with change() runs change() and
      * ignores up() and down(), as in Phinx, so the test runs the code that
      * `composer migrate` runs.
      *
-     * No phinxlog row is written, so a test can run the same direction twice.
-     * preFlightCheck() is left out: it only writes a warning, and the migration has no output.
+     * These Phinx steps are left out:
+     * - The phinxlog row, so a test can run the same direction twice.
+     * - preFlightCheck(): it only writes a warning, and the migration has no output.
+     * - The transaction around the migration. A migration that fails after some DML
+     *   keeps those rows here, where Phinx rolls them back.
+     * - The shouldExecute() skip in Manager::executeMigration(). No migration overrides it.
      *
      * @param 'up'|'down' $direction
      *

@@ -135,7 +135,9 @@ after an item is written.
 
 - [ ] No self-test covers the `migrateTo()` unknown-version pre-check (~L190) or the `phinxlog` post-check (~L209), the non-PDO guard in `connect()` (~L455), or the drop-on-failure path in `MigrationSandboxTestCase::setUpBeforeClass()`. A later edit can remove a guard and the suite stays green (found in #2167)
 - [ ] `testFingerprintDetectsAColumnChange` changes a column only. Add a `DROP TRIGGER` case, so a broken `TRIGGERS` query in `fingerprint()` fails a test (found in #2167)
-- [ ] When the cleanup drop also fails, `create()` (~L132) and `MigrationSandboxTestCase::setUpBeforeClass()` keep the drop error as message text only, and the second message does not name the leaked schema. `getMigrations('default')` (~L190) runs outside the `try`, so a Phinx error there has no sandbox or version context. `migrateTo(0)` is refused, although Phinx reads 0 as "roll back all": document it in `@throws` (found in #2167)
+- [ ] When the cleanup drop also fails, `create()` (~L132) and `MigrationSandboxTestCase::setUpBeforeClass()` keep the drop error as message text only, not as an exception. The `setUpBeforeClass()` message does not name the leaked schema itself (found in #2167)
+- [ ] `getMigrations('default')` (~L190) runs outside the `try`, so a Phinx error there has no sandbox or version context (found in #2167)
+- [ ] `migrateTo(0)` is refused, although Phinx reads 0 as "roll back all": document it in `@throws` (found in #2167)
 
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
