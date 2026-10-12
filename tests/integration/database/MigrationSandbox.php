@@ -264,8 +264,7 @@ final class MigrationSandbox
      * - The START TRANSACTION around the migration. Phinx never rolls it back: after a
      *   failure, the server discards the transaction that is still open when the process
      *   ends. Here no outer transaction exists, so a failed migration can keep rows that
-     *   Phinx would discard. A transaction that the migration opens and does not commit
-     *   stays open on pdo() until the last reference to the sandbox PDO is released.
+     *   Phinx would discard.
      * - The shouldExecute() skip in Manager::executeMigration(). No migration overrides it.
      *
      * @param 'up'|'down' $direction
