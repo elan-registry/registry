@@ -151,7 +151,7 @@ class EmailEventApplier
         ?string $reason,
         string $messageId,
         string $occurredAt,
-        string $source = DeliverabilityFlagLog::SOURCE_WEBHOOK
+        string $source
     ): void {
         DeliverabilityFlagLog::assertValidSource($source);
 

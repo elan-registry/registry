@@ -1505,8 +1505,9 @@ unit test (needs the full UserSpice bootstrap).
 **Purpose**: Site-wide feature switch and readiness probes for the car
 verification system — kept separate from `CarVerificationManager` above:
 this class owns one global config row plus two infrastructure probes
-(Brevo, cron), while `CarVerificationManager` mutates per-car records. No
-shared state or dependency exists between the two.
+(Brevo, cron), while `CarVerificationManager` writes per-car verification
+fields and the owner's email flags on `profiles`. No shared state or
+dependency exists between the two.
 
 **Key Features**:
 
@@ -1820,11 +1821,12 @@ both paths must escalate identically.
 **Methods**:
 
 - `apply(int $carId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt,
-  string $source = DeliverabilityFlagLog::SOURCE_WEBHOOK): void`
+  string $source): void`
   — Record the event and apply escalation. `$source` goes into the flag-change
-  log row. The reconciliation job passes `reconciliation` and the suppression
-  import passes `import`. Throws `InvalidArgumentException` for an unknown
-  `$source` (nothing is written) and `CarDatabaseException` on write failure
+  log row. It has no default. The webhook passes `webhook`, the reconciliation
+  job passes `reconciliation`, and the suppression import passes `import`.
+  Throws `InvalidArgumentException` for an unknown `$source` (nothing is
+  written) and `CarDatabaseException` on write failure
 
 **Used By**:
 

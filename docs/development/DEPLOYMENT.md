@@ -423,11 +423,8 @@ Follow these rules for the deploy:
    the migration has run.
 2. **Back up before the push.** Export `cars`, `cars_hist`, `profiles` and
    `deleted_accounts_archive` through the host's phpMyAdmin (structure and
-   data). A code rollback needs this backup (see "Rollback Procedure").
-   `down()` restores the columns and copies the flags back to the owner's
-   cars. It cannot restore the old `cars_hist` values, the block cause and
-   dates, a flag dropped because it named an old address, or a flag on a
-   `noowner` car.
+   data). A code rollback needs this backup (see "Rollback Procedure" and
+   "Roll Back This Migration" below).
 3. **Turn the webhook and the cron jobs off.** Turn off the verification
    feature switch in the Verification tab (see
    [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#asymmetric-enabledisable-gate)). The same
@@ -461,6 +458,31 @@ After the deploy, check on the target database:
 - `SHOW COLUMNS FROM cars LIKE 'email%'` returns only `email`.
 - `SHOW TRIGGERS LIKE 'cars'` returns 3 rows.
 - `SHOW INDEX FROM profiles WHERE Key_name = 'uniq_profiles_user_id'` returns one row.
+
+#### Roll Back This Migration
+
+Restore the backup from rule 2, then push the previous code. Do not use
+`composer migrate:rollback` on the server: after a deploy, the post-receive
+hook removes `composer.json` and `database/` (`.deployignore`), so the
+command and the migration files are not there.
+
+1. Turn off the verification feature switch, as in rule 3.
+2. In the host's phpMyAdmin, drop the tables `cars`, `cars_hist`, `profiles`
+   and `deleted_accounts_archive`. Import the rule-2 export.
+3. Delete the migration records, so that the next deploy runs the migration
+   again:
+   `DELETE FROM phinxlog WHERE version IN (20261012000000, 20261012000001);`
+4. Push the previous release, as in "Rollback Procedure", step 1.
+5. Check the restored state. `SHOW COLUMNS FROM cars LIKE 'email%'` returns
+   `email`, `email_bounced`, `email_bounced_address` and `email_suppressed`.
+   `SHOW TRIGGERS LIKE 'cars'` returns 3 rows.
+6. Turn the verification feature switch on again.
+
+A flag or profile change made after the deploy is lost, because the backup
+is older. A restore keeps every value that the migration changed. The
+`down()` methods do not: they lose the `cars_hist` flag values, the flags of
+a `noowner` car, the block cause, the dates, `email_address_since`,
+`email_address_seen`, and the opt-out kept for an archived account.
 
 ### One-Time: Stamping the ElanRegistry Baseline Migration
 
@@ -956,9 +978,9 @@ If deployment fails:
 4. **Fix and redeploy**: Address issues and follow deployment process again
 
 **After the #2101 migration:** a code rollback with `git push` alone breaks the
-site, because the older code reads the dropped `cars` columns. Restore the
-backup from "Migration That Moves Email Flags to `profiles` (#2101)" first.
-`composer migrate:rollback` runs `down()`, which loses the data listed there.
+site, because the older code reads the dropped `cars` columns. Follow "Roll
+Back This Migration" in "Migration That Moves Email Flags to `profiles`
+(#2101)": restore the backup first, then push.
 
 If the hook stops after the checkout (for example `npm run build failed —
 deployment halted`), the new code is already live, but the steps after the

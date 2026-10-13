@@ -41,22 +41,21 @@ data to move.
 - Deploy the migration and the code together. The code reads the profile, and
   the migration drops the `cars` columns.
 - Run the migration with the Brevo webhook and the cron jobs off.
+- The migration does not copy the flags of a car whose `user_id` has no
+  `users` row, because no profile can hold them. Before you deploy, count
+  these cars. A result of 0 means that no flag is lost:
+  `SELECT COUNT(*) FROM cars c LEFT JOIN users u ON u.id = c.user_id WHERE u.id IS NULL AND (c.email_bounced = 1 OR c.email_suppressed = 1);`
 - If the migration fails, do not clear a flag between the failed run and its
   re-run. The re-run repeats the data step and can overwrite the clear.
 
 ### Rollback
 
-- A code rollback needs the database backup. The `down()` method restores the
-  columns, but it cannot restore every value.
-- A rollback loses these values:
-  - Every `cars_hist` value of the three removed columns.
-  - Every flag on a `noowner` car. The migration skips these cars, and
-    `down()` cannot restore them.
-  - Every blocked flag of an owner who has no car.
-  - The block cause, the three `_at` dates, `email_bounce_cleared_at`,
-    `email_address_since`, and `email_address_seen`.
-  - The difference between "blocked only" and "blocked and opted out".
-  - The old-address bounces and suppressions that the migration dropped.
+- A code rollback restores the pre-deploy database backup, then pushes the
+  previous release. `composer migrate:rollback` cannot run on the server after
+  a deploy, and the `down()` methods do not restore every value.
+- A flag or profile change made after the deploy is lost.
+- The steps are in `docs/development/DEPLOYMENT.md`, section "Roll Back This
+  Migration".
 
 ### Audit Trail
 

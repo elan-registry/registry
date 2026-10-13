@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
-use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Exceptions\CarDatabaseException;
 
@@ -78,7 +77,7 @@ class SpyEmailEventApplier extends EmailEventApplier
         ?string $reason,
         string $messageId,
         string $occurredAt,
-        string $source = DeliverabilityFlagLog::SOURCE_WEBHOOK
+        string $source
     ): void {
         $this->calls[] = compact('carId', 'email', 'event', 'reason', 'messageId', 'occurredAt', 'source');
 

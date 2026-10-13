@@ -302,7 +302,7 @@ test.describe('Admin Verification Dashboard', () => {
         }
     });
 
-    // --- Profile-state chips (#2101) ----------------------------------------
+    // --- Profile-state chips ------------------------------------------------
 
     // The owner's profile state comes before the car's email events. Each case
     // loads its own pill, for the row-flooding reason above. The no-profile

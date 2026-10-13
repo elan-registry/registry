@@ -880,8 +880,10 @@ final class DeliverabilityMigrationQueries
         try {
             $statement = $this->pdo->prepare($sql);
             if ($statement === false || !$statement->execute($params)) {
+                // A failed execute() records its error on the statement, not on the connection.
+                $errorInfo = $statement === false ? $this->pdo->errorInfo() : $statement->errorInfo();
                 throw new OwnerDatabaseException(
-                    'DeliverabilityMigrationQueries: query failed: ' . implode(' ', $this->pdo->errorInfo())
+                    'DeliverabilityMigrationQueries: query failed: ' . implode(' ', array_map('strval', $errorInfo))
                 );
             }
 

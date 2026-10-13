@@ -611,12 +611,15 @@ if ($isPost && $action === 'optout') {
         // redirects identically — no error, no duplicate log row.
         $verifier->setSuppressedForOwner($ownerId);
         $repo->commit();
-    } catch (ElanRegistryException $e) {
-        // Covers CarDatabaseException from setSuppressedForOwner(), including
-        // an owner with no profiles row (nothing is written).
+    } catch (\Throwable $e) {
+        // Throwable, not ElanRegistryException: this page opened the
+        // transaction, so every failure must roll it back, write a log line,
+        // and show the owner that the opt-out did not take effect. This
+        // includes CarDatabaseException for an owner with no profiles row.
         $repo->rollback();
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-            "verify_car.php: setSuppressedForOwner failed for owner {$ownerId}: " . $e->getMessage());
+            "verify_car.php: setSuppressedForOwner failed for owner {$ownerId}: "
+            . get_class($e) . ': ' . $e->getMessage());
         // Post-authentication write failure — see renderActionFailed()'s
         // docblock. Telling the owner "nothing is wrong" here would be false:
         // their opt-out did not take effect and they will keep receiving mail.

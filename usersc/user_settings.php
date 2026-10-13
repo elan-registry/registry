@@ -145,7 +145,7 @@ if (!empty($_POST)) {
             // would leave the transaction open for the rest of the request.
             if ($committed) {
                 logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
-                    'user_settings.php: SUPPRESSION CLEARED BY OWNER committed for owner %d, '
+                    'user_settings.php: OPT-OUT CLEARED BY OWNER committed for owner %d, '
                     . 'but a post-commit step failed [%s]: %s',
                     $userId,
                     get_class($e),
@@ -160,7 +160,7 @@ if (!empty($_POST)) {
                     $repo->rollback();
                 } catch (\Throwable $rollbackFailure) {
                     logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
-                        'user_settings.php: SUPPRESSION CLEARED BY OWNER rollback failed for owner %d '
+                        'user_settings.php: OPT-OUT CLEARED BY OWNER rollback failed for owner %d '
                         . 'while handling [%s] %s (rollback error: %s)',
                         $userId,
                         get_class($e),
@@ -172,10 +172,10 @@ if (!empty($_POST)) {
                     // CarDatabaseException from the manager: no profiles
                     // row, or a failed profile write or audit row.
                     logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-                        "user_settings.php: SUPPRESSION CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage());
+                        "user_settings.php: OPT-OUT CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage());
                 } else {
                     logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
-                        'user_settings.php: SUPPRESSION CLEARED BY OWNER unexpected error [%s] for owner %d: %s',
+                        'user_settings.php: OPT-OUT CLEARED BY OWNER unexpected error [%s] for owner %d: %s',
                         get_class($e),
                         $userId,
                         $e->getMessage()
@@ -636,7 +636,7 @@ if (!empty($_POST)) {
                 } catch (\Throwable $bounceException) {
                     logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
                         "user_settings.php: bounce-clear after direct email change failed for user {$userId}: "
-                        . $bounceException->getMessage());
+                        . get_class($bounceException) . ': ' . $bounceException->getMessage());
                 }
             };
 

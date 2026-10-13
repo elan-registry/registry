@@ -288,7 +288,7 @@ final class CarVerificationManagerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Event writers: setBounced() / setSuppressed() (#2101)
+    // Event writers: setBounced() / setSuppressed()
     // ------------------------------------------------------------------
 
     public function testSetBouncedWritesOneProfileRowForTheCarsOwnerAndLogsTheChange(): void

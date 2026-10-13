@@ -917,7 +917,7 @@ final class CarRepositoryTest extends TestCase
         $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
     }
 
-    // Profile flag methods (#2101)
+    // Profile flag methods
 
     /**
      * A DatabaseInterface mock that answers findProfileEmailState() with $row
@@ -1622,7 +1622,7 @@ final class CarRepositoryTest extends TestCase
         $repo->carIdsWithBouncedFlagButNoAddress(42);
     }
 
-    // countSoftBouncesSinceLastDelivered() (#2101)
+    // countSoftBouncesSinceLastDelivered()
 
     /**
      * Soft bounces before the owner's Clear Bounced must not count. The clear

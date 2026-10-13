@@ -11,10 +11,17 @@ use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 
 /**
- * CarVerificationManager - Verification code and status management for cars
+ * CarVerificationManager - Verification state of cars and email flags of owners
  *
  * Extracted from Car.php to provide focused, testable verification logic.
- * Handles setting verification codes, marking cars as verified, and marking cars as sold.
+ * For a car, it sets verification codes, marks the car as verified, and marks
+ * it as sold.
+ *
+ * For an owner, it writes the email deliverability flags on the owner's
+ * `profiles` row: bounced, blocked and opted out. These methods are
+ * setBounced(), setSuppressed(), setSuppressedForOwner(), setBouncedForOwner(),
+ * the clear and resume methods, and clearBouncedForEmailChange(). Each flag
+ * change also writes one audit row to `logs` through DeliverabilityFlagLog.
  *
  * @package ElanRegistry\Car
  * @since v2.15.0

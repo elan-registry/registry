@@ -75,7 +75,7 @@ final class EmailEventApplierTest extends TestCase
             ->willReturn(true);
         $this->mockManager->expects($this->never())->method('setSuppressed');
 
-        $this->applier->apply(42, 'owner@example.com', $event, null, 'msg-1', '2026-01-01 00:00:00');
+        $this->applier->apply(42, 'owner@example.com', $event, null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
         $this->assertNoLogEntries();
     }
@@ -93,7 +93,7 @@ final class EmailEventApplierTest extends TestCase
         $this->mockManager->expects($this->never())->method('setBounced');
         $this->mockManager->expects($this->never())->method('setSuppressed');
 
-        $this->applier->apply(3, 'owner@example.com', 'soft_bounce', null, 'msg-1', '2026-01-01 00:00:00');
+        $this->applier->apply(3, 'owner@example.com', 'soft_bounce', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
         $this->assertNoLogEntries();
     }
@@ -124,7 +124,7 @@ final class EmailEventApplierTest extends TestCase
             ->willReturn(true);
         $this->mockManager->expects($this->never())->method('setSuppressed');
 
-        $this->applier->apply(3, 'owner@example.com', 'soft_bounce', null, 'msg-1', '2026-01-01 00:00:00');
+        $this->applier->apply(3, 'owner@example.com', 'soft_bounce', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
     }
 
     // --- Spam ------------------------------------------------------------
@@ -142,7 +142,7 @@ final class EmailEventApplierTest extends TestCase
             ->willReturn(true);
         $this->mockManager->expects($this->never())->method('setBounced');
 
-        $this->applier->apply(7, 'owner@example.com', 'spam', null, 'msg-1', '2026-01-01 00:00:00');
+        $this->applier->apply(7, 'owner@example.com', 'spam', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
         $this->assertNoLogEntries();
     }
@@ -167,7 +167,7 @@ final class EmailEventApplierTest extends TestCase
             ->willReturn(true);
         $this->mockManager->expects($this->never())->method('setBounced');
 
-        $this->applier->apply(7, 'owner@example.com', 'unsubscribed', null, 'msg-1', '2026-01-01 00:00:00');
+        $this->applier->apply(7, 'owner@example.com', 'unsubscribed', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
         $this->assertNoLogEntries();
     }
@@ -202,7 +202,7 @@ final class EmailEventApplierTest extends TestCase
         $this->mockManager->expects($this->never())->method('setBounced');
         $this->mockManager->expects($this->never())->method('setSuppressed');
 
-        $this->applier->apply(9, 'owner@example.com', $event, null, 'msg-1', '2026-01-01 00:00:00');
+        $this->applier->apply(9, 'owner@example.com', $event, null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
         $this->assertNoLogEntries();
     }
@@ -225,7 +225,7 @@ final class EmailEventApplierTest extends TestCase
         $this->mockManager->expects($this->never())->method('setBounced');
         $this->mockManager->expects($this->never())->method('setSuppressed');
 
-        $this->applier->apply(13, 'owner@example.com', 'deferred', 'greylisted', 'msg-1', '2026-01-01 00:00:00');
+        $this->applier->apply(13, 'owner@example.com', 'deferred', 'greylisted', 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
         global $mockLogEntries;
         $this->assertCount(1, $mockLogEntries);
@@ -251,7 +251,7 @@ final class EmailEventApplierTest extends TestCase
 
         $this->expectException(CarDatabaseException::class);
 
-        $this->applier->apply(1, 'owner@example.com', 'hard_bounce', null, 'msg-1', '2026-01-01 00:00:00');
+        $this->applier->apply(1, 'owner@example.com', 'hard_bounce', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
     }
 
     // --- Source ----------------------------------------------------------

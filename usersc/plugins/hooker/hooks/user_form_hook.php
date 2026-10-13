@@ -21,7 +21,7 @@ if ($userQ->count() > 0) {
 $esc = fn($value) => htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 
 // Car list, owner deliverability state and per-car verification state (#1924,
-// #2101). Four queries in total, whatever the car count. The flags come from
+// #2101). At most four queries, whatever the car count. The flags come from
 // the owner's profile, which is their system of record.
 //
 // This hook is included mid-render by includeHook() inside users/admin.php's
