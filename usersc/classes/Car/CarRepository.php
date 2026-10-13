@@ -653,8 +653,9 @@ class CarRepository
     /**
      * Set or clear an owner's opt-out (`email_opted_out` and `email_opted_out_at`)
      *
-     * Locks the profile row, then writes only when the value changes, so a
-     * repeat opt-out keeps the first `email_opted_out_at`. The opt-out is set
+     * Locks the profile row and the users row (SELECT ... FOR UPDATE OF p, u),
+     * then writes only when the value changes, so a repeat opt-out keeps the
+     * first `email_opted_out_at`. The opt-out is set
      * whatever the state of `email_blocked` and `email_bounced`: it is the
      * owner's own request and must outlive a later clear of those flags.
      *
@@ -823,8 +824,9 @@ class CarRepository
     /**
      * Clear an owner's bounce and record when it was cleared
      *
-     * Reads the profile row with SELECT ... FOR UPDATE before the write. The
-     * lock holds only inside the caller's transaction. Sets
+     * Reads the profile row and the users row with SELECT ... FOR UPDATE OF
+     * p, u before the write. The lock holds only inside the caller's
+     * transaction. Sets
      * `email_bounce_cleared_at`, so soft bounces before the clear do not count
      * toward a new escalation ({@see countSoftBouncesSinceLastDelivered()}).
      *
