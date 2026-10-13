@@ -75,7 +75,7 @@ own block on the address after deletion. A send to a blocked address returns a
 
 ## Issues Resolved
 
-- WIP: [#2101](https://github.com/elan-registry/registry/issues/2101) — Make the owner profile the system of record for email deliverability.
+- [#2101](https://github.com/elan-registry/registry/issues/2101) — Make the owner profile the system of record for email deliverability.
 - [#2167](https://github.com/elan-registry/registry/issues/2167) — Test migration `up()`, `down()`, and idempotency in a throwaway schema, not the shared one.
 - WIP: [#2205](https://github.com/elan-registry/registry/issues/2205) — Encode the vericode in `verify_car.php` redirects and mark the verify forms' no-CSRF design.
 - WIP: [#2339](https://github.com/elan-registry/registry/issues/2339) — Stop rollbacks in four more `CarVerificationManager` methods from deleting log entries.
