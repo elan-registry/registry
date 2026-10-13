@@ -444,6 +444,18 @@ try {
 // than inserting a new row, so after a crash this purge deletes that original
 // row instead of restoring its key — acceptable on the test schema only.
 //
+// The "Brevo not ready" cases in the same two files do the opposite. In
+// VerificationToggleEndpointBehaviorTest, the case sets the key of the row
+// that was there before the test, if there is one, to '' and restores the
+// original key in a finally block. In BrevoWebhookEndpointTest, the case sets the key of its
+// setUp() fixture row to '' and restores 'sib-test-key' in a finally block.
+// tearDown() then restores the original key. A fatal error or a killed run
+// during one of those cases leaves plg_sendinblue.key = ''. This sweep does
+// not detect or repair that state, because it deletes only 'sib-test-key'
+// rows. Later runs still pass, but the original key is lost. To recover, save
+// the API key in the plugin again (docs/development/ENVIRONMENT.md, "Brevo
+// Plugin Local Setup", step 5).
+//
 // Must stay after the connected-database identity check above: this deletes
 // rows, and running it against elanregi_spice would clobber the real Brevo
 // API key.

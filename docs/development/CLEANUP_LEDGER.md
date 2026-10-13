@@ -103,13 +103,14 @@ after an item is written.
 - [ ] `BrevoSiteRoot::PLUGIN_FILES` keeps `override.RENAME.php` only for the #2374 regression test (`VerificationSettingsTest.php` ~L656). Add a comment that says so (found in /finish-milestone v2.30.7)
 - [ ] `SpyEmailEventApplier` skips the parent constructor. A new public method on `EmailEventApplier` then runs real code on uninitialized collaborators. Make the spy fail on an unexpected call, or extract an interface (found in /finish-milestone v2.30.7)
 
+### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
+
+- [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
+- [ ] The subprocess sets `$_SERVER["PHP_SELF"]` (~L138), which `Server::get('PHP_SELF')` ignores under CLI. So `$php_self` is `/`, and `securePage()` never checks the real `app/admin/index.php` page. The class doc claim "an editor passes securePage()" is not tested. Fix: set `$_SERVER["SCRIPT_FILENAME"]` to `$page` instead. All 12 tests pass with that change (checked in #2165). This fix does not need the migration item above. (found in #2165)
+
 ### `tests/integration/BrevoWebhookEndpointTest.php`
 
 - [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L901, renames `er_email_events.reason`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
-
-### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
-
-- [ ] The not-ready tests empty the API key and restore it in `finally`. A fatal error or a killed run skips `finally` and leaves `key = ''`, which the bootstrap sweep does not report (it deletes only `sib-test-key` rows). Readiness does not change, but the toggle test's original key is lost. Update the crash-recovery comment in `tests/bootstrap-integration.php` (~L430-445) or make the sweep report empty-key rows. (found in /finish-milestone v2.30.6)
 
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
@@ -131,6 +132,10 @@ after an item is written.
 ### `tests/integration/UserDeletionReassignmentTest.php`
 
 - [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L380, renames `car_transfer_requests.admin_notes`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
+
+### `tests/integration/UserSettingsResumeVerificationEndpointTest.php`
+
+- [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 
 ### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 

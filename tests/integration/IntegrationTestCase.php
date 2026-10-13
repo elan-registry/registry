@@ -36,6 +36,9 @@ use PHPUnit\Framework\TestCase;
  */
 abstract class IntegrationTestCase extends TestCase
 {
+    /** @var list<string> Connection variables that invokeEndpoint() exports to its subprocess */
+    private const DB_ENV_VARS = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS'];
+
     protected $db;
     protected $databaseConnected = false;
 
@@ -44,6 +47,15 @@ abstract class IntegrationTestCase extends TestCase
 
     /** @var int[] User IDs created during this test, cleaned up in tearDown */
     private array $createdUserIds = [];
+
+    /** @var int[] user_permission_matches row IDs created by grantTestPermission(), cleaned up in tearDown */
+    private array $createdPermissionMatchIds = [];
+
+    /** @var array<string, int> us_rate_limits action => highest id before the test, see trackNewRateLimitRows() */
+    private array $rateLimitIdFloors = [];
+
+    /** @var array<string, string|false>|null getenv() values from before the first invokeEndpoint() call of this test, or null if none ran */
+    private ?array $originalDbEnv = null;
 
     /** @var User|null Snapshot of $GLOBALS['user'] from the first loginAsTestUser() call of a test. */
     private ?User $savedGlobalUser = null;
@@ -61,6 +73,8 @@ abstract class IntegrationTestCase extends TestCase
 
         $this->createdCarIds = [];
         $this->createdUserIds = [];
+        $this->createdPermissionMatchIds = [];
+        $this->rateLimitIdFloors = [];
 
         // Get real DB instance (loaded by bootstrap-integration.php), wrapped in the
         // DbAdapter so it satisfies the DatabaseInterface type hints that production
@@ -90,6 +104,15 @@ abstract class IntegrationTestCase extends TestCase
     {
         $this->restoreGlobalUser();
 
+        // putenv() changes the whole PHPUnit process, so a value that
+        // invokeEndpoint() exported must not reach a later test.
+        if ($this->originalDbEnv !== null) {
+            foreach ($this->originalDbEnv as $var => $value) {
+                putenv($value === false ? $var : "{$var}={$value}");
+            }
+            $this->originalDbEnv = null;
+        }
+
         if ($this->databaseConnected) {
             // Defense-in-depth: the whole integration suite shares one DB connection
             // (phpunit-integration.xml's processIsolation="false"), so a test that opens
@@ -109,6 +132,19 @@ abstract class IntegrationTestCase extends TestCase
             if ($this->db instanceof DbAdapter && $this->db->inTransaction()) {
                 fwrite(STDERR, "WARNING: tearDown() found an open transaction left by this test — rolling back to avoid poisoning subsequent tests.\n");
                 $this->db->rollBack();
+            }
+
+            foreach ($this->createdPermissionMatchIds as $id) {
+                $this->db->query('DELETE FROM user_permission_matches WHERE id = ?', [$id]);
+                if ($this->db->error()) {
+                    fwrite(STDERR, "NOTE: tearDown() cleanup failed for user_permission_matches ID {$id}: {$this->db->errorString()}\n");
+                }
+            }
+            foreach ($this->rateLimitIdFloors as $action => $floor) {
+                $this->db->query('DELETE FROM us_rate_limits WHERE id > ? AND action = ?', [$floor, $action]);
+                if ($this->db->error()) {
+                    fwrite(STDERR, "NOTE: tearDown() cleanup failed for us_rate_limits action '{$action}': {$this->db->errorString()}\n");
+                }
             }
 
             foreach ($this->createdCarIds as $carId) {
@@ -223,6 +259,245 @@ abstract class IntegrationTestCase extends TestCase
 
         $this->savedGlobalUser = null;
         $this->globalUserRestorePending = false;
+    }
+
+    /**
+     * POST to a real endpoint file in a `php -r` subprocess and capture its response.
+     *
+     * A subprocess is necessary because ApiResponse::send() calls exit, and a
+     * securePage() refusal exits through Redirect::to() or die(). Either would end
+     * the PHPUnit process. The subprocess runs the
+     * real UserSpice bootstrap, so Token::check(), hasPerm(), and securePage() run
+     * unchanged. The login uses the same reflection as loginAsTestUser().
+     *
+     * `raw` holds the stdout and stderr bytes of the subprocess (2>&1), not
+     * trimmed, so two responses can be compared byte for byte. PHP error text
+     * on stderr is in `raw` too. `httpCode` is null when no status code was set,
+     * when the subprocess stopped before the endpoint ran, or when other output
+     * follows the status marker. In the last case `raw` keeps the marker and
+     * the output after it, so assertNoPhpErrorText() can see that output.
+     *
+     * @param string $endpointFile Repo-relative path (e.g. 'app/api/contact/send-owner-email.php'), or an absolute path inside this repository
+     * @param array<string, scalar|null|array<mixed>> $post $_POST fields; values pass through var_export(), so nested arrays of scalars and null are allowed
+     * @param int|null $loggedInUserId User to log in inside the subprocess; null = logged out
+     * @param string $csrfMode 'valid' (Token::generate()), 'invalid' (a fixed bad token), or 'omit' (no csrf key)
+     * @return array{status: bool, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<string, mixed>|null}
+     * @throws InvalidArgumentException If $csrfMode is unknown, $endpointFile is not a file in this repository, or a $post value is not a scalar, null, or an array of those
+     * @throws RuntimeException If shell_exec() cannot run the subprocess
+     */
+    protected function invokeEndpoint(string $endpointFile, array $post, ?int $loggedInUserId, string $csrfMode = 'valid'): array
+    {
+        // Resolve the root too, so the prefix check works in a symlinked checkout.
+        $projectRoot = (string) realpath(dirname(__DIR__, 2));
+
+        // Resolve first: a '..' segment could pass the prefix check and still point outside the repo.
+        $candidate = str_starts_with($endpointFile, '/') ? $endpointFile : $projectRoot . '/' . $endpointFile;
+        $absoluteFile = realpath($candidate);
+        if ($absoluteFile === false || !str_starts_with($absoluteFile, $projectRoot . '/') || !is_file($absoluteFile)) {
+            throw new InvalidArgumentException("invokeEndpoint(): '{$endpointFile}' is not a file in this repository");
+        }
+
+        $this->assertExportablePostValues($post);
+
+        $csrfSnippet = match ($csrfMode) {
+            'valid'   => '$_POST["csrf"] = \Token::generate();',
+            'invalid' => '$_POST["csrf"] = "deliberately-invalid-token";',
+            'omit'    => '',
+            default   => throw new InvalidArgumentException(
+                "invokeEndpoint(): unknown csrfMode '{$csrfMode}' (use 'valid', 'invalid', or 'omit')"
+            ),
+        };
+
+        $this->exposeTestDatabaseToSubprocess();
+
+        // A missing user must stop the run, as in loginAsTestUser(). A silent
+        // logged-out request could pass a test that expects a refusal.
+        $loginSnippet = $loggedInUserId === null
+            ? ''
+            : sprintf(
+                '$loggedInUser = new User(); ' .
+                'if (!$loggedInUser->find(%d)) { fwrite(STDERR, "invokeEndpoint: no users row %d\n"); exit(97); } ' .
+                '$reflection = new ReflectionClass($loggedInUser); ' .
+                '$prop = $reflection->getProperty("_isLoggedIn"); $prop->setValue($loggedInUser, true); ' .
+                'global $user; $user = $loggedInUser; $GLOBALS["user"] = $loggedInUser;',
+                $loggedInUserId,
+                $loggedInUserId
+            );
+
+        $postSnippet = '';
+        foreach ($post as $key => $value) {
+            $postSnippet .= sprintf('$_POST[%s] = %s; ', var_export($key, true), var_export($value, true));
+        }
+
+        // Shutdown functions also run after exit and die(), so every path
+        // through the endpoint prints the marker.
+        $statusSnippet = 'register_shutdown_function(static function (): void { ' .
+            '$code = http_response_code(); echo "___HTTP:" . ($code === false ? "none" : $code); });';
+
+        $script = sprintf(
+            'require %s; ' .
+            '\Dotenv\Dotenv::createMutable(%s, ".env.test.local")->load(); ' .
+            '$_SERVER["DOCUMENT_ROOT"] = %s; ' .
+            // Under CLI, Server::get('PHP_SELF') ignores $_SERVER['PHP_SELF'] and
+            // derives the web path from SCRIPT_FILENAME, which `php -r` leaves
+            // empty (giving '/'). Set SCRIPT_FILENAME so securePage($php_self)
+            // sees the real page.
+            '$_SERVER["SCRIPT_FILENAME"] = %s; ' .
+            '$_SERVER["REQUEST_METHOD"] = "POST"; ' .
+            'chdir(%s); ' .
+            'require_once %s; ' .
+            '%s %s %s %s ' .
+            'require %s;',
+            var_export($projectRoot . '/vendor/autoload.php', true),
+            var_export($projectRoot, true),
+            var_export($projectRoot, true),
+            var_export($absoluteFile, true),
+            var_export(dirname($absoluteFile), true),
+            var_export($projectRoot . '/users/init.php', true),
+            $csrfSnippet,
+            $loginSnippet,
+            $postSnippet,
+            $statusSnippet,
+            var_export($absoluteFile, true)
+        );
+
+        $output = shell_exec('php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"');
+        if (!is_string($output)) {
+            throw new RuntimeException('invokeEndpoint(): shell_exec failed to run the subprocess for ' . $endpointFile);
+        }
+
+        // Parse from the end: the endpoint output itself can contain any bytes.
+        $exitCode = -1;
+        $beforeExit = $output;
+        if (preg_match('/___EXIT:(\d+)\s*\z/', $output, $exitMatch, PREG_OFFSET_CAPTURE) === 1) {
+            $exitCode = (int) $exitMatch[1][0];
+            $beforeExit = substr($output, 0, $exitMatch[0][1]);
+        }
+
+        // Accept the marker only at the very end. Output after it (for example
+        // from a shutdown function that the endpoint registered) stays in raw.
+        $httpCode = null;
+        $raw = $beforeExit;
+        $httpPos = strrpos($beforeExit, '___HTTP:');
+        if ($httpPos !== false) {
+            $afterMarker = substr($beforeExit, $httpPos + strlen('___HTTP:'));
+            if (preg_match('/\A(\d{3}|none)\s*\z/', $afterMarker, $httpMatch) === 1) {
+                $raw = substr($beforeExit, 0, $httpPos);
+                $httpCode = $httpMatch[1] === 'none' ? null : (int) $httpMatch[1];
+            }
+        }
+
+        $decoded = json_decode(trim($raw), true);
+        $json = is_array($decoded) ? $decoded : null;
+
+        return [
+            'status'   => $json !== null ? (bool) ($json['success'] ?? false) : false,
+            'message'  => $json !== null ? (string) ($json['message'] ?? '') : '',
+            'httpCode' => $httpCode,
+            'exitCode' => $exitCode,
+            'raw'      => $raw,
+            'json'     => $json,
+        ];
+    }
+
+    /**
+     * Reject $post values that var_export() cannot turn into valid PHP source.
+     * An object exports as a __set_state() call that the subprocess cannot run.
+     *
+     * @param array<mixed> $values The $post array, or a nested array inside it
+     * @param string $path Key path of $values, for the error message
+     * @throws InvalidArgumentException If a value is not a scalar, null, or an array of those
+     */
+    private function assertExportablePostValues(array $values, string $path = ''): void
+    {
+        foreach ($values as $key => $value) {
+            $keyPath = $path === '' ? (string) $key : "{$path}[{$key}]";
+            if (is_array($value)) {
+                $this->assertExportablePostValues($value, $keyPath);
+            } elseif (!is_scalar($value) && $value !== null) {
+                throw new InvalidArgumentException(
+                    "invokeEndpoint(): \$post['{$keyPath}'] is " . get_debug_type($value) . '. Use a scalar, null, or an array of those.'
+                );
+            }
+        }
+    }
+
+    /**
+     * Fail the test if PHP error text leaked into an endpoint response. A
+     * notice or warning can print before valid JSON and still leave the
+     * status code and decoded body looking correct.
+     *
+     * @param string $raw The `raw` output from invokeEndpoint()
+     */
+    protected function assertNoPhpErrorText(string $raw): void
+    {
+        foreach (['Fatal error', 'Parse error', 'Uncaught', 'TypeError', 'Warning:', 'Notice:', 'Deprecated:'] as $errorText) {
+            $this->assertStringNotContainsString($errorText, $raw);
+        }
+    }
+
+    /**
+     * Grant a permission through a real user_permission_matches row, removed in
+     * tearDown(). securePage() and hasPerm() read this table, so endpoint tests
+     * need a real row, not a mock.
+     *
+     * Not named grantPermission(): some test classes declare a private method
+     * with that name, and a protected one here would be a fatal error in them.
+     *
+     * @param int $userId User to grant the permission to
+     * @param int $permissionId Permission ID (1 = User, 2 = Admin, 3 = Editor)
+     */
+    protected function grantTestPermission(int $userId, int $permissionId): void
+    {
+        $this->db->insert('user_permission_matches', [
+            'user_id' => $userId,
+            'permission_id' => $permissionId,
+        ]);
+        $this->assertFalse($this->db->error(), 'Failed to grant permission for test setup: ' . $this->db->errorString());
+        $matchId = (int) $this->db->lastId();
+        $this->assertGreaterThan(0, $matchId, 'Failed to read the user_permission_matches row ID for test setup');
+        $this->createdPermissionMatchIds[] = $matchId;
+    }
+
+    /**
+     * Mark us_rate_limits rows that a later endpoint call writes for $action as
+     * this test's own, so tearDown() deletes them. No fixture owns those rows,
+     * and left in place they push later runs toward the limit. Call it before
+     * the request that writes the rows.
+     *
+     * @param string $action The RateLimit action name the endpoint uses
+     */
+    protected function trackNewRateLimitRows(string $action): void
+    {
+        $max = $this->db->query('SELECT COALESCE(MAX(id), 0) AS max_id FROM us_rate_limits')->first();
+        $this->assertFalse($this->db->error(), 'Failed to read us_rate_limits MAX(id) for test setup: ' . $this->db->errorString());
+        $this->rateLimitIdFloors[$action] = (int) ($max->max_id ?? 0);
+    }
+
+    /**
+     * Pass the test DB credentials to the subprocess so it uses the test
+     * schema, not the real .env. putenv() alone did not give users/init.php a
+     * working $settings, so the subprocess also reloads .env.test.local.
+     *
+     * Private: several test classes declare a private method with this name,
+     * and a protected one here would be a fatal error in those classes.
+     */
+    private function exposeTestDatabaseToSubprocess(): void
+    {
+        // Snapshot once per test, so tearDown() restores the values from before the first call.
+        if ($this->originalDbEnv === null) {
+            $this->originalDbEnv = [];
+            foreach (self::DB_ENV_VARS as $var) {
+                $this->originalDbEnv[$var] = getenv($var);
+            }
+        }
+
+        foreach (self::DB_ENV_VARS as $var) {
+            $value = $_ENV[$var] ?? getenv($var);
+            if ($value !== false && $value !== '') {
+                putenv("$var=$value");
+            }
+        }
     }
 
     /**
@@ -754,14 +1029,18 @@ abstract class IntegrationTestCase extends TestCase
      *
      * @param string $logtype Exact logtype value (e.g. 'CarActions')
      * @param string $lognote LIKE pattern for lognote (e.g. 'Car update failed%')
+     * @param int|null $userId Count only this user's rows, so rows from other tests cannot match
      * @throws RuntimeException If the underlying query fails
      */
-    protected function countMatchingLogs(string $logtype, string $lognote): int
+    protected function countMatchingLogs(string $logtype, string $lognote, ?int $userId = null): int
     {
-        $result = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM logs WHERE logtype = ? AND lognote LIKE ?',
-            [$logtype, $lognote]
-        );
+        $sql = 'SELECT COUNT(*) AS cnt FROM logs WHERE logtype = ? AND lognote LIKE ?';
+        $params = [$logtype, $lognote];
+        if ($userId !== null) {
+            $sql .= ' AND user_id = ?';
+            $params[] = $userId;
+        }
+        $result = $this->db->query($sql, $params);
 
         if ($result->error()) {
             throw new RuntimeException("countMatchingLogs() query failed for logtype='{$logtype}': {$result->errorString()}");
