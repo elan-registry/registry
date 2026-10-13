@@ -568,10 +568,11 @@ class CarVerificationManager
      * Resume verification email for the owner (Account Settings, #1895)
      *
      * Clears only `profiles.email_opted_out` and `email_opted_out_at`, the
-     * flag that the owner set. A block (`email_blocked`) and a bounce stay:
-     * the owner did not cause them, so only an admin, or a confirmed change
-     * to another address, clears them. Writes one audit row with source
-     * `owner` when the flag changes. Nothing is written to a car.
+     * flag that the owner set. A block (`email_blocked`) and a bounce stay,
+     * because the owner did not cause them. Only an admin clears a block. An
+     * admin, or a confirmed change to another address, clears a bounce.
+     * Writes one audit row with source `owner` when the flag changes.
+     * Nothing is written to a car.
      *
      * Runs no transaction of its own. The caller opens one. The profile row
      * is locked before the write, so a double-submit is serialized.

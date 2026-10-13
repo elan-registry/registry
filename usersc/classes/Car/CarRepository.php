@@ -2025,9 +2025,10 @@ class CarRepository
      * they are the same on every row. For an owner with no profiles row,
      * `has_profile` is 0 and every profile column is NULL.
      *
-     * TYPES ARE AS PDO RETURNS THEM, not as the schema declares them. Numeric
-     * columns come back as `int|string` depending on driver typing, so cast
-     * the tinyint flags at the call site before a compare.
+     * TYPES ARE AS PDO RETURNS THEM, not as the schema declares them. The
+     * type of a numeric column depends on the PDO settings (for example
+     * `ATTR_STRINGIFY_FETCHES`), so cast the tinyint flags at the call site
+     * before a compare.
      *
      * @param int $ownerId Owner user ID
      * @return array<object{

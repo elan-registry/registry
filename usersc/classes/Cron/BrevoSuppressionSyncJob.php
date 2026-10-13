@@ -29,7 +29,7 @@ use ElanRegistry\LogCategories;
  * This job closes that gap by reading `GET /smtp/blockedContacts` through
  * {@see BrevoSuppressionSyncClient} and applying each suppression through
  * {@see EmailEventApplier} — the *same* escalation code the webhook (#1887)
- * and the nightly event reconciliation job (#1889) run, so an owner flagged by
+ * and the daily event reconciliation job (#1889) run, so an owner flagged by
  * an imported suppression is flagged identically to one flagged by a live
  * event. The flags belong to the owner's profile (#2101). The job passes the
  * source `import`, which goes into the flag-change audit row.

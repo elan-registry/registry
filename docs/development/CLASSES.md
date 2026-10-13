@@ -2652,7 +2652,7 @@ class because `phinx.php` loads `vendor/autoload.php`.
   instance after a write.
 - Every address compare uses `normalizeAddress()` and compares byte for byte in
   PHP. SQL does no address compare, because the `users` and `cars` collations
-  are case-insensitive and differ.
+  are case-insensitive and can differ between installs.
 - The event names and `cars_hist` operation names are copies, not references to
   `EmailEventApplier`, so the migration gives the same result when it runs
   again later.

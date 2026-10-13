@@ -28,8 +28,8 @@ use PDOException;
  *
  * Address matching: every address goes through {@see self::normalizeAddress()},
  * and the compare is byte for byte in PHP. SQL does no address compare,
- * because the `users` and `cars` collations are case-insensitive and differ,
- * and MySQL `TRIM()` removes spaces only.
+ * because the `users` and `cars` collations are case-insensitive and can
+ * differ between installs, and MySQL `TRIM()` removes spaces only.
  *
  * The first call reads the database once and keeps the result. Make a new
  * instance after a write (for example after phase 1) to read the new state.

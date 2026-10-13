@@ -21,7 +21,7 @@ use ElanRegistry\Migration\DeliverabilityMigrationQueries;
 $check = $db->query("SELECT id FROM profiles WHERE user_id = ?", [$theNewId])->count();
 if ($check < 1) {
     $now = new DateTime();
-    // Read from the users row, not from the caller's scope: four UserSpice
+    // Read from the users row, not from the caller's scope: several UserSpice
     // paths include this script, and not all of them define $join_date.
     // join.php sends the sign-up mail before this script runs, so the
     // address-since time must be join_date, not now, or a bounce on that
