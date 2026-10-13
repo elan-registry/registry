@@ -151,9 +151,9 @@ function renderActionFailed(string $whatFailed): never
  *
  * The query values are URL-encoded here, so the Location header does not
  * depend on the vericode format check. The form actions and links in the
- * views still do: they only HTML-escape the vericode. The separator and the
- * encoding are explicit, so an `arg_separator.output` INI value cannot
- * change the URL.
+ * views still depend on it: they only HTML-escape the vericode. The
+ * separator and the encoding are explicit, so an `arg_separator.output` INI
+ * value cannot change the URL.
  *
  * @param string                $selfUrl The page URL with no query string
  * @param array<string, string> $query   The query parameters, not encoded
