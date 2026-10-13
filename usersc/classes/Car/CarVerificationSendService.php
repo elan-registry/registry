@@ -116,12 +116,16 @@ final class CarVerificationSendService
      * message to a real person. A stale counter is recoverable; a duplicate email
      * to an owner is not.
      *
+     * The email goes to the owner's `users.email`. `cars.email` is only a
+     * copy and is not read.
+     *
      * @param object $carData Eligible car row as returned by {@see self::findEligible()}:
-     *                        requires ->id, ->user_id and ->email, plus the display
+     *                        requires ->id and ->user_id, plus the display
      *                        fields {@see CarVerificationEmailComposer::compose()} reads.
      *                        Note this method mutates the passed object — the verifier
      *                        writes the new plaintext ->vericode and ->vericode_sent_at
-     *                        onto it so the composer can quote them.
+     *                        onto it so the composer can quote them, and ->email
+     *                        becomes the address the send mails.
      * @return SendResult Sent, sent-but-unrecorded, or failed — each carrying an admin-safe reason string except a clean sent
      */
     public function sendOne(object $carData): SendResult
@@ -154,10 +158,7 @@ final class CarVerificationSendService
         // VerificationEligibility::skipReason() (the PHP-side re-check used by
         // the admin manual-send path) has no join to check this and relies on
         // this method to enforce it instead — see that class's docblock. Without
-        // this check, a `noowner` car whose ->email happens to be non-blank
-        // (contactableEmail() normally blanks it, but that is a side effect of
-        // an unrelated method, not an ownership guarantee) would email an
-        // erased owner's last-known address.
+        // this check, a `noowner` car would mail the system account.
         if (($owner->username ?? '') === 'noowner') {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: car %d is owned by the noowner system account; send skipped',
@@ -180,16 +181,18 @@ final class CarVerificationSendService
         // lat/lon/website from `profiles`, and widening that shared projection
         // (read by every owner-facing page) for one send-path guard is the
         // larger change. The rules match findVerificationEligible(): no
-        // profiles row excludes the car, and each flag excludes it whatever
-        // its address column holds.
+        // profiles row excludes the car, an opt-out excludes it whatever the
+        // address, and a block or bounce excludes it while its address
+        // matches the owner's current email (#2356). The send mails that
+        // email, so no other address needs a check.
         $ownerId      = (int) $carData->user_id;
-        $profileState = $this->repo->findProfileEmailState($ownerId);
+        $emailFlags   = $this->repo->effectiveEmailFlags($ownerId);
         $profileBlockReason = match (true) {
-            $profileState === null                     => 'Owner has no profile.',
-            (int) $profileState->email_opted_out === 1 => 'Owner has opted out of verification emails.',
-            (int) $profileState->email_blocked === 1   => 'Owner email is blocked.',
-            (int) $profileState->email_bounced === 1   => 'Owner email bounced.',
-            default                                    => null,
+            !$emailFlags->hasProfile => 'Owner has no profile.',
+            $emailFlags->optedOut    => 'Owner has opted out of verification emails.',
+            $emailFlags->blocked     => 'Owner email is blocked.',
+            $emailFlags->bounced     => 'Owner email bounced.',
+            default                  => null,
         };
         if ($profileBlockReason !== null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
@@ -200,6 +203,19 @@ final class CarVerificationSendService
             ));
 
             return SendResult::failed($carId, $profileBlockReason);
+        }
+
+        // The send mails users.email. The eligibility SQL requires it, but an
+        // admin can clear it between that query and this send.
+        $recipient = trim((string) ($owner->email ?? ''));
+        if ($recipient === '') {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: owner %d for car %d has no account email. Send skipped.',
+                $ownerId,
+                $carId
+            ));
+
+            return SendResult::failed($carId, 'Owner has no email address.');
         }
 
         // Send only when Brevo is ready (key, active plugin, override file,
@@ -267,7 +283,7 @@ final class CarVerificationSendService
         }
 
         $sendOk = email(
-            (string) $carData->email,
+            $recipient,
             $composed['subject'],
             $composed['html'],
             ['tags' => AppConstants::VERIFICATION_EMAIL_TAG]
@@ -299,6 +315,10 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'The email could not be sent.');
         }
 
+        // The admin batch report shows ->email in its Sent rows. Put the
+        // address this send mailed there, not the cars.email copy.
+        $carData->email = $recipient;
+
         // Scope C — bookkeeping only. The email is already delivered to Brevo.
         //
         // No real Brevo message id is available from the mailer, so the event row
@@ -324,7 +344,7 @@ final class CarVerificationSendService
             // send is never reported as a failure).
             $eventRowsWritten = $this->repo->insertEmailEvent(
                 $carId,
-                (string) $carData->email,
+                $recipient,
                 'sent',
                 null,
                 $brevoMessageId,

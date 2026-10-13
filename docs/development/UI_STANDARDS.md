@@ -220,10 +220,12 @@ when the car is not sold. The card is on the account page, the car details
 page, and the public vericode landing page.
 
 The card also has an Email on file row. It reads the owner's profile, not
-the car row (#2101). The caller passes the profile state in `$ownerEmailState`
-(from `CarRepository::findProfileEmailState()`). The row shows "Bounced" when
-`email_bounced` is set. It shows "Suppressed" when `email_blocked` or
-`email_opted_out` is set. A null `$ownerEmailState` shows no row. The row
+the car row (#2101). The caller passes the flags that apply now in
+`$ownerEmailState` (an `EffectiveEmailFlags` object from
+`CarRepository::effectiveEmailFlags()`, #2356). The row shows "Bounced" when
+`bounced` is true. It shows "Suppressed" when `blocked` or `optedOut` is true.
+A block or bounce stored for an old address does not apply, so the row does
+not show it. A null `$ownerEmailState` shows no row. The row
 shows only when the caller sets `$viewerIsRegistryAdmin` to `true` (strict).
 Only `app/owner/cars/details.php` sets it, from `isRegistryAdmin()`. That page
 loads `$ownerEmailState` for registry admins only. If the lookup fails, the

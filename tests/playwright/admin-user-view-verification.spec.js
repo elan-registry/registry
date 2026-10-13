@@ -39,7 +39,7 @@ test.describe('Admin User View — Verification & Email card', () => {
         // Owner-level summary from the profile flags (#2101): the bounced address
         // shows in the alert, and there are no per-car Bounced/Suppressed columns.
         await expect(summary.locator('span.badge.text-bg-danger', { hasText: 'Bounced' })).toBeVisible();
-        await expect(summary).toContainText('bounced@example.invalid');
+        await expect(summary).toContainText('playwright-seed-bounced-car-owner@example.invalid');
         await expect(summary.locator('span.badge.text-bg-warning', { hasText: 'Suppressed' })).toHaveCount(0);
         await expect(summary).not.toContainText('cars bounced');
         await expect(summary).not.toContainText('car bounced');

@@ -85,8 +85,11 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     {
         $email = 'suppression-' . uniqid() . '@integration-test-1923.example.com';
         // The flags belong to the owner's profile, so each car gets its own
-        // owner. Cars of one owner would share the flag.
-        $ownerId = $this->createTestUser([], true);
+        // owner. Cars of one owner would share the flag. The owner's
+        // users.email equals the car email, as in production (the verify hook
+        // copies it to the cars). A flag applies only while its address
+        // matches users.email (#2356).
+        $ownerId = $this->createTestUser(['email' => $email], true);
         $carId = $this->createTestCar($ownerId, ['email' => $email]);
         $this->suppressionCarIds[] = $carId;
 
@@ -318,6 +321,65 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             $summary->counterFailureCount,
             'No counter increment may have failed'
         );
+    }
+
+    // --- Owner whose users.email moved after a block (#2356) ----------------
+
+    /**
+     * An owner blocked on an old address, whose users.email has moved on. The
+     * car still holds the old address, as a car copy does until the verify hook runs.
+     *
+     * @return array{0: int, 1: int, 2: string, 3: string} Owner id, car id, old address, new address
+     */
+    private function createOwnerBlockedOnAnOldAddress(): array
+    {
+        $old = 'old-' . uniqid() . '@integration-test-1923.example.com';
+        $new = 'new-' . uniqid() . '@integration-test-1923.example.com';
+        $ownerId = $this->createTestUser(['email' => $old], true);
+        $carId = $this->createTestCar($ownerId, ['email' => $old]);
+        $this->suppressionCarIds[] = $carId;
+        $this->setOwnerBlocked($ownerId, $old);
+        $this->setUserEmailRaw($ownerId, $new);
+        $this->assertFalse($this->repo->effectiveEmailFlags($ownerId)->blocked, 'Test setup: the old block must not apply');
+
+        return [$ownerId, $carId, $old, $new];
+    }
+
+    /** The stored block is for the old address, so a contact for the new one is new work, not already flagged. */
+    public function testContactForTheMovedUsersEmailCountsAsMatchedAndTheBlockApplies(): void
+    {
+        [$ownerId, $carId, , $new] = $this->createOwnerBlockedOnAnOldAddress();
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($new, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(1, $summary->matchedCount, 'The block on the old address does not apply to the new one');
+        $this->assertSame(0, $summary->alreadyFlaggedCount);
+        $this->assertTrue($this->repo->effectiveEmailFlags($ownerId)->blocked, 'The block now applies to users.email');
+        $this->assertSame($new, $this->ownerFlagsForCar($carId)->email_blocked_address);
+    }
+
+    /** The old address is only in the car copy, so its contact matches no owner and changes no flag. */
+    public function testContactForTheOldAddressIsUnmatchedAndChangesNothing(): void
+    {
+        [$ownerId, $carId, $old] = $this->createOwnerBlockedOnAnOldAddress();
+        $flagsBefore = $this->ownerFlagsForCar($carId);
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($old, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(1, $summary->unmatchedCount);
+        $this->assertSame(0, $summary->matchedCount);
+        $this->assertSame(0, $summary->alreadyFlaggedCount);
+        $this->assertEquals($flagsBefore, $this->ownerFlagsForCar($carId), 'No flag column may change');
+        $this->assertFalse($this->repo->effectiveEmailFlags($ownerId)->blocked);
+        $this->assertSame(0, $this->countEventRows($carId), 'An unmatched contact writes no event row');
     }
 
     // --- 5. Reason-code mapping, proven through real SQL --------------------

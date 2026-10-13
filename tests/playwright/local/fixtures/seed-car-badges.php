@@ -253,7 +253,7 @@ if ($verifiedRowMode) {
     $vericodeSentAt = $now;
 
     $flaggedOwnerIds = [
-        'bounced' => $createFlaggedOwner(SEED_BOUNCED_OWNER, 'playwright-seed-vrf-bounced@example.invalid', [
+        'bounced' => $createFlaggedOwner(SEED_BOUNCED_OWNER, SEED_BOUNCED_ADDRESS, [
             'email_bounced' => 1, 'email_bounced_address' => SEED_BOUNCED_ADDRESS,
             'email_bounced_at' => '2026-04-02 10:00:00',
         ]),

@@ -11,6 +11,7 @@ use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Exceptions\OwnerSearchException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
+use ElanRegistry\Migration\DeliverabilityMigrationQueries;
 
 /**
  * Manages owner profile data across the `users` and `profiles` tables,
@@ -253,6 +254,13 @@ class Owner
     /**
      * Update existing owner information
      *
+     * Inside its transaction, it first locks the owner's profile row
+     * (`SELECT ... FOR UPDATE`) before any write. When `email` changes after
+     * normalization (trim and lower case), it also writes
+     * `email_address_since` (now) and `email_address_seen` (the normalized
+     * address) to the profile row. A case-only or white-space-only edit is
+     * not a change. It clears no deliverability flag (#2356).
+     *
      * @param array $fields Owner data to update
      * @return bool True if update succeeds
      * @throws OwnerValidationException If validation fails
@@ -293,9 +301,35 @@ class Owner
         $this->beginTransaction();
 
         try {
+            // Lock the profile row before any write, so that the email write
+            // and the since/seen write cannot interleave with the
+            // confirmed-change clear or an event step (#2356).
+            $lockQuery = $this->_db->query(
+                "SELECT email_address_seen FROM {$this->profileTableName} WHERE user_id = ? FOR UPDATE",
+                [$userId]
+            );
+            if ($this->_db->error()) {
+                throw OwnerUpdateException::withUserMessage(
+                    'Database error during profile lock: ' . $this->_db->errorString(),
+                    'Failed to update owner profile. Please try again.'
+                );
+            }
+            $lockedProfile = $lockQuery->count() > 0 ? $lockQuery->first() : null;
+
             // Split fields between user and profile tables
             $userFields = $this->extractUserFields($validatedFields);
             $profileFields = $this->extractProfileFields($validatedFields);
+
+            // A case-only or whitespace-only edit is not a change of address.
+            // With no profile row there is nothing to write, the same as the
+            // profile update below.
+            if ($lockedProfile !== null && array_key_exists('email', $userFields)) {
+                $normalizedEmail = DeliverabilityMigrationQueries::normalizeAddress((string) $userFields['email']);
+                if ($normalizedEmail !== DeliverabilityMigrationQueries::normalizeAddress($lockedProfile->email_address_seen)) {
+                    $profileFields['email_address_since'] = date(AppConstants::DATETIME_FORMAT);
+                    $profileFields['email_address_seen'] = $normalizedEmail;
+                }
+            }
 
             // Update user fields if any
             if (!empty($userFields)) {

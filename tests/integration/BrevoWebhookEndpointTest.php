@@ -256,7 +256,9 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
      */
     private function createFixtureCarWithEmail(string $email, array $extraColumns = []): int
     {
-        $userId = $this->createTestUser([], true);
+        // users.email equals the car email, as in production. A flag applies
+        // only while its address matches users.email (#2356).
+        $userId = $this->createTestUser(['email' => $email], true);
         return $this->createTestCar($userId, array_merge(['email' => $email], $extraColumns));
     }
 
@@ -321,7 +323,9 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             $this->assertNotNull($reason, 'An empty API key must make Brevo not ready');
 
             // The reason is part of the LIKE pattern, so escape its LIKE wildcards.
-            $logPattern = '%Webhook received but Brevo prerequisites are not met — event dropped. Reason: '
+            // A `%` replaces the em dash in the log text, so a column that is not
+            // utf8mb4 still matches the ASCII parts.
+            $logPattern = '%Webhook received but Brevo prerequisites are not met % event dropped. Reason: '
                 . addcslashes($reason, '%_\\') . '%';
             $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $logPattern);
 

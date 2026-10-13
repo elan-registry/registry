@@ -77,12 +77,9 @@ final class VerificationBatchSenderTest extends TestCase
         $this->mockVerifier = $this->createMock(CarVerificationManager::class);
         // Every owner has a profile with all three flags clear. The send
         // service reads it before it mails (#2101).
-        $this->mockRepo->method('findProfileEmailState')->willReturn((object) [
-            'user_id' => 42,
-            'email_opted_out' => 0,
-            'email_blocked' => 0,
-            'email_bounced' => 0,
-        ]);
+        $this->mockRepo->method('effectiveEmailFlags')->willReturn(
+            new \ElanRegistry\Car\EffectiveEmailFlags(true, false, null, false, null, null, null, false, null, null, 'owner@example.com')
+        );
         $composer = new CarVerificationEmailComposer(new EmailTemplate());
 
         $this->sendSvc = new CarVerificationSendService(

@@ -379,12 +379,9 @@ final class SendVerificationBatchJobTest extends TestCase
         $repo = $this->createStub(CarRepository::class);
         $repo->method('findVerificationEligible')->willReturn([(object) ['id' => 1]]);
         $repo->method('findById')->willReturn($car);
-        $repo->method('findProfileEmailState')->willReturn((object) [
-            'user_id' => 42,
-            'email_opted_out' => 0,
-            'email_blocked' => 0,
-            'email_bounced' => 0,
-        ]);
+        $repo->method('effectiveEmailFlags')->willReturn(
+            new \ElanRegistry\Car\EffectiveEmailFlags(true, false, null, false, null, null, null, false, null, null, 'owner@example.com')
+        );
         // The vericode rotate-and-stamp writes CarVerificationManager performs
         // before the mail goes out — these must succeed for the send to reach
         // the bookkeeping step that is the point of this test.

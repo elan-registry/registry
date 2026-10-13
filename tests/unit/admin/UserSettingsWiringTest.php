@@ -348,7 +348,7 @@ final class UserSettingsWiringTest extends TestCase
     /**
      * The unconfirmed-email guard (#1873).
      *
-     * `cars.email` is the address verification batches send to. When
+     * `cars.email` is the owner's address copied onto each car. When
      * `email_act == 1`, user_settings.php writes only `email_new` — `users.email`
      * is unchanged until the owner confirms via users/verify.php. Setting
      * Queuing $ownerFields['email'] in that branch would push an UNCONFIRMED address onto
@@ -890,38 +890,181 @@ final class UserSettingsWiringTest extends TestCase
     }
 
     /**
-     * A direct email change (email_act == 0) clears a bounce on another
-     * address through the same manager method as the confirmed-change hook.
-     * That method writes the flag-change audit row in one transaction with
-     * the clear (#2101).
+     * A direct email change (email_act == 0) clears no flag (#2356). Only a
+     * confirmed change does, through the verifySuccess hook. The readers
+     * ignore a flag stored for an old address, so a change back to that
+     * address makes the flag apply again.
      */
-    public function testDirectEmailChangeClearsTheBounceThroughTheSharedManagerMethod(): void
+    public function testDirectEmailChangeDoesNotClearAnyFlag(): void
     {
         $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        foreach (
+            [
+                'clearBouncedForEmailChange',
+                'clearFlagsForConfirmedEmailChange',
+                'clearBouncedForUser',
+                'clearBouncedForNewEmail',
+                'directNewEmail',
+            ] as $removed
+        ) {
+            $this->assertStringNotContainsString(
+                $removed,
+                $content,
+                "user_settings.php must not clear flags on the email_act == 0 path ({$removed})"
+            );
+        }
+    }
+
+    /**
+     * The email_act == 0 branch still writes the new address, through the
+     * owner write that sets email_address_since and email_address_seen.
+     */
+    public function testDirectEmailChangeStillWritesTheEmailThroughTheOwnerWrite(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+
+        $this->assertStringContainsString("\$ownerFields['email'] = Input::raw('email') ?? '';", $content);
+        $this->assertStringContainsString('$owner->updateProfileAndSync($ownerFields)', $content);
+    }
+
+    /** The confirmed-change hook is the only caller of the clear. */
+    public function testConfirmedChangeHookCallsOneManagerMethod(): void
+    {
         $hook = $this->readEndpointSource('usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php');
 
-        $closurePos = strpos($content, '$clearBouncedForNewEmail = function');
-        $this->assertNotFalse($closurePos, 'user_settings.php must define the bounce-clear closure');
-        $closureEnd = strpos($content, '};', $closurePos);
-        $this->assertNotFalse($closureEnd);
-        $closure = substr($content, $closurePos, $closureEnd - $closurePos);
-
-        $this->assertStringContainsString(
-            '$verifier->clearBouncedForEmailChange($userId, $userId, $newEmail)',
-            $closure,
-            'The direct email change must call the shared manager method'
-        );
-        $this->assertStringNotContainsString(
-            'clearBouncedForUser(',
-            $closure,
-            'A direct repository call has no transaction and no audit row'
-        );
-        $this->assertStringContainsString(
-            'LogCategories::LOG_CATEGORY_DATABASE_ERROR',
-            $closure,
-            'A failed clear must be logged and must not break the email change'
-        );
-        $this->assertStringContainsString('->clearBouncedForEmailChange($userId, $userId, $currentEmail)', $hook);
+        $this->assertSame(1, substr_count($hook, '->clearFlagsForConfirmedEmailChange($userId, $userId)'));
+        $this->assertStringNotContainsString('clearBouncedForEmailChange', $hook);
         $this->assertStringNotContainsString('clearBouncedForUser(', $hook);
+    }
+
+    /**
+     * Resume and the paused-email notice read the effective flags, not the
+     * stored columns. The one exception is the fallback after a failed read.
+     */
+    public function testUserSettingsReadsEffectiveFlags(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+        $block = $this->pausedNoticeFlagBlock();
+
+        $this->assertGreaterThanOrEqual(2, substr_count($content, '->effectiveEmailFlags($userId)'));
+        $this->assertDoesNotMatchRegularExpression(
+            '/\$profiledetails->email_(?:blocked|bounced)\b/',
+            str_replace($block, '', $content),
+            'A stored flag for an old address must not drive the page'
+        );
+    }
+
+    /**
+     * When the effective read fails, the notice falls back to the stored
+     * flags in $profiledetails. The page then shows a notice that may be
+     * stale, and does not hide a real one. The read failure is still logged.
+     */
+    public function testPausedNoticeFallsBackToTheStoredFlagsWhenTheEffectiveReadFails(): void
+    {
+        $repo = $this->createStub(\ElanRegistry\Car\CarRepository::class);
+        $repo->method('effectiveEmailFlags')->willThrowException(
+            new \ElanRegistry\Exceptions\CarDatabaseException('simulated failure')
+        );
+
+        $GLOBALS['mockLogEntries'] = [];
+        $blocked = $this->runPausedNoticeFlagBlock($repo, (object) ['email_opted_out' => 0, 'email_blocked' => 1]);
+        $optedOut = $this->runPausedNoticeFlagBlock($repo, (object) ['email_opted_out' => '1', 'email_blocked' => '0']);
+        $clear = $this->runPausedNoticeFlagBlock($repo, (object) ['email_opted_out' => 0, 'email_blocked' => 0]);
+
+        $this->assertSame(['ownerClearable' => false, 'emailBlocked' => true, 'emailSuppressed' => true], $blocked);
+        $this->assertSame(['ownerClearable' => true, 'emailBlocked' => false, 'emailSuppressed' => true], $optedOut);
+        $this->assertSame(['ownerClearable' => false, 'emailBlocked' => false, 'emailSuppressed' => false], $clear);
+        $this->assertCount(3, $GLOBALS['mockLogEntries'], 'Each failed read is logged');
+        $this->assertSame(
+            \ElanRegistry\LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+            $GLOBALS['mockLogEntries'][0]['category']
+        );
+        $this->assertStringContainsString(
+            'The notice uses the stored profile flags, which may be stale',
+            $GLOBALS['mockLogEntries'][0]['message'],
+            'The log row says that the notice may be stale'
+        );
+        unset($GLOBALS['mockLogEntries']);
+    }
+
+    /**
+     * When the effective read succeeds, a stored block for an old address
+     * must not show the notice. The stored flag is read only after a failure.
+     */
+    public function testPausedNoticeUsesTheEffectiveFlagsWhenTheReadSucceeds(): void
+    {
+        $repo = $this->createStub(\ElanRegistry\Car\CarRepository::class);
+        $repo->method('effectiveEmailFlags')->willReturn(
+            new \ElanRegistry\Car\EffectiveEmailFlags(
+                true, false, null, false, null, null, null, false, null, null, 'new@example.com'
+            )
+        );
+
+        $GLOBALS['mockLogEntries'] = [];
+        $result = $this->runPausedNoticeFlagBlock($repo, (object) ['email_opted_out' => 0, 'email_blocked' => 1]);
+
+        $this->assertSame(['ownerClearable' => false, 'emailBlocked' => false, 'emailSuppressed' => false], $result);
+        $this->assertSame([], $GLOBALS['mockLogEntries'], 'A successful read writes no log row');
+        unset($GLOBALS['mockLogEntries']);
+    }
+
+    /** The stored-flag fallback lines sit inside the catch block, so they run only after a failed read. */
+    public function testStoredFlagFallbackIsInsideTheCatchBlock(): void
+    {
+        $block = $this->pausedNoticeFlagBlock();
+        $catchStart = strpos($block, '} catch (ElanRegistryException $e) {');
+        $this->assertNotFalse($catchStart, 'The flag read must catch ElanRegistryException');
+        $catchEnd = strpos($block, "\n}", $catchStart);
+        $this->assertNotFalse($catchEnd, 'The catch block must close');
+        $catchBody = substr($block, $catchStart, $catchEnd - $catchStart);
+        $outside = substr($block, 0, $catchStart) . substr($block, $catchEnd);
+
+        foreach (['$profiledetails->email_opted_out', '$profiledetails->email_blocked'] as $fallback) {
+            $this->assertStringContainsString($fallback, $catchBody, "{$fallback} must be in the catch block");
+            $this->assertStringNotContainsString($fallback, $outside, "{$fallback} must not be read outside the catch block");
+        }
+    }
+
+    /** The source of the block that sets the paused-notice flags, from the defaults to $emailSuppressed. */
+    private function pausedNoticeFlagBlock(): string
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+        $start = strpos($content, '$ownerClearable = false;');
+        $endMarker = '$emailSuppressed = $ownerClearable || $emailBlocked;';
+        $end = strpos($content, $endMarker);
+        $this->assertNotFalse($start, 'user_settings.php must set $ownerClearable = false; before the read');
+        $this->assertNotFalse($end, 'user_settings.php must set $emailSuppressed from the two flags');
+
+        return substr($content, $start, $end + strlen($endMarker) - $start);
+    }
+
+    /**
+     * Run the paused-notice flag block from user_settings.php with a given repository and profile row
+     *
+     * @return array{ownerClearable: bool, emailBlocked: bool, emailSuppressed: bool}
+     */
+    private function runPausedNoticeFlagBlock(\ElanRegistry\Car\CarRepository $repo, object $profiledetails): array
+    {
+        $file = tempnam(sys_get_temp_dir(), 'pausednotice');
+        $this->assertNotFalse($file);
+        file_put_contents(
+            $file,
+            "<?php\nuse ElanRegistry\\Exceptions\\ElanRegistryException;\nuse ElanRegistry\\LogCategories;\n"
+                . $this->pausedNoticeFlagBlock() . "\n"
+                . "return ['ownerClearable' => \$ownerClearable, 'emailBlocked' => \$emailBlocked, "
+                . "'emailSuppressed' => \$emailSuppressed];\n"
+        );
+        try {
+            $run = static function (string $file, \ElanRegistry\Car\CarRepository $repo, object $profiledetails): array {
+                $userId = 7;
+
+                return include $file;
+            };
+
+            return $run($file, $repo, $profiledetails);
+        } finally {
+            unlink($file);
+        }
     }
 }

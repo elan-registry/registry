@@ -409,6 +409,45 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Write `users.email` as given, with no normalization and no profile write.
+     *
+     * Simulates an edit through the upstream admin user form
+     * (users/views/_admin_user.php). That form writes `users.email` and sets
+     * neither `email_address_since` nor `email_address_seen`, and it runs no
+     * hook. The value may hold a tab, a newline or other whitespace.
+     *
+     * @param int $userId Owner user ID
+     * @param string $email Exact value to store
+     */
+    protected function setUserEmailRaw(int $userId, string $email): void
+    {
+        $result = $this->db->query('UPDATE users SET email = ? WHERE id = ?', [$email, $userId]);
+        $this->assertFalse($result->error(), 'Test setup: users.email update failed: ' . $result->errorString());
+        $stored = $this->db->query('SELECT email FROM users WHERE id = ?', [$userId])->first();
+        $this->assertIsObject($stored, "Test setup: user {$userId} must exist");
+        $this->assertSame($email, $stored->email, 'Test setup: users.email must hold the exact raw value');
+    }
+
+    /**
+     * Set `email_address_since` and `email_address_seen` on the user's profile row.
+     *
+     * createTestUser($data, true) sets `seen` to the user's email. Use this
+     * helper to set another state.
+     *
+     * @param int $userId Owner user ID
+     * @param string|null $seen Value for `email_address_seen`
+     * @param string|null $since Value for `email_address_since` (Y-m-d H:i:s), or null for the column default
+     */
+    protected function setEmailAddressSinceSeen(int $userId, ?string $seen, ?string $since = null): void
+    {
+        $columns = ['email_address_seen' => $seen];
+        if ($since !== null) {
+            $columns['email_address_since'] = $since;
+        }
+        $this->updateOwnerProfile($userId, $columns);
+    }
+
+    /**
      * UPDATE the user's one profile row and fail the test if no row matched.
      *
      * @param int $userId Owner user ID

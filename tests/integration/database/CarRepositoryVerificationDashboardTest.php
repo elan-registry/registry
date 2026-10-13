@@ -81,11 +81,14 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
      */
     private function createOwner(string $flag = 'none'): int
     {
-        $ownerId = $this->createTestUser([], true);
+        // A flag applies only while its address matches users.email (#2356),
+        // so the flag address is the owner's own email.
+        $email = 'dash-owner-' . uniqid() . '@example.com';
+        $ownerId = $this->createTestUser(['email' => $email], true);
         if ($flag === 'bounced') {
-            $this->setOwnerBounced($ownerId, 'dash-owner-' . $ownerId . '@example.com');
+            $this->setOwnerBounced($ownerId, $email);
         } elseif ($flag === 'blocked') {
-            $this->setOwnerBlocked($ownerId, 'dash-owner-' . $ownerId . '@example.com');
+            $this->setOwnerBlocked($ownerId, $email);
         } elseif ($flag === 'opted_out') {
             $this->setOwnerOptedOut($ownerId);
         } else {
@@ -320,7 +323,8 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         // exclusion the same way the list does, not that it ignores it.
         $this->clearOwnerEmailFlags($bouncedOwnerId);
         $withoutBounced = $this->repo->countVerificationSummary(null)['pending'];
-        $this->setOwnerBounced($bouncedOwnerId, 'dash-pending-bounced@example.com');
+        $bouncedEmail = $this->db->query('SELECT email FROM users WHERE id = ?', [$bouncedOwnerId])->first()->email;
+        $this->setOwnerBounced($bouncedOwnerId, $bouncedEmail);
         $withBounced = $this->repo->countVerificationSummary(null)['pending'];
 
         $this->assertSame(

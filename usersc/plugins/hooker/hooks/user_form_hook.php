@@ -22,7 +22,8 @@ $esc = fn($value) => htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8
 
 // Car list, owner deliverability state and per-car verification state (#1924,
 // #2101). At most four queries, whatever the car count. The flags come from
-// the owner's profile, which is their system of record.
+// the owner's profile, which is their system of record. A block or bounce
+// shows only while it applies to the owner's current email (#2356).
 //
 // This hook is included mid-render by includeHook() inside users/admin.php's
 // user view, so an uncaught exception here would take down the whole page —
@@ -33,7 +34,7 @@ $esc = fn($value) => htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8
 // missing dbi() or autoload failure is fatal and must propagate.
 $verificationLoadError  = false;
 $thatCar                = null;
-$emailState             = null;
+$emailFlags             = \ElanRegistry\Car\EffectiveEmailFlags::none();
 $verificationState      = [];
 $latestEvents           = [];
 
@@ -41,7 +42,7 @@ try {
 	$verificationRepo  = new \ElanRegistry\Car\CarRepository(dbi());
 	$ownerCars         = $verificationRepo->findByOwner((int) $user_id);
 	$thatCar           = $ownerCars === [] ? null : $ownerCars;
-	$emailState        = $verificationRepo->findProfileEmailState((int) $user_id);
+	$emailFlags        = $verificationRepo->effectiveEmailFlags((int) $user_id);
 	$verificationState = $verificationRepo->findVerificationStateByOwner($user_id);
 	$latestEvents      = $verificationRepo->findLatestEmailEventsByCarIds(
 		array_map(static fn($car) => (int) $car->id, $verificationState)
@@ -70,10 +71,6 @@ try {
 		);
 	}
 }
-
-$emailBounced   = $emailState !== null && (int) $emailState->email_bounced === 1;
-$emailBlocked   = $emailState !== null && (int) $emailState->email_blocked === 1;
-$emailOptedOut  = $emailState !== null && (int) $emailState->email_opted_out === 1;
 
 // Freshness is the one-year rule defined by CarRepository::freshnessSql() —
 // see that method's docblock for the authoritative statement of the rule and
@@ -166,6 +163,16 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 	return $esc($value) . ' <span class="text-muted">(' . $esc($span) . ' ' . $suffix . ')</span>';
 };
 
+// A flag that applies with no stored address is a data anomaly. Print a note
+// in its place, so the admin sees it and does not read a blank as "no flag".
+$flagAddress = static function (?string $address) use ($esc): string {
+	if (trim((string) $address) === '') {
+		return '<em class="text-muted">' . $esc('no address recorded') . '</em>';
+	}
+
+	return $esc($address);
+};
+
 ?>
 <table id="accounttable" class="table table-striped table-bordered table-sm">
 	<?php if (isset($thatUser)) { ?>
@@ -227,37 +234,37 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 				Verification and email status could not be loaded. The rest of this page is
 				unaffected &mdash; see the admin logs for details.
 			</div>
-		<?php } elseif ($emailState === null) { ?>
+		<?php } elseif (!$emailFlags->hasProfile) { ?>
 			<div class="alert alert-warning">
 				This owner has no profile, so no verification emails are sent.
 			</div>
-		<?php } elseif ($emailBounced || $emailBlocked || $emailOptedOut) { ?>
+		<?php } elseif ($emailFlags->bounced || $emailFlags->blocked || $emailFlags->optedOut) { ?>
 			<div class="alert alert-warning">
-				<?php if ($emailBounced) { ?>
+				<?php if ($emailFlags->bounced) { ?>
 					<div>
 						<span class="badge text-bg-danger">Bounced</span>
-						<?= $esc($emailState->email_bounced_address) ?>
-						<?php if ($emailState->email_bounced_at !== null) { ?>
-							<span class="d-block small"><?= $relativeTime($emailState->email_bounced_at) ?></span>
+						<?= $flagAddress($emailFlags->bouncedAddress) ?>
+						<?php if ($emailFlags->bouncedAt !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailFlags->bouncedAt) ?></span>
 						<?php } ?>
 					</div>
 				<?php } ?>
-				<?php if ($emailBlocked) { ?>
+				<?php if ($emailFlags->blocked) { ?>
 					<div>
 						<span class="badge text-bg-warning">Suppressed</span>
-						Blocked (cause: <?= ($emailState->email_blocked_cause ?? '') !== '' ? $esc($emailState->email_blocked_cause) : 'unknown' ?>)
-						<?= $esc($emailState->email_blocked_address) ?>
-						<?php if ($emailState->email_blocked_at !== null) { ?>
-							<span class="d-block small"><?= $relativeTime($emailState->email_blocked_at) ?></span>
+						Blocked (cause: <?= ($emailFlags->blockedCause ?? '') !== '' ? $esc($emailFlags->blockedCause) : 'unknown' ?>)
+						<?= $flagAddress($emailFlags->blockedAddress) ?>
+						<?php if ($emailFlags->blockedAt !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailFlags->blockedAt) ?></span>
 						<?php } ?>
 					</div>
 				<?php } ?>
-				<?php if ($emailOptedOut) { ?>
+				<?php if ($emailFlags->optedOut) { ?>
 					<div>
 						<span class="badge text-bg-warning">Suppressed</span>
 						Owner opted out
-						<?php if ($emailState->email_opted_out_at !== null) { ?>
-							<span class="d-block small"><?= $relativeTime($emailState->email_opted_out_at) ?></span>
+						<?php if ($emailFlags->optedOutAt !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailFlags->optedOutAt) ?></span>
 						<?php } ?>
 					</div>
 				<?php } ?>

@@ -218,7 +218,7 @@ if ($carSchemaJson === false) {
                     $ownerEmailState = null;
                     if ($viewerIsRegistryAdmin && !empty($carData->user_id)) {
                         try {
-                            $ownerEmailState = (new CarRepository(dbi()))->findProfileEmailState((int) $carData->user_id);
+                            $ownerEmailState = (new CarRepository(dbi()))->effectiveEmailFlags((int) $carData->user_id);
                         } catch (CarDatabaseException $e) {
                             logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Owner email state lookup failed for car ID $carID: " . $e->getMessage());
                         }

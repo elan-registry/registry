@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\EmailNoticeBuilder;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -195,8 +196,8 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
             $row = $rows[$owners[$name]['car']];
             $this->assertSame(1, (int) $row->has_profile, "{$name}: has a profile");
             $this->assertSame($optedOut, (int) $row->email_opted_out, "{$name}: email_opted_out");
-            $this->assertSame($blocked, (int) $row->email_blocked, "{$name}: email_blocked");
-            $this->assertSame($bounced, (int) $row->email_bounced, "{$name}: email_bounced");
+            $this->assertSame($blocked, (int) $row->email_blocked_active, "{$name}: email_blocked_active");
+            $this->assertSame($bounced, (int) $row->email_bounced_active, "{$name}: email_bounced_active");
         }
         $this->assertSame('spam', $rows[$owners['blocked']['car']]->email_blocked_cause);
     }
@@ -307,7 +308,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
 
     // ---- Email on file row ---------------------------------------------------------------------
 
-    private function renderVehicleInfoCard(int $carId, ?object $ownerEmailState, bool $viewerIsRegistryAdmin): string
+    private function renderVehicleInfoCard(int $carId, ?EffectiveEmailFlags $ownerEmailState, bool $viewerIsRegistryAdmin): string
     {
         $carData = $this->db->query('SELECT * FROM cars WHERE id = ?', [$carId])->first();
         $this->assertIsObject($carData);
@@ -348,8 +349,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $owners = $this->createOwnerPerFlag();
         $text = [];
         foreach ($owners as $name => $owner) {
-            $state = $this->repo->findProfileEmailState($owner['owner']);
-            $this->assertIsObject($state);
+            $state = $this->repo->effectiveEmailFlags($owner['owner']);
             $text[$name] = $this->emailOnFileText($this->renderVehicleInfoCard($owner['car'], $state, true));
         }
 
@@ -366,7 +366,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
     {
         $owner = $this->createOwner('cardviewer');
         $this->setOwnerBounced($owner['owner'], $owner['email']);
-        $state = $this->repo->findProfileEmailState($owner['owner']);
+        $state = $this->repo->effectiveEmailFlags($owner['owner']);
 
         $this->assertSame('', $this->emailOnFileText($this->renderVehicleInfoCard($owner['car'], $state, false)));
         $this->assertNotSame('', $this->emailOnFileText($this->renderVehicleInfoCard($owner['car'], $state, true)), 'Control: the admin sees it');
@@ -377,7 +377,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $source = (string) file_get_contents(dirname(__DIR__, 4) . '/app/owner/cars/details.php');
         $this->assertNotSame('', $source);
 
-        $loadAt = strpos($source, 'findProfileEmailState((int) $carData->user_id)');
+        $loadAt = strpos($source, 'effectiveEmailFlags((int) $carData->user_id)');
         $includeAt = strpos($source, "_vehicle_info_card.php'");
         $this->assertNotFalse($loadAt, 'details.php must read the owner profile state');
         $this->assertNotFalse($includeAt);
@@ -394,48 +394,97 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
 
         $opted = $builder->buildForOwner($owners['opted']['owner']);
         $this->assertNotNull($opted);
-        $this->assertSame($owners['opted']['email'], $opted['addresses'][0]['address']);
-        $this->assertSame(['cause' => 'owner_optout', 'date' => '2026-03-04'], $opted['addresses'][0]['suppressed']);
+        $this->assertSame('opted_out', $opted['kind']);
+        $this->assertSame('2026-03-04', $opted['date']);
 
         $blocked = $builder->buildForOwner($owners['blocked']['owner']);
         $this->assertNotNull($blocked);
-        $this->assertSame(
-            ['cause' => 'brevo_complaint', 'date' => '2026-04-05'],
-            $blocked['addresses'][0]['suppressed']
-        );
+        $this->assertSame('blocked', $blocked['kind']);
+        $this->assertSame($owners['blocked']['email'], $blocked['address']);
+        $this->assertSame('spam', $blocked['cause']);
+        $this->assertSame('2026-04-05', $blocked['date']);
 
         $bounced = $builder->buildForOwner($owners['bounced']['owner']);
         $this->assertNotNull($bounced);
-        $this->assertTrue($bounced['hasBounced']);
-        $this->assertFalse($bounced['hasSuppressed']);
-        $this->assertSame(['date' => '2026-05-06'], $bounced['addresses'][0]['bounced']);
+        $this->assertSame('bounced', $bounced['kind']);
+        $this->assertSame($owners['bounced']['email'], $bounced['address']);
+        $this->assertSame('2026-05-06', $bounced['date']);
 
         $this->assertNull($builder->buildForOwner($owners['none']['owner']), 'No flag, no notice');
     }
 
-    /**
-     * @return array<string, array{0: ?string}>
-     */
-    public static function blockCauseProvider(): array
+    // ---- readers ignore a flag stored for an old address (#2356) -------------------------
+
+    public function testUserFormAndEmailOnFileRowIgnoreABlockAndABounceForAnOldAddress(): void
     {
-        return [
-            'spam'         => ['spam'],
-            'unsubscribed' => ['unsubscribed'],
-            'blocklist'    => ['blocklist'],
-            'unknown'      => [null],
-        ];
+        $owner = $this->createOwner('oldaddress');
+        $this->setOwnerBlocked($owner['owner'], $owner['email'], '2026-04-05 06:07:08', 'spam');
+        $this->setOwnerBounced($owner['owner'], $owner['email'], '2026-05-06 07:08:09');
+        $this->assertStringContainsString('Blocked (cause: spam)', $this->renderUserForm($owner['owner']), 'Test setup: the flags apply');
+
+        $this->setUserEmailRaw($owner['owner'], 'moved-' . uniqid() . '@example.com');
+
+        $form = $this->renderUserForm($owner['owner']);
+        $this->assertStringContainsString('No delivery problems recorded', $form);
+        $this->assertStringNotContainsString('Blocked (cause', $form);
+        $this->assertStringNotContainsString('>Bounced<', $form);
+        $this->assertStringNotContainsString($owner['email'], $form, 'The old address is not shown');
+        $this->assertSame(
+            '',
+            $this->emailOnFileText($this->renderVehicleInfoCard(
+                $owner['car'],
+                $this->repo->effectiveEmailFlags($owner['owner']),
+                true
+            )),
+            'The Email on file row is absent when no flag applies'
+        );
     }
 
-    #[DataProvider('blockCauseProvider')]
-    public function testAccountNoticeMapsEveryBlockCauseToTheBrevoComplaintText(?string $cause): void
+    public function testUserFormShowsTheOptOutAfterTheAddressChangesButNotTheOldBlock(): void
     {
-        $owner = $this->createOwner('noticecause');
-        $this->setOwnerBlocked($owner['owner'], $owner['email'], '2026-04-05 06:07:08', $cause);
+        $owner = $this->createOwner('optoldaddress');
+        $this->setOwnerOptedOut($owner['owner'], true, '2026-03-04 05:06:07');
+        $this->setOwnerBlocked($owner['owner'], $owner['email'], '2026-04-05 06:07:08', 'spam');
+        $this->setUserEmailRaw($owner['owner'], 'moved-' . uniqid() . '@example.com');
 
+        $form = $this->renderUserForm($owner['owner']);
+
+        $this->assertStringContainsString('Owner opted out', $form);
+        $this->assertStringNotContainsString('Blocked (cause', $form);
+    }
+
+    public function testUserFormAndEmailOnFileRowShowAFlagWithANullAddress(): void
+    {
+        $owner = $this->createOwner('nulladdress');
+        $this->setOwnerBounced($owner['owner'], 'placeholder@example.com');
+        $this->db->query('UPDATE profiles SET email_bounced_address = NULL WHERE user_id = ?', [$owner['owner']]);
+        $this->setUserEmailRaw($owner['owner'], 'moved-' . uniqid() . '@example.com');
+
+        $this->assertStringContainsString('>Bounced<', $this->renderUserForm($owner['owner']));
+        $this->assertStringContainsString(
+            'Bounced',
+            $this->emailOnFileText($this->renderVehicleInfoCard(
+                $owner['car'],
+                $this->repo->effectiveEmailFlags($owner['owner']),
+                true
+            ))
+        );
+    }
+
+    public function testAccountNoticeIgnoresAFlagForAnOldAddressAndShowsAnOptOut(): void
+    {
+        $owner = $this->createOwner('noticeold');
+        $this->setOwnerBounced($owner['owner'], $owner['email']);
+        $this->setUserEmailRaw($owner['owner'], 'moved-' . uniqid() . '@example.com');
+        $builder = new EmailNoticeBuilder($this->repo);
+
+        $beforeOptOut = $builder->buildForOwner($owner['owner']);
+        $this->assertNull($beforeOptOut, 'A bounce for the old address gives no notice');
+
+        $this->setOwnerOptedOut($owner['owner']);
         $notice = (new EmailNoticeBuilder($this->repo))->buildForOwner($owner['owner']);
-
         $this->assertNotNull($notice);
-        $this->assertSame('brevo_complaint', $notice['addresses'][0]['suppressed']['cause'] ?? null);
+        $this->assertSame('opted_out', $notice['kind'], 'The opt-out shows after an address change');
     }
 
     // ---- verification-email opt-out page --------------------------------------------------------
@@ -585,7 +634,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
             $source = (string) file_get_contents($file);
             $this->assertNotSame('', $source, $file);
             $this->assertDoesNotMatchRegularExpression(
-                '/email_opted_out|email_blocked|email_bounced|findProfileEmailState|findProfileOptedOut|CarRepository|FROM\s+profiles/i',
+                '/email_opted_out|email_blocked|email_bounced|findProfileEmailState|effectiveEmailFlags|findProfileOptedOut|CarRepository|FROM\s+profiles/i',
                 $source,
                 basename($file) . ' is on the password reset send path and must not read a profile flag'
             );

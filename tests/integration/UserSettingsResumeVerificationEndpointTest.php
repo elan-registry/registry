@@ -348,6 +348,8 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     {
         $ownerId = $this->createEndpointTestUser();
         $this->setOwnerOptedOut($ownerId);
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'bounced-endpoint@example.com');
         $this->setOwnerBounced($ownerId, 'bounced-endpoint@example.com', '2026-03-04 05:06:07');
         $this->createTestCar($ownerId, ['email' => 'bounced-endpoint@example.com']);
 
@@ -402,6 +404,8 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     public function testBlockedOnlyOwnerHidesButtonAndPostReportsNothingResumed(): void
     {
         $ownerId = $this->createEndpointTestUser();
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'all-complaint@example.com');
         $this->setOwnerBlocked($ownerId, 'all-complaint@example.com', '2026-03-10 09:30:00', 'spam');
         $this->createTestCar($ownerId, ['email' => 'all-complaint@example.com']);
         $before = $this->flags($ownerId);
@@ -438,6 +442,8 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     public function testBlockedAndOptedOutOwnerResumeKeepsTheBlockAndSaysEmailsStayPaused(): void
     {
         $ownerId = $this->createEndpointTestUser();
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'complained@example.com');
         $this->setOwnerBlocked($ownerId, 'complained@example.com', '2026-03-10 09:30:00', 'spam');
         $this->setOwnerOptedOut($ownerId);
         $this->createTestCar($ownerId, ['email' => 'complained@example.com']);
@@ -475,6 +481,8 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     {
         $ownerId = $this->createEndpointTestUser();
         $this->setOwnerOptedOut($ownerId);
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'bounced-message@example.com');
         $this->setOwnerBounced($ownerId, 'bounced-message@example.com', '2026-03-04 05:06:07');
         $this->createTestCar($ownerId, ['email' => 'bounced-message@example.com']);
 
@@ -508,6 +516,8 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     public function testBouncedOnlyOwnerHidesControl(): void
     {
         $ownerId = $this->createEndpointTestUser();
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'bounced-only@example.com');
         $this->setOwnerBounced($ownerId, 'bounced-only@example.com');
         $this->createTestCar($ownerId, ['email' => 'bounced-only@example.com']);
 
