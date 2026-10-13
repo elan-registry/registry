@@ -136,7 +136,8 @@ owner with no `profiles` row gets no verification email, and the admin queue
 shows the state "no profile". Account mail (for example password reset) is
 never blocked by a flag.
 
-Each flag change writes one `logs` row with category `EMAIL_BOUNCED`. The
+Each flag change writes one `logs` row with `logtype` `EmailBounced`
+(`LogCategories::LOG_CATEGORY_EMAIL_BOUNCED`). The
 `logs.metadata` JSON holds `owner_id`, `flag`, `old`, `new` and `source`. The
 row holds no email address. `profiles` has no history table, so these `logs`
 rows are the audit trail. See `DeliverabilityFlagLog` in

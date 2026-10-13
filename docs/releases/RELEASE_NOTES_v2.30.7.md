@@ -46,7 +46,7 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   ([#2101](https://github.com/elan-registry/registry/issues/2101))
 - Flag changes no longer write `EMAIL BOUNCED`, `EMAIL SUPPRESSED`, `EMAIL BOUNCE CLEARED`, `EMAIL SUPPRESSION CLEARED`, or `SUPPRESSION CLEARED BY
   OWNER` rows to `cars_hist`. ([#2101](https://github.com/elan-registry/registry/issues/2101))
-- The audit trail for a flag change is now the `logs` rows with category `EMAIL BOUNCED`, which hold no email address and are removed when an admin
+- The audit trail for a flag change is now the `logs` rows with `logtype` `EmailBounced`, which hold no email address and are removed when an admin
   clears the UserSpice logs. ([#2101](https://github.com/elan-registry/registry/issues/2101))
 - A restore of a deleted account sets the opt-out only, and does not restore a bounce from soft-bounce escalation or Mark Bounced.
   ([#2101](https://github.com/elan-registry/registry/issues/2101))
@@ -54,15 +54,13 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - The verification queue, the eligible count, the admin user form, and the Email on file row ignore a block or bounce recorded for an address the
   owner no longer uses. ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - An opt-out always counts, including for an address the owner no longer uses. ([#2356](https://github.com/elan-registry/registry/issues/2356))
-- Verification emails go to the owner's account email, not the email copied onto the car. ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - The Sent report shows the account email address. ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - Brevo events and suppressed contacts now match the owner's account email, not the email copied onto a car.
   ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - A Brevo event for mail sent to an old car email before the deploy shows as an unmatched recipient.
   ([#2356](https://github.com/elan-registry/registry/issues/2356))
-- On plugin 1.8.0 or later, verification sends and the Brevo webhook keep working when `override.php` differs from the bundled copy.
-  ([#2374](https://github.com/elan-registry/registry/issues/2374))
-- Brevo readiness no longer compares `override.php` with the bundled copy. ([#2374](https://github.com/elan-registry/registry/issues/2374))
+- Brevo readiness no longer compares `override.php` with the bundled copy, so on plugin 1.8.0 or later sends and the webhook keep working when
+  the two files differ. ([#2374](https://github.com/elan-registry/registry/issues/2374))
 - An `override.php` kept from before 1.8.0 still drops the verification tag, and readiness does not detect it.
   ([#2374](https://github.com/elan-registry/registry/issues/2374))
 - Replace `override.php` with the bundled version after each plugin update. ([#2374](https://github.com/elan-registry/registry/issues/2374))

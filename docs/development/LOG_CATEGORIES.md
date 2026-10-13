@@ -55,7 +55,8 @@ Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.
 
 - `LOG_CATEGORY_EMAIL_SUCCESS` → `EmailSuccess` (Email sent)
 - `LOG_CATEGORY_EMAIL_ERROR` → `EmailError` (Send failed)
-- `LOG_CATEGORY_EMAIL_BOUNCED` → `EmailBounced` (Sent email reported as bounced)
+- `LOG_CATEGORY_EMAIL_BOUNCED` → `EmailBounced` (Sent email reported as bounced. Since #2101 also
+  the audit row for every deliverability flag change: opt-out, block and bounce, set or cleared)
 - `LOG_CATEGORY_EMAIL_SETTINGS` → `EmailSettings` (Configuration changed)
 - `LOG_CATEGORY_EMAIL_WEBHOOK` → `EmailWebhook` (Inbound Brevo delivery-status webhook event
   processed; auth/rate-limit rejections on the same endpoint use `LOG_CATEGORY_SECURITY` instead)
