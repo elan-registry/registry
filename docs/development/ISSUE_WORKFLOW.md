@@ -43,7 +43,7 @@ true. The content decides the date, not the calendar.
 | Loop | Commands, in order |
 | --- | --- |
 | Capture | `/new-issue`, `/found` (finds made while an issue is in progress) |
-| Plan | `/plan-milestone`, `/groom-backlog` (on demand), `/start-milestone` |
+| Plan | `/plan-milestone`, `/groom-tests` then `/groom-backlog` (on demand), `/start-milestone` |
 | Build, per issue | `/start-issue` → `/execute-plan` (runs `/simplify` itself, Step 6.8) → `/commit` → `/review-pr` → `/commit-push-pr` → `/address-pr-comments` → `/finish-issue` |
 | Build, hotfix | The same, starting with `/start-issue <N> --hotfix`. Then the patch release in `DEPLOYMENT.md`. `/new-issue` or `/found` names the entry point. |
 | Ship | `/sprint-status` (any time), `/finish-milestone` → `/review-milestone` → `/release-milestone` |
@@ -835,6 +835,15 @@ release milestone only when the issue has no branch, no open PR, and a
 milestone that is not active. The move also removes `status:ready`. It does
 not sweep the cleanup ledger. `composer check:docs` catches a ledger
 group whose file is gone.
+
+### Review the test suite
+
+`/groom-tests` reviews the test suite on demand. Read-only agents give each
+test file one verdict: keep, trim, cut, or merge. The command checks each
+cut finding against the code, removes the files that an open issue already
+owns, and files the rest as capture-only issues on one approval. It never
+edits or deletes a test. Run it before `/groom-backlog`, which then weighs
+the new issues with the rest of the backlog.
 
 ---
 
