@@ -83,3 +83,4 @@ own block on the address after deletion. A send to a blocked address returns a
 - WIP: [#2357](https://github.com/elan-registry/registry/issues/2357) — Replace Clear Suppression with Clear Block and Clear Opt-out in the admin tools.
 - WIP: [#2374](https://github.com/elan-registry/registry/issues/2374) — Stop the Brevo webhook from dropping verification events when only send-side checks fail.
 - WIP: [#2378](https://github.com/elan-registry/registry/issues/2378) — Stop new-account sign-up from setting a remember-me token.
+- [#2403](https://github.com/elan-registry/registry/issues/2403) — Add a `/groom-tests` command that reviews the test suite for low-value tests.
