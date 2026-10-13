@@ -63,7 +63,7 @@ $_enCauseText = [
 $_enKind      = $emailNotice['kind'];
 $_enAddress   = '<strong>' . $_en($emailNotice['address'] ?? '') . '</strong>';
 $_enWhen      = $_enDate($emailNotice['date']);
-$_enCause     = $emailNotice['cause'] !== null ? ($_enCauseText[$emailNotice['cause']] ?? null) : null;
+$_enCause     = $_enCauseText[$emailNotice['cause'] ?? ''] ?? null;
 if ($_enKind === EmailNoticeBuilder::KIND_BLOCKED) {
     $_enMessage = 'Email to ' . $_enAddress . ' is blocked' . ($_enCause !== null ? ' because ' . $_en($_enCause) : '') . '.';
 } elseif ($_enKind === EmailNoticeBuilder::KIND_BOUNCED) {

@@ -919,9 +919,10 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             return false;
         }
 
-        if ($flags === null || !$flags->hasProfile) {
-            // No owner or no profiles row: apply() writes no flag for this
-            // car and logs why, so the car is not already flagged.
+        if ($flags === null) {
+            // No owner: apply() writes no flag for this car and logs why, so
+            // the car is not already flagged. An owner with no profiles row
+            // needs no check here, because EffectiveEmailFlags then holds no flag.
             return false;
         }
 

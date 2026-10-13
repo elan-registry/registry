@@ -94,7 +94,6 @@ after an item is written.
 
 ### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
 
-- [ ] No test covers the webhook gate (`app/api/webhooks/brevo.php`, `brevoReady()`) with a plugin below 1.8.0: a 200 response, the dropped event, and the `VerificationConfigWarning` log line. (found in #2184)
 - [ ] The not-ready tests empty the API key and restore it in `finally`. A fatal error or a killed run skips `finally` and leaves `key = ''`, which the bootstrap sweep does not report (it deletes only `sib-test-key` rows). Readiness does not change, but the toggle test's original key is lost. Update the crash-recovery comment in `tests/bootstrap-integration.php` (~L430-445) or make the sweep report empty-key rows. (found in /finish-milestone v2.30.6)
 
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
@@ -163,10 +162,6 @@ after an item is written.
 ### `usersc/classes/Car/VerificationBatchSender.php` (test coverage)
 
 - [ ] No test covers a batch while Brevo is not ready (plugin below 1.8.0): no email sent, every car in `failed` with the Brevo reason, no vericode rotation. Only `CarVerificationSendService::sendOne()` has that test. (found in #2184)
-
-### `usersc/classes/Car/VerificationSettings.php`
-
-- [ ] ~L556 comment says the Brevo state is "not 'not configured'"; say "not 'not ready'" to match `brevoNotReadyReason()`. (found in /finish-milestone v2.30.6)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 

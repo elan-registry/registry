@@ -598,8 +598,9 @@ class CarRepository
             return false;
         }
 
-        return self::isEmptyAddress($address)
-            || DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($address)) === $current;
+        $stored = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($address));
+
+        return $stored === '' || $stored === $current;
     }
 
     /**

@@ -127,15 +127,13 @@ if (!empty($_POST)) {
             // registry, so it wins over a bounce. Only a flag for the
             // current address applies (#2356).
             $effectiveFlags = $repo->effectiveEmailFlags($userId);
-            $blocked = $effectiveFlags->blocked;
-            $bounced = $effectiveFlags->bounced;
-            if ($blocked && !$resumed) {
+            if ($effectiveFlags->blocked && !$resumed) {
                 usError('Verification emails are paused because our email provider flagged your address. Please contact the registry.');
-            } elseif ($blocked) {
+            } elseif ($effectiveFlags->blocked) {
                 usWarning('Your opt-out is removed. Verification emails stay paused because our email provider flagged your address. Please contact the registry.');
-            } elseif ($bounced && !$resumed) {
+            } elseif ($effectiveFlags->bounced && !$resumed) {
                 usError('Verification emails are paused because email to your address bounced. Update your email address to turn them back on.');
-            } elseif ($bounced) {
+            } elseif ($effectiveFlags->bounced) {
                 usWarning('Your opt-out is removed. Verification emails stay paused because email to your address bounced. Update your email address to turn them back on.');
             } else {
                 usSuccess('Verification emails have been resumed for your cars.');

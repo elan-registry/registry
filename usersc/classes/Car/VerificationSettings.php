@@ -553,7 +553,7 @@ final class VerificationSettings
             // SQLSTATE 42S02 = table missing, i.e. the sendinblue plugin was never
             // installed — an expected, non-alarming "not ready". Any other error
             // (connection lost, grants revoked, lock timeout) means the true Brevo
-            // state is unknown, not "not configured" — logged distinctly so an
+            // state is unknown, not "not ready" — logged distinctly so an
             // admin who gets the enable-rejected message isn't sent to double-check
             // a key/override that may in fact already be correct.
             $sqlState = (string) ($this->db->errorInfo()[0] ?? '');
