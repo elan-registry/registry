@@ -684,9 +684,9 @@ one writes the owner's one `profiles` row. Nothing is written to `cars`, and no
 action fans out to cars (#2101). The queue shows one of the three buttons for
 each car row. See [Verification Queue](#verification-queue).
 
-Each action runs in one transaction. It locks the `profiles` row
-(`SELECT ... FOR UPDATE`) before it writes. An owner with no `profiles` row
-gets an error and nothing is written. Each flag change writes one `logs` row
+Each action runs in one transaction. It locks the `profiles` row and the
+`users` row (`SELECT ... FOR UPDATE OF p, u`) before it writes. An owner
+with no `profiles` row gets an error and nothing is written. Each flag change writes one `logs` row
 (see [Flag-change audit rows](#flag-change-audit-rows)).
 
 **Mark Bounced** (`mark_bounced` POST):

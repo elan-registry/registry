@@ -38,7 +38,7 @@ after an item is written.
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
-- [ ] The comment at ~L220 says "a send to it sets the bounce flag again". Name which Brevo event sets which flag (`blocked` sets `email_bounced`, `spam` and `unsubscribed` set `email_blocked`). Reword the "comes in #2359" notes here, in `usersc/scripts/during_user_creation.php` (~L29) and in `CarVerificationManager.php` (~L257, ~L288) so they stay true after #2359 ships (found in /finish-milestone v2.30.7)
+- [ ] The comment at ~L220 says "a send to it sets the bounce flag again". Name which Brevo event sets which flag (`blocked` sets `email_bounced`, `spam` and `unsubscribed` set `email_blocked`). Reword the "comes in #2359" note here and in `usersc/scripts/during_user_creation.php` (~L29), and the "#2359 adds the transaction" notes in `CarVerificationManager.php` (~L255, ~L296), so they stay true after #2359 ships (found in /finish-milestone v2.30.7)
 
 ### `app/admin/includes/process-admin-contact.php`
 
@@ -157,6 +157,12 @@ after an item is written.
 
 - [ ] The "never echo unescaped" regexes miss `<?= htmlspecialchars($y) . $verificationBrevoNotReadyReason ?>` and `printf(...)`, and `[^;]*` can match across lines into comment text. Count the variable's uses in `app/admin/index.php` and assert each one is known. (found in /finish-milestone v2.30.6)
 
+### `tests/unit/cars/services/CarRepositoryTest.php` (test coverage)
+
+- [ ] No case has `user_email => null` (orphan profile). Assert that a stored block or bounce with an address returns 0 and is written, and one with an empty address returns 1 (found in /finish-milestone v2.30.7)
+- [ ] Only the block writer has the "stored flag applies, new flag for another address" case (~L1144). Add the bounce version: return 1 and a write (found in /finish-milestone v2.30.7)
+- [ ] No case covers a repeat for the same old address that is not `users.email`. Assert a return of 1 and no write, so a later change of that early return cannot log a 0 to 1 change that did not happen (found in /finish-milestone v2.30.7)
+
 ### `tests/unit/classes/Email/BrevoDevOverrideTest.php` (test coverage)
 
 - [ ] `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
@@ -221,7 +227,7 @@ after an item is written.
 
 - [ ] Runtime code (`Owner.php` ~L327, `CarRepository.php` ~L571 and 7 more, `account-cleanup-helpers.php` ~L234, `during_user_creation.php` ~L41) takes its address-matching rule from the migration helper `normalizeAddress()`. Move the rule to a runtime type, for example `ElanRegistry\Car\EmailAddress::normalize()`, and keep a frozen copy in the migration class (found in /finish-milestone v2.30.7)
 - [ ] The "flag applies" rule exists as SQL (`FLAG_ACTIVE_BLOCKED`, `FLAG_ACTIVE_BOUNCED`) and as PHP (`CarRepository::flagApplies()`, ~L595), tied only by a "Change the two together" comment. Put the PHP form next to `EffectiveEmailFlags` and add a parity test that runs both forms on a fixed set of addresses (found in /finish-milestone v2.30.7)
-- [ ] The "address changed" compare exists in `Owner::update()` (~L328) and in `clearFlagsForConfirmedEmailChange()` (`CarRepository.php` ~L888-890). Use one named method in both (found in /finish-milestone v2.30.7)
+- [ ] The "address changed" compare exists in `Owner::update()` (~L328) and in `clearFlagsForConfirmedEmailChange()` (`CarRepository.php` ~L911-913). Use one named method in both (found in /finish-milestone v2.30.7)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 

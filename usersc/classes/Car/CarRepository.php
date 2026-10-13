@@ -689,10 +689,11 @@ class CarRepository
     /**
      * Set an owner's block (`email_blocked` with its address, time and cause)
      *
-     * Reads the profile row with SELECT ... FOR UPDATE. The lock holds only
-     * inside the caller's transaction. Writes when the flag is 0, or when it
-     * is set for an address that differs from `$address` under the matching
-     * rule. A repeat block of the same address keeps the first time and cause.
+     * Reads the profile row and the users row with SELECT ... FOR UPDATE OF
+     * p, u. The lock holds only inside the caller's transaction. Writes when
+     * the flag is 0, or when it is set for an address that differs from
+     * `$address` under the matching rule. A repeat block of the same address
+     * keeps the first time and cause.
      *
      * @param int         $userId    Owner user ID
      * @param string      $address   The blocked address. Stored normalized.
@@ -777,10 +778,11 @@ class CarRepository
     /**
      * Set an owner's bounce (`email_bounced` with its address and time)
      *
-     * Reads the profile row with SELECT ... FOR UPDATE before the write. The
-     * lock holds only inside the caller's transaction. Writes when the flag
-     * is 0, or when it is set for an address that differs from
-     * `$address` under the matching rule, so every new bounce gets a new
+     * Reads the profile row and the users row with SELECT ... FOR UPDATE OF
+     * p, u before the write. The lock holds only inside the caller's
+     * transaction. Writes when the flag is 0, or when it is set for an
+     * address that differs from `$address` under the matching rule, so
+     * every new bounce gets a new
      * `email_bounced_at` (#2320). A repeat bounce of the same address keeps
      * the first time.
      *

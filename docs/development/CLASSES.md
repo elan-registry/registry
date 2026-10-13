@@ -616,8 +616,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   Read the owner's deliverability state from `profiles` (#2101): `email_opted_out`,
   `email_opted_out_at`, `email_blocked`, `email_blocked_address`, `email_blocked_at`,
   `email_blocked_cause`, `email_bounced`, `email_bounced_address`, `email_bounced_at` and
-  `email_bounce_cleared_at`. Returns `null` when the owner has no `profiles` row. Treat that as
-  "do not mail". With `$forUpdate` true it adds `FOR UPDATE`, and the caller must be inside a transaction.
+  `email_bounce_cleared_at`, plus `user_email` (the owner's `users.email` from a `LEFT JOIN`, null when
+  the `users` row is missing). Returns `null` when the owner has no `profiles` row. Treat that as
+  "do not mail". With `$forUpdate` true it adds `FOR UPDATE OF p, u`, which locks the `profiles` row and
+  then the `users` row, and the caller must be inside a transaction.
   It returns the stored values and does not apply the address-match rule. To decide whether a flag
   applies now, use `effectiveEmailFlags()`.
 - `effectiveEmailFlags(int $userId): EffectiveEmailFlags` - Read the flags that apply to one owner now
@@ -639,9 +641,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   Read `profiles.email_opted_out` (0, 1, or null if no row). Renamed from
   `findProfileEmailSuppressed()` in #2101. It no longer uses `MAX()`, because `profiles.user_id` is unique.
   The locking variant is removed: Resume now locks the row through the profile writer.
-- Profile writers (#2101). Each locks the owner's `profiles` row, writes one row by `user_id`, and
-  returns the old flag value (0 or 1), or `null` when the owner has no `profiles` row (nothing is written).
-  The caller passes the old value to `DeliverabilityFlagLog::record()`.
+- Profile writers (#2101). Each locks the owner's `profiles` row and `users` row, writes one row by
+  `user_id`, and returns the old flag value (0 or 1), or `null` when the owner has no `profiles` row (nothing
+  is written). `setProfileBlocked()` and `setProfileBounced()` return the old effective value (#2356): a
+  flag stored for an old address does not apply, so they return 0, except that a repeat for the same
+  address returns 1 with no write. The clear writers return the stored value. The caller passes the old
+  value to `DeliverabilityFlagLog::record()`.
   - `setProfileOptedOut(int $userId, bool $optedOut): ?int` - Set or clear `email_opted_out` and
     `email_opted_out_at`. A repeat set keeps the first time.
   - `setProfileBlocked(int $userId, string $address, ?string $cause, string $blockedAt): ?int` - Set
@@ -1079,7 +1084,7 @@ on success.
 - `setBounced(int $carId, string $bouncedAddress, string $bouncedAt, string $source): bool` - Event path.
   Finds the car's owner and sets `email_bounced` on the owner's profile with the address and time.
   Skips with a log row (and returns false) for a car that does not exist, has no owner, has a deleted owner,
-  belongs to `noowner`, or has an owner with no `profiles` row. Returns true when the flag changed from 0 to 1.
+  belongs to `noowner`, or has an owner with no `profiles` row. Returns true when a bounce now applies and none applied before.
   `$source` is one of `DeliverabilityFlagLog::SOURCES`.
 - `setSuppressed(int $carId, string $blockedAddress, ?string $cause, string $blockedAt, string $source): bool` - Event path.
   Sets `email_blocked` on the owner's profile with address, time and cause (a Brevo `spam` or `unsubscribed`
@@ -1090,7 +1095,7 @@ on success.
   true when the flag changed from 0 to 1.
 - `setBouncedForOwner(int $ownerId, string $bouncedAddress, int $actingUserId): bool` -
   Admin Mark Bounced. Sets `email_bounced`, the address and `email_bounced_at` (now) on the owner's
-  profile. Source `admin`. Returns true when the flag changed from 0 to 1 (#1884).
+  profile. Source `admin`. Returns true when a bounce now applies and none applied before (#1884).
 - `clearBouncedForOwner(int $ownerId, int $actingUserId): bool` -
   Admin Clear Bounced. Clears `email_bounced` and sets `email_bounce_cleared_at`. Source `admin`.
   Returns true when the flag changed from 1 to 0.
