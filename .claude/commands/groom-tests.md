@@ -83,11 +83,11 @@ slice. For a scoped run, start only the slices in scope:
 If a slice has more than about 80 files, split it into two agents. Keep the
 total under 10 agents.
 
-Give each agent this brief, with its slice:
+Give each agent this brief. Put the slice in place of SLICE, and the
+output of `git rev-parse --show-toplevel` in place of REPO_ROOT:
 
-> READ-ONLY. Do not edit, run, or commit anything. Repo:
-> `/Users/jimboone/Developer/Web/ElanRegistry/Registry`. Audit the test
-> files in SLICE. For each file, count the test methods and the lines.
+> READ-ONLY. Do not edit, run, or commit anything. Repo: REPO_ROOT.
+> Audit the test files in SLICE. For each file, count the test methods and the lines.
 > Give the file one verdict:
 >
 > - KEEP — tests real behavior, or a real past bug that can occur again.
