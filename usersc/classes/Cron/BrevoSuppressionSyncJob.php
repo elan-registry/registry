@@ -91,8 +91,8 @@ use ElanRegistry\LogCategories;
  * before the write. {@see CarRepository::findByEmail()} returns only `id` and
  * `email`, so this job spends two extra indexed reads per matched car
  * ({@see CarRepository::findOwnerOfCar()} and
- * {@see CarRepository::findProfileEmailState()}) to read the owner's
- * `email_bounced`/`email_blocked` first. That read
+ * {@see CarRepository::effectiveEmailFlags()}) to read whether the owner's
+ * `email_bounced`/`email_blocked` applies to the current address first. That read
  * is deliberate rather than approximated away: an approximation would leave
  * `alreadyFlaggedCount` permanently zero and report every re-run of the
  * backfill as though it had newly flagged the entire suppression list, which
@@ -869,10 +869,13 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     /**
      * Whether this car's owner already carries the flag the given event would set.
      *
-     * Two extra reads, `findOwnerOfCar()` and `findProfileEmailState()`, make
+     * Two extra reads, `findOwnerOfCar()` and `effectiveEmailFlags()`, make
      * {@see SuppressionSyncSummary}'s `alreadyFlaggedCount` bucket real rather
      * than always-zero. The class docblock's count-accuracy note says why
      * those reads are worth paying for.
+     *
+     * A flag stored for an old address does not count: it does not apply to
+     * the owner's current email (#2356), so the contact counts as newly matched.
      *
      * Fails *open* (returns false, i.e. "not already flagged"): if the car or
      * the owner's profile cannot be read, the apply() call still happens and
@@ -886,9 +889,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     {
         try {
             $car = $this->repo->findOwnerOfCar($carId);
-            $profile = $car === null || $car->user_id === null
+            $flags = $car === null || $car->user_id === null
                 ? null
-                : $this->repo->findProfileEmailState((int) $car->user_id);
+                : $this->repo->effectiveEmailFlags((int) $car->user_id);
         } catch (CarDatabaseException $e) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                 'Brevo suppression sync: could not read current flags for car %d'
@@ -916,17 +919,16 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             return false;
         }
 
-        if ($profile === null) {
-            // No owner or no profiles row: apply() writes no flag for this
-            // car and logs why, so the car is not already flagged.
+        if ($flags === null) {
+            // No owner: apply() writes no flag for this car and logs why, so
+            // the car is not already flagged. An owner with no profiles row
+            // needs no check here, because EffectiveEmailFlags then holds no flag.
             return false;
         }
 
         // 'blocked' is the only mapped event EmailEventApplier treats as a hard
         // bounce; 'spam' and 'unsubscribed' both set the block flag.
-        $flag = $event === 'blocked' ? $profile->email_bounced : $profile->email_blocked;
-
-        return (int) $flag === 1;
+        return $event === 'blocked' ? $flags->bounced : $flags->blocked;
     }
 
     /**

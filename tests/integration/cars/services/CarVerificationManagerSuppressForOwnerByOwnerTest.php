@@ -153,7 +153,8 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     #[Group('fast')]
     public function testResumeByBlockedAndOptedOutOwnerKeepsTheBlockAndVerificationStillExcludesIt(): void
     {
-        $ownerId = $this->createTestUser([], true);
+        // The block applies only while its address matches users.email (#2356).
+        $ownerId = $this->createTestUser(['email' => 'complained@example.com'], true);
         $this->setOwnerBlocked($ownerId, 'complained@example.com', '2026-02-03 04:05:06', 'spam');
         $this->setOwnerOptedOut($ownerId);
         $carId = $this->createEligibleCar($ownerId);

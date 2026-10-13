@@ -76,6 +76,53 @@ class CarRepository
         self::BLOCKED_CAUSE_BLOCKLIST,
     ];
 
+    /**
+     * SQL that normalizes a column the way
+     * {@see DeliverabilityMigrationQueries::normalizeAddress()} does: strip
+     * leading and trailing white space, then lower case. Wrap a column name
+     * as `NORMALIZE_SQL_OPEN . <column> . NORMALIZE_SQL_CLOSE`.
+     *
+     * MySQL `TRIM()` removes spaces only. PHP `trim()` also removes a tab, a
+     * newline, a carriage return and `\x0B`, so the SQL form uses
+     * REGEXP_REPLACE with `[[:space:]]` (#2356). The two forms agree for an
+     * ASCII address with leading or trailing white space from the set
+     * `[ \t\n\r\x0B]`. The known differences are:
+     *
+     * - PHP `trim()` removes `\0`. The SQL form does not.
+     * - The SQL form removes `\f`, a no-break space and other Unicode
+     *   spaces. PHP `trim()` does not.
+     * - MySQL `LOWER()` lowers non-ASCII letters. PHP `strtolower()` does not.
+     *
+     * Address validation rejects these characters, so a stored address does
+     * not hold them. Both sides of the compare are normalized, so a stored
+     * `_address` that a writer did not normalize still agrees with the PHP
+     * rule. The predicates add `COLLATE utf8mb4_bin` because the compare must
+     * be byte-exact, as PHP `===` is. The column collation ignores case and
+     * trailing spaces.
+     */
+    private const NORMALIZE_SQL_OPEN  = 'LOWER(REGEXP_REPLACE(';
+    private const NORMALIZE_SQL_CLOSE = ", '^[[:space:]]+|[[:space:]]+$', ''))";
+
+    private const CURRENT_ADDRESS_SQL = self::NORMALIZE_SQL_OPEN . 'u.email' . self::NORMALIZE_SQL_CLOSE;
+
+    /**
+     * SQL for an `email_blocked` that applies to the owner's current address.
+     * A NULL or empty address applies (fail closed). Aliases `p` and `u`.
+     */
+    private const FLAG_ACTIVE_BLOCKED = "p.email_blocked = 1 AND (p.email_blocked_address IS NULL"
+        . ' OR ' . self::NORMALIZE_SQL_OPEN . 'p.email_blocked_address' . self::NORMALIZE_SQL_CLOSE . " = ''"
+        . ' OR ' . self::NORMALIZE_SQL_OPEN . 'p.email_blocked_address' . self::NORMALIZE_SQL_CLOSE
+        . ' = ' . self::CURRENT_ADDRESS_SQL . ' COLLATE utf8mb4_bin)';
+
+    /**
+     * SQL for an `email_bounced` that applies to the owner's current address.
+     * A NULL or empty address applies (fail closed). Aliases `p` and `u`.
+     */
+    private const FLAG_ACTIVE_BOUNCED = "p.email_bounced = 1 AND (p.email_bounced_address IS NULL"
+        . ' OR ' . self::NORMALIZE_SQL_OPEN . 'p.email_bounced_address' . self::NORMALIZE_SQL_CLOSE . " = ''"
+        . ' OR ' . self::NORMALIZE_SQL_OPEN . 'p.email_bounced_address' . self::NORMALIZE_SQL_CLOSE
+        . ' = ' . self::CURRENT_ADDRESS_SQL . ' COLLATE utf8mb4_bin)';
+
     /** Largest `$limit` that recentFlagChanges() accepts. A larger value is clamped. */
     private const FLAG_CHANGES_MAX_LIMIT = 100;
 
@@ -274,70 +321,6 @@ class CarRepository
     }
 
     /**
-     * Clear the owner's profile bounce when it was recorded against an address
-     * that is not the owner's just-confirmed address (#1884, #2101)
-     *
-     * The interim email-change clear until #2356 replaces it. The bounce is
-     * cleared when `profiles.email_bounced_address` is NULL, empty, or differs
-     * from `$currentEmail` under the matching rule
-     * ({@see DeliverabilityMigrationQueries::normalizeAddress()}). A bounce
-     * recorded against the address the owner still uses stays set.
-     *
-     * A bounce with a NULL or empty address is a data-integrity anomaly (every
-     * writer sets the address). It is cleared anyway: refusing would keep an
-     * owner who just proved the address works permanently un-emailable. The
-     * caller logs that case (see {@see carIdsWithBouncedFlagButNoAddress()}).
-     *
-     * @param int    $userId       Owner user ID
-     * @param string $currentEmail The just-confirmed users.email value
-     * @return int 1 when the profile bounce was cleared, else 0
-     * @throws CarDatabaseException If the read or the write fails
-     */
-    public function clearBouncedForUser(int $userId, string $currentEmail): int
-    {
-        $state = $this->findProfileEmailState($userId, true);
-        if ($state === null || (int) $state->email_bounced !== 1) {
-            return 0;
-        }
-
-        $stored = DeliverabilityMigrationQueries::normalizeAddress(
-            $state->email_bounced_address === null ? null : (string) $state->email_bounced_address
-        );
-        if ($stored !== '' && $stored === DeliverabilityMigrationQueries::normalizeAddress($currentEmail)) {
-            return 0;
-        }
-
-        $this->writeProfileBounceClear($userId, 'clearBouncedForUser');
-
-        return 1;
-    }
-
-    /**
-     * Tell whether the owner's profile has a bounce with no recorded address
-     *
-     * Keeps its pre-#2101 name and return shape until #2356 replaces the
-     * email-change clear. The flag now lives on the profile, so the result is
-     * the owner's car IDs when the profile has `email_bounced = 1` with a NULL
-     * or empty `email_bounced_address`, and an empty list otherwise.
-     *
-     * @param int $userId Owner user ID
-     * @return list<int> The owner's car IDs when the anomaly exists, else []
-     * @throws CarDatabaseException If a query fails
-     */
-    public function carIdsWithBouncedFlagButNoAddress(int $userId): array
-    {
-        $state = $this->findProfileEmailState($userId);
-        if ($state === null || (int) $state->email_bounced !== 1) {
-            return [];
-        }
-        if (trim((string) ($state->email_bounced_address ?? '')) !== '') {
-            return [];
-        }
-
-        return array_map(static fn (object $row): int => (int) $row->id, $this->findByOwner($userId));
-    }
-
-    /**
      * Update a car's fields, scoped to both the car ID and its current owner.
      *
      * Used by the owner-profile sync to copy owner-contact values onto the cars
@@ -480,6 +463,10 @@ class CarRepository
      * Null means the owner has no `profiles` row. Callers must treat that as
      * "do not mail" (the verification queries exclude such an owner).
      *
+     * It returns the stored values with no address match. A stored block or
+     * bounce can be for an old address. To find whether a flag applies now,
+     * use {@see effectiveEmailFlags()}.
+     *
      * @param int  $userId    Owner user ID
      * @param bool $forUpdate True to lock the row (SELECT ... FOR UPDATE). Use
      *                        it only inside an active transaction, before a
@@ -511,6 +498,125 @@ class CarRepository
         $row = $result->first();
 
         return is_object($row) ? $row : null;
+    }
+
+    /**
+     * Build the SQL predicate for a flag that applies to the owner's current address
+     *
+     * Returns `p.<flag> = 1 AND (<address term>)`. The address term is true
+     * when the flag's `_address` is NULL, empty, or equal to the normalized
+     * `users.email`. A flag with no stored address applies (fail closed).
+     * This is the owner-level rule. The SQL comes from
+     * class constants only, never from `$flag`. The caller joins `profiles`
+     * as `p` and `users` as `u`, and puts the result in parentheses. For
+     * `email_opted_out`, which is not tied to an address, use
+     * `p.email_opted_out = 1`.
+     *
+     * @param string $flag {@see DeliverabilityFlagLog::FLAG_BLOCKED} or {@see DeliverabilityFlagLog::FLAG_BOUNCED}
+     * @return string SQL boolean expression
+     * @throws CarValidationException If $flag is not one of the two permitted flag names
+     */
+    public static function emailFlagActiveSql(string $flag): string
+    {
+        if ($flag === DeliverabilityFlagLog::FLAG_BLOCKED) {
+            return self::FLAG_ACTIVE_BLOCKED;
+        }
+        if ($flag === DeliverabilityFlagLog::FLAG_BOUNCED) {
+            return self::FLAG_ACTIVE_BOUNCED;
+        }
+
+        throw new CarValidationException(
+            'CarRepository::emailFlagActiveSql received an unknown flag. Use '
+            . DeliverabilityFlagLog::FLAG_BLOCKED . ' or ' . DeliverabilityFlagLog::FLAG_BOUNCED . '.'
+        );
+    }
+
+    /**
+     * Read the deliverability flags that apply to one owner now
+     *
+     * One query reads the profile and the owner's `users.email`. A stored
+     * `email_blocked` or `email_bounced` applies when its normalized
+     * `_address` is empty or equals the normalized `users.email`
+     * ({@see DeliverabilityMigrationQueries::normalizeAddress()}).
+     * `email_opted_out` applies whatever the address. This is the PHP form of
+     * {@see emailFlagActiveSql()}.
+     *
+     * @param int $userId Owner user ID
+     * @return EffectiveEmailFlags {@see EffectiveEmailFlags::none()} when the
+     *                             owner has no profiles row or no users row
+     * @throws CarDatabaseException If the query fails
+     */
+    public function effectiveEmailFlags(int $userId): EffectiveEmailFlags
+    {
+        $result = $this->db->query(
+            'SELECT p.email_opted_out, p.email_opted_out_at,
+                    p.email_blocked, p.email_blocked_address, p.email_blocked_at, p.email_blocked_cause,
+                    p.email_bounced, p.email_bounced_address, p.email_bounced_at,
+                    u.email AS user_email
+               FROM profiles p
+              INNER JOIN users u ON u.id = p.user_id
+              WHERE p.user_id = ?',
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::effectiveEmailFlags failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+        $row = $this->db->count() === 0 ? null : $result->first();
+        if (!is_object($row)) {
+            return EffectiveEmailFlags::none();
+        }
+
+        $current = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($row->user_email));
+
+        return new EffectiveEmailFlags(
+            true,
+            (int) $row->email_opted_out === 1,
+            self::nullableString($row->email_opted_out_at),
+            self::flagApplies($row->email_blocked, $row->email_blocked_address, $current),
+            self::nullableString($row->email_blocked_address),
+            self::nullableString($row->email_blocked_at),
+            self::nullableString($row->email_blocked_cause),
+            self::flagApplies($row->email_bounced, $row->email_bounced_address, $current),
+            self::nullableString($row->email_bounced_address),
+            self::nullableString($row->email_bounced_at),
+            self::nullableString($row->user_email)
+        );
+    }
+
+    /**
+     * Tell whether a stored flag applies to the normalized current address
+     *
+     * A set flag applies when its normalized address is empty (fail closed)
+     * or equals `$current`. This is the PHP form of `FLAG_ACTIVE_BLOCKED`
+     * and `FLAG_ACTIVE_BOUNCED`. Change the two together.
+     */
+    private static function flagApplies(mixed $flag, mixed $address, string $current): bool
+    {
+        if ((int) $flag !== 1) {
+            return false;
+        }
+
+        $stored = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($address));
+
+        return $stored === '' || $stored === $current;
+    }
+
+    /**
+     * Tell whether a stored flag address is NULL or empty after normalization
+     */
+    private static function isEmptyAddress(mixed $address): bool
+    {
+        return DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($address)) === '';
+    }
+
+    /**
+     * Cast a column value to a string, and keep NULL
+     */
+    private static function nullableString(mixed $value): ?string
+    {
+        return $value === null ? null : (string) $value;
     }
 
     /**
@@ -629,14 +735,24 @@ class CarRepository
             return $old;
         }
 
+        $this->writeProfileBlockClear($userId, 'clearProfileBlocked');
+
+        return $old;
+    }
+
+    /**
+     * Write the block clear on a profile row that the caller has locked
+     *
+     * @throws CarDatabaseException If the query fails
+     */
+    private function writeProfileBlockClear(int $userId, string $method): void
+    {
         $this->writeProfile(
             $userId,
             'email_blocked = 0, email_blocked_address = NULL, email_blocked_at = NULL, email_blocked_cause = NULL',
             [],
-            'clearProfileBlocked'
+            $method
         );
-
-        return $old;
     }
 
     /**
@@ -708,6 +824,93 @@ class CarRepository
         $this->writeProfileBounceClear($userId, 'clearProfileBounced');
 
         return $old;
+    }
+
+    /**
+     * Clear the bounce and the block when a confirmed email change gives a new address
+     *
+     * Call it inside the caller's transaction. It locks the profile row and
+     * the users row (`SELECT ... FOR UPDATE OF p, u`) before it reads. The
+     * users lock stops a concurrent Owner::update() from a change to
+     * `users.email` between this read and the `email_address_seen` write.
+     * Then it makes one compare: the normalized `users.email` against
+     * `email_address_seen`. When they are equal (a re-verify of the same
+     * address), it writes nothing. A flag stored for an old address stays.
+     * A flag with no stored address stays and applies (fail closed). When
+     * they differ, it does these steps:
+     *
+     * 1. Clears `email_bounced` with its address and date, and sets
+     *    `email_bounce_cleared_at`, if the bounce is set.
+     * 2. Clears `email_blocked` with its address, date and cause, if the
+     *    block is set.
+     * 3. Sets `email_address_since` to now and `email_address_seen` to the
+     *    normalized `users.email`.
+     *
+     * `email_opted_out` stays. The caller writes the flag-change log rows and
+     * logs the no-address anomaly.
+     *
+     * @param int $userId Owner user ID
+     * @return array{bounced: int, blocked: int, bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool}|null
+     *         The flag values before the call and whether the address changed.
+     *         A flag was cleared only when `changed` is true and its old value
+     *         is 1. A `...HadNoAddress` value is true when that flag was set
+     *         with a NULL or empty address. Null when the owner has no
+     *         profiles row or no users row (nothing is written).
+     * @throws CarDatabaseException If a query fails
+     */
+    public function clearFlagsForConfirmedEmailChange(int $userId): ?array
+    {
+        // Owner::update() locks the profiles row, then writes the users row.
+        // This query must lock in the same order to prevent a deadlock.
+        // STRAIGHT_JOIN makes MySQL read, and so lock, `p` before `u`.
+        $result = $this->db->query(
+            'SELECT p.email_bounced, p.email_bounced_address, p.email_blocked, p.email_blocked_address,
+                    p.email_address_seen, u.email AS user_email
+               FROM profiles p
+              STRAIGHT_JOIN users u ON u.id = p.user_id
+              WHERE p.user_id = ?
+                FOR UPDATE OF p, u',
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::clearFlagsForConfirmedEmailChange failed for user={$userId}: "
+                . $this->db->errorString()
+            );
+        }
+        $row = $this->db->count() === 0 ? null : $result->first();
+        if (!is_object($row)) {
+            return null;
+        }
+
+        $bounced = (int) $row->email_bounced;
+        $blocked = (int) $row->email_blocked;
+        $current = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($row->user_email));
+        $seen    = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($row->email_address_seen));
+        $changed = $current !== $seen;
+
+        if ($changed) {
+            if ($bounced === 1) {
+                $this->writeProfileBounceClear($userId, 'clearFlagsForConfirmedEmailChange');
+            }
+            if ($blocked === 1) {
+                $this->writeProfileBlockClear($userId, 'clearFlagsForConfirmedEmailChange');
+            }
+            $this->writeProfile(
+                $userId,
+                'email_address_since = ?, email_address_seen = ?',
+                [date(AppConstants::DATETIME_FORMAT), $current],
+                'clearFlagsForConfirmedEmailChange'
+            );
+        }
+
+        return [
+            'bounced'             => $bounced,
+            'blocked'             => $blocked,
+            'bouncedHadNoAddress' => $bounced === 1 && self::isEmptyAddress($row->email_bounced_address),
+            'blockedHadNoAddress' => $blocked === 1 && self::isEmptyAddress($row->email_blocked_address),
+            'changed'             => $changed,
+        ];
     }
 
     /**
@@ -1130,10 +1333,13 @@ class CarRepository
      * excluded. Emailing such a car would mail an erased owner's last-known
      * address, which the registry's privacy commitment forbids.
      *
-     * Finally, a car is ineligible when its owner's profile has any
-     * deliverability flag (`email_opted_out`, `email_blocked`,
-     * `email_bounced`), or when the owner has no profiles row. See the join
-     * comment in verificationEligibleFromSql().
+     * The send mails the owner's `users.email`, so the owner must have one.
+     * `cars.email` is only a copy and is not read.
+     *
+     * Finally, a car is ineligible when its owner has opted out, when a
+     * block or a bounce applies to the owner's current address
+     * ({@see emailFlagActiveSql()}), or when the owner has no profiles row.
+     * See the join comment in verificationEligibleFromSql().
      *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
@@ -1174,7 +1380,7 @@ class CarRepository
      * The one definition of eligibility. findVerificationEligible() selects
      * rows with it, and countVerificationSummary() counts rows with it, so the
      * Eligible card and the batch preview cannot disagree. The clause binds no
-     * parameters. It uses the aliases `cars` and `users`.
+     * parameters. It uses the aliases `cars`, `u` (users) and `p` (profiles).
      *
      * @return string SQL that starts with `FROM cars` and ends with the last WHERE condition
      * @throws CarValidationException If the freshness alias is rejected (unreachable — literal)
@@ -1183,7 +1389,7 @@ class CarRepository
     {
         // solddate is a DATE column; under STRICT_TRANS_TABLES, comparing it to ''
         // is a hard SQL error (ERROR 1525: Incorrect DATE value), not a no-op — the
-        // column has no empty-string state, only NULL. email similarly needs an
+        // column has no empty-string state, only NULL. u.email similarly needs an
         // explicit NULL check: `!= ''` alone evaluates to UNKNOWN (not FALSE)
         // for a NULL email under SQL's three-valued logic. UNKNOWN excludes the
         // row from this WHERE just as FALSE would, so the effect is the desired
@@ -1192,9 +1398,11 @@ class CarRepository
         // The owner's profile is the system of record for deliverability
         // (#2101), so the flags are read from it and not from the car. A car
         // registered after the owner opted out, bounced or was blocked is
-        // then excluded too (#2319). Any one of the three flags excludes the
-        // car, whatever its address column holds: a flag with a NULL or empty
-        // address is still a flag.
+        // then excluded too (#2319). An opt-out excludes the car whatever the
+        // address. A block or a bounce excludes it only while its address
+        // matches the owner's current address. The batch mails users.email,
+        // so only that address counts. A flag with a NULL or empty address
+        // applies (fail closed).
         //
         // LEFT JOIN, then `p.id IS NOT NULL`: an owner with no profiles row is
         // treated as blocked, because nothing records whether that owner may
@@ -1205,7 +1413,7 @@ class CarRepository
         // deliberately — see DATABASE.md's "No Enforced Foreign Key Constraints"),
         // so it can point at a row that no longer exists (e.g. a deleted user
         // whose after_user_deletion.php reassignment failed partway). A LEFT
-        // JOIN would admit such a row via `users.username IS NULL` — indistinguishable
+        // JOIN would admit such a row via `u.username IS NULL` — indistinguishable
         // from "no join match because deliberately ownerless" — reopening the
         // erased-owner leak this method exists to close. INNER JOIN requires a
         // live users row, so cars.user_id IS NOT NULL is redundant (the join
@@ -1240,19 +1448,24 @@ class CarRepository
         // car waits out the rest of the year), per the FRD's Eligibility
         // Criteria. Without this clause the counter is written but never
         // read, and a stale car re-enters every batch with no limit.
-        $stale = self::stalenessSql('cars');
+        $stale   = self::stalenessSql('cars');
+        $blocked = self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BLOCKED);
+        $bounced = self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BOUNCED);
+        // MySQL TRIM() removes only spaces. The send trims all white space,
+        // so a tab-only address must also count as empty here.
+        $address = self::CURRENT_ADDRESS_SQL;
 
         return "FROM cars
-              INNER JOIN users ON users.id = cars.user_id
+              INNER JOIN users u ON u.id = cars.user_id
               " . self::PROFILE_JOIN_SQL . "
               WHERE cars.solddate IS NULL
                 AND p.id IS NOT NULL
                 AND p.email_opted_out = 0
-                AND p.email_blocked = 0
-                AND p.email_bounced = 0
-                AND cars.email IS NOT NULL AND cars.email != ''
+                AND NOT ({$blocked})
+                AND NOT ({$bounced})
+                AND u.email IS NOT NULL AND {$address} != ''
                 AND cars.user_id IS NOT NULL
-                AND users.username != 'noowner'
+                AND u.username != 'noowner'
                 AND {$stale}
                 AND (cars.vericode_sent_at IS NULL
                      OR cars.vericode_sent_at < NOW() - INTERVAL 60 DAY)
@@ -1270,15 +1483,26 @@ class CarRepository
     private const PROFILE_JOIN_SQL = 'LEFT JOIN profiles p ON p.user_id = cars.user_id';
 
     /**
-     * Build the WHERE condition for a car whose owner's profile has a bounce
+     * The owner join that the dashboard queries add after {@see self::PROFILE_JOIN_SQL}
      *
-     * Needs the `cars` alias and {@see self::PROFILE_JOIN_SQL}.
+     * {@see emailFlagActiveSql()} compares a flag's address with
+     * `u.email`. `users.id` is the primary key, so the join adds at most one
+     * row per car. A car whose `user_id` has no users row gets `u.email`
+     * NULL, so the address term of the predicate does not count its
+     * flag. Eligibility uses an INNER JOIN and excludes such a car.
+     */
+    private const USERS_JOIN_SQL = 'LEFT JOIN users u ON u.id = cars.user_id';
+
+    /**
+     * Build the WHERE condition for a car with a bounce on the owner's current address
+     *
+     * Needs the `cars` alias, {@see self::PROFILE_JOIN_SQL} and {@see self::USERS_JOIN_SQL}.
      *
      * @return string SQL boolean expression
      */
     private static function verificationBouncedWhereSql(): string
     {
-        return '(p.email_bounced = 1)';
+        return '(' . self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BOUNCED) . ')';
     }
 
     /**
@@ -1311,41 +1535,43 @@ class CarRepository
      * - The owner did not respond: `last_verified` is NULL or earlier than
      *   the send, and `solddate` is NULL. Verify and Sold do not clear
      *   `vericode_sent_at`, so this check is what removes a car that answered.
-     * - The owner's profile has no flag (`email_bounced`, `email_blocked`,
-     *   `email_opted_out`). Those cars show under their own pill. A car whose
-     *   owner has no profiles row can still be Pending: it was sent before
-     *   the row went missing.
+     * - The owner has not opted out, and no block or bounce applies to the
+     *   owner's current address ({@see emailFlagActiveSql()}). The batch skips those cars, so
+     *   they show under their own pill and not as Pending. A car whose owner has no profiles row can
+     *   still be Pending: it was sent before the row went missing.
      *
-     * The condition binds no parameters. It needs the `cars` alias and
-     * {@see self::PROFILE_JOIN_SQL}.
+     * The condition binds no parameters. It needs the `cars` alias,
+     * {@see self::PROFILE_JOIN_SQL} and {@see self::USERS_JOIN_SQL}.
      *
      * @return string SQL boolean expression
      */
     private static function verificationPendingWhereSql(): string
     {
         $ttlDays = CarVerificationEmailComposer::LINK_TTL_DAYS;
+        $bounced = self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BOUNCED);
+        $blocked = self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BLOCKED);
 
         return "(cars.vericode IS NOT NULL
                  AND cars.vericode_sent_at IS NOT NULL
                  AND cars.vericode_sent_at >= NOW() - INTERVAL {$ttlDays} DAY
                  AND (cars.last_verified IS NULL OR cars.last_verified < cars.vericode_sent_at)
                  AND cars.solddate IS NULL
-                 AND COALESCE(p.email_bounced, 0) = 0
-                 AND COALESCE(p.email_blocked, 0) = 0
+                 AND COALESCE(({$bounced}), 0) = 0
+                 AND COALESCE(({$blocked}), 0) = 0
                  AND COALESCE(p.email_opted_out, 0) = 0)";
     }
 
     /**
-     * Build the WHERE condition for a Suppressed car: the owner is blocked or opted out
+     * Build the WHERE condition for a Suppressed car: a block applies to the owner's current address, or the owner opted out
      *
      * Until #2361 separates them, one pill holds both flags. Needs the `cars`
-     * alias and {@see self::PROFILE_JOIN_SQL}.
+     * alias, {@see self::PROFILE_JOIN_SQL} and {@see self::USERS_JOIN_SQL}.
      *
      * @return string SQL boolean expression
      */
     private static function verificationSuppressedWhereSql(): string
     {
-        return '(p.email_blocked = 1 OR p.email_opted_out = 1)';
+        return '((' . self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BLOCKED) . ') OR p.email_opted_out = 1)';
     }
 
     /**
@@ -1385,8 +1611,8 @@ class CarRepository
      * Definitions (the queue pills use the same ones, see findVerificationQueue()):
      * - `eligible`: the predicate of findVerificationEligible(), counted.
      * - `pending`: see verificationPendingWhereSql(). Current state.
-     * - `bounced`: the owner's `profiles.email_bounced = 1`. Current state.
-     * - `suppressed`: the owner's `profiles.email_blocked = 1` or `email_opted_out = 1`. Current state.
+     * - `bounced`: a bounce applies to the owner's current address. Current state.
+     * - `suppressed`: a block applies to the owner's current address, or the owner opted out. Current state.
      * - `verified`: distinct existing cars with a `cars_hist` `VERIFIED` row in the window.
      * - `sold`: distinct existing cars with a `cars_hist` `VERIFIED SOLD` row in the window.
      * - `all`: distinct cars in eligible, pending, bounced or suppressed, plus
@@ -1412,7 +1638,7 @@ class CarRepository
         $noProfile    = self::verificationNoProfileWhereSql();
         [$window, $windowParams] = self::windowSql('h.timestamp', $windowDays);
 
-        $carsFrom = 'FROM cars ' . self::PROFILE_JOIN_SQL;
+        $carsFrom = 'FROM cars ' . self::PROFILE_JOIN_SQL . ' ' . self::USERS_JOIN_SQL;
         $histFrom = 'FROM cars_hist h INNER JOIN cars ON cars.id = h.car_id';
 
         $this->db->query(
@@ -1480,17 +1706,20 @@ class CarRepository
      * The Eligible view keeps its preview-before-send through
      * findVerificationEligible(). This method only lists the rows for the table.
      *
-     * The profile columns are the owner's state. For a car whose owner has no
-     * profiles row, `has_profile` is 0, the three flags are 0 and
-     * `email_blocked_cause` is null.
+     * The profile columns are the owner's state. `email_blocked_active` and
+     * `email_bounced_active` are 1 only while the flag applies to the
+     * owner's current address ({@see emailFlagActiveSql()}). `email_blocked_cause` is
+     * the stored cause, also when the block does not apply. For a car whose
+     * owner has no profiles row, `has_profile` is 0, the three flag columns
+     * are 0 and `email_blocked_cause` is null.
      *
      * @param string $status One of {@see self::QUEUE_STATUSES}
      * @param int|null $windowDays Window for `verified` and `sold`, in days back from now. Null = all time.
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @return array<object{id: int|string, year: int|string|null, chassis: string, fname: ?string, lname: ?string,
      *         user_id: int|string|null, vericode_sent_at: ?string, last_verified: ?string, solddate: ?string,
-     *         has_profile: int|string, email_opted_out: int|string, email_blocked: int|string,
-     *         email_blocked_cause: ?string, email_bounced: int|string, hist_timestamp: ?string}>
+     *         has_profile: int|string, email_opted_out: int|string, email_blocked_active: int|string,
+     *         email_blocked_cause: ?string, email_bounced_active: int|string, hist_timestamp: ?string}>
      * @throws CarValidationException If $status is not in QUEUE_STATUSES, or $windowDays is zero or negative
      * @throws CarDatabaseException If the query fails
      */
@@ -1511,10 +1740,12 @@ class CarRepository
                     cars.vericode_sent_at, cars.last_verified, cars.solddate,
                     (p.id IS NOT NULL) AS has_profile,
                     COALESCE(p.email_opted_out, 0) AS email_opted_out,
-                    COALESCE(p.email_blocked, 0) AS email_blocked,
+                    COALESCE((' . self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BLOCKED) . '), 0)
+                        AS email_blocked_active,
                     p.email_blocked_cause,
-                    COALESCE(p.email_bounced, 0) AS email_bounced';
-        $carsFrom   = 'FROM cars ' . self::PROFILE_JOIN_SQL;
+                    COALESCE((' . self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BOUNCED) . '), 0)
+                        AS email_bounced_active';
+        $carsFrom   = 'FROM cars ' . self::PROFILE_JOIN_SQL . ' ' . self::USERS_JOIN_SQL;
         $pending    = self::verificationPendingWhereSql();
         $bounced    = self::verificationBouncedWhereSql();
         $suppressed = self::verificationSuppressedWhereSql();
@@ -2021,23 +2252,17 @@ class CarRepository
      * `model, year`. The car-button list (`findByOwner()`) has no order, so
      * the two lists need not match.
      *
-     * The deliverability columns come from the owner's profile (#2101), so
-     * they are the same on every row. For an owner with no profiles row,
-     * `has_profile` is 0 and every profile column is NULL.
+     * The rows hold car columns only. For the owner's deliverability flags,
+     * use {@see effectiveEmailFlags()} (#2356).
      *
      * TYPES ARE AS PDO RETURNS THEM, not as the schema declares them. The
      * type of a numeric column depends on the PDO settings (for example
-     * `ATTR_STRINGIFY_FETCHES`), so cast the tinyint flags at the call site
-     * before a compare.
+     * `ATTR_STRINGIFY_FETCHES`).
      *
      * @param int $ownerId Owner user ID
      * @return array<object{
      *   id: int|string, model: string, series: ?string, variant: ?string, year: int|string|null,
-     *   email: ?string, owner_last_updated: string, last_verified: ?string, has_profile: int|string,
-     *   email_opted_out: int|string|null, email_opted_out_at: ?string,
-     *   email_blocked: int|string|null, email_blocked_address: ?string, email_blocked_at: ?string,
-     *   email_blocked_cause: ?string, email_bounced: int|string|null, email_bounced_address: ?string,
-     *   email_bounced_at: ?string
+     *   email: ?string, owner_last_updated: string, last_verified: ?string
      * }> One row per car owned by this user, ordered (model, year)
      * @throws CarDatabaseException If the query fails
      */
@@ -2045,13 +2270,8 @@ class CarRepository
     {
         $result = $this->db->query(
             'SELECT cars.id, cars.model, cars.series, cars.variant, cars.year, cars.email,
-                    cars.owner_last_updated, cars.last_verified,
-                    (p.id IS NOT NULL) AS has_profile,
-                    p.email_opted_out, p.email_opted_out_at,
-                    p.email_blocked, p.email_blocked_address, p.email_blocked_at, p.email_blocked_cause,
-                    p.email_bounced, p.email_bounced_address, p.email_bounced_at
+                    cars.owner_last_updated, cars.last_verified
                FROM cars
-               ' . self::PROFILE_JOIN_SQL . '
               WHERE cars.user_id = ?
               ORDER BY cars.model, cars.year',
             [$ownerId]
@@ -2067,22 +2287,47 @@ class CarRepository
     }
 
     /**
-     * Find cars whose email column matches a given address
+     * Find the cars of the owner whose account email matches a given address
      *
-     * Used by the Brevo webhook receiver to map an inbound delivery-status
-     * event's recipient address back to the car(s) it belongs to. Multiple
-     * cars can share one owner email, so this returns every match.
+     * Used by the Brevo webhook, the event reconciliation job and the
+     * suppression sync to map an event's recipient address to cars. The
+     * verification send mails `users.email`, so the match uses that address.
+     * `cars.email` is only a copy, and an old copy must not take the event.
      *
-     * @param string $email Email address to match against cars.email
-     * @return array<object> Array of objects with 'id' and 'email' properties (empty if no match)
+     * Both sides are normalized ({@see self::CURRENT_ADDRESS_SQL}), so case
+     * and leading or trailing white space do not stop a match. The
+     * `noowner` system account is left out: an event must never flag it.
+     * More than one account can hold the same address, so this returns the
+     * cars of each such owner.
+     *
+     * @param string $email Recipient address from the event
+     * @return array<object> Objects with `id` (the car) and `email` (the owner's
+     *                       `users.email`). Empty when no owner matches.
      * @throws CarDatabaseException If the query fails
      */
     public function findByEmail(string $email): array
     {
-        $result = $this->db->query("SELECT id, email FROM cars WHERE email = ?", [$email]);
+        if (trim($email) === '') {
+            return [];
+        }
+
+        // PHP trim() keeps \f and a no-break space, but the SQL wrapper
+        // removes them. Such an address normalizes to '' and would match
+        // every owner with an empty email, so the SQL also rejects ''.
+        $result = $this->db->query(
+            'SELECT cars.id, u.email
+               FROM cars
+              INNER JOIN users u ON u.id = cars.user_id
+              WHERE u.username != \'noowner\'
+                AND ' . self::CURRENT_ADDRESS_SQL . " != ''
+                AND " . self::CURRENT_ADDRESS_SQL . ' = '
+                . self::NORMALIZE_SQL_OPEN . '?' . self::NORMALIZE_SQL_CLOSE . ' COLLATE utf8mb4_bin
+              ORDER BY cars.id',
+            [$email]
+        );
         if ($this->db->error()) {
             throw new CarDatabaseException(
-                "CarRepository::findByEmail failed for email={$email}: " . $this->db->errorString()
+                'CarRepository::findByEmail failed: ' . $this->db->errorString()
             );
         }
         return $result->results();

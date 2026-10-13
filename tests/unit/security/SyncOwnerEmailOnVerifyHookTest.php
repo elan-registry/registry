@@ -216,77 +216,104 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
 
     /**
      * @param array<int, array{user_id: mixed, category: string, message: string, metadata?: mixed}> $entries
-     * @return array<int, array{user_id: mixed, category: string, message: string, metadata?: mixed}>
+     * @return list<array{user_id: mixed, category: string, message: string, metadata?: mixed}>
      */
-    private function bounceClearLogEntries(array $entries): array
+    private function flagChangeEntries(array $entries, string $flag): array
     {
         return array_values(array_filter(
             $entries,
-            static fn(array $e): bool => str_contains($e['message'], 'bounce-clear')
-                || str_contains($e['message'], 'email_bounced changed')
-                || str_contains($e['message'], 'had email_bounced=1')
+            static fn(array $e): bool => str_contains($e['message'], "{$flag} changed")
         ));
     }
 
     /**
-     * The one flag-change audit row that DeliverabilityFlagLog writes.
-     *
      * @param array<int, array{user_id: mixed, category: string, message: string, metadata?: mixed}> $entries
      * @return list<array{user_id: mixed, category: string, message: string, metadata?: mixed}>
      */
-    private function flagChangeEntries(array $entries): array
+    private function flagClearFailureEntries(array $entries): array
     {
         return array_values(array_filter(
             $entries,
-            static fn(array $e): bool => str_contains($e['message'], 'email_bounced changed')
+            static fn(array $e): bool => str_contains($e['message'], 'flag clear failed for user 7')
         ));
     }
 
-    // Bounce-clear block (#1890, #2101)
+    // Confirmed-change flag clear (#1890, #2101, #2356). The hook calls one
+    // CarVerificationManager method. The anomaly log for a flag with no
+    // address is tested with the manager (integration).
 
-    public function testBounceOnAnotherAddressIsClearedOnTheProfileWithOneAuditRow(): void
+    public function testChangedAddressClearsBounceAndBlockWithOneAuditRowEach(): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
         // No cars: the owner-field sync then opens no transaction of its own,
-        // so the commit count below belongs to the bounce clear alone.
+        // so the commit count below belongs to the flag clear alone.
         $GLOBALS['hookTestDb'] = new HookTestDb(
-            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old-address@example.com'],
+            profile: [
+                'email_bounced' => 1, 'email_bounced_address' => 'old-address@example.com',
+                'email_blocked' => 1, 'email_blocked_address' => 'old-address@example.com',
+                'email_address_seen' => 'old-address@example.com',
+            ],
         );
 
         $this->fireHook();
 
         $db = $GLOBALS['hookTestDb'];
-        $this->assertSame(1, $db->profileClearCalls, 'The profile bounce clear must be issued exactly once');
-        $this->assertSame([7], $db->profileClearUserIds);
-        $this->assertSame(1, $db->lockedProfileReads, 'The profile row must be read FOR UPDATE before the write');
+        $this->assertSame(1, $db->profileClearCalls, 'The bounce clear must be issued exactly once');
+        $this->assertSame(1, $db->blockClearCalls, 'The block clear must be issued exactly once');
+        $this->assertSame(1, $db->sinceSeenWrites, 'since/seen must be written once');
+        $this->assertSame(1, $db->lockedProfileReads, 'The profile row must be read FOR UPDATE before the writes');
         $this->assertSame(1, $db->commits);
         $this->assertSame(0, $db->rollbacks);
 
-        $entries = $this->flagChangeEntries($mockLogEntries);
-        $this->assertCount(1, $entries, 'Exactly one audit row when the bounce is cleared');
-        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $entries[0]['category']);
-        $this->assertSame(7, $entries[0]['user_id']);
+        $bounce = $this->flagChangeEntries($mockLogEntries, 'email_bounced');
+        $this->assertCount(1, $bounce, 'Exactly one audit row when the bounce is cleared');
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $bounce[0]['category']);
+        $this->assertSame(7, $bounce[0]['user_id']);
         $this->assertSame(
             ['owner_id' => 7, 'flag' => 'email_bounced', 'old' => 1, 'new' => 0, 'source' => 'email_change'],
-            $entries[0]['metadata']
+            $bounce[0]['metadata']
         );
-        $this->assertStringNotContainsString('@', $entries[0]['message'], 'The audit row must hold no address');
+        $this->assertStringNotContainsString('@', $bounce[0]['message'], 'The audit row must hold no address');
+
+        $block = $this->flagChangeEntries($mockLogEntries, 'email_blocked');
+        $this->assertCount(1, $block, 'Exactly one audit row when the block is cleared');
+        $this->assertSame(
+            ['owner_id' => 7, 'flag' => 'email_blocked', 'old' => 1, 'new' => 0, 'source' => 'email_change'],
+            $block[0]['metadata']
+        );
+        $this->assertStringNotContainsString('@', $block[0]['message']);
+    }
+
+    public function testChangedAddressClearsOnlyTheFlagThatIsSet(): void
+    {
+        global $mockLogEntries, $verify;
+        $verify = $this->fakeVerify(7);
+        $GLOBALS['hookTestDb'] = new HookTestDb(
+            profile: ['email_blocked' => 1, 'email_blocked_address' => 'old@example.com', 'email_address_seen' => 'old@example.com'],
+        );
+
+        $this->fireHook();
+
+        $db = $GLOBALS['hookTestDb'];
+        $this->assertSame(0, $db->profileClearCalls, 'No bounce is set, so no bounce clear');
+        $this->assertSame(1, $db->blockClearCalls);
+        $this->assertSame([], $this->flagChangeEntries($mockLogEntries, 'email_bounced'));
+        $this->assertCount(1, $this->flagChangeEntries($mockLogEntries, 'email_blocked'));
     }
 
     /**
-     * $verify carries the old address, which equals the profile's bounced
-     * address. Only the fresh Owner lookup returns the new, confirmed email.
-     * With the stale address the hook would see a match and keep the bounce.
+     * The repository reads users.email under the lock. $verify holds the
+     * address from before the change, so a hook that used it would see no change.
      */
-    public function testBounceClearUsesFreshOwnerLookupNotVerifysStaleCachedEmail(): void
+    public function testHookIgnoresVerifysStaleCachedEmail(): void
     {
         global $verify;
         $verify = $this->fakeVerify(7, email: 'old-address@example.com');
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
             ownerEmail: 'new-address@example.com',
-            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old-address@example.com'],
+            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old-address@example.com', 'email_address_seen' => 'old-address@example.com'],
         );
 
         $this->fireHook();
@@ -294,44 +321,12 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $this->assertSame(
             1,
             $GLOBALS['hookTestDb']->profileClearCalls,
-            'The bounce is on the OLD address, so the confirmed new address must clear it'
+            'users.email is the new address, so the confirmed change must clear the bounce'
         );
     }
 
     /**
-     * An empty email would make every bounce with no address match.
-     */
-    public function testEmptyOwnerLookupEmailSkipsBounceClearAndLogsSystemError(): void
-    {
-        global $mockLogEntries, $verify;
-        $verify = $this->fakeVerify(7);
-        $GLOBALS['hookTestDb'] = new HookTestDb(
-            cars: [(object) ['id' => 100]],
-            profile: ['email_bounced' => 1, 'email_bounced_address' => null],
-            ownerNotFound: true
-        );
-
-        $this->fireHook();
-
-        $this->assertSame(
-            0,
-            $GLOBALS['hookTestDb']->profileClearCalls,
-            'The clear must never run with an unreadable/empty current email'
-        );
-
-        $entry = null;
-        foreach ($mockLogEntries as $candidate) {
-            if (str_contains($candidate['message'], 'skipping bounce-clear for user 7')) {
-                $entry = $candidate;
-                break;
-            }
-        }
-        $this->assertNotNull($entry, 'The skip must be logged');
-        $this->assertSame(LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $entry['category']);
-    }
-
-    /**
-     * @return array<string, array{?string}>
+     * @return array<string, array{string}>
      */
     public static function sameAddressUnderTheMatchingRuleProvider(): array
     {
@@ -343,35 +338,67 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
     }
 
     /**
-     * The bounce is on the address the owner confirmed (compared as lower case
-     * with the whitespace trimmed), so it stays and nothing is written.
+     * A re-verify of the address the profile already saw is no change: no
+     * flag clear, no since/seen write, no audit row, even for a flag stored
+     * for the same address.
      */
     #[DataProvider('sameAddressUnderTheMatchingRuleProvider')]
-    public function testBounceOnTheConfirmedAddressStaysAndLogsNothing(string $storedAddress): void
+    public function testReverifyOfTheSeenAddressClearsNothing(string $seen): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
-            profile: ['email_bounced' => 1, 'email_bounced_address' => $storedAddress],
+            profile: [
+                'email_bounced' => 1, 'email_bounced_address' => 'new-address@example.com',
+                'email_blocked' => 1, 'email_blocked_address' => 'new-address@example.com',
+                'email_address_seen' => $seen,
+            ],
         );
 
         $this->fireHook();
 
-        $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
-        $this->assertSame([], $this->bounceClearLogEntries($mockLogEntries));
+        $db = $GLOBALS['hookTestDb'];
+        $this->assertSame(0, $db->profileClearCalls);
+        $this->assertSame(0, $db->blockClearCalls);
+        $this->assertSame(0, $db->sinceSeenWrites);
+        $this->assertSame([], $this->flagChangeEntries($mockLogEntries, 'email_bounced'));
+        $this->assertSame([], $this->flagChangeEntries($mockLogEntries, 'email_blocked'));
     }
 
-    public function testNoBounceFlagMeansNothingToClear(): void
+    public function testChangedAddressWithNoFlagWritesSinceSeenAndNoAuditRow(): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
-        $GLOBALS['hookTestDb'] = new HookTestDb(cars: [(object) ['id' => 100]]);
+        $GLOBALS['hookTestDb'] = new HookTestDb(
+            cars: [(object) ['id' => 100]],
+            profile: ['email_address_seen' => 'old@example.com'],
+        );
 
         $this->fireHook();
 
-        $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
-        $this->assertSame([], $this->bounceClearLogEntries($mockLogEntries));
+        $db = $GLOBALS['hookTestDb'];
+        $this->assertSame(0, $db->profileClearCalls);
+        $this->assertSame(0, $db->blockClearCalls);
+        $this->assertSame(1, $db->sinceSeenWrites, 'since/seen record the new address even with no flag');
+        $this->assertSame([], $this->flagChangeEntries($mockLogEntries, 'email_bounced'));
+        $this->assertSame([], $this->flagChangeEntries($mockLogEntries, 'email_blocked'));
+    }
+
+    public function testOptOutFlagIsNeverWrittenByTheClear(): void
+    {
+        global $verify;
+        $verify = $this->fakeVerify(7);
+        $GLOBALS['hookTestDb'] = new HookTestDb(
+            cars: [(object) ['id' => 100]],
+            profile: ['email_opted_out' => 1, 'email_address_seen' => 'old@example.com'],
+        );
+
+        $this->fireHook();
+
+        $this->assertSame([], $GLOBALS['hookTestDb']->profileWriteSql(
+            static fn(string $sql): bool => str_contains($sql, 'email_opted_out')
+        ));
     }
 
     public function testOwnerWithNoProfileRowHasNothingToClear(): void
@@ -382,86 +409,21 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
 
         $this->fireHook();
 
-        $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
-        $this->assertSame([], $this->bounceClearLogEntries($mockLogEntries));
+        $db = $GLOBALS['hookTestDb'];
+        $this->assertSame(0, $db->profileClearCalls);
+        $this->assertSame(0, $db->blockClearCalls);
+        $this->assertSame(0, $db->sinceSeenWrites);
+        $this->assertSame([], $this->flagClearFailureEntries($mockLogEntries));
         $this->assertSame(1, $this->carLookupCount(), 'The owner-field sync still runs');
     }
 
-    /**
-     * @return array<string, array{?string}>
-     */
-    public static function bounceWithoutAUsableAddressProvider(): array
-    {
-        return [
-            'NULL address' => [null],
-            'empty address' => [''],
-        ];
-    }
-
-    /**
-     * A bounce with a NULL or empty address cannot be on the confirmed
-     * address, so the confirmation clears it. Refusing would keep an owner who
-     * just proved the address works permanently un-emailable.
-     */
-    #[DataProvider('bounceWithoutAUsableAddressProvider')]
-    public function testBounceWithNoRecordedAddressIsClearedAndLoggedAsAnAnomaly(?string $storedAddress): void
-    {
-        global $mockLogEntries, $verify;
-        $verify = $this->fakeVerify(7);
-        $GLOBALS['hookTestDb'] = new HookTestDb(
-            cars: [(object) ['id' => 100]],
-            integrityCarIds: [200, 201],
-            profile: ['email_bounced' => 1, 'email_bounced_address' => $storedAddress],
-        );
-
-        $this->fireHook();
-
-        $this->assertSame(1, $GLOBALS['hookTestDb']->profileClearCalls);
-
-        $entries = $this->bounceClearLogEntries($mockLogEntries);
-        $this->assertCount(2, $entries, 'Both the anomaly line and the flag-change audit row must fire');
-
-        $anomalyEntry = null;
-        foreach ($entries as $entry) {
-            if (str_contains($entry['message'], 'had email_bounced=1')) {
-                $anomalyEntry = $entry;
-            }
-        }
-        $this->assertNotNull($anomalyEntry, 'The integrity-anomaly line must be present');
-        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $anomalyEntry['category']);
-        $this->assertStringContainsString('200,201', $anomalyEntry['message']);
-        $this->assertStringContainsString('data-integrity anomaly', $anomalyEntry['message']);
-        $this->assertCount(1, $this->flagChangeEntries($mockLogEntries));
-    }
-
-    /**
-     * An owner with no cars gets no anomaly line (nothing to name), but the
-     * confirmation still clears the bounce.
-     */
-    public function testBounceWithNoAddressForAnOwnerWithNoCarsIsClearedWithoutAnAnomalyLine(): void
-    {
-        global $mockLogEntries, $verify;
-        $verify = $this->fakeVerify(7);
-        $GLOBALS['hookTestDb'] = new HookTestDb(
-            profile: ['email_bounced' => 1, 'email_bounced_address' => null],
-        );
-
-        $this->fireHook();
-
-        $this->assertSame(1, $GLOBALS['hookTestDb']->profileClearCalls);
-        $this->assertSame([], array_filter(
-            $mockLogEntries,
-            static fn(array $e): bool => str_contains($e['message'], 'had email_bounced=1')
-        ));
-    }
-
-    public function testBounceClearRunsExactlyOnceOnDoubleFire(): void
+    public function testFlagClearRunsExactlyOnceOnDoubleFire(): void
     {
         global $verify;
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
-            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old@example.com'],
+            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old@example.com', 'email_address_seen' => 'old@example.com'],
         );
 
         $this->fireHook();
@@ -472,9 +434,10 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
             $GLOBALS['hookTestDb']->profileClearCalls,
             'The shared run-once guard must prevent a second clear on the same request'
         );
+        $this->assertSame(1, $GLOBALS['hookTestDb']->lockedProfileReads);
     }
 
-    public function testExceptionInBounceClearDoesNotBlockSyncBlock(): void
+    public function testExceptionInFlagClearDoesNotBlockSyncBlock(): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
@@ -485,25 +448,22 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
 
         $this->fireHook();
 
-        $bounceClearFailure = array_values(array_filter(
-            $mockLogEntries,
-            static fn(array $e): bool => str_contains($e['message'], 'bounce-clear failed for user 7')
-        ));
-        $this->assertCount(1, $bounceClearFailure);
-        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $bounceClearFailure[0]['category']);
+        $failure = $this->flagClearFailureEntries($mockLogEntries);
+        $this->assertCount(1, $failure);
+        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $failure[0]['category']);
 
         $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
 
-        $this->assertSame(1, $this->carLookupCount(), 'The sync block must still run after the bounce-clear block throws');
+        $this->assertSame(1, $this->carLookupCount(), 'The sync block must still run after the flag clear throws');
     }
 
-    public function testExceptionInSyncBlockDoesNotUndoBounceClearBlock(): void
+    public function testExceptionInSyncBlockDoesNotUndoFlagClear(): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
-            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old@example.com'],
+            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old@example.com', 'email_address_seen' => 'old@example.com'],
             failCarLookup: true
         );
 
@@ -511,7 +471,7 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
 
         $this->assertSame(1, $GLOBALS['hookTestDb']->profileClearCalls);
         $this->assertSame(1, $GLOBALS['hookTestDb']->commits, 'The clear commits before the sync block runs');
-        $this->assertCount(1, $this->flagChangeEntries($mockLogEntries));
+        $this->assertCount(1, $this->flagChangeEntries($mockLogEntries, 'email_bounced'));
 
         $syncFailure = array_values(array_filter(
             $mockLogEntries,
@@ -521,31 +481,22 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $syncFailure[0]['category']);
     }
 
-    public function testBounceClearUpdateDatabaseErrorRollsBackWritesNoAuditRowAndDoesNotBlockSyncBlock(): void
+    public function testFlagClearUpdateDatabaseErrorRollsBackWritesNoAuditRowAndDoesNotBlockSyncBlock(): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
-            integrityCarIds: [200],
-            profile: ['email_bounced' => 1, 'email_bounced_address' => null],
+            profile: ['email_bounced' => 1, 'email_bounced_address' => null, 'email_address_seen' => 'old@example.com'],
             failProfileUpdate: true
         );
 
         $this->fireHook();
 
-        $anomaly = array_filter(
-            $mockLogEntries,
-            static fn(array $e): bool => str_contains($e['message'], 'had email_bounced=1')
-        );
-        $this->assertCount(1, $anomaly, 'The integrity-anomaly line runs before the failing UPDATE and must still fire');
-        $this->assertSame([], $this->flagChangeEntries($mockLogEntries), 'No audit row when the UPDATE failed');
+        $this->assertSame([], $this->flagChangeEntries($mockLogEntries, 'email_bounced'), 'No audit row when the UPDATE failed');
 
-        $bounceClearFailure = array_values(array_filter(
-            $mockLogEntries,
-            static fn(array $e): bool => str_contains($e['message'], 'bounce-clear failed for user 7')
-        ));
-        $this->assertCount(1, $bounceClearFailure, 'The failure must be logged exactly once');
-        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $bounceClearFailure[0]['category']);
+        $failure = $this->flagClearFailureEntries($mockLogEntries);
+        $this->assertCount(1, $failure, 'The failure must be logged exactly once');
+        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $failure[0]['category']);
 
         $this->assertSame(1, $GLOBALS['hookTestDb']->profileClearCalls, 'The UPDATE was attempted exactly once');
         $this->assertSame(1, $GLOBALS['hookTestDb']->rollbacks);
@@ -554,7 +505,7 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $this->assertSame(
             1,
             $this->carLookupCount(),
-            'The sync block must still run after the bounce-clear block throws on the UPDATE itself'
+            'The sync block must still run after the flag clear throws on the UPDATE itself'
         );
     }
 
@@ -576,7 +527,7 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $failureEntries = array_values(array_filter(
             $mockLogEntries,
             static fn(array $e): bool => str_contains($e['message'], 'unexpected')
-                && str_contains($e['message'], 'during bounce-clear for user 7')
+                && str_contains($e['message'], 'during flag clear for user 7')
         ));
         $this->assertCount(1, $failureEntries, 'The Owner construction failure must be logged exactly once');
         $this->assertSame(LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $failureEntries[0]['category']);
@@ -598,11 +549,17 @@ final class HookTestDb implements DatabaseInterface
 {
     public int $carLookups = 0;
 
-    /** Profile UPDATEs that clear the bounce (CarRepository::clearBouncedForUser()). */
+    /** Profile UPDATEs that clear the bounce (CarRepository::clearFlagsForConfirmedEmailChange()). */
     public int $profileClearCalls = 0;
 
-    /** @var list<int> user_id bound to each profile clear */
-    public array $profileClearUserIds = [];
+    /** Profile UPDATEs that clear the block. */
+    public int $blockClearCalls = 0;
+
+    /** Profile UPDATEs that set email_address_since and email_address_seen. */
+    public int $sinceSeenWrites = 0;
+
+    /** @var list<string> Every UPDATE profiles statement */
+    private array $profileWrites = [];
 
     /** Profile SELECTs that took the row lock. */
     public int $lockedProfileReads = 0;
@@ -622,8 +579,7 @@ final class HookTestDb implements DatabaseInterface
 
     /**
      * @param array<int, object> $cars
-     * @param list<int> $integrityCarIds Car IDs that CarRepository::findByOwner() returns for the anomaly line
-     * @param array<string, mixed> $profile Overrides on a profile row with every flag clear
+     * @param array<string, mixed> $profile Overrides on a profile row with every flag clear and an old email_address_seen
      * @param string $ownerEmail Email in the post-update users row, read by Owner::find()
      */
     public function __construct(
@@ -631,13 +587,11 @@ final class HookTestDb implements DatabaseInterface
         private bool $failCarLookup = false,
         private bool $failUpdate = false,
         private bool $throwTypeErrorOnCarLookup = false,
-        private array $integrityCarIds = [],
         private array $profile = [],
         private bool $noProfile = false,
         private bool $failProfileSelect = false,
         private bool $failProfileUpdate = false,
         private string $ownerEmail = 'new-address@example.com',
-        private bool $ownerNotFound = false,
         private bool $failOwnerLookup = false
     ) {
     }
@@ -649,12 +603,6 @@ final class HookTestDb implements DatabaseInterface
         if (str_contains($sql, 'FROM users u')) {
             if ($this->failOwnerLookup) {
                 $this->error = true;
-                $this->rows = [];
-                $this->count = 0;
-                return $this;
-            }
-
-            if ($this->ownerNotFound) {
                 $this->rows = [];
                 $this->count = 0;
                 return $this;
@@ -688,7 +636,7 @@ final class HookTestDb implements DatabaseInterface
             return $this;
         }
 
-        // CarRepository::findProfileEmailState()
+        // CarRepository::clearFlagsForConfirmedEmailChange() locking and reading the profile
         if (str_contains($sql, 'FROM profiles')) {
             if ($this->failProfileSelect) {
                 $this->error = true;
@@ -712,22 +660,23 @@ final class HookTestDb implements DatabaseInterface
                 'email_blocked_at' => null, 'email_blocked_cause' => null,
                 'email_bounced' => 0, 'email_bounced_address' => null,
                 'email_bounced_at' => null, 'email_bounce_cleared_at' => null,
+                'email_address_seen' => 'old-address@example.com',
+                'user_email' => $this->ownerEmail,
             ], $this->profile)];
             $this->count = 1;
             return $this;
         }
 
-        // CarRepository::findByOwner(), read for the anomaly line
-        if (str_starts_with($sql, 'SELECT id FROM cars WHERE')) {
-            $this->rows = array_map(static fn (int $id): object => (object) ['id' => $id], $this->integrityCarIds);
-            $this->count = count($this->integrityCarIds);
-            return $this;
-        }
-
-        // CarRepository::clearBouncedForUser() writing the profile
-        if (str_starts_with($sql, 'UPDATE profiles SET email_bounced = 0')) {
-            $this->profileClearCalls++;
-            $this->profileClearUserIds[] = (int) end($params);
+        // CarRepository::writeProfile() calls
+        if (str_starts_with($sql, 'UPDATE profiles SET')) {
+            $this->profileWrites[] = $sql;
+            if (str_starts_with($sql, 'UPDATE profiles SET email_bounced = 0')) {
+                $this->profileClearCalls++;
+            } elseif (str_starts_with($sql, 'UPDATE profiles SET email_blocked = 0')) {
+                $this->blockClearCalls++;
+            } elseif (str_starts_with($sql, 'UPDATE profiles SET email_address_since')) {
+                $this->sinceSeenWrites++;
+            }
 
             if ($this->failProfileUpdate) {
                 $this->error = true;
@@ -757,6 +706,15 @@ final class HookTestDb implements DatabaseInterface
         $this->count = 0;
         $this->rows = [];
         return $this;
+    }
+
+    /**
+     * @param callable(string): bool $filter
+     * @return list<string> The profile UPDATE statements that the filter accepts
+     */
+    public function profileWriteSql(callable $filter): array
+    {
+        return array_values(array_filter($this->profileWrites, $filter));
     }
 
     public function get(string $table, array $where): self

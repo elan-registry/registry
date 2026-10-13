@@ -7,29 +7,29 @@ use ElanRegistry\Car\CarRepository;
  * Standalone fixture script for tests/playwright/account-email-paused-notice.spec.js
  * (issue #1899, the email-paused notice on usersc/account.php).
  *
- * Seeds six loginable owners, one car each (except the overflow owner, which
- * gets four). The deliverability flags are on the owner profile (#2101), as
- * EmailNoticeBuilder reads them:
+ * Seeds loginable owners, one car each. The deliverability flags are on the
+ * owner profile (#2101). A flag shows only when its `_address` matches
+ * users.email (#2356), so each seeded address is the user's own email:
  *
- *  - optout:    email_opted_out = 1 with email_opted_out_at. The notice names
- *               the car address.
- *  - spam:      email_blocked = 1 (cause spam), with the blocked address and
- *               email_blocked_at. A Brevo complaint.
- *  - bounced:   email_bounced = 1 with a bounced address and email_bounced_at.
- *  - both:      email_opted_out = 1 and email_bounced = 1 on the one car
- *               address. The "same address, both problems, one merged block"
- *               case.
- *  - overflow:  opted out, with four cars on four distinct addresses. It
- *               triggers the MAX_ADDRESSES=3 cap and the "and 1 more" line.
- *  - clean:     a profile with no flags. The notice must be entirely absent.
+ *  - optout:      email_opted_out = 1 with email_opted_out_at.
+ *  - spam:        email_blocked = 1, cause spam.
+ *  - unsub:       email_blocked = 1, cause unsubscribed.
+ *  - blocklist:   email_blocked = 1, cause blocklist (an admin block).
+ *  - nocause:     email_blocked = 1 with a NULL cause (#2318).
+ *  - bounced:     email_bounced = 1 with email_bounced_at.
+ *  - blockedopt:  email_blocked = 1 (spam) and email_opted_out = 1.
+ *  - clean:       a profile with no flags. The notice must be absent.
  *
  * Usage:
  *   php seed-email-paused-notice.php            seed (deletes earlier marker rows first)
  *   php seed-email-paused-notice.php --cleanup  delete the marker rows only
+ *   php seed-email-paused-notice.php --set=<key>:<preset>
+ *       change the flags of a seeded owner. Presets: bounced, blocked_spam,
+ *       opted_out, clear. Prints {"set": true}. Used to test the re-show of
+ *       a dismissed notice.
  *
  * Prints one JSON line to stdout (seed mode only), one entry per owner key
- * above: {"<key>": {"userId", "username", "password", "carId"}, ...}
- * (the "overflow" entry additionally carries "carIds": [...] for all four).
+ * above: {"<key>": {"userId", "username", "password", "carId", "email"}, ...}.
  * Each owner has a random password that exists only in this output, so the
  * spec can log in with login() from auth-helper.js.
  *
@@ -85,17 +85,61 @@ restore_error_handler();
 /** `cars.model` is varchar(30). `cars.chassis` is varchar(15). Keep markers short. */
 const SEED_CAR_MODEL = '__PW_SEED_EMAIL_NOTICE__';
 
-/** @var array<string, array{username: string, email: string}> $owners */
+/** @var array<string, array{username: string}> $owners */
 $owners = [
-    'optout'   => ['username' => '__playwright_seed_email_notice_optout__', 'email' => 'playwright-seed-email-notice-optout@example.invalid'],
-    'spam'     => ['username' => '__playwright_seed_email_notice_spam__', 'email' => 'playwright-seed-email-notice-spam@example.invalid'],
-    'bounced'  => ['username' => '__playwright_seed_email_notice_bounced__', 'email' => 'playwright-seed-email-notice-bounced@example.invalid'],
-    'both'     => ['username' => '__playwright_seed_email_notice_both__', 'email' => 'playwright-seed-email-notice-both@example.invalid'],
-    'overflow' => ['username' => '__playwright_seed_email_notice_overflow__', 'email' => null],
-    'clean'    => ['username' => '__playwright_seed_email_notice_clean__', 'email' => 'playwright-seed-email-notice-clean@example.invalid'],
+    'optout' => ['username' => '__playwright_seed_email_notice_optout__'],
+    'spam' => ['username' => '__playwright_seed_email_notice_spam__'],
+    'unsub' => ['username' => '__playwright_seed_email_notice_unsub__'],
+    'blocklist' => ['username' => '__playwright_seed_email_notice_blocklist__'],
+    'nocause' => ['username' => '__playwright_seed_email_notice_nocause__'],
+    'bounced' => ['username' => '__playwright_seed_email_notice_bounced__'],
+    'blockedopt' => ['username' => '__playwright_seed_email_notice_blockedopt__'],
+    'clean' => ['username' => '__playwright_seed_email_notice_clean__'],
 ];
 
 $db = dbi();
+
+// --set=<key>:<preset>: change one seeded owner's flags and stop.
+foreach ($argv ?? [] as $arg) {
+    if (!str_starts_with($arg, '--set=')) {
+        continue;
+    }
+    [$setKey, $setPreset] = array_pad(explode(':', substr($arg, 6), 2), 2, '');
+    if (!isset($owners[$setKey])) {
+        fwrite(STDERR, "ERROR: Unknown owner key '{$setKey}'.\n");
+        exit(1);
+    }
+    $setUserId = (int) ($db->query('SELECT id FROM users WHERE username = ?', [$owners[$setKey]['username']])->first()->id ?? 0);
+    if ($setUserId <= 0) {
+        fwrite(STDERR, "ERROR: Seeded owner '{$setKey}' not found. Run the seed first.\n");
+        exit(1);
+    }
+    $setEmail = $owners[$setKey]['username'] . '@example.invalid';
+    $cleared = [
+        'email_opted_out' => 0, 'email_opted_out_at' => null,
+        'email_blocked' => 0, 'email_blocked_address' => null, 'email_blocked_at' => null, 'email_blocked_cause' => null,
+        'email_bounced' => 0, 'email_bounced_address' => null, 'email_bounced_at' => null,
+    ];
+    $presets = [
+        'clear'        => [],
+        'bounced'      => ['email_bounced' => 1, 'email_bounced_address' => $setEmail, 'email_bounced_at' => '2026-05-06 10:00:00'],
+        'blocked_spam' => ['email_blocked' => 1, 'email_blocked_address' => $setEmail, 'email_blocked_at' => '2026-05-07 10:00:00', 'email_blocked_cause' => 'spam'],
+        'opted_out'    => ['email_opted_out' => 1, 'email_opted_out_at' => '2026-05-08 10:00:00'],
+    ];
+    if (!isset($presets[$setPreset])) {
+        fwrite(STDERR, "ERROR: Unknown preset '{$setPreset}'.\n");
+        exit(1);
+    }
+    $fields = array_merge($cleared, $presets[$setPreset]);
+    $assignments = implode(', ', array_map(static fn(string $c): string => "{$c} = ?", array_keys($fields)));
+    $db->query("UPDATE profiles SET {$assignments} WHERE user_id = ?", array_merge(array_values($fields), [$setUserId]));
+    if ($db->error()) {
+        fwrite(STDERR, "ERROR: Failed to set flags: {$db->errorString()}\n");
+        exit(1);
+    }
+    echo json_encode(['set' => true]) . "\n";
+    exit(0);
+}
 
 // Delete all earlier marker rows, so a re-run is idempotent and --cleanup works.
 $cleanupQueries = [];
@@ -168,6 +212,7 @@ function seedOwnerWithCar(\ElanRegistry\DatabaseInterface $db, CarRepository $ca
 
     $defaults = [
         'user_id'            => $userId,
+        'email'              => $username . '@example.invalid',
         'year'               => 1968,
         'model'              => SEED_CAR_MODEL,
         'series'             => 'S4',
@@ -210,104 +255,61 @@ function seedProfile(\ElanRegistry\DatabaseInterface $db, int $userId, array $fl
 }
 
 $output = [];
+$e = static fn(string $username): string => $username . '@example.invalid';
 
-// --- optout: profile email_opted_out = 1. ----------------------------------
-[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['optout']['username'], 'PWENOPT', [
-    'email' => $owners['optout']['email'],
-], ['email_opted_out' => 1, 'email_opted_out_at' => '2026-04-01 10:00:00']);
-$output['optout'] = ['userId' => $userId, 'username' => $owners['optout']['username'], 'password' => $password, 'carId' => $carId];
+[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['optout']['username'], 'PWENOPT', [], ['email_opted_out' => 1, 'email_opted_out_at' => '2026-04-01 10:00:00']);
+$output['optout'] = ['userId' => $userId, 'username' => $owners['optout']['username'], 'password' => $password, 'carId' => $carId, 'email' => $owners['optout']['username'] . '@example.invalid'];
 
-// --- spam: profile email_blocked = 1, cause spam (a Brevo complaint). -------
-[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['spam']['username'], 'PWENSPAM', [
-    'email' => $owners['spam']['email'],
-], [
+[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['spam']['username'], 'PWENSPAM', [], [
     'email_blocked'         => 1,
-    'email_blocked_address' => $owners['spam']['email'],
+    'email_blocked_address' => $e($owners['spam']['username']),
     'email_blocked_at'      => '2026-04-02 11:00:00',
     'email_blocked_cause'   => 'spam',
 ]);
-$output['spam'] = ['userId' => $userId, 'username' => $owners['spam']['username'], 'password' => $password, 'carId' => $carId];
+$output['spam'] = ['userId' => $userId, 'username' => $owners['spam']['username'], 'password' => $password, 'carId' => $carId, 'email' => $owners['spam']['username'] . '@example.invalid'];
 
-// --- bounced: profile email_bounced = 1 with a bounced address. -------------
-[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['bounced']['username'], 'PWENBOUNC', [
-    'email' => $owners['bounced']['email'],
-], [
-    'email_bounced'         => 1,
-    'email_bounced_address' => $owners['bounced']['email'],
-    'email_bounced_at'      => '2026-04-02 10:00:00',
+[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['unsub']['username'], 'PWENUNSUB', [], [
+    'email_blocked'         => 1,
+    'email_blocked_address' => $e($owners['unsub']['username']),
+    'email_blocked_at'      => '2026-04-02 11:00:00',
+    'email_blocked_cause'   => 'unsubscribed',
 ]);
-$output['bounced'] = ['userId' => $userId, 'username' => $owners['bounced']['username'], 'password' => $password, 'carId' => $carId];
+$output['unsub'] = ['userId' => $userId, 'username' => $owners['unsub']['username'], 'password' => $password, 'carId' => $carId, 'email' => $owners['unsub']['username'] . '@example.invalid'];
 
-// --- both: one car address, opted out and bounced. ---------------------------
-[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['both']['username'], 'PWENBOTH', [
-    'email' => $owners['both']['email'],
-], [
-    'email_opted_out'       => 1,
-    'email_opted_out_at'    => '2026-04-03 09:00:00',
+[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['blocklist']['username'], 'PWENBLOCK', [], [
+    'email_blocked'         => 1,
+    'email_blocked_address' => $e($owners['blocklist']['username']),
+    'email_blocked_at'      => '2026-04-02 11:00:00',
+    'email_blocked_cause'   => 'blocklist',
+]);
+$output['blocklist'] = ['userId' => $userId, 'username' => $owners['blocklist']['username'], 'password' => $password, 'carId' => $carId, 'email' => $owners['blocklist']['username'] . '@example.invalid'];
+
+[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['nocause']['username'], 'PWENNOCAU', [], [
+    'email_blocked'         => 1,
+    'email_blocked_address' => $e($owners['nocause']['username']),
+    'email_blocked_at'      => '2026-04-02 11:00:00',
+    // No email_blocked_cause key: the column stays NULL (no known cause).
+]);
+$output['nocause'] = ['userId' => $userId, 'username' => $owners['nocause']['username'], 'password' => $password, 'carId' => $carId, 'email' => $owners['nocause']['username'] . '@example.invalid'];
+
+[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['bounced']['username'], 'PWENBOUNC', [], [
     'email_bounced'         => 1,
-    'email_bounced_address' => $owners['both']['email'],
+    'email_bounced_address' => $e($owners['bounced']['username']),
     'email_bounced_at'      => '2026-04-03 10:00:00',
 ]);
-$output['both'] = ['userId' => $userId, 'username' => $owners['both']['username'], 'password' => $password, 'carId' => $carId];
+$output['bounced'] = ['userId' => $userId, 'username' => $owners['bounced']['username'], 'password' => $password, 'carId' => $carId, 'email' => $owners['bounced']['username'] . '@example.invalid'];
 
-// --- overflow: four cars, four distinct suppressed addresses (MAX_ADDRESSES=3). ---
-$overflowPassword = 'Pw-' . bin2hex(random_bytes(12));
-$overflowUserInserted = $db->insert('users', [
-    'username'       => $owners['overflow']['username'],
-    'password'       => password_hash($overflowPassword, PASSWORD_BCRYPT),
-    'email'          => $owners['overflow']['username'] . '@example.invalid',
-    'fname'          => 'Playwright',
-    'lname'          => 'Email Notice Overflow Owner',
-    'active'         => 1,
-    'email_verified' => 1,
-    'permissions'    => 1,
-    'join_date'      => $now,
+[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['blockedopt']['username'], 'PWENBLOPT', [], [
+    'email_blocked'         => 1,
+    'email_blocked_address' => $e($owners['blockedopt']['username']),
+    'email_blocked_at'      => '2026-04-02 11:00:00',
+    'email_blocked_cause'   => 'spam',
+    'email_opted_out'       => 1,
+    'email_opted_out_at'    => '2026-04-05 09:00:00',
 ]);
-if (!$overflowUserInserted) {
-    fwrite(STDERR, "ERROR: Failed to insert seed overflow owner: {$db->errorString()}\n");
-    exit(1);
-}
-$overflowUserId = (int) $db->lastId();
-if (!$db->insert('user_permission_matches', ['user_id' => $overflowUserId, 'permission_id' => 1])) {
-    fwrite(STDERR, "ERROR: Failed to insert seed overflow owner permission: {$db->errorString()}\n");
-    exit(1);
-}
-// An opt-out names every distinct car address of the owner.
-seedProfile($db, $overflowUserId, ['email_opted_out' => 1, 'email_opted_out_at' => '2026-04-04 09:00:00']);
-$overflowCarIds = [];
-for ($i = 1; $i <= 4; $i++) {
-    $overflowEmail = "playwright-seed-email-notice-overflow-{$i}@example.invalid";
-    $overflowCarInserted = $carRepository->insertCar([
-        'user_id'            => $overflowUserId,
-        'year'               => 1968,
-        'model'              => SEED_CAR_MODEL,
-        'series'             => 'S4',
-        'variant'            => 'SE',
-        'type'               => 'FHC',
-        'chassis'            => 'PWENOVFL' . $i,
-        'color'              => 'Red',
-        'ctime'              => $now,
-        'owner_last_updated' => $now,
-        'email'              => $overflowEmail,
-    ]);
-    if (!$overflowCarInserted) {
-        fwrite(STDERR, "ERROR: Failed to insert seed overflow car {$i}: {$carRepository->errorString()}\n");
-        exit(1);
-    }
-    $overflowCarIds[] = $carRepository->lastId();
-}
-$output['overflow'] = [
-    'userId'   => $overflowUserId,
-    'username' => $owners['overflow']['username'],
-    'password' => $overflowPassword,
-    'carId'    => $overflowCarIds[0],
-    'carIds'   => $overflowCarIds,
-];
+$output['blockedopt'] = ['userId' => $userId, 'username' => $owners['blockedopt']['username'], 'password' => $password, 'carId' => $carId, 'email' => $owners['blockedopt']['username'] . '@example.invalid'];
 
-// --- clean: no flags. The notice must be entirely absent. -------------------
-[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['clean']['username'], 'PWENCLEAN', [
-    'email' => $owners['clean']['email'],
-]);
-$output['clean'] = ['userId' => $userId, 'username' => $owners['clean']['username'], 'password' => $password, 'carId' => $carId];
+[$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['clean']['username'], 'PWENCLEAN', [], []);
+$output['clean'] = ['userId' => $userId, 'username' => $owners['clean']['username'], 'password' => $password, 'carId' => $carId, 'email' => $owners['clean']['username'] . '@example.invalid'];
 
 echo json_encode($output) . "\n";

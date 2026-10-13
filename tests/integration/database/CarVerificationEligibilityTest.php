@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -120,7 +121,8 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     #[Group('fast')]
     public function testCarOfBouncedOwnerIsExcluded(): void
     {
-        $bouncedOwnerId = $this->createTestUser([], true);
+        // A flag applies only while its address matches users.email (#2356).
+        $bouncedOwnerId = $this->createTestUser(['email' => 'bounced-owner@example.com'], true);
         $this->setOwnerBounced($bouncedOwnerId, 'bounced-owner@example.com');
         $carId = $this->createTestCar($bouncedOwnerId, $this->staleCarFields('bounced-owner@example.com'));
         $controlCarId = $this->createTestCar($this->testUserId, $this->staleCarFields('bounced-control@example.com'));
@@ -143,7 +145,8 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $optedOutOwnerId = $this->createTestUser([], true);
         $this->setOwnerOptedOut($optedOutOwnerId);
-        $blockedOwnerId = $this->createTestUser([], true);
+        // The block applies only while its address matches users.email (#2356).
+        $blockedOwnerId = $this->createTestUser(['email' => 'blocked-owner@example.com'], true);
         $this->setOwnerBlocked($blockedOwnerId, 'blocked-owner@example.com');
 
         $optedOutCarId = $this->createTestCar($optedOutOwnerId, $this->staleCarFields('opted-out-owner@example.com'));
@@ -223,39 +226,53 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         $this->assertNotContains($emptyCarId, $eligible, 'A bounce with an empty address must still exclude the car');
     }
 
+    /**
+     * The send mails the owner's users.email. cars.email is only a copy, so
+     * an empty or NULL copy must not exclude the car.
+     *
+     * @return array<string, array{?string}>
+     */
+    public static function emptyCarEmailProvider(): array
+    {
+        return ['empty' => [''], 'NULL' => [null]];
+    }
+
     #[Group('fast')]
-    public function testEmptyEmailCarIsExcluded(): void
+    #[DataProvider('emptyCarEmailProvider')]
+    public function testEmptyCarEmailDoesNotExcludeTheCar(?string $carEmail): void
     {
         $carId = $this->createTestCar($this->testUserId, [
-            'email'              => '',
+            'email'              => $carEmail,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
             'solddate'           => null,
         ]);
 
-        $this->assertNotContains(
+        $this->assertContains(
             $carId,
             $this->eligibleIds(),
-            'A car with an empty email must be excluded from verification eligibility'
+            'cars.email is only a copy. The send mails users.email.'
         );
     }
 
     #[Group('fast')]
-    public function testNullEmailCarIsExcluded(): void
+    public function testEmptyUsersEmailExcludesTheCar(): void
     {
-        $carId = $this->createTestCar($this->testUserId, [
-            'email'              => null,
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createTestCar($ownerId, [
+            'email'              => 'car-copy-' . uniqid() . '@example.com',
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
             'solddate'           => null,
         ]);
+        $this->setUserEmailRaw($ownerId, '');
 
         $this->assertNotContains(
             $carId,
             $this->eligibleIds(),
-            'A car with a NULL email must be excluded from verification eligibility'
+            'An owner with no users.email cannot get the mail, whatever cars.email holds'
         );
     }
 

@@ -553,7 +553,7 @@ final class VerificationSettings
             // SQLSTATE 42S02 = table missing, i.e. the sendinblue plugin was never
             // installed — an expected, non-alarming "not ready". Any other error
             // (connection lost, grants revoked, lock timeout) means the true Brevo
-            // state is unknown, not "not configured" — logged distinctly so an
+            // state is unknown, not "not ready" — logged distinctly so an
             // admin who gets the enable-rejected message isn't sent to double-check
             // a key/override that may in fact already be correct.
             $sqlState = (string) ($this->db->errorInfo()[0] ?? '');
@@ -747,7 +747,7 @@ final class VerificationSettings
      * Called from three places:
      * - The Brevo webhook receiver (#1887), `app/api/webhooks/brevo.php`'s
      *   `NO_CAR_MATCH` branch, when an event's recipient email matches no
-     *   `cars.email` value.
+     *   owner's `users.email` ({@see CarRepository::findByEmail()}).
      * - `BrevoEventReconciliationJob::applyEvent()`, which replays events
      *   fetched from Brevo's Events API and hits the same no-match condition
      *   as the live webhook receiver.
@@ -758,8 +758,8 @@ final class VerificationSettings
      *   not just ones tied to verification sends. This is accepted
      *   deliberately per #2085's scope, not an oversight.
      *
-     * A rising count with verification enabled signals recipients whose
-     * emails have drifted from what any car record has on file.
+     * A rising count with verification enabled signals recipients that no
+     * owner account holds now, for example after an owner changed email.
      *
      * Never throws: a failed UPDATE is logged and swallowed, matching this
      * class's fail-quietly contract for the write paths its callers depend

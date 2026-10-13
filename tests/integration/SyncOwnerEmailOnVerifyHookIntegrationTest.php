@@ -292,10 +292,16 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         admin_script_record_completion(__FILE__, (int) $row->id);
     }
 
-    // #1890, #2101: the hook's bounce-clear against real MySQL. The bounce
-    // lives on the owner's profile. These tests include the real hook file, so
-    // the repository clear, the transaction and the flag-log row run as in
-    // production.
+    // #1890, #2101, #2356: the hook's flag clear against real MySQL. The flags
+    // live on the owner's profile. These tests include the real hook file, so
+    // the repository clear, the transaction and the flag-log rows run as in
+    // production. users/verify.php writes users.email before the hook runs, so
+    // a test simulates a confirmed change by leaving email_address_seen at the
+    // old address.
+
+    private const OLD_ADDRESS = 'old-address@example.com';
+    private const NEW_ADDRESS = 'new-address@example.com';
+    private const OLD_SINCE   = '2020-01-02 03:04:05';
 
     /**
      * Run the real hook file the way users/verify.php does.
@@ -332,28 +338,41 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
     }
 
     /**
-     * The three cases that clear the bounce: a different address, a NULL
-     * address and an empty address.
+     * An owner whose users.email is the new address and whose profile still
+     * records the old one as the address last seen: the state after
+     * users/verify.php wrote the confirmed address, before the hook runs.
+     */
+    private function createOwnerWithConfirmedChange(): int
+    {
+        $userId = $this->createTestUser(['email' => self::NEW_ADDRESS], true);
+        $this->setEmailAddressSinceSeen($userId, self::OLD_ADDRESS, self::OLD_SINCE);
+
+        return $userId;
+    }
+
+    /**
+     * The three stored-address states of a flag that a confirmed change
+     * clears: a different address, a NULL address and an empty address.
      *
      * @return array<string, array{0: ?string}>
      */
-    public static function clearingBouncedAddressProvider(): array
+    public static function clearingFlagAddressProvider(): array
     {
         return [
-            'different address' => ['old-address@example.com'],
+            'different address' => [self::OLD_ADDRESS],
             'NULL address'      => [null],
             'empty address'     => [''],
         ];
     }
 
-    #[DataProvider('clearingBouncedAddressProvider')]
+    #[DataProvider('clearingFlagAddressProvider')]
     public function testHookClearsTheProfileBounceAndWritesOneEmailChangeLogRow(?string $bouncedAddress): void
     {
-        $userId = $this->createTestUser(['email' => 'new-address@example.com'], true);
+        $userId = $this->createOwnerWithConfirmedChange();
         $this->setOwnerBounced($userId, 'placeholder@example.com', '2026-03-04 05:06:07');
         $this->db->query('UPDATE profiles SET email_bounced_address = ? WHERE user_id = ?', [$bouncedAddress, $userId]);
         $this->setOwnerOptedOut($userId);
-        $this->createTestCar($userId, ['email' => 'new-address@example.com']);
+        $this->createTestCar($userId, ['email' => self::NEW_ADDRESS]);
 
         $before = $this->getOwnerEmailFlags($userId);
         $this->assertSame('1', (string) $before['email_bounced'], 'Test setup: the bounce must be set');
@@ -367,7 +386,9 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         $this->assertNull($after['email_bounced_address']);
         $this->assertNull($after['email_bounced_at']);
         $this->assertNotNull($after['email_bounce_cleared_at'], 'The clear time must be recorded');
-        $this->assertSame('1', (string) $after['email_opted_out'], 'A bounce clear must not touch the opt-out');
+        $this->assertSame('1', (string) $after['email_opted_out'], 'A confirmed change must not touch the opt-out');
+        $this->assertSame(self::NEW_ADDRESS, $after['email_address_seen'], 'The hook records the confirmed address');
+        $this->assertNotSame(self::OLD_SINCE, $after['email_address_since'], 'The hook records the time of the change');
 
         $changes = (new CarRepository($this->db))->recentFlagChanges($userId, 100);
         $this->assertCount(1, $changes, 'One clear writes exactly one flag-log row');
@@ -378,20 +399,58 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         $this->assertSame($userId, $changes[0]['acting_user_id']);
     }
 
+    /** A confirmed change to a different address clears the block with its address, date and cause (#2356). */
+    public function testHookClearsTheProfileBlockAndWritesOneEmailChangeLogRow(): void
+    {
+        $userId = $this->createOwnerWithConfirmedChange();
+        $this->setOwnerBlocked($userId, self::OLD_ADDRESS, '2026-02-03 04:05:06', 'spam');
+
+        $this->runVerifySuccessHook($userId);
+
+        $after = $this->getOwnerEmailFlags($userId);
+        $this->assertSame('0', (string) $after['email_blocked'], 'The block must be cleared');
+        $this->assertNull($after['email_blocked_address']);
+        $this->assertNull($after['email_blocked_at']);
+        $this->assertNull($after['email_blocked_cause']);
+
+        $changes = (new CarRepository($this->db))->recentFlagChanges($userId, 100);
+        $this->assertCount(1, $changes);
+        $this->assertSame('email_blocked', $changes[0]['flag']);
+        $this->assertSame(1, $changes[0]['old']);
+        $this->assertSame(0, $changes[0]['new']);
+        $this->assertSame('email_change', $changes[0]['source']);
+    }
+
+    /** The opt-out stays, and a log row is written for no flag but the two that changed. */
+    public function testHookKeepsTheOptOutAfterAConfirmedChange(): void
+    {
+        $userId = $this->createOwnerWithConfirmedChange();
+        $this->setOwnerOptedOut($userId, true, '2026-03-04 05:06:07');
+
+        $this->runVerifySuccessHook($userId);
+
+        $after = $this->getOwnerEmailFlags($userId);
+        $this->assertSame('1', (string) $after['email_opted_out']);
+        $this->assertSame('2026-03-04 05:06:07', $after['email_opted_out_at']);
+        $this->assertSame(self::NEW_ADDRESS, $after['email_address_seen'], 'The change itself is recorded');
+        $this->assertSame([], (new CarRepository($this->db))->recentFlagChanges($userId, 100), 'No flag changed, so no log row');
+    }
+
     /**
-     * The matching rule is strtolower(trim()): a bounce on the address that
-     * the owner confirmed stays, whatever its case or surrounding whitespace.
-     * Both sides differ in case, so the rule must apply to both.
+     * The match is strtolower(trim()): a re-verify of the address already
+     * recorded is no change, whatever its case or surrounding whitespace. The
+     * bounce stays and no log row is written.
      */
-    public function testHookKeepsTheBounceWhenTheAddressMatchesUnderTheMatchingRule(): void
+    public function testHookKeepsTheBounceWhenTheAddressIsTheOneAlreadyRecorded(): void
     {
         $userId = $this->createTestUser(['email' => 'New-Address@Example.COM'], true);
         $this->setOwnerBounced($userId, "  new-ADDRESS@example.com \t", '2026-03-04 05:06:07');
+        $this->setEmailAddressSinceSeen($userId, self::NEW_ADDRESS, self::OLD_SINCE);
         $before = $this->getOwnerEmailFlags($userId);
 
         $this->runVerifySuccessHook($userId);
 
-        $this->assertSame($before, $this->getOwnerEmailFlags($userId), 'A bounce on the same address must not change');
+        $this->assertSame($before, $this->getOwnerEmailFlags($userId), 'A re-verify of the same address must change nothing');
         $this->assertSame(
             [],
             (new CarRepository($this->db))->recentFlagChanges($userId, 100),
@@ -399,116 +458,49 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         );
     }
 
-    public function testHookLeavesAnOwnerWithNoBounceUnchangedAndWritesNoLogRow(): void
+    public function testHookLeavesAnOwnerWithNoFlagUnchangedAndWritesNoLogRow(): void
     {
-        $userId = $this->createTestUser(['email' => 'new-address@example.com'], true);
-        $this->setOwnerBlocked($userId, 'blocked@example.com', '2026-02-03 04:05:06', 'spam');
+        $userId = $this->createTestUser(['email' => self::NEW_ADDRESS], true);
         $before = $this->getOwnerEmailFlags($userId);
 
         $this->runVerifySuccessHook($userId);
 
-        $this->assertSame($before, $this->getOwnerEmailFlags($userId), 'A block must stay after an email confirmation');
+        $this->assertSame($before, $this->getOwnerEmailFlags($userId));
         $this->assertSame([], (new CarRepository($this->db))->recentFlagChanges($userId, 100));
     }
 
     public function testHookForOwnerWithNoProfileClearsNothingAndDoesNotThrow(): void
     {
-        $userId = $this->createTestUser(['email' => 'new-address@example.com']);
-        $carId = $this->createTestCar($userId, ['email' => 'old-address@example.com']);
+        $userId = $this->createTestUser(['email' => self::NEW_ADDRESS]);
+        $carId = $this->createTestCar($userId, ['email' => self::OLD_ADDRESS]);
 
         $this->runVerifySuccessHook($userId);
 
         $this->assertSame([], (new CarRepository($this->db))->recentFlagChanges($userId, 100));
         $this->assertSame(
-            'new-address@example.com',
+            self::NEW_ADDRESS,
             $this->db->query('SELECT email FROM cars WHERE id = ?', [$carId])->first()->email,
-            'The owner-field sync after the bounce-clear still runs'
+            'The owner-field sync after the flag clear still runs'
         );
     }
 
     /**
-     * carIdsWithBouncedFlagButNoAddress() keeps its name until #2356. It
-     * reports the owner's cars only when the profile bounce has no address.
+     * The flag clear (a transaction) followed by the sync's own transactions
+     * must not conflict. The hook runs both.
      */
-    public function testIntegrityCheckReportsNothingForAnOwnerWithNoBounce(): void
+    public function testHookSyncsTheCarsAfterTheFlagClear(): void
     {
-        $userId = $this->createTestUser(['email' => 'new-address@example.com'], true);
-        $this->createTestCar($userId, ['chassis' => 'BOUNCECLR3']);
+        $userId = $this->createTestUser(['email' => self::OLD_ADDRESS], true);
+        $carId = $this->createTestCar($userId, ['chassis' => 'BOUNCECLR5', 'email' => self::OLD_ADDRESS]);
+        $this->setOwnerBounced($userId, self::OLD_ADDRESS);
+        $this->db->query('UPDATE users SET email = ? WHERE id = ?', [self::NEW_ADDRESS, $userId]);
 
-        $this->assertSame([], (new CarRepository($this->db))->carIdsWithBouncedFlagButNoAddress($userId));
-    }
-
-    public function testIntegrityCheckReportsNothingForABounceWithAnAddress(): void
-    {
-        $userId = $this->createTestUser(['email' => 'new-address@example.com'], true);
-        $this->createTestCar($userId, ['chassis' => 'BOUNCECLR3']);
-        $this->setOwnerBounced($userId, 'old-address@example.com');
-
-        $this->assertSame([], (new CarRepository($this->db))->carIdsWithBouncedFlagButNoAddress($userId));
-    }
-
-    /**
-     * @return array<string, array{0: ?string}>
-     */
-    public static function missingAddressProvider(): array
-    {
-        return [
-            'NULL address'  => [null],
-            'empty address' => [''],
-        ];
-    }
-
-    #[DataProvider('missingAddressProvider')]
-    public function testIntegrityCheckReportsTheOwnersCarsForABounceWithNoAddress(?string $address): void
-    {
-        $userId = $this->createTestUser(['email' => 'new-address@example.com'], true);
-        $carId1 = $this->createTestCar($userId, ['chassis' => 'BOUNCECLR3']);
-        $carId2 = $this->createTestCar($userId, ['chassis' => 'BOUNCECLR4']);
-        $this->setOwnerBounced($userId, 'placeholder@example.com');
-        $this->db->query('UPDATE profiles SET email_bounced_address = ? WHERE user_id = ?', [$address, $userId]);
-
-        $found = (new CarRepository($this->db))->carIdsWithBouncedFlagButNoAddress($userId);
-
-        sort($found);
-        $expected = [$carId1, $carId2];
-        sort($expected);
-        $this->assertSame($expected, $found, 'A bounce with no address reports the owner\'s cars');
-    }
-
-    /** Bounce-clear (a transaction) followed by the sync's own transactions must not conflict. */
-    public function testSyncOwnerFieldsToCarsSucceedsImmediatelyAfterBounceClear(): void
-    {
-        $userId = $this->createTestUser(['email' => 'old-address@example.com'], true);
-        $repo = new CarRepository($this->db);
-
-        $carId = $this->createTestCar($userId, [
-            'chassis' => 'BOUNCECLR5',
-            'email'   => 'old-address@example.com',
-        ]);
-        $this->setOwnerBounced($userId, 'old-address@example.com');
-
-        $this->db->query('UPDATE users SET email = ? WHERE id = ?', ['new-address@example.com', $userId]);
-
-        $repo->beginTransaction();
-        $cleared = $repo->clearBouncedForUser($userId, 'new-address@example.com');
-        $repo->commit();
-        $this->assertSame(1, $cleared, 'Precondition: the bounce-clear must have run and cleared the profile');
-
-        $owner = new Owner($userId);
-        $result = $owner->syncOwnerFieldsToCars();
-
-        $this->assertTrue(
-            $result->isCompleteSuccess(),
-            'syncOwnerFieldsToCars() must succeed when called immediately after the bounce clear — '
-            . 'no transaction conflict between the two independent operations'
-        );
+        $this->runVerifySuccessHook($userId);
 
         $car = $this->db->query('SELECT email FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertSame('new-address@example.com', $car->email, 'The sync must still propagate the new email');
-        $this->assertSame(
-            '0',
-            (string) $this->getOwnerEmailFlags($userId)['email_bounced'],
-            'The bounce-clear result must not be undone by the subsequent sync'
-        );
+        $this->assertSame(self::NEW_ADDRESS, $car->email, 'The sync must still propagate the new email');
+        $flags = $this->getOwnerEmailFlags($userId);
+        $this->assertSame('0', (string) $flags['email_bounced'], 'The sync must not undo the clear');
+        $this->assertSame(self::NEW_ADDRESS, $flags['email_address_seen']);
     }
 }

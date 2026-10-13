@@ -20,7 +20,7 @@ use ElanRegistry\LogCategories;
  * For an owner, it writes the email deliverability flags on the owner's
  * `profiles` row: bounced, blocked and opted out. These methods are
  * setBounced(), setSuppressed(), setSuppressedForOwner(), setBouncedForOwner(),
- * the clear and resume methods, and clearBouncedForEmailChange(). Each flag
+ * the clear and resume methods, and clearFlagsForConfirmedEmailChange(). Each flag
  * change also writes one audit row to `logs` through DeliverabilityFlagLog.
  *
  * @package ElanRegistry\Car
@@ -444,9 +444,8 @@ class CarVerificationManager
      * soft bounces before the clear do not escalate again. Writes one audit
      * row with source `admin` when the flag changes. Nothing is written to a car.
      *
-     * NOT TO BE CONFUSED WITH {@see CarRepository::clearBouncedForUser()},
-     * the automatic clear after a confirmed email change, which clears only a
-     * bounce recorded against another address.
+     * NOT TO BE CONFUSED WITH {@see self::clearFlagsForConfirmedEmailChange()},
+     * the automatic clear after a confirmed email change to another address.
      *
      * Runs no transaction of its own. The caller opens one.
      *
@@ -476,31 +475,42 @@ class CarVerificationManager
     }
 
     /**
-     * Clear an owner's bounce after a change of email address (#1890, #2101)
+     * Clear an owner's bounce and block after a confirmed email change (#2356)
      *
-     * Calls {@see CarRepository::clearBouncedForUser()}, which clears the
-     * profile bounce only when it was recorded against another address. When
-     * the clear changes the row, this method writes one audit row with source
-     * `email_change`. Both email-change paths call it: the confirmed change
-     * (sync_owner_email_on_verify.php) and the direct change in
-     * user_settings.php.
+     * Calls {@see CarRepository::clearFlagsForConfirmedEmailChange()}, which
+     * locks the profile row and clears `email_bounced` and `email_blocked`
+     * only when the normalized `users.email` differs from
+     * `email_address_seen`. The opt-out stays. For each flag that changes
+     * from 1 to 0, this method writes one audit row with source
+     * `email_change`. The verifySuccess hook (sync_owner_email_on_verify.php)
+     * is the only caller.
      *
-     * Runs its own transaction, so the row lock, the write and the audit row
-     * commit together. Inside an outer transaction, the repository joins it.
+     * A cleared flag that had no recorded address is a data anomaly. This
+     * method logs it with the user ID and the flag name only.
      *
-     * @param int    $actingUserId User who made the change (the owner)
-     * @param int    $userId       Owner user ID
-     * @param string $newEmail     The owner's new users.email value
-     * @return bool True when the bounce changed from 1 to 0
-     * @throws CarDatabaseException If a query or the audit row insert fails.
+     * Runs its own transaction, so the row lock, the writes and the audit
+     * rows commit together. Inside an outer transaction, the repository
+     * joins it. Then the anomaly log runs after this method's commit, but
+     * still inside the outer transaction. An outer rollback also removes
+     * the anomaly row.
+     *
+     * @param int $actingUserId User who made the change (the owner)
+     * @param int $userId       Owner user ID
+     * @return bool True when one or more flags changed from 1 to 0
+     * @throws CarDatabaseException If a query or an audit row insert fails.
      *                              Nothing is written.
      */
-    public function clearBouncedForEmailChange(int $actingUserId, int $userId, string $newEmail): bool
+    public function clearFlagsForConfirmedEmailChange(int $actingUserId, int $userId): bool
     {
         $this->repo->beginTransaction();
         try {
-            $cleared = $this->repo->clearBouncedForUser($userId, $newEmail) === 1
-                && $this->flagLog->record(
+            $result = $this->repo->clearFlagsForConfirmedEmailChange($userId);
+            $changed = $result !== null && $result['changed'];
+            $bouncedCleared = $changed && $result['bounced'] === 1;
+            $blockedCleared = $changed && $result['blocked'] === 1;
+
+            if ($bouncedCleared) {
+                $this->flagLog->record(
                     $actingUserId,
                     $userId,
                     DeliverabilityFlagLog::FLAG_BOUNCED,
@@ -508,13 +518,49 @@ class CarVerificationManager
                     0,
                     DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE
                 );
+            }
+            if ($blockedCleared) {
+                $this->flagLog->record(
+                    $actingUserId,
+                    $userId,
+                    DeliverabilityFlagLog::FLAG_BLOCKED,
+                    1,
+                    0,
+                    DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE
+                );
+            }
             $this->repo->commit();
         } catch (\Throwable $e) {
             $this->repo->rollback();
             throw $e;
         }
 
-        return $cleared;
+        // After the commit: logger() writes through the same connection, so
+        // a rollback would delete an anomaly row written inside the
+        // transaction.
+        if ($bouncedCleared && $result['bouncedHadNoAddress']) {
+            $this->logFlagWithNoAddress($userId, DeliverabilityFlagLog::FLAG_BOUNCED);
+        }
+        if ($blockedCleared && $result['blockedHadNoAddress']) {
+            $this->logFlagWithNoAddress($userId, DeliverabilityFlagLog::FLAG_BLOCKED);
+        }
+
+        return $bouncedCleared || $blockedCleared;
+    }
+
+    /**
+     * Log a cleared flag that had no recorded address (data anomaly)
+     *
+     * The row holds the user ID and the flag name only. It holds no address.
+     */
+    private function logFlagWithNoAddress(int $userId, string $flag): void
+    {
+        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
+            'CarVerificationManager::clearFlagsForConfirmedEmailChange: profile of user %d had %s=1 '
+            . 'with no recorded address. The confirmed email change cleared it (data-integrity anomaly).',
+            $userId,
+            $flag
+        ));
     }
 
     /**

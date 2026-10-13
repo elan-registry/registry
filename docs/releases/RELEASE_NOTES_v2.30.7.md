@@ -16,6 +16,14 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
   ([#2101](https://github.com/elan-registry/registry/issues/2101), absorbs
   [#2319](https://github.com/elan-registry/registry/issues/2319))
 - An owner who resumes emails while the email provider blocks the address keeps emails paused, and the page says so. ([#2101](https://github.com/elan-registry/registry/issues/2101))
+- The email notice on your account page now shows the true state of your email. It says if email to your address is blocked, bounced, or opted out.
+  For a block, it gives the reason when it is known. It shows the date of the latest bounce, not an old one. You see it even if you have no car yet. A
+  block or bounce for an address you no longer use does not show. ([#2356](https://github.com/elan-registry/registry/issues/2356), absorbs
+  [#2318](https://github.com/elan-registry/registry/issues/2318), [#2320](https://github.com/elan-registry/registry/issues/2320) and the notice part
+  of [#2319](https://github.com/elan-registry/registry/issues/2319))
+- When you confirm a new email address, the registry clears the bounce and the block for your old address. Your opt-out stays.
+  ([#2356](https://github.com/elan-registry/registry/issues/2356))
+- Verification emails now go to the email address on your account. ([#2356](https://github.com/elan-registry/registry/issues/2356))
 
 ## Admin-Facing Changes
 
@@ -24,6 +32,12 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - The verification queue shows a "No profile" chip for an owner who has no profile, and sends no email to that owner. ([#2101](https://github.com/elan-registry/registry/issues/2101))
 - The admin user form shows the owner-level flags (opted out, blocked, bounced) and has no per-car flag columns. ([#2101](https://github.com/elan-registry/registry/issues/2101))
 - The soft-bounce count starts again at zero after Clear Bounced. ([#2101](https://github.com/elan-registry/registry/issues/2101), absorbs [#2320](https://github.com/elan-registry/registry/issues/2320))
+- The verification queue, the eligible count, the admin user form, and the Email on file row ignore a block or bounce that was recorded for an address
+  the owner no longer uses. An opt-out always counts. ([#2356](https://github.com/elan-registry/registry/issues/2356))
+- Verification emails go to the owner's account email, not the email copied onto the car. The Sent report shows that address.
+  ([#2356](https://github.com/elan-registry/registry/issues/2356))
+- Brevo events and suppressed contacts now match the owner's account email, not the email copied onto a car. An event for mail sent before
+  the deploy to an old car email shows as an unmatched recipient. ([#2356](https://github.com/elan-registry/registry/issues/2356))
 
 ## Data Model, Deploy, and Rollback Notes
 
@@ -79,7 +93,8 @@ own block on the address after deletion. A send to a blocked address returns a
 - [#2167](https://github.com/elan-registry/registry/issues/2167) — Test migration `up()`, `down()`, and idempotency in a throwaway schema, not the shared one.
 - [#2205](https://github.com/elan-registry/registry/issues/2205) — Encode the vericode in `verify_car.php` redirects and mark the verify forms' no-CSRF design.
 - WIP: [#2339](https://github.com/elan-registry/registry/issues/2339) — Stop rollbacks in four more `CarVerificationManager` methods from deleting log entries.
-- WIP: [#2356](https://github.com/elan-registry/registry/issues/2356) — Show each owner's true email state and clear the flags on a confirmed email change.
+- WIP: [#2356](https://github.com/elan-registry/registry/issues/2356) — Show each owner's true email state and clear the flags on a confirmed email
+  change. Also closes #2318 and #2320, and the notice part of #2319.
 - WIP: [#2357](https://github.com/elan-registry/registry/issues/2357) — Replace Clear Suppression with Clear Block and Clear Opt-out in the admin tools.
 - WIP: [#2374](https://github.com/elan-registry/registry/issues/2374) — Stop the Brevo webhook from dropping verification events when only send-side checks fail.
 - WIP: [#2378](https://github.com/elan-registry/registry/issues/2378) — Stop new-account sign-up from setting a remember-me token.

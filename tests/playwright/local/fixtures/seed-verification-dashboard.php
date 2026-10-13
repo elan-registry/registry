@@ -113,7 +113,6 @@ const SEED_PENDING_CAR_MODEL = '__PW_SEED_VD_PENDING__';
 const SEED_BOUNCED_USERNAME = '__playwright_seed_vd_bounced_owner__';
 const SEED_BOUNCED_EMAIL = 'playwright-seed-vd-bounced-owner@example.invalid';
 const SEED_BOUNCED_CAR_MODEL = '__PW_SEED_VD_BOUNCED__';
-const SEED_BOUNCED_ADDRESS = 'bounced-vd@example.invalid';
 
 const SEED_SUPPRESSED_USERNAME = '__playwright_seed_vd_suppressed_owner__';
 const SEED_SUPPRESSED_EMAIL = 'playwright-seed-vd-suppressed-owner@example.invalid';
@@ -379,7 +378,8 @@ $now = new \DateTimeImmutable();
     ],
     [
         'email_bounced'         => 1,
-        'email_bounced_address' => SEED_BOUNCED_ADDRESS,
+        // A flag applies only when its address equals users.email (#2356).
+        'email_bounced_address' => SEED_BOUNCED_EMAIL,
         'email_bounced_at'      => $now->modify('-3 days')->format('Y-m-d H:i:s'),
     ]
 );

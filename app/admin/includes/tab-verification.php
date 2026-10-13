@@ -370,7 +370,7 @@ if (!function_exists('vsStatusChip')) {
      *
      * @param object|null $event The chip event row, or null if the car has none
      * @param bool $hasProfile False when the owner has no profiles row
-     * @param bool $blocked True when the owner's `profiles.email_blocked` is set
+     * @param bool $blocked True when the owner's `profiles.email_blocked` applies to the current address
      * @param string|null $blockedCause The owner's `profiles.email_blocked_cause`, or null when unknown
      * @param bool $optedOut True when the owner's `profiles.email_opted_out` is set
      * @return array{kind: string, label: string, class: string, reason: string}
@@ -685,10 +685,10 @@ ob_start();
                     <?= htmlspecialchars((string) $vsUnmatchedCount, ENT_QUOTES, 'UTF-8') ?>
                 </span>
                 <small class="text-muted ms-1">
-                    Brevo events and suppressed contacts whose email matched no car,
-                    across the webhook receiver, nightly reconciliation, and suppression
-                    sync. A rising count usually means recipient emails have drifted
-                    from <code>cars.email</code>.
+                    Brevo events and suppressed contacts whose email matched no owner's
+                    account email, across the webhook receiver, nightly reconciliation,
+                    and suppression sync. A rising count usually means an owner changed
+                    their account email after mail went to the old address.
                 </small>
                 <?php } ?>
             </dd>
@@ -1288,13 +1288,18 @@ if (!$vsAllHealthy) {
 
                         // The flags come from the owner's profiles row (#2101). The
                         // Eligible rows are cars.* only: an eligible car has a
-                        // profile and no flag, so a missing has_profile means 1.
+                        // profile and no flag that applies, so a missing has_profile
+                        // means 1. A block or bounce counts only while it applies to
+                        // the owner's current email (the `_active` columns, #2356).
+                        //
+                        // The stored cause stays in the row when the block does not
+                        // apply, so it is read only for an active block.
                         $queueHasProfile  = (int) ($queueCar->has_profile ?? 1) === 1;
-                        $queueBounced     = (int) ($queueCar->email_bounced ?? 0) === 1;
-                        $queueBlocked     = (int) ($queueCar->email_blocked ?? 0) === 1;
+                        $queueBounced     = (int) ($queueCar->email_bounced_active ?? 0) === 1;
+                        $queueBlocked     = (int) ($queueCar->email_blocked_active ?? 0) === 1;
                         $queueOptedOut    = (int) ($queueCar->email_opted_out ?? 0) === 1;
                         $queueSuppressed  = $queueBlocked || $queueOptedOut;
-                        $queueBlockedCause = isset($queueCar->email_blocked_cause)
+                        $queueBlockedCause = $queueBlocked && isset($queueCar->email_blocked_cause)
                             ? (string) $queueCar->email_blocked_cause : null;
 
                         $queueChip = vsStatusChip(

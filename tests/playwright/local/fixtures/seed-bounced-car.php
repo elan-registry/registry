@@ -102,8 +102,8 @@ const SEED_EMAIL = 'playwright-seed-bounced-car-owner@example.invalid';
  */
 const SEED_CAR_MODEL = '__PW_SEED_BOUNCED_CAR__';
 
-/** Bounced address recorded against the seeded car. */
-const SEED_BOUNCED_ADDRESS = 'bounced@example.invalid';
+/** Bounced address recorded against the seeded owner. It equals users.email, so the flag applies (#2356). */
+const SEED_BOUNCED_ADDRESS = SEED_EMAIL;
 
 /**
  * Second owner/car pair: a clean car with no bounce/suppression flags, used

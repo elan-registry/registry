@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Car\EffectiveEmailFlags;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -403,19 +404,36 @@ final class VehicleInfoCardTest extends TestCase
     private const SECRET_BOUNCE = 'bounced.address@example.org';
 
     /**
-     * The owner's profile state, as CarRepository::findProfileEmailState() returns it.
+     * The flags that apply to the owner now, as CarRepository::effectiveEmailFlags()
+     * returns them (#2356). The keys name the stored columns, and a truthy
+     * value (1 or '1') means the flag applies. The repository applies the
+     * address match, tested in CarRepositoryTest, so the card only reads it.
      *
      * @param array<string, mixed> $overrides
      */
-    private static function ownerState(array $overrides = []): object
+    private static function ownerState(array $overrides = []): EffectiveEmailFlags
     {
-        return (object) array_merge([
+        $o = array_merge([
             'email_opted_out' => 0,
             'email_blocked' => 0,
             'email_blocked_address' => null,
             'email_bounced' => 0,
             'email_bounced_address' => null,
         ], $overrides);
+
+        return new EffectiveEmailFlags(
+            true,
+            (int) $o['email_opted_out'] === 1,
+            null,
+            (int) $o['email_blocked'] === 1,
+            $o['email_blocked_address'],
+            null,
+            null,
+            (int) $o['email_bounced'] === 1,
+            $o['email_bounced_address'],
+            null,
+            null
+        );
     }
 
     /**
@@ -524,6 +542,28 @@ final class VehicleInfoCardTest extends TestCase
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
     }
 
+    /** An owner with no profile row has no flag, so the row is hidden. */
+    public function test_emailRow_adminWithNoProfileOwner_hasNoRow(): void
+    {
+        $xp = self::card(
+            self::carData(),
+            ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => EffectiveEmailFlags::none()]
+        );
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
+    }
+
+    /** Only an EffectiveEmailFlags counts. A raw profile object, with stored columns, shows no row. */
+    public function test_emailRow_ignoresARawProfileObject(): void
+    {
+        $xp = self::card(
+            self::carData(),
+            ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => (object) ['email_bounced' => 1, 'email_blocked' => 1, 'email_opted_out' => 1]]
+        );
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
+    }
+
     /**
      * The profile is the only source. A car row that still holds the removed
      * per-car columns must not show a flag.
@@ -558,9 +598,9 @@ final class VehicleInfoCardTest extends TestCase
         $this->assertSame(
             "This owner's address is on the email suppression list, so no verification emails are sent. "
             . 'An admin can use Clear Suppression on the Verification System tab. '
-            . 'If the cause is an owner opt-out, the owner can also use Resume verification emails in their '
-            . 'Account Settings — this does not cover a suppression caused by a spam complaint, '
-            . 'which only an admin can clear.',
+            . 'A block also ends when the owner confirms a changed email address. '
+            . 'If the cause is only an owner opt-out, the owner can use Resume verification emails in their '
+            . 'Account Settings. Resume does not clear a block.',
             $suppressed
         );
         $this->assertStringContainsString('Clear Suppression', $suppressed);

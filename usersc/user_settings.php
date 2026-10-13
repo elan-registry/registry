@@ -124,16 +124,16 @@ if (!empty($_POST)) {
             // Resume clears only the owner's own opt-out. A block or a bounce
             // stays, and eligibility still excludes the owner, so the message
             // must not say that emails start again. A block needs the
-            // registry, so it wins over a bounce.
-            $blocked = (int) ($profiledetails->email_blocked ?? 0) === 1;
-            $bounced = (int) ($profiledetails->email_bounced ?? 0) === 1;
-            if ($blocked && !$resumed) {
+            // registry, so it wins over a bounce. Only a flag for the
+            // current address applies (#2356).
+            $effectiveFlags = $repo->effectiveEmailFlags($userId);
+            if ($effectiveFlags->blocked && !$resumed) {
                 usError('Verification emails are paused because our email provider flagged your address. Please contact the registry.');
-            } elseif ($blocked) {
+            } elseif ($effectiveFlags->blocked) {
                 usWarning('Your opt-out is removed. Verification emails stay paused because our email provider flagged your address. Please contact the registry.');
-            } elseif ($bounced && !$resumed) {
+            } elseif ($effectiveFlags->bounced && !$resumed) {
                 usError('Verification emails are paused because email to your address bounced. Update your email address to turn them back on.');
-            } elseif ($bounced) {
+            } elseif ($effectiveFlags->bounced) {
                 usWarning('Your opt-out is removed. Verification emails stay paused because email to your address bounced. Update your email address to turn them back on.');
             } else {
                 usSuccess('Verification emails have been resumed for your cars.');
@@ -193,9 +193,6 @@ if (!empty($_POST)) {
         // The success messages and log lines for these fields are held back
         // until that write succeeds.
         $ownerFields = [];
-        // The new address when the email_act == 0 branch writes users.email
-        // directly. Null otherwise.
-        $directNewEmail = null;
         $websiteCleared = false;
         $ownerSuccesses = [];
         $ownerLogLines = [];
@@ -451,10 +448,9 @@ if (!empty($_POST)) {
                                 // the user confirms via users/verify.php, so it must
                                 // NOT queue the address. Input::raw(), not $email:
                                 // $email is HTML-encoded by Input::get().
-                                $directNewEmail = Input::raw('email') ?? '';
-                                $ownerFields['email'] = $directNewEmail;
+                                $ownerFields['email'] = Input::raw('email') ?? '';
                                 $ownerSuccesses[] = 'Email updated.';
-                                $ownerLogLines[] = "Changed email from $userdetails->email to $email.";
+                                $ownerLogLines[] = "Changed email for user {$userId}.";
                             }
                             if ($emailR->email_act == 1) {
                                 $vericode = randomstring(15);
@@ -493,7 +489,7 @@ if (!empty($_POST)) {
                                         $successes[] = "Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in {$settings->join_vericode_expiry} hours.";
                                     }
                                     if ($emailR->email_act == 1) {
-                                        logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Requested change email from $userdetails->email to $email. Verification email sent.");
+                                        logger($userId, LogCategories::LOG_CATEGORY_USER, "Requested email change for user {$userId}. Verification email sent.");
                                     }
                                 }
                             }
@@ -628,18 +624,6 @@ if (!empty($_POST)) {
                 logger($userId, LogCategories::LOG_CATEGORY_USER, "Changed website from {$profiledetails->website} to (empty).");
             };
 
-            // The profile write committed before this runs. A failure here must
-            // not tell the owner that the email change failed, so log it only.
-            $clearBouncedForNewEmail = function (string $newEmail) use ($verifier, $userId): void {
-                try {
-                    $verifier->clearBouncedForEmailChange($userId, $userId, $newEmail);
-                } catch (\Throwable $bounceException) {
-                    logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                        "user_settings.php: bounce-clear after direct email change failed for user {$userId}: "
-                        . get_class($bounceException) . ': ' . $bounceException->getMessage());
-                }
-            };
-
             try {
                 $owner = new Owner($userId);
             } catch (OwnerDatabaseException $e) {
@@ -674,14 +658,6 @@ if (!empty($_POST)) {
                         ? $owner->updateProfileAndSync($ownerFields)
                         : $owner->syncOwnerFieldsToCars();
                     $reportOwnerWrite();
-                    if ($ownerFields !== [] && $directNewEmail !== null) {
-                        // The email_act == 0 path changed users.email directly.
-                        // Clear the bounce flags the same way the confirmed-change
-                        // hook (sync_owner_email_on_verify.php) does, so the
-                        // account notice's "updating your email address will start
-                        // them again" is true on both paths.
-                        $clearBouncedForNewEmail($directNewEmail);
-                    }
                     // Cars in $syncResult's skipped bucket (no longer owned by this user) are
                     // intentionally not reported here — there's nothing actionable for the
                     // owner, since the car isn't theirs anymore. isCompleteSuccess() already
@@ -812,10 +788,22 @@ if ($userQ2->count() > 0) {
 // - email_opted_out: the owner opted out. Resume clears it.
 // - email_blocked: the email provider flagged the address. Only an admin can
 //   clear it, so the page tells the owner to contact the registry.
-// PDO returns the columns as int|string, so cast before the strict
-// comparisons.
-$ownerClearable = (int) ($profiledetails->email_opted_out ?? 0) === 1;
-$emailBlocked = (int) ($profiledetails->email_blocked ?? 0) === 1;
+// A block applies only while its address matches users.email (#2356).
+$ownerClearable = false;
+$emailBlocked = false;
+try {
+    $effectiveFlags = $repo->effectiveEmailFlags($userId);
+    $ownerClearable = $effectiveFlags->optedOut;
+    $emailBlocked = $effectiveFlags->blocked;
+} catch (ElanRegistryException $e) {
+    logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+        "user_settings.php: email flag read for the paused-email notice failed for owner {$userId}. "
+        . "The notice uses the stored profile flags, which may be stale: " . $e->getMessage());
+    // Use the stored flags from the profile read above. Showing a notice
+    // that may be stale is safer than hiding a real one.
+    $ownerClearable = (int) ($profiledetails->email_opted_out ?? 0) === 1;
+    $emailBlocked = (int) ($profiledetails->email_blocked ?? 0) === 1;
+}
 $emailSuppressed = $ownerClearable || $emailBlocked;
 $pausedCarCount = null;
 if ($emailSuppressed) {
@@ -823,7 +811,7 @@ if ($emailSuppressed) {
         $pausedCarCount = count($repo->findVerificationStateByOwner($userId));
     } catch (ElanRegistryException $e) {
         // The count is copy, not a gate: keep the control and show generic text.
-        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+        logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "user_settings.php: owned-car count for the paused-email notice failed for owner {$userId}: " . $e->getMessage());
     }
 }

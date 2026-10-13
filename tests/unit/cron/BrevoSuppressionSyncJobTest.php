@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
@@ -123,15 +124,26 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->mockRepo->method('findOwnerOfCar')->willReturnCallback(
             static fn (int $carId): object => (object) ['user_id' => 100 + $carId, 'username' => 'owner' . $carId]
         );
-        $this->mockRepo->method('findProfileEmailState')->willReturnCallback(
-            static function (int $userId) use ($flagsByCarId): object {
+        $this->mockRepo->method('effectiveEmailFlags')->willReturnCallback(
+            static function (int $userId) use ($flagsByCarId): EffectiveEmailFlags {
                 $flags = $flagsByCarId[$userId - 100] ?? [];
+                $blocked = ($flags['blocked'] ?? 0) === 1;
+                $bounced = ($flags['bounced'] ?? 0) === 1;
 
-                return (object) [
-                    'user_id' => $userId,
-                    'email_bounced' => $flags['bounced'] ?? 0,
-                    'email_blocked' => $flags['blocked'] ?? 0,
-                ];
+                // The repository applies the address match, so a flag here applies.
+                return new EffectiveEmailFlags(
+                    true,
+                    false,
+                    null,
+                    $blocked,
+                    $blocked ? 'owner@example.com' : null,
+                    null,
+                    null,
+                    $bounced,
+                    $bounced ? 'owner@example.com' : null,
+                    null,
+                    'owner@example.com'
+                );
             }
         );
     }
@@ -864,7 +876,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
         $this->mockRepo->method('findOwnerOfCar')->willReturn((object) ['user_id' => 101, 'username' => 'owner1']);
-        $this->mockRepo->method('findProfileEmailState')->willReturn(null);
+        $this->mockRepo->method('effectiveEmailFlags')->willReturn(EffectiveEmailFlags::none());
 
         $summary = $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam'),

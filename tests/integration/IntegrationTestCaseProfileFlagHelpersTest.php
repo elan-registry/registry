@@ -35,6 +35,30 @@ class IntegrationTestCaseProfileFlagHelpersTest extends IntegrationTestCase
         $this->assertSame('0', (string) $flags['email_bounced']);
     }
 
+    public function testSetUserEmailRawStoresTheValueExactlyAndLeavesTheProfileAlone(): void
+    {
+        $before = $this->getOwnerEmailFlags($this->userId);
+
+        $this->setUserEmailRaw($this->userId, "  Mixed@Example.com\t\n");
+
+        $row = $this->db->query('SELECT email FROM users WHERE id = ?', [$this->userId])->first();
+        $this->assertSame("  Mixed@Example.com\t\n", $row->email, 'No trim and no case change');
+        $this->assertSame($before, $this->getOwnerEmailFlags($this->userId), 'The upstream admin form writes no profile column');
+    }
+
+    public function testSetEmailAddressSinceSeenWritesBothColumnsAndKeepsSinceWhenNull(): void
+    {
+        $this->setEmailAddressSinceSeen($this->userId, 'seen@example.com', '2020-01-02 03:04:05');
+        $flags = $this->getOwnerEmailFlags($this->userId);
+        $this->assertSame('seen@example.com', $flags['email_address_seen']);
+        $this->assertSame('2020-01-02 03:04:05', $flags['email_address_since']);
+
+        $this->setEmailAddressSinceSeen($this->userId, 'other@example.com');
+        $flags = $this->getOwnerEmailFlags($this->userId);
+        $this->assertSame('other@example.com', $flags['email_address_seen']);
+        $this->assertSame('2020-01-02 03:04:05', $flags['email_address_since'], 'A null since leaves the column as it was');
+    }
+
     public function testSetOwnerBlockedWritesAddressTimeAndCause(): void
     {
         $this->setOwnerBlocked($this->userId, 'blocked@example.com', '2026-01-02 03:04:05', 'spam');

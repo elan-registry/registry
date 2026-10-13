@@ -71,11 +71,6 @@ after an item is written.
 
 - [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Catch `CarDatabaseException`: an uncaught one turns a logged redirect into a 500. Keep the redirect to `/` on not-found (from #2002)
 
-### `app/views/_email_paused_notice.php`
-
-- [ ] No dedicated unit test for the partial's own escaping/copy branches: a hostile address string, date-omitted text when no audit row exists, overflow pluralization ("is"/"are"), "and N more" join text. Playwright covers some rendering end to end but does not target these branches directly. (found while working on #1899)
-- [ ] No Playwright test that changing the underlying flagged-car data re-shows a notice the owner already dismissed in the same session — the `contentHash`-driven re-show behavior `EmailNoticeBuilder`'s own docblock promises. (found while working on #1899)
-
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
@@ -99,8 +94,6 @@ after an item is written.
 
 ### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/VerificationToggleEndpointBehaviorTest.php` (test coverage)
 
-- [ ] No test covers the webhook gate (`app/api/webhooks/brevo.php`, `brevoReady()`) with a plugin below 1.8.0: a 200 response, the dropped event, and the `VerificationConfigWarning` log line. (found in #2184)
-- [ ] `BrevoWebhookEndpointTest.php` ~L297: the not-ready log `LIKE` pattern includes an em dash, so a non-utf8mb4 `logs.lognote` column would show as a count mismatch, not a clear error. Match on the ASCII part of the text only. (found in /finish-milestone v2.30.6)
 - [ ] The not-ready tests empty the API key and restore it in `finally`. A fatal error or a killed run skips `finally` and leaves `key = ''`, which the bootstrap sweep does not report (it deletes only `sib-test-key` rows). Readiness does not change, but the toggle test's original key is lost. Update the crash-recovery comment in `tests/bootstrap-integration.php` (~L430-445) or make the sweep report empty-key rows. (found in /finish-milestone v2.30.6)
 
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
@@ -169,10 +162,6 @@ after an item is written.
 ### `usersc/classes/Car/VerificationBatchSender.php` (test coverage)
 
 - [ ] No test covers a batch while Brevo is not ready (plugin below 1.8.0): no email sent, every car in `failed` with the Brevo reason, no vericode rotation. Only `CarVerificationSendService::sendOne()` has that test. (found in #2184)
-
-### `usersc/classes/Car/VerificationSettings.php`
-
-- [ ] ~L556 comment says the Brevo state is "not 'not configured'"; say "not 'not ready'" to match `brevoNotReadyReason()`. (found in /finish-milestone v2.30.6)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 

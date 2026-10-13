@@ -44,8 +44,13 @@ use ElanRegistry\Exceptions\CarValidationException;
  * OWNER, not of the car row this class is handed, and need a `profiles` join
  * no single `cars` row can supply. They too are enforced downstream in
  * {@see CarVerificationSendService::sendOne()}, which reads
- * {@see CarRepository::findProfileEmailState()} directly and returns a
+ * {@see CarRepository::effectiveEmailFlags()} directly and returns a
  * failure result, landing in the report's Failed section rather than Skipped.
+ *
+ * The SQL's empty `users.email` clause is in the same category. The send
+ * mails the owner's `users.email`, not `cars.email`, and the car row has no
+ * users fields. {@see CarVerificationSendService::sendOne()}
+ * refuses the send when the owner's account email is empty.
  *
  * @package ElanRegistry\Car
  * @since v2.30.3
@@ -71,11 +76,6 @@ final class VerificationEligibility
         // cars.solddate IS NULL
         if (!empty($carData->solddate)) {
             return 'Marked sold';
-        }
-
-        // cars.email IS NOT NULL AND cars.email != ''
-        if (trim((string) ($carData->email ?? '')) === '') {
-            return 'No email on file';
         }
 
         // cars.user_id IS NOT NULL

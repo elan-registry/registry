@@ -105,18 +105,14 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
         $this->assertNull(VerificationEligibility::skipReason($car));
     }
 
-    public function testReturnsNoEmailOnFileWhenEmailIsEmpty(): void
+    /**
+     * The send mails the owner's `users.email`. `cars.email` is only a copy,
+     * so an empty copy must not skip the car. sendOne() checks the account email.
+     */
+    public function testIgnoresEmptyCarEmailBecauseTheSendUsesTheAccountEmail(): void
     {
-        $car = $this->makeEligibleCar(['email' => '']);
-
-        $this->assertSame('No email on file', VerificationEligibility::skipReason($car));
-    }
-
-    public function testReturnsNoEmailOnFileWhenEmailIsWhitespaceOnly(): void
-    {
-        $car = $this->makeEligibleCar(['email' => '   ']);
-
-        $this->assertSame('No email on file', VerificationEligibility::skipReason($car));
+        $this->assertNull(VerificationEligibility::skipReason($this->makeEligibleCar(['email' => ''])));
+        $this->assertNull(VerificationEligibility::skipReason($this->makeEligibleCar(['email' => '   '])));
     }
 
     public function testReturnsNoOwnerOnFileWhenUserIdIsZero(): void
@@ -149,12 +145,12 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
 
     public function testChecksAreAppliedInDocumentedPriorityOrder(): void
     {
-        // A car that is BOTH sold AND without an email must report "Marked sold" —
+        // A car that is BOTH sold AND without an owner must report "Marked sold" —
         // the first-matching-branch ordering the docblock promises, not
         // whichever branch happens to be reordered by a future edit.
         $car = $this->makeEligibleCar([
             'solddate' => '2026-01-01',
-            'email'    => '',
+            'user_id'  => 0,
         ]);
 
         $this->assertSame('Marked sold', VerificationEligibility::skipReason($car));

@@ -298,9 +298,11 @@ final class UserFormHookVerificationCardTest extends TestCase
     // Owner-level flags, read from the profile (#2101).
 
     /**
-     * A profiles row as findProfileEmailState() returns it. Every flag is clear
-     * unless $overrides sets it. Values are strings because PDO may return
-     * them so.
+     * A profile row joined with `users.email`, as effectiveEmailFlags() reads
+     * it. Every flag is clear unless $overrides sets it. A flag shows only
+     * while its address matches `user_email`, so a test that sets a flag
+     * address sets `user_email` too. Values are strings because PDO may
+     * return them so.
      *
      * @param array<string, mixed> $overrides
      * @return array<string, mixed>
@@ -314,6 +316,7 @@ final class UserFormHookVerificationCardTest extends TestCase
             'email_blocked_at' => null, 'email_blocked_cause' => null,
             'email_bounced' => '0', 'email_bounced_address' => null,
             'email_bounced_at' => null, 'email_bounce_cleared_at' => null,
+            'user_email' => 'owner@example.invalid',
         ], $overrides);
     }
 
@@ -325,6 +328,7 @@ final class UserFormHookVerificationCardTest extends TestCase
                 'email_bounced' => '1',
                 'email_bounced_address' => 'bounced@example.invalid',
                 'email_bounced_at' => '2026-05-01 10:00:00',
+                'user_email' => 'bounced@example.invalid',
             ])
         ));
 
@@ -346,6 +350,7 @@ final class UserFormHookVerificationCardTest extends TestCase
                 'email_blocked_address' => 'blocked@example.invalid',
                 'email_blocked_at' => '2026-06-02 11:00:00',
                 'email_blocked_cause' => 'spam',
+                'user_email' => 'blocked@example.invalid',
             ])
         ));
 
@@ -361,7 +366,10 @@ final class UserFormHookVerificationCardTest extends TestCase
     {
         $this->useDb(new VerificationCardTestDb(
             cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
-            state: self::state(['email_blocked' => '1', 'email_blocked_address' => 'blocked@example.invalid'])
+            state: self::state([
+                'email_blocked' => '1', 'email_blocked_address' => 'blocked@example.invalid',
+                'user_email' => 'blocked@example.invalid',
+            ])
         ));
 
         $this->assertStringContainsString('Blocked (cause: unknown)', $this->cardHtml($this->render()));
@@ -389,7 +397,8 @@ final class UserFormHookVerificationCardTest extends TestCase
             state: self::state([
                 'email_opted_out' => '1',
                 'email_blocked' => '1', 'email_blocked_address' => 'b@example.invalid', 'email_blocked_cause' => 'unsubscribed',
-                'email_bounced' => '1', 'email_bounced_address' => 'x@example.invalid',
+                'email_bounced' => '1', 'email_bounced_address' => 'b@example.invalid',
+                'user_email' => 'b@example.invalid',
             ])
         ));
 
@@ -400,6 +409,85 @@ final class UserFormHookVerificationCardTest extends TestCase
         $this->assertStringContainsString('Owner opted out', $card);
     }
 
+    /** A flag stored for an old address does not apply, so the card shows no problem (#2356). */
+    public function testFlagsForAnOldAddressAreNotShown(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state([
+                'email_bounced' => '1', 'email_bounced_address' => 'old@example.invalid',
+                'email_blocked' => '1', 'email_blocked_address' => 'old@example.invalid',
+                'user_email' => 'new@example.invalid',
+            ])
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertStringContainsString('No delivery problems recorded', $card);
+        $this->assertStringNotContainsString('old@example.invalid', $card);
+        $this->assertStringNotContainsString('Bounced', $card);
+        $this->assertStringNotContainsString('Blocked (cause', $card);
+    }
+
+    /** The opt-out is not tied to an address, so it shows after an address change. */
+    public function testOptOutShowsAfterTheAddressChanged(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state([
+                'email_opted_out' => '1', 'email_opted_out_at' => '2026-07-03 12:00:00',
+                'email_bounced' => '1', 'email_bounced_address' => 'old@example.invalid',
+            ])
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertStringContainsString('Owner opted out', $card);
+        $this->assertStringNotContainsString('old@example.invalid', $card);
+    }
+
+    /** A flag with no stored address fails closed, so it shows. */
+    public function testFlagWithNoStoredAddressStillShows(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state(['email_bounced' => '1', 'email_bounced_address' => null])
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertStringContainsString('text-bg-danger">Bounced', $card);
+        $this->assertStringNotContainsString('No delivery problems recorded', $card);
+        $this->assertStringContainsString('<em class="text-muted">no address recorded</em>', $card, 'The admin sees the anomaly');
+    }
+
+    /** A block with an empty stored address also names the anomaly. A bounce with an address does not. */
+    public function testBlockWithAnEmptyStoredAddressSaysNoAddressRecorded(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state([
+                'email_blocked' => '1', 'email_blocked_address' => '  ',
+                'email_bounced' => '1', 'email_bounced_address' => 'owner@example.invalid',
+            ])
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertSame(1, substr_count($card, 'no address recorded'), 'Only the block has no address');
+        $this->assertStringContainsString('owner@example.invalid', $card);
+    }
+
+    /** The hook reads the flags through effectiveEmailFlags(), the one owner-level reader. */
+    public function testHookReadsTheFlagsThroughEffectiveEmailFlagsOnly(): void
+    {
+        $source = (string) file_get_contents(self::HOOK);
+
+        $this->assertStringContainsString('->effectiveEmailFlags((int) $user_id)', $source);
+        $this->assertStringNotContainsString('findProfileEmailState', $source);
+        $this->assertDoesNotMatchRegularExpression('/->email_(?:bounced|blocked|opted_out)\b/', $source);
+    }
+
     /** The flags are per owner, so no car row repeats them. */
     public function testFlagsAppearOnceInTheSummaryAndNotInTheCarRows(): void
     {
@@ -408,7 +496,10 @@ final class UserFormHookVerificationCardTest extends TestCase
                 self::car(id: 101, ownerLastUpdated: self::recentTimestamp()),
                 self::car(id: 102, ownerLastUpdated: self::recentTimestamp()),
             ],
-            state: self::state(['email_bounced' => '1', 'email_bounced_address' => 'x@example.invalid'])
+            state: self::state([
+                'email_bounced' => '1', 'email_bounced_address' => 'x@example.invalid',
+                'user_email' => 'x@example.invalid',
+            ])
         ));
 
         $html = $this->render();
@@ -518,7 +609,7 @@ final class VerificationCardTestDb implements DatabaseInterface
     /**
      * @param array<int, object> $cars Verification-state rows; their ids feed the car-button query
      * @param array<int, object> $events Delivery-event rows
-     * @param array<string, mixed>|null $state The owner's profiles row for findProfileEmailState().
+     * @param array<string, mixed>|null $state The owner's profile row with `user_email`, for effectiveEmailFlags().
      *        Null gives a profile with every flag clear.
      */
     public function __construct(
@@ -549,7 +640,7 @@ final class VerificationCardTestDb implements DatabaseInterface
             ]]);
         }
 
-        // CarRepository::findProfileEmailState()
+        // CarRepository::effectiveEmailFlags()
         if (str_contains($sql, 'FROM profiles') && str_contains($sql, 'email_blocked_cause')) {
             if ($this->failProfileStateQuery) {
                 return $this->fail();
@@ -565,6 +656,7 @@ final class VerificationCardTestDb implements DatabaseInterface
                 'email_blocked_at' => null, 'email_blocked_cause' => null,
                 'email_bounced' => '0', 'email_bounced_address' => null,
                 'email_bounced_at' => null, 'email_bounce_cleared_at' => null,
+                'user_email' => 'owner@example.invalid',
             ])]);
         }
 
