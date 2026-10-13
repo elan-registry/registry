@@ -217,12 +217,6 @@ parameters:
 			path: usersc/oauth_server/login_scripts/default_script.php
 
 		-
-			message: '#^Variable \$theNewId might not be defined\.$#'
-			identifier: variable.undefined
-			count: 5
-			path: usersc/scripts/during_user_creation.php
-
-		-
 			message: '#^Variable \$errors might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1

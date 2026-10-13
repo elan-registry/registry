@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Owner;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
@@ -24,7 +25,7 @@ final class CarTransferTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $this->testUserId = $this->createTestUser();
+        $this->testUserId = $this->createTestUser([], true);
         $this->targetUserId = $this->createTestUser();
 
         $this->loginAsTestUser($this->testUserId);
@@ -38,6 +39,8 @@ final class CarTransferTest extends IntegrationTestCase
             'city'    => 'Hethel',
             'state'   => 'Norfolk',
             'country' => 'United Kingdom',
+            'email_address_since' => date('Y-m-d H:i:s'),
+            'email_address_seen'  => 'target-owner@example.com',
         ]);
         $this->assertTrue((bool) $profileInserted, 'Test fixture: profiles insert must succeed');
 
@@ -257,84 +260,108 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
-     * The bounce belongs to the previous owner's address; carrying it forward
-     * would exclude the car from findVerificationEligible() forever.
+     * The flags belong to the owner's profile (#2101). A transfer writes none
+     * of them. The previous owner keeps their own flags, and the new owner
+     * does not get them: the old complaint stays with the person who made it.
      */
     #[Group('fast')]
-    public function testTransferClearsEmailBouncedOnPreviouslyBouncedCar(): void
+    public function testTransferLeavesBothOwnersProfileFlagsUnchangedAndNewOwnerGetsNone(): void
     {
-        $bouncedCarId = $this->createTestCar($this->testUserId, [
-            'chassis'       => 'TR' . uniqid(),
-            'email_bounced' => 1,
-        ]);
+        $this->setOwnerBounced($this->testUserId, 'previous-owner@example.com', '2026-03-04 05:06:07');
+        $this->setOwnerBlocked($this->testUserId, 'previous-owner@example.com', '2026-02-03 04:05:06', 'spam');
+        $this->setOwnerOptedOut($this->testUserId, true, '2026-01-02 03:04:05');
+        $flaggedCarId = $this->createTestCar($this->testUserId, ['chassis' => 'TR' . uniqid()]);
+        $previousBefore = $this->getOwnerEmailFlags($this->testUserId);
+        $targetBefore = $this->getOwnerEmailFlags($this->targetUserId);
+        $this->assertSame('0', (string) $targetBefore['email_blocked'], 'Test sanity: the new owner starts clean');
 
-        $car = new Car($bouncedCarId);
-        $car->transfer($this->targetUserId, 'Test transfer bounced car', 'NEWOWNER', $this->testUserId);
+        $car = new Car($flaggedCarId);
+        $car->transfer($this->targetUserId, 'Test transfer flagged car', 'NEWOWNER', $this->testUserId);
 
-        $carRow = $this->db->query(
-            "SELECT email_bounced FROM cars WHERE id = ?",
-            [$bouncedCarId]
-        )->first();
-        $this->assertSame(0, (int) $carRow->email_bounced);
+        $this->assertSame(
+            $previousBefore,
+            $this->getOwnerEmailFlags($this->testUserId),
+            'The previous owner\'s profile flags must be unchanged by the transfer'
+        );
+        $after = $this->getOwnerEmailFlags($this->targetUserId);
+        $this->assertSame($targetBefore, $after, 'The new owner\'s profile must be unchanged by the transfer');
+        $this->assertSame('0', (string) $after['email_blocked'], 'The old complaint must not pass to the new owner');
+        $this->assertSame('0', (string) $after['email_bounced']);
+        $this->assertSame('0', (string) $after['email_opted_out']);
     }
 
-    /** #1887: both belong to the previous owner's address. */
+    /**
+     * A flagged previous owner no longer keeps the transferred car out of
+     * verification: eligibility reads the new owner's profile.
+     */
     #[Group('fast')]
-    public function testTransferClearsBounceAddressAndSuppressedOnPreviouslyFlaggedCar(): void
+    public function testTransferredCarOfFlaggedPreviousOwnerIsEligibleUnderTheNewOwner(): void
     {
+        $this->setOwnerBounced($this->testUserId, 'previous-owner@example.com');
         $flaggedCarId = $this->createTestCar($this->testUserId, [
-            'chassis'               => 'TR' . uniqid(),
-            'email_bounced'         => 1,
-            'email_bounced_address' => 'previous-owner@example.com',
-            'email_suppressed'      => 1,
+            'chassis' => 'TR' . uniqid(),
+            'email'   => 'previous-owner@example.com',
         ]);
 
         $car = new Car($flaggedCarId);
         $car->transfer($this->targetUserId, 'Test transfer flagged car', 'NEWOWNER', $this->testUserId);
 
-        $carRow = $this->db->query(
-            "SELECT email_bounced_address, email_suppressed FROM cars WHERE id = ?",
-            [$flaggedCarId]
-        )->first();
-        $this->assertNull($carRow->email_bounced_address);
-        $this->assertSame(0, (int) $carRow->email_suppressed);
+        $this->db->query(
+            'UPDATE cars SET email = ?, last_verified = NULL, vericode_sent_at = NULL WHERE id = ?',
+            ['new-owner-' . uniqid() . '@example.com', $flaggedCarId]
+        );
+        $this->seedOwnerLastUpdated($flaggedCarId, date('Y-m-d H:i:s', strtotime('-3 years')));
+
+        // This class shadows $db with the raw DB singleton, which the
+        // repository does not accept, so the repository gets dbi().
+        $eligibleIds = array_map(
+            static fn (object $row): int => (int) $row->id,
+            (new CarRepository(dbi()))->findVerificationEligible(100000, 0)
+        );
+        $this->assertContains(
+            $flaggedCarId,
+            $eligibleIds,
+            'Under the clean new owner the car is eligible, although the previous owner is bounced'
+        );
     }
 
     /**
-     * Reassignment to "noowner" is not a change of owner (#1878), so the boolean
-     * flags survive. email_bounced_address is PII and this is the GDPR erasure
-     * path (after_user_deletion.php), so it is always cleared.
+     * Reassignment to "noowner" is not a change of owner (#1878). It is the
+     * GDPR erasure path (after_user_deletion.php). The transfer writes no
+     * profile flag, and the audit row exists.
      */
     #[Group('fast')]
-    public function testSystemAccountReassignmentPreservesFlagsButClearsBounceAddress(): void
+    public function testSystemAccountReassignmentWritesNoProfileFlag(): void
     {
-        $flaggedCarId = $this->createTestCar($this->testUserId, [
-            'chassis'               => 'TR' . uniqid(),
-            'email_bounced'         => 1,
-            'email_bounced_address' => 'still-bounced@example.com',
-            'email_suppressed'      => 1,
-        ]);
+        $this->setOwnerBounced($this->testUserId, 'still-bounced@example.com');
+        $flaggedCarId = $this->createTestCar($this->testUserId, ['chassis' => 'TR' . uniqid()]);
+        $previousBefore = $this->getOwnerEmailFlags($this->testUserId);
 
         $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
         $this->assertNotNull($noOwner, 'noowner system account must exist for this test');
+        $noOwnerProfilesBefore = (int) $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?',
+            [(int) $noOwner->id]
+        )->first()->cnt;
 
         $car = new Car($flaggedCarId);
         $car->transfer((int) $noOwner->id, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);
 
-        $carRow = $this->db->query(
-            "SELECT email_bounced, email_bounced_address, email_suppressed FROM cars WHERE id = ?",
-            [$flaggedCarId]
-        )->first();
-        $this->assertSame(1, (int) $carRow->email_bounced, 'The boolean bounced flag carries no PII and must survive');
-        $this->assertNull($carRow->email_bounced_address, 'The bounced address is PII and must be cleared even on GDPR-erasure reassignment');
-        $this->assertSame(1, (int) $carRow->email_suppressed, 'The boolean suppressed flag carries no PII and must survive');
+        $this->assertSame($previousBefore, $this->getOwnerEmailFlags($this->testUserId));
+        $this->assertSame(
+            $noOwnerProfilesBefore,
+            (int) $this->db->query(
+                'SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?',
+                [(int) $noOwner->id]
+            )->first()->cnt,
+            'The reassignment must not create or delete a noowner profile'
+        );
 
         $histRow = $this->db->query(
-            "SELECT email_bounced_address FROM cars_hist WHERE car_id = ? AND operation = 'NEWOWNER' ORDER BY timestamp DESC LIMIT 1",
+            "SELECT car_id FROM cars_hist WHERE car_id = ? AND operation = 'NEWOWNER' ORDER BY timestamp DESC LIMIT 1",
             [$flaggedCarId]
         )->first();
         $this->assertIsObject($histRow, 'Expected a NEWOWNER row in cars_hist');
-        $this->assertNull($histRow->email_bounced_address, 'The audit trail must not retain the bounced address either');
     }
 
     /**
@@ -381,8 +408,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertNull(
             $carRow->vericode,
             'vericode must be cleared even on system-account reassignment — it is a live '
-            . 'credential, not a boolean signal, so it does not get the same-as-email_bounced '
-            . 'preservation treatment'
+            . 'credential that would let the previous owner act on the car'
         );
     }
 

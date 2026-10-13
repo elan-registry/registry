@@ -1,5 +1,8 @@
 <?php
 use ElanRegistry\LogCategories;
+use ElanRegistry\Migration\DeliverabilityMigrationQueries;
+
+/** @var int $theNewId The script that includes this file sets it. */
 
 // This script is really useful for doing additional things when a user is created.
 
@@ -18,7 +21,19 @@ use ElanRegistry\LogCategories;
 $check = $db->query("SELECT id FROM profiles WHERE user_id = ?", [$theNewId])->count();
 if ($check < 1) {
     $now = new DateTime();
-    $db->insert('profiles', ['user_id' => $theNewId, 'bio' => "automatically added - " . $now->format('Y-m-d H:i:s')]);
+    // Read from the users row, not from the caller's scope: several UserSpice
+    // paths include this script, and not all of them define $join_date.
+    // join.php sends the sign-up mail before this script runs, so the
+    // address-since time must be join_date, not now, or a bounce on that
+    // mail does not match (#2101). The matching step that reads
+    // email_address_since comes in #2359.
+    $newUser = $db->query("SELECT email, join_date FROM users WHERE id = ?", [$theNewId])->first();
+    $db->insert('profiles', [
+        'user_id' => $theNewId,
+        'bio' => "automatically added - " . $now->format('Y-m-d H:i:s'),
+        'email_address_since' => $newUser->join_date,
+        'email_address_seen' => DeliverabilityMigrationQueries::normalizeAddress($newUser->email),
+    ]);
 }
 
 

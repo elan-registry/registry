@@ -80,10 +80,6 @@ after an item is written.
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
 
-### `docs/development/CLASSES.md` + `usersc/classes/Cron/BrevoEventReconciliationClient.php` + `usersc/classes/Cron/BrevoSuppressionSyncClient.php`
-
-- [ ] Say "no API key" in place of "Brevo unconfigured" / "not configured" in the docblocks and comments (clients ~L33, 36, 191, 200, 212 and ~L44, 208, 217, 229; CLASSES.md ~L2206). The clients check only the key, so "configured" now reads like the six-check readiness gate. (found in /finish-milestone v2.30.6)
-
 ### `error/500.php`
 
 - [ ] Restore a unit pin: all nine status codes (400/401/403/404/405/408/500/502/504) have entries in both `$errorMessages` and `$logCategoryMap` (from #2169)
@@ -123,13 +119,9 @@ after an item is written.
 
 - [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L380, renames `car_transfer_requests.admin_notes`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
 
-### `tests/integration/cars/services/CarVerificationManagerSuppressForOwnerTest.php`
+### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 
-- [ ] Replace the hand-written DB proxy (~L271) with `PassThroughDatabase` (from #2169)
-
-### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php` + `tests/integration/database/AddProfileEmailSuppressedMigrationTest.php`
-
-- [ ] Each class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move the classes onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copies (found in #2167)
+- [ ] The class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move it onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copy (found in #2167)
 
 ### `tests/integration/database/MigrationSandbox.php` + `tests/integration/database/MigrationSandboxTest.php` (test coverage)
 
@@ -242,15 +234,3 @@ after an item is written.
 
 - [ ] Remove the pre-6.1.7 version guards after production runs UserSpice 6.1.7 (v2.30.9, #2088): `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)
 - [ ] No test runs a successful login and checks that `users.logins` goes up by exactly one (`$recordCompletedLogin` ~L107, called at ~L192, 302, 356); only the text check in `LoginWiringTest.php:129` covers the version-guarded count. (found in /finish-milestone v2.30.6)
-
-### `usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php`
-
-- [ ] line 3 — cites issue # instead of explaining the sync (also tracked in #1958) (from #1978)
-
-### `usersc/plugins/hooker/hooks/user_form_hook.php`
-
-- [ ] Replace the raw `SELECT c.* FROM cars` (~L22) with `CarRepository::findByOwner()`. Decide badge order: accept no order, or add `ORDER BY model, year` to `findByOwner()` and check its other caller (from #2002)
-
-### `usersc/user_settings.php` + `app/verify/verify_car.php` + `app/admin/index.php`
-
-- [ ] `userSettingsHistoryFields()`, `verifyHistoryFields()`, and `verifyHistoryFieldsForAdminAction()` are three separate copies of the same `cars_hist` snapshot shape. A fix found by one copy's own bug (the `year ?? ''` strict-mode failure, #2328) had to be repeated in all three. A shared builder would need only one fix (found in /finish-milestone v2.30.5)

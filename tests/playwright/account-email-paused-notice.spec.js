@@ -2,13 +2,13 @@
 // banner naming suppressed/bounced delivery addresses, with links to the two
 // Account Settings controls that fix it.
 //
-// Seeds six loginable owners through `seed-email-paused-notice.php`: an
-// owner-opt-out suppression (real cars_hist row, no er_email_events row), a
-// Brevo spam suppression (er_email_events row, no matching cars_hist row), a
-// bounced owner, a both-flags-on-one-address owner, a >3-address overflow
-// owner, and a clean owner. The fixture needs the application database. The
-// local stack is Docker only, so the spec runs the fixture in the app
-// container through fixture-runner.js.
+// Seeds six loginable owners through `seed-email-paused-notice.php`. The
+// deliverability flags are on the owner profile (#2101): an opted-out owner,
+// a blocked owner (a Brevo complaint), a bounced owner, an owner who is opted
+// out and bounced on one address, an opted-out owner with 4 car addresses
+// (the overflow case), and a clean owner. The fixture needs the application
+// database. The local stack is Docker only, so the spec runs the fixture in
+// the app container through fixture-runner.js.
 
 const { test, expect } = require('@playwright/test');
 const { login, isLoggedIn } = require('./auth-helper.js');
@@ -56,7 +56,7 @@ test.describe('Email-paused notice on account.php (#1899)', () => {
         await expect(page.locator('#email-paused-notice')).toHaveCount(0);
     });
 
-    test('owner-opt-out suppression shows the suppressed line with the opt-out wording', async ({ page }) => {
+    test('opted-out owner shows the suppressed line with the opt-out wording', async ({ page }) => {
         await login(page, seeded.optout.username, seeded.optout.password);
         await page.goto(ACCOUNT_URL, { waitUntil: 'domcontentloaded' });
 
@@ -67,7 +67,7 @@ test.describe('Email-paused notice on account.php (#1899)', () => {
         await expect(notice.locator('.er-email-notice__line--bounced')).toHaveCount(0);
     });
 
-    test('Brevo spam suppression shows the suppressed line with the complaint wording', async ({ page }) => {
+    test('blocked owner (Brevo complaint) shows the suppressed line with the complaint wording', async ({ page }) => {
         await login(page, seeded.spam.username, seeded.spam.password);
         await page.goto(ACCOUNT_URL, { waitUntil: 'domcontentloaded' });
 

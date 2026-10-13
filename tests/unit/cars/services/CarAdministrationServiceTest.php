@@ -10,6 +10,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -272,57 +273,45 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
-     * email_bounced describes the old address. Kept, it would exclude the car
-     * from findVerificationEligible() for good.
+     * @return array<string, array{string, string}>
      */
-    public function testTransferClearsEmailBouncedOnCarsAndHistoryRow(): void
+    public static function transferTargetProvider(): array
     {
-        $carData = (object) ['id' => 999, 'chassis' => 'TEST99999', 'email_bounced' => 1];
-        $db = $this->createMock(DatabaseInterface::class);
-        $this->configureTransaction($db, expectCommit: true);
-
-        $updateFields = null;
-        $historyFields = null;
-        $db->method('update')->willReturnCallback(
-            function (string $table, array|int $id, array $fields) use (&$updateFields): bool {
-                $updateFields = $fields;
-                return true;
-            }
-        );
-        $db->method('insert')->willReturnCallback(
-            function (string $table, array $fields = [], bool $update = false) use (&$historyFields): bool {
-                $historyFields = $fields;
-                return true;
-            }
-        );
-        $repo = new CarRepository($db);
-
-        $this->service->transfer($carData, 1, 'Test transfer reason', 'NEWOWNER', 1, $repo, $this->createOwnerDb());
-
-        $this->assertArrayHasKey('email_bounced', $updateFields, 'cars.email_bounced must be written on transfer, not omitted');
-        $this->assertSame(0, $updateFields['email_bounced'], 'cars.email_bounced must be cleared on an ordinary transfer');
-        $this->assertArrayHasKey('email_bounced', $historyFields, 'history email_bounced must be written on transfer, not omitted');
-        $this->assertSame(0, $historyFields['email_bounced'], 'history email_bounced must be cleared on an ordinary transfer');
+        return [
+            'ordinary owner'       => ['NEWOWNER', 'newowner'],
+            'noowner system account' => ['noowner', 'noowner'],
+        ];
     }
 
-    /** `noowner` is not a change of owner, so email_bounced stays (#1878). */
-    public function testTransferToSystemAccountPreservesEmailBounced(): void
+    /**
+     * The deliverability flags live on the owner's profile (#2101), so a
+     * transfer neither clears nor copies them: the new owner's own profile
+     * applies as soon as the car changes hands. The transfer writes the car
+     * row and a history row, and never touches `profiles`.
+     */
+    #[DataProvider('transferTargetProvider')]
+    public function testTransferWritesNoDeliverabilityFlagAndNoProfileRow(string $reasonOwner, string $username): void
     {
-        $carData = (object) ['id' => 999, 'chassis' => 'TEST99999', 'email_bounced' => 1];
+        $carData = (object) [
+            'id' => 999,
+            'chassis' => 'TEST99999',
+            'email_bounced' => 1,
+            'email_bounced_address' => 'old@example.com',
+        ];
         $db = $this->createMock(DatabaseInterface::class);
         $this->configureTransaction($db, expectCommit: true);
 
-        $updateFields = null;
-        $historyFields = null;
+        $updates = [];
+        $inserts = [];
         $db->method('update')->willReturnCallback(
-            function (string $table, array|int $id, array $fields) use (&$updateFields): bool {
-                $updateFields = $fields;
+            function (string $table, array|int $id, array $fields) use (&$updates): bool {
+                $updates[] = ['table' => $table, 'fields' => $fields];
                 return true;
             }
         );
         $db->method('insert')->willReturnCallback(
-            function (string $table, array $fields = [], bool $update = false) use (&$historyFields): bool {
-                $historyFields = $fields;
+            function (string $table, array $fields = [], bool $update = false) use (&$inserts): bool {
+                $inserts[] = ['table' => $table, 'fields' => $fields];
                 return true;
             }
         );
@@ -331,23 +320,24 @@ final class CarAdministrationServiceTest extends TestCase
         $this->service->transfer(
             $carData,
             1,
-            'Account deleted — reassigned to noowner',
-            'NEWOWNER',
+            'Test transfer reason',
+            $reasonOwner,
             1,
             $repo,
-            $this->createOwnerDb(1, 'noowner@invalid', username: 'noowner')
+            $username === 'noowner' ? $this->createOwnerDb(1, 'noowner@invalid', username: 'noowner') : $this->createOwnerDb()
         );
 
-        $this->assertArrayNotHasKey(
-            'email_bounced',
-            $updateFields,
-            'cars.email_bounced must be left untouched when transferring to the noowner system account'
-        );
-        $this->assertSame(
-            1,
-            $historyFields['email_bounced'],
-            "history email_bounced must pass through the car's existing value for a system-account transfer"
-        );
+        $this->assertNotEmpty($updates, 'The transfer must update the car row');
+        $this->assertNotEmpty($inserts, 'The transfer must write a history row');
+        $flagColumns = ['email_bounced', 'email_bounced_address', 'email_blocked', 'email_opted_out'];
+        foreach (array_merge($updates, $inserts) as $write) {
+            $this->assertNotSame('profiles', $write['table'], 'A transfer must not write the profiles table');
+            $this->assertSame(
+                [],
+                array_intersect($flagColumns, array_keys($write['fields'])),
+                'A transfer must not write a deliverability flag column to ' . $write['table']
+            );
+        }
     }
 
     /**

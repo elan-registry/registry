@@ -20,7 +20,9 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarBadges;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\CarView;
+use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\OwnerView;
 
@@ -211,6 +213,16 @@ if ($carSchemaJson === false) {
                     <?php
                     $headingTag = 'h3';
                     $viewerIsRegistryAdmin = $user->isLoggedIn() && isRegistryAdmin($user->data()->id);
+                    // The deliverability flags live on the owner's profile, not the car
+                    // row, and only registry admins see the Email on file row.
+                    $ownerEmailState = null;
+                    if ($viewerIsRegistryAdmin && !empty($carData->user_id)) {
+                        try {
+                            $ownerEmailState = (new CarRepository(dbi()))->findProfileEmailState((int) $carData->user_id);
+                        } catch (CarDatabaseException $e) {
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Owner email state lookup failed for car ID $carID: " . $e->getMessage());
+                        }
+                    }
                     include $abs_us_root . $us_url_root . 'app/views/cars/_vehicle_info_card.php';
                     ?>
 

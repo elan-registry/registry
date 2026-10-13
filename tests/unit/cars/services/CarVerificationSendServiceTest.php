@@ -11,6 +11,7 @@ use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\EmailTemplate;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -68,10 +69,15 @@ final class CarVerificationSendServiceTest extends TestCase
     /** Temp site root that holds the sendinblue plugin files, or null when none was made. */
     private ?BrevoSiteRoot $brevoSiteRoot = null;
 
+    /** What findProfileEmailState() returns. The default is an owner with every flag clear. */
+    private ?object $profileState = null;
+
     protected function setUp(): void
     {
         $this->mockRepo = $this->createMock(CarRepository::class);
         $this->mockVerifier = $this->createMock(CarVerificationManager::class);
+        $this->profileState = self::profile();
+        $this->mockRepo->method('findProfileEmailState')->willReturnCallback(fn () => $this->profileState);
         $this->composer = new CarVerificationEmailComposer(new EmailTemplate());
         $this->brevoReadySettings = $this->makeBrevoReadySettings();
 
@@ -96,6 +102,30 @@ final class CarVerificationSendServiceTest extends TestCase
         unset($GLOBALS['mockSentEmails'], $GLOBALS['mockEmailSendResult'], $GLOBALS['hookTestDb']);
         $this->brevoSiteRoot?->remove();
         parent::tearDown();
+    }
+
+    /**
+     * A profiles row for the owner, with the three deliverability flags
+     * clear unless the caller overrides them.
+     *
+     * @param array<string, int|string|null> $overrides
+     */
+    private static function profile(array $overrides = []): object
+    {
+        return (object) array_merge([
+            'id' => 1,
+            'user_id' => 42,
+            'email_opted_out' => 0,
+            'email_opted_out_at' => null,
+            'email_blocked' => 0,
+            'email_blocked_address' => null,
+            'email_blocked_at' => null,
+            'email_blocked_cause' => null,
+            'email_bounced' => 0,
+            'email_bounced_address' => null,
+            'email_bounced_at' => null,
+            'email_bounce_cleared_at' => null,
+        ], $overrides);
     }
 
     /** Brevo-ready settings on a fresh temp site root. tearDown() removes the root. */
@@ -741,19 +771,34 @@ final class CarVerificationSendServiceTest extends TestCase
     }
 
     /**
-     * The owner-level opt-out (#1883), enforced here for the same reason the
-     * `noowner` check above is: it needs a `profiles` join neither
+     * The owner's flags live on `profiles` (#2101), which neither
      * VerificationEligibility::skipReason() nor the already-loaded `cars` row
-     * can supply. The car passed in is a fully eligible one whose own
-     * cars.email_suppressed is 0 — exactly a car acquired AFTER
-     * setSuppressedForOwner() fanned the opt-out out to the cars the owner held
-     * at that moment — so only the profiles flag can stop this send.
+     * can supply. The car passed in is fully eligible, so only the profile
+     * can stop this send. Each flag fails the send with its own reason, and a
+     * flag with a NULL address blocks as well.
+     *
+     * @return array<string, array{array<string, int|string|null>, string}>
      */
-    public function testSendOneReturnsFailedWhenOwnerProfileEmailSuppressed(): void
+    public static function blockingProfileFlags(): array
+    {
+        return [
+            'opted out'                  => [['email_opted_out' => 1], 'opted out'],
+            'blocked'                    => [['email_blocked' => 1, 'email_blocked_address' => 'owner@example.com'], 'blocked'],
+            'blocked with NULL address'  => [['email_blocked' => 1, 'email_blocked_address' => null], 'blocked'],
+            'bounced'                    => [['email_bounced' => 1, 'email_bounced_address' => 'owner@example.com'], 'bounced'],
+            'bounced with empty address' => [['email_bounced' => 1, 'email_bounced_address' => ''], 'bounced'],
+        ];
+    }
+
+    /**
+     * @param array<string, int|string|null> $flags
+     */
+    #[DataProvider('blockingProfileFlags')]
+    public function testSendOneReturnsFailedWhenOwnerProfileHasAFlag(array $flags, string $reasonWord): void
     {
         $carData = $this->eligibleCar();
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(1);
+        $this->profileState = self::profile($flags);
         $this->mockRepo->expects($this->never())->method('beginTransaction');
         $this->mockRepo->expects($this->never())->method('updateCar');
         $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
@@ -763,50 +808,30 @@ final class CarVerificationSendServiceTest extends TestCase
         $this->assertSame(SendResult::STATUS_FAILED, $result->status);
         $this->assertSame(100, $result->carId);
         $this->assertNotNull($result->reason);
-        $this->assertStringContainsStringIgnoringCase('opted out', $result->reason);
-        $this->assertSame(
-            [],
-            $GLOBALS['mockSentEmails'],
-            'No email may be sent to an owner who has opted out at the profile level'
-        );
+        $this->assertStringContainsStringIgnoringCase($reasonWord, $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent to an owner whose profile has a flag');
     }
 
     /**
-     * The permissive half of the same rule: findProfileEmailSuppressed()
-     * returns null for an owner with no `profiles` row at all (`users` and
-     * `profiles` are not 1:1 in this schema — see that method's docblock), and
-     * that must NOT be read as an opt-out. Mirrors the
-     * COALESCE(profiles.email_suppressed, 0) in findVerificationEligible()'s
-     * own clause, so the SQL and PHP paths cannot disagree about a profile-less
-     * owner. Without this the guard above would silently make every owner who
-     * never filled in a profile permanently un-emailable.
-     *
-     * mockRepo is used here purely as a behavior stub — the assertion is that
-     * the send ran to completion, verified through the returned status and the
-     * recorded email, not through call counts on the repository.
+     * An owner with no `profiles` row is excluded (#2101). The old rule
+     * treated a missing row as "no opt-out" and mailed the owner. The queries
+     * in findVerificationEligible() now exclude such an owner, so this
+     * guard must agree.
      */
-    #[AllowMockObjectsWithoutExpectations]
-    public function testSendOneProceedsWhenOwnerHasNoProfileRow(): void
+    public function testSendOneReturnsFailedWhenOwnerHasNoProfileRow(): void
     {
         $carData = $this->eligibleCar();
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(null);
-        $this->mockVerifier->expects($this->once())
-            ->method('generateVerificationCode')
-            ->willReturn('NEWCODE123');
+        $this->profileState = null;
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('updateCar');
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
 
         $result = $this->service->sendOne($carData);
 
-        $this->assertNotSame(
-            SendResult::STATUS_FAILED,
-            $result->status,
-            'An owner with no profiles row has recorded no opt-out and must still be emailable'
-        );
-        $this->assertNotSame(
-            [],
-            $GLOBALS['mockSentEmails'],
-            'The verification email must still be sent when the owner simply has no profiles row'
-        );
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame('Owner has no profile.', $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent to an owner with no profile');
     }
 
     // ------------------------------------------------------------------

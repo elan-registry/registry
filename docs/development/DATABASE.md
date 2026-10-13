@@ -112,9 +112,36 @@ For the full workflow, see
 | `lat`, `lon` | `float` | Geographic coordinates |
 | `bio` | `text` | User biography |
 | `website` | `varchar(100)` | Personal website |
-| `email_suppressed` | `TINYINT(1) NOT NULL DEFAULT 0` | Owner-level verification-email suppression flag (#1883). Set via the verification email's one-click opt-out; fans out to `email_suppressed = 1` on every car the owner has via `CarVerificationManager::setSuppressedForOwner()`. No audit-history table exists for `profiles`, so this column carries no `cars_hist`-style mirror. |
-| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | Owner-level bounce flag set by the admin tool (#1884). Set via the Verification tab's Mark Bounced action; fans out to `email_bounced = 1` on every car the owner has via `CarVerificationManager::setBouncedForOwner()`. No audit-history table exists for `profiles`. |
-| `email_bounced_address` | `varchar(155) NULL` | The exact `users.email` address recorded when the admin marked this owner bounced (#1884). Updated when Mark Bounced is called with a new address; nulled when Clear Bounced is called. Mirrored onto `profiles` rather than `cars` because it records an admin's action, not a delivery-status fact. |
+| `email_opted_out` | `TINYINT(1) NOT NULL DEFAULT 0` | The owner asked to stop verification email (#1883). Renamed from `email_suppressed` in #2101. Set by the opt-out link in the verification email. Cleared by Resume (owner) and by Clear Suppression (admin). |
+| `email_opted_out_at` | `datetime NULL` | When the owner opted out. NULL when the flag is 0. Can also be NULL for a flag that the #2101 migration copied, when no `EMAIL SUPPRESSED` history row dates it. |
+| `email_blocked` | `TINYINT(1) NOT NULL DEFAULT 0` | Brevo will not deliver to `email_blocked_address` (spam complaint, unsubscribe, or blocklist) (#2101). Set by delivery events and the suppression import. Only an admin clears it. |
+| `email_blocked_address` | `varchar(155) NULL` | The address that is blocked. Stored normalized (lower case). Never empty while `email_blocked = 1`. |
+| `email_blocked_at` | `datetime NULL` | When the block happened. |
+| `email_blocked_cause` | `varchar(16) NULL` | `spam`, `unsubscribed`, `blocklist`, or NULL when the cause is unknown. |
+| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | The address in `email_bounced_address` bounced (#1884, #2101). Set by a hard bounce, by soft-bounce escalation, and by the admin Mark Bounced action. |
+| `email_bounced_address` | `varchar(155) NULL` | The address that bounced. Stored normalized (lower case). |
+| `email_bounced_at` | `datetime NULL` | When the bounce happened. Every path that sets `email_bounced` also sets it (#2320). The one exception is a flag that the #2101 migration copied with no dated event or `EMAIL BOUNCED` row: its date is NULL. |
+| `email_bounce_cleared_at` | `datetime NULL` | When the bounce was last cleared. Soft bounces before this time do not count toward a new escalation. |
+| `email_address_since` | `datetime NULL` | When the owner's current address became the address of record. Set to `users.join_date` at sign-up and to the restore time at restore. |
+| `email_address_seen` | `varchar(155) NULL` | The normalized address that `email_address_since` applies to. |
+
+`user_id` has a unique key, `uniq_profiles_user_id`, so an owner has at most
+one `profiles` row.
+
+**System of record (#2101).** The `profiles` row is the only place that stores
+the three deliverability flags: `email_opted_out`, `email_blocked` and
+`email_bounced`. No `cars` column holds a flag. A flag therefore applies to
+every car of the owner, including a car that the owner registers later. An
+owner with no `profiles` row gets no verification email, and the admin queue
+shows the state "no profile". Account mail (for example password reset) is
+never blocked by a flag.
+
+Each flag change writes one `logs` row with category `EMAIL_BOUNCED`. The
+`logs.metadata` JSON holds `owner_id`, `flag`, `old`, `new` and `source`. The
+row holds no email address. `profiles` has no history table, so these `logs`
+rows are the audit trail. See `DeliverabilityFlagLog` in
+[CLASSES.md](CLASSES.md). The migration is in
+`database/migrations/20261012000000_move_deliverability_flags_to_profiles.php`.
 
 ### Car Registry
 
@@ -148,9 +175,10 @@ For the full workflow, see
 | `vericode_sent_at` | `datetime NULL` | Timestamp when verification code was sent to owner |
 | `verification_attempts` | `SMALLINT UNSIGNED NOT NULL DEFAULT 0` | Count of verification emails sent to this car's owner in the rolling 1-year window (#1884). Resets when `verification_attempts_since` rolls past 1 year; used to cap sending frequency. |
 | `verification_attempts_since` | `datetime NULL` | Start of the rolling 1-year window for `verification_attempts` (#1884). `NULL` until the first send; reset to now when `verification_attempts_since` exceeds 1 year old. |
-| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether verification emails bounced. Set to `1` if email failed; `0` if deliverable or not yet tested. |
-| `email_bounced_address` | `varchar(155) NULL` | The exact address a bounce was reported against (#1887). Preserved separately from `cars.email` because the car's email can change after a bounce is recorded. Nulled when `email_bounced` is cleared. |
-| `email_suppressed` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag set when Brevo reports the address as suppressed (e.g. a spam complaint) — a distinct signal from a bounce (#1887). |
+
+**Note**: `cars` has no email deliverability column. Since #2101 the flags
+live on `profiles` (see above). The old columns `email_bounced`,
+`email_bounced_address` and `email_suppressed` are dropped.
 
 **Note**: Nine owner-related fields — `email`, `fname`, `lname`, `city`,
 `state`, `country`, `lat`, `lon`, `website` — are denormalized onto `cars`
@@ -166,10 +194,10 @@ creation.
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `int` | PRIMARY KEY |
-| `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE/VERIFIED/VERIFIED SOLD/EMAIL SUPPRESSED/EMAIL BOUNCED/EMAIL BOUNCE CLEARED/EMAIL SUPPRESSION CLEARED/SUPPRESSION CLEARED BY OWNER) |
+| `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE/VERIFIED/VERIFIED SOLD). Since #2101 no code writes the operations `EMAIL SUPPRESSED`, `EMAIL BOUNCED`, `EMAIL BOUNCE CLEARED`, `EMAIL SUPPRESSION CLEARED` and `SUPPRESSION CLEARED BY OWNER`. Old rows with those values stay in the table. The audit trail for flag changes is now in `logs`. |
 | `car_id` | `int UNSIGNED` | Original car ID |
 | `timestamp` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Change timestamp (INDEXED as `idx_cars_hist_timestamp`) |
-| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, `verification_attempts`, `verification_attempts_since`, `email_bounced`, `email_bounced_address`, and `email_suppressed`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
+| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, `verification_attempts`, `verification_attempts_since`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
 
 > #### Removed: `car_user` and `car_user_hist`
 >
@@ -430,7 +458,7 @@ data, use `(new Owner($userId))->data()`.
 
 **Trigger Details**:
 
-- All triggers capture complete car record snapshots including owner data, `chassis_override`, and verification system columns (`owner_last_updated`, `vericode_sent_at`, `email_bounced`)
+- All triggers capture complete car record snapshots including owner data, `chassis_override`, and verification system columns (`owner_last_updated`, `vericode_sent_at`, `verification_attempts`, `verification_attempts_since`)
 - All triggers use current schema (no deprecated columns); `chassis_override` added in #915, verification columns added in #1155
 - Each trigger records operation type (INSERT/UPDATE/DELETE) and timestamp
 - The `cars_update` trigger captures pre-update values (via `OLD.*`) for all columns except `chassis_override`, which captures the new value (`NEW.chassis_override`) — this asymmetry is deliberate and preserves the audit trail semantics
@@ -478,6 +506,15 @@ backups covering that user age out. That window is bounded and self-purging —
 backups and 30 for manual/rollback. `backups/` is blocked from web access by
 `.htaccess`, and no code path restores from a backup file (account restore reads
 the in-database `deleted_accounts_archive` table instead).
+
+`deleted_accounts_archive` keeps `email_opted_out` (`TINYINT(1) NOT NULL
+DEFAULT 0`) and `email_opted_out_at` (`datetime NULL`) from the owner's
+profile (#2101). A restore puts them on the new `profiles` row, so a restore
+does not enable mail to an owner who opted out. The archive does not keep
+`email_blocked` or `email_bounced`. A restore loses a bounce from soft-bounce
+escalation or Mark Bounced. Brevo keeps its own block on the address, so the
+next send to a blocked address returns a `blocked` event that sets
+`email_bounced` again.
 
 Backing up everything is deliberate: a backup that omits tables cannot restore
 the database. Before narrowing the set, note that #1714 was caused by two of

@@ -29,8 +29,6 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
     private CarRepository $repo;
     private EmailEventApplier $applier;
-    private int $userId;
-
     /** @var list<int> Car ids created by this test, for er_email_events cleanup. */
     private array $suppressionCarIds = [];
 
@@ -58,7 +56,6 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
 
-        $this->userId = $this->createTestUser();
         $this->suppressionCarIds = [];
     }
 
@@ -87,7 +84,10 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     private function createSuppressionCar(): array
     {
         $email = 'suppression-' . uniqid() . '@integration-test-1923.example.com';
-        $carId = $this->createTestCar($this->userId, ['email' => $email]);
+        // The flags belong to the owner's profile, so each car gets its own
+        // owner. Cars of one owner would share the flag.
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createTestCar($ownerId, ['email' => $email]);
         $this->suppressionCarIds[] = $carId;
 
         return [$carId, $email];
@@ -110,16 +110,30 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
     // --- Assertion helpers -------------------------------------------------
 
-    private function carRow(int $carId): object
+    /**
+     * The deliverability flags of the car's owner profile.
+     */
+    private function ownerFlagsForCar(int $carId): object
     {
         $row = $this->db->query(
-            'SELECT email_bounced, email_bounced_address, email_suppressed FROM cars WHERE id = ?',
+            'SELECT p.email_bounced, p.email_bounced_address, p.email_blocked, p.email_blocked_address,
+                    p.email_blocked_cause, p.email_opted_out, c.user_id
+               FROM cars c INNER JOIN profiles p ON p.user_id = c.user_id
+              WHERE c.id = ?',
             [$carId]
         )->first();
 
-        $this->assertNotEmpty($row, "cars row {$carId} must exist");
+        $this->assertNotEmpty($row, "cars row {$carId} and its owner profile must exist");
 
         return $row;
+    }
+
+    /**
+     * @return list<array{date: string, flag: string, old: int, new: int, source: string, acting_user_id: int}>
+     */
+    private function flagChanges(int $carId): array
+    {
+        return $this->repo->recentFlagChanges((int) $this->ownerFlagsForCar($carId)->user_id, 100);
     }
 
     /**
@@ -171,14 +185,18 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             ]),
         ])->runNow();
 
-        $car = $this->carRow($carId);
-        $this->assertSame(1, (int) $car->email_bounced, 'A hardBounce suppression must flag the car bounced');
-        $this->assertSame($email, $car->email_bounced_address, 'The bounced address must be recorded');
+        $flags = $this->ownerFlagsForCar($carId);
+        $this->assertSame(1, (int) $flags->email_bounced, 'A hardBounce suppression must flag the owner bounced');
+        $this->assertSame($email, $flags->email_bounced_address, 'The bounced address must be recorded');
         $this->assertSame(
             0,
-            (int) $car->email_suppressed,
-            'A hard bounce is not a suppression decision — email_suppressed must stay unset'
+            (int) $flags->email_blocked,
+            'A hard bounce is not a block decision — email_blocked must stay unset'
         );
+        $changes = $this->flagChanges($carId);
+        $this->assertCount(1, $changes, 'One flag change writes one log row');
+        $this->assertSame('email_bounced', $changes[0]['flag']);
+        $this->assertSame('import', $changes[0]['source'], 'The suppression import passes the source import');
 
         $events = $this->eventRows($carId);
         $this->assertCount(1, $events, 'Exactly one event row must be written for the contact');
@@ -212,9 +230,12 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertSame(1, $summary->pagesFetched);
         $this->assertFalse($summary->backfillCapped);
 
-        $this->assertSame(1, (int) $this->carRow($bounceCarId)->email_bounced);
-        $this->assertSame(1, (int) $this->carRow($spamCarId)->email_suppressed);
-        $this->assertSame(1, (int) $this->carRow($unsubCarId)->email_suppressed);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($bounceCarId)->email_bounced);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($spamCarId)->email_blocked);
+        $this->assertSame('spam', $this->ownerFlagsForCar($spamCarId)->email_blocked_cause);
+        $this->assertSame($spamEmail, $this->ownerFlagsForCar($spamCarId)->email_blocked_address);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($unsubCarId)->email_blocked);
+        $this->assertSame('unsubscribed', $this->ownerFlagsForCar($unsubCarId)->email_blocked_cause);
     }
 
     // --- 3. Idempotence across two backfills --------------------------------
@@ -252,7 +273,8 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $this->assertSame(0, $second->matchedCount, 'The second run did no new flag work');
         $this->assertSame(1, $second->alreadyFlaggedCount, 'The already-flagged pre-check must see the first run\'s write');
-        $this->assertSame(1, (int) $this->carRow($carId)->email_bounced, 'The car stays bounced after both runs');
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->email_bounced, 'The owner stays bounced after both runs');
+        $this->assertCount(1, $this->flagChanges($carId), 'The second run changes nothing, so it logs nothing');
     }
 
     // --- 4. Contact matching no car ----------------------------------------
@@ -284,7 +306,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         )->first();
         $this->assertSame(0, (int) $stranded->cnt, 'An unmatched address must leave no event row behind');
 
-        $this->assertSame(1, (int) $this->carRow($carId)->email_bounced);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->email_bounced);
 
         $this->assertSame(
             $countBefore + 1,
@@ -315,14 +337,16 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $spamEvents = $this->eventRows($spamCarId);
         $this->assertCount(1, $spamEvents);
         $this->assertSame('spam', $spamEvents[0]->event, "contactFlaggedAsSpam must be recorded as 'spam'");
-        $this->assertSame(1, (int) $this->carRow($spamCarId)->email_suppressed);
-        $this->assertSame(0, (int) $this->carRow($spamCarId)->email_bounced, 'A spam complaint is not a bounce');
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($spamCarId)->email_blocked);
+        $this->assertSame('spam', $this->ownerFlagsForCar($spamCarId)->email_blocked_cause);
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($spamCarId)->email_bounced, 'A spam complaint is not a bounce');
 
         $unsubEvents = $this->eventRows($unsubCarId);
         $this->assertCount(1, $unsubEvents);
         $this->assertSame('unsubscribed', $unsubEvents[0]->event, "An unsubscribe code must not be aliased to 'spam'");
-        $this->assertSame(1, (int) $this->carRow($unsubCarId)->email_suppressed);
-        $this->assertSame(0, (int) $this->carRow($unsubCarId)->email_bounced);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($unsubCarId)->email_blocked);
+        $this->assertSame('unsubscribed', $this->ownerFlagsForCar($unsubCarId)->email_blocked_cause);
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($unsubCarId)->email_bounced);
     }
 
     /**
@@ -338,9 +362,10 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             ]),
         ])->runFullBackfill();
 
-        $car = $this->carRow($carId);
-        $this->assertSame(1, (int) $car->email_suppressed, 'adminBlocked must suppress');
-        $this->assertSame(0, (int) $car->email_bounced, 'adminBlocked must NOT be treated as a dead mailbox');
+        $flags = $this->ownerFlagsForCar($carId);
+        $this->assertSame(1, (int) $flags->email_blocked, 'adminBlocked must block');
+        $this->assertSame('unsubscribed', $flags->email_blocked_cause);
+        $this->assertSame(0, (int) $flags->email_bounced, 'adminBlocked must NOT be treated as a dead mailbox');
         $this->assertSame('unsubscribed', $this->eventRows($carId)[0]->event);
     }
 
@@ -357,9 +382,11 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertSame(0, $summary->matchedCount);
         $this->assertSame(['unrecognized' => 1], $summary->reasonCodeCounts);
 
-        $car = $this->carRow($carId);
-        $this->assertSame(0, (int) $car->email_bounced);
-        $this->assertSame(0, (int) $car->email_suppressed);
+        $flags = $this->ownerFlagsForCar($carId);
+        $this->assertSame(0, (int) $flags->email_bounced);
+        $this->assertSame(0, (int) $flags->email_blocked);
+        $this->assertSame(0, (int) $flags->email_opted_out);
+        $this->assertSame([], $this->flagChanges($carId), 'An unmapped code must log no flag change');
         $this->assertSame(0, $this->countEventRows($carId), 'An unmapped code must write no event row');
     }
 }

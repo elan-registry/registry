@@ -67,8 +67,6 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
         $defaults = [
             'id'                          => 42,
             'solddate'                    => null,
-            'email_bounced'               => 0,
-            'email_suppressed'            => 0,
             'email'                       => 'owner@example.com',
             'user_id'                     => 7,
             'last_verified'               => null,
@@ -93,18 +91,18 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
         $this->assertSame('Marked sold', VerificationEligibility::skipReason($car));
     }
 
-    public function testReturnsEmailBouncedWhenBouncedFlagIsSet(): void
+    /**
+     * The deliverability flags belong to the owner's profile (#2101). A single
+     * `cars` row cannot supply them, so skipReason() does not judge them.
+     * CarVerificationSendService::sendOne() reads the profile instead. A car
+     * object that still carries the old per-car properties must not change
+     * the result.
+     */
+    public function testIgnoresLegacyPerCarFlagPropertiesBecauseTheProfileOwnsThem(): void
     {
-        $car = $this->makeEligibleCar(['email_bounced' => 1]);
+        $car = $this->makeEligibleCar(['email_bounced' => 1, 'email_blocked' => 1, 'email_opted_out' => 1]);
 
-        $this->assertSame('Email bounced', VerificationEligibility::skipReason($car));
-    }
-
-    public function testReturnsEmailSuppressedWhenSuppressedFlagIsSet(): void
-    {
-        $car = $this->makeEligibleCar(['email_suppressed' => 1]);
-
-        $this->assertSame('Email suppressed', VerificationEligibility::skipReason($car));
+        $this->assertNull(VerificationEligibility::skipReason($car));
     }
 
     public function testReturnsNoEmailOnFileWhenEmailIsEmpty(): void
@@ -151,12 +149,12 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
 
     public function testChecksAreAppliedInDocumentedPriorityOrder(): void
     {
-        // A car that is BOTH sold AND bounced must report "Marked sold" —
+        // A car that is BOTH sold AND without an email must report "Marked sold" —
         // the first-matching-branch ordering the docblock promises, not
         // whichever branch happens to be reordered by a future edit.
         $car = $this->makeEligibleCar([
-            'solddate'      => '2026-01-01',
-            'email_bounced' => 1,
+            'solddate' => '2026-01-01',
+            'email'    => '',
         ]);
 
         $this->assertSame('Marked sold', VerificationEligibility::skipReason($car));
@@ -313,8 +311,6 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
         return (object) [
             'id'                          => 4242,
             'solddate'                    => null,
-            'email_bounced'               => 0,
-            'email_suppressed'            => 0,
             'email'                       => 'owner@example.com',
             'user_id'                     => 7,
             // Stale on both halves of the freshness rule, so isFresh() is false

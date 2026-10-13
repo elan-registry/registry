@@ -107,12 +107,32 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             static fn (int $id): object => (object) ['id' => $id],
             $carIds
         ));
-        $this->mockRepo->method('findById')->willReturnCallback(
-            static fn (int $id): object => (object) [
-                'id' => $id,
-                'email_bounced' => 0,
-                'email_suppressed' => 0,
-            ]
+        $this->stubOwnerFlags([]);
+    }
+
+    /**
+     * Stub the owner and profile reads the pre-check makes for each car.
+     *
+     * Car N belongs to owner 100 + N. An owner not listed in $flagsByCarId has
+     * a profile with every flag clear.
+     *
+     * @param array<int, array{bounced?: int, blocked?: int}> $flagsByCarId
+     */
+    private function stubOwnerFlags(array $flagsByCarId): void
+    {
+        $this->mockRepo->method('findOwnerOfCar')->willReturnCallback(
+            static fn (int $carId): object => (object) ['user_id' => 100 + $carId, 'username' => 'owner' . $carId]
+        );
+        $this->mockRepo->method('findProfileEmailState')->willReturnCallback(
+            static function (int $userId) use ($flagsByCarId): object {
+                $flags = $flagsByCarId[$userId - 100] ?? [];
+
+                return (object) [
+                    'user_id' => $userId,
+                    'email_bounced' => $flags['bounced'] ?? 0,
+                    'email_blocked' => $flags['blocked'] ?? 0,
+                ];
+            }
         );
     }
 
@@ -724,13 +744,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             }
         );
 
-        $this->mockRepo->method('findById')->willReturnCallback(
-            static fn (int $id): object => (object) [
-                'id' => $id,
-                'email_bounced' => 0,
-                'email_suppressed' => $id === 30 ? 1 : 0,
-            ]
-        );
+        // Car 30's owner is already blocked.
+        $this->stubOwnerFlags([30 => ['blocked' => 1]]);
 
         $summary = $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('bounce@example.com', 'hardBounce'),
@@ -781,13 +796,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             (object) ['id' => 1],
             (object) ['id' => 2],
         ]);
-        $this->mockRepo->method('findById')->willReturnCallback(
-            static fn (int $id): object => (object) [
-                'id' => $id,
-                'email_bounced' => $id === 1 ? 1 : 0,
-                'email_suppressed' => 0,
-            ]
-        );
+        $this->stubOwnerFlags([1 => ['bounced' => 1]]);
 
         $summary = $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
@@ -797,15 +806,11 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(0, $summary->alreadyFlaggedCount);
     }
 
-    /** 'blocked' reads email_bounced; the others read email_suppressed. */
-    public function testAlreadyFlaggedCheckReadsTheColumnTheEventWouldSet(): void
+    /** 'blocked' reads the owner's email_bounced; the others read email_blocked. */
+    public function testAlreadyFlaggedCheckReadsTheOwnerFlagTheEventWouldSet(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
-        $this->mockRepo->method('findById')->willReturn((object) [
-            'id' => 1,
-            'email_bounced' => 0,
-            'email_suppressed' => 1,
-        ]);
+        $this->stubOwnerFlags([1 => ['blocked' => 1]]);
 
         $summary = $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
@@ -816,10 +821,10 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /** Fails open: hiding a broken read is worse than overstating new matches. */
-    public function testUnreadableCarRowStillAppliesTheSuppressionAndLogs(): void
+    public function testUnreadableOwnerFlagsStillApplyTheSuppressionAndLog(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
-        $this->mockRepo->method('findById')
+        $this->mockRepo->method('findOwnerOfCar')
             ->willThrowException(new CarDatabaseException('flag read failed'));
 
         $summary = $this->makeJobWithContacts([
@@ -839,7 +844,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     public function testCarVanishedBetweenLookupAndPreCheckStillAppliesTheSuppressionAndLogs(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
-        $this->mockRepo->method('findById')->willReturn(null);
+        $this->mockRepo->method('findOwnerOfCar')->willReturn(null);
 
         $summary = $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
@@ -852,6 +857,34 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $log = $this->logsContaining('vanished before the flag pre-check');
         $this->assertNotEmpty($log);
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+    }
+
+    /** The flags are owner-level: a car whose owner has no profile cannot be "already flagged". */
+    public function testCarWhoseOwnerHasNoProfileCountsAsMatchedNotAlreadyFlagged(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findOwnerOfCar')->willReturn((object) ['user_id' => 101, 'username' => 'owner1']);
+        $this->mockRepo->method('findProfileEmailState')->willReturn(null);
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam'),
+        ])->runNowWithSummary();
+
+        $this->assertSame(1, $summary->matchedCount);
+        $this->assertSame(0, $summary->alreadyFlaggedCount);
+    }
+
+    /** The flag-change audit row records who found the event. */
+    public function testEveryApplyCallCarriesTheImportSource(): void
+    {
+        $this->matchEveryEmailTo([1, 2]);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
+        ])->runNowWithSummary();
+
+        $this->assertCount(2, $this->applier->calls);
+        $this->assertSame(['import', 'import'], array_column($this->applier->calls, 'source'));
     }
 
     /** An all-zero summary would look like a successful run over an empty list. */
@@ -949,11 +982,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
                 return [(object) ['id' => 1]];
             }
         );
-        $this->mockRepo->method('findById')->willReturn((object) [
-            'id' => 1,
-            'email_bounced' => 0,
-            'email_suppressed' => 0,
-        ]);
+        $this->stubOwnerFlags([]);
 
         $summary = $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('broken@example.com', 'hardBounce'),

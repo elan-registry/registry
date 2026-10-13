@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -214,44 +215,69 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
     }
 
     /**
-     * @param array<int, array{user_id: mixed, category: string, message: string}> $entries
-     * @return array<int, array{user_id: mixed, category: string, message: string}>
+     * @param array<int, array{user_id: mixed, category: string, message: string, metadata?: mixed}> $entries
+     * @return array<int, array{user_id: mixed, category: string, message: string, metadata?: mixed}>
      */
     private function bounceClearLogEntries(array $entries): array
     {
         return array_values(array_filter(
             $entries,
             static fn(array $e): bool => str_contains($e['message'], 'bounce-clear')
-                || str_contains($e['message'], 'cleared bounce flag')
+                || str_contains($e['message'], 'email_bounced changed')
                 || str_contains($e['message'], 'had email_bounced=1')
         ));
     }
 
-    // Bounce-clear block (#1890)
+    /**
+     * The one flag-change audit row that DeliverabilityFlagLog writes.
+     *
+     * @param array<int, array{user_id: mixed, category: string, message: string, metadata?: mixed}> $entries
+     * @return list<array{user_id: mixed, category: string, message: string, metadata?: mixed}>
+     */
+    private function flagChangeEntries(array $entries): array
+    {
+        return array_values(array_filter(
+            $entries,
+            static fn(array $e): bool => str_contains($e['message'], 'email_bounced changed')
+        ));
+    }
 
-    public function testBounceClearedOnCarWithNonMatchingBouncedAddress(): void
+    // Bounce-clear block (#1890, #2101)
+
+    public function testBounceOnAnotherAddressIsClearedOnTheProfileWithOneAuditRow(): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
+        // No cars: the owner-field sync then opens no transaction of its own,
+        // so the commit count below belongs to the bounce clear alone.
         $GLOBALS['hookTestDb'] = new HookTestDb(
-            cars: [(object) ['id' => 100]],
-            bounceClearAffectedRows: 1
+            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old-address@example.com'],
         );
 
         $this->fireHook();
 
-        $this->assertSame(1, $GLOBALS['hookTestDb']->bounceClearCalls, 'The bounce-clear UPDATE must be issued exactly once');
+        $db = $GLOBALS['hookTestDb'];
+        $this->assertSame(1, $db->profileClearCalls, 'The profile bounce clear must be issued exactly once');
+        $this->assertSame([7], $db->profileClearUserIds);
+        $this->assertSame(1, $db->lockedProfileReads, 'The profile row must be read FOR UPDATE before the write');
+        $this->assertSame(1, $db->commits);
+        $this->assertSame(0, $db->rollbacks);
 
-        $entries = $this->bounceClearLogEntries($mockLogEntries);
-        $this->assertCount(1, $entries, 'Exactly one bounce-clear log line must fire when rows were cleared');
+        $entries = $this->flagChangeEntries($mockLogEntries);
+        $this->assertCount(1, $entries, 'Exactly one audit row when the bounce is cleared');
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $entries[0]['category']);
-        $this->assertStringContainsString('cleared bounce flag on 1 car(s)', $entries[0]['message']);
-        $this->assertStringContainsString('for user 7', $entries[0]['message']);
+        $this->assertSame(7, $entries[0]['user_id']);
+        $this->assertSame(
+            ['owner_id' => 7, 'flag' => 'email_bounced', 'old' => 1, 'new' => 0, 'source' => 'email_change'],
+            $entries[0]['metadata']
+        );
+        $this->assertStringNotContainsString('@', $entries[0]['message'], 'The audit row must hold no address');
     }
 
     /**
-     * $verify carries the old address, which equals the car's bounced address;
-     * only the fresh Owner lookup returns the new, confirmed email.
+     * $verify carries the old address, which equals the profile's bounced
+     * address. Only the fresh Owner lookup returns the new, confirmed email.
+     * With the stale address the hook would see a match and keep the bounce.
      */
     public function testBounceClearUsesFreshOwnerLookupNotVerifysStaleCachedEmail(): void
     {
@@ -260,25 +286,20 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
             ownerEmail: 'new-address@example.com',
-            bounceClearAffectedRows: 1
+            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old-address@example.com'],
         );
 
         $this->fireHook();
 
         $this->assertSame(
             1,
-            $GLOBALS['hookTestDb']->bounceClearCalls,
-            'The bounce-clear UPDATE must be issued exactly once'
-        );
-        $this->assertSame(
-            ['new-address@example.com'],
-            $GLOBALS['hookTestDb']->bounceClearEmails,
-            'clearBouncedForUser() must use the fresh Owner-lookup email, not the stale $verify email'
+            $GLOBALS['hookTestDb']->profileClearCalls,
+            'The bounce is on the OLD address, so the confirmed new address must clear it'
         );
     }
 
     /**
-     * An empty email would make every bounced car with no address match the WHERE clause.
+     * An empty email would make every bounce with no address match.
      */
     public function testEmptyOwnerLookupEmailSkipsBounceClearAndLogsSystemError(): void
     {
@@ -286,6 +307,7 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
+            profile: ['email_bounced' => 1, 'email_bounced_address' => null],
             ownerNotFound: true
         );
 
@@ -293,8 +315,8 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
 
         $this->assertSame(
             0,
-            $GLOBALS['hookTestDb']->bounceClearCalls,
-            'clearBouncedForUser() must never be called with an unreadable/empty current email'
+            $GLOBALS['hookTestDb']->profileClearCalls,
+            'The clear must never run with an unreadable/empty current email'
         );
 
         $entry = null;
@@ -308,58 +330,129 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $entry['category']);
     }
 
-    public function testNoOpWhenBouncedAddressAlreadyMatchesConfirmedEmail(): void
+    /**
+     * @return array<string, array{?string}>
+     */
+    public static function sameAddressUnderTheMatchingRuleProvider(): array
+    {
+        return [
+            'identical' => ['new-address@example.com'],
+            'other case' => ['New-Address@Example.COM'],
+            'surrounding whitespace' => ['  new-address@example.com '],
+        ];
+    }
+
+    /**
+     * The bounce is on the address the owner confirmed (compared as lower case
+     * with the whitespace trimmed), so it stays and nothing is written.
+     */
+    #[DataProvider('sameAddressUnderTheMatchingRuleProvider')]
+    public function testBounceOnTheConfirmedAddressStaysAndLogsNothing(string $storedAddress): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
-            bounceClearAffectedRows: 0
+            profile: ['email_bounced' => 1, 'email_bounced_address' => $storedAddress],
         );
 
         $this->fireHook();
 
-        $this->assertSame(1, $GLOBALS['hookTestDb']->bounceClearCalls);
-        $this->assertSame(
-            [],
-            $this->bounceClearLogEntries($mockLogEntries),
-            'A no-op bounce-clear (already matching address) must log nothing'
-        );
+        $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
+        $this->assertSame([], $this->bounceClearLogEntries($mockLogEntries));
     }
 
-    public function testIntegrityAnomalyIsLoggedAndStillCleared(): void
+    public function testNoBounceFlagMeansNothingToClear(): void
+    {
+        global $mockLogEntries, $verify;
+        $verify = $this->fakeVerify(7);
+        $GLOBALS['hookTestDb'] = new HookTestDb(cars: [(object) ['id' => 100]]);
+
+        $this->fireHook();
+
+        $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
+        $this->assertSame([], $this->bounceClearLogEntries($mockLogEntries));
+    }
+
+    public function testOwnerWithNoProfileRowHasNothingToClear(): void
+    {
+        global $mockLogEntries, $verify;
+        $verify = $this->fakeVerify(7);
+        $GLOBALS['hookTestDb'] = new HookTestDb(cars: [(object) ['id' => 100]], noProfile: true);
+
+        $this->fireHook();
+
+        $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
+        $this->assertSame([], $this->bounceClearLogEntries($mockLogEntries));
+        $this->assertSame(1, $this->carLookupCount(), 'The owner-field sync still runs');
+    }
+
+    /**
+     * @return array<string, array{?string}>
+     */
+    public static function bounceWithoutAUsableAddressProvider(): array
+    {
+        return [
+            'NULL address' => [null],
+            'empty address' => [''],
+        ];
+    }
+
+    /**
+     * A bounce with a NULL or empty address cannot be on the confirmed
+     * address, so the confirmation clears it. Refusing would keep an owner who
+     * just proved the address works permanently un-emailable.
+     */
+    #[DataProvider('bounceWithoutAUsableAddressProvider')]
+    public function testBounceWithNoRecordedAddressIsClearedAndLoggedAsAnAnomaly(?string $storedAddress): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
             integrityCarIds: [200, 201],
-            bounceClearAffectedRows: 2
+            profile: ['email_bounced' => 1, 'email_bounced_address' => $storedAddress],
         );
 
         $this->fireHook();
 
+        $this->assertSame(1, $GLOBALS['hookTestDb']->profileClearCalls);
+
         $entries = $this->bounceClearLogEntries($mockLogEntries);
-        $this->assertCount(2, $entries, 'Both the anomaly line and the cleared-count line must fire');
+        $this->assertCount(2, $entries, 'Both the anomaly line and the flag-change audit row must fire');
 
         $anomalyEntry = null;
-        $clearedEntry = null;
         foreach ($entries as $entry) {
             if (str_contains($entry['message'], 'had email_bounced=1')) {
                 $anomalyEntry = $entry;
-            } elseif (str_contains($entry['message'], 'cleared bounce flag')) {
-                $clearedEntry = $entry;
             }
         }
-
         $this->assertNotNull($anomalyEntry, 'The integrity-anomaly line must be present');
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $anomalyEntry['category']);
         $this->assertStringContainsString('200,201', $anomalyEntry['message']);
         $this->assertStringContainsString('data-integrity anomaly', $anomalyEntry['message']);
+        $this->assertCount(1, $this->flagChangeEntries($mockLogEntries));
+    }
 
-        $this->assertNotNull($clearedEntry, 'The cleared-count line must also be present');
-        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $clearedEntry['category']);
-        $this->assertStringContainsString('cleared bounce flag on 2 car(s)', $clearedEntry['message']);
+    /**
+     * An owner with no cars gets no anomaly line (nothing to name), but the
+     * confirmation still clears the bounce.
+     */
+    public function testBounceWithNoAddressForAnOwnerWithNoCarsIsClearedWithoutAnAnomalyLine(): void
+    {
+        global $mockLogEntries, $verify;
+        $verify = $this->fakeVerify(7);
+        $GLOBALS['hookTestDb'] = new HookTestDb(
+            profile: ['email_bounced' => 1, 'email_bounced_address' => null],
+        );
+
+        $this->fireHook();
+
+        $this->assertSame(1, $GLOBALS['hookTestDb']->profileClearCalls);
+        $this->assertSame([], array_filter(
+            $mockLogEntries,
+            static fn(array $e): bool => str_contains($e['message'], 'had email_bounced=1')
+        ));
     }
 
     public function testBounceClearRunsExactlyOnceOnDoubleFire(): void
@@ -368,7 +461,7 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
-            bounceClearAffectedRows: 1
+            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old@example.com'],
         );
 
         $this->fireHook();
@@ -376,8 +469,8 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
 
         $this->assertSame(
             1,
-            $GLOBALS['hookTestDb']->bounceClearCalls,
-            'The shared run-once guard must prevent a second bounce-clear UPDATE on the same request'
+            $GLOBALS['hookTestDb']->profileClearCalls,
+            'The shared run-once guard must prevent a second clear on the same request'
         );
     }
 
@@ -387,7 +480,7 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
-            failIntegrityCheckSelect: true
+            failProfileSelect: true
         );
 
         $this->fireHook();
@@ -399,7 +492,7 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $this->assertCount(1, $bounceClearFailure);
         $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $bounceClearFailure[0]['category']);
 
-        $this->assertSame(0, $GLOBALS['hookTestDb']->bounceClearCalls);
+        $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
 
         $this->assertSame(1, $this->carLookupCount(), 'The sync block must still run after the bounce-clear block throws');
     }
@@ -410,16 +503,15 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
             cars: [(object) ['id' => 100]],
-            bounceClearAffectedRows: 1,
+            profile: ['email_bounced' => 1, 'email_bounced_address' => 'old@example.com'],
             failCarLookup: true
         );
 
         $this->fireHook();
 
-        $this->assertSame(1, $GLOBALS['hookTestDb']->bounceClearCalls);
-        $bounceEntries = $this->bounceClearLogEntries($mockLogEntries);
-        $this->assertCount(1, $bounceEntries);
-        $this->assertStringContainsString('cleared bounce flag on 1 car(s)', $bounceEntries[0]['message']);
+        $this->assertSame(1, $GLOBALS['hookTestDb']->profileClearCalls);
+        $this->assertSame(1, $GLOBALS['hookTestDb']->commits, 'The clear commits before the sync block runs');
+        $this->assertCount(1, $this->flagChangeEntries($mockLogEntries));
 
         $syncFailure = array_values(array_filter(
             $mockLogEntries,
@@ -429,44 +521,35 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $syncFailure[0]['category']);
     }
 
-    public function testBounceClearUpdateDatabaseErrorIsLoggedAndDoesNotBlockSyncBlock(): void
+    public function testBounceClearUpdateDatabaseErrorRollsBackWritesNoAuditRowAndDoesNotBlockSyncBlock(): void
     {
         global $mockLogEntries, $verify;
         $verify = $this->fakeVerify(7);
         $GLOBALS['hookTestDb'] = new HookTestDb(
-            cars: [(object) ['id' => 100]],
             integrityCarIds: [200],
-            failBounceClearUpdate: true
+            profile: ['email_bounced' => 1, 'email_bounced_address' => null],
+            failProfileUpdate: true
         );
 
         $this->fireHook();
 
-        $entries = $this->bounceClearLogEntries($mockLogEntries);
-        $anomalyEntry = null;
-        $clearedEntry = null;
-        foreach ($entries as $entry) {
-            if (str_contains($entry['message'], 'had email_bounced=1')) {
-                $anomalyEntry = $entry;
-            } elseif (str_contains($entry['message'], 'cleared bounce flag')) {
-                $clearedEntry = $entry;
-            }
-        }
-        $this->assertNotNull($anomalyEntry, 'The integrity-anomaly line runs before the failing UPDATE and must still fire');
-        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $anomalyEntry['category']);
-        $this->assertNull($clearedEntry, 'The cleared-count line must not fire when the UPDATE itself failed');
+        $anomaly = array_filter(
+            $mockLogEntries,
+            static fn(array $e): bool => str_contains($e['message'], 'had email_bounced=1')
+        );
+        $this->assertCount(1, $anomaly, 'The integrity-anomaly line runs before the failing UPDATE and must still fire');
+        $this->assertSame([], $this->flagChangeEntries($mockLogEntries), 'No audit row when the UPDATE failed');
 
         $bounceClearFailure = array_values(array_filter(
             $mockLogEntries,
             static fn(array $e): bool => str_contains($e['message'], 'bounce-clear failed for user 7')
         ));
-        $this->assertCount(1, $bounceClearFailure, 'The bounce-clear UPDATE failure must be logged exactly once');
+        $this->assertCount(1, $bounceClearFailure, 'The failure must be logged exactly once');
         $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $bounceClearFailure[0]['category']);
 
-        $this->assertSame(
-            1,
-            $GLOBALS['hookTestDb']->bounceClearCalls,
-            'The bounce-clear UPDATE must have been attempted exactly once'
-        );
+        $this->assertSame(1, $GLOBALS['hookTestDb']->profileClearCalls, 'The UPDATE was attempted exactly once');
+        $this->assertSame(1, $GLOBALS['hookTestDb']->rollbacks);
+        $this->assertSame(0, $GLOBALS['hookTestDb']->commits);
 
         $this->assertSame(
             1,
@@ -499,7 +582,7 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $failureEntries[0]['category']);
         $this->assertStringContainsString('OwnerDatabaseException', $failureEntries[0]['message']);
 
-        $this->assertSame(0, $GLOBALS['hookTestDb']->bounceClearCalls);
+        $this->assertSame(0, $GLOBALS['hookTestDb']->profileClearCalls);
         $this->assertSame(
             0,
             $this->carLookupCount(),
@@ -515,10 +598,20 @@ final class HookTestDb implements DatabaseInterface
 {
     public int $carLookups = 0;
 
-    public int $bounceClearCalls = 0;
+    /** Profile UPDATEs that clear the bounce (CarRepository::clearBouncedForUser()). */
+    public int $profileClearCalls = 0;
 
-    /** @var list<string> Email bound to each bounce-clear UPDATE */
-    public array $bounceClearEmails = [];
+    /** @var list<int> user_id bound to each profile clear */
+    public array $profileClearUserIds = [];
+
+    /** Profile SELECTs that took the row lock. */
+    public int $lockedProfileReads = 0;
+
+    public int $commits = 0;
+
+    public int $rollbacks = 0;
+
+    private bool $inTransaction = false;
 
     // Unused; satisfies DatabaseInterface's @phpstan-impure contract. carLookups is what tests assert on.
     private int $calls = 0;
@@ -529,7 +622,8 @@ final class HookTestDb implements DatabaseInterface
 
     /**
      * @param array<int, object> $cars
-     * @param list<int> $integrityCarIds
+     * @param list<int> $integrityCarIds Car IDs that CarRepository::findByOwner() returns for the anomaly line
+     * @param array<string, mixed> $profile Overrides on a profile row with every flag clear
      * @param string $ownerEmail Email in the post-update users row, read by Owner::find()
      */
     public function __construct(
@@ -538,9 +632,10 @@ final class HookTestDb implements DatabaseInterface
         private bool $failUpdate = false,
         private bool $throwTypeErrorOnCarLookup = false,
         private array $integrityCarIds = [],
-        private int $bounceClearAffectedRows = 0,
-        private bool $failBounceClearUpdate = false,
-        private bool $failIntegrityCheckSelect = false,
+        private array $profile = [],
+        private bool $noProfile = false,
+        private bool $failProfileSelect = false,
+        private bool $failProfileUpdate = false,
         private string $ownerEmail = 'new-address@example.com',
         private bool $ownerNotFound = false,
         private bool $failOwnerLookup = false
@@ -593,35 +688,55 @@ final class HookTestDb implements DatabaseInterface
             return $this;
         }
 
-        // CarRepository::carIdsWithBouncedFlagButNoAddress()
-        if (str_starts_with($sql, 'SELECT id FROM cars WHERE')) {
-            if ($this->failIntegrityCheckSelect) {
+        // CarRepository::findProfileEmailState()
+        if (str_contains($sql, 'FROM profiles')) {
+            if ($this->failProfileSelect) {
                 $this->error = true;
                 $this->count = 0;
                 $this->rows = [];
                 return $this;
             }
+            if (str_contains($sql, 'FOR UPDATE')) {
+                $this->lockedProfileReads++;
+            }
+            if ($this->noProfile) {
+                $this->count = 0;
+                $this->rows = [];
+                return $this;
+            }
 
+            $this->rows = [(object) array_merge([
+                'id' => 5, 'user_id' => $params[0],
+                'email_opted_out' => 0, 'email_opted_out_at' => null,
+                'email_blocked' => 0, 'email_blocked_address' => null,
+                'email_blocked_at' => null, 'email_blocked_cause' => null,
+                'email_bounced' => 0, 'email_bounced_address' => null,
+                'email_bounced_at' => null, 'email_bounce_cleared_at' => null,
+            ], $this->profile)];
+            $this->count = 1;
+            return $this;
+        }
+
+        // CarRepository::findByOwner(), read for the anomaly line
+        if (str_starts_with($sql, 'SELECT id FROM cars WHERE')) {
             $this->rows = array_map(static fn (int $id): object => (object) ['id' => $id], $this->integrityCarIds);
             $this->count = count($this->integrityCarIds);
             return $this;
         }
 
-        // CarRepository::clearBouncedForUser()
-        if (str_starts_with($sql, 'UPDATE cars')
-            && str_contains($sql, 'SET email_bounced = 0, email_bounced_address = NULL')
-        ) {
-            $this->bounceClearCalls++;
-            $this->bounceClearEmails[] = (string) ($params[1] ?? '');
+        // CarRepository::clearBouncedForUser() writing the profile
+        if (str_starts_with($sql, 'UPDATE profiles SET email_bounced = 0')) {
+            $this->profileClearCalls++;
+            $this->profileClearUserIds[] = (int) end($params);
 
-            if ($this->failBounceClearUpdate) {
+            if ($this->failProfileUpdate) {
                 $this->error = true;
                 $this->count = 0;
                 $this->rows = [];
                 return $this;
             }
 
-            $this->count = $this->bounceClearAffectedRows;
+            $this->count = 1;
             $this->rows = [];
             return $this;
         }
@@ -697,20 +812,25 @@ final class HookTestDb implements DatabaseInterface
     }
     public function beginTransaction(): bool
     {
+        $this->inTransaction = true;
         return true;
     }
     public function commit(): bool
     {
+        $this->commits++;
+        $this->inTransaction = false;
         return true;
     }
     public function rollBack(): bool
     {
+        $this->rollbacks++;
+        $this->inTransaction = false;
         return true;
     }
     public function inTransaction(): bool
     {
         $this->calls++;
-        return false;
+        return $this->inTransaction;
     }
 }
 

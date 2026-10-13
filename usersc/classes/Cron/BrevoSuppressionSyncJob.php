@@ -6,6 +6,7 @@ namespace ElanRegistry\Cron;
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
@@ -28,8 +29,10 @@ use ElanRegistry\LogCategories;
  * This job closes that gap by reading `GET /smtp/blockedContacts` through
  * {@see BrevoSuppressionSyncClient} and applying each suppression through
  * {@see EmailEventApplier} — the *same* escalation code the webhook (#1887)
- * and the nightly event reconciliation job (#1889) run, so a car flagged by an
- * imported suppression is flagged identically to one flagged by a live event.
+ * and the daily event reconciliation job (#1889) run, so an owner flagged by
+ * an imported suppression is flagged identically to one flagged by a live
+ * event. The flags belong to the owner's profile (#2101). The job passes the
+ * source `import`, which goes into the flag-change audit row.
  *
  * TWO FETCH MODES, DELIBERATELY SEPARATED
  * ---------------------------------------
@@ -64,15 +67,15 @@ use ElanRegistry\LogCategories;
  * Brevo's reason codes are collapsed onto the three event names
  * {@see EmailEventApplier} already understands:
  *
- *   | Brevo reason code        | Applied event  | Effect                     |
- *   | ------------------------ | -------------- | -------------------------- |
- *   | `hardBounce`             | `blocked`      | flags the car as bounced   |
- *   | `contactFlaggedAsSpam`   | `spam`         | flags the car as suppressed|
- *   | `unsubscribedViaEmail`   | `unsubscribed` | flags the car as suppressed|
- *   | `unsubscribedViaMA`      | `unsubscribed` | flags the car as suppressed|
- *   | `unsubscribedViaApi`     | `unsubscribed` | flags the car as suppressed|
- *   | `adminBlocked`           | `unsubscribed` | flags the car as suppressed|
- *   | anything else            | (none)         | logged, tallied, skipped   |
+ *   | Brevo reason code        | Applied event  | Effect on the owner's profile            |
+ *   | ------------------------ | -------------- | ---------------------------------------- |
+ *   | `hardBounce`             | `blocked`      | sets `email_bounced`                     |
+ *   | `contactFlaggedAsSpam`   | `spam`         | sets `email_blocked`, cause spam         |
+ *   | `unsubscribedViaEmail`   | `unsubscribed` | sets `email_blocked`, cause unsubscribed |
+ *   | `unsubscribedViaMA`      | `unsubscribed` | sets `email_blocked`, cause unsubscribed |
+ *   | `unsubscribedViaApi`     | `unsubscribed` | sets `email_blocked`, cause unsubscribed |
+ *   | `adminBlocked`           | `unsubscribed` | sets `email_blocked`, cause unsubscribed |
+ *   | anything else            | (none)         | logged, tallied, skipped                 |
  *
  * An unmapped code is never guessed at — it is tallied under `'unrecognized'`
  * in the summary's reason-code breakdown and the contact is skipped entirely,
@@ -84,10 +87,12 @@ use ElanRegistry\LogCategories;
  * COUNT ACCURACY
  * --------------
  * {@see SuppressionSyncSummary}'s three contact buckets are disjoint, which
- * requires knowing whether a car was *already* in the target state before the
- * write. {@see CarRepository::findByEmail()} returns only `id` and `email`, so
- * this job spends one extra {@see CarRepository::findById()} primary-key read
- * per matched car to read `email_bounced`/`email_suppressed` first. That read
+ * requires knowing whether a car's owner was *already* in the target state
+ * before the write. {@see CarRepository::findByEmail()} returns only `id` and
+ * `email`, so this job spends two extra indexed reads per matched car
+ * ({@see CarRepository::findOwnerOfCar()} and
+ * {@see CarRepository::findProfileEmailState()}) to read the owner's
+ * `email_bounced`/`email_blocked` first. That read
  * is deliberate rather than approximated away: an approximation would leave
  * `alreadyFlaggedCount` permanently zero and report every re-run of the
  * backfill as though it had newly flagged the entire suppression list, which
@@ -787,7 +792,15 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                 $wasFlagged = $this->isAlreadyInTargetState($carId, $event);
 
                 try {
-                    $this->applier->apply($carId, $email, $event, $reasonMessage, $messageId, $occurredAt);
+                    $this->applier->apply(
+                        $carId,
+                        $email,
+                        $event,
+                        $reasonMessage,
+                        $messageId,
+                        $occurredAt,
+                        DeliverabilityFlagLog::SOURCE_IMPORT
+                    );
                 } catch (CarDatabaseException $e) {
                     // Log and continue rather than aborting the page: there is
                     // no caller to retry, the import is idempotent so the next
@@ -854,15 +867,16 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     }
 
     /**
-     * Whether this car already carries the flag the given event would set.
+     * Whether this car's owner already carries the flag the given event would set.
      *
-     * The extra primary-key read that makes {@see SuppressionSyncSummary}'s
-     * `alreadyFlaggedCount` bucket real rather than always-zero — see the class
-     * docblock's count-accuracy note for why that read is worth paying for.
+     * Two extra reads, `findOwnerOfCar()` and `findProfileEmailState()`, make
+     * {@see SuppressionSyncSummary}'s `alreadyFlaggedCount` bucket real rather
+     * than always-zero. The class docblock's count-accuracy note says why
+     * those reads are worth paying for.
      *
-     * Fails *open* (returns false, i.e. "not already flagged"): if the car row
-     * cannot be read, the apply() call still happens and the contact is counted
-     * as newly matched. Overstating new matches is the right way to be wrong
+     * Fails *open* (returns false, i.e. "not already flagged"): if the car or
+     * the owner's profile cannot be read, the apply() call still happens and
+     * the contact is counted as newly matched. Overstating new matches is the right way to be wrong
      * here — the alternative, treating an unreadable car as already handled,
      * would hide from the operator that the read is broken.
      *
@@ -871,7 +885,10 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     private function isAlreadyInTargetState(int $carId, string $event): bool
     {
         try {
-            $car = $this->repo->findById($carId);
+            $car = $this->repo->findOwnerOfCar($carId);
+            $profile = $car === null || $car->user_id === null
+                ? null
+                : $this->repo->findProfileEmailState((int) $car->user_id);
         } catch (CarDatabaseException $e) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                 'Brevo suppression sync: could not read current flags for car %d'
@@ -887,7 +904,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             // findByEmail() returned this car id moments earlier, so a null
             // here means the row vanished between the two reads — a deleted
             // car, or a read-consistency problem, not the routine "no row"
-            // case findById() otherwise returns silently for. Logged (unlike
+            // case findOwnerOfCar() otherwise returns silently for. Logged (unlike
             // the routine case) because the apply() call that follows may
             // then fail against a car id that no longer exists.
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
@@ -899,11 +916,17 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             return false;
         }
 
-        // 'blocked' is the only mapped event EmailEventApplier treats as a hard
-        // bounce; 'spam' and 'unsubscribed' both set the suppression flag.
-        $column = $event === 'blocked' ? 'email_bounced' : 'email_suppressed';
+        if ($profile === null) {
+            // No owner or no profiles row: apply() writes no flag for this
+            // car and logs why, so the car is not already flagged.
+            return false;
+        }
 
-        return (bool) ($car->{$column} ?? false);
+        // 'blocked' is the only mapped event EmailEventApplier treats as a hard
+        // bounce; 'spam' and 'unsubscribed' both set the block flag.
+        $flag = $event === 'blocked' ? $profile->email_bounced : $profile->email_blocked;
+
+        return (int) $flag === 1;
     }
 
     /**

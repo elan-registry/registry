@@ -310,7 +310,7 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
      */
     #[Group('integration')]
     #[Group('migration')]
-    public function testTriggerBodies_captureOwnerLastUpdatedVericodeSentAtEmailBounced(): void
+    public function testTriggerBodies_captureOwnerLastUpdatedAndVericodeSentAt(): void
     {
         $triggers = $this->db->query(
             "SELECT TRIGGER_NAME, ACTION_STATEMENT
@@ -325,7 +325,7 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
 
         foreach ($triggers as $trigger) {
             $body = (string) $trigger->ACTION_STATEMENT;
-            foreach (['owner_last_updated', 'vericode_sent_at', 'email_bounced'] as $column) {
+            foreach (['owner_last_updated', 'vericode_sent_at'] as $column) {
                 $this->assertStringContainsStringIgnoringCase(
                     $column,
                     $body,
@@ -352,7 +352,6 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'backfill-fresh@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => date('Y-m-d H:i:s', strtotime('-5 years')),
             'mtime'              => date('Y-m-d H:i:s', strtotime('-5 years')),
@@ -401,7 +400,6 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
 
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'backfill-sold@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $originalOwnerLastUpdated,
             'mtime'              => $originalOwnerLastUpdated,
@@ -434,7 +432,6 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
 
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'backfill-mtime@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => date('Y-m-d H:i:s', strtotime('-5 years')),
             'mtime'              => $originalMtime,

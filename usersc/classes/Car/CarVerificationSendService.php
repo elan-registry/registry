@@ -32,7 +32,7 @@ use ElanRegistry\Owner;
  * Eligibility in particular is NOT re-implemented here:
  * {@see self::findEligible()} delegates verbatim to
  * {@see CarRepository::findVerificationEligible()}, which carries the full
- * rule (staleness, bounced/suppressed exclusion, sold cars, erased owners,
+ * rule (staleness, owner profile flags, sold cars, erased owners,
  * the attempt cap). Both callers derive their car list from that one query.
  *
  * @package ElanRegistry\Car
@@ -167,35 +167,39 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'Car has no live owner.');
         }
 
-        // The owner-level opt-out (#1883), enforced here for the same reason
-        // the `noowner` check above is: it needs a join to `profiles` that
-        // VerificationEligibility::skipReason() has no row for.
-        // findVerificationEligible()'s SQL now excludes it via a LEFT JOIN, but
+        // The owner's deliverability flags (#2101), enforced here for the same
+        // reason the `noowner` check above is: they live on `profiles`, and
         // the admin manual-send path re-checks eligibility in PHP against a
-        // single already-loaded `cars` row, which carries only the per-car
-        // cars.email_suppressed flag. Those two flags are NOT interchangeable:
-        // setSuppressedForOwner() fans the opt-out out to the cars the owner
-        // held at that moment, so any car acquired afterwards still reads
-        // cars.email_suppressed = 0 while the owner's standing opt-out sits in
-        // profiles. Without this guard that car would be mailed.
+        // single `cars` row that has no profile fields
+        // (VerificationEligibility::skipReason()). The cron path selects rows
+        // with findVerificationEligible(), which already excludes these
+        // owners, but a flag can be set between that query and this send.
         //
-        // A separate one-column read rather than a field off $owner: Owner::find()'s
+        // A separate read rather than fields off $owner: Owner::find()'s
         // users-LEFT JOIN-profiles projection selects only city/state/country/
-        // lat/lon/website from `profiles`, so ->data() does not carry this flag
-        // and widening that shared projection — read by every owner-facing page —
-        // to serve one send-path guard would be the larger change. A missing
-        // profiles row returns null here and is treated as "no opt-out
-        // recorded", matching the COALESCE(..., 0) in findVerificationEligible()'s
-        // own clause so the two paths cannot disagree about a profile-less owner.
-        if ($this->repo->findProfileEmailSuppressed((int) $carData->user_id) === 1) {
+        // lat/lon/website from `profiles`, and widening that shared projection
+        // (read by every owner-facing page) for one send-path guard is the
+        // larger change. The rules match findVerificationEligible(): no
+        // profiles row excludes the car, and each flag excludes it whatever
+        // its address column holds.
+        $ownerId      = (int) $carData->user_id;
+        $profileState = $this->repo->findProfileEmailState($ownerId);
+        $profileBlockReason = match (true) {
+            $profileState === null                     => 'Owner has no profile.',
+            (int) $profileState->email_opted_out === 1 => 'Owner has opted out of verification emails.',
+            (int) $profileState->email_blocked === 1   => 'Owner email is blocked.',
+            (int) $profileState->email_bounced === 1   => 'Owner email bounced.',
+            default                                    => null,
+        };
+        if ($profileBlockReason !== null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                'CarVerificationSendService::sendOne: owner %d for car %d has opted out of verification '
-                . 'emails (profiles.email_suppressed = 1); send skipped',
-                (int) $carData->user_id,
-                $carId
+                'CarVerificationSendService::sendOne: owner %d for car %d cannot get mail: %s Send skipped.',
+                $ownerId,
+                $carId,
+                $profileBlockReason
             ));
 
-            return SendResult::failed($carId, 'Owner has opted out of verification emails.');
+            return SendResult::failed($carId, $profileBlockReason);
         }
 
         // Send only when Brevo is ready (key, active plugin, override file,

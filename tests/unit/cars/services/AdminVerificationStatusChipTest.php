@@ -3,25 +3,20 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\EmailEventApplier;
-use ElanRegistry\Car\EmailNoticeBuilder;
 use PHPUnit\Framework\TestCase;
 
 /**
  * Unit tests for vsStatusChip(), the Status-column chip logic defined inside
- * app/admin/includes/tab-verification.php (#1896).
+ * app/admin/includes/tab-verification.php (#1896, #2101).
  *
  * vsStatusChip() is a plain function guarded by function_exists(), not a
- * class method — there is nothing to new up. This loads the exact function
- * source (same source-slice + temp-file extraction
- * AdminVerificationQueueUrlStateTest uses for app/admin/index.php) and calls
- * the real function, rather than reimplementing its logic for comparison.
+ * class method. This loads the exact function source (same source-slice +
+ * temp-file extraction AdminVerificationQueueUrlStateTest uses) and calls the
+ * real function.
  *
- * Covers the Blocking fix where a suppressed car's chip disagreed with the
- * owner-facing "email paused" account notice for an `unsubscribed`-caused
- * suppression: the chip used to add an extra `=== 'spam'` check on top of
- * EmailNoticeBuilder::resolveSuppressionCause(), which the notice does not
- * have, so the two disagreed on the label for that one case. The chip now
- * labels purely from resolveSuppressionCause()'s cause, same as the notice.
+ * Since #2101 the owner's profile flags decide the chip: no profile, then
+ * blocked, then opted out, then the latest event. The chip no longer reads
+ * suppression events or EmailNoticeBuilder.
  */
 final class AdminVerificationStatusChipTest extends TestCase
 {
@@ -61,8 +56,7 @@ final class AdminVerificationStatusChipTest extends TestCase
         }
 
         $preamble = "<?php\ndeclare(strict_types=1);\n"
-            . "use ElanRegistry\\Car\\EmailEventApplier;\n"
-            . "use ElanRegistry\\Car\\EmailNoticeBuilder;\n";
+            . "use ElanRegistry\\Car\\EmailEventApplier;\n";
         $written = file_put_contents($tempFile, $preamble . $slice);
         if ($written === false) {
             unlink($tempFile);
@@ -82,117 +76,77 @@ final class AdminVerificationStatusChipTest extends TestCase
         self::loadVsStatusChip();
     }
 
-    private static function suppressionEvent(string $eventName, string $occurredAt): object
+    private static function event(string $eventName, string $occurredAt): object
     {
         return (object) ['event' => $eventName, 'occurred_at' => $occurredAt];
     }
 
-    private static function suppressedHistRow(string $timestamp): object
+    public function testOwnerBlockedShowsBrevoComplaintWithStoredCause(): void
     {
-        return (object) ['timestamp' => $timestamp];
-    }
-
-    public function testSpamSuppressionShowsBrevoComplaint(): void
-    {
-        $chip = vsStatusChip(
-            null,
-            true,
-            self::suppressionEvent('spam', '2026-09-01 10:00:00'),
-            null
-        );
+        $chip = vsStatusChip(null, true, true, 'spam', false);
 
         $this->assertSame('complaint', $chip['kind']);
         $this->assertSame('Brevo complaint', $chip['label']);
+        $this->assertSame('spam', $chip['reason']);
     }
 
     /**
-     * The exact case the Blocking fix covers: an `unsubscribed` suppression
-     * event is also CAUSE_BREVO_COMPLAINT per resolveSuppressionCause() (it
-     * does not distinguish spam from unsubscribed), and
-     * _email_paused_notice.php shows "Brevo complaint" for it. Before the
-     * fix, vsStatusChip()'s extra `=== 'spam'` check made the chip show
-     * "Opted out" instead, disagreeing with the notice.
+     * Every email_blocked cause keeps the "Brevo complaint" label until
+     * #2361 separates the states. The cause only fills the reason text.
      */
-    public function testUnsubscribedSuppressionAlsoShowsBrevoComplaintNotOptedOut(): void
+    public function testBlockedWithUnsubscribedCauseStillShowsBrevoComplaintNotOptedOut(): void
     {
-        $chip = vsStatusChip(
-            null,
-            true,
-            self::suppressionEvent('unsubscribed', '2026-09-01 10:00:00'),
-            null
-        );
+        $chip = vsStatusChip(null, true, true, 'unsubscribed', false);
 
-        $this->assertSame(
-            EmailNoticeBuilder::CAUSE_BREVO_COMPLAINT,
-            EmailNoticeBuilder::resolveSuppressionCause(
-                self::suppressionEvent('unsubscribed', '2026-09-01 10:00:00'),
-                null
-            )['cause'],
-            'Sanity: resolveSuppressionCause() must still call this CAUSE_BREVO_COMPLAINT, '
-            . 'or this test is no longer exercising the disagreement case'
-        );
         $this->assertSame('complaint', $chip['kind']);
         $this->assertSame('Brevo complaint', $chip['label']);
+        $this->assertSame('unsubscribed', $chip['reason']);
     }
 
-    public function testOwnerOptOutWithNoSuppressionEventShowsOptedOut(): void
+    public function testBlockedWithNoKnownCauseShowsCauseUnknown(): void
     {
-        $chip = vsStatusChip(
-            null,
-            true,
-            null,
-            self::suppressedHistRow('2026-09-01 10:00:00')
-        );
+        $chip = vsStatusChip(null, true, true, null, false);
+
+        $this->assertSame('complaint', $chip['kind']);
+        $this->assertSame('cause unknown', $chip['reason']);
+    }
+
+    public function testOwnerOptedOutShowsOptedOut(): void
+    {
+        $chip = vsStatusChip(null, true, false, null, true);
 
         $this->assertSame('opted_out', $chip['kind']);
         $this->assertSame('Opted out', $chip['label']);
     }
 
-    /**
-     * A suppression event older than the latest EMAIL SUPPRESSED history row
-     * is a stale, since-cleared event (see EmailNoticeBuilder's docblock):
-     * the current suppression is an opt-out, not the old Brevo complaint.
-     */
-    public function testStaleSuppressionEventOlderThanHistoryShowsOptedOut(): void
+    public function testBlockedWinsOverOptedOut(): void
     {
-        $chip = vsStatusChip(
-            null,
-            true,
-            self::suppressionEvent('spam', '2026-01-01 00:00:00'),
-            self::suppressedHistRow('2026-09-01 10:00:00')
-        );
+        $chip = vsStatusChip(null, true, true, 'spam', true);
+
+        $this->assertSame('complaint', $chip['kind']);
+    }
+
+    public function testOwnerFlagWinsOverALatestDeliveredEvent(): void
+    {
+        $chip = vsStatusChip(self::event('delivered', '2026-09-01 10:00:00'), true, false, null, true);
 
         $this->assertSame('opted_out', $chip['kind']);
     }
 
-    /**
-     * A car suppressed only through the owner's profile-level flag (its own
-     * email_suppressed flag is 0) must show Opted out even when a stale Brevo
-     * complaint event is on record for it — matching EmailNoticeBuilder's
-     * account notice and the owner's Resume gate, which both treat a
-     * profile-only suppression as an owner opt-out (see #2339's cross-surface
-     * finding this test closes).
-     */
-    public function testProfileOnlySuppressionShowsOptedOutNotBrevoComplaint(): void
+    public function testNoProfileShowsNoProfileChipWithoutAReason(): void
     {
-        $chip = vsStatusChip(
-            null,
-            true,
-            self::suppressionEvent('spam', '2026-09-01 10:00:00'),
-            null,
-            false
-        );
+        $chip = vsStatusChip(null, false, true, 'spam', true);
 
-        $this->assertSame('opted_out', $chip['kind']);
-        $this->assertSame('Opted out', $chip['label']);
+        $this->assertSame('no_profile', $chip['kind']);
+        $this->assertSame('No profile', $chip['label']);
+        $this->assertSame('', $chip['reason']);
     }
 
     public function testLiveSpamEventOnANonSuppressedCarStillShowsSpamComplaint(): void
     {
-        // Not the suppressed branch: a live 'spam' event on a car not yet
-        // flagged suppressed. This is a different code path (the match()
-        // below the suppressed check) and keeps its own, more specific label.
-        $chip = vsStatusChip(self::suppressionEvent('spam', '2026-09-01 10:00:00'), false, null, null);
+        // A live 'spam' event on an owner with no block flag yet takes the
+        // match() path and keeps its own, more specific label.
+        $chip = vsStatusChip(self::event('spam', '2026-09-01 10:00:00'));
 
         $this->assertSame('spam', $chip['kind']);
         $this->assertSame('Spam complaint', $chip['label']);
@@ -202,7 +156,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'hard_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => 'mailbox full'];
 
-        $chip = vsStatusChip($event, false, null, null);
+        $chip = vsStatusChip($event);
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('Bounced', $chip['label']);
@@ -224,7 +178,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
         $event = (object) ['event' => 'invalid_email', 'occurred_at' => '2026-09-01 10:00:00'];
 
-        $chip = vsStatusChip($event, false, null, null);
+        $chip = vsStatusChip($event);
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('Bounced', $chip['label']);
@@ -234,15 +188,15 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'deferred', 'occurred_at' => '2026-09-01 10:00:00'];
 
-        $chip = vsStatusChip($event, false, null, null);
+        $chip = vsStatusChip($event);
 
         $this->assertSame('other', $chip['kind']);
         $this->assertSame('Deferred', $chip['label']);
     }
 
-    public function testNoEventAndNotSuppressedShowsEmptyChip(): void
+    public function testNoEventAndAndNoFlagShowsEmptyChip(): void
     {
-        $chip = vsStatusChip(null, false, null, null);
+        $chip = vsStatusChip(null);
 
         $this->assertSame('', $chip['kind']);
         $this->assertSame('', $chip['label']);

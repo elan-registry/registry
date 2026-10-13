@@ -15,7 +15,10 @@ use ElanRegistry\DatabaseInterface;
  * deployed database.
  *
  * Seeds three owners, each with one car:
- *  - one ELIGIBLE car: solddate IS NULL, email_bounced = 0, email_suppressed = 0,
+ *  The deliverability flags are on the owner profile (#2101), and an eligible
+ *  car needs an owner with a profiles row. Each owner below has one.
+ *
+ *  - one ELIGIBLE car: solddate IS NULL, a profile with no flags,
  *    a non-empty email, and STALE per CarRepository::freshnessSql() — i.e.
  *    `owner_last_updated` set more than a year in the past AND `last_verified`
  *    NULL. This is the exact predicate findVerificationEligible() applies
@@ -23,11 +26,11 @@ use ElanRegistry\DatabaseInterface;
  *    re-derived, so the seeded row lands in the eligible preview/batch.
  *    Its chassis value embeds a `<script>` marker so the spec can assert
  *    HTML-escaping in the admin tab's preview table and batch report.
- *  - one BOUNCED car (email_bounced = 1): eligible on every other predicate,
+ *  - one BOUNCED car (profile email_bounced = 1): eligible on every other predicate,
  *    used to prove eligibilitySkipReason()/findVerificationEligible() exclude
  *    it, and to exercise the Mark Bounced/Clear Bounced buttons' `form=`
  *    wiring against a row that already carries a bounce.
- *  - one SUPPRESSED car (email_suppressed = 1): same purpose as the bounced
+ *  - one SUPPRESSED car (profile email_opted_out = 1): same purpose as the bounced
  *    car, but for the Clear Suppression action.
  *
  * Prints a single JSON line to stdout:
@@ -148,6 +151,7 @@ foreach ([
     [SEED_SUPPRESSED_USERNAME, SEED_SUPPRESSED_CAR_MODEL],
 ] as [$username, $carModel]) {
     $db->query('DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$username]);
+    $db->query('DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$username]);
     $db->query('DELETE FROM users WHERE username = ?', [$username]);
     $db->query('DELETE FROM cars WHERE model = ?', [$carModel]);
 }
@@ -158,6 +162,7 @@ $carRepository = new CarRepository($db);
  * Insert one owner + one car, returning [userId, carId].
  *
  * @param array<string, mixed> $carOverrides
+ * @param array<string, int|string> $profileFlags Deliverability columns for the owner profile
  * @return array{0: int, 1: int}
  */
 function seedOwnerAndCar(
@@ -165,7 +170,8 @@ function seedOwnerAndCar(
     CarRepository $carRepository,
     string $username,
     string $email,
-    array $carOverrides
+    array $carOverrides,
+    array $profileFlags = []
 ): array {
     $userInserted = $db->insert('users', [
         'username'   => $username,
@@ -181,6 +187,20 @@ function seedOwnerAndCar(
         exit(1);
     }
     $userId = (int) $db->lastId();
+
+    // profiles.user_id is UNIQUE, so upsert.
+    $columns = array_merge(['bio' => '', 'city' => '', 'state' => '', 'country' => ''], $profileFlags);
+    $names = implode(', ', array_keys($columns));
+    $marks = implode(', ', array_fill(0, count($columns), '?'));
+    $updates = implode(', ', array_map(static fn(string $c): string => "{$c} = VALUES({$c})", array_keys($columns)));
+    $db->query(
+        "INSERT INTO profiles (user_id, {$names}) VALUES (?, {$marks}) ON DUPLICATE KEY UPDATE {$updates}",
+        array_merge([$userId], array_values($columns))
+    );
+    if ($db->error()) {
+        fwrite(STDERR, "ERROR: Failed to seed the profile for {$username}: {$db->errorString()}\n");
+        exit(1);
+    }
 
     $carFields = array_merge([
         'user_id'                => $userId,
@@ -219,7 +239,7 @@ function seedOwnerAndCar(
     ]
 );
 
-// Bounced car: otherwise-eligible, but email_bounced = 1 — must be excluded
+// Bounced car: otherwise-eligible, but the profile has email_bounced = 1 — must be excluded
 // from findVerificationEligible() and reported as skipped if force-submitted.
 [$bouncedUserId, $bouncedCarId] = seedOwnerAndCar(
     $db,
@@ -231,12 +251,15 @@ function seedOwnerAndCar(
         'chassis'                => 'SEEDVSTB' . bin2hex(random_bytes(3)),
         'owner_last_updated'     => date('Y-m-d H:i:s', strtotime('-2 years')),
         'last_verified'          => null,
-        'email_bounced'          => 1,
-        'email_bounced_address'  => SEED_BOUNCED_ADDRESS,
+    ],
+    [
+        'email_bounced'         => 1,
+        'email_bounced_address' => SEED_BOUNCED_ADDRESS,
+        'email_bounced_at'      => date('Y-m-d H:i:s', strtotime('-1 day')),
     ]
 );
 
-// Suppressed car: otherwise-eligible, but email_suppressed = 1.
+// Suppressed car: otherwise-eligible, but the profile has email_opted_out = 1.
 [$suppressedUserId, $suppressedCarId] = seedOwnerAndCar(
     $db,
     $carRepository,
@@ -247,7 +270,10 @@ function seedOwnerAndCar(
         'chassis'            => 'SEEDVSTS' . bin2hex(random_bytes(3)),
         'owner_last_updated' => date('Y-m-d H:i:s', strtotime('-2 years')),
         'last_verified'      => null,
-        'email_suppressed'   => 1,
+    ],
+    [
+        'email_opted_out'    => 1,
+        'email_opted_out_at' => date('Y-m-d H:i:s', strtotime('-1 day')),
     ]
 );
 

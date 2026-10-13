@@ -17,6 +17,11 @@ if (count(get_included_files()) == 1) { die(); }
  *   $viewerIsRegistryAdmin bool  True only when the viewer is an admin or an
  *                               editor (isRegistryAdmin()). Only true (strict)
  *                               shows the Email on file row. Default false.
+ *   $ownerEmailState ?object     The owner's profile deliverability state, from
+ *                               CarRepository::findProfileEmailState(). The
+ *                               profile is the system of record (#2101), so the
+ *                               Email on file row reads its flags from here,
+ *                               not from $carData. Null shows no row. Default null.
  *
  * The card computes the Verified row itself from CarBadges::verifiedStatus().
  * A sold car has no Verified row.
@@ -30,6 +35,7 @@ $purchaseDate ??= null;
 $soldDate ??= null;
 $headingTag ??= 'h3';
 $viewerIsRegistryAdmin ??= false;
+$ownerEmailState ??= null;
 
 if (!is_object($carData)) {
     logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
@@ -44,8 +50,10 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
 
 $_isSold          = \ElanRegistry\Car\CarBadges::isSold($carData->solddate ?? null);
 $_verifiedStatus  = \ElanRegistry\Car\CarBadges::verifiedStatus($carData);
-$_emailBounced    = !empty($carData->email_bounced);
-$_emailSuppressed = !empty($carData->email_suppressed);
+$_emailBounced    = is_object($ownerEmailState) && !empty($ownerEmailState->email_bounced);
+// Suppressed covers a block and an opt-out until #2361 shows them separately.
+$_emailSuppressed = is_object($ownerEmailState)
+    && (!empty($ownerEmailState->email_blocked) || !empty($ownerEmailState->email_opted_out));
 // The row names a delivery problem with the owner's address, so only admins
 // and editors get it. The car's own owner does not.
 $_showEmailRow    = $viewerIsRegistryAdmin === true && ($_emailBounced || $_emailSuppressed);

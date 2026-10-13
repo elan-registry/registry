@@ -104,7 +104,7 @@ final class CarVerificationEmailComposerTest extends TestCase
      * @return object{
      *   id: int, year: int, type: string, chassis: string, chassis_override: int,
      *   series: string, variant: string, color: string, purchasedate: string,
-     *   solddate: ?string, image: ?string, website: string, email_suppressed: int
+     *   solddate: ?string, image: ?string, website: string
      * }
      */
     private function carFixture(array $overrides = []): object
@@ -122,7 +122,6 @@ final class CarVerificationEmailComposerTest extends TestCase
             'solddate'          => null,
             'image'             => json_encode(['a.jpg', 'b.jpg']),
             'website'           => 'https://example.com/my-elan',
-            'email_suppressed'  => 0,
         ], $overrides);
     }
 

@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EmailEventApplier;
-use ElanRegistry\Car\EmailNoticeBuilder;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
@@ -360,50 +359,44 @@ if (!function_exists('vsStatusChip')) {
     /**
      * Give the Status chip for one queue row
      *
-     * The chip shows the car's latest email event, as chosen by
-     * CarRepository::findLatestEmailEventPerCarWithPrecedence(). A
-     * suppressed car instead shows its suppression cause, from
-     * EmailNoticeBuilder::resolveSuppressionCause(), so the chip and the
-     * owner's account notice cannot disagree. That rule uses the latest
-     * suppression event of any send cycle. CAUSE_BREVO_COMPLAINT shows
-     * Brevo complaint (either a `spam` or an `unsubscribed` event — the rule
-     * does not say which); any other cause shows Opted out.
+     * The owner's profile state comes first, because it stops all
+     * verification email to the owner (#2101): no profiles row, then a
+     * block, then an opt-out. Otherwise the chip shows the car's latest
+     * email event, as chosen by
+     * CarRepository::findLatestEmailEventPerCarWithPrecedence().
+     *
+     * Until #2361 separates the states, a block shows "Brevo complaint"
+     * with the stored cause as its reason.
      *
      * @param object|null $event The chip event row, or null if the car has none
-     * @param bool $suppressed True when the car or its owner profile is suppressed
-     * @param object|null $suppressionEvent The car's latest suppression event of any send cycle, if read
-     * @param object|null $suppressedHist The latest `EMAIL SUPPRESSED` cars_hist row, if read
-     * @param bool $carFlagSet True when the car's own `email_suppressed` flag is set, as opposed
-     *        to only the owner's profile-level flag. Passed through to
-     *        {@see EmailNoticeBuilder::resolveSuppressionCause()} so a profile-only suppression
-     *        shows Opted out here too, matching the owner's account notice and Resume gate.
+     * @param bool $hasProfile False when the owner has no profiles row
+     * @param bool $blocked True when the owner's `profiles.email_blocked` is set
+     * @param string|null $blockedCause The owner's `profiles.email_blocked_cause`, or null when unknown
+     * @param bool $optedOut True when the owner's `profiles.email_opted_out` is set
      * @return array{kind: string, label: string, class: string, reason: string}
      *         `kind` is '' when there is no event to show
      */
     function vsStatusChip(
         ?object $event,
-        bool $suppressed,
-        ?object $suppressionEvent,
-        ?object $suppressedHist,
-        bool $carFlagSet = true
+        bool $hasProfile = true,
+        bool $blocked = false,
+        ?string $blockedCause = null,
+        bool $optedOut = false
     ): array {
         $name   = isset($event->event) ? (string) $event->event : null;
         $reason = trim((string) ($event->reason ?? ''));
 
-        $optedOut  = ['kind' => 'opted_out', 'label' => 'Opted out', 'class' => 'text-bg-secondary', 'reason' => ''];
-        $spam      = ['kind' => 'spam', 'label' => 'Spam complaint', 'class' => 'text-bg-danger', 'reason' => ''];
-        // resolveSuppressionCause() answers only "owner opt-out or Brevo
-        // complaint" (EmailEventApplier::SUPPRESSION_EVENTS = spam or
-        // unsubscribed; it does not say which). Label it the same way the
-        // account notice does, rather than naming the specific event, so the
-        // chip and the notice cannot disagree for the unsubscribed-as-
-        // complaint case.
-        $complaint = ['kind' => 'complaint', 'label' => 'Brevo complaint', 'class' => 'text-bg-danger', 'reason' => ''];
+        $optedOutChip = ['kind' => 'opted_out', 'label' => 'Opted out', 'class' => 'text-bg-secondary', 'reason' => ''];
 
-        if ($suppressed) {
-            $cause = EmailNoticeBuilder::resolveSuppressionCause($suppressionEvent, $suppressedHist, $carFlagSet);
-
-            return $cause['cause'] === EmailNoticeBuilder::CAUSE_BREVO_COMPLAINT ? $complaint : $optedOut;
+        if (!$hasProfile) {
+            return ['kind' => 'no_profile', 'label' => 'No profile', 'class' => 'text-bg-warning', 'reason' => ''];
+        }
+        if ($blocked) {
+            return ['kind' => 'complaint', 'label' => 'Brevo complaint', 'class' => 'text-bg-danger',
+                    'reason' => $blockedCause ?? 'cause unknown'];
+        }
+        if ($optedOut) {
+            return $optedOutChip;
         }
 
         if ($name === null) {
@@ -419,8 +412,8 @@ if (!function_exists('vsStatusChip')) {
             'delivered', 'unique_opened', 'opened', 'click'
                            => ['kind' => 'delivered', 'label' => 'Delivered', 'class' => 'text-bg-success', 'reason' => ''],
             'soft_bounce'  => ['kind' => 'soft_bounce', 'label' => 'Soft bounce', 'class' => 'text-bg-warning', 'reason' => $reason],
-            'spam'         => $spam,
-            'unsubscribed' => $optedOut,
+            'spam'         => ['kind' => 'spam', 'label' => 'Spam complaint', 'class' => 'text-bg-danger', 'reason' => ''],
+            'unsubscribed' => $optedOutChip,
             // Brevo can add event names. Show the stored name, not a guess.
             default        => ['kind' => 'other', 'label' => ucfirst(str_replace('_', ' ', $name)),
                                'class' => 'text-bg-light', 'reason' => $reason],
@@ -479,44 +472,21 @@ if ($vsIsEligibleView) {
 // "no events". Defaults to unreadable when there are rows, for the same
 // reason as $autoSendCountsUnreadable below.
 // ---------------------------------------------------------------------------
-$vsQueueCarIds           = [];
-$vsQueueSuppressedCarIds = [];
+$vsQueueCarIds = [];
 foreach ($vsQueueRows as $vsQueueRow) {
     $vsQueueRowId = (int) ($vsQueueRow->id ?? 0);
     if ($vsQueueRowId > 0) {
         $vsQueueCarIds[] = $vsQueueRowId;
-        if ((int) ($vsQueueRow->email_suppressed ?? 0) === 1
-            || (int) ($vsQueueRow->profile_email_suppressed ?? 0) === 1) {
-            $vsQueueSuppressedCarIds[] = $vsQueueRowId;
-        }
     }
 }
 
 /** @var array<int, object> $vsChipEvents */
-$vsChipEvents = [];
-/** @var array<int, object> $vsSuppressionEvents */
-$vsSuppressionEvents = [];
-/** @var array<int, object> $vsSuppressedHist */
-$vsSuppressedHist = [];
+$vsChipEvents     = [];
 $vsChipUnreadable = $vsQueueCarIds !== [];
 
 if ($vsQueueCarIds !== []) {
     try {
-        $vsChipEvents = $vsRepo->findLatestEmailEventPerCarWithPrecedence($vsQueueCarIds);
-
-        // A suppressed car's chip shows its cause. It uses the same reads as
-        // EmailNoticeBuilder: the latest suppression event of any send cycle,
-        // and the latest EMAIL SUPPRESSED history row.
-        if ($vsQueueSuppressedCarIds !== []) {
-            $vsSuppressionEvents = $vsRepo->findLatestEmailEventsByCarIdsAndEvents(
-                $vsQueueSuppressedCarIds,
-                EmailEventApplier::SUPPRESSION_EVENTS
-            );
-            $vsSuppressedHist = $vsRepo->findLatestHistoryOperationByCarIds(
-                $vsQueueSuppressedCarIds,
-                [EmailNoticeBuilder::OPERATION_SUPPRESSED]
-            );
-        }
+        $vsChipEvents     = $vsRepo->findLatestEmailEventPerCarWithPrecedence($vsQueueCarIds);
         $vsChipUnreadable = false;
     } catch (\Throwable $e) {
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
@@ -1299,10 +1269,11 @@ if (!$vsAllHealthy) {
                         // target, see CarAdministrationService) and a row with no
                         // live owner at all are not real owners: mark_bounced /
                         // clear_bounced / clear_suppression all act on the WHOLE
-                        // owner (CarVerificationManager::*ForOwner()), so a click
-                        // here would flag or clear every other car `noowner` holds
-                        // too. Same username check CarVerificationSendService uses
-                        // to skip sending to this account.
+                        // owner (CarVerificationManager::*ForOwner()). A click here
+                        // would write the flag on the `noowner` profile row, which
+                        // stands for many unrelated cars. Same username check
+                        // CarVerificationSendService uses to skip sending to this
+                        // account.
                         $queueOwnerIsActionable = $vsOwnerRow !== null
                             && ($vsOwnerRow->username ?? '') !== 'noowner';
                         // Null covers a missing users row and a failed lookup. Neither must read like a GDPR-erasure car.
@@ -1315,21 +1286,34 @@ if (!$vsAllHealthy) {
                             : false;
                         $queueDays = $queueSentAt !== false ? (int) $queueSentAt->diff($vsNow)->days : null;
 
+                        // The flags come from the owner's profiles row (#2101). The
+                        // Eligible rows are cars.* only: an eligible car has a
+                        // profile and no flag, so a missing has_profile means 1.
+                        $queueHasProfile  = (int) ($queueCar->has_profile ?? 1) === 1;
                         $queueBounced     = (int) ($queueCar->email_bounced ?? 0) === 1;
-                        $queueCarFlagSet  = (int) ($queueCar->email_suppressed ?? 0) === 1;
-                        $queueSuppressed  = $queueCarFlagSet
-                            || (int) ($queueCar->profile_email_suppressed ?? 0) === 1;
+                        $queueBlocked     = (int) ($queueCar->email_blocked ?? 0) === 1;
+                        $queueOptedOut    = (int) ($queueCar->email_opted_out ?? 0) === 1;
+                        $queueSuppressed  = $queueBlocked || $queueOptedOut;
+                        $queueBlockedCause = isset($queueCar->email_blocked_cause)
+                            ? (string) $queueCar->email_blocked_cause : null;
 
                         $queueChip = vsStatusChip(
                             $vsChipEvents[$queueCarId] ?? null,
-                            $queueSuppressed,
-                            $vsSuppressionEvents[$queueCarId] ?? null,
-                            $vsSuppressedHist[$queueCarId] ?? null,
-                            $queueCarFlagSet
+                            $queueHasProfile,
+                            $queueBlocked,
+                            $queueBlockedCause,
+                            $queueOptedOut
                         );
 
-                        // One action per row, from the car's state. Suppressed comes first:
-                        // a suppressed car that is not bounced needs Clear Suppression, not
+                        // The owner actions write the profiles row, so an owner
+                        // with no row has no action until an admin fixes the row.
+                        if (!$queueHasProfile) {
+                            $queueOwnerIsActionable = false;
+                            $queueNoActionTitle = 'This owner has no profile row. Fix the profile before you change email state.';
+                        }
+
+                        // One action per row, from the owner's state. Suppressed comes first:
+                        // a suppressed owner who is not bounced needs Clear Suppression, not
                         // Mark Bounced. A single soft bounce keeps the car Pending (Brevo
                         // escalates repeated soft bounces), so Mark Bounced is disabled there.
                         if ($queueSuppressed) {

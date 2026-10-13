@@ -24,7 +24,7 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         $this->requireDatabase();
 
         $this->repo = new CarRepository($this->db);
-        $this->userId = $this->createTestUser();
+        $this->userId = $this->createTestUser([], true);
         $this->carId = $this->createTestCar($this->userId, [
             'email' => 'softbounce-' . uniqid() . '@example.com',
         ]);
@@ -75,7 +75,7 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
             [$this->carId, $email, 'soft_bounce', 'msg-1', '2026-01-01 10:05:00']
         );
 
-        $count = $this->repo->countSoftBouncesSinceLastDelivered($email);
+        $count = $this->repo->countSoftBouncesSinceLastDelivered($email, $this->carId);
 
         $this->assertSame(3, $count, 'Must count distinct brevo_message_id values, not raw event rows');
     }
@@ -94,7 +94,7 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         $this->insertRawEvent('soft_bounce', 'post-1', '2026-01-01 11:00:00');
         $this->insertRawEvent('soft_bounce', 'post-2', '2026-01-01 11:30:00');
 
-        $count = $this->repo->countSoftBouncesSinceLastDelivered($email);
+        $count = $this->repo->countSoftBouncesSinceLastDelivered($email, $this->carId);
 
         $this->assertSame(
             2,
@@ -113,7 +113,7 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         $this->insertRawEvent('soft_bounce', 'nodeliv-2', '2026-01-01 10:00:00');
         $this->insertRawEvent('soft_bounce', 'nodeliv-3', '2026-01-01 11:00:00');
 
-        $count = $this->repo->countSoftBouncesSinceLastDelivered($email);
+        $count = $this->repo->countSoftBouncesSinceLastDelivered($email, $this->carId);
 
         $this->assertSame(3, $count, 'With no delivered event on record, all soft-bounce cycles must count');
     }
@@ -121,9 +121,71 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     #[Group('fast')]
     public function testReturnsZeroForAnEmailWithNoSoftBounceHistory(): void
     {
-        $count = $this->repo->countSoftBouncesSinceLastDelivered('never-bounced-' . uniqid() . '@example.com');
+        $count = $this->repo->countSoftBouncesSinceLastDelivered('never-bounced-' . uniqid() . '@example.com', $this->carId);
 
         $this->assertSame(0, $count);
+    }
+
+    #[Group('fast')]
+    public function testOnlyCountsCyclesAfterTheOwnersBounceClear(): void
+    {
+        $email = $this->carEmail();
+
+        $this->insertRawEvent('soft_bounce', 'clr-pre-1', '2026-01-01 09:00:00');
+        $this->insertRawEvent('soft_bounce', 'clr-pre-2', '2026-01-01 09:30:00');
+        $this->insertRawEvent('soft_bounce', 'clr-pre-3', '2026-01-01 09:45:00');
+        // The admin clears the bounce at 10:00, with no delivered event after the soft bounces.
+        $this->db->query(
+            'UPDATE profiles SET email_bounce_cleared_at = ? WHERE user_id = ?',
+            ['2026-01-01 10:00:00', $this->userId]
+        );
+        $this->insertRawEvent('soft_bounce', 'clr-post-1', '2026-01-01 11:00:00');
+
+        $this->assertSame(
+            1,
+            $this->repo->countSoftBouncesSinceLastDelivered($email, $this->carId),
+            'One new soft bounce after Clear Bounced must count as 1, so it does not reach the escalation threshold'
+        );
+    }
+
+    #[Group('fast')]
+    public function testClearTimeOfAnotherOwnerDoesNotHideSoftBounces(): void
+    {
+        $email = $this->carEmail();
+        $otherOwnerId = $this->createTestUser([], true);
+        $this->db->query(
+            'UPDATE profiles SET email_bounce_cleared_at = ? WHERE user_id = ?',
+            ['2026-06-01 00:00:00', $otherOwnerId]
+        );
+        $this->insertRawEvent('soft_bounce', 'oth-1', '2026-01-01 09:00:00');
+        $this->insertRawEvent('soft_bounce', 'oth-2', '2026-01-01 10:00:00');
+
+        $this->assertSame(
+            2,
+            $this->repo->countSoftBouncesSinceLastDelivered($email, $this->carId),
+            'Only the car owner\'s own email_bounce_cleared_at limits the count'
+        );
+    }
+
+    #[Group('fast')]
+    public function testCarWithNoProfileCountsAllSoftBounceCycles(): void
+    {
+        $noProfileOwnerId = $this->createTestUser();
+        $carId = $this->createTestCar($noProfileOwnerId, ['email' => 'np-' . uniqid() . '@example.com']);
+        $email = (string) $this->db->query('SELECT email FROM cars WHERE id = ?', [$carId])->first()->email;
+        foreach (['np-1' => '2026-01-01 09:00:00', 'np-2' => '2026-01-01 10:00:00'] as $msgId => $at) {
+            $this->db->query(
+                'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
+                 VALUES (?, ?, ?, NULL, ?, ?)',
+                [$carId, $email, 'soft_bounce', $msgId, $at]
+            );
+        }
+
+        try {
+            $this->assertSame(2, $this->repo->countSoftBouncesSinceLastDelivered($email, $carId));
+        } finally {
+            $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
+        }
     }
 
     // --- insertEmailEvent() dedup semantics --------------------------------
@@ -348,93 +410,5 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         $latest = $this->repo->findLatestEmailEventsByCarIds([]);
 
         $this->assertSame([], $latest);
-    }
-
-    // --- findLatestEmailEventsByCarIdsAndEvents() ---------------------------
-        //
-        // The `event` filter must be in the subquery and the outer query;
-        // EmailNoticeBuilder::buildForOwner() depends on it.
-
-    #[Group('fast')]
-    public function testEventFilterExcludesANewerButNonMatchingRow(): void
-    {
-        // The newest event, 'opened', is not requested: the earlier 'spam'
-        // row must be returned, not the overall latest.
-        $this->insertRawEvent('spam', 'filter-1', '2026-04-01 09:00:00');
-        $this->insertRawEvent('opened', 'filter-2', '2026-04-02 09:00:00');
-
-        $result = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
-            [$this->carId],
-            ['spam', 'unsubscribed']
-        );
-
-        $this->assertArrayHasKey($this->carId, $result);
-        $this->assertSame('spam', $result[$this->carId]->event);
-        $this->assertSame('2026-04-01 09:00:00', $result[$this->carId]->occurred_at);
-    }
-
-    #[Group('fast')]
-    public function testEachCarReturnsItsOwnLatestMatchingEventUnderATimestampTie(): void
-    {
-        $otherCarId = $this->createTestCar($this->userId, [
-            'email' => 'events-filter-other-' . uniqid() . '@example.com',
-        ]);
-        $otherEmail = (string) $this->db->query('SELECT email FROM cars WHERE id = ?', [$otherCarId])->first()->email;
-
-        // Both cars' latest matching ('hard_bounce') event shares the same
-        // occurred_at — the hardest case for per-car attribution via a
-        // self-join scoped by event.
-        $this->insertRawEvent('hard_bounce', 'tie-a', '2026-04-05 08:00:00');
-        $this->db->query(
-            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
-             VALUES (?, ?, ?, NULL, ?, ?)',
-            [$otherCarId, $otherEmail, 'hard_bounce', 'tie-b', '2026-04-05 08:00:00']
-        );
-        $this->assertFalse($this->db->error(), 'Failed to seed er_email_events row: ' . $this->db->errorString());
-
-        $result = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
-            [$this->carId, $otherCarId],
-            ['hard_bounce', 'blocked', 'invalid', 'invalid_email']
-        );
-
-        $this->assertArrayHasKey($this->carId, $result);
-        $this->assertArrayHasKey($otherCarId, $result);
-        $this->assertSame((string) $this->carId, (string) $result[$this->carId]->car_id);
-        $this->assertSame((string) $otherCarId, (string) $result[$otherCarId]->car_id);
-
-        $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$otherCarId]);
-        $this->deleteTestCar($otherCarId);
-    }
-
-    #[Group('fast')]
-    public function testCarWithOnlyNonMatchingEventsIsAbsentFromTheResult(): void
-    {
-        $this->insertRawEvent('opened', 'nomatch-1', '2026-04-01 09:00:00');
-        $this->insertRawEvent('delivered', 'nomatch-2', '2026-04-02 09:00:00');
-
-        $result = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
-            [$this->carId],
-            ['spam', 'unsubscribed']
-        );
-
-        $this->assertArrayNotHasKey(
-            $this->carId,
-            $result,
-            'A car with no matching event must be absent from the map, not present with a null value'
-        );
-    }
-
-    #[Group('fast')]
-    public function testEmptyCarIdsArrayReturnsEmptyArrayForEventsFiltered(): void
-    {
-        $this->assertSame([], $this->repo->findLatestEmailEventsByCarIdsAndEvents([], ['spam']));
-    }
-
-    #[Group('fast')]
-    public function testEmptyEventsArrayReturnsEmptyArray(): void
-    {
-        $this->insertRawEvent('spam', 'empty-events-1', '2026-04-01 09:00:00');
-
-        $this->assertSame([], $this->repo->findLatestEmailEventsByCarIdsAndEvents([$this->carId], []));
     }
 }

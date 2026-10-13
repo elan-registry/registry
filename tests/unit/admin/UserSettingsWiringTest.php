@@ -888,4 +888,40 @@ final class UserSettingsWiringTest extends TestCase
             'A failed DELETE leaves a stolen cookie valid, so it must be logged as a security event'
         );
     }
+
+    /**
+     * A direct email change (email_act == 0) clears a bounce on another
+     * address through the same manager method as the confirmed-change hook.
+     * That method writes the flag-change audit row in one transaction with
+     * the clear (#2101).
+     */
+    public function testDirectEmailChangeClearsTheBounceThroughTheSharedManagerMethod(): void
+    {
+        $content = $this->readEndpointSource(self::USER_SETTINGS_ENDPOINT);
+        $hook = $this->readEndpointSource('usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php');
+
+        $closurePos = strpos($content, '$clearBouncedForNewEmail = function');
+        $this->assertNotFalse($closurePos, 'user_settings.php must define the bounce-clear closure');
+        $closureEnd = strpos($content, '};', $closurePos);
+        $this->assertNotFalse($closureEnd);
+        $closure = substr($content, $closurePos, $closureEnd - $closurePos);
+
+        $this->assertStringContainsString(
+            '$verifier->clearBouncedForEmailChange($userId, $userId, $newEmail)',
+            $closure,
+            'The direct email change must call the shared manager method'
+        );
+        $this->assertStringNotContainsString(
+            'clearBouncedForUser(',
+            $closure,
+            'A direct repository call has no transaction and no audit row'
+        );
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_DATABASE_ERROR',
+            $closure,
+            'A failed clear must be logged and must not break the email change'
+        );
+        $this->assertStringContainsString('->clearBouncedForEmailChange($userId, $userId, $currentEmail)', $hook);
+        $this->assertStringNotContainsString('clearBouncedForUser(', $hook);
+    }
 }

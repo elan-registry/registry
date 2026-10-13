@@ -38,8 +38,15 @@ use ElanRegistry\Car\CarRepository;
  *  - current:    last_verified NULL, owner_last_updated 45 days ago. The row
  *                says "Current since <date>".
  *  - stale:      both dates 2 years ago. The row says "Not specified".
- *  - bounced:    fresh, email_bounced = 1 with a bounced address.
- *  - suppressed: fresh, email_suppressed = 1. It also has a vericode.
+ *  - bounced:    fresh. Its owner is a second user, with a profile that has
+ *                email_bounced = 1 and a bounced address.
+ *  - suppressed: fresh. Its owner is a third user, with a profile that has
+ *                email_opted_out = 1. It also has a vericode.
+ *
+ * The delivery flags are on the owner profile (#2101), not on the car, so the
+ * flagged cars need their own owners. The main owner and the two flagged
+ * owners share one password. The main owner has a profile with no flags and
+ * owns the other three cars.
  *
  * Usage:
  *   php seed-car-badges.php                         seed (deletes earlier marker rows first)
@@ -51,7 +58,7 @@ use ElanRegistry\Car\CarRepository;
  * {"userId", "username", "password", "cars": {"sold": id, "fresh": id, "new": id, "soldnew": id}, "fillerCount": 8}
  * With --verified-row: {"userId", "username", "password", "cars": {confirmed, current, stale, bounced, suppressed},
  * "dates": {"confirmed": "Y-m-d", "current": "Y-m-d"}, "vericodes": {"confirmed": code, "suppressed": code},
- * "bouncedAddress": address}
+ * "bouncedAddress": address, "flaggedOwners": {"bounced": username, "suppressed": username}}
  * The owner has a random password that exists only in this output, so the
  * spec can log in as the owner with login() from auth-helper.js.
  *
@@ -126,15 +133,20 @@ define('SEED_CAR_MODEL', $verifiedRowMode ? '__PW_SEED_VERIFIED_ROW__' : '__PW_S
 define('SEED_CHASSIS_PREFIX', $verifiedRowMode ? 'PWVRF' : 'PWBDG');
 const FILLER_COUNT = 8;
 const SEED_BOUNCED_ADDRESS = 'pw-verified-row-bounced@example.invalid';
+const SEED_BOUNCED_OWNER = '__playwright_seed_vrf_bounced_owner__';
+const SEED_SUPPRESSED_OWNER = '__playwright_seed_vrf_suppressed_owner__';
 
 $db = dbi();
 
 // Delete all earlier marker rows, so a re-run is idempotent and --cleanup works.
 $cleanupQueries = [
+    ['DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username IN (?, ?, ?))', [SEED_USERNAME, SEED_BOUNCED_OWNER, SEED_SUPPRESSED_OWNER]],
+    ['DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username IN (?, ?, ?))', [SEED_USERNAME, SEED_BOUNCED_OWNER, SEED_SUPPRESSED_OWNER]],
     ['DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_USERNAME]],
     ['DELETE FROM cars WHERE model = ?', [SEED_CAR_MODEL]],
     ['DELETE FROM user_permission_matches WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_USERNAME]],
-    ['DELETE FROM users WHERE username = ?', [SEED_USERNAME]],
+    ['DELETE FROM user_permission_matches WHERE user_id IN (SELECT id FROM users WHERE username IN (?, ?))', [SEED_BOUNCED_OWNER, SEED_SUPPRESSED_OWNER]],
+    ['DELETE FROM users WHERE username IN (?, ?, ?)', [SEED_USERNAME, SEED_BOUNCED_OWNER, SEED_SUPPRESSED_OWNER]],
 ];
 foreach ($cleanupQueries as [$cleanupSql, $cleanupParams]) {
     $db->query($cleanupSql, $cleanupParams);
@@ -180,6 +192,52 @@ if (!$permInserted) {
     exit(1);
 }
 
+// Insert an owner profile. profiles.user_id is UNIQUE, so upsert. $flags holds
+// the deliverability columns to set; the rest keep their defaults (no flags).
+$upsertProfile = static function (int $ownerId, array $flags = []) use ($db): void {
+    $columns = array_merge(['bio' => '', 'city' => '', 'state' => '', 'country' => ''], $flags);
+    $names = implode(', ', array_keys($columns));
+    $marks = implode(', ', array_fill(0, count($columns), '?'));
+    $updates = implode(', ', array_map(static fn(string $c): string => "{$c} = VALUES({$c})", array_keys($columns)));
+    $db->query(
+        "INSERT INTO profiles (user_id, {$names}) VALUES (?, {$marks}) ON DUPLICATE KEY UPDATE {$updates}",
+        array_merge([$ownerId], array_values($columns))
+    );
+    if ($db->error()) {
+        fwrite(STDERR, "ERROR: Failed to upsert the profile for user {$ownerId}: {$db->errorString()}\n");
+        exit(1);
+    }
+};
+
+// A second and third owner, only in Verified row mode: the bounced and
+// suppressed cars need owners whose profiles carry the flags.
+$createFlaggedOwner = static function (string $username, string $email, array $flags) use ($db, $password, $upsertProfile): int {
+    $inserted = $db->insert('users', [
+        'username'       => $username,
+        'password'       => password_hash($password, PASSWORD_BCRYPT),
+        'email'          => $email,
+        'fname'          => 'Playwright',
+        'lname'          => 'Flagged Owner',
+        'active'         => 1,
+        'email_verified' => 1,
+        'permissions'    => 1,
+        'join_date'      => date('Y-m-d H:i:s'),
+    ]);
+    if (!$inserted) {
+        fwrite(STDERR, "ERROR: Failed to insert flagged owner {$username}: {$db->errorString()}\n");
+        exit(1);
+    }
+    $ownerId = (int) $db->lastId();
+    if (!$db->insert('user_permission_matches', ['user_id' => $ownerId, 'permission_id' => 1])) {
+        fwrite(STDERR, "ERROR: Failed to insert flagged owner permission: {$db->errorString()}\n");
+        exit(1);
+    }
+    $upsertProfile($ownerId, $flags);
+    return $ownerId;
+};
+
+$upsertProfile($userId);
+
 $carRepository = new CarRepository($db);
 
 $now = date('Y-m-d H:i:s');
@@ -193,6 +251,16 @@ if ($verifiedRowMode) {
     $thirtyDaysAgo = date('Y-m-d 12:00:00', strtotime('-30 days'));
     $fortyFiveDaysAgo = date('Y-m-d 12:00:00', strtotime('-45 days'));
     $vericodeSentAt = $now;
+
+    $flaggedOwnerIds = [
+        'bounced' => $createFlaggedOwner(SEED_BOUNCED_OWNER, 'playwright-seed-vrf-bounced@example.invalid', [
+            'email_bounced' => 1, 'email_bounced_address' => SEED_BOUNCED_ADDRESS,
+            'email_bounced_at' => '2026-04-02 10:00:00',
+        ]),
+        'suppressed' => $createFlaggedOwner(SEED_SUPPRESSED_OWNER, 'playwright-seed-vrf-suppressed@example.invalid', [
+            'email_opted_out' => 1, 'email_opted_out_at' => '2026-04-01 10:00:00',
+        ]),
+    ];
 
     /** @var array<string, array<string, mixed>> $specs */
     $specs = [
@@ -215,13 +283,13 @@ if ($verifiedRowMode) {
             'year' => 1973, 'chassis' => SEED_CHASSIS_PREFIX . 'B',
             'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
             'owner_last_updated' => $now,
-            'email_bounced' => 1, 'email_bounced_address' => SEED_BOUNCED_ADDRESS,
+            'user_id' => $flaggedOwnerIds['bounced'],
         ],
         'suppressed' => [
             'year' => 1974, 'chassis' => SEED_CHASSIS_PREFIX . 'P',
             'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
             'owner_last_updated' => $now,
-            'email_suppressed' => 1,
+            'user_id' => $flaggedOwnerIds['suppressed'],
         ],
     ];
 } else {
@@ -311,6 +379,7 @@ if ($verifiedRowMode) {
         ],
         'vericodes'      => $vericodes,
         'bouncedAddress' => SEED_BOUNCED_ADDRESS,
+        'flaggedOwners'  => ['bounced' => SEED_BOUNCED_OWNER, 'suppressed' => SEED_SUPPRESSED_OWNER],
     ]) . "\n";
     exit(0);
 }

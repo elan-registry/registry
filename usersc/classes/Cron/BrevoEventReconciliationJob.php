@@ -6,6 +6,7 @@ namespace ElanRegistry\Cron;
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
@@ -480,7 +481,15 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
 
         foreach ($matchedCars as $car) {
             try {
-                $this->applier->apply((int) $car->id, $email, $eventName, $reason, $messageId, $occurredAt);
+                $this->applier->apply(
+                    (int) $car->id,
+                    $email,
+                    $eventName,
+                    $reason,
+                    $messageId,
+                    $occurredAt,
+                    DeliverabilityFlagLog::SOURCE_RECONCILIATION
+                );
             } catch (CarDatabaseException $e) {
                 // Log and continue, unlike the webhook (which fails the whole
                 // request so Brevo retries). There is no caller to retry here,

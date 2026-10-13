@@ -612,22 +612,46 @@ to provide a focused, testable data access layer wrapping the `cars`,
   production callers — `CarVerificationManager::markVerified()` writes `last_verified` via
   `updateCar()` directly to set `owner_last_updated` atomically alongside it
 - `updateVerificationSentAt(int $carId, string $dateTime): bool` - Update the timestamp at which a verification email was sent
-- `updateEmailBounced(int $carId, bool $bounced, ?string $bouncedAddress = null): bool` -
-  Set or clear a car's email-bounced flag, and the address it bounced against (#1887)
-- `updateEmailSuppressed(int $carId, bool $suppressed): bool` - Set or clear a car's email-suppressed flag (#1887)
-- `findProfileEmailSuppressedForUpdate(int $userId): ?int` -
-  Read and row-lock `profiles.email_suppressed` (`SELECT ... FOR UPDATE`); must be called inside an
-  active transaction (#1895). Returns 0, 1, or null if no row. Used by the owner-level suppression
-  reversal so a double-submit waits for the first request and reads its committed value.
-- `findProfileEmailBounced(int $userId): ?int` -
-  Read the owner-level bounce flag from `profiles.email_bounced` (#1884).
-  Returns the flag value (0 or 1) or null if no row.
-- `findProfileEmailBouncedAddress(int $userId): ?string` -
-  Read the owner-level bounced address from `profiles.email_bounced_address` (#1884).
-  Returns the address string or null.
-- `updateProfileEmailBounced(int $userId, bool $bounced, ?string $bouncedAddress = null): bool` -
-  Update owner-level bounce state on `profiles` (#1884).
-  Throws `CarDatabaseException` if `$bounced === true` and `$bouncedAddress` is null/empty.
+- `findProfileEmailState(int $userId, bool $forUpdate = false): ?object` -
+  Read the owner's deliverability state from `profiles` (#2101): `email_opted_out`,
+  `email_opted_out_at`, `email_blocked`, `email_blocked_address`, `email_blocked_at`,
+  `email_blocked_cause`, `email_bounced`, `email_bounced_address`, `email_bounced_at` and
+  `email_bounce_cleared_at`. Returns `null` when the owner has no `profiles` row. Treat that as
+  "do not mail". With `$forUpdate` true it adds `FOR UPDATE`, and the caller must be inside a transaction.
+- `findProfileOptedOut(int $userId): ?int` -
+  Read `profiles.email_opted_out` (0, 1, or null if no row). Renamed from
+  `findProfileEmailSuppressed()` in #2101. It no longer uses `MAX()`, because `profiles.user_id` is unique.
+  The locking variant is removed: Resume now locks the row through the profile writer.
+- Profile writers (#2101). Each locks the owner's `profiles` row, writes one row by `user_id`, and
+  returns the old flag value (0 or 1), or `null` when the owner has no `profiles` row (nothing is written).
+  The caller passes the old value to `DeliverabilityFlagLog::record()`.
+  - `setProfileOptedOut(int $userId, bool $optedOut): ?int` - Set or clear `email_opted_out` and
+    `email_opted_out_at`. A repeat set keeps the first time.
+  - `setProfileBlocked(int $userId, string $address, ?string $cause, string $blockedAt): ?int` - Set
+    `email_blocked` with address, time and cause. `$cause` is one of `BLOCKED_CAUSES` or null. Writes
+    when the flag is 0 or is set for another address. A repeat for the same address keeps the first
+    time and cause.
+  - `clearProfileBlocked(int $userId): ?int` - Clear `email_blocked` and its address, time and cause.
+  - `setProfileBounced(int $userId, string $address, string $bouncedAt): ?int` - Set `email_bounced`
+    with address and `email_bounced_at`. Same repeat rule as the block.
+  - `clearProfileBounced(int $userId): ?int` - Clear `email_bounced` and its address and time, and set
+    `email_bounce_cleared_at`.
+  - The address is stored normalized (lower case). The setters throw `CarValidationException` for an
+    empty address, an unknown cause or an invalid time, and `CarDatabaseException` on a query failure.
+- `BLOCKED_CAUSE_SPAM`, `BLOCKED_CAUSE_UNSUBSCRIBED`, `BLOCKED_CAUSE_BLOCKLIST` and `BLOCKED_CAUSES` -
+  Public constants for `profiles.email_blocked_cause`.
+- `findOwnerOfCar(int $carId): ?object` - `user_id` and `username` of the car's owner. Event writes
+  use it to skip a car with no owner, a deleted owner or the `noowner` account.
+- `latestFlagClearAt(int $ownerId, string $flag, string $source): ?string` - Time of the latest
+  `logs` row that cleared the flag (`new = 0`) for this owner and source. It reads the metadata
+  `cleared_at` when the row has one (#2357), else `logdate`. Returns `null` when no row matches. It
+  converts the BLOB `logs.metadata` (`JSON_EXTRACT(CONVERT(metadata USING utf8mb4), ...)`), matches
+  `owner_id` as an integer, never reads `lognote`, and filters on `logtype` first to use
+  `idx_logs_logtype_logdate`. Throws `InvalidArgumentException` for an unknown flag or source.
+- `recentFlagChanges(int $ownerId, int $limit): array` - The owner's latest flag-change `logs` rows,
+  newest first (`logdate DESC, id DESC`). Each item has `date`, `flag`, `old`, `new`, `source` and
+  `acting_user_id`, and no address. `$limit` is clamped to 1 to 100. A row with malformed metadata is
+  skipped. #2361 uses it.
 - `restoreVerificationCodeState(int $carId, ?string $vericode, ?string $vericodeSentAt): bool` -
   Restore a car's pre-send vericode/vericode_sent_at after a failed send (#1884), distinct from
   `updateCar()` because it can observe a write that matched no row. Throws `CarDatabaseException` on query error.
@@ -644,10 +668,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   mode, which would also reassign identity columns on conflict); returns
   MySQL's `rowCount()` (1 insert, 2 changed duplicate, 0 unchanged
   duplicate) (#1887)
-- `countSoftBouncesSinceLastDelivered(string $email): int` - Count distinct
-  soft-bounce send cycles (`brevo_message_id` values) for an email since its
-  most recent `delivered` event; the query the webhook receiver's
-  soft-bounce escalation threshold is checked against (#1887)
+- `countSoftBouncesSinceLastDelivered(string $email, int $carId): int` - Count distinct
+  soft-bounce send cycles (`brevo_message_id` values) for an email since the later of its
+  most recent `delivered` event and the car owner's `profiles.email_bounce_cleared_at`.
+  The soft-bounce escalation threshold is checked against this query (#1887, #2101)
 - `deleteEmailEventsForCarIds(array $carIds): int` - Delete all
   `er_email_events` rows for a set of car ids; used by account-deletion and
   direct car-deletion cleanup, returns the number of rows deleted (0 for an
@@ -656,17 +680,16 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `er_email_events` rows with `occurred_at` before the cutoff (retention
   pruning); used by nightly reconciliation job, returns the number of rows
   deleted (#1889)
-- `clearBouncedForUser(int $userId, string $currentEmail): int` - Clear
-  `email_bounced` and `email_bounced_address` on every car owned by a user
-  whose recorded bounced address is no longer their current confirmed address
-  (as determined by a successful email-verification code confirmation). Returns
-  the number of rows affected by the UPDATE. Used by the `verifySuccess` hook
-  to auto-clear stale bounces on confirmed email changes (#1890)
-- `carIdsWithBouncedFlagButNoAddress(int $userId): array` - Query for car IDs
-  owned by a user with `email_bounced=1` but no recorded bounced address —
-  a pre-existing data-integrity anomaly. Returns an array of car IDs (empty if
-  none). Used by the `verifySuccess` hook to detect and log the anomaly before
-  clearing stale bounces (#1890)
+- `clearBouncedForUser(int $userId, string $currentEmail): int` - Clear the owner's profile bounce
+  (`email_bounced`, address and time, and set `email_bounce_cleared_at`) when
+  `profiles.email_bounced_address` is NULL, empty, or differs from the confirmed address under
+  the matching rule. Returns 1 when it cleared the bounce, else 0. It locks the row, so the caller
+  must be in a transaction. Used by `CarVerificationManager::clearBouncedForEmailChange()`, which
+  opens that transaction (#1890). Until #2356 replaces it.
+- `carIdsWithBouncedFlagButNoAddress(int $userId): array` - Returns the owner's car IDs when the
+  profile has `email_bounced=1` with no recorded bounced address (a data-integrity anomaly), and
+  `[]` otherwise, also for an owner with no cars. Used by the `verifySuccess` hook to detect and log
+  the anomaly before clearing the bounce (#1890). Until #2356 replaces it.
 - `transferEmailEvents(int $fromCarId, int $toCarId): bool` - Reassign
   `er_email_events` rows from one car to another; used by car merge, so the
   surviving car keeps the merged-away car's bounce/suppression history
@@ -740,44 +763,31 @@ to provide a focused, testable data access layer wrapping the `cars`,
   'bounced', 'suppressed', 'verified', 'sold']`. The statuses
   `findVerificationQueue()` accepts. Public so the admin dashboard can check
   a `?status=` URL value against the same list (#1896).
-- `findVerificationStateByOwner(int $ownerId): array` - Per-car verification/
-  bounce/suppression state for every car a user owns (`id`, `model`, `series`,
-  `variant`, `year`, `email`, `email_bounced`, `email_bounced_address`,
-  `email_suppressed`, `profile_email_suppressed`, `owner_last_updated`,
-  `last_verified`), ordered `model, year`. `profile_email_suppressed` is the
-  owner's profile-level opt-out flag, the same on every row. Backs the admin
-  user-view's "Verification & Email" card (#1924) and
-  `EmailNoticeBuilder::buildForOwner()`. Tinyint flag columns come back as `int|string` per PDO's driver
-  typing, not native bool — cast at the call site.
+- `findVerificationStateByOwner(int $ownerId): array` - Per-car verification state for
+  every car a user owns (`id`, `model`, `series`, `variant`, `year`, `email`,
+  `owner_last_updated`, `last_verified`), ordered `model, year`. Each row also carries the owner's
+  profile columns (#2101): `has_profile`, `email_opted_out`, `email_opted_out_at`, `email_blocked`,
+  `email_blocked_address`, `email_blocked_at`, `email_blocked_cause`, `email_bounced`,
+  `email_bounced_address` and `email_bounced_at`. They are the same on every row. For an owner
+  with no `profiles` row, `has_profile` is 0 and the profile columns are NULL. Backs the admin
+  user-view's "Verification & Email" card (#1924) and `EmailNoticeBuilder::buildForOwner()`.
+  Tinyint flag columns come back as `int|string` per PDO's driver typing, not native bool — cast
+  at the call site.
 - `findLatestEmailEventsByCarIds(array $carIds): array` - Latest (max
   `occurred_at`) `er_email_events` row per car id, keyed by `(int) car_id`; a
   car with no event history is simply absent from the map. Single aggregate
   query regardless of car count (self-join against a `(car_id, MAX(occurred_at))`
   subquery). Used alongside `findVerificationStateByOwner()` to back the
-  Bounced/Suppressed columns' event detail (#1924). No-ops to `[]` with no
+  per-car event detail (#1924). No-ops to `[]` with no
   query issued on an empty `$carIds` array.
-- `findLatestEmailEventsByCarIdsAndEvents(array $carIds, array $events): array` -
-  Latest (max `occurred_at`) `er_email_events` row per car id, limited to the
-  given `event` values, keyed by `(int) car_id`; a car with no matching row is
-  absent from the map. Same self-join-on-`MAX(occurred_at)` technique as
-  `findLatestEmailEventsByCarIds()`, filtered in both the subquery and the
-  outer query. Used by `EmailNoticeBuilder` to find each car's latest
-  suppression (`spam`/`unsubscribed`) or hard-bounce event, so a later,
-  unrelated event (`opened`, `click`, `delivered`) cannot outrank the actual
-  suppression or bounce event (#1899). No-ops to `[]` with no query issued
-  when `$carIds` or `$events` is empty.
-- `findLatestHistoryOperationByCarIds(array $carIds, array $operations): array` -
-  Latest (max `timestamp`) `cars_hist` row per car id, limited to the given
-  `operation` values, keyed by `(int) car_id`; a car with no matching row is
-  absent from the map. Same self-join-on-`MAX(timestamp)` technique as
-  `findLatestEmailEventsByCarIds()`. Used by `EmailNoticeBuilder` to date the
-  `'EMAIL SUPPRESSED'`/`'EMAIL BOUNCED'` cause lines on the account-page
-  notice (#1899). No-ops to `[]` with no query issued when `$carIds` or
-  `$operations` is empty.
 - `findVerificationEligible(int $limit, int $offset): array` - Paginated
   query for cars eligible for a verification email: not sold, deliverable
   email, and stale — neither verified nor updated by its owner within the last
-  year (see `stalenessSql()`). No longer falls back to `cars.mtime`.
+  year (see `stalenessSql()`). No longer falls back to `cars.mtime`. Since #2101 it
+  also excludes a car whose owner has `email_opted_out`, `email_blocked` or `email_bounced`
+  set, including a car registered after the flag was set (#2319), and a car whose owner has no
+  `profiles` row. The query uses `LEFT JOIN profiles p ON p.user_id = cars.user_id`. The rows are
+  `cars.*` only, with no profile fields.
 - `countVerificationSummary(?int $windowDays): array` - Count cars in each
   verification dashboard state: `all`, `eligible`, `pending`, `bounced`,
   `suppressed`, `verified`, `sold`. Backs the admin dashboard's summary cards
@@ -787,7 +797,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   (`null` for all time). `all` counts distinct cars that are eligible,
   pending, bounced, or suppressed — it excludes verified and sold, since
   those are history, not a queue state. Bounced and suppressed can overlap,
-  so `all` can be less than the sum of the four. Throws
+  so `all` can be less than the sum of the four. `all` also counts the unsold cars of a live owner
+  (not `noowner`) who has no `profiles` row, so the queue shows them as "No profile". `bounced` counts
+  owners with `profiles.email_bounced = 1`. `suppressed` counts owners with `email_blocked = 1` or
+  `email_opted_out = 1` until #2361 separates them. Throws
   `CarValidationException` if `$windowDays` is zero or negative, and
   `CarDatabaseException` on a query failure.
 - `findVerificationQueue(string $status, ?int $windowDays, int $limit): array` -
@@ -797,8 +810,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   and `sold`. Row order depends on status: `pending` is longest-waiting
   first, `eligible` is oldest-verified first, `verified`/`sold` is most
   recent history row first, and `all`/`bounced`/`suppressed` is car id
-  ascending. Throws `CarValidationException` for an unknown `$status` or an
-  invalid `$windowDays`, and `CarDatabaseException` on a query failure.
+  ascending. Each row carries the owner's state from `profiles`: `has_profile`,
+  `email_opted_out`, `email_blocked`, `email_blocked_cause` and `email_bounced`. Throws
+  `CarValidationException` for an unknown `$status` or an invalid `$windowDays`, and
+  `CarDatabaseException` on a query failure.
 - `findRecentVerificationActivity(?int $windowDays, int $limit = 20): array` -
   List the most recent `VERIFIED` and `VERIFIED SOLD` `cars_hist` rows,
   newest first. Backs the dashboard's Recent Activity panel (#1896). Reads
@@ -886,7 +901,7 @@ row. Add a row and a test here when you add one.
 - `app/api/cars/chassis-availability.php`, `app/api/cars/transfer-request.php` (`findByChassisKey()`)
 - User-deletion hook (`reassignCarsByUser()`, `deleteEmailEventsForCarIds()`)
 - `CarAdministrationService` (`deleteEmailEventsForCarIds()` on car deletion, `transferEmailEvents()` on car merge)
-- Email-verification hook (`clearBouncedForUser()`, `carIdsWithBouncedFlagButNoAddress()`) (#1890)
+- `CarVerificationManager::clearBouncedForEmailChange()` (`clearBouncedForUser()`) and the email-verification hook (`carIdsWithBouncedFlagButNoAddress()`) (#1890)
 - Sitemap generation (`getAllForSitemap()`)
 - `BrevoWebhookEventProcessor` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#1887)
 - `BrevoEventReconciliationJob` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`, `deleteEmailEventsOlderThan()`) (#1889)
@@ -1006,7 +1021,7 @@ committed.
 **Namespace**: `ElanRegistry\Car`
 
 **Purpose**: Business-logic layer for the car-owner verification lifecycle
-(verification codes, verification timestamps, email-bounce tracking).
+(verification codes, verification timestamps, owner email-deliverability flags).
 Constructor-injected with a `CarRepository`; validates input, delegates
 persistence to the repository, and mutates the passed-in `$carData` object
 on success.
@@ -1015,10 +1030,12 @@ on success.
 
 - CSPRNG-backed verification code generation (`bin2hex(random_bytes(16))`,
   128 bits of entropy)
-- Shared `persist()`/`updateBounced()` private helpers deduplicate the
-  validate → repo call → log-on-failure → throw pattern across the six
-  public methods that write to the repository (`generateVerificationCode()`
+- A shared `persist()` private helper deduplicates the
+  validate → repo call → log-on-failure → throw pattern across the car
+  methods that write to the repository (`generateVerificationCode()`
   is pure and makes no database call)
+- The deliverability methods write the owner's `profiles` row and one
+  `DeliverabilityFlagLog` row. They write nothing to `cars` and do not fan out (#2101)
 - Every repository-writing method throws `CarDatabaseException` on failure (repository
   returns `false`, or the repository call itself throws) rather than
   returning a falsy value — callers do not need to check a return value for
@@ -1034,33 +1051,39 @@ on success.
 - `generateVerificationCode(): string` - Generate a new verification code; pure function, no repository call
 - `markVerified(object $carData): bool` - Record that a car has been verified (sets `last_verified` to now)
 - `setVerificationSentAt(object $carData, string $dateTime): bool` - Record when a verification email was sent
-- `setBounced(object $carData, string $bouncedAddress): bool` - Flag a car's owner email as bounced, recording the address the bounce was reported against
-- `clearBounced(object $carData): bool` - Clear a car's bounced-email flag and the recorded bounced address (admin reversal)
-- `setSuppressed(object $carData): bool` - Flag a car's owner email as suppressed (e.g. a Brevo `spam` complaint) — a distinct signal from a bounce (#1887)
-- `clearSuppressed(object $carData): bool` - Clear a car's email-suppressed flag (admin reversal)
-- `setBouncedForOwner(int $ownerId, string $bouncedAddress): array` -
-  Owner-level Mark Bounced action: records the owner's current `users.email` on
-  `profiles.email_bounced_address` and fans out to set `email_bounced = 1` on every
-  car owned by that user (#1884). Returns array of pre-change car snapshots for history writing.
-- `clearBouncedForOwner(int $ownerId): array` -
-  Owner-level Clear Bounced action: clears `profiles.email_bounced` and fans out to clear
-  `email_bounced` on every car owned by that user (#1884). Returns array of pre-change car snapshots.
-- `clearSuppressedForOwner(int $ownerId): array` -
-  Owner-level Clear Suppression action: clears `profiles.email_suppressed` and fans out to clear
-  `email_suppressed` on every car owned by that user (#1884). Returns array of pre-change car snapshots.
-- `clearSuppressedForOwnerByOwner(int $ownerId): array` -
-  Owner self-service reversal of suppression via Account Settings. Clears `profiles.email_suppressed`
-  (skips the write if already 0) and calls `clearSuppressed()` on every car from `findByOwner()`
-  (sold included, skips cars already 0). Skips a car whose current suppression is a Brevo
-  complaint: only the admin method can clear it. Returns pre-change car snapshots for `cars_hist`. Throws
-  `CarDatabaseException` when the owner has no profiles row. Never touches bounce columns. Shares
-  one body with `clearSuppressedForOwner()`, which reads the profile flag with a locking read, so a
-  double-submit succeeds instead of failing on a 0-row UPDATE. Separate
-  from the admin method so logs and `cars_hist` separate the two paths. Used by `usersc/user_settings.php`.
-- `findBrevoComplaintCarIds(int $ownerId): array` -
-  IDs of the owner's suppressed cars whose current suppression is a Brevo spam or unsubscribe
-  complaint, by `EmailNoticeBuilder::resolveSuppressionCause()`. Used by the owner resume path
-  and by `usersc/user_settings.php` to tell the owner which cars need an admin.
+- `setBounced(int $carId, string $bouncedAddress, string $bouncedAt, string $source): bool` - Event path.
+  Finds the car's owner and sets `email_bounced` on the owner's profile with the address and time.
+  Skips with a log row (and returns false) for a car that does not exist, has no owner, has a deleted owner,
+  belongs to `noowner`, or has an owner with no `profiles` row. Returns true when the flag changed from 0 to 1.
+  `$source` is one of `DeliverabilityFlagLog::SOURCES`.
+- `setSuppressed(int $carId, string $blockedAddress, ?string $cause, string $blockedAt, string $source): bool` - Event path.
+  Sets `email_blocked` on the owner's profile with address, time and cause (a Brevo `spam` or `unsubscribed`
+  event). Same skip rules and return value as `setBounced()`.
+- `setSuppressedForOwner(int $ownerId): bool` -
+  Owner opt-out (the link in the verification email). Sets `email_opted_out` and `email_opted_out_at`
+  on the owner's profile, also when `email_blocked` or `email_bounced` is set. Source `owner`. Returns
+  true when the flag changed from 0 to 1.
+- `setBouncedForOwner(int $ownerId, string $bouncedAddress, int $actingUserId): bool` -
+  Admin Mark Bounced. Sets `email_bounced`, the address and `email_bounced_at` (now) on the owner's
+  profile. Source `admin`. Returns true when the flag changed from 0 to 1 (#1884).
+- `clearBouncedForOwner(int $ownerId, int $actingUserId): bool` -
+  Admin Clear Bounced. Clears `email_bounced` and sets `email_bounce_cleared_at`. Source `admin`.
+  Returns true when the flag changed from 1 to 0.
+- `clearSuppressedForOwner(int $ownerId, int $actingUserId): bool` -
+  Admin Clear Suppression. Until #2357, it clears `email_blocked` and `email_opted_out` on the
+  profile. The bounce stays. Source `admin`. Writes one log row per flag that changed. Returns true when at
+  least one flag changed.
+- `clearSuppressedForOwnerByOwner(int $ownerId): bool` -
+  Owner Resume via Account Settings. Clears `email_opted_out` and `email_opted_out_at` only. It leaves
+  `email_blocked` and `email_bounced` unchanged, so a block still stops mail. Source `owner`. Returns true
+  when the opt-out changed from 1 to 0. Used by `usersc/user_settings.php`.
+- `clearBouncedForEmailChange(int $actingUserId, int $userId, string $newEmail): bool` -
+  Clear after a change of email address. Calls `CarRepository::clearBouncedForUser()`, which clears a bounce on
+  another address, or a bounce with no recorded address. Source `email_change`. Runs its own transaction. Returns true when the bounce changed
+  from 1 to 0. Used by `sync_owner_email_on_verify.php` and `usersc/user_settings.php`.
+- The other owner methods run no transaction of their own. The caller opens one, so the profile write and the log row
+  commit together. They throw `CarDatabaseException` when the owner has no `profiles` row (nothing is written).
+  `getUserMessage()` is safe to show. The constructor takes an optional `DeliverabilityFlagLog` (default: a new one).
 - `markSold(object $carData, ?string $soldDate): bool` - Record a car as sold (`null` defaults to today)
 
 **Exceptions**:
@@ -1072,8 +1095,8 @@ on success.
 
 - Backend foundation for the car-owner verification system (issue #1155).
   `setBounced()`/`setSuppressed()` gained their first production caller in
-  #1887: `BrevoWebhookEventProcessor` calls them when an inbound Brevo
-  delivery-status webhook event reports a bounce or spam complaint. The
+  #1887: `EmailEventApplier` calls them when a Brevo delivery-status event
+  reports a bounce or spam complaint. The
   verification-email-sending consumer for `setVerificationCode()`/
   `markVerified()`/`setVerificationSentAt()` still lands in a later
   verification-system milestone.
@@ -1082,7 +1105,72 @@ on success.
 
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
 - [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`,
-  `cars.vericode_sent_at`, `cars.email_bounced`, `cars.email_bounced_address`, `cars.email_suppressed`, `cars.solddate`
+  `cars.vericode_sent_at`, `cars.solddate`, `profiles` deliverability columns
+
+---
+
+### DeliverabilityFlagLog
+
+**Location**: `/usersc/classes/Car/DeliverabilityFlagLog.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Writes the audit row for each change to an owner's profile email
+flag (#2101). `profiles` has no history table, so these `logs` rows are the
+audit trail. The class is final.
+
+**Key Features**:
+
+- Constants for the flags (`FLAG_OPTED_OUT`, `FLAG_BLOCKED`, `FLAG_BOUNCED`, with
+  the list `FLAGS`) and the sources (`SOURCE_OWNER`, `SOURCE_ADMIN`,
+  `SOURCE_WEBHOOK`, `SOURCE_RECONCILIATION`, `SOURCE_IMPORT`,
+  `SOURCE_EMAIL_CHANGE`, with the list `SOURCES`). `CarRepository::latestFlagClearAt()`
+  and `recentFlagChanges()` validate against the same lists.
+- The row has `logtype` `LogCategories::LOG_CATEGORY_EMAIL_BOUNCED`. The
+  `logs.metadata` JSON holds `owner_id` (integer), `flag`, `old`, `new` and
+  `source`. `lognote` repeats the values as text. The row never holds an email
+  address, and `record()` has no address parameter.
+- The constructor takes an optional `Closure` that receives
+  `(userId, logtype, lognote, metadata)` and returns the new `logs.id`. It
+  defaults to the UserSpice `logger()` helper. A unit test passes a recorder,
+  so no database is needed.
+- One exception to "each change writes a row": `restoreArchivedAccount()`
+  copies the archived opt-out into the new profile and writes no row.
+
+**Methods**:
+
+- `record(int $actingUserId, int $ownerId, string $flag, int $old, int $new, string $source): bool` -
+  Write one row. Returns false and writes nothing when `$old === $new`. Use
+  `$actingUserId = 0` for a delivery event, a cron job or an import. Throws
+  `InvalidArgumentException` for an unknown flag or source, a negative acting
+  user ID, an owner ID below 1, or a value other than 0 or 1. Throws
+  `CarDatabaseException` when the logger returns 0 or less (the insert failed).
+- `assertValidFlag(string $flag): void` and `assertValidSource(string $source): void` -
+  Static. Throw `InvalidArgumentException` for a value that is not in the list.
+
+**Example**:
+
+```php
+$old = $repo->setProfileOptedOut($ownerId, true);   // old value, or null if no profiles row
+if ($old !== null) {
+    (new DeliverabilityFlagLog())->record(
+        $ownerId,                                    // acting user (the owner)
+        $ownerId,
+        DeliverabilityFlagLog::FLAG_OPTED_OUT,
+        $old,
+        1,
+        DeliverabilityFlagLog::SOURCE_OWNER
+    );
+}
+```
+
+**Used By**: `CarVerificationManager` (every owner and event method, including
+`clearBouncedForEmailChange()` with source `email_change`).
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#flag-change-audit-rows) - Row contents
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_EMAIL_BOUNCED`
 
 ---
 
@@ -1245,69 +1333,45 @@ any key in `BADGES`, and the cars list JS needs no change.
 **Namespace**: `ElanRegistry\Car`
 
 **Purpose**: Assembles the data for the account-page notice that tells an
-owner one of their car's delivery addresses is suppressed or bounced
-(#1899). Pure data assembler — returns a plain array, renders no HTML. The
-partial `app/views/_email_paused_notice.php` escapes every field at render
-time.
+owner their verification email is paused because of an opt-out, a block or a
+bounce (#1899). The owner's `profiles` row is the system of record (#2101).
+Pure data assembler — returns a plain array, renders no HTML. The partial
+`app/views/_email_paused_notice.php` escapes every field at render time.
+Issue #2356 replaces this notice.
 
 **Key Features**:
 
-- `buildForOwner(int $ownerId): ?array` - `null` when the owner has no car
-  with `email_suppressed=1` or `email_bounced=1`. Otherwise returns
+- `buildForOwner(int $ownerId): ?array` - `null` when the owner has no car, or
+  the profile has no flag set (`email_opted_out`, `email_blocked`,
+  `email_bounced`). Otherwise returns
   `array{addresses: list<array{address: string, suppressed: array{cause:
   'owner_optout'|'brevo_complaint', date: ?string}|null, bounced:
   array{date: ?string}|null}>, overflowCount: int, hasSuppressed: bool,
   hasBounced: bool, contentHash: string}`.
 - Takes `CarRepository` by constructor injection, so a test can supply a
-  mock.
-- Dedupes by address, lowercased, not the owner's profile email — a car's
-  registered delivery address can differ from the account email. Each flag
-  uses its own address: suppressed uses the car's own `email` column;
-  bounced uses `email_bounced_address`, falling back to the car's `email`
-  when that is empty (`CarVerificationManager::setBouncedForOwner()` writes
-  one owner-level address to every car's `email_bounced_address`, so it can
-  differ from a given car's own `email`). When a car's two addresses
-  differ, it contributes to two separate entries. A flag with no usable
-  address for it is dropped and logged, not merged into the other flag's
-  address.
-- Suppression cause: an `er_email_events` row with `event` in
-  (`spam`, `unsubscribed`) means `brevo_complaint`, but only when that
-  event is not older than the car's latest `'EMAIL SUPPRESSED'` cars_hist
-  row — otherwise the event is stale (from before an intervening clear and
-  resuppress) and is ignored. No current event means `owner_optout` (the
-  opt-out POST handler in `verify_car.php` writes no event row). Two cars
-  sharing one address: `brevo_complaint` wins over `owner_optout`; same
-  cause, the later date wins.
-- Dates: the suppressed-cause date comes from `cars_hist`
-  (`'EMAIL SUPPRESSED'`) for `owner_optout`, or from the event's
-  `occurred_at` for `brevo_complaint` (the webhook path never writes an
-  `'EMAIL SUPPRESSED'` history row). The bounced date is the later of the
-  latest `'EMAIL BOUNCED'` cars_hist row (only `app/admin/index.php` writes
-  it) and the latest hard-bounce event
-  (`EmailEventApplier::HARD_BOUNCE_EVENTS`) — not simply "history, else
-  event" — because a webhook hard-bounce (which writes no history row) can
-  arrive after an admin-marked bounce was cleared and the car bounced
-  again. Both recency comparisons use full datetime precision, not the
-  truncated `Y-m-d` display date, so a same-day clear-and-resuppress isn't
-  missed. A flag with neither signal (legacy data) defaults to
-  `owner_optout` with a `null` date; the partial omits the date clause
-  rather than show one.
+  mock. It reads `CarRepository::findVerificationStateByOwner()`: the profile
+  columns are the flags, and the car rows give only the car addresses that an
+  opt-out names.
+- Each flag uses its own address and date:
+  - `email_bounced`: `email_bounced_address`, dated `email_bounced_at`.
+  - `email_blocked`: `email_blocked_address`, dated `email_blocked_at`. Cause
+    `brevo_complaint`, whatever `email_blocked_cause` says.
+  - `email_opted_out`: cause `owner_optout`. The opt-out applies to the
+    person, not to one address, so the notice names each distinct `cars.email`
+    of the owner, dated `email_opted_out_at`.
+- Dedupes by address, lowercased. One address that is both blocked and opted
+  out shows as `brevo_complaint`, because Resume does not clear a block. For
+  the same cause, the later date wins. A NULL `_at` column gives a `null`
+  date, and the partial omits the date clause. A flag with no usable address
+  is logged under `LOG_CATEGORY_EMAIL_ERROR` and left out.
+- The builder reads no `er_email_events` and no `cars_hist` rows. The
+  `OPERATION_*` constants and `resolveSuppressionCause()` are removed.
 - Caps the address list at `MAX_ADDRESSES` (3), sorted by lowercase
   address; `overflowCount` is the remainder. `hasSuppressed`/`hasBounced`/
   `contentHash` cover the full set, including addresses past the cap.
 - `contentHash` is a sha256 of the full sorted address/cause/date set.
   `account.php` uses it in the per-owner `sessionStorage` dismissal key, so
   a change to the underlying flags makes the notice reappear.
-
-**Exceptions**:
-
-- `CarDatabaseException` - propagated from `CarRepository` on any query
-  failure.
-
-**See Also**:
-
-- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Suppression/bounce semantics and the
-  email-paused notice section
 
 ---
 
@@ -1336,9 +1400,10 @@ unrequireable file.
   but not WHY — this checks the row already loaded by `findById()`, with no
   second query, so the admin report can give a per-car reason.
 - The owner-liveness clauses of the SQL (`INNER JOIN users`, the `noowner`
-  exclusion) are deliberately NOT duplicated here — they need a join this
-  class has no row for. They stay enforced downstream in
-  `CarVerificationSendService::sendOne()`.
+  exclusion) and the owner profile clauses (no `profiles` row,
+  `email_opted_out`, `email_blocked`, `email_bounced`) are deliberately NOT
+  duplicated here — they need a join this class has no row for. They stay
+  enforced downstream in `CarVerificationSendService::sendOne()`.
 - Fails closed on a malformed or MySQL zero-date `verification_attempts_since`
   by throwing rather than silently treating a corrupt timestamp as "outside
   the rolling window" (which would bypass the attempt cap).
@@ -1346,9 +1411,10 @@ unrequireable file.
 **Methods**:
 
 - `static skipReason(object $carData): ?string` - Checks, in priority order:
-  sold, bounced, suppressed, no email on file, no owner on file, freshness
+  sold, no email on file, no owner on file, freshness
   (recently verified or updated), then the 2-send-per-rolling-year attempt
-  cap. Returns a short human-readable reason, or `null` if the car is still
+  cap. It no longer checks a bounce or a suppression flag (#2101): those are
+  owner flags on `profiles`. Returns a short human-readable reason, or `null` if the car is still
   eligible.
 
 **Exceptions**:
@@ -1364,8 +1430,7 @@ unrequireable file.
 
 **See Also**:
 
-- [DATABASE.md](DATABASE.md) - `cars.solddate`, `cars.email_bounced`,
-  `cars.email_suppressed`, `cars.email`, `cars.user_id`,
+- [DATABASE.md](DATABASE.md) - `cars.solddate`, `cars.email`, `cars.user_id`,
   `cars.verification_attempts`, `cars.verification_attempts_since`
 
 ---
@@ -1440,8 +1505,9 @@ unit test (needs the full UserSpice bootstrap).
 **Purpose**: Site-wide feature switch and readiness probes for the car
 verification system — kept separate from `CarVerificationManager` above:
 this class owns one global config row plus two infrastructure probes
-(Brevo, cron), while `CarVerificationManager` mutates per-car records. No
-shared state or dependency exists between the two.
+(Brevo, cron), while `CarVerificationManager` writes per-car verification
+fields and the owner's email flags on `profiles`. No shared state or
+dependency exists between the two.
 
 **Key Features**:
 
@@ -1602,6 +1668,12 @@ sequences from drifting.
   in that caller
 - **Single shared eligibility query**: `findEligible()` delegates verbatim to
   `CarRepository::findVerificationEligible()`, not re-implemented
+- **Owner profile check in `sendOne()`**: `sendOne()` reads
+  `CarRepository::findProfileEmailState()` and returns `SendResult::failed()`
+  when the owner has no `profiles` row, or has `email_opted_out`,
+  `email_blocked` or `email_bounced` set. The manual path checks one `cars`
+  row that has no profile fields, and a flag can change between the batch
+  preview and the send. Such a car shows under Failed, not Skipped.
 - **Three separate scopes, never one transaction** in `sendOne()`: (A) rotate
   vericode+sent_at commit before network; (B) compose+send with no transaction;
   (C) record event+increment attempts in their own transaction on success.
@@ -1697,7 +1769,7 @@ subprocess dance the endpoint itself needs.
 
 - `EmailEventApplier` — Escalation rules (extracted for both webhook and reconciliation job)
 - [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full webhook receiver contract, escalation rules, HTTP status table
-- [DATABASE.md](DATABASE.md) - `er_email_events`, `cars.email_bounced_address`, `cars.email_suppressed`
+- [DATABASE.md](DATABASE.md) - `er_email_events`, `profiles` deliverability columns
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_EMAIL_WEBHOOK`
 
 ---
@@ -1709,7 +1781,8 @@ subprocess dance the endpoint itself needs.
 **Namespace**: `ElanRegistry\Car`
 
 **Purpose**: Records one Brevo delivery-status event against one car and
-applies whatever verification-flag escalation that event implies. Extracted
+applies whatever flag escalation that event implies. The flag is written to
+the car owner's profile (#2101). Extracted
 from `BrevoWebhookEventProcessor` (where it was private) because the nightly
 reconciliation job (#1889) replays events the webhook never delivered, and
 both paths must escalate identically.
@@ -1719,17 +1792,20 @@ both paths must escalate identically.
 - Payload-agnostic: takes already-parsed, already-validated scalars, so each
   caller (webhook or reconciliation job) keeps ownership of payload discovery
 - Escalation rules owned here, shared with `BrevoWebhookEventProcessor`:
-  - `hard_bounce` / `blocked` / `invalid` / `invalid_email` immediately flag
-    as bounced (accepts both `invalid` and `invalid_email` to hedge against
+  - `hard_bounce` / `blocked` / `invalid` / `invalid_email` immediately set
+    the owner's profile `email_bounced` (accepts both `invalid` and `invalid_email` to hedge against
     payload-contract uncertainty; Brevo may send either)
   - `soft_bounce` does not immediately change anything; after the event row is
     recorded, {@see CarRepository::countSoftBouncesSinceLastDelivered()} is
     consulted; at 3+ distinct send cycles (`brevo_message_id` values) since
-    the email's last `delivered` event, escalates to bounced
+    the email's last `delivered` event and the owner's last Clear Bounced
+    (`email_bounce_cleared_at`), escalates to bounced
   - `delivered` and `unique_opened` only record the event row; `delivered`
     implicitly resets the soft-bounce escalation window, so no separate
     "clear escalation" write exists; `unique_opened` never touches flags
-  - `spam` flags as suppressed (distinct signal from a bounce)
+  - `spam` sets the owner's `email_blocked` with cause `spam`, and
+    `unsubscribed` sets it with cause `unsubscribed` (distinct signal from a
+    bounce)
   - Any other event is still recorded (Brevo may add/rename event types) but
     logged as unrecognized
 - `HARD_BOUNCE_EVENTS` / `SUPPRESSION_EVENTS` are `public const` (widened from
@@ -1744,8 +1820,13 @@ both paths must escalate identically.
 
 **Methods**:
 
-- `apply(int $carId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt): void`
-  — Record the event and apply escalation; throws `CarDatabaseException` on write failure
+- `apply(int $carId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt,
+  string $source): void`
+  — Record the event and apply escalation. `$source` goes into the flag-change
+  log row. It has no default. The webhook passes `webhook`, the reconciliation
+  job passes `reconciliation`, and the suppression import passes `import`.
+  Throws `InvalidArgumentException` for an unknown `$source` (nothing is
+  written) and `CarDatabaseException` on write failure
 
 **Used By**:
 
@@ -1757,7 +1838,7 @@ both paths must escalate identically.
 - `BrevoWebhookEventProcessor` — Webhook parsing/matching (uses this for escalation)
 - `BrevoEventReconciliationJob` — Nightly reconciliation job (uses this for identical escalation)
 - [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full webhook receiver contract, escalation rules
-- [DATABASE.md](DATABASE.md) - `er_email_events`, escalation state columns
+- [DATABASE.md](DATABASE.md) - `er_email_events`, `profiles` deliverability columns
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_EMAIL_WEBHOOK`
 
 ---
@@ -2203,14 +2284,16 @@ holding cron runs open indefinitely.
 - Explicit `timeout` and `connect_timeout` options (30s and 10s respectively)
   applied to Guzzle client, unlike the plugin's own `sendinblue()` function
   which leaves both at unlimited
-- All failure modes (Brevo unconfigured, missing SDK, DB error, HTTP error)
+- All failure modes (no API key, missing SDK, DB error, HTTP error)
   return `null` rather than throwing, so reconciliation poll failures do not
   abort the whole cron run; an empty array means the poll succeeded and Brevo
   genuinely returned zero events for the window — the two are distinguishable
   (#2061), unlike this method's original `array`-only return type (#1889)
-- Defensive reads for Brevo configuration (API key, plugin status), with
-  distinct logging: `SKIPPED` for "not configured" (expected), `FAILURE` for
-  "configured but unreachable" (infrastructure fault)
+- Defensive reads of the API key from `plg_sendinblue`, with distinct
+  logging: `SKIPPED` for "no API key" (expected), `FAILURE` for
+  "key may exist but the read or call failed" (infrastructure fault). The
+  client checks only the key. It does not run the six-check readiness gate
+  of `VerificationSettings::brevoReady()`
 - Idempotent SDK autoloader with `require_once` and `class_exists()` short-circuit
 
 **Constructor**:
@@ -2230,7 +2313,7 @@ public function __construct(private readonly DatabaseInterface $db)
 **Private Methods**:
 
 - `apiKey(): ?string` — Read Brevo API key from plugin settings; null if
-  unconfigured or unreadable
+  there is no API key or the row is unreadable
 - `loadSdk(): bool` — Load vendored SDK autoloader; idempotent, safe to call
   when already loaded
 
@@ -2242,7 +2325,7 @@ public function __construct(private readonly DatabaseInterface $db)
 **See Also**:
 
 - `BrevoEventReconciliationJob` — Nightly reconciliation job (#1889)
-- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED` (not configured), `LOG_CATEGORY_CRON_JOB_FAILURE` (connectivity/SDK issues)
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED` (no API key), `LOG_CATEGORY_CRON_JOB_FAILURE` (connectivity/SDK issues)
 
 ---
 
@@ -2256,7 +2339,8 @@ public function __construct(private readonly DatabaseInterface $db)
 never delivered, plus retention pruning of `er_email_events` (#1889). Closes
 the lossy gap of the webhook by re-reading events from Brevo's statistics API
 and applying them through the same `EmailEventApplier` the webhook uses, so
-backfilled events escalate identically to live ones.
+backfilled events escalate identically to live ones. It passes the source
+`reconciliation` to the applier (#2101).
 
 **Key Features**:
 
@@ -2549,6 +2633,50 @@ if ($result['valid']) {
 ```
 
 ## Support Classes
+
+### DeliverabilityMigrationQueries
+
+**Location**: `/usersc/classes/Migration/DeliverabilityMigrationQueries.php`
+
+**Namespace**: `ElanRegistry\Migration`
+
+**Purpose**: The reads that decide what migration
+`20261012000000_move_deliverability_flags_to_profiles` copies from `cars` to
+`profiles` (#2101). The migration and its tests call the same methods, so a
+test compares the decisions with the migrated rows. The migration can use the
+class because `phinx.php` loads `vendor/autoload.php`.
+
+**Key Features**:
+
+- Constructor takes a `PDO`. It works before the migration (`profiles.email_suppressed`
+  holds the opt-out) and after phase 1 (`profiles.email_opted_out`).
+- The first call reads the database once and keeps the result. Make a new
+  instance after a write.
+- Every address compare uses `normalizeAddress()` and compares byte for byte in
+  PHP. SQL does no address compare, because the `users` and `cars` collations
+  are case-insensitive and can differ between installs.
+- The event names and `cars_hist` operation names are copies, not references to
+  `EmailEventApplier`, so the migration gives the same result when it runs
+  again later.
+
+**Methods**:
+
+- `static normalizeAddress(?string $address): string` - Trim and lower-case. NULL
+  becomes `''`, and `''` matches no real address. The rule for every address
+  compare in #2101 (also used by `CarRepository` and the restore).
+- `carFlagColumnsExist(): bool`, `duplicateProfileUserIds(): array`,
+  `profilesToInsert(): array`, `bounceCopies(): array`, `droppedBounces(): array`,
+  `optOutRestores(): array`, `blockCopies(): array`, `unknownCauseBlocks(): array`,
+  `droppedSuppressions(): array`, `optedOutAtBackfill(): array` and
+  `bouncedAtBackfill(): array` - Candidate rows and ID lists per migration case.
+  Methods that name an address return it normalized. Never print it.
+
+**See Also**:
+
+- [DATABASE.md](DATABASE.md) - `profiles` deliverability columns
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Deploy steps for this migration
+
+---
 
 ### BackupManager
 
