@@ -932,7 +932,7 @@ final class CarRepositoryTest extends TestCase
         $db = $this->createStub(DatabaseInterface::class);
         $db->method('query')->willReturnCallback(
             function (string $sql, array $params = []) use ($db, &$writes, &$selects) {
-                if (str_starts_with(ltrim($sql), 'SELECT id, user_id, email_opted_out')) {
+                if (str_starts_with(ltrim($sql), 'SELECT p.id, p.user_id, p.email_opted_out')) {
                     $selects[] = $sql;
                 } else {
                     $writes[] = ['sql' => $sql, 'params' => $params];
@@ -971,6 +971,7 @@ final class CarRepositoryTest extends TestCase
             'email_bounced_address' => null,
             'email_bounced_at' => null,
             'email_bounce_cleared_at' => null,
+            'user_email' => 'Owner@Example.com',
         ], $overrides);
     }
 
@@ -1006,7 +1007,7 @@ final class CarRepositoryTest extends TestCase
         $repo->findProfileEmailState(42, true);
 
         $this->assertCount(1, $selects);
-        $this->assertStringEndsWith('FOR UPDATE', $selects[0]);
+        $this->assertStringEndsWith('FOR UPDATE OF p, u', $selects[0]);
     }
 
     public function testFindProfileEmailStateThrowsOnDatabaseError(): void
@@ -1132,10 +1133,24 @@ final class CarRepositoryTest extends TestCase
             $writes
         ));
 
-        $repo->setProfileBlocked(42, 'new@example.com', 'unsubscribed', '2026-09-01 10:00:00');
+        $old = $repo->setProfileBlocked(42, 'new@example.com', 'unsubscribed', '2026-09-01 10:00:00');
 
+        $this->assertSame(0, $old, 'A block for an old address did not apply, so the old value is 0');
         $this->assertCount(1, $writes);
         $this->assertSame(['new@example.com', '2026-09-01 10:00:00', 'unsubscribed', 42], $writes[0]['params']);
+    }
+
+    /** The old value is the block that applied: here the stored block is for the current address. */
+    public function testSetProfileBlockedReturnsOneWhenTheReplacedBlockAppliedToTheCurrentAddress(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_blocked' => 1, 'email_blocked_address' => 'owner@example.com']),
+            $writes
+        ));
+
+        $this->assertSame(1, $repo->setProfileBlocked(42, 'other@example.com', 'spam', '2026-09-01 10:00:00'));
+        $this->assertCount(1, $writes);
     }
 
     /** A block with an empty stored address is rewritten, so it gains an address. */
@@ -1147,8 +1162,11 @@ final class CarRepositoryTest extends TestCase
             $writes
         ));
 
-        $repo->setProfileBlocked(42, 'owner@example.com', null, '2026-09-01 10:00:00');
-
+        $this->assertSame(
+            1,
+            $repo->setProfileBlocked(42, 'owner@example.com', null, '2026-09-01 10:00:00'),
+            'A block with no stored address applies (fail closed), so the old value is 1'
+        );
         $this->assertCount(1, $writes);
         $this->assertSame(['owner@example.com', '2026-09-01 10:00:00', null, 42], $writes[0]['params']);
     }
@@ -1223,7 +1241,7 @@ final class CarRepositoryTest extends TestCase
         $old = $repo->setProfileBounced(42, 'Owner@Example.com', '2026-09-01 10:00:00');
 
         $this->assertSame(0, $old);
-        $this->assertStringEndsWith('FOR UPDATE', $selects[0], 'The profile row is locked before the write');
+        $this->assertStringEndsWith('FOR UPDATE OF p, u', $selects[0], 'The profile row is locked before the write');
         $this->assertCount(1, $writes);
         $this->assertSame(
             'UPDATE profiles SET email_bounced = 1, email_bounced_address = ?, email_bounced_at = ? WHERE user_id = ?',
@@ -1245,8 +1263,9 @@ final class CarRepositoryTest extends TestCase
             $writes
         ));
 
-        $repo->setProfileBounced(42, 'new@example.com', '2026-09-01 10:00:00');
+        $old = $repo->setProfileBounced(42, 'new@example.com', '2026-09-01 10:00:00');
 
+        $this->assertSame(0, $old, 'A bounce for an old address did not apply, so the old value is 0');
         $this->assertCount(1, $writes);
         $this->assertSame(['new@example.com', '2026-09-01 10:00:00', 42], $writes[0]['params']);
     }
@@ -1299,7 +1318,7 @@ final class CarRepositoryTest extends TestCase
 
         $this->assertSame(1, $repo->clearProfileBounced(42));
 
-        $this->assertStringEndsWith('FOR UPDATE', $selects[0]);
+        $this->assertStringEndsWith('FOR UPDATE OF p, u', $selects[0]);
         $this->assertCount(1, $writes);
         $this->assertStringContainsString('email_bounce_cleared_at = ?', $writes[0]['sql']);
         $this->assertStringContainsString('email_bounced = 0', $writes[0]['sql']);

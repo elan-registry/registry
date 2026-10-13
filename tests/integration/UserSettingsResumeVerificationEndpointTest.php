@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -395,7 +396,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     }
 
     /**
-     * The owner is blocked and never opted out. Only an admin can clear the
+     * The owner is blocked and never opted out. Resume cannot clear the
      * block. The page hides the button, and a forced POST gives the reason
      * and the next step, and changes nothing.
      */
@@ -427,7 +428,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         $this->assertSame($before, $this->flags($ownerId), 'A block must stay');
         $this->assertStringNotContainsString('have been resumed', $result['successFlash']);
         $this->assertSame(
-            'Verification emails are paused because our email provider flagged your address. Please contact the registry.',
+            'Verification emails are paused because our email provider flagged your address. Change your email address or contact an admin.',
             $result['errorFlash']
         );
     }
@@ -463,7 +464,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         $this->assertSame('spam', $flags['email_blocked_cause']);
         $this->assertSame(
             'Your opt-out is removed. Verification emails stay paused because our email provider flagged your address. '
-            . 'Please contact the registry.',
+            . 'Change your email address or contact an admin.',
             $result['warningFlash'],
             'The message must be a warning, not a success'
         );
@@ -497,6 +498,53 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             'The message must be a warning, not a success'
         );
         $this->assertSame('', $result['successFlash']);
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function oldAddressFlagProvider(): array
+    {
+        return [
+            'bounce for an old address' => ['email_bounced'],
+            'block for an old address'  => ['email_blocked'],
+        ];
+    }
+
+    /**
+     * A bounce or block stored for an old address does not apply (#2356). So
+     * Resume clears the opt-out, reports success, and leaves the stored row.
+     */
+    #[Group('fast')]
+    #[Group('regression')]
+    #[DataProvider('oldAddressFlagProvider')]
+    public function testOptedOutOwnerWithAFlagForAnOldAddressResumesAndKeepsTheStoredFlag(string $flag): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->setUserEmailRaw($ownerId, 'resume-current@example.com');
+        $this->setOwnerOptedOut($ownerId);
+        if ($flag === 'email_bounced') {
+            $this->setOwnerBounced($ownerId, 'resume-old@example.com', '2026-03-04 05:06:07');
+        } else {
+            $this->setOwnerBlocked($ownerId, 'resume-old@example.com', '2026-03-04 05:06:07', 'spam');
+        }
+        $this->createTestCar($ownerId, ['email' => 'resume-current@example.com']);
+        $before = $this->flags($ownerId);
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertStringContainsString('Verification emails have been resumed for your cars.', $result['successFlash']);
+        $this->assertSame('', $result['warningFlash']);
+        $this->assertSame('', $result['errorFlash']);
+        $after = $this->flags($ownerId);
+        $this->assertSame('0', (string) $after['email_opted_out'], 'Resume clears the opt-out');
+        $flagColumns = $flag === 'email_bounced'
+            ? ['email_bounced', 'email_bounced_address', 'email_bounced_at']
+            : ['email_blocked', 'email_blocked_address', 'email_blocked_at', 'email_blocked_cause'];
+        foreach ($flagColumns as $column) {
+            $this->assertSame($before[$column], $after[$column], "Resume must leave {$column} unchanged");
+        }
     }
 
     #[Group('fast')]

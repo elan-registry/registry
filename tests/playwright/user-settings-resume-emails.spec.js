@@ -95,7 +95,7 @@ test.describe('Resume verification emails control (#1895)', () => {
         const toast = page.locator('.us-toast:has(.us-bar-dark) .toast-body');
         await expect(toast).toContainText('Your opt-out is removed.');
         await expect(toast).toContainText(
-            'Verification emails stay paused because our email provider flagged your address. Please contact the registry.'
+            'Verification emails stay paused because our email provider flagged your address. Change your email address or contact an admin.'
         );
         await expect(toast).not.toContainText('have been resumed');
         await expect(page.locator('.us-toast:has(.us-bar-success)')).toHaveCount(0);

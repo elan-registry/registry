@@ -477,6 +477,68 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         $this->assertSame(1, $this->repo->countSoftBouncesSinceLastDelivered($soft, $fixture['cars'][0]));
     }
 
+    // ---- a flag stored for an old address -----------------------------------------------------
+
+    /**
+     * Each case writes a flag for the new address B. A stored flag for the old
+     * address A does not apply to B, so the write is a change and must log.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function oldAddressFlagProvider(): array
+    {
+        return [
+            'bounce via the event applier'  => ['email_bounced', 'applier'],
+            'bounce via setBounced()'       => ['email_bounced', 'setBounced'],
+            'bounce via setBouncedForOwner' => ['email_bounced', 'setBouncedForOwner'],
+            'block via the event applier'   => ['email_blocked', 'applier'],
+            'block via setSuppressed()'     => ['email_blocked', 'setSuppressed'],
+        ];
+    }
+
+    #[DataProvider('oldAddressFlagProvider')]
+    public function testFlagForANewAddressLogsAChangeWhenTheStoredFlagIsForAnOldAddress(string $flag, string $path): void
+    {
+        $fixture = $this->createOwnerWithTwoCars('old-a@example.com', 'new-b@example.com');
+        if ($flag === 'email_bounced') {
+            $this->setOwnerBounced($fixture['owner'], 'old-a@example.com', '2026-01-01 00:00:00');
+        } else {
+            $this->setOwnerBlocked($fixture['owner'], 'old-a@example.com', '2026-01-01 00:00:00');
+        }
+        $this->db->query('UPDATE users SET email = ? WHERE id = ?', ['new-b@example.com', $fixture['owner']]);
+        $this->assertFalse(
+            $flag === 'email_bounced'
+                ? $this->repo->effectiveEmailFlags($fixture['owner'])->bounced
+                : $this->repo->effectiveEmailFlags($fixture['owner'])->blocked,
+            'Test setup: the flag for the old address must not apply to the new address'
+        );
+        $carId = $fixture['cars'][1];
+        $at = '2026-08-08 08:08:08';
+
+        if ($path === 'applier') {
+            // apply() returns nothing, so this path checks only the row and the log.
+            $event = $flag === 'email_bounced' ? 'hard_bounce' : 'spam';
+            $this->applier->apply($carId, 'new-b@example.com', $event, null, 'msg-new-b', $at, 'webhook');
+        } else {
+            $changed = match ($path) {
+                'setBounced'         => $this->manager->setBounced($carId, 'new-b@example.com', $at, 'webhook'),
+                'setSuppressed'      => $this->manager->setSuppressed($carId, 'new-b@example.com', 'spam', $at, 'webhook'),
+                'setBouncedForOwner' => $this->manager->setBouncedForOwner($fixture['owner'], 'new-b@example.com', self::ADMIN_ID),
+                default              => $this->fail("Test setup: unknown path {$path}"),
+            };
+            $this->assertTrue($changed, 'The flag now applies where it did not before, so the call reports a change');
+        }
+
+        $flags = $this->getOwnerEmailFlags($fixture['owner']);
+        $this->assertSame('1', (string) $flags[$flag]);
+        $this->assertSame('new-b@example.com', $flags[$flag . '_address'], 'The stored address is the new address');
+        $rows = $this->flagLogRows($fixture['owner']);
+        $this->assertCount(1, $rows, 'The change writes one flag-change log row');
+        $this->assertSame($flag, $rows[0]['metadata']['flag']);
+        $this->assertSame(0, $rows[0]['metadata']['old'], 'The old value is the flag that applied before: none');
+        $this->assertSame(1, $rows[0]['metadata']['new']);
+    }
+
     // ---- row lock -----------------------------------------------------------------------------
 
     /**

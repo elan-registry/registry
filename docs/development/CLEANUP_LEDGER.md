@@ -38,6 +38,7 @@ after an item is written.
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
+- [ ] The comment at ~L220 says "a send to it sets the bounce flag again". Name which Brevo event sets which flag (`blocked` sets `email_bounced`, `spam` and `unsubscribed` set `email_blocked`). Reword the "comes in #2359" notes here, in `usersc/scripts/during_user_creation.php` (~L29) and in `CarVerificationManager.php` (~L257, ~L288) so they stay true after #2359 ships (found in /finish-milestone v2.30.7)
 
 ### `app/admin/includes/process-admin-contact.php`
 
@@ -46,6 +47,10 @@ after an item is written.
 ### `app/admin/includes/tab-car_mgmt.php`
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
+
+### `app/admin/includes/tab-verification.php`
+
+- [ ] The status-chip comment (~L364) says the profile state "comes first, because it stops all verification email", but a bounce that applies also stops it and the chip does not test it. Say why bounce is left out, and that `$blocked` means "applies to the current address" since #2356 (found in /finish-milestone v2.30.7)
 
 ### `app/api/cars/list.php`
 
@@ -71,6 +76,10 @@ after an item is written.
 
 - [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Catch `CarDatabaseException`: an uncaught one turns a logged redirect into a 500. Keep the redirect to `/` on not-found (from #2002)
 
+### `app/verify/verify_car.php` + `usersc/classes/Car/CarVerificationManager.php`
+
+- [ ] A failed opt-out lookup or write (`verify_car.php` ~L692, ~L708) and a skipped spam or unsubscribe event (`CarVerificationManager.php` ~L346) log under `LOG_CATEGORY_EMAIL_BOUNCED`. They are not bounces, and `user_settings.php` logs the same read failure under `LOG_CATEGORY_DATABASE_ERROR`. Use one fitting category (found in /finish-milestone v2.30.7)
+
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
@@ -87,6 +96,12 @@ after an item is written.
 
 - [ ] Delete the directory (capture receiver, send-test CLI, README). Its README says it stays "until #1887 ships its own fixtures". #1887 is closed, and the Brevo payload fixtures now live in `BrevoWebhookEventProcessorTest.php` and `EmailEventApplierTest.php`. `scripts/spike-1888/brevo-webhook-capture.php` covers the same capture job. (found in the #2208 audit)
 - [ ] Update the two pointers in `docs/development/EMAIL_SYSTEM.md` (~746, ~814). (found in the #2208 audit)
+
+### `tests/Support/BrevoOverrideStub.php` + `tests/Support/BrevoSiteRoot.php` + `tests/Support/SpyEmailEventApplier.php` (test-only)
+
+- [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
+- [ ] `BrevoSiteRoot::PLUGIN_FILES` keeps `override.RENAME.php` only for the #2374 regression test (`VerificationSettingsTest.php` ~L656). Add a comment that says so (found in /finish-milestone v2.30.7)
+- [ ] `SpyEmailEventApplier` skips the parent constructor. A new public method on `EmailEventApplier` then runs real code on uninitialized collaborators. Make the spy fail on an unexpected call, or extract an interface (found in /finish-milestone v2.30.7)
 
 ### `tests/integration/BrevoWebhookEndpointTest.php`
 
@@ -168,9 +183,21 @@ after an item is written.
 
 - [ ] No test covers a batch while Brevo is not ready (plugin below 1.8.0): no email sent, every car in `failed` with the Brevo reason, no vericode rotation. Only `CarVerificationSendService::sendOne()` has that test. (found in #2184)
 
+### `usersc/classes/Car/CarRepository.php`
+
+- [ ] `latestFlagClearAt()` (~L2063) and `recentFlagChanges()` (~L2097) have no production caller, and `latestFlagClearAt()` reads a `cleared_at` key that `DeliverabilityFlagLog::record()` never writes. Delete them, or let #2357 add them with their first caller (found in /finish-milestone v2.30.7)
+
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
+
+### `usersc/classes/Car/EffectiveEmailFlags.php`
+
+- [ ] The constructor takes eleven positional parameters, nine of them bool or `?string`, and `CarRepository` (~L573-584) matches them by position. Add a `fromRow()` factory or use named arguments (found in /finish-milestone v2.30.7)
+
+### `usersc/classes/Car/EmailNoticeBuilder.php`
+
+- [ ] An `email_blocked_cause` value that is not in `BLOCKED_CAUSES` (~L77) becomes null with no log line. The owner sees the generic text and the bad value stays hidden. Log it (found in /finish-milestone v2.30.7)
 
 ### `usersc/classes/Car/SendResult.php`
 
@@ -189,6 +216,12 @@ after an item is written.
   - Check first: `docs/development/LOG_CATEGORIES.md` lists the constants.
   - Check first: `ApiResponseTest.php` (~406, ~692) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
   - Do this with #1997, which splits the overloaded categories in the same file.
+
+### `usersc/classes/Migration/DeliverabilityMigrationQueries.php` + `usersc/classes/Car/CarRepository.php` + `usersc/classes/Owner.php`
+
+- [ ] Runtime code (`Owner.php` ~L327, `CarRepository.php` ~L571 and 7 more, `account-cleanup-helpers.php` ~L234, `during_user_creation.php` ~L41) takes its address-matching rule from the migration helper `normalizeAddress()`. Move the rule to a runtime type, for example `ElanRegistry\Car\EmailAddress::normalize()`, and keep a frozen copy in the migration class (found in /finish-milestone v2.30.7)
+- [ ] The "flag applies" rule exists as SQL (`FLAG_ACTIVE_BLOCKED`, `FLAG_ACTIVE_BOUNCED`) and as PHP (`CarRepository::flagApplies()`, ~L595), tied only by a "Change the two together" comment. Put the PHP form next to `EffectiveEmailFlags` and add a parity test that runs both forms on a fixed set of addresses (found in /finish-milestone v2.30.7)
+- [ ] The "address changed" compare exists in `Owner::update()` (~L328) and in `clearFlagsForConfirmedEmailChange()` (`CarRepository.php` ~L888-890). Use one named method in both (found in /finish-milestone v2.30.7)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 

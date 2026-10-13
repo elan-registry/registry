@@ -756,9 +756,10 @@ after the flag was set.
 
 - `email_opted_out`: the owner chose to stop email. The Resume button clears it.
 - `email_blocked`: Brevo flagged the address (spam complaint, unsubscribe or
-  blocklist). The owner cannot clear it. Below the button, the section tells the
-  owner to contact the registry. With only `email_blocked` set, the button is
-  not shown.
+  blocklist). The Resume button cannot clear it. An admin clears it, and a
+  confirmed change to another address clears it. Below the button, the section
+  says "Change your email address or contact an admin." With only
+  `email_blocked` set, the button is not shown.
 
 The section displays "Verification emails are currently paused for {N} of your
 cars." N is the count of the owner's cars. If the count query fails, the section
@@ -778,13 +779,13 @@ verification still excludes an owner who has either flag. The result messages ar
 - The owner has no block and no bounce: a success message.
 - The opt-out changed, and the owner has a block: a warning (`usWarning()`)
   that says the opt-out is removed, emails stay paused because the provider
-  flagged the address, and the owner must contact the registry.
+  flagged the address, and "Change your email address or contact an admin."
 - The opt-out did not change, and the owner has a block: an error that gives
   the same reason and next step.
 - The owner has a bounce and no block: the same two messages, with the reason
   "email to your address bounced" and the next step "Update your email address".
 
-A block wins over a bounce, because only the registry can clear a block.
+A block wins over a bounce.
 `usWarning()` queues a UserSpice generic message, which the page shows as the
 neutral (dark) toast.
 
@@ -815,7 +816,7 @@ when no flag applies. The array holds `kind`, `address`, `date`, `cause`,
 | Bounced | `bounced` | `email_bounced` applies and no block applies | `email_bounced_address`, `email_bounced_at` |
 | Opted out | `opted_out` | `email_opted_out` is set and no block or bounce applies | no address, `email_opted_out_at` |
 
-- A block wins over a bounce, because only the registry can clear a block.
+- A block wins over a bounce.
 - With a block or a bounce, `alsoOptedOut` is true when the owner also opted out.
 - If a block or bounce has no stored address, `address` is the owner's current
   `users.email`. That flag applies to the current address.

@@ -465,26 +465,35 @@ class CarRepository
      *
      * It returns the stored values with no address match. A stored block or
      * bounce can be for an old address. To find whether a flag applies now,
-     * use {@see effectiveEmailFlags()}.
+     * use {@see effectiveEmailFlags()}. `user_email` is the owner's
+     * `users.email` (null when the users row is missing), so a writer can
+     * apply the match rule to the row that it locked.
      *
      * @param int  $userId    Owner user ID
-     * @param bool $forUpdate True to lock the row (SELECT ... FOR UPDATE). Use
-     *                        it only inside an active transaction, before a
-     *                        write that depends on the value read.
+     * @param bool $forUpdate True to lock the profiles row and the users row
+     *                        (SELECT ... FOR UPDATE OF p, u). Use it only
+     *                        inside an active transaction, before a write
+     *                        that depends on the value read.
      * @return object{id: int|string, user_id: int|string, email_opted_out: int|string, email_opted_out_at: ?string,
      *         email_blocked: int|string, email_blocked_address: ?string, email_blocked_at: ?string,
      *         email_blocked_cause: ?string, email_bounced: int|string, email_bounced_address: ?string,
-     *         email_bounced_at: ?string, email_bounce_cleared_at: ?string}|null
+     *         email_bounced_at: ?string, email_bounce_cleared_at: ?string, user_email: ?string}|null
      * @throws CarDatabaseException If the query fails
      */
     public function findProfileEmailState(int $userId, bool $forUpdate = false): ?object
     {
+        // The users row is locked too, so users.email cannot change before
+        // the caller's write. The LEFT JOIN reads, and so locks, `p` before
+        // `u`. Owner::update() and clearFlagsForConfirmedEmailChange() lock in
+        // the same order, which prevents a deadlock.
         $result = $this->db->query(
-            'SELECT id, user_id, email_opted_out, email_opted_out_at,
-                    email_blocked, email_blocked_address, email_blocked_at, email_blocked_cause,
-                    email_bounced, email_bounced_address, email_bounced_at, email_bounce_cleared_at
-               FROM profiles
-              WHERE user_id = ?' . ($forUpdate ? ' FOR UPDATE' : ''),
+            'SELECT p.id, p.user_id, p.email_opted_out, p.email_opted_out_at,
+                    p.email_blocked, p.email_blocked_address, p.email_blocked_at, p.email_blocked_cause,
+                    p.email_bounced, p.email_bounced_address, p.email_bounced_at, p.email_bounce_cleared_at,
+                    u.email AS user_email
+               FROM profiles p
+               LEFT JOIN users u ON u.id = p.user_id
+              WHERE p.user_id = ?' . ($forUpdate ? ' FOR UPDATE OF p, u' : ''),
             [$userId]
         );
         if ($this->db->error()) {
@@ -604,6 +613,14 @@ class CarRepository
     }
 
     /**
+     * Get the normalized `users.email` from a {@see findProfileEmailState()} row
+     */
+    private static function currentAddress(object $state): string
+    {
+        return DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($state->user_email ?? null));
+    }
+
+    /**
      * Tell whether a stored flag address is NULL or empty after normalization
      */
     private static function isEmptyAddress(mixed $address): bool
@@ -681,8 +698,11 @@ class CarRepository
      * @param string      $address   The blocked address. Stored normalized.
      * @param string|null $cause     One of {@see self::BLOCKED_CAUSES}, or null when unknown
      * @param string      $blockedAt When the block happened, in AppConstants::DATETIME_FORMAT
-     * @return int|null The old flag value (0 or 1), or null when the owner has
-     *                  no profiles row (nothing is written)
+     * @return int|null 1 when a block applied before the call, else 0. A
+     *                  block stored for an old address does not apply, so
+     *                  the caller logs and reports the new block as a change.
+     *                  A repeat block of the same address returns 1. Null
+     *                  when the owner has no profiles row (nothing is written).
      * @throws CarValidationException If the address is empty, the cause is not
      *                                permitted, or the time is not a valid datetime
      * @throws CarDatabaseException If a query fails
@@ -701,9 +721,8 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = (int) $state->email_blocked;
-        if ($old === 1 && self::sameAddress($state->email_blocked_address, $normalized)) {
-            return $old;
+        if ((int) $state->email_blocked === 1 && self::sameAddress($state->email_blocked_address, $normalized)) {
+            return 1;
         }
 
         $this->writeProfile(
@@ -713,7 +732,7 @@ class CarRepository
             'setProfileBlocked'
         );
 
-        return $old;
+        return self::flagApplies($state->email_blocked, $state->email_blocked_address, self::currentAddress($state)) ? 1 : 0;
     }
 
     /**
@@ -768,8 +787,11 @@ class CarRepository
      * @param int    $userId    Owner user ID
      * @param string $address   The address that bounced. Stored normalized.
      * @param string $bouncedAt When the bounce happened, in AppConstants::DATETIME_FORMAT
-     * @return int|null The old flag value (0 or 1), or null when the owner has
-     *                  no profiles row (nothing is written)
+     * @return int|null 1 when a bounce applied before the call, else 0. A
+     *                  bounce stored for an old address does not apply, so
+     *                  the caller logs and reports the new bounce as a change.
+     *                  A repeat bounce of the same address returns 1. Null
+     *                  when the owner has no profiles row (nothing is written).
      * @throws CarValidationException If the address is empty or the time is not a valid datetime
      * @throws CarDatabaseException If a query fails
      */
@@ -782,9 +804,8 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = (int) $state->email_bounced;
-        if ($old === 1 && self::sameAddress($state->email_bounced_address, $normalized)) {
-            return $old;
+        if ((int) $state->email_bounced === 1 && self::sameAddress($state->email_bounced_address, $normalized)) {
+            return 1;
         }
 
         $this->writeProfile(
@@ -794,7 +815,7 @@ class CarRepository
             'setProfileBounced'
         );
 
-        return $old;
+        return self::flagApplies($state->email_bounced, $state->email_bounced_address, self::currentAddress($state)) ? 1 : 0;
     }
 
     /**

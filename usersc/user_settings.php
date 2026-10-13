@@ -123,14 +123,14 @@ if (!empty($_POST)) {
 
             // Resume clears only the owner's own opt-out. A block or a bounce
             // stays, and eligibility still excludes the owner, so the message
-            // must not say that emails start again. A block needs the
-            // registry, so it wins over a bounce. Only a flag for the
+            // must not say that emails start again. A block shows before a
+            // bounce, as in the account page notice. Only a flag for the
             // current address applies (#2356).
             $effectiveFlags = $repo->effectiveEmailFlags($userId);
             if ($effectiveFlags->blocked && !$resumed) {
-                usError('Verification emails are paused because our email provider flagged your address. Please contact the registry.');
+                usError('Verification emails are paused because our email provider flagged your address. Change your email address or contact an admin.');
             } elseif ($effectiveFlags->blocked) {
-                usWarning('Your opt-out is removed. Verification emails stay paused because our email provider flagged your address. Please contact the registry.');
+                usWarning('Your opt-out is removed. Verification emails stay paused because our email provider flagged your address. Change your email address or contact an admin.');
             } elseif ($effectiveFlags->bounced && !$resumed) {
                 usError('Verification emails are paused because email to your address bounced. Update your email address to turn them back on.');
             } elseif ($effectiveFlags->bounced) {
@@ -786,8 +786,9 @@ if ($userQ2->count() > 0) {
 // also a car added after the flag was set
 // (see CarRepository::findVerificationEligible()):
 // - email_opted_out: the owner opted out. Resume clears it.
-// - email_blocked: the email provider flagged the address. Only an admin can
-//   clear it, so the page tells the owner to contact the registry.
+// - email_blocked: the email provider flagged the address. An admin clears
+//   it, and a confirmed change to another address clears it. The page tells
+//   the owner to change the address or contact an admin.
 // A block applies only while its address matches users.email (#2356).
 $ownerClearable = false;
 $emailBlocked = false;
@@ -840,7 +841,7 @@ if ($emailSuppressed) {
                                 </form>
                             <?php endif; ?>
                             <?php if ($emailBlocked): ?>
-                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not turn verification emails back on.' : '' ?> Please contact the registry for help.</p>
+                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not turn verification emails back on.' : '' ?> Change your email address or contact an admin.</p>
                             <?php endif; ?>
                         </section>
                     <?php endif; ?>

@@ -329,6 +329,27 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
         $this->assertStringNotContainsString('@', $notes, 'The log must hold no email address');
     }
 
+    /** A bounce stored for an old address does not apply now, so Mark Bounced is a change. */
+    #[Group('fast')]
+    public function testMarkBouncedReportsAChangeWhenTheStoredBounceIsForAnOldAddress(): void
+    {
+        $userId = $this->createTestUser(['email' => 'owner-action-old@example.com'], true);
+        $this->setOwnerBounced($userId, 'owner-action-old@example.com', '2026-01-01 00:00:00');
+        $this->db->query('UPDATE users SET email = ? WHERE id = ?', ['owner-action-new@example.com', $userId]);
+        $carId = $this->createTestCar($userId, ['email' => 'owner-action-new@example.com']);
+
+        $result = $this->runOwnerActionHandler('mark_bounced', $carId);
+
+        $this->assertEmpty($result['errors'], 'mark_bounced must succeed: ' . implode('; ', $result['errors']));
+        $this->assertCount(1, $result['successes']);
+        $this->assertStringEndsWith(': marked as bounced.', $result['successes'][0], 'The admin sees a change, not "already marked"');
+        $this->assertSame('owner-action-new@example.com', $this->getOwnerEmailFlags($userId)['email_bounced_address']);
+        $logRows = $this->flagLogRows($userId);
+        $this->assertCount(1, $logRows, 'The change writes one flag-change log row');
+        $this->assertSame(0, $logRows[0]['old']);
+        $this->assertSame(1, $logRows[0]['new']);
+    }
+
     #[Group('fast')]
     public function testClearBouncedOnARealOwnerClearsOnlyTheBounceAndRecordsTheClearTime(): void
     {

@@ -151,13 +151,13 @@ final class UserSettingsResumeSectionTest extends TestCase
      * owner who has both must be told that one click does not fix the block.
      */
     #[Group('regression')]
-    public function testBlockNoteTellsOwnerToContactTheRegistryAndKeepsTheButton(): void
+    public function testBlockNoteTellsOwnerToChangeTheAddressOrContactAnAdminAndKeepsTheButton(): void
     {
         $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3, emailBlocked: true);
 
         $this->assertStringContainsString('Our email provider flagged your address.', $html);
         $this->assertStringContainsString('This button does not turn verification emails back on.', $html);
-        $this->assertStringContainsString('contact the registry', $html);
+        $this->assertStringContainsString('Change your email address or contact an admin.', $html);
         $this->assertStringContainsString('name="resume_verification_emails"', $html, 'The opt-out can still be cleared');
     }
 
@@ -179,7 +179,7 @@ final class UserSettingsResumeSectionTest extends TestCase
         $this->assertStringNotContainsString('name="resume_verification_emails"', $html);
         $this->assertStringContainsString('Our email provider flagged your address.', $html);
         $this->assertStringNotContainsString('This button', $html, 'The note must not refer to a button that is not there');
-        $this->assertStringContainsString('contact the registry', $html);
+        $this->assertStringContainsString('Change your email address or contact an admin.', $html);
     }
 
     public function testBlockNoteIsAbsentWhenTheOwnerIsNotBlocked(): void

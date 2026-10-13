@@ -21,7 +21,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
  * about the owner, not about a car: an owner with no car still gets it
  * (#2319). One state wins:
  * - `blocked`: `email_blocked_address`, dated `email_blocked_at`. A block
- *   wins over a bounce, because an admin must clear it.
+ *   wins over a bounce.
  * - `bounced`: `email_bounced_address`, dated `email_bounced_at`.
  * - `opted_out`: only when no block or bounce applies, dated
  *   `email_opted_out_at`.

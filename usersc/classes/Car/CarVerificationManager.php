@@ -243,7 +243,8 @@ class CarVerificationManager
      * @param string $bouncedAt When the bounce happened, in AppConstants::DATETIME_FORMAT
      * @param string $source One of {@see DeliverabilityFlagLog::SOURCES}, normally
      *                       `webhook`, `reconciliation` or `import`
-     * @return bool True when the owner's flag changed from 0 to 1
+     * @return bool True when a bounce now applies and none applied before. A
+     *              bounce stored for an old address did not apply.
      * @throws \InvalidArgumentException If $source is not a permitted value
      * @throws CarValidationException If the address is empty or the time is not valid
      * @throws CarDatabaseException If a query fails
@@ -283,7 +284,8 @@ class CarVerificationManager
      * @param string $blockedAt When the block happened, in AppConstants::DATETIME_FORMAT
      * @param string $source One of {@see DeliverabilityFlagLog::SOURCES}, normally
      *                       `webhook`, `reconciliation` or `import`
-     * @return bool True when the owner's flag changed from 0 to 1
+     * @return bool True when a block now applies and none applied before. A
+     *              block stored for an old address did not apply.
      * @throws \InvalidArgumentException If $source is not a permitted value
      * @throws CarValidationException If the address is empty, the cause is not permitted or the time is not valid
      * @throws CarDatabaseException If a query fails
@@ -408,7 +410,8 @@ class CarVerificationManager
      * @param int $ownerId Owner user ID
      * @param string $bouncedAddress The owner's current address
      * @param int $actingUserId The admin who took the action
-     * @return bool True when the flag changed from 0 to 1
+     * @return bool True when a bounce now applies and none applied before. A
+     *              bounce stored for an old address did not apply.
      * @throws CarValidationException If $bouncedAddress is empty
      * @throws CarDatabaseException If the owner has no profiles row (nothing
      *                              is written), or a query fails
@@ -622,8 +625,8 @@ class CarVerificationManager
      *
      * Clears only `profiles.email_opted_out` and `email_opted_out_at`, the
      * flag that the owner set. A block (`email_blocked`) and a bounce stay,
-     * because the owner did not cause them. Only an admin clears a block. An
-     * admin, or a confirmed change to another address, clears a bounce.
+     * because the owner did not cause them. An admin, or a confirmed change
+     * to another address, clears a block or a bounce.
      * Writes one audit row with source `owner` when the flag changes.
      * Nothing is written to a car.
      *
