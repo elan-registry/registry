@@ -202,6 +202,18 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         return (array) $row;
     }
 
+    /**
+     * Pins the full query string of a PRG redirect, not only one parameter,
+     * so a changed parameter order or separator fails the test. A valid
+     * vericode is hex, which encodes to itself, so this cannot detect a
+     * lost encoding.
+     */
+    private function assertRedirectsToSelfWithQuery(string $expectedQuery, ?string $location): void
+    {
+        $this->assertNotNull($location);
+        $this->assertStringEndsWith('app/verify/verify_car.php?' . $expectedQuery, (string) $location);
+    }
+
     private function historyCount(string $operation): int
     {
         $row = $this->db->query(
@@ -297,8 +309,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $result = $this->post('vericode=' . $code . '&action=verify', ['vericode' => $code]);
 
         $this->assertSame(303, $result['status'], 'POST must respond with a PRG redirect');
-        $this->assertNotNull($result['location']);
-        $this->assertStringContainsString('action=verify', (string) $result['location']);
+        $this->assertRedirectsToSelfWithQuery('vericode=' . $code . '&action=verify', $result['location']);
 
         $after = $this->carRow();
         $this->assertNotNull($after['last_verified'], 'last_verified must be set');
@@ -331,8 +342,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         ]);
 
         $this->assertSame(303, $result['status']);
-        $this->assertNotNull($result['location']);
-        $this->assertStringContainsString('action=sold', (string) $result['location']);
+        $this->assertRedirectsToSelfWithQuery('vericode=' . $code . '&action=sold', $result['location']);
 
         $after = $this->carRow();
         $this->assertSame($submittedDate, (string) $after['solddate'], 'solddate must equal the submitted date, not today');
@@ -550,16 +560,75 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
             'uppercase hex' => [str_repeat('A', 32)],
             'non-hex characters' => [str_repeat('z', 32)],
             'empty' => [''],
+        ] + self::urlReservedVericodeProvider();
+    }
+
+    /**
+     * 32 characters each after Input::raw() trims them, so only the
+     * non-hex characters fail the format check. The format check must
+     * reject them, because the views only HTML-escape the vericode.
+     *
+     * @return array<string, array{0: string}>
+     */
+    public static function urlReservedVericodeProvider(): array
+    {
+        return [
+            'ampersand' => [str_repeat('a', 31) . '&'],
+            'encoded ampersand' => [str_repeat('a', 29) . '%26'],
+            'hash' => [str_repeat('a', 31) . '#'],
+            'question mark' => [str_repeat('a', 31) . '?'],
+            'plus' => [str_repeat('a', 31) . '+'],
+            'space' => [str_repeat('a', 15) . ' ' . str_repeat('a', 16)],
+            'CR LF' => [str_repeat('a', 15) . "\r\n" . str_repeat('a', 15)],
+            'equals' => [str_repeat('a', 31) . '='],
         ];
     }
 
     #[DataProvider('malformedVericodeProvider')]
     public function testMalformedVericodeIsRejectedBeforeAnyDbQuery(string $badCode): void
     {
+        $this->assertSame(0, $this->verificationAttemptRowCount(), 'Rate-limit rows leaked from an earlier run');
+
         $result = $this->get('vericode=' . urlencode($badCode));
 
         $this->assertSame(404, $result['status']);
         $this->assertStringContainsString('expired or is no longer valid', $result['body']);
+        // A lookup miss gives the same 404 but records a rate-limit row.
+        $this->assertSame(0, $this->verificationAttemptRowCount(), 'The format check must reject the code before the rate-limit step');
+    }
+
+    #[DataProvider('urlReservedVericodeProvider')]
+    public function testPostWithUrlReservedVericodeIsRejectedWithNoRedirectAndNoWrite(string $badCode): void
+    {
+        $this->issueVericode();
+        $before = $this->carRow();
+        $this->assertSame(0, $this->verificationAttemptRowCount(), 'Rate-limit rows leaked from an earlier run');
+
+        $result = $this->post(
+            'vericode=' . rawurlencode($badCode) . '&action=verify',
+            ['vericode' => $badCode]
+        );
+
+        $this->assertSame(404, $result['status']);
+        $this->assertNull($result['location'], 'A rejected vericode must not reach any redirect');
+        $this->assertStringContainsString('expired or is no longer valid', $result['body']);
+        $this->assertSame($before, $this->carRow(), 'A rejected vericode must not change the car row');
+
+        // A lookup miss also gives this 404, but it records a rate-limit row.
+        // No row proves that the format check rejected the code first.
+        // The count is not keyed by token: RateLimit sanitizes the value
+        // before it hashes it, so a hash of $badCode would not match for '&'.
+        $this->assertSame(0, $this->verificationAttemptRowCount(), 'The format check must reject the code before the rate-limit step');
+    }
+
+    private function verificationAttemptRowCount(): int
+    {
+        $row = $this->db->query(
+            "SELECT COUNT(*) AS cnt FROM us_rate_limits WHERE action = 'verification_code_attempt'"
+        )->first();
+        // DB swallows a failed query, and a missing row would read as 0.
+        $this->assertFalse($this->db->error(), 'Rate-limit row count query failed');
+        return (int) $row->cnt;
     }
 
     // ------------------------------------------------------------------
@@ -592,8 +661,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         ]);
 
         $this->assertSame(303, $result['status'], 'POST must respond with a PRG redirect');
-        $this->assertNotNull($result['location']);
-        $this->assertStringContainsString('action=optout', (string) $result['location']);
+        $this->assertRedirectsToSelfWithQuery('vericode=' . $code . '&action=optout', $result['location']);
 
         $this->assertSame(
             1,
@@ -816,8 +884,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $result = $this->post('vericode=' . $code . '&action=bogus', ['vericode' => $code]);
 
         $this->assertSame(303, $result['status']);
-        $this->assertNotNull($result['location']);
-        $this->assertStringNotContainsString('action=', (string) $result['location']);
+        $this->assertRedirectsToSelfWithQuery('vericode=' . $code, $result['location']);
 
         $afterRow = $this->carRow();
         $this->assertNull($afterRow['last_verified'], 'An unrecognized POST action must not verify the car');
@@ -954,8 +1021,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $result = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
 
         $this->assertSame(303, $result['status'], 'POST must respond with a PRG redirect');
-        $this->assertNotNull($result['location']);
-        $this->assertStringContainsString('action=optout', (string) $result['location']);
+        $this->assertRedirectsToSelfWithQuery('vericode=' . $code . '&action=optout', $result['location']);
 
         $flags = $this->getOwnerEmailFlags($this->testUserId);
         $this->assertSame('1', (string) $flags['email_opted_out'], 'The owner-level email_opted_out flag must be set');

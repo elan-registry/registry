@@ -120,6 +120,7 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
                 <?php endif; ?>
             </div>
 
+            <?php // No CSRF token by design: the vericode is the credential. See the "NO CSRF TOKEN" header in app/verify/verify_car.php. ?>
             <form method="POST" action="<?= $verifySelfAttr ?>?vericode=<?= $verifyCodeAttr ?>&amp;action=optout">
                 <input type="hidden" name="vericode" value="<?= $verifyCodeAttr ?>">
 

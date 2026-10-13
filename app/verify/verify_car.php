@@ -147,6 +147,24 @@ function renderActionFailed(string $whatFailed): never
 }
 
 /**
+ * Send a Post/Redirect/Get 303 to this page, then stop.
+ *
+ * The query values are URL-encoded here, so the Location header does not
+ * depend on the vericode format check. The form actions and links in the
+ * views still do: they only HTML-escape the vericode. The separator and the
+ * encoding are explicit, so an `arg_separator.output` INI value cannot
+ * change the URL.
+ *
+ * @param string                $selfUrl The page URL with no query string
+ * @param array<string, string> $query   The query parameters, not encoded
+ */
+function verifyRedirect(string $selfUrl, array $query): never
+{
+    header('Location: ' . $selfUrl . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986), true, 303);
+    exit;
+}
+
+/**
  * Render one content partial inside the full site template, then stop.
  *
  * The template include is deferred to here (rather than running at the top of
@@ -537,8 +555,7 @@ if ($isPost && $action === 'verify') {
     }
 
     // Post/Redirect/Get: a refresh must never re-submit.
-    header('Location: ' . $verifySelfUrl . '?vericode=' . $verifyCode . '&action=verify', true, 303);
-    exit;
+    verifyRedirect($verifySelfUrl, ['vericode' => $verifyCode, 'action' => 'verify']);
 }
 
 if ($isPost && $action === 'sold') {
@@ -588,8 +605,7 @@ if ($isPost && $action === 'sold') {
         renderActionFailed('We could not record the sale.');
     }
 
-    header('Location: ' . $verifySelfUrl . '?vericode=' . $verifyCode . '&action=sold', true, 303);
-    exit;
+    verifyRedirect($verifySelfUrl, ['vericode' => $verifyCode, 'action' => 'sold']);
 }
 
 if ($isPost && $action === 'optout') {
@@ -626,15 +642,13 @@ if ($isPost && $action === 'optout') {
         renderActionFailed('We could not record your opt-out, so you may still receive verification emails.');
     }
 
-    header('Location: ' . $verifySelfUrl . '?vericode=' . $verifyCode . '&action=optout', true, 303);
-    exit;
+    verifyRedirect($verifySelfUrl, ['vericode' => $verifyCode, 'action' => 'optout']);
 }
 
 // Any POST that reaches here carries an action this page does not handle.
 // Treat it as a non-action rather than mutating anything.
 if ($isPost) {
-    header('Location: ' . $verifySelfUrl . '?vericode=' . $verifyCode, true, 303);
-    exit;
+    verifyRedirect($verifySelfUrl, ['vericode' => $verifyCode]);
 }
 
 // --- 8. GET rendering — never mutates ------------------------------------
