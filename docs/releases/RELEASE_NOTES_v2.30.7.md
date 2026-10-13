@@ -38,6 +38,10 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - Brevo events and suppressed contacts now match the owner's account email, not the email copied onto a car. An event for mail sent before
   the deploy to an old car email shows as an unmatched recipient. ([#2356](https://github.com/elan-registry/registry/issues/2356))
+- On plugin 1.8.0 or later, verification sends and the Brevo webhook keep working when `override.php` differs from the bundled copy.
+  Brevo readiness no longer compares the two files. An `override.php` kept from before 1.8.0 still drops the verification tag, and readiness
+  does not detect it. Replace `override.php` with the bundled version after each plugin update.
+  ([#2374](https://github.com/elan-registry/registry/issues/2374))
 
 ## Data Model, Deploy, and Rollback Notes
 
@@ -94,6 +98,7 @@ own block on the address after deletion. A send to a blocked address returns a
 - [#2205](https://github.com/elan-registry/registry/issues/2205) — Encode the vericode in `verify_car.php` redirects and mark the verify forms' no-CSRF design.
 - [#2356](https://github.com/elan-registry/registry/issues/2356) — Show each owner's true email state and clear the flags on a confirmed email
   change. Also closes #2318 and #2320, and the notice part of #2319.
-- WIP: [#2374](https://github.com/elan-registry/registry/issues/2374) — Stop the Brevo webhook from dropping verification events when only send-side checks fail.
+- WIP: [#2374](https://github.com/elan-registry/registry/issues/2374) — Remove the `override.php` hash check from Brevo readiness,
+  so a plugin update no longer stops sends or drops webhook events.
 - WIP: [#2378](https://github.com/elan-registry/registry/issues/2378) — Stop new-account sign-up from setting a remember-me token.
 - [#2403](https://github.com/elan-registry/registry/issues/2403) — Add a `/groom-tests` command that reviews the test suite for low-value tests.

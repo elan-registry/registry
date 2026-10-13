@@ -251,10 +251,10 @@ call `$this->request('GET'|'POST', $body)`. Examples: `LoginFailureLoggingTest`,
 
 Before v2.30.6, two integration tests (`BrevoWebhookEndpointTest`,
 `VerificationToggleEndpointBehaviorTest`) wrote the 6-byte `BrevoOverrideStub::CONTENT` to
-`usersc/plugins/sendinblue/override.php`. The tests no longer write it. `brevoReady()` checks that
-`override.php` matches `override.RENAME.php`, so the stub cannot make Brevo ready. That path is
-gitignored, so `git status` does not show a stub that an older run leaked. While the stub is there,
-the dev site reports Brevo as not ready.
+`usersc/plugins/sendinblue/override.php`. The tests no longer write it. `brevoReady()` does not
+compare `override.php` with the bundled file. So a leaked stub makes the dev site report Brevo as
+ready, and `email()` falls back to core PHPMailer. That path is gitignored, so `git status` does
+not show a stub that an older run leaked.
 
 The tests that need a ready Brevo save a test API key and use the real plugin files on the
 checkout, set up as in
@@ -263,9 +263,6 @@ not ready, these tests fail, and the failure message gives the reason from
 `brevoNotReadyReason()`. They fail and do not skip, because a skip exits 0 and would hide a
 readiness bug from the pre-push gate. The not-ready tests empty the API key, so they run on every
 checkout.
-
-`BrevoSiteRoot` by default also writes `BrevoOverrideStub::CONTENT` as both `override.RENAME.php` and
-`override.php` in a temporary site root, so that the two files have the same hash.
 
 At the start of each integration run, `tests/bootstrap-integration.php` calls
 `BrevoOverrideStub::sweep()`. It removes the file only on an exact byte-for-byte match with the

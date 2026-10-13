@@ -219,12 +219,13 @@ final class CarVerificationSendService
         }
 
         // Send only when Brevo is ready (key, active plugin, override file,
-        // plugin 1.8.0 or later, override matches the bundled copy). Otherwise
-        // email() is the core PHPMailer fallback, or an override that ignores
-        // $opts['tags'], and the mail can report success with no verification
-        // tag, so the webhook never records its delivery. Checked
-        // before Scope A so a refused send leaves the vericode untouched and
-        // costs no attempt.
+        // plugin 1.8.0 or later). Otherwise email() is the core PHPMailer
+        // fallback, or a plugin older than 1.8.0 drops $opts['tags'], and the
+        // mail can report success with no verification tag, so the webhook
+        // never records its delivery. Readiness does not read override.php:
+        // an override kept from before 1.8.0 also drops the tag and is not
+        // caught here (accepted risk, #2374). Checked before Scope A so a
+        // refused send leaves the vericode untouched and costs no attempt.
         $brevoNotReadyReason = $this->settings->brevoNotReadyReason();
         if ($brevoNotReadyReason !== null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(

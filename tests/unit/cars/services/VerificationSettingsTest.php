@@ -287,10 +287,15 @@ final class VerificationSettingsTest extends TestCase
 
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => '']);
 
-        $this->expectException(VerificationConfigException::class);
-        $this->expectExceptionMessageMatches('/Brevo/i');
-
-        (new VerificationSettings($db))->setEnabled(true);
+        try {
+            (new VerificationSettings($db))->setEnabled(true);
+            $this->fail('setEnabled(true) must throw when Brevo is not ready');
+        } catch (VerificationConfigException $e) {
+            $this->assertSame(
+                'Refused to enable verification: No API key is saved in the Brevo plugin.',
+                $e->getMessage()
+            );
+        }
     }
 
     /**
@@ -643,10 +648,10 @@ final class VerificationSettingsTest extends TestCase
     }
 
     /**
-     * A plugin update never touches override.php, so an override from an
-     * older version can stay in place and drop the tag (#2184).
+     * A plugin update never touches override.php, so it can differ from the
+     * bundled copy. Readiness does not compare the two files (#2374).
      */
-    public function testBrevoNotReadyWhenOverrideDiffersFromBundledCopy(): void
+    public function testBrevoReadyWhenOverrideDiffersFromBundledCopy(): void
     {
         $this->useTempSiteRoot(withOverrideFile: true)->writeStaleOverride();
 
@@ -654,28 +659,8 @@ final class VerificationSettingsTest extends TestCase
             new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
         );
 
-        $this->assertFalse($settings->brevoReady());
-        $this->assertSame(
-            'The Brevo override file is out of date. On the Brevo plugin page, open "Show file contents" under "Override Update Available", then click "Replace my override.php with the bundled version".',
-            $settings->brevoNotReadyReason()
-        );
-    }
-
-    public function testBrevoNotReadyWhenBundledOverrideIsMissing(): void
-    {
-        $this->useTempSiteRoot(withOverrideFile: true)->removeBundledOverride();
-
-        $settings = new VerificationSettings(
-            new VerificationSettingsFakeDatabase(firstRowValue: (object) ['key' => 'sib-fake-api-key'])
-        );
-
-        $this->assertFalse($settings->brevoReady());
-        $this->assertSame(
-            'The Brevo override file cannot be compared with the copy that ships with the plugin. '
-            . 'Check that usersc/plugins/sendinblue/override.php and '
-            . 'usersc/plugins/sendinblue/override.RENAME.php exist and are readable.',
-            $settings->brevoNotReadyReason()
-        );
+        $this->assertTrue($settings->brevoReady());
+        $this->assertNull($settings->brevoNotReadyReason());
     }
 
     /**

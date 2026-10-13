@@ -90,7 +90,6 @@ After your Brevo account is set up and DNS is verified:
 9. Set Tag untagged mail to "Calling file name". See
    [Mail Tags](#mail-tags).
 10. Click Activate Override to route all `email()` calls through Brevo
-    (`override.php` equals `override.RENAME.php`)
 11. Click Test Email to send a test message to your email address and verify end-to-end delivery
 
 ## Mail Tags
@@ -313,12 +312,14 @@ The `VerificationSettings` class gates the entire verification system via a sing
   5. `usersc/plugins/sendinblue/info.xml` shows version 1.8.0 or later.
      Older versions drop the `tags` option, so the verification tag never
      reaches Brevo.
-  6. `override.php` has the same SHA-256 hash as the bundled
-     `override.RENAME.php`. A plugin update does not change `override.php`,
-     so an old override can stay in place and drop the tag. After each update,
-     open "Show file contents" under "Override Update Available" on the
-     plugin page. Then click "Replace my override.php with the bundled
-     version".
+
+  A plugin update does not change `override.php`, so an older override can
+  stay in place. The Verification tab does not check the content of
+  `override.php`. An override kept from before 1.8.0 drops the tag, and
+  readiness does not catch it (accepted risk, #2374). The bundled copy can
+  also hold other fixes. After each update, open "Show file contents" under "Override
+  Update Available" on the plugin page. Then click "Replace my override.php
+  with the bundled version".
 - `cronReady(): bool` — computed live; true if `lastCronRequestAt()` reports a
   timestamp within the last 20 minutes (2× the documented 10-minute cron
   transport interval — see
@@ -346,8 +347,8 @@ always reflect current state.
 **Brevo Readiness:**
 
 - `brevoReady()` checks only that the plugin's configuration exists, the
-  plugin is active, the override file is in place and matches the bundled
-  copy, and the plugin version is 1.8.0 or later
+  plugin is active, the override file is in place, and the plugin version
+  is 1.8.0 or later
 - It does **not** validate the API key by calling Brevo, since that would
   add latency to every status check and introduce a hard dependency on
   external availability
