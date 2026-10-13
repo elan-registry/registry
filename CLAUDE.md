@@ -138,8 +138,8 @@ targeting the milestone branch. Each command describes its own steps.
   per issue: /start-issue → /execute-plan → /commit → /review-pr
              → /commit-push-pr → /address-pr-comments → /finish-issue
 /finish-milestone → /review-milestone → /release-milestone
-Other: /new-issue, /found, /security-review, /sprint-status, /groom-backlog,
-       /revise-claude-md, /clean_gone
+Other: /new-issue, /found, /security-review, /sprint-status, /groom-tests,
+       /groom-backlog, /revise-claude-md, /clean_gone
 ```
 
 `/finish-milestone` runs its own review of the milestone diff (Steps 9.5 to
