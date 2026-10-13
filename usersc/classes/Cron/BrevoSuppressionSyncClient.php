@@ -41,7 +41,7 @@ use ElanRegistry\LogCategories;
  * `LocationService::makeHttpRequest()`'s `CURLOPT_TIMEOUT` — every outbound
  * HTTP call gets an explicit deadline.
  *
- * All failure modes (Brevo unconfigured, missing SDK, DB error, HTTP error)
+ * All failure modes (no API key, missing SDK, DB error, HTTP error)
  * return `null` rather than throwing: a suppression poll that cannot reach
  * Brevo should log and skip, not abort the whole cron run. `null` — rather
  * than the empty result its sibling returns — is what makes the contract
@@ -118,7 +118,8 @@ class BrevoSuppressionSyncClient
      * @param int                     $offset    Zero-based offset into the
      *                                           result set
      * @return \Brevo\Client\Model\GetTransacBlockedContacts|null The page, or
-     *         null if Brevo is not configured/ready or the API call fails —
+     *         null if there is no API key, the SDK is not loaded, or the API
+     *         call fails —
      *         never throws. Null means "poll failed"; it is distinct from a
      *         returned page whose `getCount()` is 0, which means Brevo really
      *         has nothing to report. Callers paging on `getCount()` must stop
@@ -205,7 +206,7 @@ class BrevoSuppressionSyncClient
      * the looser style of the plugin's own `sendinblue()` function, which
      * dereferences the row without checking that the query succeeded.
      *
-     * @return string|null The key, or null if Brevo is not configured or the
+     * @return string|null The key, or null if there is no API key or the
      *                     row could not be read
      */
     private function apiKey(): ?string
@@ -214,7 +215,7 @@ class BrevoSuppressionSyncClient
 
         if ($this->db->error()) {
             // SQLSTATE 42S02 = table missing, i.e. the sendinblue plugin was
-            // never installed — an expected, non-alarming "not configured".
+            // never installed — an expected, non-alarming "no API key".
             // Any other error (connection lost, grants revoked, lock timeout)
             // means the key may well exist and the poll is being skipped for
             // an unrelated infrastructure fault; logged distinctly so an
@@ -226,7 +227,7 @@ class BrevoSuppressionSyncClient
             // means Brevo was never installed here, an expected steady state
             // on any environment without it (dev, a fresh test box), so it is
             // a SKIPPED, not a FAILURE. Any other error genuinely is a fault.
-            // Without this split, an unconfigured environment would log a
+            // Without this split, an environment with no API key would log a
             // "cron job failure" on every claimed run forever, drowning the
             // one category an operator filters on to find real problems.
             logger(
@@ -247,7 +248,7 @@ class BrevoSuppressionSyncClient
         $settings = $this->db->first();
         if (!is_object($settings) || empty($settings->key)) {
             // SKIPPED, not FAILURE: an environment with no Brevo key is
-            // correctly configured for what it is, and would otherwise log a
+            // a valid setup, and would otherwise log a
             // "failure" every claimed run in perpetuity.
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, 'Brevo suppression sync: no Brevo API key configured in plg_sendinblue — skipping poll.');
             return null;

@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use ElanRegistry\AppConstants;
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationEmailComposer;
@@ -18,7 +17,6 @@ use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
-use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Input as ElanInput;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
@@ -266,85 +264,6 @@ $queueShowLimit = isset($_GET['show']) && is_string($_GET['show'])
     ? (int) $_GET['show'] : 25;
 
 $activityWindowDays = verificationGetMappedChoice('activity_window', CarRepository::QUEUE_WINDOW_CHOICES, 30);
-
-if (!function_exists('verifyHistoryFieldsForAdminAction')) {
-    /**
-     * Build a cars_hist snapshot row for an admin bounce/suppression action.
-     *
-     * The admin-side counterpart of verify_car.php's verifyHistoryFields(),
-     * kept deliberately identical in shape (full column snapshot plus
-     * `operation`) so one query on `operation` can separate these admin
-     * actions from ordinary edits and from owner self-verification.
-     *
-     * NO $soldDate PARAMETER. None of these actions sets a sale date, so there
-     * is no new value to record: the caller's snapshot carries the car's
-     * current `solddate` through unchanged and the audit row reflects the state
-     * as it stood, not a fresh value.
-     *
-     * @param object $carData   PRE-CHANGE car snapshot returned by the CarVerificationManager
-     * @param string $operation 'EMAIL BOUNCED', 'EMAIL BOUNCE CLEARED' or 'EMAIL SUPPRESSION CLEARED'
-     * @param string $comments  Free-text audit note
-     * @return array<string, mixed> Field map for CarRepository::insertHistory()
-     * @throws OwnerDatabaseException If the car's owner cannot be loaded
-     */
-    function verifyHistoryFieldsForAdminAction(object $carData, string $operation, string $comments): array
-    {
-        $owner = (new Owner((int) $carData->user_id))->data();
-
-        // Owner::data() is nullable when find() reports "not found" rather than
-        // a DB fault. A caller must not silently write a half-populated audit
-        // row if the owner vanished between the action and this snapshot. Fail
-        // loudly and let the caller's transaction roll the car mutation back
-        // too.
-        if ($owner === null) {
-            throw new OwnerDatabaseException(
-                'admin/index.php: owner ' . (int) $carData->user_id
-                . " could not be loaded while building the {$operation} history snapshot for car "
-                . (int) $carData->id
-            );
-        }
-
-        return [
-            'operation'             => $operation,
-            'car_id'                => (int) $carData->id,
-            'comments'              => $comments,
-            'ctime'                 => $carData->ctime ?? date(AppConstants::DATETIME_FORMAT),
-            'mtime'                 => date(AppConstants::DATETIME_FORMAT),
-            'model'                 => $carData->model ?? '',
-            'series'                => $carData->series ?? '',
-            'variant'               => $carData->variant ?? '',
-            'year'                  => $carData->year ?? null,
-            'type'                  => $carData->type ?? '',
-            'chassis'               => $carData->chassis ?? '',
-            'color'                 => $carData->color ?? '',
-            'engine'                => $carData->engine ?? '',
-            'purchasedate'          => $carData->purchasedate ?? null,
-            'solddate'              => $carData->solddate ?? null,
-            'email_bounced'         => $carData->email_bounced ?? 0,
-            'email_bounced_address' => $carData->email_bounced_address ?? null,
-            'email_suppressed'      => $carData->email_suppressed ?? 0,
-            // Added by migration 20260915000000, which also rebuilt the
-            // cars_update trigger to carry these two columns — this
-            // explicit snapshot must match, or every admin-action audit row
-            // written here reads attempts=0/since=NULL regardless of the
-            // car's actual state.
-            'verification_attempts'       => $carData->verification_attempts ?? 0,
-            'verification_attempts_since' => $carData->verification_attempts_since ?? null,
-            'image'                 => $carData->image ?? '',
-            'user_id'               => (int) $carData->user_id,
-            'email'                 => $carData->email ?? ($owner->email ?? ''),
-            'fname'                 => $owner->fname ?? '',
-            'lname'                 => $owner->lname ?? '',
-            'join_date'             => $owner->join_date ?? null,
-            'city'                  => $owner->city ?? '',
-            'state'                 => $owner->state ?? '',
-            'country'               => $owner->country ?? '',
-            'lat'                   => $owner->lat ?? null,
-            'lon'                   => $owner->lon ?? null,
-            'website'               => $owner->website ?? '',
-        ];
-    }
-}
 
 if (!function_exists('sendEmailOwnerLabel')) {
     /**
@@ -879,12 +798,10 @@ if (ElanInput::existsPost()) {
 
                 // Owner-level deliverability actions.
                 //
-                // Each is owner-scoped (the flags are owner-level facts fanned out
-                // to that owner's cars) and pairs every state change with a
-                // cars_hist INSERT inside one transaction. Mark Bounced goes
-                // through CarVerificationManager::setBouncedForOwner(), whose write
-                // path is structurally free of `user_id` — a bounce records a
-                // deliverability fact and never moves a car to another owner.
+                // The flags live on the owner's profiles row (#2101), so each
+                // action writes that one row and nothing on cars. The
+                // CarVerificationManager owner methods write the audit row
+                // (logs, LOG_CATEGORY_EMAIL_BOUNCED) inside this transaction.
                 case "mark_bounced":
                 case "clear_bounced":
                 case "clear_suppression":
@@ -926,11 +843,11 @@ if (ElanInput::existsPost()) {
                     // keyed by the same three strings is equivalent and honest
                     // about the one impossible branch.
                     $verifyActionMap = [
-                        'mark_bounced'      => ['EMAIL BOUNCED', 'marked as bounced'],
-                        'clear_bounced'     => ['EMAIL BOUNCE CLEARED', 'cleared of the bounce flag'],
-                        'clear_suppression' => ['EMAIL SUPPRESSION CLEARED', 'cleared of the suppression flag'],
+                        'mark_bounced'      => ['Mark Bounced', 'marked as bounced', 'already marked as bounced'],
+                        'clear_bounced'     => ['Clear Bounced', 'cleared of the bounce flag', 'no bounce flag to clear'],
+                        'clear_suppression' => ['Clear Suppression', 'cleared of the suppression flag', 'no suppression flag to clear'],
                     ];
-                    [$verifyOperation, $verifySuccessVerb] = $verifyActionMap[(string) $command];
+                    [$verifyOperation, $verifySuccessVerb, $verifyNoChangeVerb] = $verifyActionMap[(string) $command];
 
                     $verificationRepo->beginTransaction();
 
@@ -941,10 +858,11 @@ if (ElanInput::existsPost()) {
                         // on the WHOLE owner (CarVerificationManager::*ForOwner()),
                         // so a `noowner` car must not reach this handler: the
                         // `noowner` system account (GDPR-erasure reassignment
-                        // target) can hold many unrelated cars, and this would
-                        // flag or clear all of them from a single row's click. The
-                        // UI already hides the action for this case; this is the
-                        // server-side half of that same guard.
+                        // target) can hold many unrelated cars. A single row's
+                        // click would write the flag on the `noowner` profile row,
+                        // which stands for all of them. The UI already hides the
+                        // action for this case. This is the server-side half of
+                        // that same guard.
                         if (($verifyOwnerData->username ?? '') === 'noowner') {
                             throw new CarValidationException(
                                 "Car {$verifyCarId} has no individual owner to apply '{$command}' to"
@@ -966,46 +884,29 @@ if (ElanInput::existsPost()) {
                                 );
                             }
 
-                            $changedCars = $verificationManager->setBouncedForOwner(
+                            $verifyChanged = $verificationManager->setBouncedForOwner(
                                 $verifyOwnerId,
-                                (string) $verifyOwnerData->email
+                                (string) $verifyOwnerData->email,
+                                $currentUserId
                             );
                         } elseif ($command === 'clear_bounced') {
-                            $changedCars = $verificationManager->clearBouncedForOwner($verifyOwnerId);
+                            $verifyChanged = $verificationManager->clearBouncedForOwner($verifyOwnerId, $currentUserId);
                         } else {
-                            $changedCars = $verificationManager->clearSuppressedForOwner($verifyOwnerId);
-                        }
-
-                        // One audit row per car actually changed, from the
-                        // PRE-change snapshot the manager returned — matching the
-                        // cars_update trigger's OLD.* convention.
-                        foreach ($changedCars as $beforeCar) {
-                            if (!$verificationRepo->insertHistory(verifyHistoryFieldsForAdminAction(
-                                $beforeCar,
-                                $verifyOperation,
-                                'Admin action via the Verification System tab'
-                            ))) {
-                                throw new CarDatabaseException(
-                                    "Audit trail insert failed for {$verifyOperation} on car "
-                                    . (int) $beforeCar->id
-                                );
-                            }
+                            $verifyChanged = $verificationManager->clearSuppressedForOwner($verifyOwnerId, $currentUserId);
                         }
 
                         $verificationRepo->commit();
 
                         $successes[] = sprintf(
-                            '%s: %d car%s %s.',
+                            '%s: %s.',
                             sendEmailOwnerLabel($verifyOwnerData, $verifyOwnerId),
-                            count($changedCars),
-                            count($changedCars) === 1 ? '' : 's',
-                            $verifySuccessVerb
+                            $verifyChanged ? $verifySuccessVerb : $verifyNoChangeVerb
                         );
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                            'Verification: %s applied for owner %d (%d cars changed)',
+                            'Verification: %s applied for owner %d (%s)',
                             $verifyOperation,
                             $verifyOwnerId,
-                            count($changedCars)
+                            $verifyChanged ? 'flag changed' : 'no change'
                         ));
                     } catch (CarValidationException $e) {
                         $verificationRepo->rollback();

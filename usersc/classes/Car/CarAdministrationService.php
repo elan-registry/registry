@@ -37,26 +37,20 @@ class CarAdministrationService
      * blank — but have no dedicated CarValidator case, so CarValidator's
      * default branch would otherwise silently drop that null/'' clear before
      * it reaches updateCar(). See withBlankedFieldsRestored(). Most entries
-     * mirror the new owner's identity (email, fname, etc.); email_bounced_address
-     * and vericode are the exception — they are always cleared regardless of
-     * the new owner's values, for reasons documented at their write sites in
-     * transfer(). `user_id` and `join_date` are excluded from this list
-     * entirely: they are never blank on a valid target.
+     * mirror the new owner's identity (email, fname, etc.); vericode is the
+     * exception — it is always cleared regardless of the new owner's values,
+     * for the reason documented at its write site in transfer(). `user_id`
+     * and `join_date` are excluded from this list entirely: they are never
+     * blank on a valid target.
      *
      * @var list<string>
      */
     private const OWNER_IDENTITY_FIELDS = [
         'email', 'fname', 'lname', 'city', 'state', 'country', 'lat', 'lon', 'website',
-        // email_bounced_address (#1887) has no dedicated CarValidator case, so a
-        // null value (the clear-on-transfer case) hits the validator's default
-        // branch, which drops null/'' fields — silently defeating the clear.
-        // Restoring it here, the same way the other owner-identity fields are
-        // restored, is what makes the clear actually reach updateCar().
-        'email_bounced_address',
-        // vericode has the same exposure: no dedicated CarValidator case, so
-        // its clear-on-transfer null value would otherwise be silently
-        // dropped by the validator's default branch. See $ownerFields'
-        // build above for why it must be cleared on every transfer.
+        // vericode has no dedicated CarValidator case, so its
+        // clear-on-transfer null value would otherwise be silently dropped by
+        // the validator's default branch. See $ownerFields' build in
+        // transfer() for why it must be cleared on every transfer.
         'vericode',
     ];
 
@@ -212,28 +206,9 @@ class CarAdministrationService
         $isSystemAccount = ($targetUser->username ?? '') === self::SYSTEM_ACCOUNT_USERNAME;
         $soldDate = $isSystemAccount ? ($carData->solddate ?? null) : null;
 
-        // email_bounced and email_suppressed (#1887) are boolean signals about
-        // the previous owner's address, not the car — cleared on a real-owner
-        // transfer (see below) and preserved on a system-account reassignment,
-        // mirroring solddate's treatment. Carrying email_suppressed forward on
-        // a real transfer would suppress mail to a new owner who never sent a
-        // spam complaint.
-        //
-        // email_bounced_address is NOT treated the same way: it is the actual
-        // personal-data string (the bounced email address itself), not a
-        // boolean flag, so it is always cleared — including on a
-        // system-account reassignment. That path is exactly the one
-        // usersc/scripts/after_user_deletion.php uses to reassign a departing
-        // user's cars to 'noowner' for GDPR erasure; carrying the address
-        // forward there would leave the deleted user's real email address
-        // readable indefinitely on a car they no longer own, contradicting
-        // the erasure guarantee documented in SYSTEM_OVERVIEW.md and
-        // DATABASE.md. The boolean flags carry no PII, so they are the only
-        // ones system-account reassignment preserves.
-        $emailBounced = $isSystemAccount ? (int) ($carData->email_bounced ?? 0) : 0;
-        $emailBouncedAddress = null;
-        $emailSuppressed = $isSystemAccount ? (int) ($carData->email_suppressed ?? 0) : 0;
-
+        // No deliverability flag is written here: the flags live on the
+        // owner's profile (#2101), so the new owner's own profile applies
+        // from the moment the car changes hands.
         try {
             $repo->beginTransaction();
 
@@ -250,12 +225,6 @@ class CarAdministrationService
                 'lat'       => $targetUser->lat      ?? null,
                 'lon'       => $targetUser->lon      ?? null,
                 'website'   => $targetUser->website  ?? '',
-                // Always cleared, including on a system-account reassignment
-                // (see $emailBouncedAddress's own comment above) — this is
-                // the one column here that holds actual PII, not a boolean
-                // signal, so it does not get the same-as-solddate preservation
-                // treatment the fields below it do.
-                'email_bounced_address' => $emailBouncedAddress,
                 // vericode is a bearer token: whoever holds the plaintext link
                 // can Verify or mark Sold with no login (see the
                 // car-owner-verification FRD). A live link surviving a
@@ -263,9 +232,9 @@ class CarAdministrationService
                 // they no longer own — a real access-control concern, not
                 // merely stale data — so it is always cleared, on every
                 // transfer including a system-account reassignment. This
-                // does not follow solddate/email_bounced's preserve-on-
-                // system-account pattern: those two are informational
-                // signals about the car/address, not an active credential.
+                // does not follow solddate's preserve-on-system-account
+                // pattern: solddate is an informational signal about the
+                // car, not an active credential.
                 // Not mirrored into cars_hist below — cars_hist has no
                 // vericode column (see #1928), matching last_verified,
                 // which also isn't tracked there. (vericode_sent_at IS a
@@ -286,14 +255,6 @@ class CarAdministrationService
             // is untouched; writing null here would erase it.
             if (!$isSystemAccount) {
                 $ownerFields['solddate'] = null;
-
-                // email_bounced belonged to the previous owner's address, not the
-                // car — carrying it forward would permanently exclude the car from
-                // CarRepository::findVerificationEligible() once the address that
-                // caused the bounce is gone. email_suppressed (#1887) is cleared
-                // alongside it for the same reason.
-                $ownerFields['email_bounced'] = $emailBounced;
-                $ownerFields['email_suppressed'] = $emailSuppressed;
             }
 
             // Validate owner fields before writing. $requireAll = false so only the
@@ -329,9 +290,6 @@ class CarAdministrationService
                 'engine'       => $carData->engine ?? '',
                 'purchasedate' => $carData->purchasedate ?? null,
                 'solddate'     => $soldDate,
-                'email_bounced' => $emailBounced,
-                'email_bounced_address' => $emailBouncedAddress,
-                'email_suppressed' => $emailSuppressed,
                 'image'        => $carData->image ?? '',
                 'user_id'      => $targetUser->id,
                 'email'        => $targetEmail,

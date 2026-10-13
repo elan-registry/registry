@@ -33,11 +33,13 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        foreach (['owner_last_updated', 'email_bounced', 'last_verified'] as $column) {
+        foreach (['owner_last_updated', 'last_verified'] as $column) {
             $this->assertColumnExists('cars', $column);
         }
 
-        $this->testUserId = $this->createTestUser();
+        // A car owner always has a profiles row. The flags (#2101) live on it,
+        // and an owner with no profile is never eligible.
+        $this->testUserId = $this->createTestUser([], true);
         $this->loginAsTestUser($this->testUserId);
         $this->repo = new CarRepository($this->db);
     }
@@ -86,7 +88,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'sold-owner@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -100,129 +101,126 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         );
     }
 
-    #[Group('fast')]
-    public function testBouncedEmailCarIsExcluded(): void
+    /**
+     * Fields for a stale, otherwise eligible car.
+     *
+     * @return array<string, mixed>
+     */
+    private function staleCarFields(string $email): array
     {
-        $carId = $this->createTestCar($this->testUserId, [
-            'email'              => 'bounced-owner@example.com',
-            'email_bounced'      => 1,
+        return [
+            'email'              => $email,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
             'solddate'           => null,
-        ]);
+        ];
+    }
 
+    #[Group('fast')]
+    public function testCarOfBouncedOwnerIsExcluded(): void
+    {
+        $bouncedOwnerId = $this->createTestUser([], true);
+        $this->setOwnerBounced($bouncedOwnerId, 'bounced-owner@example.com');
+        $carId = $this->createTestCar($bouncedOwnerId, $this->staleCarFields('bounced-owner@example.com'));
+        $controlCarId = $this->createTestCar($this->testUserId, $this->staleCarFields('bounced-control@example.com'));
+
+        $eligible = $this->eligibleIds();
         $this->assertNotContains(
             $carId,
+            $eligible,
+            'A car whose owner has profiles.email_bounced = 1 must be excluded from verification eligibility'
+        );
+        $this->assertContains($controlCarId, $eligible, 'Control: a car of an owner with no flag stays eligible');
+    }
+
+    /**
+     * Opt-out (consent), block (complaint) and bounce (deliverability) each
+     * exclude a car alone. The unflagged control proves the cause.
+     */
+    #[Group('fast')]
+    public function testEachOwnerFlagAloneExcludesTheCarButUnflaggedSiblingIsEligible(): void
+    {
+        $optedOutOwnerId = $this->createTestUser([], true);
+        $this->setOwnerOptedOut($optedOutOwnerId);
+        $blockedOwnerId = $this->createTestUser([], true);
+        $this->setOwnerBlocked($blockedOwnerId, 'blocked-owner@example.com');
+
+        $optedOutCarId = $this->createTestCar($optedOutOwnerId, $this->staleCarFields('opted-out-owner@example.com'));
+        $blockedCarId = $this->createTestCar($blockedOwnerId, $this->staleCarFields('blocked-owner@example.com'));
+        $unflaggedCarId = $this->createTestCar($this->testUserId, $this->staleCarFields('unflagged-owner@example.com'));
+
+        $eligible = $this->eligibleIds();
+
+        $this->assertNotContains($optedOutCarId, $eligible, 'An opted-out owner\'s car must be excluded');
+        $this->assertNotContains($blockedCarId, $eligible, 'A blocked owner\'s car must be excluded');
+        $this->assertContains(
+            $unflaggedCarId,
+            $eligible,
+            'Control: an otherwise-identical car of an unflagged owner must remain eligible — '
+            . 'otherwise the exclusions above prove nothing about the flags specifically'
+        );
+    }
+
+    /**
+     * #2319: the flag belongs to the owner, so a car registered after the
+     * flag was set is excluded too.
+     */
+    #[Group('fast')]
+    public function testCarAddedAfterOwnerFlagWasSetIsExcluded(): void
+    {
+        $ownerId = $this->createTestUser([], true);
+        $this->setOwnerOptedOut($ownerId);
+
+        $laterCarId = $this->createTestCar($ownerId, $this->staleCarFields('later-car@example.com'));
+
+        $this->assertNotContains(
+            $laterCarId,
             $this->eligibleIds(),
-            'A car with email_bounced = 1 must be excluded from verification eligibility'
+            'A car registered after the owner opted out must be excluded from verification eligibility'
         );
     }
 
     /**
-     * #1883: email_suppressed excludes a car independently of email_bounced
-     * (consent, not deliverability). The unsuppressed control car proves the cause.
+     * An owner with no profiles row cannot be shown to allow mail, so the
+     * car is excluded (it appears in the admin queue as "no profile").
      */
     #[Group('fast')]
-    public function testSuppressedEmailCarIsExcludedButUnsuppressedSiblingIsEligible(): void
+    public function testCarOfOwnerWithNoProfileIsExcluded(): void
     {
-        $this->assertColumnExists('cars', 'email_suppressed');
-
-        $sharedFields = [
-            'email_bounced'      => 0,
-            'last_verified'      => null,
-            'owner_last_updated' => $this->staleDate(),
-            'mtime'              => $this->staleDate(),
-            'solddate'           => null,
-        ];
-
-        $suppressedCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
-            'email'             => 'suppressed-owner@example.com',
-            'email_suppressed'  => 1,
-        ]));
-
-        $unsuppressedCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
-            'email'             => 'unsuppressed-owner@example.com',
-            'email_suppressed'  => 0,
-        ]));
+        $noProfileOwnerId = $this->createTestUser();
+        $noProfileCarId = $this->createTestCar($noProfileOwnerId, $this->staleCarFields('no-profile@example.com'));
+        $controlCarId = $this->createTestCar($this->testUserId, $this->staleCarFields('has-profile@example.com'));
 
         $eligible = $this->eligibleIds();
 
-        $this->assertNotContains(
-            $suppressedCarId,
-            $eligible,
-            'A car with email_suppressed = 1 must be excluded from verification eligibility'
-        );
-        $this->assertContains(
-            $unsuppressedCarId,
-            $eligible,
-            'Control: an otherwise-identical unsuppressed sibling car must remain eligible — '
-            . 'otherwise the suppression exclusion above proves nothing about email_suppressed specifically'
-        );
+        $this->assertNotContains($noProfileCarId, $eligible, 'A car whose owner has no profiles row is excluded');
+        $this->assertContains($controlCarId, $eligible, 'Control: the same car with a profile is eligible');
     }
 
     /**
-     * #1883: the owner-level opt-out (profiles.email_suppressed) also excludes a
-     * car whose own flag is 0, e.g. a car acquired after the opt-out fan-out.
-     * A profile-less owner must stay emailable, hence LEFT JOIN with COALESCE.
+     * A flag excludes the car whatever its address column holds: a NULL or an
+     * empty address is still a flag.
      */
     #[Group('fast')]
-    public function testCarIsExcludedWhenOwnerProfileEmailSuppressedEvenThoughCarFlagIsClear(): void
+    public function testFlagWithNullOrEmptyAddressStillExcludesTheCar(): void
     {
-        $this->assertColumnExists('profiles', 'email_suppressed');
+        $blockedNullOwnerId = $this->createTestUser([], true);
+        $this->setOwnerBlocked($blockedNullOwnerId, '');
+        $this->db->query('UPDATE profiles SET email_blocked_address = NULL WHERE user_id = ?', [$blockedNullOwnerId]);
+        $bouncedEmptyOwnerId = $this->createTestUser([], true);
+        $this->setOwnerBounced($bouncedEmptyOwnerId, '');
 
-        $optedOutUserId = $this->createTestUser([], true);
-        $this->db->query(
-            'UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?',
-            [$optedOutUserId]
-        );
-        $profileRow = $this->db->query(
-            'SELECT email_suppressed FROM profiles WHERE user_id = ?',
-            [$optedOutUserId]
-        )->first();
-        $this->assertNotEmpty($profileRow, 'Test setup: no profiles row for user ' . $optedOutUserId);
-        $this->assertSame(
-            1,
-            (int) $profileRow->email_suppressed,
-            'Test setup: profiles.email_suppressed was not actually set for user ' . $optedOutUserId
-        );
+        $nullCarId = $this->createTestCar($blockedNullOwnerId, $this->staleCarFields('null-address@example.com'));
+        $emptyCarId = $this->createTestCar($bouncedEmptyOwnerId, $this->staleCarFields('empty-address@example.com'));
 
-        $sharedFields = [
-            'email_bounced'      => 0,
-            // The per-car flag does not carry the opt-out for a car acquired after the fan-out.
-            'email_suppressed'   => 0,
-            'last_verified'      => null,
-            'owner_last_updated' => $this->staleDate(),
-            'mtime'              => $this->staleDate(),
-            'solddate'           => null,
-        ];
-
-        $optedOutCarId = $this->createTestCar($optedOutUserId, array_merge($sharedFields, [
-            'email' => 'profile-opted-out@example.com',
-        ]));
-
-        // Control: owner has no profiles row. Proves the cause, and that the
-        // LEFT JOIN does not strand profile-less owners.
-        $controlCarId = $this->createTestCar($this->testUserId, array_merge($sharedFields, [
-            'email' => 'profile-opt-out-control@example.com',
-        ]));
+        $flags = $this->getOwnerEmailFlags($blockedNullOwnerId);
+        $this->assertNull($flags['email_blocked_address'], 'Test setup: the blocked address must be NULL');
+        $this->assertSame('', $this->getOwnerEmailFlags($bouncedEmptyOwnerId)['email_bounced_address']);
 
         $eligible = $this->eligibleIds();
-
-        $this->assertNotContains(
-            $optedOutCarId,
-            $eligible,
-            'A car whose owner has profiles.email_suppressed = 1 must be excluded from verification '
-            . 'eligibility even when that car\'s own cars.email_suppressed is 0 — otherwise an owner '
-            . 'who opted out keeps being emailed about cars added after the opt-out'
-        );
-        $this->assertContains(
-            $controlCarId,
-            $eligible,
-            'Control: an identical car owned by a user with no profiles row must remain eligible — '
-            . 'otherwise the opt-out exclusion above proves nothing about profiles.email_suppressed '
-            . 'specifically, and a profile-less owner would be silently un-emailable'
-        );
+        $this->assertNotContains($nullCarId, $eligible, 'A block with a NULL address must still exclude the car');
+        $this->assertNotContains($emptyCarId, $eligible, 'A bounce with an empty address must still exclude the car');
     }
 
     #[Group('fast')]
@@ -230,7 +228,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => '',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -249,7 +246,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => null,
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -272,7 +268,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'never-verified-owner@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -291,7 +286,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'recently-verified-owner@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => $this->recentDate(),
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -316,7 +310,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         $image = json_encode(['eligible-photo.jpg', 'second-photo.jpg']);
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'image-owner@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -345,7 +338,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'stale-owner@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => $this->staleDate(),
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -367,7 +359,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'recent-owner-update@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->recentDate(),
             'mtime'              => $this->staleDate(),
@@ -411,7 +402,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             'user_id'            => $this->testUserId,
             'chassis'            => $chassis,
             'email'              => 'null-owner-updated-rejected@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'solddate'           => null,
         ];
@@ -420,7 +410,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         // also make the assertion below pass.
         $controlId = $this->createTestCar($this->testUserId, [
             'email'              => 'null-owner-updated-control@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => date('Y-m-d H:i:s'),
             'solddate'           => null,
@@ -468,7 +457,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         $noOwnerId = (int) $noOwnerRow->id;
 
         $sharedFields = [
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -506,7 +494,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     public function testNullUserIdCarIsExcluded(): void
     {
         $sharedFields = [
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -556,7 +543,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         $doomedUserId = $this->createTestUser();
 
         $sharedFields = [
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -608,7 +594,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'                       => 'attempt-cap-reached@example.com',
-            'email_bounced'               => 0,
             'last_verified'               => null,
             'owner_last_updated'          => $this->staleDate(),
             'mtime'                       => $this->staleDate(),
@@ -635,7 +620,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'                       => 'attempt-cap-reset@example.com',
-            'email_bounced'               => 0,
             'last_verified'               => null,
             'owner_last_updated'          => $this->staleDate(),
             'mtime'                       => $this->staleDate(),
@@ -662,7 +646,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'                       => 'attempt-cap-round-trip@example.com',
-            'email_bounced'               => 0,
             'last_verified'               => null,
             'owner_last_updated'          => $this->staleDate(),
             'mtime'                       => $this->staleDate(),
@@ -717,7 +700,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         $this->assertColumnExists('cars', 'vericode_sent_at');
 
         $sharedFields = [
-            'email_bounced'               => 0,
             'last_verified'               => $this->staleDate(),
             'owner_last_updated'          => $this->staleDate(),
             'mtime'                       => $this->staleDate(),
@@ -765,7 +747,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
 
         $carId = $this->createTestCar($this->testUserId, [
             'email'                       => 'cooldown-expired@example.com',
-            'email_bounced'               => 0,
             'last_verified'               => $this->staleDate(),
             'owner_last_updated'          => $this->staleDate(),
             'mtime'                       => $this->staleDate(),
@@ -796,7 +777,6 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
 
         $carId = $this->createTestCar($this->testUserId, [
             'email'                       => 'three-cycle-silent-owner@example.com',
-            'email_bounced'               => 0,
             'last_verified'               => null,
             'owner_last_updated'          => $this->staleDate(),
             'mtime'                       => $this->staleDate(),

@@ -239,7 +239,6 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
             'email'              => 'owner-eligible@example.com',
             'owner_last_updated' => $staleDate,
             'mtime'              => $staleDate,
-            'email_bounced'      => 0,
             'solddate'           => null,
             'last_verified'      => null,
         ]);
@@ -291,7 +290,6 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
         // Omitted, not null: a null fails the INSERT and proves nothing.
         $carId = $this->createTestCar($userId, [
             'email'         => 'no-null-owner-updated@example.com',
-            'email_bounced' => 0,
             'solddate'      => null,
             'last_verified' => null,
         ]);

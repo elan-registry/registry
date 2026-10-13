@@ -26,7 +26,7 @@ test.describe('Admin User View — Verification & Email card', () => {
         await ensureLoggedIn(page);
     });
 
-    test('renders the bounced state for an owner with a bounced car', async ({ page }) => {
+    test('renders the bounced state for an owner with a bounced profile', async ({ page }) => {
         await page.goto(`users/admin.php?view=user&id=${bouncedUserId}`, { waitUntil: 'networkidle' });
 
         // Scope to the card: UserSpice renders an unrelated .alert-warning on this page.
@@ -36,12 +36,15 @@ test.describe('Admin User View — Verification & Email card', () => {
 
         const summary = card.locator('.alert-warning');
         await expect(summary).toBeVisible();
-        await expect(summary).toContainText('1 car bounced,');
-        await expect(summary).toContainText('0 suppressed');
-
-        const bouncedBadge = card.locator('span.badge.text-bg-danger', { hasText: 'Bounced' });
-        await expect(bouncedBadge).toBeVisible();
-        await expect(card.locator('td', { hasText: 'bounced@example.invalid' })).toBeVisible();
+        // Owner-level summary from the profile flags (#2101): the bounced address
+        // shows in the alert, and there are no per-car Bounced/Suppressed columns.
+        await expect(summary.locator('span.badge.text-bg-danger', { hasText: 'Bounced' })).toBeVisible();
+        await expect(summary).toContainText('bounced@example.invalid');
+        await expect(summary.locator('span.badge.text-bg-warning', { hasText: 'Suppressed' })).toHaveCount(0);
+        await expect(summary).not.toContainText('cars bounced');
+        await expect(summary).not.toContainText('car bounced');
+        await expect(card.getByRole('columnheader', { name: 'Bounced' })).toHaveCount(0);
+        await expect(card.getByRole('columnheader', { name: 'Suppressed' })).toHaveCount(0);
 
         await expect(card.locator('.alert-primary', { hasText: 'No delivery problems recorded' })).toHaveCount(0);
     });

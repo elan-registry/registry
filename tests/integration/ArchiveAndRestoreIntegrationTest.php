@@ -35,6 +35,9 @@ final class ArchiveAndRestoreIntegrationTest extends IntegrationTestCase
             foreach ($this->restoredUserIds as $userId) {
                 try {
                     $this->db->query("DELETE FROM user_permission_matches WHERE user_id = ?", [$userId]);
+                    // The restore always inserts a profiles row (#2101). It has no
+                    // FK to users, so it outlives the user unless the test deletes it.
+                    $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
                     $this->db->delete('users', ['id', '=', $userId]);
                 } catch (RuntimeException $e) {
                     // ignore cleanup errors
@@ -157,6 +160,13 @@ final class ArchiveAndRestoreIntegrationTest extends IntegrationTestCase
             [$archiveId]
         )->first();
         $this->assertNotNull($archiveRow->restored_at, 'Archive row must have restored_at set');
+
+        // The archived user had no profiles row. The restore always inserts one (#2101).
+        $profileCount = (int) $this->db->query(
+            "SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?",
+            [$newUserId]
+        )->first()->cnt;
+        $this->assertSame(1, $profileCount, 'The restore must always insert exactly one profiles row');
     }
 
     public function testRestoreThrowsForAlreadyRestoredRow(): void

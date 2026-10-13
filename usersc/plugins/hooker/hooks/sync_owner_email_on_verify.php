@@ -1,6 +1,9 @@
 <?php if(count(get_included_files()) ==1) die(); //Direct Access Not Permitted Leave this line in place?>
 <?php
-// Issue #1958: syncs a confirmed email change (users.email) to cars.email.
+// Each car keeps a copy of its owner's address (cars.email), and the owner's
+// profile can hold a bounce recorded against an old address. When an owner
+// confirms an address, the copies must change to it, and a bounce on another
+// address must not keep the owner from getting verification emails.
 //
 // users/verify.php fires the verifySuccess hook from THREE call sites:
 //   * line 224 — the "already verified" re-display branch. Email has not
@@ -69,17 +72,14 @@ try {
         $integrityCarIds = $repo->carIdsWithBouncedFlagButNoAddress($userId);
         if (!empty($integrityCarIds)) {
             logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-                "sync_owner_email_on_verify: car(s) " . implode(',', $integrityCarIds)
-                . " had email_bounced=1 with no recorded bounced address for user {$userId} "
-                . '— clearing as part of confirmed email change (data-integrity anomaly).');
+                "sync_owner_email_on_verify: profile of user {$userId} had email_bounced=1 with no recorded "
+                . 'bounced address (cars ' . implode(',', $integrityCarIds) . ') — clearing as part of '
+                . 'confirmed email change (data-integrity anomaly).');
         }
 
-        $cleared = $repo->clearBouncedForUser($userId, $currentEmail);
-        if ($cleared > 0) {
-            logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-                "sync_owner_email_on_verify: cleared bounce flag on {$cleared} car(s) "
-                . "for user {$userId} after confirmed email change.");
-        }
+        // The manager runs the clear and its audit row in one transaction.
+        (new \ElanRegistry\Car\CarVerificationManager($repo))
+            ->clearBouncedForEmailChange($userId, $userId, $currentEmail);
     }
 } catch (\ElanRegistry\Exceptions\CarDatabaseException $e) {
     logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_DATABASE_ERROR,

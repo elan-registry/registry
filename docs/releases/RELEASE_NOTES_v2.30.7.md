@@ -12,13 +12,67 @@ and the public verify page encodes its codes safely.
 
 Changes visible to public registry visitors (car listings, owner pages, search, etc.). One sentence each.
 
-- One-sentence description of what changed and its benefit to users. ([#NNN](https://github.com/elan-registry/registry/issues/NNN))
+- A new car of an owner who opted out, was blocked, or bounced gets no verification email.
+  ([#2101](https://github.com/elan-registry/registry/issues/2101), absorbs
+  [#2319](https://github.com/elan-registry/registry/issues/2319))
+- An owner who resumes emails while the email provider blocks the address keeps emails paused, and the page says so. ([#2101](https://github.com/elan-registry/registry/issues/2101))
 
 ## Admin-Facing Changes
 
 Changes visible only to administrators (admin dashboard, maintenance tools, settings, etc.). One sentence each.
 
-- One-sentence description of what changed. ([#NNN](https://github.com/elan-registry/registry/issues/NNN))
+- The verification queue shows a "No profile" chip for an owner who has no profile, and sends no email to that owner. ([#2101](https://github.com/elan-registry/registry/issues/2101))
+- The admin user form shows the owner-level flags (opted out, blocked, bounced) and has no per-car flag columns. ([#2101](https://github.com/elan-registry/registry/issues/2101))
+- The soft-bounce count starts again at zero after Clear Bounced. ([#2101](https://github.com/elan-registry/registry/issues/2101), absorbs [#2320](https://github.com/elan-registry/registry/issues/2320))
+
+## Data Model, Deploy, and Rollback Notes
+
+The owner profile (`profiles` table) is now the system of record for email
+deliverability: opted out, blocked, and bounced. The `cars` columns
+`email_bounced`, `email_bounced_address`, and `email_suppressed` are removed.
+The matching `cars_hist` columns are removed too.
+
+No v2.30 release has reached production. The migration has no production flag
+data to move.
+
+### Deploy
+
+- Take a database backup before you deploy.
+- Deploy the migration and the code together. The code reads the profile, and
+  the migration drops the `cars` columns.
+- Run the migration with the Brevo webhook and the cron jobs off.
+- If the migration fails, do not clear a flag between the failed run and its
+  re-run. The re-run repeats the data step and can overwrite the clear.
+
+### Rollback
+
+- A code rollback needs the database backup. The `down()` method restores the
+  columns, but it cannot restore every value.
+- A rollback loses these values:
+  - Every `cars_hist` value of the three removed columns.
+  - Every flag on a `noowner` car. The migration skips these cars, and
+    `down()` cannot restore them.
+  - Every blocked flag of an owner who has no car.
+  - The block cause, the three `_at` dates, `email_bounce_cleared_at`,
+    `email_address_since`, and `email_address_seen`.
+  - The difference between "blocked only" and "blocked and opted out".
+  - The old-address bounces and suppressions that the migration dropped.
+
+### Audit Trail
+
+- The code no longer writes the `EMAIL BOUNCED`, `EMAIL SUPPRESSED`,
+  `EMAIL BOUNCE CLEARED`, `EMAIL SUPPRESSION CLEARED`, and
+  `SUPPRESSION CLEARED BY OWNER` rows in `cars_hist`.
+- The audit trail for a flag change is now the `logs` rows. Each row has the
+  category `EMAIL BOUNCED` and holds no email address. When an admin clears the
+  UserSpice logs, the audit trail is removed.
+
+### Account Restore
+
+A restore of a deleted account loses a bounce that came from soft-bounce
+escalation or Mark Bounced. The restore sets the opt-out only. Brevo keeps its
+own block on the address after deletion. A send to a blocked address returns a
+`blocked` event, and that event sets `email_bounced` again.
 
 ## Issues Resolved
 

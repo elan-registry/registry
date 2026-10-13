@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
@@ -255,8 +256,27 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
      */
     private function createFixtureCarWithEmail(string $email, array $extraColumns = []): int
     {
-        $userId = $this->createTestUser();
+        $userId = $this->createTestUser([], true);
         return $this->createTestCar($userId, array_merge(['email' => $email], $extraColumns));
+    }
+
+    /**
+     * The deliverability flags of the car's owner profile, in one SELECT so
+     * that the columns cannot be read in disagreement.
+     */
+    private function ownerFlagsOfCar(int $carId): object
+    {
+        $row = $this->db->query(
+            'SELECT p.user_id, p.email_bounced, p.email_bounced_address, p.email_bounced_at,
+                    p.email_blocked, p.email_blocked_address, p.email_blocked_at, p.email_blocked_cause,
+                    p.email_opted_out
+               FROM cars c INNER JOIN profiles p ON p.user_id = c.user_id
+              WHERE c.id = ?',
+            [$carId]
+        )->first();
+        $this->assertIsObject($row, "Car {$carId} and its owner profile must exist");
+
+        return $row;
     }
 
     private function taggedPayload(array $overrides = []): string
@@ -440,7 +460,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     // Matched-car scenarios
     // ------------------------------------------------------------------
 
-    public function testCorrectTokenWithHardBounceMatchingCarSetsEmailBouncedAndAddressTogether(): void
+    public function testCorrectTokenWithHardBounceMatchingCarSetsOwnerProfileBounceWithAddressAndTime(): void
     {
         $this->requireBrevoReady();
 
@@ -471,10 +491,16 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertSame('hard_bounce', $eventRow->event);
         $this->assertSame('Mailbox does not exist', $eventRow->reason);
 
-        // One SELECT, so the two columns cannot be read in disagreement.
-        $carRow = $this->db->query('SELECT email_bounced, email_bounced_address FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertSame(1, (int) $carRow->email_bounced, 'cars.email_bounced must be set');
-        $this->assertSame($email, $carRow->email_bounced_address, 'cars.email_bounced_address must equal the event email');
+        $flags = $this->ownerFlagsOfCar($carId);
+        $this->assertSame(1, (int) $flags->email_bounced, 'profiles.email_bounced must be set');
+        $this->assertSame($email, $flags->email_bounced_address, 'profiles.email_bounced_address must equal the event email');
+        $this->assertNotNull($flags->email_bounced_at, 'profiles.email_bounced_at must be set');
+        $this->assertSame(0, (int) $flags->email_blocked, 'A bounce is not a block');
+
+        $changes = (new CarRepository($this->db))->recentFlagChanges((int) $flags->user_id, 100);
+        $this->assertCount(1, $changes, 'One flag change writes one log row');
+        $this->assertSame('email_bounced', $changes[0]['flag']);
+        $this->assertSame('webhook', $changes[0]['source']);
     }
 
     /**
@@ -509,17 +535,20 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertGreaterThanOrEqual(200, $result['status']);
         $this->assertLessThan(300, $result['status'], 'Matched hard_bounce must respond 2xx');
 
-        $carRow = $this->db->query('SELECT email_bounced FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertSame(1, (int) $carRow->email_bounced, 'cars.email_bounced must be set by the webhook');
+        $this->assertSame(
+            1,
+            (int) $this->ownerFlagsOfCar($carId)->email_bounced,
+            'profiles.email_bounced must be set by the webhook'
+        );
 
         $this->assertNotContains(
             $carId,
             $this->allVerificationEligibleCarIds(),
-            'A car flagged email_bounced = 1 must no longer be verification-eligible'
+            'A car whose owner has profiles.email_bounced = 1 must no longer be verification-eligible'
         );
     }
 
-    public function testCorrectTokenWithSpamMatchingCarSetsEmailSuppressed(): void
+    public function testCorrectTokenWithSpamMatchingCarSetsOwnerProfileBlockWithCauseSpam(): void
     {
         $this->requireBrevoReady();
 
@@ -541,8 +570,13 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
         $this->assertSame(1, $this->eventRowCount($carId, $messageId, 'spam'));
 
-        $carRow = $this->db->query('SELECT email_suppressed FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertSame(1, (int) $carRow->email_suppressed, 'cars.email_suppressed must be set');
+        $flags = $this->ownerFlagsOfCar($carId);
+        $this->assertSame(1, (int) $flags->email_blocked, 'profiles.email_blocked must be set');
+        $this->assertSame($email, $flags->email_blocked_address, 'The blocked address is the event email');
+        $this->assertSame('spam', $flags->email_blocked_cause);
+        $this->assertNotNull($flags->email_blocked_at);
+        $this->assertSame(0, (int) $flags->email_opted_out, 'A complaint is not an owner opt-out');
+        $this->assertSame(0, (int) $flags->email_bounced, 'A complaint is not a bounce');
     }
 
     public function testDuplicateDeliveryProducesExactlyOneEventRow(): void

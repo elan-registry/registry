@@ -97,6 +97,65 @@ final class ArchiveAccountsTest extends TestCase
         $this->assertSame('2025-06-01 12:00:00', $db->lastInsertData['last_login']);
     }
 
+    /** The snapshot keeps the opt-out, so a restore does not enable mail to an owner who opted out. */
+    #[Group('fast')] #[Group('unit')] #[Group('admin')]
+    public function testOptedOutOwnerIsArchivedWithTheOptOutAndItsTime(): void
+    {
+        $row = (object)[
+            'id' => 5, 'email' => 'a@x.com', 'username' => 'a', 'fname' => 'A', 'lname' => 'B',
+            'join_date' => '2024-01-01 00:00:00', 'last_login' => null,
+            'logins' => 0, 'email_verified' => 0,
+            'city' => null, 'state' => null, 'country' => null, 'bio' => null, 'website' => null,
+            'email_opted_out' => '1', 'email_opted_out_at' => '2026-02-03 04:05:06',
+        ];
+        $db = $this->makeDb(true, [$row]);
+
+        archiveAccounts($db, [5], 1, 'unverified');
+
+        $this->assertNotNull($db->lastInsertData);
+        $this->assertSame(1, $db->lastInsertData['email_opted_out'], 'A string flag from PDO must be cast to int');
+        $this->assertSame('2026-02-03 04:05:06', $db->lastInsertData['email_opted_out_at']);
+    }
+
+    /** An owner with no profile row (LEFT JOIN gives no columns) is archived as not opted out. */
+    #[Group('fast')] #[Group('unit')] #[Group('admin')]
+    public function testOwnerWithNoProfileRowIsArchivedAsNotOptedOut(): void
+    {
+        $row = (object)[
+            'id' => 5, 'email' => 'a@x.com', 'username' => 'a', 'fname' => 'A', 'lname' => 'B',
+            'join_date' => '2024-01-01 00:00:00', 'last_login' => null,
+            'logins' => 0, 'email_verified' => 0,
+        ];
+        $db = $this->makeDb(true, [$row]);
+
+        archiveAccounts($db, [5], 1, 'unverified');
+
+        $this->assertNotNull($db->lastInsertData);
+        $this->assertSame(0, $db->lastInsertData['email_opted_out']);
+        $this->assertNull($db->lastInsertData['email_opted_out_at']);
+    }
+
+    /** Only the opt-out is archived. A block or bounce is not the owner's choice and is not restored. */
+    #[Group('fast')] #[Group('unit')] #[Group('admin')]
+    public function testArchiveCarriesNoBlockOrBounceColumns(): void
+    {
+        $row = (object)[
+            'id' => 5, 'email' => 'a@x.com', 'username' => 'a', 'fname' => 'A', 'lname' => 'B',
+            'join_date' => '2024-01-01 00:00:00', 'last_login' => null,
+            'logins' => 0, 'email_verified' => 0,
+            'email_blocked' => 1, 'email_bounced' => 1,
+        ];
+        $db = $this->makeDb(true, [$row]);
+
+        archiveAccounts($db, [5], 1, 'unverified');
+
+        $this->assertNotNull($db->lastInsertData);
+        foreach (array_keys($db->lastInsertData) as $column) {
+            $this->assertStringNotContainsString('blocked', $column);
+            $this->assertStringNotContainsString('bounce', $column);
+        }
+    }
+
     #[Group('fast')] #[Group('unit')] #[Group('admin')]
     public function testThrowsOnInsertFailure(): void
     {

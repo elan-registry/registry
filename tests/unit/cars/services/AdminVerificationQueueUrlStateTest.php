@@ -36,7 +36,7 @@ final class AdminVerificationQueueUrlStateTest extends TestCase
      * $activityWindowDays block from app/admin/index.php, starting at the
      * `verificationGetMappedChoice()` helper declaration (used by `window`
      * and `activity_window`) and ending just before the
-     * `verifyHistoryFieldsForAdminAction` function declaration that follows
+     * `sendEmailOwnerLabel` function declaration that follows
      * it in the file.
      *
      * @return array{status: string, window: ?int, show: int, activityWindow: ?int}
@@ -50,7 +50,7 @@ final class AdminVerificationQueueUrlStateTest extends TestCase
         }
 
         $startMarker = "if (!function_exists('verificationGetMappedChoice'))";
-        $endMarker = 'if (!function_exists(\'verifyHistoryFieldsForAdminAction\'))';
+        $endMarker = 'if (!function_exists(\'sendEmailOwnerLabel\'))';
 
         $startPos = strpos($source, $startMarker);
         $endPos = strpos($source, $endMarker);

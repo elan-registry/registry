@@ -281,7 +281,7 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     }
 
     #[DataProvider('hardBounceClassEventProvider')]
-    public function testHardBounceClassEventCallsSetBouncedWithEventEmail(string $event): void
+    public function testHardBounceClassEventCallsSetBouncedWithCarIdEmailAndWebhookSource(string $event): void
     {
         $car = (object) ['id' => 42, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
@@ -291,7 +291,7 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
         $this->mockManager->expects($this->once())
             ->method('setBounced')
-            ->with($this->callback(fn ($carData) => $carData->id === 42), 'owner@example.com')
+            ->with(42, 'owner@example.com', $this->isString(), 'webhook')
             ->willReturn(true);
         $this->mockManager->expects($this->never())->method('setSuppressed');
 
@@ -302,7 +302,7 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     // --- Spam --------------------------------------------------------
 
-    public function testSpamCallsSetSuppressedNotSetBounced(): void
+    public function testSpamCallsSetSuppressedWithCauseSpamNotSetBounced(): void
     {
         $car = (object) ['id' => 7, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
@@ -312,7 +312,7 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
         $this->mockManager->expects($this->once())
             ->method('setSuppressed')
-            ->with($this->callback(fn ($carData) => $carData->id === 7))
+            ->with(7, 'owner@example.com', 'spam', $this->isString(), 'webhook')
             ->willReturn(true);
         $this->mockManager->expects($this->never())->method('setBounced');
 
@@ -356,7 +356,7 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
         $this->mockManager->expects($this->once())
             ->method('setBounced')
-            ->with($this->callback(fn ($carData) => $carData->id === 3), 'owner@example.com')
+            ->with(3, 'owner@example.com', $this->isString(), 'webhook')
             ->willReturn(true);
 
         $result = $this->processor->process($this->basePayload(['event' => 'soft_bounce']));
@@ -448,8 +448,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         $bouncedCarIds = [];
         $this->mockManager->expects($this->exactly(2))
             ->method('setBounced')
-            ->willReturnCallback(function ($carData, string $email) use (&$bouncedCarIds) {
-                $bouncedCarIds[] = $carData->id;
+            ->willReturnCallback(function (int $carId, string $email) use (&$bouncedCarIds) {
+                $bouncedCarIds[] = $carId;
                 $this->assertSame('shared@example.com', $email);
                 return true;
             });
@@ -535,7 +535,7 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
         $this->mockManager->expects($this->once())
             ->method('setBounced')
-            ->with($this->callback(fn ($carData) => $carData->id === 1), 'shared3@example.com')
+            ->with(1, 'shared3@example.com', $this->isString(), 'webhook')
             ->willReturn(true);
 
         $result = $this->processor->process([
@@ -559,8 +559,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
         $this->mockManager->expects($this->exactly(2))
             ->method('setBounced')
-            ->willReturnCallback(function ($carData) {
-                if ($carData->id === 2) {
+            ->willReturnCallback(function (int $carId) {
+                if ($carId === 2) {
                     throw new CarDatabaseException('setBounced failed for car 2');
                 }
                 return true;

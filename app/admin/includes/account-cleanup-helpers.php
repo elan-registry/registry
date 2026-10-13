@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Migration\DeliverabilityMigrationQueries;
 
 /**
  * Return unverified (email_verified=0) accounts with no car associations older than $days.
@@ -70,6 +71,9 @@ function findVerifiedOwnerlessAccounts(DatabaseInterface $db, int $days): array
 /**
  * Snapshot a set of user accounts into deleted_accounts_archive before deletion.
  *
+ * The snapshot keeps the profile opt-out, so that a restore does not enable mail
+ * to an owner who opted out.
+ *
  * @param DatabaseInterface $db            UserSpice DB instance
  * @param int[]             $userIds       IDs to archive
  * @param int               $deletedBy     Admin user ID performing the deletion
@@ -87,7 +91,8 @@ function archiveAccounts(DatabaseInterface $db, array $userIds, int $deletedBy, 
     $rows = $db->query(
         "SELECT u.id, u.email, u.username, u.fname, u.lname,
                 u.join_date, u.last_login, u.logins, u.email_verified,
-                p.city, p.state, p.country, p.bio, p.website
+                p.city, p.state, p.country, p.bio, p.website,
+                p.email_opted_out, p.email_opted_out_at
          FROM users u
          LEFT JOIN profiles p ON p.user_id = u.id
          WHERE u.id IN (" . $placeholders . ")",
@@ -122,6 +127,8 @@ function archiveAccounts(DatabaseInterface $db, array $userIds, int $deletedBy, 
                 'country'          => $r->country ?? null,
                 'bio'              => $r->bio     ?? null,
                 'website'          => $r->website ?? null,
+                'email_opted_out'    => (int) ($r->email_opted_out ?? 0),
+                'email_opted_out_at' => $r->email_opted_out_at ?? null,
                 'deleted_by'       => $deletedBy,
                 'deleted_at'       => $now,
                 'deletion_type'    => $deletionType,
@@ -142,6 +149,8 @@ function archiveAccounts(DatabaseInterface $db, array $userIds, int $deletedBy, 
 
 /**
  * Restore an archived account: re-insert into users + profiles, mark archive row restored.
+ *
+ * The new profile gets the archived opt-out. It never gets a block or bounce flag.
  *
  * Returns the new user ID on success, or throws on failure.
  *
@@ -206,21 +215,29 @@ function restoreArchivedAccount(DatabaseInterface $db, int $archiveId, int $rest
             );
         }
 
-        // Re-insert profile if any profile data was archived
-        if ($row->city || $row->state || $row->country || $row->bio || $row->website) {
-            $ok = $db->insert('profiles', [
-                'user_id' => $newUserId,
-                'city'    => $row->city    ?? null,
-                'state'   => $row->state   ?? null,
-                'country' => $row->country ?? null,
-                'bio'     => $row->bio     ?? null,
-                'website' => $row->website ?? null,
-            ]);
-            if (!$ok) {
-                throw new RuntimeException(
-                    "User id={$newUserId} restored but profile insert failed — " . $db->errorString()
-                );
-            }
+        // Always insert a profile: the deliverability record lives on it, and the
+        // text columns are NOT NULL with no default under strict mode (#2101).
+        // The block and bounce flags are not archived. Brevo keeps its own block
+        // on the address, so a send to it sets the bounce flag again.
+        // The address is new to this account at restore time, not at join_date:
+        // a bounce on mail sent before the deletion must not match it. The
+        // matching step that reads email_address_since comes in #2359.
+        $ok = $db->insert('profiles', [
+            'user_id'             => $newUserId,
+            'city'                => $row->city    ?? '',
+            'state'               => $row->state   ?? '',
+            'country'             => $row->country ?? '',
+            'bio'                 => $row->bio     ?? '',
+            'website'             => $row->website ?? null,
+            'email_opted_out'     => (int) $row->email_opted_out,
+            'email_opted_out_at'  => $row->email_opted_out_at,
+            'email_address_since' => date('Y-m-d H:i:s'),
+            'email_address_seen'  => DeliverabilityMigrationQueries::normalizeAddress($row->email),
+        ]);
+        if (!$ok) {
+            throw new RuntimeException(
+                "User id={$newUserId} restored but profile insert failed — " . $db->errorString()
+            );
         }
 
         // Mark as restored — keep the archive row as permanent audit trail

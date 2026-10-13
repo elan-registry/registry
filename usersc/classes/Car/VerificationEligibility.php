@@ -38,16 +38,13 @@ use ElanRegistry\Exceptions\CarValidationException;
  * catch it — see that method's own comment). Either way this lands in the
  * report's Failed section rather than Skipped.
  *
- * The owner-level opt-out (the SQL's LEFT JOIN profiles /
- * `COALESCE(profiles.email_suppressed, 0) = 0` clause, #1883) falls in that
- * same category and for the same reason: it is a property of the OWNER, not
- * of the car row this class is handed, and needs a `profiles` join no single
- * `cars` row can supply. Note the per-car `cars.email_suppressed` check below
- * does NOT stand in for it — that flag is only fanned out to the cars the
- * owner held when they opted out, so a car acquired afterwards reads 0 there
- * while the owner's standing opt-out sits in `profiles`. It too is enforced
- * downstream in {@see CarVerificationSendService::sendOne()}, which reads
- * {@see CarRepository::findProfileEmailSuppressed()} directly and returns a
+ * The deliverability flags (the SQL's LEFT JOIN profiles clause: no profiles
+ * row, `email_opted_out`, `email_blocked`, `email_bounced`, #2101) fall in
+ * that same category and for the same reason: they are properties of the
+ * OWNER, not of the car row this class is handed, and need a `profiles` join
+ * no single `cars` row can supply. They too are enforced downstream in
+ * {@see CarVerificationSendService::sendOne()}, which reads
+ * {@see CarRepository::findProfileEmailState()} directly and returns a
  * failure result, landing in the report's Failed section rather than Skipped.
  *
  * @package ElanRegistry\Car
@@ -74,16 +71,6 @@ final class VerificationEligibility
         // cars.solddate IS NULL
         if (!empty($carData->solddate)) {
             return 'Marked sold';
-        }
-
-        // cars.email_bounced = 0
-        if (!empty($carData->email_bounced)) {
-            return 'Email bounced';
-        }
-
-        // cars.email_suppressed = 0
-        if (!empty($carData->email_suppressed)) {
-            return 'Email suppressed';
         }
 
         // cars.email IS NOT NULL AND cars.email != ''

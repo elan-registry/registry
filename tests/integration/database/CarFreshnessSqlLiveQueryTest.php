@@ -25,7 +25,7 @@ final class CarFreshnessSqlLiveQueryTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $this->testUserId = $this->createTestUser();
+        $this->testUserId = $this->createTestUser([], true);
         $this->loginAsTestUser($this->testUserId);
         $this->repo = new CarRepository($this->db);
     }
@@ -142,7 +142,6 @@ final class CarFreshnessSqlLiveQueryTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, [
             'email'              => 'live-query-eligible@example.com',
-            'email_bounced'      => 0,
             'last_verified'      => null,
             'owner_last_updated' => date('Y-m-d H:i:s', strtotime('-2 years')),
             'solddate'           => null,

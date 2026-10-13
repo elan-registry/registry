@@ -25,7 +25,6 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 
 <?php
-use ElanRegistry\AppConstants;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -67,76 +66,6 @@ $userId = (int)$user->data()->id;
 $repo = new CarRepository(dbi());
 $verifier = new CarVerificationManager($repo);
 
-if (!function_exists('userSettingsHistoryFields')) {
-    /**
-     * Build a cars_hist snapshot row for an owner self-service action on this
-     * page (Resume verification emails, #1895).
-     *
-     * The third copy of the same snapshot shape: verifyHistoryFields() in
-     * app/verify/verify_car.php (owner actions from an email link, with a
-     * $soldDate parameter) and verifyHistoryFieldsForAdminAction() in
-     * app/admin/index.php (admin actions, no $soldDate). This copy has no
-     * $soldDate either, because this action never sets a sale date. The three
-     * are kept separate until a refactor merges them.
-     *
-     * @param object $carData   PRE-CHANGE car snapshot returned by the CarVerificationManager
-     * @param string $operation cars_hist.operation value (varchar(32))
-     * @param string $comments  Free-text audit note
-     * @return array<string, mixed> Field map for CarRepository::insertHistory()
-     * @throws OwnerDatabaseException If the car's owner cannot be loaded
-     */
-    function userSettingsHistoryFields(object $carData, string $operation, string $comments): array
-    {
-        $owner = (new Owner((int) $carData->user_id))->data();
-
-        // A half-populated audit row is worse than no change: fail and let the
-        // caller's transaction roll the car mutation back too.
-        if ($owner === null) {
-            throw new OwnerDatabaseException(
-                'user_settings.php: owner ' . (int) $carData->user_id
-                . " could not be loaded while building the {$operation} history snapshot for car "
-                . (int) $carData->id
-            );
-        }
-
-        return [
-            'operation'             => $operation,
-            'car_id'                => (int) $carData->id,
-            'comments'              => $comments,
-            'ctime'                 => $carData->ctime ?? date(AppConstants::DATETIME_FORMAT),
-            'mtime'                 => date(AppConstants::DATETIME_FORMAT),
-            'model'                 => $carData->model ?? '',
-            'series'                => $carData->series ?? '',
-            'variant'               => $carData->variant ?? '',
-            // cars_hist.year is SMALLINT UNSIGNED NULL. Strict mode rejects ''.
-            'year'                  => $carData->year ?? null,
-            'type'                  => $carData->type ?? '',
-            'chassis'               => $carData->chassis ?? '',
-            'color'                 => $carData->color ?? '',
-            'engine'                => $carData->engine ?? '',
-            'purchasedate'          => $carData->purchasedate ?? null,
-            'solddate'              => $carData->solddate ?? null,
-            'email_bounced'         => $carData->email_bounced ?? 0,
-            'email_bounced_address' => $carData->email_bounced_address ?? null,
-            'email_suppressed'      => $carData->email_suppressed ?? 0,
-            'verification_attempts'       => $carData->verification_attempts ?? 0,
-            'verification_attempts_since' => $carData->verification_attempts_since ?? null,
-            'image'                 => $carData->image ?? '',
-            'user_id'               => (int) $carData->user_id,
-            'email'                 => $carData->email ?? ($owner->email ?? ''),
-            'fname'                 => $owner->fname ?? '',
-            'lname'                 => $owner->lname ?? '',
-            'join_date'             => $owner->join_date ?? null,
-            'city'                  => $owner->city ?? '',
-            'state'                 => $owner->state ?? '',
-            'country'               => $owner->country ?? '',
-            'lat'                   => $owner->lat ?? null,
-            'lon'                   => $owner->lon ?? null,
-            'website'               => $owner->website ?? '',
-        ];
-    }
-}
-
 $validation = new Validate();
 $userdetails = $user->data();
 // Get the profile ID for the direct website-clear write further down.
@@ -175,61 +104,37 @@ if (!empty($_POST)) {
         // with it. The owner is $userId from the session only. No id from
         // the POST body is read.
         //
-        // One transaction covers the fan-out and every audit row, so a car
-        // never ends up cleared with no cars_hist record of who asked.
+        // One transaction covers the profile write and its audit row in
+        // logs, so the opt-out never ends up cleared with no record of who
+        // asked.
         //
         // $committed tells the catch below whether the change is already
-        // saved. After commit(), a fault in logger(), usSuccess() or
-        // Redirect::to() must not roll back (a no-op) or tell the owner that
-        // nothing was changed.
+        // saved. After commit(), a fault in usSuccess() or Redirect::to()
+        // must not roll back (a no-op) or tell the owner that nothing was
+        // changed.
         $committed = false;
         try {
             // Inside the try: PDO runs in ERRMODE_EXCEPTION, so a failed BEGIN
             // throws, and the catch below must give the owner a message.
-            // Read before the clear: an empty $resumedCars can still mean the
-            // profile flag was cleared, so the message needs both.
-            $profileWasSuppressed = (int) ($profiledetails->email_suppressed ?? 0) === 1;
             $repo->beginTransaction();
-            $resumedCars = $verifier->clearSuppressedForOwnerByOwner($userId);
-            foreach ($resumedCars as $beforeCar) {
-                if (!$repo->insertHistory(userSettingsHistoryFields(
-                    $beforeCar,
-                    'SUPPRESSION CLEARED BY OWNER',
-                    'Owner action via Account Settings (Resume verification emails)'
-                ))) {
-                    // Read the error before any other query resets the shared connection state.
-                    throw new CarDatabaseException(
-                        'user_settings.php: audit trail insert failed for SUPPRESSION CLEARED BY OWNER on car '
-                        . (int) $beforeCar->id . " for owner {$userId}: "
-                        . ($repo->errorString() ?: 'unknown')
-                    );
-                }
-            }
+            $resumed = $verifier->clearSuppressedForOwnerByOwner($userId);
             $repo->commit();
             $committed = true;
 
-            logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'user_settings.php: SUPPRESSION CLEARED BY OWNER applied for owner %d (%d cars changed)',
-                $userId,
-                count($resumedCars)
-            ));
-            // The owner cannot clear a Brevo complaint (only an admin can),
-            // so say which cars stay paused instead of a plain "resumed".
-            $complaintCarCount = count($verifier->findBrevoComplaintCarIds($userId));
-            $resumedAnything = $profileWasSuppressed || $resumedCars !== [];
-            if ($complaintCarCount > 0 && !$resumedAnything) {
-                usError(sprintf(
-                    'No cars were resumed. %s paused because our email provider flagged the address. Please contact the registry to turn %s back on.',
-                    $complaintCarCount === 1 ? 'Your car was' : 'Your cars were',
-                    $complaintCarCount === 1 ? 'it' : 'them'
-                ));
-            } elseif ($complaintCarCount > 0) {
-                usSuccess(sprintf(
-                    'Verification emails have been resumed where you paused them. %d of your cars %s paused because our email provider flagged the address. Please contact the registry to turn %s back on.',
-                    $complaintCarCount,
-                    $complaintCarCount === 1 ? 'stays' : 'stay',
-                    $complaintCarCount === 1 ? 'it' : 'them'
-                ));
+            // Resume clears only the owner's own opt-out. A block or a bounce
+            // stays, and eligibility still excludes the owner, so the message
+            // must not say that emails start again. A block needs the
+            // registry, so it wins over a bounce.
+            $blocked = (int) ($profiledetails->email_blocked ?? 0) === 1;
+            $bounced = (int) ($profiledetails->email_bounced ?? 0) === 1;
+            if ($blocked && !$resumed) {
+                usError('Verification emails are paused because our email provider flagged your address. Please contact the registry.');
+            } elseif ($blocked) {
+                usWarning('Your opt-out is removed. Verification emails stay paused because our email provider flagged your address. Please contact the registry.');
+            } elseif ($bounced && !$resumed) {
+                usError('Verification emails are paused because email to your address bounced. Update your email address to turn them back on.');
+            } elseif ($bounced) {
+                usWarning('Your opt-out is removed. Verification emails stay paused because email to your address bounced. Update your email address to turn them back on.');
             } else {
                 usSuccess('Verification emails have been resumed for your cars.');
             }
@@ -246,7 +151,7 @@ if (!empty($_POST)) {
                     get_class($e),
                     $e->getMessage()
                 ));
-                $errors[] = 'Verification emails were resumed, but the confirmation could not be shown. Reload this page to check.';
+                $errors[] = 'Your request was saved, but the confirmation could not be shown. Reload this page to check.';
             } else {
                 // Guard the rollback: on a dropped connection ROLLBACK throws
                 // too, and an unguarded call would lose $e. Same pattern as
@@ -264,9 +169,8 @@ if (!empty($_POST)) {
                     ));
                 }
                 if ($e instanceof ElanRegistryException) {
-                    // CarDatabaseException from the manager or the audit
-                    // insert, and OwnerDatabaseException from the history
-                    // snapshot.
+                    // CarDatabaseException from the manager: no profiles
+                    // row, or a failed profile write or audit row.
                     logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
                         "user_settings.php: SUPPRESSION CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage());
                 } else {
@@ -726,14 +630,9 @@ if (!empty($_POST)) {
 
             // The profile write committed before this runs. A failure here must
             // not tell the owner that the email change failed, so log it only.
-            $clearBouncedForNewEmail = function (string $newEmail) use ($repo, $userId): void {
+            $clearBouncedForNewEmail = function (string $newEmail) use ($verifier, $userId): void {
                 try {
-                    $cleared = $repo->clearBouncedForUser($userId, $newEmail);
-                    if ($cleared > 0) {
-                        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-                            "user_settings.php: cleared bounce flag on {$cleared} car(s) "
-                            . "for user {$userId} after direct email change.");
-                    }
+                    $verifier->clearBouncedForEmailChange($userId, $userId, $newEmail);
                 } catch (\Throwable $bounceException) {
                     logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
                         "user_settings.php: bounce-clear after direct email change failed for user {$userId}: "
@@ -907,40 +806,27 @@ if ($userQ2->count() > 0) {
     echo 'USER_SETTING(390) something is wrong with the user profile <br>';
 }
 
-// Two flags can pause an owner's emails, so either one shows the control:
-// - profiles.email_suppressed = 1 (the owner opted out). This blocks every
-//   owned car, also a car added after the opt-out that keeps
-//   cars.email_suppressed = 0 (see CarRepository::findVerificationEligible()).
-//   So the count is every owned car.
-// - cars.email_suppressed = 1 on one or more cars, with the profile flag at 0.
-//   A Brevo spam or unsubscribe event sets only the flag on that one car
-//   (EmailEventApplier::apply()). So the count is those cars only.
-// clearSuppressedForOwnerByOwner() clears both kinds: its fan-out reads each
-// car's own flag, whatever the profile flag is. The one exception is a car
-// whose suppression is a Brevo complaint: only an admin can clear it, so
-// $complaintPausedCount tells the owner to contact the registry. PDO
-// returns the columns as int|string, so cast before the strict comparisons.
-$profileSuppressed = (int) ($profiledetails->email_suppressed ?? 0) === 1;
-$emailSuppressed = $profileSuppressed;
+// Two profile flags pause verification email for every car the owner has,
+// also a car added after the flag was set
+// (see CarRepository::findVerificationEligible()):
+// - email_opted_out: the owner opted out. Resume clears it.
+// - email_blocked: the email provider flagged the address. Only an admin can
+//   clear it, so the page tells the owner to contact the registry.
+// PDO returns the columns as int|string, so cast before the strict
+// comparisons.
+$ownerClearable = (int) ($profiledetails->email_opted_out ?? 0) === 1;
+$emailBlocked = (int) ($profiledetails->email_blocked ?? 0) === 1;
+$emailSuppressed = $ownerClearable || $emailBlocked;
 $pausedCarCount = null;
-$complaintPausedCount = 0;
-try {
-    $ownedCars = $repo->findVerificationStateByOwner($userId);
-    $pausedCarCount = $profileSuppressed
-        ? count($ownedCars)
-        : count(array_filter($ownedCars, static fn(object $car): bool => (int) $car->email_suppressed === 1));
-    $emailSuppressed = $profileSuppressed || $pausedCarCount > 0;
-    $complaintPausedCount = count($verifier->findBrevoComplaintCarIds($userId));
-} catch (ElanRegistryException $e) {
-    // With the profile flag set, the count is copy, not a gate: keep the
-    // control and show generic text. With the profile flag at 0, the per-car
-    // flags are unknown, so the control stays hidden until the next load.
-    logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-        "user_settings.php: owner car suppression lookup failed for owner {$userId}: " . $e->getMessage());
+if ($emailSuppressed) {
+    try {
+        $pausedCarCount = count($repo->findVerificationStateByOwner($userId));
+    } catch (ElanRegistryException $e) {
+        // The count is copy, not a gate: keep the control and show generic text.
+        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+            "user_settings.php: owned-car count for the paused-email notice failed for owner {$userId}: " . $e->getMessage());
+    }
 }
-// The owner cannot clear a Brevo complaint, so the button shows only when
-// at least one paused car is not a complaint.
-$ownerClearable = $profileSuppressed || ($pausedCarCount ?? 0) > $complaintPausedCount;
 
 ?>
 <div id="page-wrapper">
@@ -965,8 +851,8 @@ $ownerClearable = $profileSuppressed || ($pausedCarCount ?? 0) > $complaintPause
                                     <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume verification emails</button>
                                 </form>
                             <?php endif; ?>
-                            <?php if ($complaintPausedCount > 0): ?>
-                                <p class="mt-2 mb-0"><?= (int) $complaintPausedCount ?> <?= $complaintPausedCount === 1 ? 'car was' : 'cars were' ?> paused because our email provider flagged the address.<?= $ownerClearable ? ' This button does not turn those back on.' : '' ?> Please contact the registry for help.</p>
+                            <?php if ($emailBlocked): ?>
+                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not turn verification emails back on.' : '' ?> Please contact the registry for help.</p>
                             <?php endif; ?>
                         </section>
                     <?php endif; ?>

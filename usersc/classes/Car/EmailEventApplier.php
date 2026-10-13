@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 
 /**
@@ -26,23 +27,32 @@ use ElanRegistry\LogCategories;
  * already-validated scalars, so each caller keeps ownership of how it
  * discovered the event (webhook POST body vs. Brevo API poll).
  *
+ * The flags belong to the owner's profile, not to the car (#2101). The event
+ * row is still recorded against the car. {@see CarVerificationManager} finds
+ * the car's owner and writes the profile, with the flag's address and time.
+ *
  * ESCALATION RULES:
- * - `hard_bounce` / `blocked` / `invalid` / `invalid_email` immediately flag the
- *   car as bounced.
+ * - `hard_bounce` / `blocked` / `invalid` / `invalid_email` immediately set
+ *   the owner's `email_bounced`, with `email_bounced_at` = the event time.
  * - `soft_bounce` does not immediately change anything. After the event row is
  *   recorded, {@see CarRepository::countSoftBouncesSinceLastDelivered()} is
  *   consulted; at {@see self::SOFT_BOUNCE_ESCALATION_THRESHOLD} or more distinct
  *   send cycles (distinct `brevo_message_id` values) since the email's last
- *   `delivered` event, the car is escalated to bounced via the same path as a
- *   hard bounce.
+ *   `delivered` event and the owner's last Clear Bounced, the owner is
+ *   escalated to bounced via the same path as a hard bounce, with
+ *   `email_bounced_at` = the time of the soft bounce that escalated.
  * - `delivered` and `unique_opened` only ever record an event row. `delivered`
  *   implicitly resets the soft-bounce escalation window (the count query is
  *   scoped to occur after the most recent `delivered` row), so there is no
  *   separate "clear escalation" write. `unique_opened` never touches flags or
  *   the escalation count under any circumstance.
- * - `spam` and `unsubscribed` flag the car as suppressed (a distinct signal
- *   from a bounce). Each is recorded under its own event name so the two
- *   remain distinguishable in `er_email_events`.
+ * - `spam` and `unsubscribed` set the owner's `email_blocked` (a distinct
+ *   signal from a bounce), with cause `spam` or `unsubscribed`. Each is
+ *   recorded under its own event name so the two remain distinguishable in
+ *   `er_email_events`.
+ *
+ * Each caller passes its source (`webhook`, `reconciliation` or `import`),
+ * which goes into the flag-change audit row ({@see DeliverabilityFlagLog}).
  *
  * Not `final`, for the same reason {@see CarRepository} and
  * {@see CarVerificationManager} are not: it is an injected collaborator of
@@ -95,7 +105,8 @@ class EmailEventApplier
     private const KNOWN_INERT_EVENTS = ['delivered', 'unique_opened'];
 
     /**
-     * Brevo event names that flag the car as suppressed rather than bounced.
+     * Brevo event names that set `email_blocked` on the car owner's profile,
+     * not `email_bounced`.
      *
      * `unsubscribed` originates from the suppression-list import job (#1923)
      * rather than a webhook. It is recorded under its own event name — never
@@ -103,11 +114,21 @@ class EmailEventApplier
      * `er_email_events` for later audit.
      *
      * Public because read-only consumers outside this class need the same
-     * vocabulary to interpret stored `er_email_events.event` values (e.g. the
-     * admin user form's suppression-reason display). This class remains the
-     * single owner of the list — callers read it, never redefine it.
+     * vocabulary to interpret stored `er_email_events.event` values (e.g.
+     * CarRepository's Status chip query). This class remains the single owner
+     * of the list. Callers read it and never redefine it.
      */
     public const SUPPRESSION_EVENTS = ['spam', 'unsubscribed'];
+
+    /**
+     * The `profiles.email_blocked_cause` that each suppression event sets.
+     *
+     * @var array<string, string>
+     */
+    private const SUPPRESSION_EVENT_CAUSES = [
+        'spam'         => CarRepository::BLOCKED_CAUSE_SPAM,
+        'unsubscribed' => CarRepository::BLOCKED_CAUSE_UNSUBSCRIBED,
+    ];
 
     public function __construct(
         private CarRepository $repo,
@@ -117,6 +138,10 @@ class EmailEventApplier
     /**
      * Record the event for one matched car and apply any resulting escalation
      *
+     * @param string $source Who found the event: one of {@see DeliverabilityFlagLog::SOURCES},
+     *                       normally `webhook`, `reconciliation` or `import`
+     * @throws \InvalidArgumentException If $source is not a permitted value (nothing is written)
+     * @throws CarValidationException If the address is empty or the time is not valid
      * @throws CarDatabaseException If any write fails
      */
     public function apply(
@@ -125,25 +150,34 @@ class EmailEventApplier
         string $event,
         ?string $reason,
         string $messageId,
-        string $occurredAt
+        string $occurredAt,
+        string $source = DeliverabilityFlagLog::SOURCE_WEBHOOK
     ): void {
+        DeliverabilityFlagLog::assertValidSource($source);
+
         $this->repo->insertEmailEvent($carId, $email, $event, $reason, $messageId, $occurredAt);
 
         if (in_array($event, self::HARD_BOUNCE_EVENTS, true)) {
-            $this->verificationManager->setBounced((object) ['id' => $carId], $email);
+            $this->verificationManager->setBounced($carId, $email, $occurredAt, $source);
             return;
         }
 
         if ($event === 'soft_bounce') {
-            $cycles = $this->repo->countSoftBouncesSinceLastDelivered($email);
+            $cycles = $this->repo->countSoftBouncesSinceLastDelivered($email, $carId);
             if ($cycles >= self::SOFT_BOUNCE_ESCALATION_THRESHOLD) {
-                $this->verificationManager->setBounced((object) ['id' => $carId], $email);
+                $this->verificationManager->setBounced($carId, $email, $occurredAt, $source);
             }
             return;
         }
 
-        if (in_array($event, self::SUPPRESSION_EVENTS, true)) {
-            $this->verificationManager->setSuppressed((object) ['id' => $carId]);
+        if (isset(self::SUPPRESSION_EVENT_CAUSES[$event])) {
+            $this->verificationManager->setSuppressed(
+                $carId,
+                $email,
+                self::SUPPRESSION_EVENT_CAUSES[$event],
+                $occurredAt,
+                $source
+            );
             return;
         }
 

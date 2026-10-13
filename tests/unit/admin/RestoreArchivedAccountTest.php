@@ -42,9 +42,12 @@ final class RestoreArchivedAccountTest extends TestCase
         return new RestoreArchivedAccountFakeDatabase($archiveRow, $insertOk, $lastId, $queryError);
     }
 
-    private function archiveRow(): object
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    private function archiveRow(array $overrides = []): object
     {
-        return (object)[
+        return (object) array_merge([
             'id'             => 10,
             'email'          => 'test@example.com',
             'username'       => 'testuser',
@@ -59,7 +62,9 @@ final class RestoreArchivedAccountTest extends TestCase
             'country'        => null,
             'bio'            => null,
             'website'        => null,
-        ];
+            'email_opted_out'    => 0,
+            'email_opted_out_at' => null,
+        ], $overrides);
     }
 
     // -------------------------------------------------------------------------
@@ -121,6 +126,66 @@ final class RestoreArchivedAccountTest extends TestCase
         $this->assertSame(1, $db->commitCalls);
         $this->assertSame(0, $db->rollBackCalls);
     }
+
+    /**
+     * The profile row carries the deliverability record, so the restore always
+     * inserts it. The text columns are NOT NULL under strict mode, so a NULL
+     * archived value is written as ''.
+     */
+    #[Group('fast')] #[Group('unit')] #[Group('admin')]
+    public function testAlwaysInsertsAProfileWithEmptyStringsForNullTextColumns(): void
+    {
+        $db = $this->makeDb($this->archiveRow(), insertOk: true, lastId: 42);
+
+        restoreArchivedAccount($db, 10, 1);
+
+        $profiles = $db->insertsInto('profiles');
+        $this->assertCount(1, $profiles, 'Exactly one profiles row, even with no profile data archived');
+        $this->assertSame(42, $profiles[0]['user_id']);
+        $this->assertSame('', $profiles[0]['city']);
+        $this->assertSame('', $profiles[0]['state']);
+        $this->assertSame('', $profiles[0]['country']);
+        $this->assertSame('', $profiles[0]['bio']);
+        $this->assertNull($profiles[0]['website'], 'website is nullable, so NULL stays NULL');
+    }
+
+    #[Group('fast')] #[Group('unit')] #[Group('admin')]
+    public function testRestoresTheArchivedOptOutOntoTheNewProfile(): void
+    {
+        $db = $this->makeDb($this->archiveRow([
+            'email_opted_out' => 1,
+            'email_opted_out_at' => '2026-03-04 05:06:07',
+        ]), insertOk: true, lastId: 42);
+
+        restoreArchivedAccount($db, 10, 1);
+
+        $profiles = $db->insertsInto('profiles');
+        $this->assertCount(1, $profiles);
+        $this->assertSame(1, $profiles[0]['email_opted_out']);
+        $this->assertSame('2026-03-04 05:06:07', $profiles[0]['email_opted_out_at']);
+    }
+
+    #[Group('fast')] #[Group('unit')] #[Group('admin')]
+    public function testRestoreWritesNoBlockOrBounceFlagAndStartsTheAddressNow(): void
+    {
+        $db = $this->makeDb($this->archiveRow(['email' => '  Test@Example.COM ']), insertOk: true, lastId: 42);
+        $before = time();
+
+        restoreArchivedAccount($db, 10, 1);
+
+        $profiles = $db->insertsInto('profiles');
+        $this->assertCount(1, $profiles);
+        $keys = array_keys($profiles[0]);
+        foreach ($keys as $key) {
+            $this->assertStringNotContainsString('blocked', $key, 'A restore must not copy a block');
+            $this->assertStringNotContainsString('bounce', $key, 'A restore must not copy a bounce');
+        }
+        $this->assertSame('test@example.com', $profiles[0]['email_address_seen']);
+        $since = strtotime((string) $profiles[0]['email_address_since']);
+        $this->assertGreaterThanOrEqual($before - 1, $since, 'email_address_since is the restore time, not join_date');
+        $this->assertLessThanOrEqual(time() + 1, $since);
+        $this->assertNotSame('2024-01-01 00:00:00', $profiles[0]['email_address_since']);
+    }
 }
 
 /**
@@ -138,6 +203,9 @@ class RestoreArchivedAccountFakeDatabase extends FakeDatabase
 {
     public int $commitCalls = 0;
     public int $rollBackCalls = 0;
+
+    /** @var list<array{table: string, fields: array<string, mixed>}> */
+    private array $inserts = [];
 
     private bool $errorFlag = false;
     private bool $firstQueryDone = false;
@@ -193,7 +261,20 @@ class RestoreArchivedAccountFakeDatabase extends FakeDatabase
      */
     public function insert(string $table, array $fields = [], bool $update = false): bool
     {
+        $this->inserts[] = ['table' => $table, 'fields' => $fields];
+
         return $this->insertOk;
+    }
+
+    /**
+     * @return list<array<string, mixed>> The field map of each insert() into $table
+     */
+    public function insertsInto(string $table): array
+    {
+        return array_values(array_map(
+            static fn (array $insert): array => $insert['fields'],
+            array_filter($this->inserts, static fn (array $insert): bool => $insert['table'] === $table)
+        ));
     }
 
     /**

@@ -8,25 +8,20 @@ use ElanRegistry\Car\CarRepository;
  * (issue #1899, the email-paused notice on usersc/account.php).
  *
  * Seeds six loginable owners, one car each (except the overflow owner, which
- * gets four), matching EmailNoticeBuilder's real cause/date sources
- * (confirmed against usersc/classes/Car/EmailNoticeBuilder.php, not the
- * original issue plan):
+ * gets four). The deliverability flags are on the owner profile (#2101), as
+ * EmailNoticeBuilder reads them:
  *
- *  - optout:    cars.email_suppressed = 1, a real `cars_hist` 'EMAIL
- *               SUPPRESSED' row, and NO `er_email_events` row — the owner's
- *               own opt-out click (verify_car.php never writes an event row).
- *  - spam:      cars.email_suppressed = 1, a real `er_email_events` 'spam'
- *               row, and NO matching `cars_hist` row — a Brevo complaint (the
- *               webhook path never writes an 'EMAIL SUPPRESSED' history row).
- *  - bounced:   cars.email_bounced = 1 with a bounced address, following the
- *               same shape as seed-bounced-car.php's SEED_BOUNCED_ADDRESS
- *               pattern (own car, own address, no profile-level flag).
- *  - both:      one car, one address, BOTH email_suppressed = 1 (opt-out,
- *               with its cars_hist row) and email_bounced = 1 — the "same
- *               address, both problems, one merged block" case.
- *  - overflow:  four cars, four distinct suppressed addresses — triggers the
- *               MAX_ADDRESSES=3 cap and "and 1 more" overflow line.
- *  - clean:     one car, no flags — the notice must be entirely absent.
+ *  - optout:    email_opted_out = 1 with email_opted_out_at. The notice names
+ *               the car address.
+ *  - spam:      email_blocked = 1 (cause spam), with the blocked address and
+ *               email_blocked_at. A Brevo complaint.
+ *  - bounced:   email_bounced = 1 with a bounced address and email_bounced_at.
+ *  - both:      email_opted_out = 1 and email_bounced = 1 on the one car
+ *               address. The "same address, both problems, one merged block"
+ *               case.
+ *  - overflow:  opted out, with four cars on four distinct addresses. It
+ *               triggers the MAX_ADDRESSES=3 cap and the "and 1 more" line.
+ *  - clean:     a profile with no flags. The notice must be entirely absent.
  *
  * Usage:
  *   php seed-email-paused-notice.php            seed (deletes earlier marker rows first)
@@ -135,9 +130,10 @@ $now = date('Y-m-d H:i:s');
  * Insert one user + profile + car. Returns [userId, password, carId].
  *
  * @param array<string, mixed> $carFields
+ * @param array<string, int|string> $profileFlags Deliverability columns for the profile
  * @return array{0: int, 1: string, 2: int}
  */
-function seedOwnerWithCar(\ElanRegistry\DatabaseInterface $db, CarRepository $carRepository, string $username, string $chassis, array $carFields): array
+function seedOwnerWithCar(\ElanRegistry\DatabaseInterface $db, CarRepository $carRepository, string $username, string $chassis, array $carFields, array $profileFlags = []): array
 {
     $password = 'Pw-' . bin2hex(random_bytes(12));
 
@@ -168,10 +164,7 @@ function seedOwnerWithCar(\ElanRegistry\DatabaseInterface $db, CarRepository $ca
         exit(1);
     }
 
-    if (!$db->insert('profiles', ['user_id' => $userId, 'bio' => '', 'city' => '', 'state' => '', 'country' => ''])) {
-        fwrite(STDERR, "ERROR: Failed to insert seed owner '{$username}' profile: {$db->errorString()}\n");
-        exit(1);
-    }
+    seedProfile($db, $userId, $profileFlags);
 
     $defaults = [
         'user_id'            => $userId,
@@ -195,62 +188,66 @@ function seedOwnerWithCar(\ElanRegistry\DatabaseInterface $db, CarRepository $ca
     return [$userId, $password, $carId];
 }
 
-/** Minimal valid cars_hist row (NOT NULL columns per schema have no default). */
-function seedHistRow(\ElanRegistry\DatabaseInterface $db, int $carId, string $operation, string $timestamp): void
+/**
+ * Upsert the owner profile. profiles.user_id is UNIQUE.
+ *
+ * @param array<string, int|string> $flags Deliverability columns to set
+ */
+function seedProfile(\ElanRegistry\DatabaseInterface $db, int $userId, array $flags): void
 {
-    $inserted = $db->insert('cars_hist', [
-        'operation' => $operation,
-        'car_id'    => $carId,
-        'model'     => SEED_CAR_MODEL,
-        'series'    => 'S4',
-        'variant'   => 'SE',
-        'type'      => 'FHC',
-        'chassis'   => 'SEEDHIST',
-        'timestamp' => $timestamp,
-    ]);
-    if (!$inserted) {
-        fwrite(STDERR, "ERROR: Failed to seed cars_hist row for car {$carId}: {$db->errorString()}\n");
+    $columns = array_merge(['bio' => '', 'city' => '', 'state' => '', 'country' => ''], $flags);
+    $names = implode(', ', array_keys($columns));
+    $marks = implode(', ', array_fill(0, count($columns), '?'));
+    $updates = implode(', ', array_map(static fn(string $c): string => "{$c} = VALUES({$c})", array_keys($columns)));
+    $db->query(
+        "INSERT INTO profiles (user_id, {$names}) VALUES (?, {$marks}) ON DUPLICATE KEY UPDATE {$updates}",
+        array_merge([$userId], array_values($columns))
+    );
+    if ($db->error()) {
+        fwrite(STDERR, "ERROR: Failed to upsert the profile for user {$userId}: {$db->errorString()}\n");
         exit(1);
     }
 }
 
 $output = [];
 
-// --- optout: cars.email_suppressed=1, a real EMAIL SUPPRESSED cars_hist row,
-// no er_email_events row. --------------------------------------------------
+// --- optout: profile email_opted_out = 1. ----------------------------------
 [$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['optout']['username'], 'PWENOPT', [
-    'email'             => $owners['optout']['email'],
-    'email_suppressed'  => 1,
-]);
-seedHistRow($db, $carId, 'EMAIL SUPPRESSED', '2026-04-01 10:00:00');
+    'email' => $owners['optout']['email'],
+], ['email_opted_out' => 1, 'email_opted_out_at' => '2026-04-01 10:00:00']);
 $output['optout'] = ['userId' => $userId, 'username' => $owners['optout']['username'], 'password' => $password, 'carId' => $carId];
 
-// --- spam: cars.email_suppressed=1, a real er_email_events 'spam' row, no
-// matching cars_hist row. ---------------------------------------------------
+// --- spam: profile email_blocked = 1, cause spam (a Brevo complaint). -------
 [$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['spam']['username'], 'PWENSPAM', [
-    'email'             => $owners['spam']['email'],
-    'email_suppressed'  => 1,
+    'email' => $owners['spam']['email'],
+], [
+    'email_blocked'         => 1,
+    'email_blocked_address' => $owners['spam']['email'],
+    'email_blocked_at'      => '2026-04-02 11:00:00',
+    'email_blocked_cause'   => 'spam',
 ]);
-$carRepository->insertEmailEvent($carId, $owners['spam']['email'], 'spam', null, 'pw-seed-spam-msg', '2026-04-02 11:00:00');
 $output['spam'] = ['userId' => $userId, 'username' => $owners['spam']['username'], 'password' => $password, 'carId' => $carId];
 
-// --- bounced: cars.email_bounced=1 with a bounced address (seed-bounced-car.php pattern). ---
+// --- bounced: profile email_bounced = 1 with a bounced address. -------------
 [$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['bounced']['username'], 'PWENBOUNC', [
-    'email'                 => $owners['bounced']['email'],
+    'email' => $owners['bounced']['email'],
+], [
     'email_bounced'         => 1,
     'email_bounced_address' => $owners['bounced']['email'],
+    'email_bounced_at'      => '2026-04-02 10:00:00',
 ]);
 $output['bounced'] = ['userId' => $userId, 'username' => $owners['bounced']['username'], 'password' => $password, 'carId' => $carId];
 
-// --- both: one car, one address, both suppressed (opt-out, with cars_hist
-// row) and bounced. ----------------------------------------------------------
+// --- both: one car address, opted out and bounced. ---------------------------
 [$userId, $password, $carId] = seedOwnerWithCar($db, $carRepository, $owners['both']['username'], 'PWENBOTH', [
-    'email'                 => $owners['both']['email'],
-    'email_suppressed'      => 1,
+    'email' => $owners['both']['email'],
+], [
+    'email_opted_out'       => 1,
+    'email_opted_out_at'    => '2026-04-03 09:00:00',
     'email_bounced'         => 1,
     'email_bounced_address' => $owners['both']['email'],
+    'email_bounced_at'      => '2026-04-03 10:00:00',
 ]);
-seedHistRow($db, $carId, 'EMAIL SUPPRESSED', '2026-04-03 09:00:00');
 $output['both'] = ['userId' => $userId, 'username' => $owners['both']['username'], 'password' => $password, 'carId' => $carId];
 
 // --- overflow: four cars, four distinct suppressed addresses (MAX_ADDRESSES=3). ---
@@ -275,10 +272,8 @@ if (!$db->insert('user_permission_matches', ['user_id' => $overflowUserId, 'perm
     fwrite(STDERR, "ERROR: Failed to insert seed overflow owner permission: {$db->errorString()}\n");
     exit(1);
 }
-if (!$db->insert('profiles', ['user_id' => $overflowUserId, 'bio' => '', 'city' => '', 'state' => '', 'country' => ''])) {
-    fwrite(STDERR, "ERROR: Failed to insert seed overflow owner profile: {$db->errorString()}\n");
-    exit(1);
-}
+// An opt-out names every distinct car address of the owner.
+seedProfile($db, $overflowUserId, ['email_opted_out' => 1, 'email_opted_out_at' => '2026-04-04 09:00:00']);
 $overflowCarIds = [];
 for ($i = 1; $i <= 4; $i++) {
     $overflowEmail = "playwright-seed-email-notice-overflow-{$i}@example.invalid";
@@ -294,7 +289,6 @@ for ($i = 1; $i <= 4; $i++) {
         'ctime'              => $now,
         'owner_last_updated' => $now,
         'email'              => $overflowEmail,
-        'email_suppressed'   => 1,
     ]);
     if (!$overflowCarInserted) {
         fwrite(STDERR, "ERROR: Failed to insert seed overflow car {$i}: {$carRepository->errorString()}\n");

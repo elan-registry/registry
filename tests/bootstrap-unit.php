@@ -127,8 +127,10 @@ if (!class_exists('Input')) {
 // to PHPStan (users/ is excluded from its scan), so this stub is the only
 // declaration it can resolve logger() calls against once tests/ is in its scan
 // path — including calls in production files like usersc/join.php.
+// The real logger() returns the new logs.id. The stub returns the entry count,
+// so a caller that checks for a failed insert (0) sees a success.
 if (!function_exists('logger')) {
-    function logger($userId, $category, $message, $metadata = null): void {
+    function logger($userId, $category, $message, $metadata = null): int {
         global $mockLogEntries;
         if (!isset($mockLogEntries)) {
             $mockLogEntries = [];
@@ -139,6 +141,8 @@ if (!function_exists('logger')) {
             'message' => $message,
             'metadata' => $metadata,
         ];
+
+        return count($mockLogEntries);
     }
 }
 

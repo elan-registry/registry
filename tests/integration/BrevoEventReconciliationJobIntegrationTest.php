@@ -55,7 +55,7 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
 
-        $this->userId = $this->createTestUser();
+        $this->userId = $this->createTestUser([], true);
         $this->carEmail = 'reconcile-' . uniqid() . '@example.com';
         $this->carId = $this->createTestCar($this->userId, ['email' => $this->carEmail]);
     }
@@ -130,7 +130,7 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     }
 
     /** Dedup holds when the full apply() escalation runs twice. */
-    public function testSameHardBounceEventAcrossTwoRunsDedupsAndStaysBounced(): void
+    public function testSameHardBounceEventAcrossTwoRunsDedupsAndStaysBouncedOnTheOwnerProfile(): void
     {
         $event = new FakeBrevoEvent(
             email: $this->carEmail,
@@ -149,8 +149,20 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             'A duplicated hard_bounce must still dedup to one row even though it also drives a flag write'
         );
 
-        $carRow = $this->db->query('SELECT email_bounced FROM cars WHERE id = ?', [$this->carId])->first();
-        $this->assertSame(1, (int) $carRow->email_bounced, 'The car must still be flagged bounced after both runs');
+        $flags = $this->getOwnerEmailFlags($this->userId);
+        $this->assertSame('1', (string) $flags['email_bounced'], 'The owner must still be flagged bounced after both runs');
+        $this->assertSame(
+            strtolower($this->carEmail),
+            $flags['email_bounced_address'],
+            'The bounced address is the address of the event'
+        );
+        $this->assertNotNull($flags['email_bounced_at'], 'A bounce sets email_bounced_at');
+
+        $changes = $this->repo->recentFlagChanges($this->userId, 100);
+        $this->assertCount(1, $changes, 'The second run changes nothing, so it writes no second log row');
+        $this->assertSame('email_bounced', $changes[0]['flag']);
+        $this->assertSame('reconciliation', $changes[0]['source'], 'The reconciliation job passes its own source');
+        $this->assertSame(0, $changes[0]['acting_user_id'], 'A delivery event has no acting user');
     }
 
     // --- Retention purge exercised through execute() ------------------------

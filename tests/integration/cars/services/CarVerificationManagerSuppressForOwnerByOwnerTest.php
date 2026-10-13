@@ -11,8 +11,12 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * #1895: CarVerificationManager::clearSuppressedForOwnerByOwner() (owner
+ * CarVerificationManager::clearSuppressedForOwnerByOwner() (owner
  * self-service "Resume verification emails") against real SQL.
+ *
+ * Resume clears `profiles.email_opted_out` and `email_opted_out_at` and
+ * nothing else (#2101). It leaves `email_blocked` and `email_bounced`, and it
+ * writes nothing to a car.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -33,38 +37,19 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         $this->manager = new CarVerificationManager($this->repo);
     }
 
-    private function emailSuppressed(int $carId): int
+    /** @return array<string, mixed> The profile flag columns, as stored */
+    private function flags(int $ownerId): array
     {
-        $row = $this->db->query('SELECT email_suppressed FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
-        return (int) $row->email_suppressed;
+        return $this->getOwnerEmailFlags($ownerId);
     }
 
-    private function emailBounced(int $carId): int
+    /** @return array<string, mixed> The full cars row as stored */
+    private function carRow(int $carId): array
     {
-        $row = $this->db->query('SELECT email_bounced FROM cars WHERE id = ?', [$carId])->first();
+        $row = $this->repo->findById($carId);
         $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
-        return (int) $row->email_bounced;
-    }
 
-    private function emailBouncedAddress(int $carId): ?string
-    {
-        $row = $this->db->query('SELECT email_bounced_address FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
-        return $row->email_bounced_address === null ? null : (string) $row->email_bounced_address;
-    }
-
-    /**
-     * @return int|null 0 or 1 as stored, or null when the owner has no
-     *                  profiles row.
-     */
-    private function profileEmailSuppressed(int $ownerId): ?int
-    {
-        $result = $this->db->query('SELECT email_suppressed FROM profiles WHERE user_id = ?', [$ownerId]);
-        if ($this->db->count() === 0) {
-            return null;
-        }
-        return (int) $result->first()->email_suppressed;
+        return (array) $row;
     }
 
     private function staleDate(): string
@@ -73,110 +58,146 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     }
 
     /**
-     * Only the suppression flags keep this car out of findVerificationEligible().
+     * A stale car, so that only the owner's flags keep it out of findVerificationEligible().
      */
-    private function createEligibleSuppressedCar(int $ownerId, array $overrides = []): int
+    private function createEligibleCar(int $ownerId): int
     {
-        return $this->createTestCar($ownerId, array_merge([
+        return $this->createTestCar($ownerId, [
             'email' => 'eligible-' . uniqid() . '@example.com',
-            'email_suppressed' => 1,
-            'email_bounced' => 0,
             'owner_last_updated' => $this->staleDate(),
             'last_verified' => $this->staleDate(),
-        ], $overrides));
+        ]);
     }
 
     #[Group('fast')]
-    public function testAllOwnedCarsIncludingSoldAreUnsuppressedInOneCall(): void
+    public function testResumeClearsTheOptOutAndWritesNothingToAnyOwnedCar(): void
     {
         $ownerId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $this->assertSame(1, $this->profileEmailSuppressed($ownerId), 'Test sanity: owner must start suppressed');
-
-        $unsoldCarId = $this->createTestCar($ownerId, [
-            'email' => 'owner-unsold@example.com',
-            'email_suppressed' => 1,
-        ]);
+        $this->setOwnerOptedOut($ownerId, true, '2026-01-02 03:04:05');
+        $unsoldCarId = $this->createTestCar($ownerId, ['email' => 'owner-unsold@example.com']);
         $soldCarId = $this->createTestCar($ownerId, [
             'email' => 'owner-sold@example.com',
-            'email_suppressed' => 1,
             'solddate' => date('Y-m-d', strtotime('-30 days')),
         ]);
+        $unsoldBefore = $this->carRow($unsoldCarId);
+        $soldBefore = $this->carRow($soldCarId);
+        $this->assertSame('1', (string) $this->flags($ownerId)['email_opted_out'], 'Test sanity: owner starts opted out');
 
         $changed = $this->manager->clearSuppressedForOwnerByOwner($ownerId);
 
-        $changedIds = array_map(static fn (object $car): int => (int) $car->id, $changed);
-        sort($changedIds);
-        $expectedIds = [$unsoldCarId, $soldCarId];
-        sort($expectedIds);
-        $this->assertSame($expectedIds, $changedIds, 'Both cars, sold included, must be reported as changed');
-
-        $this->assertSame(0, $this->emailSuppressed($unsoldCarId));
-        $this->assertSame(0, $this->emailSuppressed($soldCarId));
-        $this->assertSame(0, $this->profileEmailSuppressed($ownerId), 'The owner-level flag must also be cleared');
+        $this->assertTrue($changed, 'The opt-out changed from 1 to 0');
+        $flags = $this->flags($ownerId);
+        $this->assertSame('0', (string) $flags['email_opted_out']);
+        $this->assertNull($flags['email_opted_out_at']);
+        $this->assertSame($unsoldBefore, $this->carRow($unsoldCarId), 'The unsold car row must be unchanged');
+        $this->assertSame($soldBefore, $this->carRow($soldCarId), 'The sold car row must be unchanged');
     }
 
     #[Group('fast')]
-    public function testDifferentOwnersSuppressedCarIsUntouched(): void
+    public function testResumeWritesOneOwnerSourceLogRowWithOwnerAsActingUser(): void
     {
         $ownerId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
+        $this->setOwnerOptedOut($ownerId);
+
+        $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+
+        $changes = $this->repo->recentFlagChanges($ownerId, 100);
+        $this->assertCount(1, $changes);
+        $this->assertSame('email_opted_out', $changes[0]['flag']);
+        $this->assertSame(1, $changes[0]['old']);
+        $this->assertSame(0, $changes[0]['new']);
+        $this->assertSame('owner', $changes[0]['source']);
+        $this->assertSame($ownerId, $changes[0]['acting_user_id']);
+
+        // A second Resume changes nothing and writes no second row.
+        $this->assertFalse($this->manager->clearSuppressedForOwnerByOwner($ownerId));
+        $this->assertCount(1, $this->repo->recentFlagChanges($ownerId, 100));
+    }
+
+    #[Group('fast')]
+    public function testDifferentOwnersOptOutIsUntouched(): void
+    {
+        $ownerId = $this->createTestUser([], true);
+        $this->setOwnerOptedOut($ownerId);
         $otherOwnerId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$otherOwnerId]);
-
-        $ownedCarId = $this->createTestCar($ownerId, ['email' => 'owner-a@example.com', 'email_suppressed' => 1]);
-        $otherCarId = $this->createTestCar($otherOwnerId, ['email' => 'owner-b@example.com', 'email_suppressed' => 1]);
+        $this->setOwnerOptedOut($otherOwnerId, true, '2026-05-06 07:08:09');
+        $otherBefore = $this->flags($otherOwnerId);
 
         $this->manager->clearSuppressedForOwnerByOwner($ownerId);
 
-        $this->assertSame(0, $this->emailSuppressed($ownedCarId), 'The target owner\'s car must be unsuppressed');
-        $this->assertSame(1, $this->emailSuppressed($otherCarId), 'A different owner\'s car must remain suppressed');
-        $this->assertSame(0, $this->profileEmailSuppressed($ownerId));
-        $this->assertSame(
-            1,
-            $this->profileEmailSuppressed($otherOwnerId),
-            'A different owner\'s profile flag must remain untouched'
-        );
+        $this->assertSame('0', (string) $this->flags($ownerId)['email_opted_out']);
+        $this->assertSame($otherBefore, $this->flags($otherOwnerId), 'A different owner\'s profile must be unchanged');
     }
 
     #[Group('fast')]
-    public function testCarWithBothSuppressedAndBouncedEndsWithOnlySuppressionCleared(): void
+    public function testOwnerWithBouncedAndOptedOutEndsWithOnlyTheOptOutCleared(): void
     {
         $ownerId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-
-        $carId = $this->createTestCar($ownerId, [
-            'email' => 'bounced-and-suppressed@example.com',
-            'email_suppressed' => 1,
-            'email_bounced' => 1,
-            'email_bounced_address' => 'bounced-and-suppressed@example.com',
-        ]);
+        $this->setOwnerOptedOut($ownerId);
+        $this->setOwnerBounced($ownerId, 'bounced-and-opted-out@example.com', '2026-03-04 05:06:07');
 
         $this->manager->clearSuppressedForOwnerByOwner($ownerId);
 
-        $this->assertSame(0, $this->emailSuppressed($carId), 'Suppression must be cleared');
-        $this->assertSame(1, $this->emailBounced($carId), 'The bounce flag must be left exactly as it was');
+        $flags = $this->flags($ownerId);
+        $this->assertSame('0', (string) $flags['email_opted_out'], 'The opt-out must be cleared');
+        $this->assertSame('1', (string) $flags['email_bounced'], 'The bounce flag must be left as it was');
+        $this->assertSame('bounced-and-opted-out@example.com', $flags['email_bounced_address']);
+        $this->assertSame('2026-03-04 05:06:07', $flags['email_bounced_at']);
+    }
+
+    /**
+     * An owner who complained and then opted out: Resume clears the opt-out
+     * and leaves the block, its address, time and cause. Verification still
+     * excludes the owner, so mail does not reach a blocked address.
+     */
+    #[Group('fast')]
+    public function testResumeByBlockedAndOptedOutOwnerKeepsTheBlockAndVerificationStillExcludesIt(): void
+    {
+        $ownerId = $this->createTestUser([], true);
+        $this->setOwnerBlocked($ownerId, 'complained@example.com', '2026-02-03 04:05:06', 'spam');
+        $this->setOwnerOptedOut($ownerId);
+        $carId = $this->createEligibleCar($ownerId);
+        $blockBefore = array_intersect_key($this->flags($ownerId), array_flip([
+            'email_blocked', 'email_blocked_address', 'email_blocked_at', 'email_blocked_cause',
+        ]));
+        $this->assertNotContains($carId, $this->allVerificationEligibleCarIds(), 'Test sanity: excluded before Resume');
+
+        $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+
+        $flags = $this->flags($ownerId);
+        $this->assertSame('0', (string) $flags['email_opted_out'], 'Resume clears the opt-out');
         $this->assertSame(
-            'bounced-and-suppressed@example.com',
-            $this->emailBouncedAddress($carId),
-            'The bounce address must be left exactly as it was'
+            $blockBefore,
+            array_intersect_key($flags, $blockBefore),
+            'Resume must leave the block, its address, time and cause unchanged'
+        );
+        $this->assertNotContains(
+            $carId,
+            $this->allVerificationEligibleCarIds(),
+            'The owner is still blocked, so verification must still exclude the car'
         );
     }
 
     /**
-     * Real connection, except update('cars', ...) reports failure.
+     * Real connection, except an `UPDATE profiles` statement is not run and
+     * reports failure. Every other statement, including the row lock, runs.
      */
-    private function dbFailingUpdateCar(): DatabaseInterface
+    private function dbFailingProfileUpdate(): DatabaseInterface
     {
         $real = $this->db;
         return new class ($real) implements DatabaseInterface {
+            private bool $failed = false;
+
             public function __construct(private DatabaseInterface $real)
             {
             }
 
             public function query(string $sql, array $params = []): self
             {
-                $this->real->query($sql, $params);
+                $this->failed = str_starts_with(ltrim($sql), 'UPDATE profiles');
+                if (!$this->failed) {
+                    $this->real->query($sql, $params);
+                }
                 return $this;
             }
 
@@ -193,9 +214,6 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
 
             public function update(string $table, array|int $id, array $fields): bool
             {
-                if ($table === 'cars') {
-                    return false;
-                }
                 return $this->real->update($table, $id, $fields);
             }
 
@@ -207,12 +225,14 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
 
             public function error(): bool
             {
-                return $this->real->error();
+                return $this->failed || $this->real->error();
             }
 
             public function errorString(): string
             {
-                return $this->real->errorString() ?: 'Simulated database failure for clearSuppressedForOwnerByOwner() test';
+                return $this->failed
+                    ? 'Simulated database failure for the profile UPDATE'
+                    : $this->real->errorString();
             }
 
             public function errorInfo(): array
@@ -263,26 +283,27 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     }
 
     #[Group('fast')]
-    public function testSimulatedDatabaseFailurePropagatesCarDatabaseException(): void
+    public function testSimulatedDatabaseFailurePropagatesCarDatabaseExceptionAndKeepsTheOptOut(): void
     {
         $ownerId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $carId = $this->createTestCar($ownerId, ['email' => 'failure-case@example.com', 'email_suppressed' => 1]);
+        $this->setOwnerOptedOut($ownerId);
+        $this->createTestCar($ownerId, ['email' => 'failure-case@example.com']);
 
-        $failingRepo = new CarRepository($this->dbFailingUpdateCar());
-        $failingManager = new CarVerificationManager($failingRepo);
-
-        $this->expectException(CarDatabaseException::class);
+        $failingManager = new CarVerificationManager(new CarRepository($this->dbFailingProfileUpdate()));
 
         try {
             $failingManager->clearSuppressedForOwnerByOwner($ownerId);
-        } finally {
-            $this->assertSame(
-                1,
-                $this->emailSuppressed($carId),
-                'A simulated database failure must leave the car suppressed'
-            );
+            $this->fail('Expected CarDatabaseException when the profile UPDATE fails');
+        } catch (CarDatabaseException $e) {
+            $this->assertStringContainsString('setProfileOptedOut', $e->getMessage());
         }
+
+        $this->assertSame(
+            '1',
+            (string) $this->flags($ownerId)['email_opted_out'],
+            'A failed profile UPDATE must leave the owner opted out'
+        );
+        $this->assertSame([], $this->repo->recentFlagChanges($ownerId, 100), 'A failed write logs no flag change');
     }
 
     /** #1895 AC 9: same eligibility result as the admin clearSuppressedForOwner(). */
@@ -290,19 +311,19 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     public function testEligibilityParityWithAdminClearSuppressedForOwner(): void
     {
         $ownerOneId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerOneId]);
+        $this->setOwnerOptedOut($ownerOneId);
         $ownerTwoId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerTwoId]);
+        $this->setOwnerOptedOut($ownerTwoId);
 
-        $carOneId = $this->createEligibleSuppressedCar($ownerOneId);
-        $carTwoId = $this->createEligibleSuppressedCar($ownerTwoId);
+        $carOneId = $this->createEligibleCar($ownerOneId);
+        $carTwoId = $this->createEligibleCar($ownerTwoId);
 
         $before = $this->allVerificationEligibleCarIds();
         $this->assertNotContains($carOneId, $before);
         $this->assertNotContains($carTwoId, $before);
 
         $this->manager->clearSuppressedForOwnerByOwner($ownerOneId);
-        $this->manager->clearSuppressedForOwner($ownerTwoId);
+        $this->manager->clearSuppressedForOwner($ownerTwoId, $ownerTwoId);
 
         $after = $this->allVerificationEligibleCarIds();
 
@@ -318,34 +339,35 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     public function testConcurrentResumeAfterOtherRequestCommittedSucceeds(): void
     {
         $ownerId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $carId = $this->createTestCar($ownerId, ['email' => 'race@example.com', 'email_suppressed' => 1]);
+        $this->setOwnerOptedOut($ownerId);
 
         $otherRequest = $this->secondConnection();
 
         $this->repo->beginTransaction();
         try {
-            $this->assertSame(1, $this->repo->findProfileEmailSuppressed($ownerId), 'Test setup: B reads 1 first');
+            $this->assertSame(1, $this->repo->findProfileOptedOut($ownerId), 'Test setup: B reads 1 first');
 
-            $stmt = $otherRequest->prepare('UPDATE profiles SET email_suppressed = 0 WHERE user_id = ?');
+            $stmt = $otherRequest->prepare('UPDATE profiles SET email_opted_out = 0 WHERE user_id = ?');
             $stmt->execute([$ownerId]);
             $this->assertSame(1, $stmt->rowCount(), 'Test setup: request A must clear and commit the profile flag');
 
             $this->assertSame(
                 1,
-                $this->repo->findProfileEmailSuppressed($ownerId),
+                $this->repo->findProfileOptedOut($ownerId),
                 'Test setup: B\'s plain read must still return its snapshot value, or this test proves nothing'
             );
 
-            $this->manager->clearSuppressedForOwnerByOwner($ownerId);
+            $this->assertFalse(
+                $this->manager->clearSuppressedForOwnerByOwner($ownerId),
+                'B must see the committed 0 through its locking read and change nothing'
+            );
             $this->repo->commit();
         } catch (\Throwable $e) {
             $this->repo->rollback();
             throw $e;
         }
 
-        $this->assertSame(0, $this->profileEmailSuppressed($ownerId));
-        $this->assertSame(0, $this->emailSuppressed($carId));
+        $this->assertSame('0', (string) $this->flags($ownerId)['email_opted_out']);
     }
 
     private function secondConnection(): \PDO

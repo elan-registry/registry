@@ -295,6 +295,174 @@ final class UserFormHookVerificationCardTest extends TestCase
         $this->assertStringContainsString('Verification and email status could not be loaded', $html);
     }
 
+    // Owner-level flags, read from the profile (#2101).
+
+    /**
+     * A profiles row as findProfileEmailState() returns it. Every flag is clear
+     * unless $overrides sets it. Values are strings because PDO may return
+     * them so.
+     *
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private static function state(array $overrides = []): array
+    {
+        return array_merge([
+            'id' => '5', 'user_id' => (string) self::OWNER_ID,
+            'email_opted_out' => '0', 'email_opted_out_at' => null,
+            'email_blocked' => '0', 'email_blocked_address' => null,
+            'email_blocked_at' => null, 'email_blocked_cause' => null,
+            'email_bounced' => '0', 'email_bounced_address' => null,
+            'email_bounced_at' => null, 'email_bounce_cleared_at' => null,
+        ], $overrides);
+    }
+
+    public function testBouncedProfileShowsTheBouncedBadgeWithAddressAndDate(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state([
+                'email_bounced' => '1',
+                'email_bounced_address' => 'bounced@example.invalid',
+                'email_bounced_at' => '2026-05-01 10:00:00',
+            ])
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertStringContainsString('Bounced', $card);
+        $this->assertStringContainsString('bounced@example.invalid', $card);
+        $this->assertStringContainsString('2026-05-01 10:00:00', $card);
+        $this->assertStringNotContainsString('No delivery problems recorded', $card);
+        $this->assertStringNotContainsString('Owner opted out', $card);
+    }
+
+    public function testBlockedProfileShowsSuppressedWithItsCauseAddressAndDate(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state([
+                'email_blocked' => '1',
+                'email_blocked_address' => 'blocked@example.invalid',
+                'email_blocked_at' => '2026-06-02 11:00:00',
+                'email_blocked_cause' => 'spam',
+            ])
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertStringContainsString('Suppressed', $card);
+        $this->assertStringContainsString('Blocked (cause: spam)', $card);
+        $this->assertStringContainsString('blocked@example.invalid', $card);
+        $this->assertStringContainsString('2026-06-02 11:00:00', $card);
+    }
+
+    public function testBlockedProfileWithNoCauseSaysCauseUnknown(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state(['email_blocked' => '1', 'email_blocked_address' => 'blocked@example.invalid'])
+        ));
+
+        $this->assertStringContainsString('Blocked (cause: unknown)', $this->cardHtml($this->render()));
+    }
+
+    public function testOptedOutProfileShowsOwnerOptedOutWithItsDate(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state(['email_opted_out' => '1', 'email_opted_out_at' => '2026-07-03 12:00:00'])
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertStringContainsString('Owner opted out', $card);
+        $this->assertStringContainsString('2026-07-03 12:00:00', $card);
+        $this->assertStringNotContainsString('No delivery problems recorded', $card);
+    }
+
+    /** One owner with all three flags shows all three lines. */
+    public function testAllThreeFlagsShowTogether(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            state: self::state([
+                'email_opted_out' => '1',
+                'email_blocked' => '1', 'email_blocked_address' => 'b@example.invalid', 'email_blocked_cause' => 'unsubscribed',
+                'email_bounced' => '1', 'email_bounced_address' => 'x@example.invalid',
+            ])
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertStringContainsString('text-bg-danger">Bounced', $card);
+        $this->assertStringContainsString('Blocked (cause: unsubscribed)', $card);
+        $this->assertStringContainsString('Owner opted out', $card);
+    }
+
+    /** The flags are per owner, so no car row repeats them. */
+    public function testFlagsAppearOnceInTheSummaryAndNotInTheCarRows(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [
+                self::car(id: 101, ownerLastUpdated: self::recentTimestamp()),
+                self::car(id: 102, ownerLastUpdated: self::recentTimestamp()),
+            ],
+            state: self::state(['email_bounced' => '1', 'email_bounced_address' => 'x@example.invalid'])
+        ));
+
+        $html = $this->render();
+
+        $this->assertSame(1, substr_count($html, 'x@example.invalid'));
+        $this->assertStringNotContainsString('Bounced', $this->rowForCar($html, 101));
+        $this->assertStringNotContainsString('Bounced', $this->rowForCar($html, 102));
+    }
+
+    public function testOwnerWithNoProfileRowShowsTheNoProfileWarningNotAFalseAllClear(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            noProfileState: true
+        ));
+
+        $card = $this->cardHtml($this->render());
+
+        $this->assertStringContainsString('This owner has no profile, so no verification emails are sent.', $card);
+        $this->assertStringNotContainsString('No delivery problems recorded', $card);
+    }
+
+    public function testProfileStateQueryFailureRendersTheDegradedAlert(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            failProfileStateQuery: true
+        ));
+
+        $html = $this->render();
+
+        $this->assertStringContainsString('Verification and email status could not be loaded', $html);
+        $this->assertStringNotContainsString('No delivery problems recorded', $html);
+        $this->assertStringNotContainsString('This owner has no profile', $html, 'A failed read is not "no profile"');
+    }
+
+    /**
+     * The car-list query failed, so the card cannot tell "no cars" from
+     * "could not read". The profile table says so.
+     */
+    public function testCarListQueryFailureSaysCarsCouldNotBeLoadedNotNoCarsRegistered(): void
+    {
+        $this->useDb(new VerificationCardTestDb(
+            cars: [self::car(id: 101, ownerLastUpdated: self::recentTimestamp())],
+            failCarListQuery: true
+        ));
+
+        $html = $this->render();
+
+        $this->assertStringContainsString('Cars could not be loaded', $html);
+        $this->assertStringNotContainsString('No cars registered', substr($html, 0, (int) strpos($html, 'Verification &amp; Email')));
+        $this->assertStringContainsString('Verification and email status could not be loaded', $html);
+    }
+
     /**
      * The profile table above the card also emits "No cars registered".
      */
@@ -318,10 +486,7 @@ final class UserFormHookVerificationCardTest extends TestCase
     private static function car(
         int $id,
         string $ownerLastUpdated,
-        ?string $lastVerified = null,
-        string $emailBounced = '0',
-        string $emailSuppressed = '0',
-        ?string $bouncedAddress = null
+        ?string $lastVerified = null
     ): object {
         return (object) [
             'id'                    => (string) $id,
@@ -330,9 +495,6 @@ final class UserFormHookVerificationCardTest extends TestCase
             'variant'               => 'SE',
             'year'                  => '1968',
             'email'                 => 'owner@example.invalid',
-            'email_bounced'         => $emailBounced,
-            'email_bounced_address' => $bouncedAddress,
-            'email_suppressed'      => $emailSuppressed,
             'owner_last_updated'    => $ownerLastUpdated,
             'last_verified'         => $lastVerified,
         ];
@@ -356,13 +518,19 @@ final class VerificationCardTestDb implements DatabaseInterface
     /**
      * @param array<int, object> $cars Verification-state rows; their ids feed the car-button query
      * @param array<int, object> $events Delivery-event rows
+     * @param array<string, mixed>|null $state The owner's profiles row for findProfileEmailState().
+     *        Null gives a profile with every flag clear.
      */
     public function __construct(
         private array $cars = [],
         private array $events = [],
         private bool $failVerificationStateQuery = false,
         private bool $failEmailEventQuery = false,
-        private bool $throwPdoExceptionOnVerificationStateQuery = false
+        private bool $throwPdoExceptionOnVerificationStateQuery = false,
+        private ?array $state = null,
+        private bool $noProfileState = false,
+        private bool $failProfileStateQuery = false,
+        private bool $failCarListQuery = false
     ) {
     }
 
@@ -381,14 +549,39 @@ final class VerificationCardTestDb implements DatabaseInterface
             ]]);
         }
 
-        if (str_contains($sql, 'FROM cars c WHERE c.user_id')) {
+        // CarRepository::findProfileEmailState()
+        if (str_contains($sql, 'FROM profiles') && str_contains($sql, 'email_blocked_cause')) {
+            if ($this->failProfileStateQuery) {
+                return $this->fail();
+            }
+            if ($this->noProfileState) {
+                return $this->respond([]);
+            }
+
+            return $this->respond([(object) ($this->state ?? [
+                'id' => '5', 'user_id' => (string) ($params[0] ?? 0),
+                'email_opted_out' => '0', 'email_opted_out_at' => null,
+                'email_blocked' => '0', 'email_blocked_address' => null,
+                'email_blocked_at' => null, 'email_blocked_cause' => null,
+                'email_bounced' => '0', 'email_bounced_address' => null,
+                'email_bounced_at' => null, 'email_bounce_cleared_at' => null,
+            ])]);
+        }
+
+        // CarRepository::findByOwner()
+        if (str_starts_with($sql, 'SELECT id FROM cars WHERE user_id')) {
+            if ($this->failCarListQuery) {
+                return $this->fail();
+            }
+
             return $this->respond(array_map(
                 static fn(object $car): object => (object) ['id' => $car->id],
                 $this->cars
             ));
         }
 
-        if (str_contains($sql, 'email_suppressed, owner_last_updated, last_verified')) {
+        // CarRepository::findVerificationStateByOwner()
+        if (str_contains($sql, 'ORDER BY cars.model')) {
             if ($this->throwPdoExceptionOnVerificationStateQuery) {
                 throw new \PDOException('simulated: SQLSTATE[HY000] server has gone away during prepare()');
             }

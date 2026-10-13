@@ -54,8 +54,9 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->exposeTestDatabaseToEnvironment();
         self::$server ??= PhpBuiltinServer::start(self::$projectRoot, self::routerBody());
 
-        // $withProfile: the #1883 opt-out records profiles.email_suppressed on
-        // the owner, so the fixture needs the profiles row every real owner has.
+        // $withProfile: the opt-out records profiles.email_opted_out on the
+        // owner (#1883, #2101), so the fixture needs the profiles row every
+        // real owner has.
         $this->testUserId = $this->createTestUser([], true);
         $this->testCarId = $this->createTestCar($this->testUserId, [
             'chassis' => 'VF' . uniqid(),
@@ -210,28 +211,28 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         return (int) $row->cnt;
     }
 
-    private function historyCountForCar(int $carId, string $operation): int
+    /** The owner-level opt-out flag (#1883, #2101). */
+    private function profileOptedOut(int $ownerId): int
     {
-        $row = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM cars_hist WHERE car_id = ? AND operation = ?',
-            [$carId, $operation]
-        )->first();
-        return (int) $row->cnt;
+        return (int) $this->getOwnerEmailFlags($ownerId)['email_opted_out'];
     }
 
-    private function emailSuppressed(int $carId): int
+    /**
+     * @return list<array{date: string, flag: string, old: int, new: int, source: string, acting_user_id: int}>
+     */
+    private function flagChanges(int $ownerId): array
     {
-        $row = $this->db->query('SELECT email_suppressed FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
-        return (int) $row->email_suppressed;
+        return (new \ElanRegistry\Car\CarRepository($this->db))->recentFlagChanges($ownerId, 100);
     }
 
-    /** The owner-level opt-out flag (#1883), counterpart to emailSuppressed(). */
-    private function profileEmailSuppressed(int $ownerId): int
+    /** Email operations on cars_hist. The opt-out writes none any more (#2101). */
+    private function emailHistoryRows(int $carId): int
     {
-        $row = $this->db->query('SELECT email_suppressed FROM profiles WHERE user_id = ?', [$ownerId])->first();
-        $this->assertNotNull($row, "Test setup: owner {$ownerId} has no profiles row");
-        return (int) $row->email_suppressed;
+        return (int) $this->db->query(
+            "SELECT COUNT(*) AS cnt FROM cars_hist
+              WHERE car_id = ? AND (operation LIKE '%SUPPRESS%' OR operation LIKE '%BOUNCE%')",
+            [$carId]
+        )->first()->cnt;
     }
 
     // ------------------------------------------------------------------
@@ -569,20 +570,18 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
      * #1883 AC10: the owner to suppress comes from the vericode lookup only.
      * Owner B's id posted under plausible field names must not be read.
      */
-    public function testPostWithMismatchedUserIdInBodySuppressesOnlyTheVericodesOwnOwner(): void
+    public function testPostWithMismatchedUserIdInBodyOptsOutOnlyTheVericodesOwnOwner(): void
     {
         // Owner A: the fixture from setUp() ($this->testUserId / $this->testCarId).
         $code = $this->issueVericode();
 
         // Owner B: unrelated to the posted vericode.
-        $otherUserId = $this->createTestUser();
+        $otherUserId = $this->createTestUser([], true);
         $otherCarId = $this->createTestCar($otherUserId, ['chassis' => 'VF' . uniqid()]);
+        $otherBefore = $this->getOwnerEmailFlags($otherUserId);
 
-        $this->assertSame(0, $this->emailSuppressed($this->testCarId), 'Test sanity: owner A car must start unsuppressed');
-        $this->assertSame(0, $this->emailSuppressed($otherCarId), 'Test sanity: owner B car must start unsuppressed');
-
-        $historyBeforeA = $this->historyCount('EMAIL SUPPRESSED');
-        $historyBeforeB = $this->historyCountForCar($otherCarId, 'EMAIL SUPPRESSED');
+        $this->assertSame(0, $this->profileOptedOut($this->testUserId), 'Test sanity: owner A must start opted in');
+        $this->assertSame(0, $this->profileOptedOut($otherUserId), 'Test sanity: owner B must start opted in');
 
         // Forged request: these fields are not in the real form.
         $result = $this->post('vericode=' . $code . '&action=optout', [
@@ -598,27 +597,17 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
 
         $this->assertSame(
             1,
-            $this->emailSuppressed($this->testCarId),
-            "The vericode's own owner (owner A) must be suppressed"
+            $this->profileOptedOut($this->testUserId),
+            "The vericode's own owner (owner A) must be opted out"
         );
         $this->assertSame(
-            0,
-            $this->emailSuppressed($otherCarId),
-            'The owner id named in the POST body (owner B) must NOT be suppressed — this is the critical assertion'
+            $otherBefore,
+            $this->getOwnerEmailFlags($otherUserId),
+            'The owner id named in the POST body (owner B) must NOT change — this is the critical assertion'
         );
+        $this->assertCount(1, $this->flagChanges($this->testUserId), 'Exactly one log row for owner A');
+        $this->assertSame([], $this->flagChanges($otherUserId), 'Owner B gets no log row');
 
-        $this->assertSame(
-            $historyBeforeA + 1,
-            $this->historyCount('EMAIL SUPPRESSED'),
-            'Exactly one EMAIL SUPPRESSED cars_hist row must be inserted for owner A\'s car'
-        );
-        $this->assertSame(
-            $historyBeforeB,
-            $this->historyCountForCar($otherCarId, 'EMAIL SUPPRESSED'),
-            'Owner B\'s car must get zero EMAIL SUPPRESSED cars_hist rows'
-        );
-
-        $this->db->query('DELETE FROM cars_hist WHERE car_id = ?', [$otherCarId]);
         $this->deleteTestCar($otherCarId);
         $this->deleteTestUser($otherUserId);
     }
@@ -938,37 +927,29 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     // action=optout (#1883 — one-click verification-email opt-out)
     // ------------------------------------------------------------------
 
-    public function testGetActionOptoutNeverMutatesEmailSuppressed(): void
+    public function testGetActionOptoutNeverMutatesTheOwnerProfile(): void
     {
         $code = $this->issueVericode();
         $before = $this->carRow();
-        $this->assertSame(0, (int) $before['email_suppressed'], 'Test sanity: fixture car must start unsuppressed');
+        $flagsBefore = $this->getOwnerEmailFlags($this->testUserId);
+        $this->assertSame(0, (int) $flagsBefore['email_opted_out'], 'Test sanity: owner must start opted in');
 
         $result = $this->get('vericode=' . $code . '&action=optout');
 
         $this->assertSame(200, $result['status']);
 
         $after = $this->carRow();
-        $this->assertSame(0, (int) $after['email_suppressed'], 'GET must not set email_suppressed');
-        $this->assertSame(
-            0,
-            $this->profileEmailSuppressed($this->testUserId),
-            'GET must not set the owner-level flag either (#1883)'
-        );
+        $this->assertSame($flagsBefore, $this->getOwnerEmailFlags($this->testUserId), 'GET must not change any owner flag');
         $this->assertSame($before['mtime'], $after['mtime'], 'GET must not touch mtime (proves no UPDATE was issued at all)');
-        $this->assertSame(0, $this->historyCount('EMAIL SUPPRESSED'), 'GET must not write an EMAIL SUPPRESSED cars_hist row');
+        $this->assertSame([], $this->flagChanges($this->testUserId), 'GET must not write a flag-change log row');
     }
 
-    public function testPostActionOptoutSuppressesEveryOwnerCarAndInsertsOneHistoryRowEach(): void
+    public function testPostActionOptoutSetsOneOwnerProfileRowAndWritesNothingToAnyCar(): void
     {
         $code = $this->issueVericode();
-        $secondCarId = $this->createTestCar($this->testUserId, [
-            'chassis' => 'VF' . uniqid(),
-            'email_suppressed' => 0,
-        ]);
-
-        $historyBeforeCar1 = $this->historyCount('EMAIL SUPPRESSED');
-        $historyBeforeCar2 = $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED');
+        $secondCarId = $this->createTestCar($this->testUserId, ['chassis' => 'VF' . uniqid()]);
+        $firstCarBefore = $this->carRow();
+        $secondCarBefore = (array) $this->db->query('SELECT * FROM cars WHERE id = ?', [$secondCarId])->first();
 
         $result = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
 
@@ -976,54 +957,108 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->assertNotNull($result['location']);
         $this->assertStringContainsString('action=optout', (string) $result['location']);
 
-        $this->assertSame(1, $this->emailSuppressed($this->testCarId), 'The vericode\'s own car must be suppressed');
-        $this->assertSame(1, $this->emailSuppressed($secondCarId), 'The owner\'s other car must also be suppressed');
+        $flags = $this->getOwnerEmailFlags($this->testUserId);
+        $this->assertSame('1', (string) $flags['email_opted_out'], 'The owner-level email_opted_out flag must be set');
+        $this->assertNotNull($flags['email_opted_out_at']);
+        $this->assertSame($firstCarBefore, $this->carRow(), 'The vericode\'s own car row must not change');
         $this->assertSame(
-            1,
-            $this->profileEmailSuppressed($this->testUserId),
-            'The owner-level profiles.email_suppressed flag must also be set (#1883)'
+            $secondCarBefore,
+            (array) $this->db->query('SELECT * FROM cars WHERE id = ?', [$secondCarId])->first(),
+            'The owner\'s other car row must not change'
         );
+        $this->assertSame(0, $this->emailHistoryRows($this->testCarId), 'No email cars_hist row for the first car');
+        $this->assertSame(0, $this->emailHistoryRows($secondCarId), 'No email cars_hist row for the second car');
 
-        $this->assertSame(
-            $historyBeforeCar1 + 1,
-            $this->historyCount('EMAIL SUPPRESSED'),
-            'Exactly one EMAIL SUPPRESSED cars_hist row must be inserted for the first car'
-        );
-        $this->assertSame(
-            $historyBeforeCar2 + 1,
-            $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED'),
-            'Exactly one EMAIL SUPPRESSED cars_hist row must be inserted for the second car'
-        );
+        $changes = $this->flagChanges($this->testUserId);
+        $this->assertCount(1, $changes, 'One flag change writes exactly one log row');
+        $this->assertSame('email_opted_out', $changes[0]['flag']);
+        $this->assertSame(0, $changes[0]['old']);
+        $this->assertSame(1, $changes[0]['new']);
+        $this->assertSame('owner', $changes[0]['source']);
     }
 
-    public function testRepeatPostActionOptoutIsIdempotentWithNoDuplicateHistoryRows(): void
+    public function testRepeatPostActionOptoutIsIdempotentWithNoSecondLogRow(): void
     {
         $code = $this->issueVericode();
 
         $first = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
         $this->assertSame(303, $first['status']);
-        $this->assertSame(1, $this->emailSuppressed($this->testCarId));
-
-        $historyAfterFirst = $this->historyCount('EMAIL SUPPRESSED');
-        $this->assertSame(1, $historyAfterFirst);
+        $this->assertSame(1, $this->profileOptedOut($this->testUserId));
+        $this->assertCount(1, $this->flagChanges($this->testUserId));
+        $firstAt = $this->getOwnerEmailFlags($this->testUserId)['email_opted_out_at'];
 
         $second = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
 
         $this->assertSame(303, $second['status'], 'A repeat opt-out POST must still succeed (idempotent), not error');
-        $this->assertSame(1, $this->emailSuppressed($this->testCarId), 'email_suppressed must remain 1, not toggle');
+        $this->assertSame(1, $this->profileOptedOut($this->testUserId), 'email_opted_out must remain 1, not toggle');
         $this->assertSame(
-            1,
-            $this->profileEmailSuppressed($this->testUserId),
-            'The owner-level flag must also remain 1 across a repeat opt-out (#1883)'
+            $firstAt,
+            $this->getOwnerEmailFlags($this->testUserId)['email_opted_out_at'],
+            'A repeat opt-out keeps the first time'
         );
-        $this->assertSame(
-            $historyAfterFirst,
-            $this->historyCount('EMAIL SUPPRESSED'),
-            'A repeat opt-out POST must not insert a second EMAIL SUPPRESSED cars_hist row'
+        $this->assertCount(
+            1,
+            $this->flagChanges($this->testUserId),
+            'A repeat opt-out POST must not write a second flag-change log row'
         );
     }
 
-    public function testGetActionOptoutAfterSuppressionRendersAlreadyUnsubscribedState(): void
+    /**
+     * The owner's own opt-out is set also when email_blocked is set,
+     * so it outlives a later clear of the block.
+     */
+    public function testPostActionOptoutByBlockedOwnerSetsTheOptOutAndKeepsTheBlock(): void
+    {
+        $this->setOwnerBlocked($this->testUserId, 'blocked-optout@example.com', '2026-02-03 04:05:06', 'spam');
+        $code = $this->issueVericode();
+
+        $result = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
+
+        $this->assertSame(303, $result['status']);
+        $flags = $this->getOwnerEmailFlags($this->testUserId);
+        $this->assertSame('1', (string) $flags['email_opted_out'], 'The opt-out must be set although the owner is blocked');
+        $this->assertSame('1', (string) $flags['email_blocked']);
+        $this->assertSame('2026-02-03 04:05:06', $flags['email_blocked_at']);
+
+        // The block is cleared later through the profile writer. The opt-out stays.
+        $this->assertSame(1, (new \ElanRegistry\Car\CarRepository($this->db))->clearProfileBlocked($this->testUserId));
+        $this->assertSame('0', (string) $this->getOwnerEmailFlags($this->testUserId)['email_blocked']);
+        $this->assertSame(1, $this->profileOptedOut($this->testUserId), 'The opt-out outlives the block');
+    }
+
+    /**
+     * The opt-out page reads email_opted_out only. A visitor sees the
+     * same confirm page whether or not the owner has email_blocked or
+     * email_bounced.
+     */
+    public function testGetActionOptoutPageIsTheSameForBlockedOnlyAndBouncedOnlyOwnersAsForACleanOwner(): void
+    {
+        $cleanCode = $this->issueVericode();
+        $clean = $this->get('vericode=' . $cleanCode . '&action=optout');
+        $this->assertSame(200, $clean['status']);
+        $this->assertStringContainsString('1 registered car<', $clean['body'], 'Test sanity: the confirm page rendered');
+
+        foreach (['blocked', 'bounced'] as $state) {
+            $this->clearOwnerEmailFlags($this->testUserId);
+            if ($state === 'blocked') {
+                $this->setOwnerBlocked($this->testUserId, 'parity@example.com');
+            } else {
+                $this->setOwnerBounced($this->testUserId, 'parity@example.com');
+            }
+            $code = $this->issueVericode();
+
+            $page = $this->get('vericode=' . $code . '&action=optout');
+
+            $this->assertSame(200, $page['status']);
+            $this->assertSame(
+                str_replace($cleanCode, 'CODE', $clean['body']),
+                str_replace($code, 'CODE', $page['body']),
+                "An owner with only email_{$state} must see the same opt-out page as a clean owner"
+            );
+        }
+    }
+
+    public function testGetActionOptoutAfterOptOutRendersAlreadyUnsubscribedState(): void
     {
         $code = $this->issueVericode();
         $post = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
@@ -1035,8 +1070,14 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->assertStringContainsString(
             'unsubscribed',
             strtolower($result['body']),
-            'Revisiting after suppression must render the already-unsubscribed success state'
+            'Revisiting after the opt-out must render the already-unsubscribed success state'
         );
+        $this->assertStringContainsString(
+            'usersc/user_settings.php#resume-emails">Account Settings</a>',
+            $result['body'],
+            'The success card must point the owner to Resume in Account Settings first'
+        );
+        $this->assertStringContainsString('mailto:registrar@elanregistry.org', $result['body'], 'The email address stays as the fallback');
     }
 
     /**
@@ -1079,24 +1120,17 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
-     * Failure injection: a second connection holds LOCK TABLES cars_hist WRITE,
-     * so the cars_update trigger, and with it the optout UPDATE, fails.
+     * Failure injection: a second connection holds LOCK TABLES profiles WRITE,
+     * so the opt-out write on the profile row fails.
      * lock_wait_timeout (not innodb_lock_wait_timeout) is set to 1s globally so
      * the php -S request's new connection does not wait for the 1-year default.
      * The page must answer with renderActionFailed(), not renderInvalidLink().
      */
-    public function testOptoutMidTransactionFailureReturns500AndRollsBackAllCarsAndHistoryRows(): void
+    public function testOptoutWriteFailureReturns500AndLeavesTheOwnerOptedIn(): void
     {
         $code = $this->issueVericode();
-        $secondCarId = $this->createTestCar($this->testUserId, [
-            'chassis' => 'VF' . uniqid(),
-            'email_suppressed' => 0,
-        ]);
-
-        $beforeCar1 = $this->carRow();
-        $beforeCar2Suppressed = $this->emailSuppressed($secondCarId);
-        $historyBeforeCar1 = $this->historyCount('EMAIL SUPPRESSED');
-        $historyBeforeCar2 = $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED');
+        $beforeCar = $this->carRow();
+        $flagsBefore = $this->getOwnerEmailFlags($this->testUserId);
 
         $lockConn = new PDO(
             $this->buildDsn(),
@@ -1113,14 +1147,14 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->db->query('SET GLOBAL lock_wait_timeout = 1');
 
         try {
-            $lockConn->exec('LOCK TABLES cars_hist WRITE');
+            $lockConn->exec('LOCK TABLES profiles WRITE');
 
             $result = $this->post('vericode=' . $code . '&action=optout', ['vericode' => $code]);
 
             $this->assertSame(
                 500,
                 $result['status'],
-                'A blocked cars_hist write mid-transaction must surface as renderActionFailed(500)'
+                'A blocked profiles write must surface as renderActionFailed(500)'
             );
             // renderActionFailed() must say the write failed, unlike renderInvalidLink().
             $this->assertStringContainsString(
@@ -1139,39 +1173,19 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
                 'The opt-out-specific failure copy must warn the owner their opt-out did not take effect'
             );
         } finally {
-            // Unlock first: a held cars_hist lock would fail every later test that writes a car.
+            // Unlock first: a held profiles lock would fail every later test that touches a profile.
             $lockConn->exec('UNLOCK TABLES');
             $lockConn = null;
             $this->db->query('SET GLOBAL lock_wait_timeout = ' . (int) $originalTimeout);
         }
 
-        $afterCar1 = $this->carRow();
         $this->assertSame(
-            $beforeCar1['email_suppressed'],
-            $afterCar1['email_suppressed'],
-            'The vericode\'s own car must remain unsuppressed after a rolled-back transaction'
+            $flagsBefore,
+            $this->getOwnerEmailFlags($this->testUserId),
+            'The owner must remain opted in after the failed write'
         );
-        $this->assertSame(
-            $beforeCar1['mtime'],
-            $afterCar1['mtime'],
-            'A rolled-back UPDATE must leave mtime untouched'
-        );
-        $this->assertSame(
-            $beforeCar2Suppressed,
-            $this->emailSuppressed($secondCarId),
-            'The owner\'s other car must also remain unsuppressed — the whole fan-out rolls back, not just the first car'
-        );
-
-        $this->assertSame(
-            $historyBeforeCar1,
-            $this->historyCount('EMAIL SUPPRESSED'),
-            'No EMAIL SUPPRESSED cars_hist row may survive for the first car'
-        );
-        $this->assertSame(
-            $historyBeforeCar2,
-            $this->historyCountForCar($secondCarId, 'EMAIL SUPPRESSED'),
-            'No EMAIL SUPPRESSED cars_hist row may survive for the second car'
-        );
+        $this->assertSame($beforeCar, $this->carRow(), 'The car row must be untouched');
+        $this->assertSame([], $this->flagChanges($this->testUserId), 'No flag-change log row may survive a failed write');
     }
 
     // ------------------------------------------------------------------
@@ -1242,7 +1256,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
 
     /**
      * Journey: a car the nightly batch would email, opened with the composer's
-     * own opt-out link, must drop out of findVerificationEligible().
+     * own opt-out link, must drop out of findVerificationEligible() because its
+     * owner's profile is opted out.
      */
     public function testOptOutLinkFromComposerRemovesCarFromEligibleSet(): void
     {
@@ -1266,8 +1281,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
 
         $this->assertSame(303, $result['status'], 'POST of the composer opt-out link must redirect');
         // An unknown action also redirects 303, so pin the cause to the opt-out write.
-        $this->assertSame(1, $this->emailSuppressed($this->testCarId), 'Opt-out must set cars.email_suppressed');
-        $this->assertSame(1, $this->profileEmailSuppressed($this->testUserId), 'Opt-out must set profiles.email_suppressed');
+        $this->assertSame(1, $this->profileOptedOut($this->testUserId), 'Opt-out must set profiles.email_opted_out');
 
         // Clear the send timestamp again so only the opt-out can explain exclusion.
         $this->db->query('UPDATE cars SET vericode_sent_at = NULL WHERE id = ?', [$this->testCarId]);

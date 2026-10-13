@@ -22,7 +22,10 @@ use ElanRegistry\LogCategories;
  */
 class CarVerificationManager
 {
-    public function __construct(private CarRepository $repo) {}
+    public function __construct(
+        private CarRepository $repo,
+        private DeliverabilityFlagLog $flagLog = new DeliverabilityFlagLog(),
+    ) {}
 
     /**
      * Execute a repository update, translating failures into CarDatabaseException
@@ -69,59 +72,6 @@ class CarVerificationManager
         }
 
         return true;
-    }
-
-    /**
-     * Set or clear a car's bounced-email flag, and the address it bounced against
-     *
-     * @param object $carData Car data object (must have ->id property)
-     * @param bool $bounced True to flag as bounced, false to clear
-     * @param string|null $bouncedAddress The address the bounce was reported against
-     *                                    (ignored/nulled when $bounced is false)
-     * @return bool True if the bounce flag was updated successfully
-     * @throws CarDatabaseException If database update fails
-     */
-    private function updateBounced(object $carData, bool $bounced, ?string $bouncedAddress = null): bool
-    {
-        $bouncedAddress = $bounced ? $bouncedAddress : null;
-
-        $result = $this->persist(
-            fn () => $this->repo->updateEmailBounced((int) $carData->id, $bounced, $bouncedAddress),
-            LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-            $bounced
-                ? 'Bounce status could not be updated. Please try again or contact support.'
-                : 'Bounce status could not be cleared. Please try again or contact support.',
-            $bounced ? 'Failed to flag email as bounced' : 'Failed to clear bounced email flag',
-            (int) $carData->id,
-        );
-
-        $carData->email_bounced = $bounced ? 1 : 0;
-        $carData->email_bounced_address = $bouncedAddress;
-        return $result;
-    }
-
-    /**
-     * Set or clear a car's email-suppressed flag
-     *
-     * @param object $carData Car data object (must have ->id property)
-     * @param bool $suppressed True to flag as suppressed, false to clear
-     * @return bool True if the suppressed flag was updated successfully
-     * @throws CarDatabaseException If database update fails
-     */
-    private function updateSuppressed(object $carData, bool $suppressed): bool
-    {
-        $result = $this->persist(
-            fn () => $this->repo->updateEmailSuppressed((int) $carData->id, $suppressed),
-            LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-            $suppressed
-                ? 'Suppressed status could not be updated. Please try again or contact support.'
-                : 'Suppressed status could not be cleared. Please try again or contact support.',
-            $suppressed ? 'Failed to flag email as suppressed' : 'Failed to clear suppressed email flag',
-            (int) $carData->id,
-        );
-
-        $carData->email_suppressed = $suppressed ? 1 : 0;
-        return $result;
     }
 
     /**
@@ -273,658 +223,405 @@ class CarVerificationManager
     }
 
     /**
-     * Flag a car's owner email as bounced
+     * Record a bounce from a delivery event on the profile of the car's owner
      *
-     * @param object $carData Car data object (must have ->id property)
-     * @param string $bouncedAddress The address the bounce was reported against
-     * @return bool True if the bounce flag was set successfully
-     * @throws CarDatabaseException If database update fails
+     * A delivery event arrives for a car, but the flag belongs to the owner
+     * (#2101). This method finds the owner and sets `email_bounced` with the
+     * address and `email_bounced_at`. It skips, with a log row, a car that
+     * does not exist, has no owner, belongs to a deleted owner or to the
+     * `noowner` system account, or whose owner has no profiles row.
+     *
+     * @param int $carId Car the event was recorded against
+     * @param string $bouncedAddress The address that bounced
+     * @param string $bouncedAt When the bounce happened, in AppConstants::DATETIME_FORMAT
+     * @param string $source One of {@see DeliverabilityFlagLog::SOURCES}, normally
+     *                       `webhook`, `reconciliation` or `import`
+     * @return bool True when the owner's flag changed from 0 to 1
+     * @throws \InvalidArgumentException If $source is not a permitted value
+     * @throws CarValidationException If the address is empty or the time is not valid
+     * @throws CarDatabaseException If a query fails
      */
-    public function setBounced(object $carData, string $bouncedAddress): bool
+    public function setBounced(int $carId, string $bouncedAddress, string $bouncedAt, string $source): bool
     {
-        return $this->updateBounced($carData, true, $bouncedAddress);
+        // The event paths (webhook, reconciliation, import) run with no
+        // transaction, so the profile row lock ends at once. #2359 adds the
+        // transaction.
+        DeliverabilityFlagLog::assertValidSource($source);
+
+        $ownerId = $this->resolveEventOwner($carId, 'setBounced');
+        if ($ownerId === null) {
+            return false;
+        }
+
+        $old = $this->repo->setProfileBounced($ownerId, $bouncedAddress, $bouncedAt);
+        if ($old === null) {
+            $this->logEventSkip('setBounced', $carId, "owner {$ownerId} has no profiles row");
+            return false;
+        }
+
+        return $this->flagLog->record(0, $ownerId, DeliverabilityFlagLog::FLAG_BOUNCED, $old, 1, $source);
     }
 
     /**
-     * Clear a car's bounced email flag (admin reversal)
+     * Record a block from a delivery event on the profile of the car's owner
      *
-     * @param object $carData Car data object (must have ->id property)
-     * @return bool True if the bounce flag was cleared successfully
-     * @throws CarDatabaseException If database update fails
+     * A spam complaint, an unsubscribe or a blocklist entry means Brevo will
+     * not deliver to the address. This method finds the car's owner and sets
+     * `email_blocked` with the address, the time and the cause. It skips the
+     * same cases as {@see setBounced()}, with a log row.
+     *
+     * @param int $carId Car the event was recorded against
+     * @param string $blockedAddress The blocked address
+     * @param string|null $cause One of {@see CarRepository::BLOCKED_CAUSES}, or null when unknown
+     * @param string $blockedAt When the block happened, in AppConstants::DATETIME_FORMAT
+     * @param string $source One of {@see DeliverabilityFlagLog::SOURCES}, normally
+     *                       `webhook`, `reconciliation` or `import`
+     * @return bool True when the owner's flag changed from 0 to 1
+     * @throws \InvalidArgumentException If $source is not a permitted value
+     * @throws CarValidationException If the address is empty, the cause is not permitted or the time is not valid
+     * @throws CarDatabaseException If a query fails
      */
-    public function clearBounced(object $carData): bool
+    public function setSuppressed(int $carId, string $blockedAddress, ?string $cause, string $blockedAt, string $source): bool
     {
-        return $this->updateBounced($carData, false);
+        // The event paths (webhook, reconciliation, import) run with no
+        // transaction, so the profile row lock ends at once. #2359 adds the
+        // transaction.
+        DeliverabilityFlagLog::assertValidSource($source);
+
+        $ownerId = $this->resolveEventOwner($carId, 'setSuppressed');
+        if ($ownerId === null) {
+            return false;
+        }
+
+        $old = $this->repo->setProfileBlocked($ownerId, $blockedAddress, $cause, $blockedAt);
+        if ($old === null) {
+            $this->logEventSkip('setSuppressed', $carId, "owner {$ownerId} has no profiles row");
+            return false;
+        }
+
+        return $this->flagLog->record(0, $ownerId, DeliverabilityFlagLog::FLAG_BLOCKED, $old, 1, $source);
     }
 
     /**
-     * Flag a car's owner email as suppressed (e.g. a spam complaint)
+     * Find the individual owner of a car for an event write, or log why there is none
      *
-     * @param object $carData Car data object (must have ->id property)
-     * @return bool True if the suppressed flag was set successfully
-     * @throws CarDatabaseException If database update fails
+     * @return int|null The owner's user ID, or null when the event must be skipped
+     * @throws CarDatabaseException If the query fails
      */
-    public function setSuppressed(object $carData): bool
+    private function resolveEventOwner(int $carId, string $method): ?int
     {
-        return $this->updateSuppressed($carData, true);
+        $owner = $this->repo->findOwnerOfCar($carId);
+        if ($owner === null) {
+            $this->logEventSkip($method, $carId, 'the car does not exist');
+            return null;
+        }
+        if ($owner->user_id === null) {
+            $this->logEventSkip($method, $carId, 'the car has no owner');
+            return null;
+        }
+        if ($owner->username === null) {
+            $this->logEventSkip($method, $carId, 'the owner account does not exist');
+            return null;
+        }
+        if ($owner->username === 'noowner') {
+            $this->logEventSkip($method, $carId, 'the car belongs to the noowner system account');
+            return null;
+        }
+
+        return (int) $owner->user_id;
     }
 
     /**
-     * Clear a car's email-suppressed flag (admin reversal)
-     *
-     * @param object $carData Car data object (must have ->id property)
-     * @return bool True if the suppressed flag was cleared successfully
-     * @throws CarDatabaseException If database update fails
+     * Log a delivery event that changed no profile. The row has no address.
      */
-    public function clearSuppressed(object $carData): bool
+    private function logEventSkip(string $method, int $carId, string $why): void
     {
-        return $this->updateSuppressed($carData, false);
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
+            'CarVerificationManager::%s: event for car %d not applied to a profile: %s',
+            $method,
+            $carId,
+            $why
+        ));
     }
 
     /**
-     * Suppress verification email for every car this owner has (owner-initiated
-     * opt-out). Runs no transaction of its own — caller wraps this and the
-     * per-car cars_hist inserts in one transaction (matches verify/sold
-     * branches in verify_car.php).
+     * Record an owner's opt-out from verification email (owner-initiated)
      *
-     * Scoped to EVERY car the owner has (findByOwner()), sold included, per
-     * #1883's acceptance criteria ("syncs email_suppressed = 1 to every car
-     * they have" / "An owner with four cars clicking this once means all four
-     * stop" — no unsold qualifier). A sold car is never a verification-email
-     * candidate (findVerificationEligible() excludes solddate IS NOT NULL), so
-     * suppressing it has no effect on future sends, but the fan-out and its
-     * audit trail must still cover it: the confirmation page's car count
-     * (verify_car.php) is built from findByOwner() too, and a narrower
-     * fan-out would silently under-deliver on what that count promises the
-     * owner and leave sold cars with no EMAIL SUPPRESSED cars_hist row.
+     * Sets `profiles.email_opted_out` and `email_opted_out_at` on the owner's
+     * one profile row. It writes one audit row with source `owner` when the
+     * flag changes. Nothing
+     * is written to a car: verification reads the profile, so a car the
+     * owner registers later is also excluded (#2319). The opt-out is set
+     * also when `email_blocked` or `email_bounced` is set, so it outlives a
+     * later clear of those flags. A repeat opt-out changes nothing.
      *
-     * TWO WRITES, TWO MEANINGS. Besides the per-car fan-out this sets
-     * `profiles.email_suppressed = 1` once for the owner. The per-car flag is
-     * the fan-out target and is also written by the Brevo webhook/sync paths;
-     * the profile flag is the authoritative record that *this owner opted out*,
-     * and stays correct when their car list later changes or the per-car flags
-     * drift. The profile write happens FIRST, before any car is touched, so an
-     * owner with no profiles row fails the whole opt-out cleanly rather than
-     * part-way through the fan-out. It is independent of $changed: it is
-     * attempted even when every car is already suppressed, so a profile flag
-     * that was never set (e.g. a car suppressed by the Brevo path before this
-     * column existed) is still brought up to date. It is skipped only when the
-     * profile flag already reads 1 — the same read-then-skip idempotency the
-     * per-car loop uses, and required here because MySQL reports 0 affected
-     * rows for an UPDATE that changes nothing, which is indistinguishable from
-     * a missing row.
+     * Runs no transaction of its own. The caller opens one, so the profile
+     * write and the audit row commit together.
+     *
+     * @param int $ownerId Owner user ID. The owner is also the acting user.
+     * @return bool True when the opt-out changed from 0 to 1
+     * @throws CarDatabaseException If the owner has no profiles row (nothing
+     *                              is written), or a query fails.
+     *                              getUserMessage() is safe to show.
+     */
+    public function setSuppressedForOwner(int $ownerId): bool
+    {
+        $old = $this->requireProfile(
+            $this->repo->setProfileOptedOut($ownerId, true),
+            $ownerId,
+            'setSuppressedForOwner',
+            'Your opt-out could not be recorded. Please try again or contact support.'
+        );
+
+        return $this->flagLog->record(
+            $ownerId,
+            $ownerId,
+            DeliverabilityFlagLog::FLAG_OPTED_OUT,
+            $old,
+            1,
+            DeliverabilityFlagLog::SOURCE_OWNER
+        );
+    }
+
+    /**
+     * Mark an owner's address as bounced (admin Mark Bounced, #1884)
+     *
+     * Sets `profiles.email_bounced`, `email_bounced_address` and
+     * `email_bounced_at` (now) on the owner's one profile row, under a row
+     * lock. It writes one audit row with source `admin` when the flag changes.
+     * Nothing is written
+     * to a car. A repeat on the same address changes nothing. A bounce on
+     * another address is rewritten with the new address and time.
+     *
+     * Runs no transaction of its own. The caller opens one.
+     *
+     * NO user_id IN THE WRITE PATH: the profile UPDATE is keyed by user_id and
+     * never sets it, so this admin action cannot reassign anything.
      *
      * @param int $ownerId Owner user ID
-     * @return array<object> PRE-CHANGE snapshots of the car rows actually
-     *                        changed — each is a clone taken before
-     *                        setSuppressed() wrote email_suppressed=1 onto it,
-     *                        so the caller's cars_hist row records the OLD
-     *                        value (matching the cars_update trigger's OLD.*
-     *                        convention). Already-suppressed cars are skipped —
-     *                        idempotent at the per-car level. An empty array
-     *                        does NOT mean nothing happened: the owner-level
-     *                        profile flag may still have been written.
-     * @throws CarDatabaseException If a database update fails, or if the owner
-     *                              has no `profiles` row to record the
-     *                              opt-out on (nothing is written in that case
-     *                              — the check runs before the fan-out)
-     */
-    public function setSuppressedForOwner(int $ownerId): array
-    {
-        $this->suppressOwnerProfile($ownerId);
-
-        $changed = [];
-
-        foreach ($this->repo->findByOwner($ownerId) as $carRef) {
-            $carData = $this->repo->findById((int) $carRef->id);
-
-            if ($carData === null) {
-                // findByOwner() listed this id moments ago, so null here
-                // means the row disappeared mid-fan-out (concurrent merge or
-                // GDPR erasure) — or a genuine findByOwner()/findById()
-                // inconsistency. Skipping is correct (nothing to suppress), but
-                // it must never be silent: without this log line it is
-                // indistinguishable from a real bug.
-                logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                    'CarVerificationManager::setSuppressedForOwner: car %d listed for owner %d '
-                    . 'but no longer readable; skipped from opt-out fan-out',
-                    (int) $carRef->id,
-                    $ownerId
-                ));
-                continue;
-            }
-
-            if ((int) $carData->email_suppressed === 1) {
-                continue; // Already suppressed — idempotent, expected, not an anomaly.
-            }
-
-            // Snapshot BEFORE mutation: setSuppressed() writes email_suppressed=1
-            // onto $carData in place, and the caller uses this returned object to
-            // build a cars_hist audit row — which must record the pre-change
-            // state (matches the cars_update trigger's OLD.* convention), not the
-            // post-change state setSuppressed() leaves behind.
-            $before = clone $carData;
-
-            $this->setSuppressed($carData);
-            $changed[] = $before;
-        }
-
-        return $changed;
-    }
-
-    /**
-     * Record the owner-level opt-out on `profiles.email_suppressed` (#1883)
-     *
-     * Reads the current value first and returns without writing when it is
-     * already 1 — both to keep a repeat opt-out a true no-op and because a
-     * MySQL UPDATE that changes nothing reports 0 affected rows, which this
-     * method would otherwise mistake for a missing profiles row.
-     *
-     * A missing profiles row is an error, not a skip. `users` and `profiles`
-     * are not strictly 1:1 in this schema, so an owner can genuinely have no
-     * profiles row; when that happens there is nowhere to record that they
-     * opted out, and silently suppressing only their cars would lose the
-     * decision the moment their car list changed. Inserting a row instead is
-     * not an option either — profiles carries NOT NULL columns with no
-     * defaults, so it would mean inventing owner data.
-     *
-     * @param int $ownerId Owner user ID
-     * @return void
-     * @throws CarDatabaseException If the owner has no profiles row, or the
-     *                              read or write fails
-     */
-    private function suppressOwnerProfile(int $ownerId): void
-    {
-        $current = $this->repo->findProfileEmailSuppressed($ownerId);
-
-        if ($current === null) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::setSuppressedForOwner: owner %d has no profiles row; '
-                . 'opt-out aborted before any car was suppressed',
-                $ownerId
-            ));
-            throw new CarDatabaseException(
-                'Your opt-out could not be recorded. Please try again or contact support.'
-            );
-        }
-
-        if ($current === 1) {
-            return; // Already opted out — idempotent, expected, not an anomaly.
-        }
-
-        if (!$this->repo->updateProfileEmailSuppressed($ownerId, true)) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::setSuppressedForOwner: profiles.email_suppressed update '
-                . 'affected 0 rows for owner %d (row read as %d moments earlier): %s',
-                $ownerId,
-                $current,
-                $this->repo->errorString() ?: 'unknown'
-            ));
-            throw new CarDatabaseException(
-                'Your opt-out could not be recorded. Please try again or contact support.'
-            );
-        }
-    }
-
-    /**
-     * Flag every car this owner has as bounced against $bouncedAddress
-     * (admin-initiated Mark Bounced, #1884). Runs no transaction of its own —
-     * the caller wraps this and the per-car cars_hist inserts in one
-     * transaction, matching setSuppressedForOwner()'s contract.
-     *
-     * Scoped to EVERY car the owner has (findByOwner()), sold included, for the
-     * same reason the opt-out fan-out is: a sold car is never a
-     * verification-email candidate, but the admin tool's car count is built from
-     * findByOwner() too, and a narrower fan-out would under-deliver on that
-     * count and leave sold cars with no EMAIL BOUNCED cars_hist row.
-     *
-     * TWO WRITES, TWO MEANINGS. Besides the per-car fan-out this sets
-     * `profiles.email_bounced` / `profiles.email_bounced_address` once for the
-     * owner. The per-car flag is the fan-out target and is also written by the
-     * Brevo webhook/sync paths; the profile flag is the authoritative record
-     * that *this owner's address bounced*, and stays correct when their car list
-     * later changes or the per-car flags drift. The profile write happens FIRST,
-     * before any car is touched, so an owner with no profiles row fails the
-     * whole operation cleanly rather than part-way through the fan-out.
-     *
-     * ADDRESS-AWARE FAN-OUT: unlike setSuppressedForOwner(), a car that is
-     * already bounced is skipped only when the recorded address is IDENTICAL.
-     * A car carrying a stale address (the owner changed their email since the
-     * last bounce) is rewritten to the new one rather than skipped.
-     *
-     * NO user_id IN THE WRITE PATH: nothing this method reaches — neither
-     * setBounced()/updateBounced() nor
-     * CarRepository::updateProfileEmailBounced() — includes `user_id` in any
-     * UPDATE it issues. That is a structural fact about the code, not a runtime
-     * check, and it is stated here so a future edit does not "helpfully" add a
-     * user_id column to one of those updates: this is an admin-initiated bounce
-     * recording, and it must never be able to reassign a car's owner as a side
-     * effect.
-     *
-     * @param int $ownerId Owner user ID
-     * @param string $bouncedAddress The address the bounce was reported against
-     * @return array<object> PRE-CHANGE snapshots of the car rows actually
-     *                        changed — each is a clone taken before setBounced()
-     *                        wrote email_bounced=1 and the address onto it, so
-     *                        the caller's cars_hist row records the OLD values
-     *                        (matching the cars_update trigger's OLD.*
-     *                        convention). Cars already bounced against this same
-     *                        address are skipped — idempotent at the per-car
-     *                        level. An empty array does NOT mean nothing
-     *                        happened: the owner-level profile flag may still
-     *                        have been written.
+     * @param string $bouncedAddress The owner's current address
+     * @param int $actingUserId The admin who took the action
+     * @return bool True when the flag changed from 0 to 1
      * @throws CarValidationException If $bouncedAddress is empty
-     * @throws CarDatabaseException If a database update fails, or if the owner
-     *                              has no `profiles` row to record the bounce on
-     *                              (nothing is written in that case — the check
-     *                              runs before the fan-out)
+     * @throws CarDatabaseException If the owner has no profiles row (nothing
+     *                              is written), or a query fails
      */
-    public function setBouncedForOwner(int $ownerId, string $bouncedAddress): array
+    public function setBouncedForOwner(int $ownerId, string $bouncedAddress, int $actingUserId): bool
     {
-        if ($bouncedAddress === '') {
+        if (trim($bouncedAddress) === '') {
             throw new CarValidationException('A bounced email address is required to mark this owner as bounced.');
         }
 
-        $this->bounceOwnerProfile($ownerId, $bouncedAddress);
+        $old = $this->requireProfile(
+            $this->repo->setProfileBounced($ownerId, $bouncedAddress, date(AppConstants::DATETIME_FORMAT)),
+            $ownerId,
+            'setBouncedForOwner',
+            'The bounce could not be recorded. Please try again or contact support.'
+        );
 
-        $changed = [];
-
-        foreach ($this->repo->findByOwner($ownerId) as $carRef) {
-            $carData = $this->repo->findById((int) $carRef->id);
-
-            if ($carData === null) {
-                // findByOwner() listed this id moments ago, so null here
-                // means the row disappeared mid-fan-out (concurrent merge or
-                // GDPR erasure) — or a genuine findByOwner()/findById()
-                // inconsistency. Skipping is correct (nothing to flag), but
-                // it must never be silent: without this log line it is
-                // indistinguishable from a real bug.
-                logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                    'CarVerificationManager::setBouncedForOwner: car %d listed for owner %d '
-                    . 'but no longer readable; skipped from bounce fan-out',
-                    (int) $carRef->id,
-                    $ownerId
-                ));
-                continue;
-            }
-
-            if ((int) $carData->email_bounced === 1 && $carData->email_bounced_address === $bouncedAddress) {
-                continue; // Already bounced against this exact address — idempotent, expected.
-            }
-
-            // Snapshot BEFORE mutation: setBounced() writes email_bounced=1 and
-            // the address onto $carData in place, and the caller uses this
-            // returned object to build a cars_hist audit row — which must record
-            // the pre-change state (matches the cars_update trigger's OLD.*
-            // convention), not the post-change state setBounced() leaves behind.
-            $before = clone $carData;
-
-            $this->setBounced($carData, $bouncedAddress);
-            $changed[] = $before;
-        }
-
-        return $changed;
+        return $this->flagLog->record(
+            $actingUserId,
+            $ownerId,
+            DeliverabilityFlagLog::FLAG_BOUNCED,
+            $old,
+            1,
+            DeliverabilityFlagLog::SOURCE_ADMIN
+        );
     }
 
     /**
-     * Record the owner-level bounce on `profiles.email_bounced` /
-     * `profiles.email_bounced_address` (#1884)
+     * Clear an owner's bounce (admin Clear Bounced, #1884)
      *
-     * Reads the current flag first, and when it is already set reads the stored
-     * address too — both to keep a repeat bounce against the same address a true
-     * no-op and because a MySQL UPDATE that changes nothing reports 0 affected
-     * rows, which this method would otherwise mistake for a missing profiles
-     * row. A flag that is already 1 but carries a DIFFERENT address is not a
-     * no-op: the owner changed their email since the last bounce, so the stored
-     * address is stale and is rewritten.
+     * Clears `profiles.email_bounced`, its address and time on the owner's one
+     * profile row, under a row lock, and sets `email_bounce_cleared_at`, so
+     * soft bounces before the clear do not escalate again. Writes one audit
+     * row with source `admin` when the flag changes. Nothing is written to a car.
      *
-     * A missing profiles row is an error, not a skip. `users` and `profiles`
-     * are not strictly 1:1 in this schema, so an owner can genuinely have no
-     * profiles row; when that happens there is nowhere to record the bounce, and
-     * silently flagging only their cars would lose the record the moment their
-     * car list changed. Inserting a row instead is not an option either —
-     * profiles carries NOT NULL columns with no defaults, so it would mean
-     * inventing owner data.
+     * NOT TO BE CONFUSED WITH {@see CarRepository::clearBouncedForUser()},
+     * the automatic clear after a confirmed email change, which clears only a
+     * bounce recorded against another address.
+     *
+     * Runs no transaction of its own. The caller opens one.
      *
      * @param int $ownerId Owner user ID
-     * @param string $bouncedAddress The address the bounce was reported against
-     * @return void
-     * @throws CarDatabaseException If the owner has no profiles row, or the
-     *                              read or write fails
+     * @param int $actingUserId The admin who took the action
+     * @return bool True when the flag changed from 1 to 0
+     * @throws CarDatabaseException If the owner has no profiles row (nothing
+     *                              is written), or a query fails
      */
-    private function bounceOwnerProfile(int $ownerId, string $bouncedAddress): void
+    public function clearBouncedForOwner(int $ownerId, int $actingUserId): bool
     {
-        $currentFlag = $this->repo->findProfileEmailBounced($ownerId);
+        $old = $this->requireProfile(
+            $this->repo->clearProfileBounced($ownerId),
+            $ownerId,
+            'clearBouncedForOwner',
+            'The bounce could not be cleared. Please try again or contact support.'
+        );
 
-        if ($currentFlag === null) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::setBouncedForOwner: owner %d has no profiles row; '
-                . 'bounce aborted before any car was flagged',
-                $ownerId
-            ));
-            throw new CarDatabaseException(
-                'The bounce could not be recorded. Please try again or contact support.'
-            );
-        }
-
-        if ($currentFlag === 1) {
-            $currentAddress = $this->repo->findProfileEmailBouncedAddress($ownerId);
-
-            if ($currentAddress === $bouncedAddress) {
-                return; // Already bounced against this exact address — idempotent, expected.
-            }
-            // Otherwise the stored address is stale (the owner's email changed
-            // since the last bounce) — fall through and rewrite it.
-        }
-
-        if (!$this->repo->updateProfileEmailBounced($ownerId, true, $bouncedAddress)) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::setBouncedForOwner: profiles.email_bounced update '
-                . 'affected 0 rows for owner %d (row read as %d moments earlier): %s',
-                $ownerId,
-                $currentFlag,
-                $this->repo->errorString() ?: 'unknown'
-            ));
-            throw new CarDatabaseException(
-                'The bounce could not be recorded. Please try again or contact support.'
-            );
-        }
+        return $this->flagLog->record(
+            $actingUserId,
+            $ownerId,
+            DeliverabilityFlagLog::FLAG_BOUNCED,
+            $old,
+            0,
+            DeliverabilityFlagLog::SOURCE_ADMIN
+        );
     }
 
     /**
-     * Clear the bounced flag on an owner's profile and on every car they have
-     * (admin reversal of Mark Bounced, #1884). Runs no transaction of its own —
-     * the caller wraps this and the per-car cars_hist inserts in one
-     * transaction, matching setBouncedForOwner()'s contract.
+     * Clear an owner's bounce after a change of email address (#1890, #2101)
      *
-     * NOT TO BE CONFUSED WITH {@see CarRepository::clearBouncedForUser()}. The
-     * names are one word apart and the two are different methods for different
-     * triggers:
-     *   - CarRepository::clearBouncedForUser() is automatic and conditional. It
-     *     fires when an owner confirms an email change, and clears only cars
-     *     whose recorded bounced address no longer matches their new confirmed
-     *     address — a single UPDATE scoped by user_id, deliberately leaving a
-     *     bounce recorded against the address they still use. It does not touch
-     *     the profiles row.
-     *   - clearBouncedForOwner() (this method) is an admin's explicit reversal
-     *     via the Mark Bounced admin tool. It is unconditional on address: every
-     *     bounced car is cleared regardless of which address it bounced against,
-     *     and the owner-level profiles flag is cleared too.
+     * Calls {@see CarRepository::clearBouncedForUser()}, which clears the
+     * profile bounce only when it was recorded against another address. When
+     * the clear changes the row, this method writes one audit row with source
+     * `email_change`. Both email-change paths call it: the confirmed change
+     * (sync_owner_email_on_verify.php) and the direct change in
+     * user_settings.php.
      *
-     * TWO WRITES, TWO MEANINGS, as in setBouncedForOwner(): the profile flag is
-     * the authoritative owner-level record, the per-car flags are the fan-out
-     * target. The profile write happens FIRST, so an owner with no profiles row
-     * fails the whole reversal cleanly rather than part-way through the fan-out.
-     * The two writes are independently idempotent: a profile flag already at 0
-     * is skipped without skipping the fan-out, so per-car flags that have
-     * drifted out of step with the profile (e.g. set by the Brevo path) are
-     * still cleared.
+     * Runs its own transaction, so the row lock, the write and the audit row
+     * commit together. Inside an outer transaction, the repository joins it.
      *
-     * @param int $ownerId Owner user ID
-     * @return array<object> PRE-CHANGE snapshots of the car rows actually
-     *                        changed — each is a clone taken before
-     *                        clearBounced() wrote email_bounced=0 onto it, so
-     *                        the caller's cars_hist row records the OLD values
-     *                        (matching the cars_update trigger's OLD.*
-     *                        convention). Cars that are not flagged are skipped.
-     *                        An empty array does NOT mean nothing happened: the
-     *                        owner-level profile flag may still have been cleared.
-     * @throws CarDatabaseException If a database update fails, or if the owner
-     *                              has no `profiles` row (nothing is written in
-     *                              that case — the check runs before the fan-out)
+     * @param int    $actingUserId User who made the change (the owner)
+     * @param int    $userId       Owner user ID
+     * @param string $newEmail     The owner's new users.email value
+     * @return bool True when the bounce changed from 1 to 0
+     * @throws CarDatabaseException If a query or the audit row insert fails.
+     *                              Nothing is written.
      */
-    public function clearBouncedForOwner(int $ownerId): array
+    public function clearBouncedForEmailChange(int $actingUserId, int $userId, string $newEmail): bool
     {
-        $currentFlag = $this->repo->findProfileEmailBounced($ownerId);
-
-        if ($currentFlag === null) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::clearBouncedForOwner: owner %d has no profiles row; '
-                . 'bounce reversal aborted before any car was cleared',
-                $ownerId
-            ));
-            throw new CarDatabaseException(
-                'The bounce could not be cleared. Please try again or contact support.'
-            );
+        $this->repo->beginTransaction();
+        try {
+            $cleared = $this->repo->clearBouncedForUser($userId, $newEmail) === 1
+                && $this->flagLog->record(
+                    $actingUserId,
+                    $userId,
+                    DeliverabilityFlagLog::FLAG_BOUNCED,
+                    1,
+                    0,
+                    DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE
+                );
+            $this->repo->commit();
+        } catch (\Throwable $e) {
+            $this->repo->rollback();
+            throw $e;
         }
 
-        // Skipped when already 0 — both to keep a repeat reversal a true no-op
-        // and because a MySQL UPDATE that changes nothing reports 0 affected
-        // rows, indistinguishable from a missing row. The fan-out below runs
-        // either way.
-        if ($currentFlag === 1 && !$this->repo->updateProfileEmailBounced($ownerId, false, null)) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                'CarVerificationManager::clearBouncedForOwner: profiles.email_bounced update '
-                . 'affected 0 rows for owner %d (row read as %d moments earlier): %s',
-                $ownerId,
-                $currentFlag,
-                $this->repo->errorString() ?: 'unknown'
-            ));
-            throw new CarDatabaseException(
-                'The bounce could not be cleared. Please try again or contact support.'
-            );
-        }
-
-        $changed = [];
-
-        foreach ($this->repo->findByOwner($ownerId) as $carRef) {
-            $carData = $this->repo->findById((int) $carRef->id);
-
-            if ($carData === null) {
-                // findByOwner() listed this id moments ago — see the same case
-                // in setBouncedForOwner(). Skipping is correct, but never silent.
-                logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                    'CarVerificationManager::clearBouncedForOwner: car %d listed for owner %d '
-                    . 'but no longer readable; skipped from bounce-reversal fan-out',
-                    (int) $carRef->id,
-                    $ownerId
-                ));
-                continue;
-            }
-
-            if ((int) $carData->email_bounced !== 1) {
-                continue; // Nothing to clear — idempotent, expected, not an anomaly.
-            }
-
-            // Snapshot BEFORE mutation, so the caller's cars_hist row records
-            // the pre-change state (cars_update trigger's OLD.* convention).
-            $before = clone $carData;
-
-            $this->clearBounced($carData);
-            $changed[] = $before;
-        }
-
-        return $changed;
+        return $cleared;
     }
 
     /**
-     * Clear the suppressed flag on an owner's profile and on every car they have
-     * (admin reversal of an opt-out, #1884).
+     * Clear an owner's block and opt-out (admin Clear Suppression)
      *
-     * The inverse of {@see setSuppressedForOwner()}: where that records an
-     * owner-initiated opt-out, this is an admin undoing one on their behalf.
-     * Only admin code may call it. The owner self-service path is
-     * {@see clearSuppressedForOwnerByOwner()}. The database behavior, return
-     * value, exceptions, and transaction contract are in
-     * {@see clearSuppressedForOwnerShared()}. This wrapper adds the
-     * `clearSuppressedForOwner` log prefix and the "opt-out could not be
-     * cleared" exception text.
+     * Until #2357 gives the admin separate Clear Block and Clear Opt-out
+     * actions, this one action clears both `email_blocked` (with its
+     * address, time and cause) and `email_opted_out` (with its time) on the
+     * owner's one profile row. It writes one audit row per flag that changed,
+     * with source `admin`. Nothing is written to a car. The bounce stays.
+     *
+     * Runs no transaction of its own. The caller opens one.
      *
      * @param int $ownerId Owner user ID
-     * @return array<object> See {@see clearSuppressedForOwnerShared()}
-     * @throws CarDatabaseException See {@see clearSuppressedForOwnerShared()}
+     * @param int $actingUserId The admin who took the action
+     * @return bool True when at least one flag changed from 1 to 0
+     * @throws CarDatabaseException If the owner has no profiles row (nothing
+     *                              is written), or a query fails
      */
-    public function clearSuppressedForOwner(int $ownerId): array
+    public function clearSuppressedForOwner(int $ownerId, int $actingUserId): bool
     {
-        return $this->clearSuppressedForOwnerShared(
+        $userMessage = 'The opt-out could not be cleared. Please try again or contact support.';
+
+        $oldBlocked = $this->requireProfile(
+            $this->repo->clearProfileBlocked($ownerId),
             $ownerId,
             'clearSuppressedForOwner',
-            'opt-out reversal',
-            'The opt-out could not be cleared. Please try again or contact support.',
-            false
+            $userMessage
         );
+        $oldOptedOut = $this->requireProfile(
+            $this->repo->setProfileOptedOut($ownerId, false),
+            $ownerId,
+            'clearSuppressedForOwner',
+            $userMessage
+        );
+
+        $blockedChanged = $this->flagLog->record(
+            $actingUserId,
+            $ownerId,
+            DeliverabilityFlagLog::FLAG_BLOCKED,
+            $oldBlocked,
+            0,
+            DeliverabilityFlagLog::SOURCE_ADMIN
+        );
+        $optedOutChanged = $this->flagLog->record(
+            $actingUserId,
+            $ownerId,
+            DeliverabilityFlagLog::FLAG_OPTED_OUT,
+            $oldOptedOut,
+            0,
+            DeliverabilityFlagLog::SOURCE_ADMIN
+        );
+
+        return $blockedChanged || $optedOutChanged;
     }
 
     /**
-     * Clear the suppressed flag on an owner's profile and on every car they have
-     * (owner self-service "Resume verification emails" on Account Settings,
-     * #1895).
+     * Resume verification email for the owner (Account Settings, #1895)
      *
-     * The owner-initiated inverse of {@see setSuppressedForOwner()}. Only the
-     * owner's own request may call it, with the owner ID from the session. The
-     * admin reversal is {@see clearSuppressedForOwner()}. The database
-     * behavior, return value, exceptions, and transaction contract are in
-     * {@see clearSuppressedForOwnerShared()}. This wrapper adds the
-     * `clearSuppressedForOwnerByOwner` log prefix and the "Verification emails
-     * could not be resumed" exception text, so log greps and tests still
-     * separate the two call paths.
+     * Clears only `profiles.email_opted_out` and `email_opted_out_at`, the
+     * flag that the owner set. A block (`email_blocked`) and a bounce stay:
+     * the owner did not cause them, so only an admin, or a confirmed change
+     * to another address, clears them. Writes one audit row with source
+     * `owner` when the flag changes. Nothing is written to a car.
      *
-     * The owner can clear only a suppression the owner caused. The profile
-     * flag is always an owner opt-out, so it is cleared. A car whose current
-     * suppression is a Brevo spam or unsubscribe complaint
-     * ({@see findBrevoComplaintCarIds()}) is not cleared and stays
-     * suppressed. Only the admin path can clear it.
+     * Runs no transaction of its own. The caller opens one. The profile row
+     * is locked before the write, so a double-submit is serialized.
      *
-     * @param int $ownerId Owner user ID (the logged-in user, from the session)
-     * @return array<object> See {@see clearSuppressedForOwnerShared()}. A car
-     *                       kept suppressed for a Brevo complaint is not in it.
-     * @throws CarDatabaseException See {@see clearSuppressedForOwnerShared()}
+     * @param int $ownerId Owner user ID (the logged-in user, from the session).
+     *                     The owner is also the acting user.
+     * @return bool True when the opt-out changed from 1 to 0
+     * @throws CarDatabaseException If the owner has no profiles row (nothing
+     *                              is written), or a query fails.
+     *                              getUserMessage() is safe to show.
      */
-    public function clearSuppressedForOwnerByOwner(int $ownerId): array
+    public function clearSuppressedForOwnerByOwner(int $ownerId): bool
     {
-        return $this->clearSuppressedForOwnerShared(
+        $old = $this->requireProfile(
+            $this->repo->setProfileOptedOut($ownerId, false),
             $ownerId,
             'clearSuppressedForOwnerByOwner',
-            'owner resume',
-            'Verification emails could not be resumed. Please try again or contact support.',
-            true
+            'Verification emails could not be resumed. Please try again or contact support.'
+        );
+
+        return $this->flagLog->record(
+            $ownerId,
+            $ownerId,
+            DeliverabilityFlagLog::FLAG_OPTED_OUT,
+            $old,
+            0,
+            DeliverabilityFlagLog::SOURCE_OWNER
         );
     }
 
     /**
-     * Find the owner's suppressed cars whose current suppression is a Brevo
-     * complaint (spam or unsubscribe), not an owner opt-out
+     * Turn a profile writer's "no profiles row" result into an exception
      *
-     * The cause comes from {@see EmailNoticeBuilder::resolveSuppressionCause()},
-     * the same rule as the account notice and the admin Status chip. Only a
-     * car with its own `email_suppressed` flag set can have this cause. A
-     * suppression from the profile flag alone is an owner opt-out.
+     * No logger() call here: the owner methods run inside the caller's
+     * transaction, and logger() writes through the same connection, so a
+     * rollback would delete the log row. The detail goes into the exception
+     * message, and the caller logs it after the rollback.
      *
-     * @param int $ownerId Owner user ID
-     * @return list<int> Car IDs, in the order of
-     *                   {@see CarRepository::findVerificationStateByOwner()}
-     * @throws CarDatabaseException If a repository query fails
+     * @param int|null $old The old flag value that the writer returned
+     * @return int The old flag value (0 or 1)
+     * @throws CarDatabaseException If $old is null (the owner has no profiles row)
      */
-    public function findBrevoComplaintCarIds(int $ownerId): array
+    private function requireProfile(?int $old, int $ownerId, string $method, string $userMessage): int
     {
-        $suppressedIds = [];
-        foreach ($this->repo->findVerificationStateByOwner($ownerId) as $car) {
-            if ((int) ($car->email_suppressed ?? 0) === 1) {
-                $suppressedIds[] = (int) $car->id;
-            }
-        }
-        if ($suppressedIds === []) {
-            return [];
-        }
-
-        $events = $this->repo->findLatestEmailEventsByCarIdsAndEvents(
-            $suppressedIds,
-            EmailEventApplier::SUPPRESSION_EVENTS
-        );
-        $hist = $this->repo->findLatestHistoryOperationByCarIds(
-            $suppressedIds,
-            [EmailNoticeBuilder::OPERATION_SUPPRESSED]
-        );
-
-        $complaintIds = [];
-        foreach ($suppressedIds as $carId) {
-            $cause = EmailNoticeBuilder::resolveSuppressionCause($events[$carId] ?? null, $hist[$carId] ?? null);
-            if ($cause['cause'] === EmailNoticeBuilder::CAUSE_BREVO_COMPLAINT) {
-                $complaintIds[] = $carId;
-            }
-        }
-
-        return $complaintIds;
-    }
-
-    /**
-     * Shared body of {@see clearSuppressedForOwner()} (admin path) and
-     * {@see clearSuppressedForOwnerByOwner()} (owner self-service path,
-     * #1895). The two public methods differ only in which caller may invoke
-     * them, their log prefix, and the exception text a user may see — the
-     * database behavior is identical by design, so it lives once here.
-     *
-     * Runs no transaction of its own. The caller must open one, then wrap this
-     * and the per-car cars_hist inserts in it, matching
-     * setSuppressedForOwner()'s contract. The profile read is a locking read
-     * ({@see CarRepository::findProfileEmailSuppressedForUpdate()}), so a
-     * double-submit is serialized: the second request waits for the first to
-     * commit, reads 0, and skips the profile write instead of failing on an
-     * UPDATE that affects 0 rows.
-     *
-     * SUPPRESSION ONLY. This method never reads or writes the bounce columns
-     * (`email_bounced`, `email_bounced_address`) on the profile or on any car.
-     * A bounce is cleared only by an admin action or by a confirmed email
-     * change (sync_owner_email_on_verify.php).
-     *
-     * TWO WRITES, TWO MEANINGS, as in setSuppressedForOwner(): the profile flag
-     * is the authoritative owner-level record, the per-car flags are the fan-out
-     * target and are also written by the Brevo webhook/sync paths. The profile
-     * write happens FIRST, so an owner with no profiles row fails the whole
-     * reversal cleanly rather than part-way through the fan-out. The two writes
-     * are independently idempotent: a profile flag already at 0 is skipped
-     * without skipping the fan-out, so per-car flags that have drifted out of
-     * step with the profile are still cleared.
-     *
-     * @param int $ownerId Owner user ID
-     * @param string $logPrefix Method name used in every logger() line, so
-     *                          log greps separate the admin and owner paths.
-     * @param string $logContext Short phrase describing the action in log
-     *                           text (e.g. "opt-out reversal", "owner resume").
-     * @param string $userMessage User message ($userMessage) of the exception
-     *                            on failure.
-     * @param bool $keepBrevoComplaints True for the owner path: a car whose
-     *                                  current suppression is a Brevo
-     *                                  complaint ({@see findBrevoComplaintCarIds()})
-     *                                  is skipped and stays suppressed.
-     * @return array<object> PRE-CHANGE snapshots of the car rows actually
-     *                        changed — each is a clone taken before
-     *                        clearSuppressed() wrote email_suppressed=0 onto it,
-     *                        so the caller's cars_hist row records the OLD value
-     *                        (matching the cars_update trigger's OLD.*
-     *                        convention). Cars that are not suppressed are
-     *                        skipped. An empty array does NOT mean nothing
-     *                        happened: the owner-level profile flag may still
-     *                        have been cleared.
-     * @throws CarDatabaseException If a database read or update fails, or if
-     *                              the owner has no `profiles` row (nothing is
-     *                              written in that case — the check runs
-     *                              before the fan-out). getUserMessage()
-     *                              returns $userMessage. getMessage() holds
-     *                              the technical detail.
-     */
-    private function clearSuppressedForOwnerShared(
-        int $ownerId,
-        string $logPrefix,
-        string $logContext,
-        string $userMessage,
-        bool $keepBrevoComplaints
-    ): array {
-        $currentFlag = $this->repo->findProfileEmailSuppressedForUpdate($ownerId);
-
-        // No logger() calls before a throw in this method: it runs inside the
-        // caller's transaction, and logger() writes through the same
-        // connection, so the caller's rollback would delete the log row. The
-        // detail goes into the exception message. The caller logs it after
-        // the rollback.
-        if ($currentFlag === null) {
+        if ($old === null) {
             throw new CarDatabaseException(
                 sprintf(
-                    'CarVerificationManager::%s: owner %d has no profiles row; '
-                    . '%s aborted before any car was cleared',
-                    $logPrefix,
-                    $ownerId,
-                    $logContext
+                    'CarVerificationManager::%s: owner %d has no profiles row; nothing was written',
+                    $method,
+                    $ownerId
                 ),
                 0,
                 null,
@@ -932,63 +629,6 @@ class CarVerificationManager
             );
         }
 
-        // Skipped when already 0 — both to keep a repeat reversal a true no-op
-        // and because a MySQL UPDATE that changes nothing reports 0 affected
-        // rows, indistinguishable from a missing row. The fan-out below runs
-        // either way.
-        if ($currentFlag === 1 && !$this->repo->updateProfileEmailSuppressed($ownerId, false)) {
-            throw new CarDatabaseException(
-                sprintf(
-                    'CarVerificationManager::%s: profiles.email_suppressed update '
-                    . 'affected 0 rows for owner %d (row read as %d moments earlier): %s',
-                    $logPrefix,
-                    $ownerId,
-                    $currentFlag,
-                    $this->repo->errorString() ?: 'unknown'
-                ),
-                0,
-                null,
-                $userMessage
-            );
-        }
-
-        $changed = [];
-        $keptCarIds = $keepBrevoComplaints ? array_flip($this->findBrevoComplaintCarIds($ownerId)) : [];
-
-        foreach ($this->repo->findByOwner($ownerId) as $carRef) {
-            if (isset($keptCarIds[(int) $carRef->id])) {
-                continue; // Brevo complaint: only an admin may clear it.
-            }
-
-            $carData = $this->repo->findById((int) $carRef->id);
-
-            if ($carData === null) {
-                // findByOwner() listed this id moments ago — see the same case
-                // in setSuppressedForOwner(). Skipping is correct, but never silent.
-                // This logger() row survives only if the caller commits.
-                logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-                    'CarVerificationManager::%s: car %d listed for owner %d '
-                    . 'but no longer readable; skipped from %s fan-out',
-                    $logPrefix,
-                    (int) $carRef->id,
-                    $ownerId,
-                    $logContext
-                ));
-                continue;
-            }
-
-            if ((int) $carData->email_suppressed !== 1) {
-                continue; // Nothing to clear — idempotent, expected, not an anomaly.
-            }
-
-            // Snapshot BEFORE mutation, so the caller's cars_hist row records
-            // the pre-change state (cars_update trigger's OLD.* convention).
-            $before = clone $carData;
-
-            $this->clearSuppressed($carData);
-            $changed[] = $before;
-        }
-
-        return $changed;
+        return $old;
     }
 }

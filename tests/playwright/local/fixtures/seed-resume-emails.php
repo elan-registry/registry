@@ -7,12 +7,15 @@ use ElanRegistry\Car\CarRepository;
  * Standalone fixture script for tests/playwright/user-settings-resume-emails.spec.js
  * (issue #1895, the "Resume verification emails" control on Account Settings).
  *
- * Seeds two loginable owners. Each has a profiles row (usersc/user_settings.php
- * stops without one) and one car:
+ * Seeds three loginable owners. Each has a profiles row (usersc/user_settings.php
+ * stops without one) and one car. The flags are on the profile (#2101):
  *
- *  - suppressed:   profiles.email_suppressed = 1 and cars.email_suppressed = 1.
- *                  The page shows the #resume-emails control.
- *  - unsuppressed: both flags 0. The page does not show the control.
+ *  - suppressed:   email_opted_out = 1. The page shows the #resume-emails
+ *                  control, and Resume turns emails back on.
+ *  - unsuppressed: no flags. The page does not show the control.
+ *  - blocked:      email_blocked = 1 and email_opted_out = 1. The page shows
+ *                  the control and the provider note. Resume removes the
+ *                  opt-out only, so the message says emails stay paused.
  *
  * Usage:
  *   php seed-resume-emails.php            seed (deletes earlier marker rows first)
@@ -20,7 +23,8 @@ use ElanRegistry\Car\CarRepository;
  *
  * Prints one JSON line to stdout (seed mode only):
  * {"suppressed": {"userId", "username", "password", "carId"},
- *  "unsuppressed": {"userId", "username", "password", "carId"}}
+ *  "unsuppressed": {"userId", "username", "password", "carId"},
+ *  "blocked": {"userId", "username", "password", "carId"}}
  * Each owner has a random password that exists only in this output, so the
  * spec can log in with login() from auth-helper.js.
  *
@@ -76,19 +80,32 @@ restore_error_handler();
 /** `cars.model` is varchar(30). `cars.chassis` is varchar(15). Keep markers short. */
 const SEED_CAR_MODEL = '__PW_SEED_RESUME_EMAILS__';
 
-/** @var array<string, array{username: string, email: string, chassis: string, suppressed: int}> $owners */
+/** @var array<string, array{username: string, email: string, chassis: string, flags: array<string, int|string>}> $owners */
 $owners = [
     'suppressed' => [
         'username'   => '__playwright_seed_resume_suppressed__',
         'email'      => 'playwright-seed-resume-suppressed@example.invalid',
         'chassis'    => 'PWRSMS',
-        'suppressed' => 1,
+        'flags'      => ['email_opted_out' => 1, 'email_opted_out_at' => '2026-04-01 10:00:00'],
     ],
     'unsuppressed' => [
         'username'   => '__playwright_seed_resume_clear__',
         'email'      => 'playwright-seed-resume-clear@example.invalid',
         'chassis'    => 'PWRSMC',
-        'suppressed' => 0,
+        'flags'      => [],
+    ],
+    'blocked' => [
+        'username'   => '__playwright_seed_resume_blocked__',
+        'email'      => 'playwright-seed-resume-blocked@example.invalid',
+        'chassis'    => 'PWRSMB',
+        'flags'      => [
+            'email_opted_out'       => 1,
+            'email_opted_out_at'    => '2026-04-01 10:00:00',
+            'email_blocked'         => 1,
+            'email_blocked_address' => 'playwright-seed-resume-blocked@example.invalid',
+            'email_blocked_at'      => '2026-04-02 10:00:00',
+            'email_blocked_cause'   => 'spam',
+        ],
     ],
 ];
 
@@ -150,14 +167,24 @@ foreach ($owners as $key => $owner) {
         exit(1);
     }
 
-    $profileInserted = $db->insert('profiles', [
-        'user_id'          => $userId,
-        'bio'              => '',
-        'city'             => 'Hethel',
-        'state'            => 'Norfolk',
-        'country'          => 'United Kingdom',
-        'email_suppressed' => $owner['suppressed'],
-    ]);
+    // profiles.user_id is UNIQUE, so upsert.
+    $profileColumns = array_merge([
+        'bio'     => '',
+        'city'    => 'Hethel',
+        'state'   => 'Norfolk',
+        'country' => 'United Kingdom',
+    ], $owner['flags']);
+    $profileNames = implode(', ', array_keys($profileColumns));
+    $profileMarks = implode(', ', array_fill(0, count($profileColumns), '?'));
+    $profileUpdates = implode(', ', array_map(
+        static fn(string $column): string => "{$column} = VALUES({$column})",
+        array_keys($profileColumns)
+    ));
+    $db->query(
+        "INSERT INTO profiles (user_id, {$profileNames}) VALUES (?, {$profileMarks}) ON DUPLICATE KEY UPDATE {$profileUpdates}",
+        array_merge([$userId], array_values($profileColumns))
+    );
+    $profileInserted = !$db->error();
     if (!$profileInserted) {
         fwrite(STDERR, "ERROR: Failed to insert seed owner '{$key}' profile: {$db->errorString()}\n");
         exit(1);
@@ -175,7 +202,6 @@ foreach ($owners as $key => $owner) {
         'ctime'              => $now,
         'owner_last_updated' => $now,
         'email'              => $owner['email'],
-        'email_suppressed'   => $owner['suppressed'],
     ]);
     if (!$carInserted) {
         fwrite(STDERR, "ERROR: Failed to insert seed car for '{$key}': {$carRepository->errorString()}\n");

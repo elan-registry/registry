@@ -7,18 +7,20 @@ if (count(get_included_files()) == 1) { die(); }
  * Both states of `app/verify/verify_car.php?vericode=...&action=optout` —
  * the one-click opt-out from verification emails (#1883):
  *
- *   pre-suppression  — the confirmation card, with the POST form that performs
- *                      the opt-out. Nothing has changed yet.
- *   post-suppression — the success card. Rendered after the POST's 303
- *                      redirect lands back here, and also on first arrival if
- *                      the owner is already suppressed (idempotent: the same
- *                      success framing, never an error).
+ *   before opt-out — the confirmation card, with the POST form that performs
+ *                    the opt-out. Nothing has changed yet.
+ *   after opt-out  — the success card. Rendered after the POST's 303
+ *                    redirect lands back here, and also on first arrival if
+ *                    the owner already opted out (idempotent: the same
+ *                    success framing, never an error).
  *
- * The distinction is `$optOutAlreadySuppressed`, which verify_car.php derives
- * from the car's stored `email_suppressed` — so the post-POST render and a
- * later revisit are the same state, needing no extra "did we just write?"
- * flag. Opting out fans out across every car the owner has, so the card talks
- * about their whole account, not just the car the vericode resolved to.
+ * The distinction is `$optOutAlreadyOptedOut`, which verify_car.php derives
+ * from the owner's `profiles.email_opted_out` only — so the post-POST render
+ * and a later revisit are the same state, needing no extra "did we just
+ * write?" flag. `email_blocked` and `email_bounced` never change this page.
+ * The opt-out is stored on the owner's profile and covers every car
+ * the owner has, so the card talks about their whole account, not just the
+ * car the vericode resolved to.
  *
  * NO CSRF TOKEN — see the rationale in app/verify/verify_car.php's docblock.
  * The vericode carried in the hidden field IS the credential; the visitor
@@ -32,7 +34,9 @@ if (count(get_included_files()) == 1) { die(); }
  *   $optOutCarCount           ?int    How many cars the opt-out covers, or null
  *                                     when verify_car.php's count query failed
  *                                     (the count is unknown, not zero)
- *   $optOutAlreadySuppressed  bool    True once suppression is in effect
+ *   $optOutAlreadyOptedOut    bool    True once the owner's opt-out is in effect
+ *
+ * Reads the UserSpice global $us_url_root for the Account Settings link.
  */
 
 $verifyCar ??= null;
@@ -40,7 +44,7 @@ $verifyPhoto ??= null;
 $verifyCode ??= '';
 $verifySelfUrl ??= '';
 $optOutCarCount = $optOutCarCount ?? null;
-$optOutAlreadySuppressed ??= false;
+$optOutAlreadyOptedOut ??= false;
 
 if ($verifyCar === null) {
     return;
@@ -48,6 +52,8 @@ if ($verifyCar === null) {
 
 $verifyCodeAttr = htmlspecialchars($verifyCode, ENT_QUOTES, 'UTF-8');
 $verifySelfAttr = htmlspecialchars($verifySelfUrl, ENT_QUOTES, 'UTF-8');
+// The owner resumes emails from Account Settings (#1895). Signed out, the page sends them to log in first.
+$resumeSettingsAttr = htmlspecialchars(($us_url_root ?? '/') . 'usersc/user_settings.php#resume-emails', ENT_QUOTES, 'UTF-8');
 
 // findByOwner() counts every car the owner has; a count of 0 would mean the
 // car the vericode resolved to had vanished between the two queries, so floor
@@ -61,9 +67,9 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
 <div class="card registry-card">
     <div class="card-header card-header-er-primary">
         <h2 class="h5 mb-0 card-header-er-primary-text">
-            <i class="fas <?= $optOutAlreadySuppressed ? 'fa-circle-check' : 'fa-envelope-circle-check' ?> me-2"
+            <i class="fas <?= $optOutAlreadyOptedOut ? 'fa-circle-check' : 'fa-envelope-circle-check' ?> me-2"
                aria-hidden="true"></i>
-            <?= $optOutAlreadySuppressed
+            <?= $optOutAlreadyOptedOut
                 ? 'You&rsquo;re unsubscribed from verification emails'
                 : 'Stop verification emails' ?>
         </h2>
@@ -72,7 +78,7 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
     <?php include __DIR__ . '/_verify_hero.php'; ?>
 
     <div class="card-body">
-        <?php if ($optOutAlreadySuppressed): ?>
+        <?php if ($optOutAlreadyOptedOut): ?>
             <p>
                 We won&rsquo;t send you any more verification emails &mdash; not for
                 this car, and not for
@@ -84,10 +90,10 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
             </p>
 
             <p class="text-muted small border-top pt-3 mb-0">
-                Changed your mind, or unsubscribed by mistake? Email the registrar at
-                <a href="mailto:registrar@elanregistry.org">registrar@elanregistry.org</a>
-                and we&rsquo;ll turn them back on.
-                <?php /* Self-service resume from Account Settings is #1365, not yet built. */ ?>
+                Changed your mind, or unsubscribed by mistake? Turn them back on in your
+                <a href="<?= $resumeSettingsAttr ?>">Account Settings</a>.
+                If you cannot sign in, email the registrar at
+                <a href="mailto:registrar@elanregistry.org">registrar@elanregistry.org</a>.
             </p>
         <?php else: ?>
             <p>
@@ -96,7 +102,7 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
                 rather not get them, we&rsquo;ll stop.
             </p>
 
-            <div class="alert alert-info" role="alert">
+            <div class="alert alert-primary">
                 <i class="fas fa-circle-info me-2" aria-hidden="true"></i>
                 <?php if ($carCount === null): ?>
                     You won&rsquo;t receive verification emails for
@@ -131,9 +137,10 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
 
             <p class="text-muted small mt-4 mb-0">
                 Nothing changes until you press the button above. If you unsubscribe
-                and later change your mind, email the registrar at
+                and later change your mind, turn them back on in your
+                <a href="<?= $resumeSettingsAttr ?>">Account Settings</a>.
+                If you cannot sign in, email the registrar at
                 <a href="mailto:registrar@elanregistry.org">registrar@elanregistry.org</a>.
-                <?php /* Self-service resume from Account Settings is #1365, not yet built. */ ?>
             </p>
         <?php endif; ?>
     </div>

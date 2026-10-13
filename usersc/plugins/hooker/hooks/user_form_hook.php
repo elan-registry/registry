@@ -18,31 +18,30 @@ if ($userQ->count() > 0) {
 	$thatUser = $userQ->results();
 }
 
-$thatCar = null;
-$carQ = $db->query("SELECT c.* FROM cars c WHERE c.user_id = ? ORDER BY c.model, c.year", array($user_id));
-if ($carQ->count() > 0) {
-	$thatCar = $carQ->results();
-}
-
 $esc = fn($value) => htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 
-// Verification & email state for this owner's cars (#1924). Two queries total,
-// regardless of car count: one for the per-car state, one aggregate for the
-// latest delivery event across every car id.
+// Car list, owner deliverability state and per-car verification state (#1924,
+// #2101). Four queries in total, whatever the car count. The flags come from
+// the owner's profile, which is their system of record.
 //
 // This hook is included mid-render by includeHook() inside users/admin.php's
 // user view, so an uncaught exception here would take down the whole page —
-// profile table, car buttons, permission management and all. Both repository
-// calls throw CarDatabaseException on query failure, and DB::query() prepares
+// profile table, car buttons, permission management and all. Each repository
+// call throws CarDatabaseException on query failure, and DB::query() prepares
 // outside its own try/catch, so a failing prepare can escape as a raw
 // \PDOException instead; both are caught. \Throwable deliberately is not — a
 // missing dbi() or autoload failure is fatal and must propagate.
 $verificationLoadError  = false;
+$thatCar                = null;
+$emailState             = null;
 $verificationState      = [];
 $latestEvents           = [];
 
 try {
 	$verificationRepo  = new \ElanRegistry\Car\CarRepository(dbi());
+	$ownerCars         = $verificationRepo->findByOwner((int) $user_id);
+	$thatCar           = $ownerCars === [] ? null : $ownerCars;
+	$emailState        = $verificationRepo->findProfileEmailState((int) $user_id);
 	$verificationState = $verificationRepo->findVerificationStateByOwner($user_id);
 	$latestEvents      = $verificationRepo->findLatestEmailEventsByCarIds(
 		array_map(static fn($car) => (int) $car->id, $verificationState)
@@ -72,16 +71,9 @@ try {
 	}
 }
 
-$bouncedCount    = 0;
-$suppressedCount = 0;
-foreach ($verificationState as $car) {
-	if ((int) $car->email_bounced) {
-		$bouncedCount++;
-	}
-	if ((int) $car->email_suppressed) {
-		$suppressedCount++;
-	}
-}
+$emailBounced   = $emailState !== null && (int) $emailState->email_bounced === 1;
+$emailBlocked   = $emailState !== null && (int) $emailState->email_blocked === 1;
+$emailOptedOut  = $emailState !== null && (int) $emailState->email_opted_out === 1;
 
 // Freshness is the one-year rule defined by CarRepository::freshnessSql() —
 // see that method's docblock for the authoritative statement of the rule and
@@ -214,6 +206,10 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 				<?php } ?>
 			</td>
 		</tr>
+	<?php } elseif ($verificationLoadError) { ?>
+		<tr>
+			<td colspan="2"><em class="text-muted">Cars could not be loaded</em></td>
+		</tr>
 	<?php } else { ?>
 		<tr>
 			<td colspan="2"><em class="text-muted">No cars registered</em></td>
@@ -231,10 +227,40 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 				Verification and email status could not be loaded. The rest of this page is
 				unaffected &mdash; see the admin logs for details.
 			</div>
-		<?php } elseif ($bouncedCount > 0 || $suppressedCount > 0) { ?>
+		<?php } elseif ($emailState === null) { ?>
 			<div class="alert alert-warning">
-				<?= (int) $bouncedCount ?> <?= $pluralize($bouncedCount, 'car') ?> bounced,
-				<?= (int) $suppressedCount ?> suppressed
+				This owner has no profile, so no verification emails are sent.
+			</div>
+		<?php } elseif ($emailBounced || $emailBlocked || $emailOptedOut) { ?>
+			<div class="alert alert-warning">
+				<?php if ($emailBounced) { ?>
+					<div>
+						<span class="badge text-bg-danger">Bounced</span>
+						<?= $esc($emailState->email_bounced_address) ?>
+						<?php if ($emailState->email_bounced_at !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailState->email_bounced_at) ?></span>
+						<?php } ?>
+					</div>
+				<?php } ?>
+				<?php if ($emailBlocked) { ?>
+					<div>
+						<span class="badge text-bg-warning">Suppressed</span>
+						Blocked (cause: <?= ($emailState->email_blocked_cause ?? '') !== '' ? $esc($emailState->email_blocked_cause) : 'unknown' ?>)
+						<?= $esc($emailState->email_blocked_address) ?>
+						<?php if ($emailState->email_blocked_at !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailState->email_blocked_at) ?></span>
+						<?php } ?>
+					</div>
+				<?php } ?>
+				<?php if ($emailOptedOut) { ?>
+					<div>
+						<span class="badge text-bg-warning">Suppressed</span>
+						Owner opted out
+						<?php if ($emailState->email_opted_out_at !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailState->email_opted_out_at) ?></span>
+						<?php } ?>
+					</div>
+				<?php } ?>
 			</div>
 		<?php } else { ?>
 			<div class="alert alert-primary">No delivery problems recorded</div>
@@ -262,8 +288,6 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 						<tr>
 							<th scope="col">Car</th>
 							<th scope="col">Verification</th>
-							<th scope="col">Bounced</th>
-							<th scope="col">Suppressed</th>
 							<th scope="col">Owner last updated</th>
 							<th scope="col">Last delivery event</th>
 						</tr>
@@ -290,51 +314,6 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 										<span class="badge text-bg-primary">Verified</span>
 									<?php } else { ?>
 										<span class="badge text-bg-warning">Unverified</span>
-									<?php } ?>
-								</td>
-								<td>
-									<?php if ((int) $car->email_bounced) { ?>
-										<span class="badge text-bg-danger">Bounced</span>
-										<?= $esc($car->email_bounced_address) ?>
-										<?php
-										// Only date this column from an event that is itself a bounce.
-										// The latest event may be a later `delivered` or `unique_opened`,
-										// and showing its timestamp beside the Bounced badge would date
-										// the bounce to the moment mail last worked. Mirrors the
-										// Suppressed column's own event-type check below.
-										if (
-											$latestEvent !== null
-											&& in_array(
-												$latestEvent->event,
-												\ElanRegistry\Car\EmailEventApplier::HARD_BOUNCE_EVENTS,
-												true
-											)
-										) { ?>
-											<span class="d-block small"><?= $relativeTime($latestEvent->occurred_at) ?></span>
-										<?php } ?>
-									<?php } else { ?>
-										&mdash;
-									<?php } ?>
-								</td>
-								<td>
-									<?php if ((int) $car->email_suppressed) { ?>
-										<span class="badge text-bg-warning">Suppressed</span>
-										<?php
-										$suppressionReason =
-											$latestEvent !== null
-											&& in_array(
-												$latestEvent->event,
-												\ElanRegistry\Car\EmailEventApplier::SUPPRESSION_EVENTS,
-												true
-											)
-												? $latestEvent->reason
-												: null;
-										?>
-										<?php if ($suppressionReason !== null && $suppressionReason !== '') { ?>
-											<span class="d-block small"><?= $esc($suppressionReason) ?></span>
-										<?php } ?>
-									<?php } else { ?>
-										&mdash;
 									<?php } ?>
 								</td>
 								<td>
