@@ -14,8 +14,7 @@ use Tests\Support\PassThroughDatabase;
  * sign-up (#2378) and the profile insert failure logs (#2393 gap 5).
  *
  * The hook signs the new user in only when `email_act` is not 1. It must
- * not set a remember-me token, because the user did not ask for one. The
- * hook is included in process, as join.php includes it.
+ * not set a remember-me token, because the user did not ask for one.
  *
  * @see https://github.com/elan-registry/registry/issues/2378
  * @see https://github.com/elan-registry/registry/issues/2393
@@ -45,16 +44,25 @@ final class UserCreationHookAutoLoginTest extends IntegrationTestCase
         $this->hookedUserIds = [];
         $this->savedPost = $_POST;
         $this->savedSession = $_SESSION ?? null;
-        // A sign-in updates the us_ip_list row for this IP, if one exists, to
-        // the test user. Save the rows so that tearDown() can restore them.
+        // A sign-in writes the us_ip_list row for this IP: it updates the row
+        // if one exists, or inserts one. Save the rows so that tearDown() can
+        // restore them.
         $this->savedIpRows = $this->db->query('SELECT * FROM us_ip_list WHERE ip = ?', [ipCheck()])->results(true);
 
-        $exists = (int) $this->db->query('SELECT COUNT(*) AS cnt FROM email WHERE id = 1')->first()->cnt;
-        if ($exists === 0) {
-            $this->db->query('INSERT INTO email (id, email_act) VALUES (1, 1)');
+        // A failed read here would make tearDown() delete the email settings
+        // row or write 0 back, so stop the test instead.
+        $countRow = $this->db->query('SELECT COUNT(*) AS cnt FROM email WHERE id = 1')->first();
+        $this->assertIsObject($countRow, 'Cannot read the email settings row: ' . $this->db->errorString());
+        if ((int) $countRow->cnt === 0) {
+            $this->assertFalse(
+                $this->db->query('INSERT INTO email (id, email_act) VALUES (1, 1)')->error(),
+                'Cannot seed the email settings row: ' . $this->db->errorString()
+            );
             $this->seededEmailRow = true;
         } else {
-            $this->originalEmailAct = (int) $this->db->query('SELECT email_act FROM email WHERE id = 1')->first()->email_act;
+            $emailRow = $this->db->query('SELECT email_act FROM email WHERE id = 1')->first();
+            $this->assertIsObject($emailRow, 'Cannot read email_act: ' . $this->db->errorString());
+            $this->originalEmailAct = (int) $emailRow->email_act;
         }
     }
 
@@ -134,6 +142,12 @@ final class UserCreationHookAutoLoginTest extends IntegrationTestCase
         $_POST['email'] = $email;
         $_POST['password'] = 'testpass123';
 
+        // A failed sign-in in the hook calls Redirect::to(), which exits, so
+        // tearDown() does not run. Prove the credentials first, so that a bad
+        // fixture fails here as an assertion instead.
+        $this->assertTrue((new User())->loginEmail($email, 'testpass123', false, null, false), 'The test user must be able to sign in');
+        unset($_SESSION[Config::get('session/session_name')]);
+
         $this->runUserCreationHook($userId);
 
         $this->assertSame(
@@ -155,14 +169,15 @@ final class UserCreationHookAutoLoginTest extends IntegrationTestCase
         $userId = $this->createTestUser(['email' => $email]);
         $this->hookedUserIds[] = $userId;
 
+        // users_session stores the browser's user agent. The CLI sends none.
+        $savedUserAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
+        $_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (PHPUnit)';
+
         // Cookie::put() calls setcookie() after PHPUnit output starts, which
         // warns "headers already sent". The users_session row is the evidence.
         // Pass any other warning to the previous handler (PHPUnit's), because
         // a false return goes to PHP's built-in handler instead.
         $previous = null;
-        // users_session stores the browser's user agent. The CLI sends none.
-        $savedUserAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-        $_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (PHPUnit)';
         $previous = set_error_handler(
             static function (int $errno, string $errstr, string $errfile = '', int $errline = 0) use (&$previous): bool {
                 if ($errno === E_WARNING && str_contains($errstr, 'headers already sent')) {

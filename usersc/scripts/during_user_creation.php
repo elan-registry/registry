@@ -29,7 +29,8 @@ if ($check < 1) {
     // email_address_since comes in #2359.
     $newUser = $db->query("SELECT email, join_date FROM users WHERE id = ?", [$theNewId])->first();
     if (!$newUser) {
-        // A failed SELECT also returns no row, so name the error when there is one.
+        // No row can mean a failed query or a missing user. Add the DB error
+        // text when there is one, so the log row tells the two cases apart.
         $readError = $db->error() ? ": {$db->errorString()}" : '';
         logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "users row not found during user creation for user_id={$theNewId}; no profile row created{$readError}");
     } else {
