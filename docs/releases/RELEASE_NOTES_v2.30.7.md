@@ -28,6 +28,7 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
   ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - Your opt-out stays when you confirm a new email address. ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - Verification emails now go to the email address on your account. ([#2356](https://github.com/elan-registry/registry/issues/2356))
+- The verify page encodes the verification code in its redirects. ([#2205](https://github.com/elan-registry/registry/issues/2205))
 - When the registry signs you in right after sign-up, it no longer keeps you signed in after you close the browser.
   ([#2378](https://github.com/elan-registry/registry/issues/2378))
 
@@ -61,9 +62,8 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - Brevo readiness no longer compares `override.php` with the bundled copy, so on plugin 1.8.0 or later sends and the webhook keep working when
   the two files differ. ([#2374](https://github.com/elan-registry/registry/issues/2374))
-- An `override.php` kept from before 1.8.0 still drops the verification tag, and readiness does not detect it.
-  ([#2374](https://github.com/elan-registry/registry/issues/2374))
-- Replace `override.php` with the bundled version after each plugin update. ([#2374](https://github.com/elan-registry/registry/issues/2374))
+- An `override.php` kept from before 1.8.0 still drops the verification tag, and readiness does not detect it. Replace `override.php` with the
+  bundled version after each plugin update. ([#2374](https://github.com/elan-registry/registry/issues/2374))
 - A sign-up that cannot create the owner's profile row now writes a `DatabaseError` log row with the user id.
   ([#2393](https://github.com/elan-registry/registry/issues/2393), gap 5 only)
 

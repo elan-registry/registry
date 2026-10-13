@@ -420,7 +420,10 @@ Follow these rules for the deploy:
 
 1. **Deploy the migration and the code together.** Use one push. The new code
    no longer reads the dropped columns. The old code reads them and fails once
-   the migration has run.
+   the migration has run. The post-receive hook checks out the code, runs
+   `composer install`, then runs the migration. Until the migration ends,
+   owner and admin pages that read an email flag return a 500 error. Push at
+   a quiet time. This gap is accepted.
 2. **Back up before the push.** Export `cars`, `cars_hist`, `profiles` and
    `deleted_accounts_archive` through the host's phpMyAdmin (structure and
    data). A code rollback needs this backup (see "Rollback Procedure" and
@@ -445,6 +448,18 @@ Follow these rules for the deploy:
    runs again cleanly after a failure at any step. Phase 2 writes a flag only
    when the profile flag is 0 or is set for another address. An admin who clears
    a flag in between makes the re-run copy the old car flag back.
+7. **Rehearse on a copy of production.** `composer migrate:dry-run` prints a
+   notice for this migration and shows no SQL. Before the push, run the
+   migration once on production data:
+   1. Get a fresh production dump, for example the file that
+      `scripts/refresh-local-db.sh --fetch` writes to
+      `~/Downloads/unibrain_registry.sql`.
+   2. Create an empty local schema whose name matches `elanregi_*`, for
+      example `elanregi_rehearsal`, and import the dump into it.
+   3. Run the migration on that schema:
+      `docker compose exec -u www-data -e DB_NAME=elanregi_rehearsal app composer migrate`.
+   4. Check that the run ends with no error and that the output lists no
+      case that you do not expect. Then drop the schema.
 
 The migration output names user IDs and car IDs only, never an address. It is
 in the push output. It lists each case: `profiles` rows inserted, bounces
