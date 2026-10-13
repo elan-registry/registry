@@ -24,6 +24,8 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 - When you confirm a new email address, the registry clears the bounce and the block for your old address. Your opt-out stays.
   ([#2356](https://github.com/elan-registry/registry/issues/2356))
 - Verification emails now go to the email address on your account. ([#2356](https://github.com/elan-registry/registry/issues/2356))
+- When the registry signs you in right after sign-up, it no longer keeps you signed in after you close the browser.
+  ([#2378](https://github.com/elan-registry/registry/issues/2378))
 
 ## Admin-Facing Changes
 
@@ -42,6 +44,8 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   Brevo readiness no longer compares the two files. An `override.php` kept from before 1.8.0 still drops the verification tag, and readiness
   does not detect it. Replace `override.php` with the bundled version after each plugin update.
   ([#2374](https://github.com/elan-registry/registry/issues/2374))
+- A sign-up that cannot create the owner's profile row now writes a `DatabaseError` log row with the user id. Before, it failed with no log.
+  ([#2393](https://github.com/elan-registry/registry/issues/2393), gap 5 only)
 
 ## Data Model, Deploy, and Rollback Notes
 
@@ -101,4 +105,5 @@ own block on the address after deletion. A send to a blocked address returns a
 - [#2374](https://github.com/elan-registry/registry/issues/2374) — Remove the `override.php` hash check from Brevo readiness,
   so a plugin update no longer stops sends or drops webhook events.
 - WIP: [#2378](https://github.com/elan-registry/registry/issues/2378) — Stop new-account sign-up from setting a remember-me token.
+  Also logs a failed profile insert at sign-up (gap 5 of [#2393](https://github.com/elan-registry/registry/issues/2393), which stays open).
 - [#2403](https://github.com/elan-registry/registry/issues/2403) — Add a `/groom-tests` command that reviews the test suite for low-value tests.

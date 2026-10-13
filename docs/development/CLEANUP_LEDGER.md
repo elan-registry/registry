@@ -108,6 +108,11 @@ after an item is written.
 
 - [ ] Replace the hand-written DB proxy (~L55) with `PassThroughDatabase` (from #2169)
 
+### `tests/integration/UserCreationHookAutoLoginTest.php`
+
+- [ ] `setUp()` does not check the `us_ip_list` SELECT, and `tearDown()` does not check the re-insert. A failure deletes the developer's IP row with no error. Assert both results (found in #2378)
+- [ ] No test covers the `$readError` suffix in `usersc/scripts/during_user_creation.php` when the `users` SELECT itself fails. Force the failure with `PassThroughDatabase` and assert the error text in the log row (found in #2378)
+
 ### `tests/integration/UserDeletionReassignmentTest.php`
 
 - [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L380, renames `car_transfer_requests.admin_notes`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
