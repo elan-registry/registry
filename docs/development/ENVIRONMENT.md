@@ -503,11 +503,11 @@ these steps once per clone, after the stack runs:
 2. Activate the plugin on the Plugins page. UserSpice loads `override.php`
    only for an active plugin (`sendinblue = 1` in
    `usersc/plugins/plugins.ini.php`).
-3. Activate the override. The file `usersc/plugins/sendinblue/override.php`
-   must equal `override.RENAME.php`. A plugin update does not change
-   `override.php`. After each update, open "Show file contents" under
-   "Override Update Available" on the plugin page. Then click "Replace my
-   override.php with the bundled version".
+3. Activate the override. A plugin update does not change `override.php`.
+   Readiness does not check the content of `override.php`, and an override
+   from before 1.8.0 drops the verification tag. After each update, open
+   "Show file contents" under "Override Update Available" on the plugin page.
+   Then click "Replace my override.php with the bundled version".
 4. Set "Tag untagged mail" to "Calling file name".
 5. Save a dummy API key (for example `local-test`) in the plugin.
 6. Set `BREVO_API_HOST=http://mock-brevo:8080/v3` in `.env`. Keep

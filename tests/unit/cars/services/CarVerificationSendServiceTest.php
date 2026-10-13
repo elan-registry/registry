@@ -333,34 +333,6 @@ final class CarVerificationSendServiceTest extends TestCase
         $this->assertSame('oldhashedvalue', $carData->vericode, 'The vericode must not be rotated');
     }
 
-    /**
-     * A plugin update leaves the old override.php in place. That override can
-     * drop $opts['tags'] even on plugin 1.8.0, so sendOne() must refuse.
-     */
-    public function testSendOneReturnsFailedAndSendsNothingWhenBrevoOverrideIsStale(): void
-    {
-        $this->brevoSiteRoot?->writeStaleOverride();
-        $GLOBALS['mockLogEntries'] = [];
-        $carData = $this->eligibleCar();
-
-        $this->mockRepo->expects($this->never())->method('beginTransaction');
-        $this->mockRepo->expects($this->never())->method('updateCar');
-        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
-        $this->mockVerifier->expects($this->never())->method('setVerificationCode');
-        $this->mockVerifier->expects($this->never())->method('setVerificationSentAt');
-
-        $result = $this->service->sendOne($carData);
-
-        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
-        $this->assertSame(100, $result->carId);
-        $this->assertSame(
-            'No email was sent. The Brevo override file is out of date. On the Brevo plugin page, open "Show file contents" under "Override Update Available", then click "Replace my override.php with the bundled version".',
-            $result->reason
-        );
-        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent while Brevo is not ready');
-        $this->assertSame('oldhashedvalue', $carData->vericode, 'The vericode must not be rotated');
-    }
-
     // ------------------------------------------------------------------
     // sendOne() — Scope C bookkeeping-failure path (#1884 review fix)
     //

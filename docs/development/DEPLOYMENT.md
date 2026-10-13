@@ -650,12 +650,12 @@ verification switch. The switch refuses to turn on until they are done.
    if it does not exist. Migration `00008` (version 1.8.0) adds the column
    `plg_sendinblue_messages.tags` and the columns `plg_sendinblue.tag_mode`
    and `plg_sendinblue.tag_fixed`.
-4. Activate the override. The file `usersc/plugins/sendinblue/override.php`
-   must equal `override.RENAME.php`. The Verification tab checks this. A plugin
-   update replaces `override.RENAME.php` but does not change `override.php`.
-   After each plugin update, open "Show file contents" under "Override Update
-   Available" on the plugin page. Then click "Replace my override.php with the
-   bundled version".
+4. Activate the override. A plugin update replaces `override.RENAME.php` but
+   does not change `override.php`. Readiness does not check the content of
+   `override.php`, and an override from before 1.8.0 drops the verification
+   tag. After each plugin update, open "Show file contents" under "Override
+   Update Available" on the plugin page. Then click "Replace my override.php
+   with the bundled version".
 5. Set "Tag untagged mail" to "Calling file name". This is database state.
    Later deploys keep it.
 6. Send a test email (Test Email on the plugin page). Check in Brevo that the
