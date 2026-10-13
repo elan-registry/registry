@@ -104,6 +104,6 @@ own block on the address after deletion. A send to a blocked address returns a
   change. Also closes #2318 and #2320, and the notice part of #2319.
 - [#2374](https://github.com/elan-registry/registry/issues/2374) — Remove the `override.php` hash check from Brevo readiness,
   so a plugin update no longer stops sends or drops webhook events.
-- WIP: [#2378](https://github.com/elan-registry/registry/issues/2378) — Stop new-account sign-up from setting a remember-me token.
+- [#2378](https://github.com/elan-registry/registry/issues/2378) — Stop new-account sign-up from setting a remember-me token.
   Also logs a failed profile insert at sign-up (gap 5 of [#2393](https://github.com/elan-registry/registry/issues/2393), which stays open).
 - [#2403](https://github.com/elan-registry/registry/issues/2403) — Add a `/groom-tests` command that reviews the test suite for low-value tests.
