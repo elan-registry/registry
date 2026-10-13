@@ -118,7 +118,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     // --- Happy path ------------------------------------------------------
 
-    public function testTagMatchingEventIsAppliedToEveryMatchedCar(): void
+    public function testTagMatchingEventIsAppliedToEveryMatchedCarWithReconciliationSource(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([
             (object) ['id' => 7],
@@ -143,6 +143,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
                 'reason' => 'mailbox unavailable',
                 'messageId' => 'brevo-msg-42',
                 'occurredAt' => self::EVENT_DATE_LOCAL,
+                'source' => 'reconciliation',
             ],
             [
                 'carId' => 9,
@@ -151,6 +152,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
                 'reason' => 'mailbox unavailable',
                 'messageId' => 'brevo-msg-42',
                 'occurredAt' => self::EVENT_DATE_LOCAL,
+                'source' => 'reconciliation',
             ],
         ], $this->applier->calls);
     }

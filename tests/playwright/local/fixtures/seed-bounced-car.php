@@ -8,8 +8,8 @@ use ElanRegistry\Car\CarRepository;
  * (issue #1924).
  *
  * Seeds two owners:
- *  - one with one car with `email_bounced = 1` (and a bounced address), so
- *    the spec can log in as admin, navigate to
+ *  - one with one car and a profile with `email_bounced = 1` (and a bounced
+ *    address), so the spec can log in as admin, navigate to
  *    `users/admin.php?view=user&id=<userId>`, and assert the "Verification &
  *    Email" card renders the bounced state.
  *  - a second, unrelated owner with one clean car (no bounce/suppression
@@ -102,8 +102,8 @@ const SEED_EMAIL = 'playwright-seed-bounced-car-owner@example.invalid';
  */
 const SEED_CAR_MODEL = '__PW_SEED_BOUNCED_CAR__';
 
-/** Bounced address recorded against the seeded car. */
-const SEED_BOUNCED_ADDRESS = 'bounced@example.invalid';
+/** Bounced address recorded against the seeded owner. It equals users.email, so the flag applies (#2356). */
+const SEED_BOUNCED_ADDRESS = SEED_EMAIL;
 
 /**
  * Second owner/car pair: a clean car with no bounce/suppression flags, used
@@ -129,12 +129,14 @@ $db = dbi();
 // ->first() row, since more than one marker row can accumulate (e.g. two
 // runs racing, or a previous run failing after insert but before a clean
 // exit) and a single-row delete would silently leave orphans behind.
+$db->query('DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_USERNAME]);
 $db->query('DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_USERNAME]);
 $db->query('DELETE FROM users WHERE username = ?', [SEED_USERNAME]);
 // Belt-and-suspenders: also remove any car left behind by model marker alone,
 // in case a previous run's owner row was already removed by other means.
 $db->query('DELETE FROM cars WHERE model = ?', [SEED_CAR_MODEL]);
 
+$db->query('DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_CLEAN_USERNAME]);
 $db->query('DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_CLEAN_USERNAME]);
 $db->query('DELETE FROM users WHERE username = ?', [SEED_CLEAN_USERNAME]);
 $db->query('DELETE FROM cars WHERE model = ?', [SEED_CLEAN_CAR_MODEL]);
@@ -168,14 +170,22 @@ $carInserted = $carRepository->insertCar([
     'ctime'                  => date('Y-m-d H:i:s'),
     'owner_last_updated'     => date('Y-m-d H:i:s'),
     'email'                  => SEED_EMAIL,
-    'email_bounced'          => 1,
-    'email_bounced_address'  => SEED_BOUNCED_ADDRESS,
 ]);
 if (!$carInserted) {
     fwrite(STDERR, "ERROR: Failed to insert seed bounced car: {$carRepository->errorString()}\n");
     exit(1);
 }
 $carId = $carRepository->lastId();
+
+// The bounce flag lives on the owner profile (#2101). profiles.user_id is
+// UNIQUE, so upsert the row.
+$db->query(
+    'INSERT INTO profiles (user_id, bio, city, state, country, email_bounced, email_bounced_address, email_bounced_at)
+     VALUES (?, \'\', \'\', \'\', \'\', 1, ?, ?)
+     ON DUPLICATE KEY UPDATE email_bounced = 1, email_bounced_address = VALUES(email_bounced_address),
+         email_bounced_at = VALUES(email_bounced_at)',
+    [$userId, SEED_BOUNCED_ADDRESS, '2026-04-02 10:00:00']
+);
 
 $cleanUserInserted = $db->insert('users', [
     'username'   => SEED_CLEAN_USERNAME,
@@ -210,6 +220,14 @@ if (!$cleanCarInserted) {
     exit(1);
 }
 $cleanCarId = $carRepository->lastId();
+
+// A profile with no flags, so the card shows "No delivery problems recorded".
+// Without a row the card says the owner has no profile.
+$db->query(
+    'INSERT INTO profiles (user_id, bio, city, state, country) VALUES (?, \'\', \'\', \'\', \'\')
+     ON DUPLICATE KEY UPDATE email_opted_out = 0, email_blocked = 0, email_bounced = 0',
+    [$cleanUserId]
+);
 
 echo json_encode([
     'bouncedCarId'  => $carId,

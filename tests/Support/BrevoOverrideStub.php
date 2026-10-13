@@ -9,14 +9,12 @@ namespace Tests\Support;
  *
  * Before v2.30.6, two integration tests wrote a 6-byte file to
  * `usersc/plugins/sendinblue/override.php` to make `brevoReady()` return
- * true. The tests no longer write it. The stub fails the override hash check,
- * so it cannot make Brevo ready. A stub that an older run leaked can still be
- * on a checkout. That path is gitignored, so `git status` does not show it.
+ * true. The tests no longer write it. A stub that an older run leaked can
+ * still be on a checkout. `brevoReady()` does not compare `override.php` with
+ * the bundled file, so a leaked stub makes the dev site report Brevo as ready.
+ * Then `email()` falls back to core PHPMailer. The path is gitignored, so
+ * `git status` does not show the stub.
  * The integration bootstrap sweeps the path at the start of each run.
- *
- * {@see BrevoSiteRoot} by default also writes {@see self::CONTENT} as both
- * `override.RENAME.php` and `override.php` in a temporary site root, so that
- * the two files have the same hash.
  *
  * The sweep is byte-exact: it removes only a file that is precisely
  * {@see self::CONTENT}. It does not touch any other file: a real override (a

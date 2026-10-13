@@ -219,12 +219,18 @@ and the Verified stamp in its Verified row (from `CarBadges::verifiedStatus()`)
 when the car is not sold. The card is on the account page, the car details
 page, and the public vericode landing page.
 
-The card also has an Email on file row. It shows "Bounced" and/or
-"Suppressed" when the car's `email_bounced` or `email_suppressed` flag is
-set. It shows only when the caller sets `$viewerIsRegistryAdmin` to `true`
-(strict). Only `app/owner/cars/details.php` sets it, from
-`isRegistryAdmin()`. The car's own owner does not see the row. The row never
-prints the email address.
+The card also has an Email on file row. It reads the owner's profile, not
+the car row (#2101). The caller passes the flags that apply now in
+`$ownerEmailState` (an `EffectiveEmailFlags` object from
+`CarRepository::effectiveEmailFlags()`, #2356). The row shows "Bounced" when
+`bounced` is true. It shows "Suppressed" when `blocked` or `optedOut` is true.
+A block or bounce stored for an old address does not apply, so the row does
+not show it. A null `$ownerEmailState` shows no row. The row
+shows only when the caller sets `$viewerIsRegistryAdmin` to `true` (strict).
+Only `app/owner/cars/details.php` sets it, from `isRegistryAdmin()`. That page
+loads `$ownerEmailState` for registry admins only. If the lookup fails, the
+page logs the error and the row stays hidden. The car's own owner does not see
+the row. The row never prints the email address.
 
 Inside the dark green hero (`.card-header-er-primary-text`), a stamp has a
 white edge. The sold red against the hero green is only 1.2:1, so the red

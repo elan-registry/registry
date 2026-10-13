@@ -6,7 +6,9 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -698,34 +700,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
-    public function testUpdateEmailBouncedReturnsTrue(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->updateEmailBounced(1, true, 'owner@example.com');
-        $this->assertTrue($result);
-    }
-
-    public function testUpdateEmailBouncedThrowsWhenBouncedTrueWithNoAddress(): void
-    {
-        $repo = new CarRepository($this->makeEmptyResultDb());
-        $this->expectException(\ElanRegistry\Exceptions\CarDatabaseException::class);
-        $repo->updateEmailBounced(1, true);
-    }
-
-    public function testUpdateEmailBouncedThrowsWhenBouncedTrueWithEmptyAddress(): void
-    {
-        $repo = new CarRepository($this->makeEmptyResultDb());
-        $this->expectException(\ElanRegistry\Exceptions\CarDatabaseException::class);
-        $repo->updateEmailBounced(1, true, '');
-    }
-
-    public function testUpdateEmailBouncedClearsAddressWhenFalse(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->updateEmailBounced(1, false);
-        $this->assertTrue($result);
-    }
-
     // incrementVerificationAttempts() (#1884)
 
     public function testIncrementVerificationAttemptsReturnsTrueWhenRowMatched(): void
@@ -943,218 +917,432 @@ final class CarRepositoryTest extends TestCase
         $repo->restoreVerificationCodeState(7, 'code', '2026-09-01 12:00:00');
     }
 
-    // updateProfileEmailBounced() (#1884)
+    // Profile flag methods
 
-    public function testUpdateProfileEmailBouncedThrowsWhenBouncedTrueWithNoAddress(): void
+    /**
+     * A DatabaseInterface mock that answers findProfileEmailState() with $row
+     * (null for "no profiles row") and records every other query.
+     *
+     * @param array<string, mixed>|null $row Profile row, or null for no row
+     * @param list<array{sql: string, params: array<mixed>}> $writes Out: queries other than the profile SELECT
+     * @param list<string> $selects Out: SQL of each profile SELECT
+     */
+    private function makeProfileDb(?array $row, array &$writes, array &$selects = [], bool $writeFails = false): object
     {
-        $repo = new CarRepository($this->makeEmptyResultDb());
-        $this->expectException(CarDatabaseException::class);
-        $repo->updateProfileEmailBounced(1, true, null);
+        $db = $this->createStub(DatabaseInterface::class);
+        $db->method('query')->willReturnCallback(
+            function (string $sql, array $params = []) use ($db, &$writes, &$selects) {
+                if (str_starts_with(ltrim($sql), 'SELECT p.id, p.user_id, p.email_opted_out')) {
+                    $selects[] = $sql;
+                } else {
+                    $writes[] = ['sql' => $sql, 'params' => $params];
+                }
+                return $db;
+            }
+        );
+        $db->method('error')->willReturnCallback(
+            static function () use ($writeFails, &$writes): bool {
+                return $writeFails && $writes !== [];
+            }
+        );
+        $db->method('errorString')->willReturn('Deadlock found');
+        $db->method('count')->willReturn($row === null ? 0 : 1);
+        $db->method('first')->willReturn($row === null ? [] : (object) $row);
+
+        return $db;
     }
 
-    public function testUpdateProfileEmailBouncedThrowsWhenBouncedTrueWithEmptyAddress(): void
+    /**
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private static function profileRow(array $overrides = []): array
     {
-        $repo = new CarRepository($this->makeEmptyResultDb());
-        $this->expectException(CarDatabaseException::class);
-        $repo->updateProfileEmailBounced(1, true, '');
+        return array_merge([
+            'id' => 5,
+            'user_id' => 42,
+            'email_opted_out' => 0,
+            'email_opted_out_at' => null,
+            'email_blocked' => 0,
+            'email_blocked_address' => null,
+            'email_blocked_at' => null,
+            'email_blocked_cause' => null,
+            'email_bounced' => 0,
+            'email_bounced_address' => null,
+            'email_bounced_at' => null,
+            'email_bounce_cleared_at' => null,
+            'user_email' => 'Owner@Example.com',
+        ], $overrides);
     }
 
-    public function testUpdateProfileEmailBouncedGuardThrowsBeforeAnyQuery(): void
+    public function testFindProfileEmailStateReturnsTheRowAsAnObject(): void
+    {
+        $writes = [];
+        $selects = [];
+        $repo = new CarRepository($this->makeProfileDb(self::profileRow(['email_blocked' => 1]), $writes, $selects));
+
+        $state = $repo->findProfileEmailState(42);
+
+        $this->assertNotNull($state);
+        $this->assertSame(1, $state->email_blocked);
+        $this->assertCount(1, $selects);
+        $this->assertStringContainsString('FROM profiles', $selects[0]);
+        $this->assertStringNotContainsString('FOR UPDATE', $selects[0], 'The default read takes no lock');
+    }
+
+    public function testFindProfileEmailStateReturnsNullWhenNoProfileRow(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(null, $writes));
+
+        $this->assertNull($repo->findProfileEmailState(42));
+    }
+
+    public function testFindProfileEmailStateForUpdateAddsTheRowLock(): void
+    {
+        $writes = [];
+        $selects = [];
+        $repo = new CarRepository($this->makeProfileDb(self::profileRow(), $writes, $selects));
+
+        $repo->findProfileEmailState(42, true);
+
+        $this->assertCount(1, $selects);
+        $this->assertStringEndsWith('FOR UPDATE OF p, u', $selects[0]);
+    }
+
+    public function testFindProfileEmailStateThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/findProfileEmailState failed for user=42/');
+        $repo->findProfileEmailState(42);
+    }
+
+    public function testSetProfileOptedOutWritesOneProfileRowAndReturnsOldValue(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(self::profileRow(), $writes));
+
+        $old = $repo->setProfileOptedOut(42, true);
+
+        $this->assertSame(0, $old);
+        $this->assertCount(1, $writes, 'One profile UPDATE, nothing else');
+        $this->assertSame('UPDATE profiles SET email_opted_out = ?, email_opted_out_at = ? WHERE user_id = ?', $writes[0]['sql']);
+        $this->assertSame(1, $writes[0]['params'][0]);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $writes[0]['params'][1]);
+        $this->assertSame(42, $writes[0]['params'][2]);
+    }
+
+    /** A repeat opt-out keeps the first time. */
+    public function testSetProfileOptedOutWritesNothingWhenAlreadyOptedOut(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_opted_out' => 1, 'email_opted_out_at' => '2026-01-01 00:00:00']),
+            $writes
+        ));
+
+        $this->assertSame(1, $repo->setProfileOptedOut(42, true));
+        $this->assertSame([], $writes);
+    }
+
+    /** The opt-out stands when a block is also set. */
+    public function testSetProfileOptedOutIgnoresBlockedAndBouncedFlags(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_blocked' => 1, 'email_bounced' => 1]),
+            $writes
+        ));
+
+        $this->assertSame(0, $repo->setProfileOptedOut(42, true));
+        $this->assertCount(1, $writes);
+        $this->assertStringNotContainsString('email_blocked', $writes[0]['sql']);
+        $this->assertStringNotContainsString('email_bounced', $writes[0]['sql']);
+    }
+
+    public function testSetProfileOptedOutClearsBothColumnsOnResume(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_opted_out' => 1, 'email_opted_out_at' => '2026-01-01 00:00:00']),
+            $writes
+        ));
+
+        $this->assertSame(1, $repo->setProfileOptedOut(42, false));
+        $this->assertCount(1, $writes);
+        $this->assertSame([0, null, 42], $writes[0]['params']);
+    }
+
+    public function testSetProfileOptedOutReturnsNullAndWritesNothingWithoutAProfileRow(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(null, $writes));
+
+        $this->assertNull($repo->setProfileOptedOut(42, true));
+        $this->assertSame([], $writes);
+    }
+
+    public function testSetProfileBlockedStoresNormalizedAddressTimeAndCause(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(self::profileRow(), $writes));
+
+        $old = $repo->setProfileBlocked(42, '  Owner@Example.COM ', 'spam', '2026-09-01 10:00:00');
+
+        $this->assertSame(0, $old);
+        $this->assertCount(1, $writes);
+        $this->assertStringContainsString('email_blocked = 1', $writes[0]['sql']);
+        $this->assertSame(['owner@example.com', '2026-09-01 10:00:00', 'spam', 42], $writes[0]['params']);
+    }
+
+    /** A repeat block of the same address keeps the first time and cause. */
+    public function testSetProfileBlockedWritesNothingForTheSameAddressAgain(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow([
+                'email_blocked' => 1,
+                'email_blocked_address' => 'owner@example.com',
+                'email_blocked_at' => '2026-01-01 00:00:00',
+                'email_blocked_cause' => 'spam',
+            ]),
+            $writes
+        ));
+
+        $this->assertSame(1, $repo->setProfileBlocked(42, 'OWNER@example.com', 'unsubscribed', '2026-09-01 10:00:00'));
+        $this->assertSame([], $writes);
+    }
+
+    public function testSetProfileBlockedRewritesAllThreeFieldsForADifferentAddress(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow([
+                'email_blocked' => 1,
+                'email_blocked_address' => 'old@example.com',
+                'email_blocked_at' => '2026-01-01 00:00:00',
+                'email_blocked_cause' => 'spam',
+            ]),
+            $writes
+        ));
+
+        $old = $repo->setProfileBlocked(42, 'new@example.com', 'unsubscribed', '2026-09-01 10:00:00');
+
+        $this->assertSame(0, $old, 'A block for an old address did not apply, so the old value is 0');
+        $this->assertCount(1, $writes);
+        $this->assertSame(['new@example.com', '2026-09-01 10:00:00', 'unsubscribed', 42], $writes[0]['params']);
+    }
+
+    /** The old value is the block that applied: here the stored block is for the current address. */
+    public function testSetProfileBlockedReturnsOneWhenTheReplacedBlockAppliedToTheCurrentAddress(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_blocked' => 1, 'email_blocked_address' => 'owner@example.com']),
+            $writes
+        ));
+
+        $this->assertSame(1, $repo->setProfileBlocked(42, 'other@example.com', 'spam', '2026-09-01 10:00:00'));
+        $this->assertCount(1, $writes);
+    }
+
+    /** A block with an empty stored address is rewritten, so it gains an address. */
+    public function testSetProfileBlockedRewritesAFlagThatHasNoStoredAddress(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_blocked' => 1, 'email_blocked_address' => '']),
+            $writes
+        ));
+
+        $this->assertSame(
+            1,
+            $repo->setProfileBlocked(42, 'owner@example.com', null, '2026-09-01 10:00:00'),
+            'A block with no stored address applies (fail closed), so the old value is 1'
+        );
+        $this->assertCount(1, $writes);
+        $this->assertSame(['owner@example.com', '2026-09-01 10:00:00', null, 42], $writes[0]['params']);
+    }
+
+    /**
+     * @return array<string, array{string, ?string, string}>
+     */
+    public static function invalidBlockInputProvider(): array
+    {
+        return [
+            'empty address' => ['', 'spam', '2026-09-01 10:00:00'],
+            'whitespace address' => ['   ', 'spam', '2026-09-01 10:00:00'],
+            'unknown cause' => ['owner@example.com', 'not-a-cause', '2026-09-01 10:00:00'],
+            'malformed time' => ['owner@example.com', 'spam', 'yesterday'],
+            'rolled-over date' => ['owner@example.com', 'spam', '2026-02-30 10:00:00'],
+        ];
+    }
+
+    #[DataProvider('invalidBlockInputProvider')]
+    public function testSetProfileBlockedRejectsInvalidInputBeforeAnyQuery(string $address, ?string $cause, string $at): void
     {
         $db = $this->makeDbMock();
         $db->expects($this->never())->method('query');
-
         $repo = new CarRepository($db);
-        try {
-            $repo->updateProfileEmailBounced(1, true, '');
-            $this->fail('Expected CarDatabaseException was not thrown');
-        } catch (CarDatabaseException) {
-        }
+
+        $this->expectException(CarValidationException::class);
+        $repo->setProfileBlocked(42, $address, $cause, $at);
     }
 
-    public function testUpdateProfileEmailBouncedSendsExpectedBoundParamsWhenSetting(): void
+    public function testSetProfileBlockedReturnsNullWithoutAProfileRow(): void
     {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())
-            ->method('query')
-            ->with(
-                'UPDATE profiles SET email_bounced = ?, email_bounced_address = ? WHERE user_id = ?',
-                [1, 'owner@example.com', 42]
-            )
-            ->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(1);
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(null, $writes));
 
-        $repo = new CarRepository($db);
-        $result = $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
-
-        $this->assertTrue($result);
+        $this->assertNull($repo->setProfileBlocked(42, 'owner@example.com', 'spam', '2026-09-01 10:00:00'));
+        $this->assertSame([], $writes);
     }
 
-    public function testUpdateProfileEmailBouncedSendsExpectedBoundParamsWhenClearing(): void
+    public function testClearProfileBlockedClearsAllFourColumnsOnly(): void
     {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())
-            ->method('query')
-            ->with(
-                'UPDATE profiles SET email_bounced = ?, email_bounced_address = ? WHERE user_id = ?',
-                [0, null, 42]
-            )
-            ->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(1);
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_blocked' => 1, 'email_blocked_address' => 'o@example.com', 'email_opted_out' => 1]),
+            $writes
+        ));
 
-        $repo = new CarRepository($db);
-        $result = $repo->updateProfileEmailBounced(42, false);
-
-        $this->assertTrue($result);
+        $this->assertSame(1, $repo->clearProfileBlocked(42));
+        $this->assertCount(1, $writes);
+        $this->assertSame(
+            'UPDATE profiles SET email_blocked = 0, email_blocked_address = NULL, email_blocked_at = NULL, '
+            . 'email_blocked_cause = NULL WHERE user_id = ?',
+            $writes[0]['sql']
+        );
+        $this->assertStringNotContainsString('email_opted_out', $writes[0]['sql'], 'Clearing a block must leave the opt-out alone');
     }
 
-    public function testUpdateProfileEmailBouncedReturnsTrueWhenRowsAffected(): void
+    public function testClearProfileBlockedWritesNothingWhenNotBlocked(): void
     {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(1);
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(self::profileRow(), $writes));
 
-        $repo = new CarRepository($db);
-        $result = $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
-
-        $this->assertTrue($result);
+        $this->assertSame(0, $repo->clearProfileBlocked(42));
+        $this->assertSame([], $writes);
     }
 
-    /** 0 means "no row" or "unchanged"; bounceOwnerProfile() tells them apart. */
-    public function testUpdateProfileEmailBouncedReturnsFalseWhenNoRowsAffected(): void
+    public function testSetProfileBouncedStoresNormalizedAddressAndTime(): void
     {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(0);
+        $writes = [];
+        $selects = [];
+        $repo = new CarRepository($this->makeProfileDb(self::profileRow(), $writes, $selects));
 
-        $repo = new CarRepository($db);
-        $result = $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
+        $old = $repo->setProfileBounced(42, 'Owner@Example.com', '2026-09-01 10:00:00');
 
-        $this->assertFalse($result);
+        $this->assertSame(0, $old);
+        $this->assertStringEndsWith('FOR UPDATE OF p, u', $selects[0], 'The profile row is locked before the write');
+        $this->assertCount(1, $writes);
+        $this->assertSame(
+            'UPDATE profiles SET email_bounced = 1, email_bounced_address = ?, email_bounced_at = ? WHERE user_id = ?',
+            $writes[0]['sql']
+        );
+        $this->assertSame(['owner@example.com', '2026-09-01 10:00:00', 42], $writes[0]['params']);
     }
 
-    public function testUpdateProfileEmailBouncedThrowsOnDatabaseError(): void
+    /** Every new address gets a new email_bounced_at (#2320). */
+    public function testSetProfileBouncedRewritesTheTimeForADifferentAddress(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow([
+                'email_bounced' => 1,
+                'email_bounced_address' => 'old@example.com',
+                'email_bounced_at' => '2026-01-01 00:00:00',
+            ]),
+            $writes
+        ));
+
+        $old = $repo->setProfileBounced(42, 'new@example.com', '2026-09-01 10:00:00');
+
+        $this->assertSame(0, $old, 'A bounce for an old address did not apply, so the old value is 0');
+        $this->assertCount(1, $writes);
+        $this->assertSame(['new@example.com', '2026-09-01 10:00:00', 42], $writes[0]['params']);
+    }
+
+    public function testSetProfileBouncedWritesNothingForTheSameAddressAgain(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_bounced' => 1, 'email_bounced_address' => 'owner@example.com']),
+            $writes
+        ));
+
+        $this->assertSame(1, $repo->setProfileBounced(42, 'owner@example.com', '2026-09-01 10:00:00'));
+        $this->assertSame([], $writes);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function invalidBounceInputProvider(): array
+    {
+        return [
+            'empty address' => ['', '2026-09-01 10:00:00'],
+            'whitespace address' => ['   ', '2026-09-01 10:00:00'],
+            'malformed time' => ['owner@example.com', 'yesterday'],
+            'rolled-over date' => ['owner@example.com', '2026-02-30 10:00:00'],
+        ];
+    }
+
+    #[DataProvider('invalidBounceInputProvider')]
+    public function testSetProfileBouncedRejectsEmptyAddressOrBadTimeBeforeAnyQuery(string $address, string $at): void
     {
         $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(true);
-        $db->method('errorString')->willReturn('Connection lost');
-
+        $db->expects($this->never())->method('query');
         $repo = new CarRepository($db);
+
+        $this->expectException(CarValidationException::class);
+        $repo->setProfileBounced(42, $address, $at);
+    }
+
+    public function testClearProfileBouncedSetsClearedAtSoOldSoftBouncesDoNotCount(): void
+    {
+        $writes = [];
+        $selects = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_bounced' => 1, 'email_bounced_address' => 'owner@example.com']),
+            $writes,
+            $selects
+        ));
+
+        $this->assertSame(1, $repo->clearProfileBounced(42));
+
+        $this->assertStringEndsWith('FOR UPDATE OF p, u', $selects[0]);
+        $this->assertCount(1, $writes);
+        $this->assertStringContainsString('email_bounce_cleared_at = ?', $writes[0]['sql']);
+        $this->assertStringContainsString('email_bounced = 0', $writes[0]['sql']);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $writes[0]['params'][0]);
+        $this->assertSame(42, $writes[0]['params'][1]);
+    }
+
+    public function testClearProfileBouncedWritesNothingWhenNotBounced(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(self::profileRow(), $writes));
+
+        $this->assertSame(0, $repo->clearProfileBounced(42));
+        $this->assertSame([], $writes);
+    }
+
+    public function testProfileWriteFailureThrowsCarDatabaseExceptionNamingTheMethod(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(self::profileRow(), $writes, writeFails: true));
 
         $this->expectException(CarDatabaseException::class);
-        $this->expectExceptionMessageMatches('/updateProfileEmailBounced failed for user=42/');
-        $repo->updateProfileEmailBounced(42, true, 'owner@example.com');
-    }
-
-    // findProfileEmailBounced() (#1884)
-
-    public function testFindProfileEmailBouncedReturnsNullWhenNoRow(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())
-            ->method('query')
-            ->with('SELECT email_bounced FROM profiles WHERE user_id = ?', [42])
-            ->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(0);
-
-        $repo = new CarRepository($db);
-        $result = $repo->findProfileEmailBounced(42);
-
-        $this->assertNull($result);
-    }
-
-    public function testFindProfileEmailBouncedReturnsIntCastOfColumnWhenRowFound(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(1);
-        $db->method('first')->willReturn((object) ['email_bounced' => 1]);
-
-        $repo = new CarRepository($db);
-        $result = $repo->findProfileEmailBounced(42);
-
-        $this->assertSame(1, $result);
-    }
-
-    public function testFindProfileEmailBouncedThrowsOnDatabaseError(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(true);
-        $db->method('errorString')->willReturn('Connection lost');
-
-        $repo = new CarRepository($db);
-
-        $this->expectException(CarDatabaseException::class);
-        $this->expectExceptionMessageMatches('/findProfileEmailBounced failed for user=42/');
-        $repo->findProfileEmailBounced(42);
-    }
-
-    // findProfileEmailBouncedAddress() (#1884)
-
-    public function testFindProfileEmailBouncedAddressReturnsNullWhenNoRow(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())
-            ->method('query')
-            ->with('SELECT email_bounced_address FROM profiles WHERE user_id = ?', [42])
-            ->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(0);
-
-        $repo = new CarRepository($db);
-        $result = $repo->findProfileEmailBouncedAddress(42);
-
-        $this->assertNull($result);
-    }
-
-    public function testFindProfileEmailBouncedAddressReturnsNullWhenColumnIsNull(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(1);
-        $db->method('first')->willReturn((object) ['email_bounced_address' => null]);
-
-        $repo = new CarRepository($db);
-        $result = $repo->findProfileEmailBouncedAddress(42);
-
-        $this->assertNull($result);
-    }
-
-    public function testFindProfileEmailBouncedAddressReturnsStringWhenFound(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(1);
-        $db->method('first')->willReturn((object) ['email_bounced_address' => 'owner@example.com']);
-
-        $repo = new CarRepository($db);
-        $result = $repo->findProfileEmailBouncedAddress(42);
-
-        $this->assertSame('owner@example.com', $result);
-    }
-
-    public function testFindProfileEmailBouncedAddressThrowsOnDatabaseError(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(true);
-        $db->method('errorString')->willReturn('Connection lost');
-
-        $repo = new CarRepository($db);
-
-        $this->expectException(CarDatabaseException::class);
-        $this->expectExceptionMessageMatches('/findProfileEmailBouncedAddress failed for user=42/');
-        $repo->findProfileEmailBouncedAddress(42);
+        $this->expectExceptionMessageMatches('/setProfileBounced failed for user=42/');
+        $repo->setProfileBounced(42, 'owner@example.com', '2026-09-01 10:00:00');
     }
 
     /** Ownerless cars (no user, deleted user, `noowner`) are excluded through an INNER JOIN. */
@@ -1183,15 +1371,27 @@ final class CarRepositoryTest extends TestCase
             $capturedSql,
             "solddate is a DATE column; comparing it to '' is a hard SQL error under STRICT_TRANS_TABLES"
         );
-        $this->assertStringContainsString('cars.email_bounced = 0', $capturedSql);
-        $this->assertStringContainsString("cars.email IS NOT NULL AND cars.email != ''", $capturedSql);
+        $this->assertDoesNotMatchRegularExpression(
+            '/(?<![\w.])email_(?:bounced|blocked|opted_out)\b/',
+            $capturedSql,
+            'The car carries no deliverability flag (#2101). Every flag must be read through the p alias'
+        );
+        $this->assertStringNotContainsString('suppressed', $capturedSql);
+        // The send mails users.email. cars.email is only a copy and must not
+        // decide eligibility.
+        $this->assertStringContainsString(
+            "u.email IS NOT NULL AND LOWER(REGEXP_REPLACE(u.email, '^[[:space:]]+|[[:space:]]+$', '')) != ''",
+            $capturedSql,
+            'The empty test must strip all white space, as the send does. MySQL TRIM() strips only spaces.'
+        );
+        $this->assertStringNotContainsString('cars.email', $capturedSql);
         $this->assertStringContainsString(
             'SELECT cars.*',
             $capturedSql,
             'The JOIN against users makes a bare SELECT * ambiguous — only cars columns may be selected'
         );
         $this->assertStringContainsString(
-            'INNER JOIN users',
+            'INNER JOIN users u ON u.id = cars.user_id',
             $capturedSql,
             'Ownership must require a live users row via INNER JOIN — a LEFT JOIN can\'t tell a car '
                 . 'whose user_id points at a deleted user (no FK enforces this — see DATABASE.md\'s '
@@ -1206,7 +1406,7 @@ final class CarRepositoryTest extends TestCase
         // The whole clause, not fragments: an OR here would still match the
         // fragments but admit an orphaned user_id.
         $this->assertStringContainsString(
-            "AND users.username != 'noowner'",
+            "AND u.username != 'noowner'",
             $capturedSql,
             'Cars owned by the noowner system account must be excluded, resolved by username not by ID, '
                 . 'via an unconditional AND — not an OR that could admit an orphaned owner reference'
@@ -1217,18 +1417,33 @@ final class CarRepositoryTest extends TestCase
             $capturedSql,
             'findVerificationEligible() must filter on stalenessSql(), the exact negation of freshnessSql()'
         );
+        // The owner's profile is the only source of the three flags. The join
+        // is a plain LEFT JOIN because profiles.user_id is unique, so it cannot
+        // duplicate a car row. An owner with no profile is excluded.
+        $this->assertStringContainsString('LEFT JOIN profiles p ON p.user_id = cars.user_id', $capturedSql);
+        $this->assertStringContainsString('AND p.id IS NOT NULL', $capturedSql, 'No profiles row must exclude the car');
+        $this->assertStringContainsString('AND p.email_opted_out = 0', $capturedSql);
+        // A block or a bounce excludes a car only while it applies to the
+        // owner's current address (#2356). The predicate is the one definition.
         $this->assertStringContainsString(
-            'AND COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0) = 0',
+            'AND NOT (' . CarRepository::emailFlagActiveSql('email_blocked') . ')',
+            $capturedSql
+        );
+        $this->assertStringContainsString(
+            'AND NOT (' . CarRepository::emailFlagActiveSql('email_bounced') . ')',
+            $capturedSql
+        );
+        $this->assertStringNotContainsString('AND p.email_blocked = 0', $capturedSql, 'A stored block for an old address must not exclude');
+        $this->assertStringNotContainsString('AND p.email_bounced = 0', $capturedSql, 'A stored bounce for an old address must not exclude');
+        $this->assertStringNotContainsString(
+            'MAX(',
             $capturedSql,
-            'The owner-level opt-out must be read via a correlated subquery, not a LEFT JOIN — '
-                . 'profiles.user_id has no UNIQUE index, so a join could duplicate the car row in a list '
-                . 'result. An owner who opted out (profiles.email_suppressed = 1) must be excluded '
-                . 'regardless of the per-car flag — setSuppressedForOwner() only fans out to the cars held '
-                . 'at opt-out time, so a car acquired later reads cars.email_suppressed = 0 and would '
-                . 'otherwise re-enter the eligible set (the gap named in '
-                . '20260914093000_add_profile_email_suppressed.php). COALESCE supplies the column default '
-                . 'for an owner with no profiles row at all, and MAX treats "suppressed in any profiles '
-                . 'row" as suppressed if an owner somehow has more than one'
+            'profiles.user_id is unique since #2101, so no MAX() over duplicate rows is needed'
+        );
+        $this->assertStringNotContainsString(
+            'COALESCE(p.',
+            $capturedSql,
+            'A flag with a NULL address must still exclude, and a missing row must not default to eligible'
         );
         // Pins the removed #1953 mtime fallback, not every COALESCE.
         $this->assertStringNotContainsString(
@@ -1317,185 +1532,579 @@ final class CarRepositoryTest extends TestCase
         $repo->findVerificationEligible(10, 0);
     }
 
-    // clearBouncedForUser() / carIdsWithBouncedFlagButNoAddress() (#1890)
+    // effectiveEmailFlags() (#2356)
 
-    /** The LOWER() match and the NULL/empty-address branch are the whole method. */
-    public function testClearBouncedForUserSendsExpectedSqlAndParams(): void
+    /**
+     * A DatabaseInterface stub that records every query and answers each one
+     * with $row (null for "no row").
+     *
+     * @param array<string, mixed>|null $row
+     * @param list<array{sql: string, params: array<mixed>}> $queries Out: every query, in order
+     */
+    private function makeRecordingDb(?array $row, array &$queries, ?int $failOnQuery = null): object
     {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())
-            ->method('query')
-            ->with(
-                'UPDATE cars
-                SET email_bounced = 0, email_bounced_address = NULL
-              WHERE user_id = ?
-                AND email_bounced = 1
-                AND (email_bounced_address IS NULL
-                     OR email_bounced_address = \'\'
-                     OR LOWER(email_bounced_address) <> LOWER(?))',
-                [42, 'new-address@example.com']
-            )
-            ->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(2);
-
-        $repo = new CarRepository($db);
-        $result = $repo->clearBouncedForUser(42, 'new-address@example.com');
-
-        $this->assertSame(2, $result, 'Must return DB::count() — rows changed by the UPDATE');
-    }
-
-    /** A stale re-click matches nothing. */
-    public function testClearBouncedForUserReturnsZeroWhenNothingMatches(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(0);
-
-        $repo = new CarRepository($db);
-        $result = $repo->clearBouncedForUser(42, 'new-address@example.com');
-
-        $this->assertSame(0, $result);
-    }
-
-    public function testClearBouncedForUserThrowsAndLogsOnDatabaseError(): void
-    {
-        global $mockLogEntries;
-        $mockLogEntries = [];
-
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(true);
+        $db = $this->createStub(DatabaseInterface::class);
+        $failed = false;
+        $db->method('query')->willReturnCallback(
+            function (string $sql, array $params = []) use ($db, &$queries, $failOnQuery, &$failed) {
+                $queries[] = ['sql' => $sql, 'params' => $params];
+                $failed = $failOnQuery !== null && count($queries) === $failOnQuery;
+                return $db;
+            }
+        );
+        $db->method('error')->willReturnCallback(static function () use (&$failed): bool {
+            return $failed;
+        });
         $db->method('errorString')->willReturn('Deadlock found');
+        $db->method('count')->willReturn($row === null ? 0 : 1);
+        $db->method('first')->willReturn($row === null ? [] : (object) $row);
 
-        $repo = new CarRepository($db);
-
-        try {
-            $repo->clearBouncedForUser(42, 'new-address@example.com');
-            $this->fail('Expected CarDatabaseException was not thrown');
-        } catch (CarDatabaseException $e) {
-            $this->assertMatchesRegularExpression('/clearBouncedForUser failed \(userId=42\)/', $e->getMessage());
-        }
-
-        $this->assertCount(1, $mockLogEntries);
-        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $mockLogEntries[0]['category']);
-        $this->assertStringContainsString('clearBouncedForUser failed (userId=42)', $mockLogEntries[0]['message']);
-    }
-
-    public function testCarIdsWithBouncedFlagButNoAddressReturnsListOfInts(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())
-            ->method('query')
-            ->with(
-                "SELECT id FROM cars WHERE user_id = ? AND email_bounced = 1
-              AND (email_bounced_address IS NULL OR email_bounced_address = '')",
-                [42]
-            )
-            ->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('results')->willReturn([
-            (object) ['id' => 100],
-            (object) ['id' => 101],
-        ]);
-
-        $repo = new CarRepository($db);
-        $result = $repo->carIdsWithBouncedFlagButNoAddress(42);
-
-        $this->assertSame([100, 101], $result);
-        foreach ($result as $id) {
-            $this->assertIsInt($id);
-        }
-    }
-
-    /** The hook checks `!empty($integrityCarIds)`. */
-    public function testCarIdsWithBouncedFlagButNoAddressReturnsEmptyArrayWhenNoneMatch(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('results')->willReturn([]);
-
-        $repo = new CarRepository($db);
-        $result = $repo->carIdsWithBouncedFlagButNoAddress(42);
-
-        $this->assertSame([], $result);
-    }
-
-    /** No log here: the hook's catch blocks log this failure. */
-    public function testCarIdsWithBouncedFlagButNoAddressThrowsOnDatabaseError(): void
-    {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
-        $db->method('error')->willReturn(true);
-        $db->method('errorString')->willReturn('Connection lost');
-
-        $repo = new CarRepository($db);
-
-        $this->expectException(CarDatabaseException::class);
-        $this->expectExceptionMessageMatches('/carIdsWithBouncedFlagButNoAddress failed \(userId=42\)/');
-        $repo->carIdsWithBouncedFlagButNoAddress(42);
+        return $db;
     }
 
     /**
-     * Pins a known gap: a row without ->id gives an E_WARNING and car id 0,
-     * not an exception. Low severity: the id goes only into a log message.
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
      */
-    public function testCarIdsWithBouncedFlagButNoAddressSilentlyCoercesUnexpectedRowShapeToZero(): void
+    private static function effectiveRow(array $overrides = []): array
+    {
+        return array_merge([
+            'email_opted_out' => 0,
+            'email_opted_out_at' => null,
+            'email_blocked' => 0,
+            'email_blocked_address' => null,
+            'email_blocked_at' => null,
+            'email_blocked_cause' => null,
+            'email_bounced' => 0,
+            'email_bounced_address' => null,
+            'email_bounced_at' => null,
+            'user_email' => 'owner@example.com',
+        ], $overrides);
+    }
+
+    /**
+     * @return array<string, array{?string, string, bool}> stored _address, users.email, applies
+     */
+    public static function addressMatchProvider(): array
+    {
+        return [
+            'identical'                   => ['owner@example.com', 'owner@example.com', true],
+            'stored in other case'        => ['Owner@Example.COM', 'owner@example.com', true],
+            'users.email in other case'   => ['owner@example.com', 'OWNER@example.com', true],
+            'stored with spaces'          => ['  owner@example.com ', 'owner@example.com', true],
+            'users.email trailing tab'    => ['owner@example.com', "owner@example.com\t", true],
+            'users.email trailing LF'     => ['owner@example.com', "owner@example.com\n", true],
+            'users.email trailing CRLF'   => ['owner@example.com', "owner@example.com\r\n", true],
+            'users.email trailing VT'     => ['owner@example.com', "owner@example.com\x0B", true],
+            'other address'               => ['old@example.com', 'owner@example.com', false],
+            'prefix of the address'       => ['owner@example.co', 'owner@example.com', false],
+            'NULL address fails closed'   => [null, 'owner@example.com', true],
+            'empty address fails closed'  => ['', 'owner@example.com', true],
+            'blank address fails closed'  => ["  \t", 'owner@example.com', true],
+        ];
+    }
+
+    #[DataProvider('addressMatchProvider')]
+    public function testEffectiveEmailFlagsAppliesBlockAndBounceOnlyOnAnAddressMatch(
+        ?string $stored,
+        string $current,
+        bool $applies
+    ): void {
+        $queries = [];
+        $row = self::effectiveRow([
+            'email_blocked' => 1, 'email_blocked_address' => $stored,
+            'email_bounced' => 1, 'email_bounced_address' => $stored,
+            'user_email' => $current,
+        ]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $flags = $repo->effectiveEmailFlags(42);
+
+        $this->assertTrue($flags->hasProfile);
+        $this->assertSame($applies, $flags->blocked);
+        $this->assertSame($applies, $flags->bounced);
+    }
+
+    public function testEffectiveEmailFlagsReadsProfileAndUsersInOneQueryWithBoundOwnerId(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(self::effectiveRow(), $queries));
+
+        $repo->effectiveEmailFlags(42);
+
+        $this->assertCount(1, $queries);
+        $this->assertStringContainsString('FROM profiles p', $queries[0]['sql']);
+        $this->assertStringContainsString('JOIN users u ON u.id = p.user_id', $queries[0]['sql']);
+        $this->assertSame([42], $queries[0]['params']);
+        $this->assertStringNotContainsString('FOR UPDATE', $queries[0]['sql'], 'A read takes no lock');
+    }
+
+    public function testEffectiveEmailFlagsOptOutAppliesWhateverTheAddress(): void
+    {
+        $queries = [];
+        $row = self::effectiveRow([
+            'email_opted_out' => 1, 'email_opted_out_at' => '2026-08-01 09:30:00',
+            'email_blocked' => 1, 'email_blocked_address' => 'old@example.com',
+        ]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $flags = $repo->effectiveEmailFlags(42);
+
+        $this->assertTrue($flags->optedOut);
+        $this->assertSame('2026-08-01 09:30:00', $flags->optedOutAt);
+        $this->assertFalse($flags->blocked, 'The block is for another address');
+    }
+
+    public function testEffectiveEmailFlagsFillsDetailsOnlyForFlagsThatApply(): void
+    {
+        $queries = [];
+        $row = self::effectiveRow([
+            'email_blocked' => 1, 'email_blocked_address' => 'old@example.com',
+            'email_blocked_at' => '2026-01-01 00:00:00', 'email_blocked_cause' => 'spam',
+            'email_bounced' => 1, 'email_bounced_address' => 'owner@example.com',
+            'email_bounced_at' => '2026-09-15 08:00:00',
+        ]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $flags = $repo->effectiveEmailFlags(42);
+
+        $this->assertFalse($flags->blocked);
+        $this->assertNull($flags->blockedAddress);
+        $this->assertNull($flags->blockedAt);
+        $this->assertNull($flags->blockedCause);
+        $this->assertTrue($flags->bounced);
+        $this->assertSame('owner@example.com', $flags->bouncedAddress);
+        $this->assertSame('2026-09-15 08:00:00', $flags->bouncedAt);
+    }
+
+    public function testEffectiveEmailFlagsKeepsTheRawCurrentEmail(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(self::effectiveRow(['user_email' => "Owner@Example.com\t"]), $queries));
+
+        $this->assertSame("Owner@Example.com\t", $repo->effectiveEmailFlags(42)->currentEmail);
+    }
+
+    public function testEffectiveEmailFlagsHandlesStringTypedFlagColumns(): void
+    {
+        $queries = [];
+        $row = self::effectiveRow(['email_bounced' => '1', 'email_bounced_address' => 'owner@example.com', 'email_opted_out' => '0']);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $flags = $repo->effectiveEmailFlags(42);
+
+        $this->assertTrue($flags->bounced);
+        $this->assertFalse($flags->optedOut);
+    }
+
+    public function testEffectiveEmailFlagsForAnOwnerWithNoRowIsNone(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(null, $queries));
+
+        $flags = $repo->effectiveEmailFlags(42);
+
+        $this->assertFalse($flags->hasProfile);
+        $this->assertFalse($flags->optedOut);
+        $this->assertFalse($flags->blocked);
+        $this->assertFalse($flags->bounced);
+        $this->assertNull($flags->currentEmail);
+    }
+
+    public function testEffectiveEmailFlagsThrowsOnDatabaseError(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(null, $queries, 1));
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/effectiveEmailFlags failed for user=42: Deadlock found/');
+        $repo->effectiveEmailFlags(42);
+    }
+
+    // findByEmail(): event matching by the owner's account email (#2356)
+
+    /**
+     * The verification send mails users.email, so an event must find its
+     * cars through the owner's account email. A stale cars.email copy must
+     * not take the event, and the noowner account must never match.
+     */
+    public function testFindByEmailMatchesTheOwnersAccountEmailOnly(): void
+    {
+        $queries = [];
+        (new CarRepository($this->makeRecordingDb(null, $queries)))->findByEmail('Owner@Example.com');
+
+        $this->assertCount(1, $queries);
+        $sql = $queries[0]['sql'];
+        $this->assertStringContainsString('INNER JOIN users u ON u.id = cars.user_id', $sql);
+        $this->assertStringContainsString("u.username != 'noowner'", $sql);
+        $this->assertStringContainsString(
+            "LOWER(REGEXP_REPLACE(u.email, '^[[:space:]]+|[[:space:]]+$', '')) != ''",
+            $sql,
+            'An address that normalizes to empty must not match an owner with an empty email'
+        );
+        $this->assertStringContainsString(
+            "LOWER(REGEXP_REPLACE(u.email, '^[[:space:]]+|[[:space:]]+$', ''))"
+                . " = LOWER(REGEXP_REPLACE(?, '^[[:space:]]+|[[:space:]]+$', '')) COLLATE utf8mb4_bin",
+            $sql,
+            'Both sides are normalized, so case and outer white space do not stop a match'
+        );
+        $this->assertStringNotContainsString('cars.email', $sql, 'A stale cars.email copy must not match an event');
+        $this->assertSame(['Owner@Example.com'], $queries[0]['params']);
+    }
+
+    public function testFindByEmailReturnsNoCarsForABlankAddressWithoutAQuery(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(null, $queries));
+
+        $this->assertSame([], $repo->findByEmail(" \t"));
+        $this->assertSame([], $queries);
+    }
+
+    public function testFindByEmailThrowsOnDatabaseError(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(null, $queries, 1));
+
+        try {
+            $repo->findByEmail('owner@example.com');
+            $this->fail('findByEmail() must throw when the query fails.');
+        } catch (CarDatabaseException $e) {
+            $this->assertStringContainsString('findByEmail failed: Deadlock found', $e->getMessage());
+            // The message goes to the log. A recipient address is personal data.
+            $this->assertStringNotContainsString('owner@example.com', $e->getMessage());
+        }
+    }
+
+    // clearFlagsForConfirmedEmailChange() (#2356)
+
+    /**
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private static function lockRow(array $overrides = []): array
+    {
+        return array_merge([
+            'email_bounced' => 0,
+            'email_bounced_address' => null,
+            'email_blocked' => 0,
+            'email_blocked_address' => null,
+            'email_address_seen' => 'old@example.com',
+            'user_email' => 'new@example.com',
+        ], $overrides);
+    }
+
+    public function testConfirmedChangeLocksTheProfileRowBeforeAnyWrite(): void
+    {
+        $queries = [];
+        $row = self::lockRow(['email_bounced' => 1, 'email_bounced_address' => 'old@example.com']);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertGreaterThanOrEqual(2, count($queries));
+        $this->assertStringStartsWith('SELECT', ltrim($queries[0]['sql']));
+        $this->assertStringContainsString('FROM profiles p', $queries[0]['sql']);
+        $this->assertStringContainsString('FOR UPDATE', $queries[0]['sql']);
+        $this->assertSame([42], $queries[0]['params']);
+        foreach (array_slice($queries, 1) as $write) {
+            $this->assertStringStartsWith('UPDATE profiles SET', $write['sql'], 'Only profile writes follow the lock');
+        }
+    }
+
+    public function testConfirmedChangeClearsBounceBlockAndSetsSinceSeenInOrder(): void
+    {
+        $queries = [];
+        $row = self::lockRow([
+            'email_bounced' => 1, 'email_bounced_address' => 'old@example.com',
+            'email_blocked' => 1, 'email_blocked_address' => 'old@example.com',
+            'user_email' => '  New@Example.COM ',
+        ]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $result = $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertSame(
+            ['bounced' => 1, 'blocked' => 1, 'bouncedHadNoAddress' => false, 'blockedHadNoAddress' => false, 'changed' => true],
+            $result
+        );
+        $this->assertCount(4, $queries, 'Lock, bounce clear, block clear, since/seen');
+        $this->assertStringStartsWith('UPDATE profiles SET email_bounced = 0', $queries[1]['sql']);
+        $this->assertStringContainsString('email_bounced_address = NULL', $queries[1]['sql']);
+        $this->assertStringContainsString('email_bounced_at = NULL', $queries[1]['sql']);
+        $this->assertStringContainsString('email_bounce_cleared_at = ?', $queries[1]['sql']);
+        $this->assertStringStartsWith('UPDATE profiles SET email_blocked = 0', $queries[2]['sql']);
+        $this->assertStringContainsString('email_blocked_address = NULL', $queries[2]['sql']);
+        $this->assertStringContainsString('email_blocked_at = NULL', $queries[2]['sql']);
+        $this->assertStringContainsString('email_blocked_cause = NULL', $queries[2]['sql']);
+        $this->assertStringStartsWith('UPDATE profiles SET email_address_since = ?, email_address_seen = ?', $queries[3]['sql']);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $queries[3]['params'][0]);
+        $this->assertSame('new@example.com', $queries[3]['params'][1], 'seen holds the normalized address');
+        $this->assertSame(42, $queries[3]['params'][2]);
+        foreach (array_slice($queries, 1) as $write) {
+            $this->assertStringNotContainsString('email_opted_out', $write['sql'], 'The opt-out stays');
+        }
+    }
+
+    public function testConfirmedChangeWithNoFlagWritesOnlySinceSeen(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(self::lockRow(), $queries));
+
+        $result = $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertNotNull($result);
+        $this->assertTrue($result['changed']);
+        $this->assertSame(0, $result['bounced']);
+        $this->assertSame(0, $result['blocked']);
+        $this->assertCount(2, $queries);
+        $this->assertStringStartsWith('UPDATE profiles SET email_address_since = ?', $queries[1]['sql']);
+    }
+
+    /**
+     * @return array<string, array{?string, string}> email_address_seen, users.email
+     */
+    public static function unchangedAddressProvider(): array
+    {
+        return [
+            'identical'        => ['new@example.com', 'new@example.com'],
+            'other case'       => ['NEW@example.com', 'new@example.com'],
+            'surrounding space' => [' new@example.com ', "new@example.com\t"],
+        ];
+    }
+
+    #[DataProvider('unchangedAddressProvider')]
+    public function testConfirmedChangeWithTheSeenAddressWritesNothing(string $seen, string $current): void
+    {
+        $queries = [];
+        $row = self::lockRow([
+            'email_bounced' => 1, 'email_bounced_address' => 'new@example.com',
+            'email_blocked' => 1, 'email_blocked_address' => 'new@example.com',
+            'email_address_seen' => $seen, 'user_email' => $current,
+        ]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $result = $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertNotNull($result);
+        $this->assertFalse($result['changed']);
+        $this->assertCount(1, $queries, 'Only the lock read, no write');
+    }
+
+    public function testConfirmedChangeWithNullSeenIsAChange(): void
+    {
+        $queries = [];
+        $row = self::lockRow(['email_address_seen' => null, 'email_bounced' => 1, 'email_bounced_address' => 'x@example.com']);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $result = $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertNotNull($result);
+        $this->assertTrue($result['changed']);
+        $this->assertCount(3, $queries);
+    }
+
+    /**
+     * @return array<string, array{?string}>
+     */
+    public static function noRecordedAddressProvider(): array
+    {
+        return ['NULL' => [null], 'empty' => [''], 'blank' => [" \t"]];
+    }
+
+    #[DataProvider('noRecordedAddressProvider')]
+    public function testConfirmedChangeReportsAFlagWithNoRecordedAddress(?string $stored): void
+    {
+        $queries = [];
+        $row = self::lockRow([
+            'email_bounced' => 1, 'email_bounced_address' => $stored,
+            'email_blocked' => 1, 'email_blocked_address' => 'old@example.com',
+        ]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $result = $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertNotNull($result);
+        $this->assertTrue($result['bouncedHadNoAddress']);
+        $this->assertFalse($result['blockedHadNoAddress']);
+
+        $queries = [];
+        $row = self::lockRow([
+            'email_bounced' => 0, 'email_bounced_address' => null,
+            'email_blocked' => 1, 'email_blocked_address' => $stored,
+        ]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+        $result = $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertNotNull($result);
+        $this->assertTrue($result['blockedHadNoAddress']);
+        $this->assertFalse($result['bouncedHadNoAddress'], 'A flag that is not set has no anomaly');
+    }
+
+    public function testConfirmedChangeReturnsNullAndWritesNothingWithoutARow(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(null, $queries));
+
+        $this->assertNull($repo->clearFlagsForConfirmedEmailChange(42));
+        $this->assertCount(1, $queries);
+    }
+
+    public function testConfirmedChangeThrowsWhenTheLockReadFails(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb(null, $queries, 1));
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/clearFlagsForConfirmedEmailChange failed for user=42: Deadlock found/');
+        $repo->clearFlagsForConfirmedEmailChange(42);
+    }
+
+    public function testConfirmedChangeThrowsWhenAWriteFails(): void
+    {
+        $queries = [];
+        $row = self::lockRow(['email_bounced' => 1, 'email_bounced_address' => 'old@example.com']);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries, 2));
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/clearFlagsForConfirmedEmailChange failed for user=42/');
+        $repo->clearFlagsForConfirmedEmailChange(42);
+    }
+
+    public function testRemovedRepositoryMethodsAreGone(): void
+    {
+        foreach (['clearBouncedForUser', 'carIdsWithBouncedFlagButNoAddress'] as $removed) {
+            $this->assertFalse(method_exists(CarRepository::class, $removed), "{$removed} must stay removed");
+        }
+    }
+
+    // Verification dashboard SQL uses the address-match predicate (#2356)
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function queueStatusProvider(): array
+    {
+        return [
+            'all' => ['all'],
+            'pending' => ['pending'],
+            'bounced' => ['bounced'],
+            'suppressed' => ['suppressed'],
+        ];
+    }
+
+    /**
+     * Every flag-based queue view reads the flags through the predicate, and
+     * joins `users` as `u` for it. A stored flag for an old address must not
+     * put a car in the Bounced or Suppressed view.
+     */
+    #[DataProvider('queueStatusProvider')]
+    public function testFindVerificationQueueReadsFlagsThroughThePredicate(string $status): void
+    {
+        $capturedSql = null;
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->willReturnCallback(
+                function (string $sql) use (&$capturedSql, $db): DatabaseInterface {
+                    $capturedSql = $sql;
+                    return $db;
+                }
+            );
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn([]);
+
+        (new CarRepository($db))->findVerificationQueue($status, null, 10);
+
+        $this->assertNotNull($capturedSql);
+        $this->assertStringContainsString('LEFT JOIN users u ON u.id = cars.user_id', $capturedSql);
+        $this->assertStringContainsString(
+            '(' . CarRepository::emailFlagActiveSql('email_blocked') . '), 0)
+                        AS email_blocked_active',
+            $capturedSql
+        );
+        $this->assertStringContainsString(
+            '(' . CarRepository::emailFlagActiveSql('email_bounced') . '), 0)
+                        AS email_bounced_active',
+            $capturedSql
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/(?<![\w.])p\.email_(?:blocked|bounced)\s*=\s*[01]\b(?! AND \()/',
+            $capturedSql,
+            'A bare stored-flag compare ignores the address match'
+        );
+        $this->assertStringNotContainsString('AS email_blocked,', $capturedSql, 'The queue column is the _active alias');
+        $this->assertStringNotContainsString('AS email_bounced,', $capturedSql);
+    }
+
+    public function testCountVerificationSummaryJoinsUsersForThePredicate(): void
+    {
+        $capturedSql = null;
+        $db = $this->createStub(DatabaseInterface::class);
+        $db->method('query')->willReturnCallback(
+            function (string $sql) use (&$capturedSql, $db): DatabaseInterface {
+                $capturedSql ??= $sql;
+                return $db;
+            }
+        );
+        $db->method('error')->willReturn(false);
+        $db->method('first')->willReturn((object) [
+            'eligible' => 0, 'pending' => 0, 'bounced' => 0, 'suppressed' => 0, 'all_count' => 0,
+            'verified' => 0, 'sold' => 0,
+        ]);
+
+        (new CarRepository($db))->countVerificationSummary(null);
+
+        $this->assertNotNull($capturedSql);
+        $this->assertStringContainsString('LEFT JOIN users u ON u.id = cars.user_id', $capturedSql);
+        $this->assertStringContainsString(CarRepository::emailFlagActiveSql('email_bounced'), $capturedSql);
+        $this->assertStringContainsString(CarRepository::emailFlagActiveSql('email_blocked'), $capturedSql);
+    }
+
+    // countSoftBouncesSinceLastDelivered()
+
+    /**
+     * Soft bounces before the owner's Clear Bounced must not count. The clear
+     * time comes from the profile of the car's owner, found through the car.
+     */
+    public function testCountSoftBouncesSinceLastDeliveredUsesTheOwnersClearTimeAndTheCarId(): void
     {
         $db = $this->makeDbMock();
-        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->callback(static fn (string $sql): bool => str_contains($sql, 'p.email_bounce_cleared_at')
+                    && str_contains($sql, 'INNER JOIN profiles p ON p.user_id = c.user_id')
+                    && str_contains($sql, 'WHERE c.id = ?')),
+                ['owner@example.com', 'owner@example.com', 17]
+            )
+            ->willReturnSelf();
         $db->method('error')->willReturn(false);
-        $db->method('results')->willReturn([(object) ['not_id' => 999]]);
+        $db->method('first')->willReturn((object) ['cnt' => '2']);
 
         $repo = new CarRepository($db);
 
-        $result = @$repo->carIdsWithBouncedFlagButNoAddress(42);
-
-        $this->assertSame(
-            [0],
-            $result,
-            'Documents current behavior: an unexpected row shape silently maps to car id 0 '
-            . 'rather than throwing — a real (low-severity, SELECT-only) gap worth triaging, '
-            . 'not a bug this test suite should paper over.'
-        );
+        $this->assertSame(2, $repo->countSoftBouncesSinceLastDelivered('owner@example.com', 17));
     }
 
     // findVerificationStateByOwner() / findLatestEmailEventsByCarIds() (#1924)
 
     /** Ordered `model, year` to match the car-button list in user_form_hook.php. */
-    public function testFindVerificationStateByOwnerSendsExpectedSqlAndReturnsRows(): void
+    public function testFindVerificationStateByOwnerReadsCarColumnsOnly(): void
     {
-        $rows = [
-            (object) [
-                'id' => 1,
-                'model' => 'Elan',
-                'series' => '2',
-                'variant' => 'S/E',
-                'year' => 1971,
-                'email' => 'owner@example.com',
-                'email_bounced' => 1,
-                'email_bounced_address' => 'owner@example.com',
-                'email_suppressed' => 0,
-                'owner_last_updated' => '2026-01-01 00:00:00',
-                'last_verified' => '2025-01-01 00:00:00',
-            ],
-        ];
+        $rows = [(object) ['id' => 1, 'model' => 'Elan']];
+        $capturedSql = null;
 
         $db = $this->makeDbMock();
         $db->expects($this->once())
             ->method('query')
-            ->with(
-                'SELECT id, model, series, variant, year, email, email_bounced, email_bounced_address,
-                    COALESCE((SELECT MAX(p.email_suppressed) FROM profiles p WHERE p.user_id = cars.user_id), 0) AS profile_email_suppressed,
-                    email_suppressed, owner_last_updated, last_verified
-               FROM cars
-              WHERE user_id = ?
-              ORDER BY model, year',
-                [42]
-            )
-            ->willReturnSelf();
+            ->willReturnCallback(
+                function (string $sql, array $params = []) use (&$capturedSql, $db): DatabaseInterface {
+                    $capturedSql = $sql;
+                    $this->assertSame([42], $params);
+                    return $db;
+                }
+            );
         $db->method('error')->willReturn(false);
         $db->method('results')->willReturn($rows);
 
@@ -1503,24 +2112,20 @@ final class CarRepositoryTest extends TestCase
         $result = $repo->findVerificationStateByOwner(42);
 
         $this->assertSame($rows, $result);
+        $this->assertStringContainsString('WHERE cars.user_id = ?', $capturedSql);
+        $this->assertStringContainsString('ORDER BY cars.model, cars.year', $capturedSql);
+        $this->assertStringNotContainsString('profiles', $capturedSql, 'The flags come from effectiveEmailFlags() (#2356)');
+        $this->assertStringNotContainsString('has_profile', $capturedSql);
+        $this->assertDoesNotMatchRegularExpression('/email_(?:bounced|blocked|opted_out)/', $capturedSql);
+        foreach (['id', 'model', 'series', 'variant', 'year', 'email', 'owner_last_updated', 'last_verified'] as $column) {
+            $this->assertStringContainsString("cars.{$column}", $capturedSql);
+        }
     }
 
-    /** email_bounced/email_suppressed are ints (tinyint), not bool. */
-    public function testFindVerificationStateByOwnerMapsAllColumnsAndKeepsBounceFlagsAsInt(): void
+    /** The result is the driver's rows, unchanged. */
+    public function testFindVerificationStateByOwnerReturnsRowsUnchanged(): void
     {
-        $row = (object) [
-            'id' => 7,
-            'model' => 'Elan',
-            'series' => '2',
-            'variant' => 'S/E',
-            'year' => 1971,
-            'email' => 'owner@example.com',
-            'email_bounced' => 1,
-            'email_bounced_address' => 'owner@example.com',
-            'email_suppressed' => 0,
-            'owner_last_updated' => '2026-01-01 00:00:00',
-            'last_verified' => null,
-        ];
+        $row = (object) ['id' => 7, 'model' => 'Elan', 'year' => '1965', 'last_verified' => null];
 
         $db = $this->makeDbMock();
         $db->expects($this->once())->method('query')->willReturnSelf();
@@ -1530,25 +2135,7 @@ final class CarRepositoryTest extends TestCase
         $repo = new CarRepository($db);
         $result = $repo->findVerificationStateByOwner(42);
 
-        $this->assertCount(1, $result);
-        $car = $result[0];
-        $this->assertSame(7, $car->id);
-        $this->assertSame('Elan', $car->model);
-        $this->assertSame('2', $car->series);
-        $this->assertSame('S/E', $car->variant);
-        $this->assertSame(1971, $car->year);
-        $this->assertSame('owner@example.com', $car->email);
-        $this->assertSame('owner@example.com', $car->email_bounced_address);
-        $this->assertSame('2026-01-01 00:00:00', $car->owner_last_updated);
-        $this->assertNull($car->last_verified);
-
-        $this->assertIsInt($car->email_bounced, 'email_bounced must come back as int (tinyint), not bool');
-        $this->assertSame(1, $car->email_bounced);
-        $this->assertFalse(is_bool($car->email_bounced), 'email_bounced must not be a bool');
-
-        $this->assertIsInt($car->email_suppressed, 'email_suppressed must come back as int (tinyint), not bool');
-        $this->assertSame(0, $car->email_suppressed);
-        $this->assertFalse(is_bool($car->email_suppressed), 'email_suppressed must not be a bool');
+        $this->assertSame([$row], $result);
     }
 
     public function testFindVerificationStateByOwnerReturnsEmptyArrayWhenNoCars(): void

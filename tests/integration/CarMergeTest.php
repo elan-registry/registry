@@ -35,7 +35,7 @@ final class CarMergeTest extends IntegrationTestCase
 
         $this->initThumbnailSizes();
 
-        $this->testUserId = $this->createTestUser();
+        $this->testUserId = $this->createTestUser([], true);
 
         $this->loginAsTestUser($this->testUserId);
 
@@ -104,6 +104,31 @@ final class CarMergeTest extends IntegrationTestCase
         $result = $car->merge($this->testMergeCarId, 'Test merge success', $this->testUserId);
 
         $this->assertTrue($result);
+    }
+
+    /**
+     * The flags belong to the owner's profile (#2101). A merge changes cars,
+     * not owners, so it leaves the owner's flags and writes no flag-log row.
+     */
+    #[Group('fast')]
+    public function testMergeLeavesTheOwnerProfileFlagsUnchangedAndWritesNoFlagLogRow(): void
+    {
+        $this->setOwnerBounced($this->testUserId, 'merge-owner@example.com', '2026-03-04 05:06:07');
+        $this->setOwnerBlocked($this->testUserId, 'merge-owner@example.com', '2026-02-03 04:05:06', 'spam');
+        $this->setOwnerOptedOut($this->testUserId, true, '2026-01-02 03:04:05');
+        $flagsBefore = $this->getOwnerEmailFlags($this->testUserId);
+        $repo = new \ElanRegistry\Car\CarRepository($this->db);
+        $logRowsBefore = count($repo->recentFlagChanges($this->testUserId, 100));
+
+        $car = new Car($this->testCarId);
+        $this->assertTrue($car->merge($this->testMergeCarId, 'Test merge flags', $this->testUserId));
+
+        $this->assertSame($flagsBefore, $this->getOwnerEmailFlags($this->testUserId), 'A merge must not change a flag');
+        $this->assertCount(
+            $logRowsBefore,
+            $repo->recentFlagChanges($this->testUserId, 100),
+            'A merge must not write a flag-log row'
+        );
     }
 
     #[Group('fast')]

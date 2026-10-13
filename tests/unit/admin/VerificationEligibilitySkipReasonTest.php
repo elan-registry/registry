@@ -67,8 +67,6 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
         $defaults = [
             'id'                          => 42,
             'solddate'                    => null,
-            'email_bounced'               => 0,
-            'email_suppressed'            => 0,
             'email'                       => 'owner@example.com',
             'user_id'                     => 7,
             'last_verified'               => null,
@@ -93,32 +91,28 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
         $this->assertSame('Marked sold', VerificationEligibility::skipReason($car));
     }
 
-    public function testReturnsEmailBouncedWhenBouncedFlagIsSet(): void
+    /**
+     * The deliverability flags belong to the owner's profile (#2101). A single
+     * `cars` row cannot supply them, so skipReason() does not judge them.
+     * CarVerificationSendService::sendOne() reads the profile instead. A car
+     * object that still carries the old per-car properties must not change
+     * the result.
+     */
+    public function testIgnoresLegacyPerCarFlagPropertiesBecauseTheProfileOwnsThem(): void
     {
-        $car = $this->makeEligibleCar(['email_bounced' => 1]);
+        $car = $this->makeEligibleCar(['email_bounced' => 1, 'email_blocked' => 1, 'email_opted_out' => 1]);
 
-        $this->assertSame('Email bounced', VerificationEligibility::skipReason($car));
+        $this->assertNull(VerificationEligibility::skipReason($car));
     }
 
-    public function testReturnsEmailSuppressedWhenSuppressedFlagIsSet(): void
+    /**
+     * The send mails the owner's `users.email`. `cars.email` is only a copy,
+     * so an empty copy must not skip the car. sendOne() checks the account email.
+     */
+    public function testIgnoresEmptyCarEmailBecauseTheSendUsesTheAccountEmail(): void
     {
-        $car = $this->makeEligibleCar(['email_suppressed' => 1]);
-
-        $this->assertSame('Email suppressed', VerificationEligibility::skipReason($car));
-    }
-
-    public function testReturnsNoEmailOnFileWhenEmailIsEmpty(): void
-    {
-        $car = $this->makeEligibleCar(['email' => '']);
-
-        $this->assertSame('No email on file', VerificationEligibility::skipReason($car));
-    }
-
-    public function testReturnsNoEmailOnFileWhenEmailIsWhitespaceOnly(): void
-    {
-        $car = $this->makeEligibleCar(['email' => '   ']);
-
-        $this->assertSame('No email on file', VerificationEligibility::skipReason($car));
+        $this->assertNull(VerificationEligibility::skipReason($this->makeEligibleCar(['email' => ''])));
+        $this->assertNull(VerificationEligibility::skipReason($this->makeEligibleCar(['email' => '   '])));
     }
 
     public function testReturnsNoOwnerOnFileWhenUserIdIsZero(): void
@@ -151,12 +145,12 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
 
     public function testChecksAreAppliedInDocumentedPriorityOrder(): void
     {
-        // A car that is BOTH sold AND bounced must report "Marked sold" —
+        // A car that is BOTH sold AND without an owner must report "Marked sold" —
         // the first-matching-branch ordering the docblock promises, not
         // whichever branch happens to be reordered by a future edit.
         $car = $this->makeEligibleCar([
-            'solddate'      => '2026-01-01',
-            'email_bounced' => 1,
+            'solddate' => '2026-01-01',
+            'user_id'  => 0,
         ]);
 
         $this->assertSame('Marked sold', VerificationEligibility::skipReason($car));
@@ -313,8 +307,6 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
         return (object) [
             'id'                          => 4242,
             'solddate'                    => null,
-            'email_bounced'               => 0,
-            'email_suppressed'            => 0,
             'email'                       => 'owner@example.com',
             'user_id'                     => 7,
             // Stale on both halves of the freshness rule, so isFresh() is false

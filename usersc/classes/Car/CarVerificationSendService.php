@@ -32,7 +32,7 @@ use ElanRegistry\Owner;
  * Eligibility in particular is NOT re-implemented here:
  * {@see self::findEligible()} delegates verbatim to
  * {@see CarRepository::findVerificationEligible()}, which carries the full
- * rule (staleness, bounced/suppressed exclusion, sold cars, erased owners,
+ * rule (staleness, owner profile flags, sold cars, erased owners,
  * the attempt cap). Both callers derive their car list from that one query.
  *
  * @package ElanRegistry\Car
@@ -116,12 +116,16 @@ final class CarVerificationSendService
      * message to a real person. A stale counter is recoverable; a duplicate email
      * to an owner is not.
      *
+     * The email goes to the owner's `users.email`. `cars.email` is only a
+     * copy and is not read.
+     *
      * @param object $carData Eligible car row as returned by {@see self::findEligible()}:
-     *                        requires ->id, ->user_id and ->email, plus the display
+     *                        requires ->id and ->user_id, plus the display
      *                        fields {@see CarVerificationEmailComposer::compose()} reads.
      *                        Note this method mutates the passed object — the verifier
      *                        writes the new plaintext ->vericode and ->vericode_sent_at
-     *                        onto it so the composer can quote them.
+     *                        onto it so the composer can quote them, and ->email
+     *                        becomes the address the send mails.
      * @return SendResult Sent, sent-but-unrecorded, or failed — each carrying an admin-safe reason string except a clean sent
      */
     public function sendOne(object $carData): SendResult
@@ -154,10 +158,7 @@ final class CarVerificationSendService
         // VerificationEligibility::skipReason() (the PHP-side re-check used by
         // the admin manual-send path) has no join to check this and relies on
         // this method to enforce it instead — see that class's docblock. Without
-        // this check, a `noowner` car whose ->email happens to be non-blank
-        // (contactableEmail() normally blanks it, but that is a side effect of
-        // an unrelated method, not an ownership guarantee) would email an
-        // erased owner's last-known address.
+        // this check, a `noowner` car would mail the system account.
         if (($owner->username ?? '') === 'noowner') {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: car %d is owned by the noowner system account; send skipped',
@@ -167,44 +168,64 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'Car has no live owner.');
         }
 
-        // The owner-level opt-out (#1883), enforced here for the same reason
-        // the `noowner` check above is: it needs a join to `profiles` that
-        // VerificationEligibility::skipReason() has no row for.
-        // findVerificationEligible()'s SQL now excludes it via a LEFT JOIN, but
+        // The owner's deliverability flags (#2101), enforced here for the same
+        // reason the `noowner` check above is: they live on `profiles`, and
         // the admin manual-send path re-checks eligibility in PHP against a
-        // single already-loaded `cars` row, which carries only the per-car
-        // cars.email_suppressed flag. Those two flags are NOT interchangeable:
-        // setSuppressedForOwner() fans the opt-out out to the cars the owner
-        // held at that moment, so any car acquired afterwards still reads
-        // cars.email_suppressed = 0 while the owner's standing opt-out sits in
-        // profiles. Without this guard that car would be mailed.
+        // single `cars` row that has no profile fields
+        // (VerificationEligibility::skipReason()). The cron path selects rows
+        // with findVerificationEligible(), which already excludes these
+        // owners, but a flag can be set between that query and this send.
         //
-        // A separate one-column read rather than a field off $owner: Owner::find()'s
+        // A separate read rather than fields off $owner: Owner::find()'s
         // users-LEFT JOIN-profiles projection selects only city/state/country/
-        // lat/lon/website from `profiles`, so ->data() does not carry this flag
-        // and widening that shared projection — read by every owner-facing page —
-        // to serve one send-path guard would be the larger change. A missing
-        // profiles row returns null here and is treated as "no opt-out
-        // recorded", matching the COALESCE(..., 0) in findVerificationEligible()'s
-        // own clause so the two paths cannot disagree about a profile-less owner.
-        if ($this->repo->findProfileEmailSuppressed((int) $carData->user_id) === 1) {
+        // lat/lon/website from `profiles`, and widening that shared projection
+        // (read by every owner-facing page) for one send-path guard is the
+        // larger change. The rules match findVerificationEligible(): no
+        // profiles row excludes the car, an opt-out excludes it whatever the
+        // address, and a block or bounce excludes it while its address
+        // matches the owner's current email (#2356). The send mails that
+        // email, so no other address needs a check.
+        $ownerId      = (int) $carData->user_id;
+        $emailFlags   = $this->repo->effectiveEmailFlags($ownerId);
+        $profileBlockReason = match (true) {
+            !$emailFlags->hasProfile => 'Owner has no profile.',
+            $emailFlags->optedOut    => 'Owner has opted out of verification emails.',
+            $emailFlags->blocked     => 'Owner email is blocked.',
+            $emailFlags->bounced     => 'Owner email bounced.',
+            default                  => null,
+        };
+        if ($profileBlockReason !== null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                'CarVerificationSendService::sendOne: owner %d for car %d has opted out of verification '
-                . 'emails (profiles.email_suppressed = 1); send skipped',
-                (int) $carData->user_id,
+                'CarVerificationSendService::sendOne: owner %d for car %d cannot get mail: %s Send skipped.',
+                $ownerId,
+                $carId,
+                $profileBlockReason
+            ));
+
+            return SendResult::failed($carId, $profileBlockReason);
+        }
+
+        // The send mails users.email. The eligibility SQL requires it, but an
+        // admin can clear it between that query and this send.
+        $recipient = trim((string) ($owner->email ?? ''));
+        if ($recipient === '') {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: owner %d for car %d has no account email. Send skipped.',
+                $ownerId,
                 $carId
             ));
 
-            return SendResult::failed($carId, 'Owner has opted out of verification emails.');
+            return SendResult::failed($carId, 'Owner has no email address.');
         }
 
         // Send only when Brevo is ready (key, active plugin, override file,
-        // plugin 1.8.0 or later, override matches the bundled copy). Otherwise
-        // email() is the core PHPMailer fallback, or an override that ignores
-        // $opts['tags'], and the mail can report success with no verification
-        // tag, so the webhook never records its delivery. Checked
-        // before Scope A so a refused send leaves the vericode untouched and
-        // costs no attempt.
+        // plugin 1.8.0 or later). Otherwise email() is the core PHPMailer
+        // fallback, or a plugin older than 1.8.0 drops $opts['tags'], and the
+        // mail can report success with no verification tag, so the webhook
+        // never records its delivery. Readiness does not read override.php:
+        // an override kept from before 1.8.0 also drops the tag and is not
+        // caught here (accepted risk, #2374). Checked before Scope A so a
+        // refused send leaves the vericode untouched and costs no attempt.
         $brevoNotReadyReason = $this->settings->brevoNotReadyReason();
         if ($brevoNotReadyReason !== null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
@@ -263,7 +284,7 @@ final class CarVerificationSendService
         }
 
         $sendOk = email(
-            (string) $carData->email,
+            $recipient,
             $composed['subject'],
             $composed['html'],
             ['tags' => AppConstants::VERIFICATION_EMAIL_TAG]
@@ -295,6 +316,10 @@ final class CarVerificationSendService
             return SendResult::failed($carId, 'The email could not be sent.');
         }
 
+        // The admin batch report shows ->email in its Sent rows. Put the
+        // address this send mailed there, not the cars.email copy.
+        $carData->email = $recipient;
+
         // Scope C — bookkeeping only. The email is already delivered to Brevo.
         //
         // No real Brevo message id is available from the mailer, so the event row
@@ -320,7 +345,7 @@ final class CarVerificationSendService
             // send is never reported as a failure).
             $eventRowsWritten = $this->repo->insertEmailEvent(
                 $carId,
-                (string) $carData->email,
+                $recipient,
                 'sent',
                 null,
                 $brevoMessageId,

@@ -3,9 +3,10 @@
 // Three pages draw it: the car details page, the account page, and the
 // vericode landing page (app/verify/verify_car.php).
 //
-// Seeds one loginable owner with five cars through
+// Seeds three loginable owners with five cars through
 // `seed-car-badges.php --verified-row` (see the fixture header for what each
-// car shows). The fixture has its own owner and chassis marker, so this spec
+// car shows). The delivery flags are on the owner profile (#2101), so the
+// bounced car and the suppressed car each have their own flagged owner. The fixture has its own owner and chassis marker, so this spec
 // can run in parallel with car-badges.spec.js. The fixture needs the
 // application database. The local stack is Docker only, so the spec runs the
 // fixture in the app container. It uses the host `php` only when the docker
@@ -154,10 +155,12 @@ test.describe('Verified row: anonymous visitor on the details page', () => {
 
 test.describe('Email on file row: owner who is not an admin', () => {
     test('own suppressed car and own bounced car show no Email on file row', async ({ page }) => {
-        await login(page, seeded.username, seeded.password);
-        expect(await isLoggedIn(page)).toBe(true);
-
         for (const key of ['suppressed', 'bounced']) {
+            // Each flagged car has its own owner. All three owners share one password.
+            // Clear the session so the second login starts clean.
+            await page.context().clearCookies();
+            await login(page, seeded.flaggedOwners[key], seeded.password);
+            expect(await isLoggedIn(page)).toBe(true);
             await page.goto(detailsUrl(seeded.cars[key]), { waitUntil: 'networkidle' });
             // Non-vacuous: the card rendered its Verified row for the same car.
             await expect(verifiedLabel(page)).toHaveCount(1);
@@ -211,13 +214,13 @@ test.describe('Email on file row: admin', () => {
 });
 
 test.describe('Verified row: account page', () => {
-    test('every car shows a Verified row, and no car shows an Email on file row', async ({ page }) => {
+    test('every car of the owner shows a Verified row, and no car shows an Email on file row', async ({ page }) => {
         await login(page, seeded.username, seeded.password);
         await page.goto('usersc/account.php', { waitUntil: 'networkidle' });
 
-        // The owner has 5 cars, so each details section starts collapsed. Open the
-        // suppressed car, which has a delivery flag, and read its card.
-        const carId = seeded.cars.suppressed;
+        // The owner has 3 cars, so each details section starts collapsed. Open one
+        // car and read its card.
+        const carId = seeded.cars.current;
         const toggle = page.locator(`button[data-bs-target="#car-details-${carId}"]`);
         await expect(toggle).toHaveCount(1);
         await toggle.click();
@@ -228,8 +231,8 @@ test.describe('Verified row: account page', () => {
         await expect(label).toBeVisible();
         await expect(valueOf(label).locator('.er-badge--verified')).toHaveCount(1);
 
-        // One Verified row for each of the 5 cars. The page has no Email on file row.
-        await expect(page.locator('dl.row > dt', { hasText: /^\s*Verified/ })).toHaveCount(5);
+        // One Verified row for each of the owner's 3 cars. The page has no Email on file row.
+        await expect(page.locator('dl.row > dt', { hasText: /^\s*Verified/ })).toHaveCount(3);
         await expect(emailLabel(page)).toHaveCount(0);
         expect(await page.content()).not.toContain('Email on file');
     });

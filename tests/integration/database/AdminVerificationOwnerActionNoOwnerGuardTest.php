@@ -8,6 +8,7 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -53,13 +54,13 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
     }
 
     /**
-     * Load verifyHistoryFieldsForAdminAction() and sendEmailOwnerLabel()
-     * from app/admin/index.php — both are plain, function_exists()-guarded
-     * functions the extracted handler slice below calls.
+     * Load sendEmailOwnerLabel() from app/admin/index.php. It is a plain,
+     * function_exists()-guarded function that the extracted handler slice
+     * below calls.
      */
     private static function loadAdminIndexHelperFunctions(): void
     {
-        if (function_exists('verifyHistoryFieldsForAdminAction') && function_exists('sendEmailOwnerLabel')) {
+        if (function_exists('sendEmailOwnerLabel')) {
             return;
         }
 
@@ -69,7 +70,7 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
             throw new RuntimeException('Could not read ' . $scriptPath);
         }
 
-        $startMarker = "if (!function_exists('verifyHistoryFieldsForAdminAction'))";
+        $startMarker = "if (!function_exists('sendEmailOwnerLabel'))";
         $endMarker = '// Process form submissions for car management tab';
 
         $startPos = strpos($source, $startMarker);
@@ -89,11 +90,7 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
             throw new RuntimeException('Could not create temp file for admin/index.php helper extraction');
         }
 
-        $preamble = "<?php\ndeclare(strict_types=1);\n"
-            . "use ElanRegistry\\AppConstants;\n"
-            . "use ElanRegistry\\Exceptions\\OwnerDatabaseException;\n"
-            . "use ElanRegistry\\Owner;\n";
-        $written = file_put_contents($tempFile, $preamble . $slice);
+        $written = file_put_contents($tempFile, "<?php\ndeclare(strict_types=1);\n" . $slice);
         if ($written === false) {
             unlink($tempFile);
             throw new RuntimeException('Could not write extracted admin/index.php helper source to temp file');
@@ -199,51 +196,108 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
         ];
     }
 
+    /**
+     * Flag-change log rows for an owner, newest first, read through the
+     * repository reader (real logs table).
+     *
+     * @return list<array{date: string, flag: string, old: int, new: int, source: string, acting_user_id: int}>
+     */
+    private function flagLogRows(int $ownerId): array
+    {
+        return $this->repo->recentFlagChanges($ownerId, 100);
+    }
+
+    private function flagLogRowCount(int $ownerId): int
+    {
+        return count($this->flagLogRows($ownerId));
+    }
+
+    /**
+     * The lognote text of the flag-change rows for an owner. lognote starts
+     * with "Owner <id> ", so this LIKE is exact for ids of equal length.
+     */
+    private function flagLogNotes(int $ownerId): string
+    {
+        $rows = $this->db->query(
+            'SELECT lognote FROM logs WHERE logtype = ? AND lognote LIKE ?',
+            [LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, "Owner {$ownerId} %"]
+        )->results();
+
+        return implode("\n", array_map(static fn (object $r): string => (string) $r->lognote, $rows));
+    }
+
     #[DataProvider('commandProvider')]
     #[Group('fast')]
-    public function testNoOwnerCarIsRejectedAndLeavesOtherNoOwnerCarsUnchanged(string $command): void
+    public function testNoOwnerCarIsRejectedAndLeavesTheNoOwnerProfileUnchanged(string $command): void
     {
         $noOwnerId = $this->noOwnerAccountId();
 
-        $targetCarId = $this->createTestCar($noOwnerId, [
-            'email' => 'noowner@invalid',
-            'email_bounced' => $command === 'clear_bounced' ? 1 : 0,
-            'email_suppressed' => $command === 'clear_suppression' ? 1 : 0,
-        ]);
-        // A second, unrelated noowner car: proves a bad guard would have
-        // reached this one too, not just the targeted car.
-        $bystanderCarId = $this->createTestCar($noOwnerId, [
-            'email' => 'noowner@invalid',
-            'email_bounced' => 0,
-            'email_suppressed' => 0,
-        ]);
+        // The noowner account may have no profile row. Give it one with the
+        // flags that the command would change, so that a missing guard would
+        // change a real row. Restore or delete it afterwards.
+        $existing = $this->db->query('SELECT id FROM profiles WHERE user_id = ?', [$noOwnerId])->first();
+        $createdProfile = false;
+        if (!$existing) {
+            $this->assertTrue($this->db->insert('profiles', [
+                'user_id' => $noOwnerId,
+                'bio' => '',
+                'city' => '',
+                'state' => '',
+                'country' => '',
+                'email_address_since' => date('Y-m-d H:i:s'),
+                'email_address_seen' => 'noowner@invalid',
+            ]), 'Test setup: could not create a noowner profile: ' . $this->db->errorString());
+            $createdProfile = true;
+        }
+        $original = $this->getOwnerEmailFlags($noOwnerId);
 
-        $result = $this->runOwnerActionHandler($command, $targetCarId);
+        try {
+            $this->clearOwnerEmailFlags($noOwnerId);
+            if ($command === 'clear_bounced') {
+                $this->setOwnerBounced($noOwnerId, 'noowner@invalid');
+            } elseif ($command === 'clear_suppression') {
+                $this->setOwnerBlocked($noOwnerId, 'noowner@invalid');
+                $this->setOwnerOptedOut($noOwnerId);
+            }
+            $seeded = $this->getOwnerEmailFlags($noOwnerId);
+            $logRowsBefore = $this->flagLogRowCount($noOwnerId);
 
-        $this->assertNotEmpty($result['errors'], "'{$command}' on a noowner-owned car must be rejected");
-        $this->assertEmpty($result['successes'], "'{$command}' on a noowner-owned car must not report success");
+            $targetCarId = $this->createTestCar($noOwnerId, ['email' => 'noowner@invalid']);
 
-        $bystanderRow = $this->repo->findById($bystanderCarId);
-        $this->assertSame(
-            0,
-            (int) $bystanderRow->email_bounced,
-            "A rejected '{$command}' must not have flagged the unrelated bystander noowner car as bounced"
-        );
-        $this->assertSame(
-            0,
-            (int) $bystanderRow->email_suppressed,
-            "A rejected '{$command}' must not have flagged the unrelated bystander noowner car as suppressed"
-        );
+            $result = $this->runOwnerActionHandler($command, $targetCarId);
+
+            $this->assertNotEmpty($result['errors'], "'{$command}' on a noowner-owned car must be rejected");
+            $this->assertEmpty($result['successes'], "'{$command}' on a noowner-owned car must not report success");
+            $this->assertSame(
+                $seeded,
+                $this->getOwnerEmailFlags($noOwnerId),
+                "A rejected '{$command}' must not change the noowner profile"
+            );
+            $this->assertSame(
+                $logRowsBefore,
+                $this->flagLogRowCount($noOwnerId),
+                "A rejected '{$command}' must not write a flag-change log row"
+            );
+        } finally {
+            if ($createdProfile) {
+                $this->db->query('DELETE FROM profiles WHERE user_id = ?', [$noOwnerId]);
+            } else {
+                $columns = array_keys($original);
+                $set = implode(', ', array_map(static fn (string $c): string => "{$c} = ?", $columns));
+                $this->db->query(
+                    "UPDATE profiles SET {$set} WHERE user_id = ?",
+                    [...array_values($original), $noOwnerId]
+                );
+            }
+        }
     }
 
     #[Group('fast')]
-    public function testMarkBouncedOnARealOwnerStillSucceeds(): void
+    public function testMarkBouncedOnARealOwnerWritesOnlyTheProfileAndOneAdminLogRow(): void
     {
-        // withProfile: true — CarVerificationManager::setBouncedForOwner()
-        // requires a profiles row (it aborts with no profiles row at all,
-        // same as it would for an owner missing one for any other reason).
-        $userId = $this->createTestUser([], true);
-        $carId = $this->createTestCar($userId, ['email' => 'owner-action-real@example.com', 'email_bounced' => 0]);
+        $userId = $this->createTestUser(['email' => 'Owner-Action-Real@Example.com'], true);
+        $carId = $this->createTestCar($userId, ['email' => 'owner-action-car@example.com']);
+        $carBefore = (array) $this->repo->findById($carId);
 
         $result = $this->runOwnerActionHandler('mark_bounced', $carId);
 
@@ -253,7 +307,94 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
         );
         $this->assertNotEmpty($result['successes'], 'mark_bounced for a real owner must still succeed');
 
-        $row = $this->repo->findById($carId);
-        $this->assertSame(1, (int) $row->email_bounced, 'The real owner\'s car must actually be marked bounced');
+        $flags = $this->getOwnerEmailFlags($userId);
+        $this->assertSame('1', (string) $flags['email_bounced'], 'The owner profile must be marked bounced');
+        $this->assertSame(
+            'owner-action-real@example.com',
+            $flags['email_bounced_address'],
+            'The address is the owner\'s users.email, normalized, not the car email'
+        );
+        $this->assertNotNull($flags['email_bounced_at']);
+        $this->assertSame($carBefore, (array) $this->repo->findById($carId), 'The car row must not change');
+
+        $logRows = $this->flagLogRows($userId);
+        $this->assertCount(1, $logRows, 'One flag change writes exactly one log row');
+        $this->assertSame('email_bounced', $logRows[0]['flag']);
+        $this->assertSame(0, $logRows[0]['old']);
+        $this->assertSame(1, $logRows[0]['new']);
+        $this->assertSame('admin', $logRows[0]['source']);
+        $this->assertSame($this->actingUserId, $logRows[0]['acting_user_id'], 'The log row names the acting admin');
+        $notes = $this->flagLogNotes($userId);
+        $this->assertNotSame('', $notes, 'Test setup: the lognote text must exist');
+        $this->assertStringNotContainsString('@', $notes, 'The log must hold no email address');
+    }
+
+    /** A bounce stored for an old address does not apply now, so Mark Bounced is a change. */
+    #[Group('fast')]
+    public function testMarkBouncedReportsAChangeWhenTheStoredBounceIsForAnOldAddress(): void
+    {
+        $userId = $this->createTestUser(['email' => 'owner-action-old@example.com'], true);
+        $this->setOwnerBounced($userId, 'owner-action-old@example.com', '2026-01-01 00:00:00');
+        $this->db->query('UPDATE users SET email = ? WHERE id = ?', ['owner-action-new@example.com', $userId]);
+        $carId = $this->createTestCar($userId, ['email' => 'owner-action-new@example.com']);
+
+        $result = $this->runOwnerActionHandler('mark_bounced', $carId);
+
+        $this->assertEmpty($result['errors'], 'mark_bounced must succeed: ' . implode('; ', $result['errors']));
+        $this->assertCount(1, $result['successes']);
+        $this->assertStringEndsWith(': marked as bounced.', $result['successes'][0], 'The admin sees a change, not "already marked"');
+        $this->assertSame('owner-action-new@example.com', $this->getOwnerEmailFlags($userId)['email_bounced_address']);
+        $logRows = $this->flagLogRows($userId);
+        $this->assertCount(1, $logRows, 'The change writes one flag-change log row');
+        $this->assertSame(0, $logRows[0]['old']);
+        $this->assertSame(1, $logRows[0]['new']);
+    }
+
+    #[Group('fast')]
+    public function testClearBouncedOnARealOwnerClearsOnlyTheBounceAndRecordsTheClearTime(): void
+    {
+        $userId = $this->createTestUser([], true);
+        $this->setOwnerBounced($userId, 'owner-clear@example.com');
+        $this->setOwnerOptedOut($userId);
+        $carId = $this->createTestCar($userId, ['email' => 'owner-clear@example.com']);
+
+        $result = $this->runOwnerActionHandler('clear_bounced', $carId);
+
+        $this->assertEmpty($result['errors'], 'clear_bounced must succeed: ' . implode('; ', $result['errors']));
+        $flags = $this->getOwnerEmailFlags($userId);
+        $this->assertSame('0', (string) $flags['email_bounced']);
+        $this->assertNull($flags['email_bounced_address']);
+        $this->assertNotNull($flags['email_bounce_cleared_at'], 'Clear Bounced records when it cleared');
+        $this->assertSame('1', (string) $flags['email_opted_out'], 'Clear Bounced must leave the opt-out');
+
+        $logRows = $this->flagLogRows($userId);
+        $this->assertCount(1, $logRows);
+        $this->assertSame('email_bounced', $logRows[0]['flag']);
+        $this->assertSame(1, $logRows[0]['old']);
+        $this->assertSame(0, $logRows[0]['new']);
+        $this->assertSame('admin', $logRows[0]['source']);
+    }
+
+    #[Group('fast')]
+    public function testClearSuppressionOnARealOwnerClearsBlockAndOptOutAndTouchesNoCar(): void
+    {
+        $userId = $this->createTestUser([], true);
+        $this->setOwnerBlocked($userId, 'owner-supp@example.com', null, 'spam');
+        $this->setOwnerOptedOut($userId);
+        $this->setOwnerBounced($userId, 'owner-supp@example.com');
+        $carId = $this->createTestCar($userId, ['email' => 'owner-supp@example.com']);
+        $carBefore = (array) $this->repo->findById($carId);
+
+        $result = $this->runOwnerActionHandler('clear_suppression', $carId);
+
+        $this->assertEmpty($result['errors'], 'clear_suppression must succeed: ' . implode('; ', $result['errors']));
+        $flags = $this->getOwnerEmailFlags($userId);
+        $this->assertSame('0', (string) $flags['email_blocked']);
+        $this->assertNull($flags['email_blocked_address']);
+        $this->assertNull($flags['email_blocked_cause']);
+        $this->assertSame('0', (string) $flags['email_opted_out']);
+        $this->assertSame('1', (string) $flags['email_bounced'], 'Clear Suppression must leave the bounce');
+        $this->assertSame($carBefore, (array) $this->repo->findById($carId), 'The car row must not change');
+        $this->assertCount(2, $this->flagLogRows($userId), 'One row for the block and one for the opt-out');
     }
 }

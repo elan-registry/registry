@@ -235,14 +235,17 @@ abstract class IntegrationTestCase extends TestCase
      * profiles together in one transaction, so a user without a profile is a
      * shape no real car owner is in (verified against production-shaped data:
      * zero car owners lack a profiles row). Tests exercising anything that
-     * reads or writes profiles — such as the #1883 opt-out, which records
-     * `profiles.email_suppressed` — therefore need the profile row or they
-     * test a state that cannot occur.
+     * reads or writes profiles — such as the owner e-mail flags
+     * (`email_opted_out`, `email_blocked`, `email_bounced`) — therefore need
+     * the profile row or they test a state that cannot occur.
      *
      * It is opt-in rather than the default only because many existing tests
      * insert their own profiles row with the specific city/state/country
      * values they assert on; creating one here unconditionally would give
-     * those tests two rows and break them.
+     * those tests two rows. `profiles.user_id` is UNIQUE (#2101), so the
+     * second insert would fail. Never pass $withProfile and also insert a
+     * profile row. To set the e-mail flags, call the setOwner* helpers, which
+     * UPDATE this one row.
      *
      * @param array $data Override default user data
      * @param bool $withProfile Also insert a bare `profiles` row for the user
@@ -293,6 +296,10 @@ abstract class IntegrationTestCase extends TestCase
                 'city'    => '',
                 'state'   => '',
                 'country' => '',
+                // A real profile always has these two, set when the owner
+                // e-mail address was first recorded (#2101).
+                'email_address_since' => date('Y-m-d H:i:s'),
+                'email_address_seen'  => (string) $userData['email'],
             ]);
             if (!$profileInserted) {
                 throw new RuntimeException(
@@ -302,6 +309,164 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         return $userId;
+    }
+
+    /**
+     * Set the owner opt-out flag on the user's one profile row.
+     *
+     * Needs a profile created with createTestUser($data, true). UPDATEs the
+     * row, because `profiles.user_id` is UNIQUE.
+     *
+     * @param int $userId Owner user ID
+     * @param bool $optedOut New value of `email_opted_out`
+     * @param string|null $at Value for `email_opted_out_at` (Y-m-d H:i:s), or null
+     */
+    protected function setOwnerOptedOut(int $userId, bool $optedOut = true, ?string $at = null): void
+    {
+        $this->updateOwnerProfile($userId, [
+            'email_opted_out'    => $optedOut ? 1 : 0,
+            'email_opted_out_at' => $optedOut ? ($at ?? date('Y-m-d H:i:s')) : null,
+        ]);
+    }
+
+    /**
+     * Set the owner "blocked" flag (a complaint, an unsubscribe, or a blocklist entry).
+     *
+     * @param int $userId Owner user ID
+     * @param string $address Value for `email_blocked_address`
+     * @param string|null $at Value for `email_blocked_at` (Y-m-d H:i:s), or null for now
+     * @param string|null $cause Value for `email_blocked_cause`: `spam`, `unsubscribed`, `blocklist`, or null when unknown
+     */
+    protected function setOwnerBlocked(
+        int $userId,
+        string $address,
+        ?string $at = null,
+        ?string $cause = 'spam'
+    ): void {
+        $this->updateOwnerProfile($userId, [
+            'email_blocked'         => 1,
+            'email_blocked_address' => $address,
+            'email_blocked_at'      => $at ?? date('Y-m-d H:i:s'),
+            'email_blocked_cause'   => $cause,
+        ]);
+    }
+
+    /**
+     * Set the owner "bounced" flag.
+     *
+     * @param int $userId Owner user ID
+     * @param string $address Value for `email_bounced_address`
+     * @param string|null $at Value for `email_bounced_at` (Y-m-d H:i:s), or null for now
+     */
+    protected function setOwnerBounced(int $userId, string $address, ?string $at = null): void
+    {
+        $this->updateOwnerProfile($userId, [
+            'email_bounced'         => 1,
+            'email_bounced_address' => $address,
+            'email_bounced_at'      => $at ?? date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    /**
+     * Clear all three owner flags and their detail columns.
+     *
+     * @param int $userId Owner user ID
+     */
+    protected function clearOwnerEmailFlags(int $userId): void
+    {
+        $this->updateOwnerProfile($userId, [
+            'email_opted_out'         => 0,
+            'email_opted_out_at'      => null,
+            'email_blocked'           => 0,
+            'email_blocked_address'   => null,
+            'email_blocked_at'        => null,
+            'email_blocked_cause'     => null,
+            'email_bounced'           => 0,
+            'email_bounced_address'   => null,
+            'email_bounced_at'        => null,
+            'email_bounce_cleared_at' => null,
+        ]);
+    }
+
+    /**
+     * Read the owner flag columns of the user's profile row.
+     *
+     * @param int $userId Owner user ID
+     * @return array<string, mixed> Column name to raw value (strings or null, as PDO returns them)
+     */
+    protected function getOwnerEmailFlags(int $userId): array
+    {
+        $row = $this->db->query(
+            'SELECT email_opted_out, email_opted_out_at, email_blocked, email_blocked_address,
+                    email_blocked_at, email_blocked_cause, email_bounced, email_bounced_address,
+                    email_bounced_at, email_bounce_cleared_at, email_address_since, email_address_seen
+               FROM profiles WHERE user_id = ?',
+            [$userId]
+        )->first();
+        $this->assertIsObject($row, "User {$userId} must have a profiles row (createTestUser(\$data, true))");
+
+        return (array) $row;
+    }
+
+    /**
+     * Write `users.email` as given, with no normalization and no profile write.
+     *
+     * Simulates an edit through the upstream admin user form
+     * (users/views/_admin_user.php). That form writes `users.email` and sets
+     * neither `email_address_since` nor `email_address_seen`, and it runs no
+     * hook. The value may hold a tab, a newline or other whitespace.
+     *
+     * @param int $userId Owner user ID
+     * @param string $email Exact value to store
+     */
+    protected function setUserEmailRaw(int $userId, string $email): void
+    {
+        $result = $this->db->query('UPDATE users SET email = ? WHERE id = ?', [$email, $userId]);
+        $this->assertFalse($result->error(), 'Test setup: users.email update failed: ' . $result->errorString());
+        $stored = $this->db->query('SELECT email FROM users WHERE id = ?', [$userId])->first();
+        $this->assertIsObject($stored, "Test setup: user {$userId} must exist");
+        $this->assertSame($email, $stored->email, 'Test setup: users.email must hold the exact raw value');
+    }
+
+    /**
+     * Set `email_address_since` and `email_address_seen` on the user's profile row.
+     *
+     * createTestUser($data, true) sets `seen` to the user's email. Use this
+     * helper to set another state.
+     *
+     * @param int $userId Owner user ID
+     * @param string|null $seen Value for `email_address_seen`
+     * @param string|null $since Value for `email_address_since` (Y-m-d H:i:s), or null for the column default
+     */
+    protected function setEmailAddressSinceSeen(int $userId, ?string $seen, ?string $since = null): void
+    {
+        $columns = ['email_address_seen' => $seen];
+        if ($since !== null) {
+            $columns['email_address_since'] = $since;
+        }
+        $this->updateOwnerProfile($userId, $columns);
+    }
+
+    /**
+     * UPDATE the user's one profile row and fail the test if no row matched.
+     *
+     * @param int $userId Owner user ID
+     * @param array<string, mixed> $columns Column name to new value
+     */
+    private function updateOwnerProfile(int $userId, array $columns): void
+    {
+        $this->assertNotEmpty($columns, 'Test setup: no profile columns to update');
+        $set = implode(', ', array_map(static fn (string $c): string => "{$c} = ?", array_keys($columns)));
+        $result = $this->db->query(
+            "UPDATE profiles SET {$set} WHERE user_id = ?",
+            [...array_values($columns), $userId]
+        );
+        $this->assertFalse($result->error(), 'Test setup: profile update failed: ' . $result->errorString());
+        $this->assertSame(
+            1,
+            (int) $this->db->query('SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?', [$userId])->first()->cnt,
+            "Test setup: user {$userId} must have exactly one profiles row (createTestUser(\$data, true))"
+        );
     }
 
     /**

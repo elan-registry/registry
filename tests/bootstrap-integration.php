@@ -478,10 +478,10 @@ try {
 // usersc/plugins/sendinblue/override.php is gitignored and shared with the
 // dev app running on the same checkout. Before v2.30.6, two integration tests
 // wrote a 6-byte stub there, and a run that died mid-test left it in place.
-// The tests no longer write it, but an older run can have leaked one. The stub
-// fails the override hash check in brevoNotReadyReason(), so it cannot make
-// Brevo "ready". The dev site reports Brevo as not ready ("override file is
-// out of date") while the stub is there. git status does not show the file.
+// The tests no longer write it, but an older run can have leaked one.
+// brevoNotReadyReason() checks only that override.php exists, not its content.
+// So the stub makes the dev site report Brevo as ready, and email() falls
+// back to core PHPMailer. git status does not show the file.
 // #2160's purge above covered the DB half of this same leak. This covers the
 // file half.
 // Touches no DB, so it runs outside that block's try: a DB failure inside the
@@ -495,7 +495,7 @@ if (\Tests\Support\BrevoOverrideStub::sweep($brevoOverridePath)) {
 } elseif (\Tests\Support\BrevoOverrideStub::matches($brevoOverridePath)) {
     fwrite(STDERR, "WARNING: Leaked Brevo override stub usersc/plugins/sendinblue/override.php "
         . "could not be removed (check permissions) — the dev site will report Brevo "
-        . "as not ready until you remove it\n");
+        . "as ready while email() uses core PHPMailer, until you remove it\n");
 }
 
 /**

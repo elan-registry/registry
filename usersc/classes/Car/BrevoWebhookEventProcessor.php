@@ -153,7 +153,15 @@ final class BrevoWebhookEventProcessor
 
         foreach ($matchedCars as $car) {
             try {
-                $this->applier->apply((int) $car->id, $email, $event, $reason, $messageId, $occurredAt);
+                $this->applier->apply(
+                    (int) $car->id,
+                    $email,
+                    $event,
+                    $reason,
+                    $messageId,
+                    $occurredAt,
+                    DeliverabilityFlagLog::SOURCE_WEBHOOK
+                );
             } catch (CarDatabaseException $e) {
                 // Fail the whole request on the first write failure, even if
                 // earlier cars in this loop already succeeded — Brevo's retry

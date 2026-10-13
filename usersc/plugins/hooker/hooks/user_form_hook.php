@@ -18,31 +18,31 @@ if ($userQ->count() > 0) {
 	$thatUser = $userQ->results();
 }
 
-$thatCar = null;
-$carQ = $db->query("SELECT c.* FROM cars c WHERE c.user_id = ? ORDER BY c.model, c.year", array($user_id));
-if ($carQ->count() > 0) {
-	$thatCar = $carQ->results();
-}
-
 $esc = fn($value) => htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 
-// Verification & email state for this owner's cars (#1924). Two queries total,
-// regardless of car count: one for the per-car state, one aggregate for the
-// latest delivery event across every car id.
+// Car list, owner deliverability state and per-car verification state (#1924,
+// #2101). At most four queries, whatever the car count. The flags come from
+// the owner's profile, which is their system of record. A block or bounce
+// shows only while it applies to the owner's current email (#2356).
 //
 // This hook is included mid-render by includeHook() inside users/admin.php's
 // user view, so an uncaught exception here would take down the whole page —
-// profile table, car buttons, permission management and all. Both repository
-// calls throw CarDatabaseException on query failure, and DB::query() prepares
+// profile table, car buttons, permission management and all. Each repository
+// call throws CarDatabaseException on query failure, and DB::query() prepares
 // outside its own try/catch, so a failing prepare can escape as a raw
 // \PDOException instead; both are caught. \Throwable deliberately is not — a
 // missing dbi() or autoload failure is fatal and must propagate.
 $verificationLoadError  = false;
+$thatCar                = null;
+$emailFlags             = \ElanRegistry\Car\EffectiveEmailFlags::none();
 $verificationState      = [];
 $latestEvents           = [];
 
 try {
 	$verificationRepo  = new \ElanRegistry\Car\CarRepository(dbi());
+	$ownerCars         = $verificationRepo->findByOwner((int) $user_id);
+	$thatCar           = $ownerCars === [] ? null : $ownerCars;
+	$emailFlags        = $verificationRepo->effectiveEmailFlags((int) $user_id);
 	$verificationState = $verificationRepo->findVerificationStateByOwner($user_id);
 	$latestEvents      = $verificationRepo->findLatestEmailEventsByCarIds(
 		array_map(static fn($car) => (int) $car->id, $verificationState)
@@ -69,17 +69,6 @@ try {
 			'user_form_hook: verification/email panel failed to load for user_id=' . $user_id
 				. ': ' . $e->getMessage() . ' (logger() itself also failed: ' . $loggerException->getMessage() . ')'
 		);
-	}
-}
-
-$bouncedCount    = 0;
-$suppressedCount = 0;
-foreach ($verificationState as $car) {
-	if ((int) $car->email_bounced) {
-		$bouncedCount++;
-	}
-	if ((int) $car->email_suppressed) {
-		$suppressedCount++;
 	}
 }
 
@@ -174,6 +163,16 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 	return $esc($value) . ' <span class="text-muted">(' . $esc($span) . ' ' . $suffix . ')</span>';
 };
 
+// A flag that applies with no stored address is a data anomaly. Print a note
+// in its place, so the admin sees it and does not read a blank as "no flag".
+$flagAddress = static function (?string $address) use ($esc): string {
+	if (trim((string) $address) === '') {
+		return '<em class="text-muted">' . $esc('no address recorded') . '</em>';
+	}
+
+	return $esc($address);
+};
+
 ?>
 <table id="accounttable" class="table table-striped table-bordered table-sm">
 	<?php if (isset($thatUser)) { ?>
@@ -214,6 +213,10 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 				<?php } ?>
 			</td>
 		</tr>
+	<?php } elseif ($verificationLoadError) { ?>
+		<tr>
+			<td colspan="2"><em class="text-muted">Cars could not be loaded</em></td>
+		</tr>
 	<?php } else { ?>
 		<tr>
 			<td colspan="2"><em class="text-muted">No cars registered</em></td>
@@ -231,10 +234,40 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 				Verification and email status could not be loaded. The rest of this page is
 				unaffected &mdash; see the admin logs for details.
 			</div>
-		<?php } elseif ($bouncedCount > 0 || $suppressedCount > 0) { ?>
+		<?php } elseif (!$emailFlags->hasProfile) { ?>
 			<div class="alert alert-warning">
-				<?= (int) $bouncedCount ?> <?= $pluralize($bouncedCount, 'car') ?> bounced,
-				<?= (int) $suppressedCount ?> suppressed
+				This owner has no profile, so no verification emails are sent.
+			</div>
+		<?php } elseif ($emailFlags->bounced || $emailFlags->blocked || $emailFlags->optedOut) { ?>
+			<div class="alert alert-warning">
+				<?php if ($emailFlags->bounced) { ?>
+					<div>
+						<span class="badge text-bg-danger">Bounced</span>
+						<?= $flagAddress($emailFlags->bouncedAddress) ?>
+						<?php if ($emailFlags->bouncedAt !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailFlags->bouncedAt) ?></span>
+						<?php } ?>
+					</div>
+				<?php } ?>
+				<?php if ($emailFlags->blocked) { ?>
+					<div>
+						<span class="badge text-bg-warning">Suppressed</span>
+						Blocked (cause: <?= ($emailFlags->blockedCause ?? '') !== '' ? $esc($emailFlags->blockedCause) : 'unknown' ?>)
+						<?= $flagAddress($emailFlags->blockedAddress) ?>
+						<?php if ($emailFlags->blockedAt !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailFlags->blockedAt) ?></span>
+						<?php } ?>
+					</div>
+				<?php } ?>
+				<?php if ($emailFlags->optedOut) { ?>
+					<div>
+						<span class="badge text-bg-warning">Suppressed</span>
+						Owner opted out
+						<?php if ($emailFlags->optedOutAt !== null) { ?>
+							<span class="d-block small"><?= $relativeTime($emailFlags->optedOutAt) ?></span>
+						<?php } ?>
+					</div>
+				<?php } ?>
 			</div>
 		<?php } else { ?>
 			<div class="alert alert-primary">No delivery problems recorded</div>
@@ -262,8 +295,6 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 						<tr>
 							<th scope="col">Car</th>
 							<th scope="col">Verification</th>
-							<th scope="col">Bounced</th>
-							<th scope="col">Suppressed</th>
 							<th scope="col">Owner last updated</th>
 							<th scope="col">Last delivery event</th>
 						</tr>
@@ -290,51 +321,6 @@ $relativeTime = static function ($value) use ($esc, $pluralize): string {
 										<span class="badge text-bg-primary">Verified</span>
 									<?php } else { ?>
 										<span class="badge text-bg-warning">Unverified</span>
-									<?php } ?>
-								</td>
-								<td>
-									<?php if ((int) $car->email_bounced) { ?>
-										<span class="badge text-bg-danger">Bounced</span>
-										<?= $esc($car->email_bounced_address) ?>
-										<?php
-										// Only date this column from an event that is itself a bounce.
-										// The latest event may be a later `delivered` or `unique_opened`,
-										// and showing its timestamp beside the Bounced badge would date
-										// the bounce to the moment mail last worked. Mirrors the
-										// Suppressed column's own event-type check below.
-										if (
-											$latestEvent !== null
-											&& in_array(
-												$latestEvent->event,
-												\ElanRegistry\Car\EmailEventApplier::HARD_BOUNCE_EVENTS,
-												true
-											)
-										) { ?>
-											<span class="d-block small"><?= $relativeTime($latestEvent->occurred_at) ?></span>
-										<?php } ?>
-									<?php } else { ?>
-										&mdash;
-									<?php } ?>
-								</td>
-								<td>
-									<?php if ((int) $car->email_suppressed) { ?>
-										<span class="badge text-bg-warning">Suppressed</span>
-										<?php
-										$suppressionReason =
-											$latestEvent !== null
-											&& in_array(
-												$latestEvent->event,
-												\ElanRegistry\Car\EmailEventApplier::SUPPRESSION_EVENTS,
-												true
-											)
-												? $latestEvent->reason
-												: null;
-										?>
-										<?php if ($suppressionReason !== null && $suppressionReason !== '') { ?>
-											<span class="d-block small"><?= $esc($suppressionReason) ?></span>
-										<?php } ?>
-									<?php } else { ?>
-										&mdash;
 									<?php } ?>
 								</td>
 								<td>

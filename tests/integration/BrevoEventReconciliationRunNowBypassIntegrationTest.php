@@ -72,8 +72,9 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
 
-        $this->userId = $this->createTestUser();
+        // Events match the owner's users.email, so the owner holds the address.
         $this->carEmail = 'runnow-bypass-' . uniqid() . '@example.com';
+        $this->userId = $this->createTestUser(['email' => $this->carEmail]);
         $this->carId = $this->createTestCar($this->userId, ['email' => $this->carEmail]);
     }
 

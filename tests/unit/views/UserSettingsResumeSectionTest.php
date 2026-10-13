@@ -18,7 +18,7 @@ use PHPUnit\Framework\TestCase;
  * source-inspection tests for this same file). The control's own markup
  * block is a self-contained "if ($emailSuppressed) ... endif" fragment,
  * though, with no dependency beyond $emailSuppressed, $pausedCarCount,
- * $complaintPausedCount, $ownerClearable and
+ * $emailBlocked, $ownerClearable and
  * Token::generate() (stubbed by tests/bootstrap-unit.php). This test
  * extracts that exact fragment from the live file by tag balancing (never
  * retyped by hand, so it cannot drift from the real markup) and actually
@@ -93,7 +93,7 @@ final class UserSettingsResumeSectionTest extends TestCase
     private function renderFragment(
         bool $emailSuppressed,
         ?int $pausedCarCount,
-        int $complaintPausedCount = 0,
+        bool $emailBlocked = false,
         bool $ownerClearable = true
     ): string
     {
@@ -105,7 +105,7 @@ final class UserSettingsResumeSectionTest extends TestCase
         try {
             $emailSuppressedVar = $emailSuppressed; // extracted into scope under its real name below
             ob_start();
-            (function () use ($tmpFile, $emailSuppressedVar, $pausedCarCount, $complaintPausedCount, $ownerClearable): void {
+            (function () use ($tmpFile, $emailSuppressedVar, $pausedCarCount, $emailBlocked, $ownerClearable): void {
                 $emailSuppressed = $emailSuppressedVar;
                 include $tmpFile;
             })();
@@ -147,40 +147,42 @@ final class UserSettingsResumeSectionTest extends TestCase
     }
 
     /**
-     * The button cannot clear a Brevo-complaint suppression, so the section
-     * must say so instead of implying that one click fixes every car.
+     * The button clears only the owner's opt-out, not a block (#2101), so an
+     * owner who has both must be told that one click does not fix the block.
      */
     #[Group('regression')]
-    public function testComplaintNoteTellsOwnerToContactTheRegistry(): void
+    public function testBlockNoteTellsOwnerToChangeTheAddressOrContactAnAdminAndKeepsTheButton(): void
     {
-        $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3, complaintPausedCount: 2);
+        $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3, emailBlocked: true);
 
-        $this->assertStringContainsString('2 cars were paused because our email provider flagged the address', $html);
-        $this->assertStringContainsString('contact the registry', $html);
+        $this->assertStringContainsString('Our email provider flagged your address.', $html);
+        $this->assertStringContainsString('This button does not turn verification emails back on.', $html);
+        $this->assertStringContainsString('Change your email address or contact an admin.', $html);
+        $this->assertStringContainsString('name="resume_verification_emails"', $html, 'The opt-out can still be cleared');
     }
 
     /**
-     * When every paused car is a Brevo complaint, the button would clear
-     * nothing, so it must not render. The complaint note must still render.
+     * With a block and no opt-out, the button would clear nothing, so it must
+     * not render. The block note must still render, without a button mention.
      */
     #[Group('regression')]
-    public function testButtonIsAbsentWhenEveryPausedCarIsAComplaint(): void
+    public function testButtonIsAbsentWhenTheOwnerIsOnlyBlocked(): void
     {
         $html = $this->renderFragment(
             emailSuppressed: true,
             pausedCarCount: 2,
-            complaintPausedCount: 2,
+            emailBlocked: true,
             ownerClearable: false
         );
 
         $this->assertStringContainsString('id="resume-emails"', $html);
         $this->assertStringNotContainsString('name="resume_verification_emails"', $html);
-        $this->assertStringContainsString('2 cars were paused because our email provider flagged the address', $html);
+        $this->assertStringContainsString('Our email provider flagged your address.', $html);
         $this->assertStringNotContainsString('This button', $html, 'The note must not refer to a button that is not there');
-        $this->assertStringContainsString('contact the registry', $html);
+        $this->assertStringContainsString('Change your email address or contact an admin.', $html);
     }
 
-    public function testComplaintNoteIsAbsentWithoutComplaintCars(): void
+    public function testBlockNoteIsAbsentWhenTheOwnerIsNotBlocked(): void
     {
         $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3);
 

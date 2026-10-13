@@ -15,7 +15,6 @@ use ElanRegistry\Car\VerificationSettings;
  * - `usersc/plugins/plugins.ini.php` (must give `sendinblue = 1`)
  * - `usersc/plugins/sendinblue/override.php` (must exist)
  * - `usersc/plugins/sendinblue/info.xml` (its `<version>` must be 1.8.0 or later)
- * - `usersc/plugins/sendinblue/override.RENAME.php` (must match override.php)
  *
  * This class makes a throwaway root with those files in the ready state and
  * points the `$abs_us_root` / `$us_url_root` globals at it. A unit test then
@@ -55,8 +54,8 @@ final class BrevoSiteRoot
     /**
      * Make the temp root and point the site-root globals at it
      *
-     * The bundled override.RENAME.php and an active plugins.ini.php are always
-     * written. Use the helper methods to break them.
+     * An active plugins.ini.php is always written. Use the helper methods to
+     * break it.
      *
      * @param string $prefix Directory name prefix, for a readable temp path
      * @param bool $withOverrideFile True to write override.php
@@ -75,7 +74,6 @@ final class BrevoSiteRoot
 
         $siteRoot = new self($root, $abs_us_root ?? null, $us_url_root ?? null);
 
-        file_put_contents($root . self::PLUGIN_DIR . '/override.RENAME.php', BrevoOverrideStub::CONTENT);
         $siteRoot->writePluginsIni(self::ACTIVE_PLUGINS_INI);
         if ($withOverrideFile) {
             file_put_contents($root . self::PLUGIN_DIR . '/override.php', BrevoOverrideStub::CONTENT);
@@ -159,23 +157,16 @@ final class BrevoSiteRoot
     }
 
     /**
-     * Write an override.php that differs from the bundled override.RENAME.php
+     * Write a bundled override.RENAME.php and an override.php that differs from it
      *
-     * This is the state after a plugin update when nobody replaces override.php with the bundled version.
+     * This is the state after a plugin update when nobody replaces override.php
+     * with the bundled version. Brevo is still ready in this state; a
+     * regression test uses it (#2374).
      */
     public function writeStaleOverride(): void
     {
+        file_put_contents($this->pluginFile('override.RENAME.php'), BrevoOverrideStub::CONTENT);
         file_put_contents($this->pluginFile('override.php'), "<?php\n// override from an older plugin version\n");
-    }
-
-    /**
-     * Delete the bundled override.RENAME.php
-     */
-    public function removeBundledOverride(): void
-    {
-        if (is_file($this->pluginFile('override.RENAME.php'))) {
-            unlink($this->pluginFile('override.RENAME.php'));
-        }
     }
 
     /**

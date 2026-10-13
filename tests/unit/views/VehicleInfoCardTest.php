@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Car\EffectiveEmailFlags;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -402,14 +403,56 @@ final class VehicleInfoCardTest extends TestCase
     private const SECRET_EMAIL = 'secret.owner@example.com';
     private const SECRET_BOUNCE = 'bounced.address@example.org';
 
-    /** @return array<string, mixed> */
-    private static function flagged(bool $bounced, bool $suppressed): array
+    /**
+     * The flags that apply to the owner now, as CarRepository::effectiveEmailFlags()
+     * returns them (#2356). The keys name the stored columns, and a truthy
+     * value (1 or '1') means the flag applies. The repository applies the
+     * address match, tested in CarRepositoryTest, so the card only reads it.
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private static function ownerState(array $overrides = []): EffectiveEmailFlags
+    {
+        $o = array_merge([
+            'email_opted_out' => 0,
+            'email_blocked' => 0,
+            'email_blocked_address' => null,
+            'email_bounced' => 0,
+            'email_bounced_address' => null,
+        ], $overrides);
+
+        return new EffectiveEmailFlags(
+            true,
+            (int) $o['email_opted_out'] === 1,
+            null,
+            (int) $o['email_blocked'] === 1,
+            $o['email_blocked_address'],
+            null,
+            null,
+            (int) $o['email_bounced'] === 1,
+            $o['email_bounced_address'],
+            null,
+            null
+        );
+    }
+
+    /**
+     * Card variables for a car whose owner has a bounce and/or a block. The
+     * flags come from the owner profile (#2101). The car row holds only the
+     * addresses that must never appear in the output.
+     *
+     * @return array<string, mixed>
+     */
+    private static function flaggedVars(bool $bounced, bool $blocked): array
     {
         return [
-            'email' => self::SECRET_EMAIL,
-            'email_bounced_address' => self::SECRET_BOUNCE,
-            'email_bounced' => $bounced ? 1 : 0,
-            'email_suppressed' => $suppressed ? 1 : 0,
+            'carData' => self::carData(['email' => self::SECRET_EMAIL]),
+            'ownerEmailState' => self::ownerState([
+                'email_bounced' => $bounced ? 1 : 0,
+                'email_bounced_address' => $bounced ? self::SECRET_BOUNCE : null,
+                'email_blocked' => $blocked ? 1 : 0,
+                'email_blocked_address' => $blocked ? self::SECRET_BOUNCE : null,
+            ]),
         ];
     }
 
@@ -429,7 +472,7 @@ final class VehicleInfoCardTest extends TestCase
     #[DataProvider('notStrictTrueProvider')]
     public function test_emailRow_viewerNotStrictlyTrue_hasNoRow(array $vars): void
     {
-        $html = self::render(self::CARD, array_merge(['carData' => self::carData(self::flagged(true, true))], $vars));
+        $html = self::render(self::CARD, array_merge(self::flaggedVars(true, true), $vars));
         $xp = self::dom($html);
 
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
@@ -446,47 +489,99 @@ final class VehicleInfoCardTest extends TestCase
      */
     public function test_emailRow_viewerNotRegistryAdmin_flaggedCar_hasNoRow(): void
     {
+        $vars = self::flaggedVars(false, true);
+        $vars['carData'] = self::carData(['email' => self::SECRET_EMAIL, 'user_id' => 42]);
+        $xp = self::card($vars['carData'], array_merge($vars, ['viewerIsRegistryAdmin' => false]));
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
+    }
+
+    /** @return array<string, array{array<string, mixed>, bool, bool}> */
+    public static function adminFlagProvider(): array
+    {
+        return [
+            'bounced only'    => [['email_bounced' => 1], true, false],
+            'blocked only'    => [['email_blocked' => 1], false, true],
+            'opted out only'  => [['email_opted_out' => 1], false, true],
+            'bounced and blocked' => [['email_bounced' => 1, 'email_blocked' => 1], true, true],
+            'string flags'    => [['email_bounced' => '1', 'email_opted_out' => '1'], true, true],
+        ];
+    }
+
+    /** @param array<string, mixed> $flags */
+    #[DataProvider('adminFlagProvider')]
+    public function test_emailRow_admin_showsOnlyTheFlagsSetOnTheOwnerProfile(array $flags, bool $bounced, bool $suppressed): void
+    {
         $xp = self::card(
-            self::carData(array_merge(self::flagged(false, true), ['user_id' => 42])),
-            ['viewerIsRegistryAdmin' => false]
+            self::carData(),
+            ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => self::ownerState($flags)]
+        );
+
+        $dd = $this->firstElement($xp, self::EMAIL_DD);
+        $this->assertSame($bounced ? 1 : 0, substr_count($dd->textContent, 'Bounced'));
+        $this->assertSame($suppressed ? 1 : 0, substr_count($dd->textContent, 'Suppressed'));
+        $this->assertSame(
+            ($bounced ? 1 : 0) + ($suppressed ? 1 : 0),
+            $this->nodeCount($xp, self::EMAIL_DD . '//button[@aria-label]')
+        );
+        $this->assertSame(1, $this->nodeCount($xp, '//dl[contains(@class,"row")]/dt[contains(@class,"col-sm-4") and starts-with(normalize-space(.),"Email on file")]'));
+    }
+
+    public function test_emailRow_adminNoFlagOnTheProfile_hasNoRow(): void
+    {
+        $xp = self::card(self::carData(), ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => self::ownerState()]);
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
+    }
+
+    /** No profile state (no profile row, or a failed lookup) hides the row. */
+    public function test_emailRow_adminWithNoOwnerState_hasNoRow(): void
+    {
+        $xp = self::card(self::carData(), ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => null]);
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
+    }
+
+    /** An owner with no profile row has no flag, so the row is hidden. */
+    public function test_emailRow_adminWithNoProfileOwner_hasNoRow(): void
+    {
+        $xp = self::card(
+            self::carData(),
+            ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => EffectiveEmailFlags::none()]
         );
 
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
     }
 
-    /** @return array<string, array{bool, bool, list<string>}> */
-    public static function adminFlagProvider(): array
+    /** Only an EffectiveEmailFlags counts. A raw profile object, with stored columns, shows no row. */
+    public function test_emailRow_ignoresARawProfileObject(): void
     {
-        return [
-            'bounced only'    => [true, false, ['Bounced']],
-            'suppressed only' => [false, true, ['Suppressed']],
-            'both'            => [true, true, ['Bounced', 'Suppressed']],
-        ];
+        $xp = self::card(
+            self::carData(),
+            ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => (object) ['email_bounced' => 1, 'email_blocked' => 1, 'email_opted_out' => 1]]
+        );
+
+        $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
     }
 
-    /** @param list<string> $words */
-    #[DataProvider('adminFlagProvider')]
-    public function test_emailRow_admin_showsOnlyTheSetFlags(bool $bounced, bool $suppressed, array $words): void
+    /**
+     * The profile is the only source. A car row that still holds the removed
+     * per-car columns must not show a flag.
+     */
+    public function test_emailRow_ignoresPerCarFlagColumns(): void
     {
-        $xp = self::card(self::carData(self::flagged($bounced, $suppressed)), ['viewerIsRegistryAdmin' => true]);
-
-        $dd = $this->firstElement($xp, self::EMAIL_DD);
-        $this->assertSame($bounced ? 1 : 0, substr_count($dd->textContent, 'Bounced'));
-        $this->assertSame($suppressed ? 1 : 0, substr_count($dd->textContent, 'Suppressed'));
-        $this->assertSame(count($words), $this->nodeCount($xp, self::EMAIL_DD . '//button[@aria-label]'));
-        $this->assertSame(1, $this->nodeCount($xp, '//dl[contains(@class,"row")]/dt[contains(@class,"col-sm-4") and starts-with(normalize-space(.),"Email on file")]'));
-    }
-
-    public function test_emailRow_adminNeitherFlag_hasNoRow(): void
-    {
-        $xp = self::card(self::carData(self::flagged(false, false)), ['viewerIsRegistryAdmin' => true]);
+        $xp = self::card(
+            self::carData(['email_bounced' => 1, 'email_blocked' => 1, 'email_opted_out' => 1]),
+            ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => self::ownerState()]
+        );
 
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
     }
 
     public function test_emailRow_tooltips_areDistinctAndSuppressedNamesClearSuppression(): void
     {
-        $xp = self::card(self::carData(self::flagged(true, true)), ['viewerIsRegistryAdmin' => true]);
+        $vars = self::flaggedVars(true, true);
+        $xp = self::card($vars['carData'], array_merge($vars, ['viewerIsRegistryAdmin' => true]));
 
         $bounced = $this->firstElement($xp, '//button[@aria-label="What Bounced means"]')->getAttribute('data-bs-title');
         $suppressed = $this->firstElement($xp, '//button[@aria-label="What Suppressed means"]')->getAttribute('data-bs-title');
@@ -503,9 +598,9 @@ final class VehicleInfoCardTest extends TestCase
         $this->assertSame(
             "This owner's address is on the email suppression list, so no verification emails are sent. "
             . 'An admin can use Clear Suppression on the Verification System tab. '
-            . 'If the cause is an owner opt-out, the owner can also use Resume verification emails in their '
-            . 'Account Settings — this does not cover a suppression caused by a spam complaint, '
-            . 'which only an admin can clear.',
+            . 'A block also ends when the owner confirms a changed email address. '
+            . 'If the cause is only an owner opt-out, the owner can use Resume verification emails in their '
+            . 'Account Settings. Resume does not clear a block.',
             $suppressed
         );
         $this->assertStringContainsString('Clear Suppression', $suppressed);
@@ -519,9 +614,11 @@ final class VehicleInfoCardTest extends TestCase
 
     public function test_emailRow_soldCarAsAdmin_withFlag_showsRowAndNoVerifiedRow(): void
     {
+        $vars = self::flaggedVars(true, false);
+        $vars['carData'] = self::carData(['email' => self::SECRET_EMAIL, 'solddate' => '2025-03-14']);
         $xp = self::card(
-            self::carData(array_merge(self::flagged(true, false), ['solddate' => '2025-03-14'])),
-            ['viewerIsRegistryAdmin' => true, 'soldDate' => new DateTime('2025-03-14')]
+            $vars['carData'],
+            array_merge($vars, ['viewerIsRegistryAdmin' => true, 'soldDate' => new DateTime('2025-03-14')])
         );
 
         $this->assertSame(1, $this->nodeCount($xp, '//dt[starts-with(normalize-space(.),"Email on file")]'));
@@ -537,10 +634,9 @@ final class VehicleInfoCardTest extends TestCase
     #[DataProvider('viewerProvider')]
     public function test_emailRow_neverOutputsEmailOrBouncedAddress(bool $admin): void
     {
-        $html = self::render(self::CARD, [
-            'carData' => self::carData(self::flagged(true, true)),
+        $html = self::render(self::CARD, array_merge(self::flaggedVars(true, true), [
             'viewerIsRegistryAdmin' => $admin,
-        ]);
+        ]));
 
         $this->assertStringNotContainsString(self::SECRET_EMAIL, $html);
         $this->assertStringNotContainsString(self::SECRET_BOUNCE, $html);

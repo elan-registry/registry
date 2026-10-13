@@ -33,7 +33,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
  */
 class SpyEmailEventApplier extends EmailEventApplier
 {
-    /** @var list<array{carId: int, email: string, event: string, reason: ?string, messageId: string, occurredAt: string}> */
+    /** @var list<array{carId: int, email: string, event: string, reason: ?string, messageId: string, occurredAt: string, source: string}> */
     public array $calls = [];
 
     /** apply() throws CarDatabaseException when the message-id equals this. */
@@ -76,9 +76,10 @@ class SpyEmailEventApplier extends EmailEventApplier
         string $event,
         ?string $reason,
         string $messageId,
-        string $occurredAt
+        string $occurredAt,
+        string $source
     ): void {
-        $this->calls[] = compact('carId', 'email', 'event', 'reason', 'messageId', 'occurredAt');
+        $this->calls[] = compact('carId', 'email', 'event', 'reason', 'messageId', 'occurredAt', 'source');
 
         if ($messageId === $this->failOnMessageId || in_array($carId, $this->failOnCarIds, true)) {
             throw new CarDatabaseException('simulated write failure');

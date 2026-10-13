@@ -52,6 +52,7 @@ $verifySelfAttr = htmlspecialchars($verifySelfUrl, ENT_QUOTES, 'UTF-8');
 
         <?php include __DIR__ . '/_verify_car_details.php'; ?>
 
+        <?php // No CSRF token by design: the vericode is the credential. See the "NO CSRF TOKEN" header in app/verify/verify_car.php. ?>
         <form method="POST" action="<?= $verifySelfAttr ?>?vericode=<?= $verifyCodeAttr ?>&amp;action=verify">
             <input type="hidden" name="vericode" value="<?= $verifyCodeAttr ?>">
             <div class="d-flex flex-column flex-sm-row gap-2">

@@ -27,8 +27,9 @@ use PHPUnit\Framework\Attributes\Group;
  *   - eligible: findVerificationEligible()'s predicate.
  *   - pending: sent, link still live (within
  *     CarVerificationEmailComposer::LINK_TTL_DAYS), no response yet.
- *   - bounced: cars.email_bounced = 1.
- *   - suppressed: cars.email_suppressed = 1 OR profiles.email_suppressed = 1.
+ *   - bounced: the owner's profiles.email_bounced = 1.
+ *   - suppressed: the owner's profiles.email_blocked = 1 OR profiles.email_opted_out = 1.
+ *   - no profile: a live owner with no profiles row. Never eligible, but in `all`.
  *   - verified / sold: distinct cars with a cars_hist VERIFIED / VERIFIED SOLD
  *     row in the window, counted by car, not by history row.
  *   - all: eligible OR pending OR bounced OR suppressed (verified/sold are
@@ -49,7 +50,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         $this->requireDatabase();
 
         $this->repo = new CarRepository($this->db);
-        $this->userId = $this->createTestUser();
+        $this->userId = $this->createTestUser([], true);
     }
 
     private function staleDate(): string
@@ -62,8 +63,6 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
     {
         return [
             'email'              => $email,
-            'email_bounced'      => 0,
-            'email_suppressed'   => 0,
             'last_verified'      => null,
             'owner_last_updated' => $this->staleDate(),
             'mtime'              => $this->staleDate(),
@@ -74,9 +73,34 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
     }
 
     /**
+     * Create an owner who has a profile with every flag clear, then set the flags
+     * that the caller names. Flags belong to the owner, so each flagged state
+     * needs its own owner.
+     *
+     * @param string $flag 'bounced', 'blocked', 'opted_out' or 'none'
+     */
+    private function createOwner(string $flag = 'none'): int
+    {
+        // A flag applies only while its address matches users.email (#2356),
+        // so the flag address is the owner's own email.
+        $email = 'dash-owner-' . uniqid() . '@example.com';
+        $ownerId = $this->createTestUser(['email' => $email], true);
+        if ($flag === 'bounced') {
+            $this->setOwnerBounced($ownerId, $email);
+        } elseif ($flag === 'blocked') {
+            $this->setOwnerBlocked($ownerId, $email);
+        } elseif ($flag === 'opted_out') {
+            $this->setOwnerOptedOut($ownerId);
+        } else {
+            $this->assertSame('none', $flag, 'Test setup: unknown owner flag');
+        }
+
+        return $ownerId;
+    }
+
+    /**
      * Insert a minimal, valid cars_hist row with a given operation/timestamp
-     * for an existing car. Mirrors CarRepositoryHistoryOperationTest's
-     * insertHistRow() helper.
+     * for an existing car.
      */
     private function insertHistRow(int $carId, string $operation, string $timestamp): void
     {
@@ -241,22 +265,28 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
             ]
         ));
 
-        $bouncedCarId = $this->createTestCar($this->userId, array_merge(
+        $bouncedOwnerId = $this->createOwner('bounced');
+        $bouncedCarId = $this->createTestCar($bouncedOwnerId, array_merge(
             $this->eligibleFields('dash-pending-bounced@example.com'),
             [
-                'vericode'              => 'hash-bounced',
-                'vericode_sent_at'      => $liveLinkSentAt,
-                'email_bounced'         => 1,
-                'email_bounced_address' => 'dash-pending-bounced@example.com',
+                'vericode'         => 'hash-bounced',
+                'vericode_sent_at' => $liveLinkSentAt,
             ]
         ));
 
-        $suppressedCarId = $this->createTestCar($this->userId, array_merge(
+        $suppressedCarId = $this->createTestCar($this->createOwner('opted_out'), array_merge(
             $this->eligibleFields('dash-pending-suppressed@example.com'),
             [
                 'vericode'         => 'hash-suppressed',
                 'vericode_sent_at' => $liveLinkSentAt,
-                'email_suppressed' => 1,
+            ]
+        ));
+
+        $blockedCarId = $this->createTestCar($this->createOwner('blocked'), array_merge(
+            $this->eligibleFields('dash-pending-blocked@example.com'),
+            [
+                'vericode'         => 'hash-blocked',
+                'vericode_sent_at' => $liveLinkSentAt,
             ]
         ));
 
@@ -277,24 +307,30 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         $this->assertNotContains(
             $suppressedCarId,
             $pendingIds,
-            'A suppressed car with a live link must not be Pending'
+            'A car of an opted-out owner with a live link must not be Pending'
+        );
+        $this->assertNotContains(
+            $blockedCarId,
+            $pendingIds,
+            'A car of a blocked owner with a live link must not be Pending'
         );
 
         // Each exclusion must also hold under the Pending count, not only the
         // list: isolate via a before/after delta the same way the TTL test
-        // above does, using the bounced car. Clearing email_bounced leaves a
+        // above does, using the bounced car. Clearing the owner's bounce leaves a
         // live, unanswered link with every other Pending condition met, so
         // the car becomes Pending — proving the count applies the bounced
         // exclusion the same way the list does, not that it ignores it.
-        $this->db->query('UPDATE cars SET email_bounced = 0 WHERE id = ?', [$bouncedCarId]);
+        $this->clearOwnerEmailFlags($bouncedOwnerId);
         $withoutBounced = $this->repo->countVerificationSummary(null)['pending'];
-        $this->db->query('UPDATE cars SET email_bounced = 1 WHERE id = ?', [$bouncedCarId]);
+        $bouncedEmail = $this->db->query('SELECT email FROM users WHERE id = ?', [$bouncedOwnerId])->first()->email;
+        $this->setOwnerBounced($bouncedOwnerId, $bouncedEmail);
         $withBounced = $this->repo->countVerificationSummary(null)['pending'];
 
         $this->assertSame(
             $withBounced + 1,
             $withoutBounced,
-            'Clearing the bounced flag on a car with an otherwise-live link must raise the Pending count by '
+            'Clearing the owner bounce on a car with an otherwise-live link must raise the Pending count by '
             . 'exactly 1: the count applies the bounced exclusion the same way the list does'
         );
     }
@@ -304,16 +340,18 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
     #[Group('fast')]
     public function testBouncedCountAndQueueListAgreeOnTheSeededCar(): void
     {
-        $bouncedCarId = $this->createTestCar($this->userId, array_merge(
-            $this->eligibleFields('dash-bounced@example.com'),
-            ['email_bounced' => 1, 'email_bounced_address' => 'dash-bounced@example.com']
-        ));
+        $bouncedCarId = $this->createTestCar(
+            $this->createOwner('bounced'),
+            $this->eligibleFields('dash-bounced@example.com')
+        );
+        // Control: a car of an owner with no flag is not in the bounced queue.
+        $cleanCarId = $this->createTestCar($this->userId, $this->eligibleFields('dash-bounced-control@example.com'));
 
         $before = $this->repo->countVerificationSummary(null)['bounced'];
-        $secondBouncedCarId = $this->createTestCar($this->userId, array_merge(
-            $this->eligibleFields('dash-bounced-2@example.com'),
-            ['email_bounced' => 1, 'email_bounced_address' => 'dash-bounced-2@example.com']
-        ));
+        $secondBouncedCarId = $this->createTestCar(
+            $this->createOwner('bounced'),
+            $this->eligibleFields('dash-bounced-2@example.com')
+        );
         $after = $this->repo->countVerificationSummary(null)['bounced'];
 
         $this->assertSame($before + 1, $after, 'Adding one more bounced car must increase the bounced count by 1');
@@ -321,44 +359,50 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         $queueIds = $this->queueIds($this->repo->findVerificationQueue('bounced', null, 1000));
         $this->assertContains($bouncedCarId, $queueIds);
         $this->assertContains($secondBouncedCarId, $queueIds);
+        $this->assertNotContains($cleanCarId, $queueIds, 'A car of an owner with no flag must not be bounced');
+        $this->assertNotContains(
+            $bouncedCarId,
+            $this->queueIds($this->repo->findVerificationQueue('eligible', null, 1000)),
+            'A car of a bounced owner must not be eligible'
+        );
     }
 
-    // --- suppressed (car flag OR profile flag) -----------------------------------
+    // --- suppressed (owner blocked OR owner opted out) ---------------------------
 
     #[Group('fast')]
-    public function testSuppressedCountAndQueueListIncludeBothCarFlagAndProfileFlagCars(): void
+    public function testSuppressedCountAndQueueListIncludeBlockedAndOptedOutOwners(): void
     {
-        $carFlagSuppressedId = $this->createTestCar($this->userId, array_merge(
-            $this->eligibleFields('dash-suppressed-car-flag@example.com'),
-            ['email_suppressed' => 1]
-        ));
-
-        $optedOutUserId = $this->createTestUser([], true);
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$optedOutUserId]);
-        $profileFlagSuppressedId = $this->createTestCar(
-            $optedOutUserId,
-            $this->eligibleFields('dash-suppressed-profile-flag@example.com')
+        $blockedCarId = $this->createTestCar(
+            $this->createOwner('blocked'),
+            $this->eligibleFields('dash-suppressed-blocked@example.com')
+        );
+        $optedOutCarId = $this->createTestCar(
+            $this->createOwner('opted_out'),
+            $this->eligibleFields('dash-suppressed-opted-out@example.com')
+        );
+        $cleanCarId = $this->createTestCar($this->userId, $this->eligibleFields('dash-suppressed-clean@example.com'));
+        // A bounced owner is bounced, not suppressed.
+        $bouncedCarId = $this->createTestCar(
+            $this->createOwner('bounced'),
+            $this->eligibleFields('dash-suppressed-bounced@example.com')
         );
 
         $queueIds = $this->queueIds($this->repo->findVerificationQueue('suppressed', null, 1000));
 
+        $this->assertContains($blockedCarId, $queueIds, 'A car of a blocked owner must appear in the suppressed queue');
         $this->assertContains(
-            $carFlagSuppressedId,
+            $optedOutCarId,
             $queueIds,
-            'A car with cars.email_suppressed = 1 must appear in the suppressed queue'
+            'A car of an opted-out owner must appear in the suppressed queue too'
         );
-        $this->assertContains(
-            $profileFlagSuppressedId,
-            $queueIds,
-            'A car whose owner has profiles.email_suppressed = 1 (car flag clear) must appear in the '
-            . 'suppressed queue too'
-        );
+        $this->assertNotContains($cleanCarId, $queueIds, 'A car of an owner with no flag must not be suppressed');
+        $this->assertNotContains($bouncedCarId, $queueIds, 'A car of a bounced-only owner must not be suppressed');
 
         $before = $this->repo->countVerificationSummary(null)['suppressed'];
-        $extraSuppressedId = $this->createTestCar($this->userId, array_merge(
-            $this->eligibleFields('dash-suppressed-3@example.com'),
-            ['email_suppressed' => 1]
-        ));
+        $extraSuppressedId = $this->createTestCar(
+            $this->createOwner('blocked'),
+            $this->eligibleFields('dash-suppressed-3@example.com')
+        );
         $after = $this->repo->countVerificationSummary(null)['suppressed'];
 
         $this->assertSame(
@@ -371,77 +415,60 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         ));
     }
 
-    /**
-     * Pins the #1896 review-fix (profileEmailSuppressedSql()) directly: an
-     * owner with two `profiles` rows must not duplicate their car in any
-     * queue list or inflate any count. `profiles.user_id` has no UNIQUE
-     * index, so nothing in the schema stops a second row existing; before
-     * the fix, every `LEFT JOIN profiles` site returned one row per match,
-     * doubling this owner's cars everywhere. Covers the branches the fix
-     * touched: suppressed (profile-flag path), pending, and the summary
-     * counts that must still equal 1 despite 2 join matches.
-     */
     #[Group('fast')]
-    public function testOwnerWithTwoProfilesRowsDoesNotDuplicateTheirCarInAnyQueueOrCount(): void
+    public function testOwnerBlockedAndOptedOutIsListedOnceInSuppressedAndAll(): void
     {
-        $dupedOwnerId = $this->createTestUser([], true);
+        $ownerId = $this->createOwner('blocked');
+        $this->setOwnerOptedOut($ownerId);
+        $carId = $this->createTestCar($ownerId, $this->eligibleFields('dash-suppressed-both@example.com'));
 
-        $before = $this->repo->countVerificationSummary(null)['suppressed'];
+        $suppressed = array_count_values($this->queueIds($this->repo->findVerificationQueue('suppressed', null, 1000)));
+        $all = array_count_values($this->queueIds($this->repo->findVerificationQueue('all', null, 1000)));
 
-        $secondProfileInserted = $this->db->insert('profiles', [
-            'user_id' => $dupedOwnerId,
-            'bio'     => '',
-            'city'    => '',
-            'state'   => '',
-            'country' => '',
-        ]);
-        $this->assertTrue(
-            $secondProfileInserted,
-            'Test setup: failed to seed a second profiles row for the same user_id: ' . $this->db->errorString()
+        $this->assertSame(1, $suppressed[$carId] ?? 0, 'A car of an owner with both flags is listed once, not twice');
+        $this->assertSame(1, $all[$carId] ?? 0, 'The car is listed once under all');
+
+        // Control: with both flags cleared the car leaves the suppressed queue.
+        $this->clearOwnerEmailFlags($ownerId);
+        $this->assertNotContains(
+            $carId,
+            $this->queueIds($this->repo->findVerificationQueue('suppressed', null, 1000)),
+            'Control: a car of an owner with no flag is not suppressed'
         );
+    }
 
-        $suppressedCarId = $this->createTestCar($dupedOwnerId, array_merge(
-            $this->eligibleFields('dash-dup-profile-suppressed@example.com'),
-            ['email_suppressed' => 1]
-        ));
-        $pendingCarId = $this->createTestCar($dupedOwnerId, array_merge(
-            $this->eligibleFields('dash-dup-profile-pending@example.com'),
-            [
-                'vericode'         => 'hash-dup-pending',
-                'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-1 day')),
-            ]
-        ));
+    // --- no profile ----------------------------------------------------------------
 
-        $suppressedRows = $this->repo->findVerificationQueue('suppressed', null, 1000);
-        $suppressedIds  = $this->queueIds($suppressedRows);
-        $this->assertSame(
-            1,
-            count(array_filter($suppressedIds, static fn (int $id): bool => $id === $suppressedCarId)),
-            'The duplicated-profile owner\'s suppressed car must appear exactly once in the suppressed '
-            . 'queue list, not once per matching profiles row'
+    #[Group('fast')]
+    public function testCarOfOwnerWithNoProfileIsNotEligibleButIsInAllQueueAndCount(): void
+    {
+        $noProfileOwnerId = $this->createTestUser();
+        $noProfileCarId = $this->createTestCar(
+            $noProfileOwnerId,
+            $this->eligibleFields('dash-no-profile@example.com')
         );
+        $withProfileCarId = $this->createTestCar($this->userId, $this->eligibleFields('dash-has-profile@example.com'));
 
-        $pendingIds = $this->queueIds($this->repo->findVerificationQueue('pending', null, 1000));
-        $this->assertSame(
-            1,
-            count(array_filter($pendingIds, static fn (int $id): bool => $id === $pendingCarId)),
-            'The duplicated-profile owner\'s pending car must appear exactly once in the pending queue list'
-        );
-
+        $eligibleIds = $this->queueIds($this->repo->findVerificationQueue('eligible', null, 1000));
         $allIds = $this->queueIds($this->repo->findVerificationQueue('all', null, 1000));
-        $this->assertSame(
-            1,
-            count(array_filter($allIds, static fn (int $id): bool => $id === $suppressedCarId)),
-            'The duplicated-profile owner\'s car must appear exactly once in the "all" queue list too'
-        );
 
-        $after = $this->repo->countVerificationSummary(null)['suppressed'];
-        $this->assertSame(
-            $before + 1,
-            $after,
-            'Adding one suppressed car for an owner with 2 profiles rows must raise the suppressed count '
-            . 'by exactly 1, not 2 — a duplicated join match would double-count it'
-        );
+        $this->assertContains($withProfileCarId, $eligibleIds, 'Control: the car with a profile is eligible');
+        $this->assertNotContains($noProfileCarId, $eligibleIds, 'A car whose owner has no profile is never eligible');
+        $this->assertContains($noProfileCarId, $allIds, 'The no-profile car must be visible under all');
+
+        $queueRow = null;
+        foreach ($this->repo->findVerificationQueue('all', null, 1000) as $row) {
+            if ((int) $row->id === $noProfileCarId) {
+                $queueRow = $row;
+            }
+        }
+        $this->assertNotNull($queueRow, 'The all queue must return a row for the no-profile car');
+        $this->assertSame(0, (int) $queueRow->has_profile, 'The row must show that there is no profile');
+
+        $before = $this->repo->countVerificationSummary(null)['all'];
+        $this->db->query('DELETE FROM cars WHERE id = ?', [$noProfileCarId]);
+        $after = $this->repo->countVerificationSummary(null)['all'];
+        $this->assertSame($before - 1, $after, 'The all count includes the no-profile car');
     }
 
     // --- verified / sold: distinct cars, not raw cars_hist rows ------------------
@@ -542,8 +569,6 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         // nor the `all` count, because verified/sold are history, not queue state.
         $carId = $this->createTestCar($this->userId, [
             'email'              => 'dash-all-excl-verified@example.com',
-            'email_bounced'      => 0,
-            'email_suppressed'   => 0,
             'last_verified'      => date('Y-m-d H:i:s', strtotime('-1 hour')),
             'owner_last_updated' => date('Y-m-d H:i:s', strtotime('-1 hour')),
             'mtime'              => date('Y-m-d H:i:s', strtotime('-1 hour')),
@@ -576,14 +601,14 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
                 'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-1 day')),
             ]
         ));
-        $bouncedCarId = $this->createTestCar($this->userId, array_merge(
-            $this->eligibleFields('dash-all-bounced@example.com'),
-            ['email_bounced' => 1, 'email_bounced_address' => 'dash-all-bounced@example.com']
-        ));
-        $suppressedCarId = $this->createTestCar($this->userId, array_merge(
-            $this->eligibleFields('dash-all-suppressed@example.com'),
-            ['email_suppressed' => 1]
-        ));
+        $bouncedCarId = $this->createTestCar(
+            $this->createOwner('bounced'),
+            $this->eligibleFields('dash-all-bounced@example.com')
+        );
+        $suppressedCarId = $this->createTestCar(
+            $this->createOwner('opted_out'),
+            $this->eligibleFields('dash-all-suppressed@example.com')
+        );
 
         $union = array_unique(array_merge(
             $this->queueIds($this->repo->findVerificationQueue('eligible', null, 1000)),
@@ -633,7 +658,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         $this->insertHistRow($verifiedCarId, 'VERIFIED', date('Y-m-d H:i:s', strtotime('-2 days')));
         $this->insertHistRow($soldCarId, 'VERIFIED SOLD', date('Y-m-d H:i:s', strtotime('-1 days')));
         // An unrelated operation on the same car must not appear.
-        $this->insertHistRow($verifiedCarId, 'EMAIL BOUNCED', date('Y-m-d H:i:s', strtotime('-12 hours')));
+        $this->insertHistRow($verifiedCarId, 'UPDATE', date('Y-m-d H:i:s', strtotime('-12 hours')));
 
         $activity = $this->repo->findRecentVerificationActivity(null, 1000);
         $carIds = array_map(static fn (object $row): int => (int) $row->car_id, $activity);
@@ -641,7 +666,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
 
         $this->assertContains($verifiedCarId, $carIds);
         $this->assertContains($soldCarId, $carIds);
-        $this->assertNotContains('EMAIL BOUNCED', $operations, 'Only VERIFIED/VERIFIED SOLD rows must appear');
+        $this->assertNotContains('UPDATE', $operations, 'Only VERIFIED/VERIFIED SOLD rows must appear');
 
         // Newest-first ordering: the sold row (1 day ago) must come before the
         // verified row (2 days ago) among these two fixtures' indices.

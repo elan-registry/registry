@@ -122,8 +122,78 @@ of how Phinx tracks the migration in `phinxlog`.
 
 ## Testing
 
-Always run `composer migrate:dry-run` locally first to confirm the migration
-does what you expect. Apply it against a copy of the schema before pushing.
+Run `composer migrate:dry-run` locally first to see what the migration does.
+
+To test `up()` and `down()`, write a sandbox test in
+`tests/integration/database/`. Extend `MigrationSandboxTestCase`. Before the
+first test of the class, the base class creates a throwaway schema
+(`elanregi_migtest_<unixtime>_<rand>`), loads
+`database/vendor/userspice-6.1.7-base.sql`, and runs the Phinx migrations in
+the test process up to `targetVersion()`. After the last test, it drops the schema.
+
+Rules:
+
+- Return the start version from `targetVersion()`. To test `up()`, use the
+  version before the migration. To test `down()`, use the migration's own
+  version.
+- Write one class for each start version.
+- Run the migration with `runUp()` and `runDown()`. They call the migration as
+  Phinx does: a migration with `change()` runs `change()`, and a table builder
+  that was not saved fails the test. They write no `phinxlog` row, so a test can
+  run the same direction twice. `MigrationSandbox::run()` lists the Phinx
+  steps they leave out, such as the transaction around the migration.
+- Insert the rows that the migration reads or changes. The sandbox runs no
+  seeds from `database/seeds/`, and the vendor SQL has no rows, so a table
+  holds only the rows that earlier migrations insert. An `UPDATE` on an empty
+  table changes 0 rows, and the test then passes without a real check.
+- Tests that change the sandbox run in one method or in a `#[Depends]` chain,
+  so their order is fixed.
+- Run no DDL on the shared test schema. The base class compares the shared
+  schema's columns and triggers before and after the class, and fails if they
+  changed.
+- Declare `#[Group('integration')]` and `#[Group('migration')]` on the class.
+  PHPUnit does not inherit groups from the base class.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/MigrationSandboxTestCase.php';
+
+use PHPUnit\Framework\Attributes\Group;
+
+#[Group('integration')]
+#[Group('migration')]
+final class AddExampleColumnSandboxTest extends MigrationSandboxTestCase
+{
+    protected static function targetVersion(): int
+    {
+        return 20260101000000; // the version before the migration under test
+    }
+
+    public function testUpThenDown(): void
+    {
+        $file = '20260102000000_add_example_column.php';
+
+        $this->runUp($file);
+        $this->assertNotNull($this->columnInfo('cars', 'example'));
+
+        $this->runDown($file);
+        $this->assertNull($this->columnInfo('cars', 'example'));
+    }
+}
+```
+
+The sandbox tests run with the integration tests: `composer test:integration`,
+`composer test:medium` (the unit tests plus `tests/integration/database`), and the pre-push hook
+when the push changes PHP under `app/`, `usersc/classes/`, `tests/integration/`,
+or `database/migrations/`. They do not run in CI.
+
+For full examples, see `AddCarsVerificationAttemptsColumnsSandboxTest` and
+`RenameErVerificationSettingsUnmatchedCounterMigrationTest`. Both extend
+`MigrationSandboxTestCase`. The second keeps its original name from before the
+harness.
 
 ## Recovery from a Failed Migration
 

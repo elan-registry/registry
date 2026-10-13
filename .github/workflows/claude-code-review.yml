@@ -51,6 +51,10 @@ name: Claude Code Review
 #   already posted. Both failure modes hit PR #1688: the same unverified
 #   hypothesis about Phinx transaction nesting blocked the merge three rounds
 #   running, and the review itself said it could not check the library source.
+#   The pre-merge commands also treat an `Important` heading as blocking, so
+#   both prompts keep settled items, accepted risks, and reminders under
+#   `Notes` (#2416). A milestone review on PR #2415 put only such items under
+#   Important and stopped the release.
 #
 # Posting mechanism (v1 action):
 #   Claude must explicitly post via `gh pr comment` — the action does not
@@ -337,7 +341,13 @@ jobs:
 
             ### Important
             Should address (design, test gaps, unclear code) — and unconfirmed
-            suspicions, per the Blocking note above.
+            suspicions, per the Blocking note above. Use it only for open
+            items. The pre-merge commands treat an `Important` heading like
+            `Blocking`, so settled items never go here.
+
+            ### Notes
+            Earlier-round findings now settled, accepted risks, and follow-ups
+            tracked elsewhere. Nothing here needs a change before merge.
 
             ### Suggestions
             Optional improvements.
@@ -662,6 +672,17 @@ jobs:
             ## Important
             <architecture, security, or integration concerns, plus unconfirmed
             suspicions per the Blocking note above>
+            Use this section only for open items that need a change or a check
+            before merge to main. Omit it entirely if there are none — do NOT
+            include an empty section or write "None". An `Important` heading
+            also stops the release (`/release-milestone` treats it like
+            `Blocking`), so it must never hold a list of settled items.
+
+            ## Notes
+            <earlier-round findings now settled, accepted risks, open
+            follow-ups tracked elsewhere, post-deploy reminders>
+            Anything that needs no change before merge goes here, not under
+            Important. Omit this section if it is empty.
 
             ## Release-notes / docs gaps
             <missing or inaccurate release notes, wiki updates needed>

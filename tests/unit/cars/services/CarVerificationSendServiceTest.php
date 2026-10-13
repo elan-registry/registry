@@ -6,11 +6,13 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
+use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\SendResult;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\EmailTemplate;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -68,10 +70,15 @@ final class CarVerificationSendServiceTest extends TestCase
     /** Temp site root that holds the sendinblue plugin files, or null when none was made. */
     private ?BrevoSiteRoot $brevoSiteRoot = null;
 
+    /** What effectiveEmailFlags() returns. The default is an owner with every flag clear. */
+    private EffectiveEmailFlags $profileState;
+
     protected function setUp(): void
     {
         $this->mockRepo = $this->createMock(CarRepository::class);
         $this->mockVerifier = $this->createMock(CarVerificationManager::class);
+        $this->profileState = self::profile();
+        $this->mockRepo->method('effectiveEmailFlags')->willReturnCallback(fn () => $this->profileState);
         $this->composer = new CarVerificationEmailComposer(new EmailTemplate());
         $this->brevoReadySettings = $this->makeBrevoReadySettings();
 
@@ -98,6 +105,33 @@ final class CarVerificationSendServiceTest extends TestCase
         parent::tearDown();
     }
 
+    /**
+     * The flags that apply to the owner now, with every flag clear unless
+     * the caller overrides them. The class is final, so these are real
+     * instances. The repository applies the address match (tested in
+     * CarRepositoryTest), so a flag here is a flag that applies.
+     *
+     * @param array{hasProfile?: bool, optedOut?: bool, blocked?: bool, bounced?: bool} $overrides
+     */
+    private static function profile(array $overrides = []): EffectiveEmailFlags
+    {
+        $o = $overrides + ['hasProfile' => true, 'optedOut' => false, 'blocked' => false, 'bounced' => false];
+
+        return new EffectiveEmailFlags(
+            $o['hasProfile'],
+            $o['optedOut'],
+            null,
+            $o['blocked'],
+            $o['blocked'] ? 'owner@example.com' : null,
+            null,
+            null,
+            $o['bounced'],
+            $o['bounced'] ? 'owner@example.com' : null,
+            null,
+            'owner@example.com'
+        );
+    }
+
     /** Brevo-ready settings on a fresh temp site root. tearDown() removes the root. */
     private function makeBrevoReadySettings(): VerificationSettings
     {
@@ -111,7 +145,7 @@ final class CarVerificationSendServiceTest extends TestCase
      * no error. Mirrors the shape Owner::find()'s users LEFT JOIN profiles
      * query expects back from first().
      */
-    private function makeOwnerFoundDb(int $userId = 42): object
+    private function makeOwnerFoundDb(int $userId = 42, string $email = 'owner@example.com'): object
     {
         $db = $this->createStub(DatabaseInterface::class);
         $db->method('query')->willReturnSelf();
@@ -122,7 +156,7 @@ final class CarVerificationSendServiceTest extends TestCase
             'username' => 'realowner',
             'fname' => 'Owner',
             'lname' => 'Test',
-            'email' => 'owner@example.com',
+            'email' => $email,
             'city' => null,
             'state' => null,
             'country' => null,
@@ -296,34 +330,6 @@ final class CarVerificationSendServiceTest extends TestCase
         ));
         $this->assertCount(1, $refusals, 'One log line per refused send');
         $this->assertStringContainsString('1.6.2', $refusals[0]['message']);
-        $this->assertSame('oldhashedvalue', $carData->vericode, 'The vericode must not be rotated');
-    }
-
-    /**
-     * A plugin update leaves the old override.php in place. That override can
-     * drop $opts['tags'] even on plugin 1.8.0, so sendOne() must refuse.
-     */
-    public function testSendOneReturnsFailedAndSendsNothingWhenBrevoOverrideIsStale(): void
-    {
-        $this->brevoSiteRoot?->writeStaleOverride();
-        $GLOBALS['mockLogEntries'] = [];
-        $carData = $this->eligibleCar();
-
-        $this->mockRepo->expects($this->never())->method('beginTransaction');
-        $this->mockRepo->expects($this->never())->method('updateCar');
-        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
-        $this->mockVerifier->expects($this->never())->method('setVerificationCode');
-        $this->mockVerifier->expects($this->never())->method('setVerificationSentAt');
-
-        $result = $this->service->sendOne($carData);
-
-        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
-        $this->assertSame(100, $result->carId);
-        $this->assertSame(
-            'No email was sent. The Brevo override file is out of date. On the Brevo plugin page, open "Show file contents" under "Override Update Available", then click "Replace my override.php with the bundled version".',
-            $result->reason
-        );
-        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent while Brevo is not ready');
         $this->assertSame('oldhashedvalue', $carData->vericode, 'The vericode must not be rotated');
     }
 
@@ -741,19 +747,51 @@ final class CarVerificationSendServiceTest extends TestCase
     }
 
     /**
-     * The owner-level opt-out (#1883), enforced here for the same reason the
-     * `noowner` check above is: it needs a `profiles` join neither
-     * VerificationEligibility::skipReason() nor the already-loaded `cars` row
-     * can supply. The car passed in is a fully eligible one whose own
-     * cars.email_suppressed is 0 — exactly a car acquired AFTER
-     * setSuppressedForOwner() fanned the opt-out out to the cars the owner held
-     * at that moment — so only the profiles flag can stop this send.
+     * The noowner check runs before the flag reads. A flagged profile on the
+     * noowner account must not change the reason, and the flags are never read.
      */
-    public function testSendOneReturnsFailedWhenOwnerProfileEmailSuppressed(): void
+    public function testSendOneGivesTheNoownerReasonBeforeAnyFlagRead(): void
+    {
+        $GLOBALS['hookTestDb'] = $this->makeNoownerAccountDb();
+        $this->profileState = self::profile(['blocked' => true, 'bounced' => true]);
+
+        $this->mockRepo->expects($this->never())->method('effectiveEmailFlags');
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
+
+        $result = $this->service->sendOne($this->eligibleCar());
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame('Car has no live owner.', $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails']);
+    }
+
+    /**
+     * The owner's flags live on `profiles` (#2101), which neither
+     * VerificationEligibility::skipReason() nor the already-loaded `cars` row
+     * can supply. The car passed in is fully eligible, so only the owner's
+     * effective flags can stop this send (#2356). Each flag fails the send
+     * with its own reason.
+     *
+     * @return array<string, array{array{optedOut?: bool, blocked?: bool, bounced?: bool}, string}>
+     */
+    public static function blockingProfileFlags(): array
+    {
+        return [
+            'opted out' => [['optedOut' => true], 'opted out'],
+            'blocked'   => [['blocked' => true], 'blocked'],
+            'bounced'   => [['bounced' => true], 'bounced'],
+        ];
+    }
+
+    /**
+     * @param array{optedOut?: bool, blocked?: bool, bounced?: bool} $flags
+     */
+    #[DataProvider('blockingProfileFlags')]
+    public function testSendOneReturnsFailedWhenOwnerProfileHasAFlag(array $flags, string $reasonWord): void
     {
         $carData = $this->eligibleCar();
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(1);
+        $this->profileState = self::profile($flags);
         $this->mockRepo->expects($this->never())->method('beginTransaction');
         $this->mockRepo->expects($this->never())->method('updateCar');
         $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
@@ -763,50 +801,112 @@ final class CarVerificationSendServiceTest extends TestCase
         $this->assertSame(SendResult::STATUS_FAILED, $result->status);
         $this->assertSame(100, $result->carId);
         $this->assertNotNull($result->reason);
-        $this->assertStringContainsStringIgnoringCase('opted out', $result->reason);
-        $this->assertSame(
-            [],
-            $GLOBALS['mockSentEmails'],
-            'No email may be sent to an owner who has opted out at the profile level'
-        );
+        $this->assertStringContainsStringIgnoringCase($reasonWord, $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent to an owner whose profile has a flag');
     }
 
     /**
-     * The permissive half of the same rule: findProfileEmailSuppressed()
-     * returns null for an owner with no `profiles` row at all (`users` and
-     * `profiles` are not 1:1 in this schema — see that method's docblock), and
-     * that must NOT be read as an opt-out. Mirrors the
-     * COALESCE(profiles.email_suppressed, 0) in findVerificationEligible()'s
-     * own clause, so the SQL and PHP paths cannot disagree about a profile-less
-     * owner. Without this the guard above would silently make every owner who
-     * never filled in a profile permanently un-emailable.
-     *
-     * mockRepo is used here purely as a behavior stub — the assertion is that
-     * the send ran to completion, verified through the returned status and the
-     * recorded email, not through call counts on the repository.
+     * The send mails the owner's `users.email`. `cars.email` is only a copy
+     * and can be stale. A stale copy must not change the recipient, the
+     * `sent` event row, or the address in the admin report.
      */
     #[AllowMockObjectsWithoutExpectations]
-    public function testSendOneProceedsWhenOwnerHasNoProfileRow(): void
+    public function testSendOneMailsTheAccountEmailAndNotAStaleCarEmail(): void
     {
+        $GLOBALS['hookTestDb'] = $this->makeOwnerFoundDb(42, 'current@example.com');
         $carData = $this->eligibleCar();
+        $carData->email = 'old-address@example.com';
 
-        $this->mockRepo->method('findProfileEmailSuppressed')->willReturn(null);
-        $this->mockVerifier->expects($this->once())
-            ->method('generateVerificationCode')
-            ->willReturn('NEWCODE123');
+        $this->mockVerifier->method('generateVerificationCode')->willReturn('newcode1234567890');
+        $this->mockVerifier->method('setVerificationCode')->willReturn(true);
+        $this->mockVerifier->method('setVerificationSentAt')->willReturn(true);
+        $this->mockRepo->expects($this->once())->method('insertEmailEvent')
+            ->with(100, 'current@example.com', 'sent', null, $this->isString(), $this->isString())
+            ->willReturn(1);
+        $this->mockRepo->method('incrementVerificationAttempts')->willReturn(true);
 
         $result = $this->service->sendOne($carData);
 
-        $this->assertNotSame(
-            SendResult::STATUS_FAILED,
-            $result->status,
-            'An owner with no profiles row has recorded no opt-out and must still be emailable'
-        );
-        $this->assertNotSame(
-            [],
-            $GLOBALS['mockSentEmails'],
-            'The verification email must still be sent when the owner simply has no profiles row'
-        );
+        $this->assertSame(SendResult::STATUS_SENT, $result->status);
+        $this->assertCount(1, $GLOBALS['mockSentEmails']);
+        $this->assertSame('current@example.com', $GLOBALS['mockSentEmails'][0][0], 'The send must mail users.email');
+        $this->assertSame('current@example.com', $carData->email, 'The admin report must show the address that was mailed');
+    }
+
+    /**
+     * A flag on `users.email` stops the send even when the car still holds
+     * another address. effectiveEmailFlags() is the only flag read.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFlagOnTheAccountEmailStopsTheSendWhateverTheCarEmail(): void
+    {
+        $carData = $this->eligibleCar();
+        $carData->email = 'old-address@example.com';
+        $this->profileState = self::profile(['bounced' => true]);
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame('Owner email bounced.', $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails']);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function emptyAccountEmails(): array
+    {
+        return ['empty' => [''], 'white space only' => ["  \t"]];
+    }
+
+    /**
+     * An admin can clear `users.email` after the eligibility query. The send
+     * must then refuse, with a log row, and must not fall back to `cars.email`.
+     */
+    #[DataProvider('emptyAccountEmails')]
+    public function testSendOneRefusesWhenTheAccountEmailIsEmpty(string $accountEmail): void
+    {
+        $GLOBALS['hookTestDb'] = $this->makeOwnerFoundDb(42, $accountEmail);
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
+
+        $result = $this->service->sendOne($this->eligibleCar());
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame('Owner has no email address.', $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'The send must not fall back to cars.email');
+    }
+
+    /** The flag check runs before the empty-address check, so a flagged owner keeps the flag reason. */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFlagReasonComesBeforeTheEmptyAccountEmailReason(): void
+    {
+        $GLOBALS['hookTestDb'] = $this->makeOwnerFoundDb(42, '');
+        $this->profileState = self::profile(['blocked' => true]);
+
+        $result = $this->service->sendOne($this->eligibleCar());
+
+        $this->assertSame('Owner email is blocked.', $result->reason);
+    }
+
+    /**
+     * An owner with no `profiles` row is excluded (#2101). The old rule
+     * treated a missing row as "no opt-out" and mailed the owner. The queries
+     * in findVerificationEligible() now exclude such an owner, so this
+     * guard must agree.
+     */
+    public function testSendOneReturnsFailedWhenOwnerHasNoProfileRow(): void
+    {
+        $carData = $this->eligibleCar();
+
+        $this->profileState = EffectiveEmailFlags::none();
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('updateCar');
+        $this->mockVerifier->expects($this->never())->method('generateVerificationCode');
+
+        $result = $this->service->sendOne($carData);
+
+        $this->assertSame(SendResult::STATUS_FAILED, $result->status);
+        $this->assertSame('Owner has no profile.', $result->reason);
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent to an owner with no profile');
     }
 
     // ------------------------------------------------------------------

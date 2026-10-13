@@ -17,6 +17,14 @@ if (count(get_included_files()) == 1) { die(); }
  *   $viewerIsRegistryAdmin bool  True only when the viewer is an admin or an
  *                               editor (isRegistryAdmin()). Only true (strict)
  *                               shows the Email on file row. Default false.
+ *   $ownerEmailState ?EffectiveEmailFlags The owner's deliverability flags
+ *                               that apply now, from
+ *                               CarRepository::effectiveEmailFlags(). The
+ *                               profile is the system of record (#2101), so the
+ *                               Email on file row reads its flags from here,
+ *                               not from $carData. A block or bounce for an old
+ *                               address does not apply (#2356). Null shows no
+ *                               row. Default null.
  *
  * The card computes the Verified row itself from CarBadges::verifiedStatus().
  * A sold car has no Verified row.
@@ -30,6 +38,7 @@ $purchaseDate ??= null;
 $soldDate ??= null;
 $headingTag ??= 'h3';
 $viewerIsRegistryAdmin ??= false;
+$ownerEmailState ??= null;
 
 if (!is_object($carData)) {
     logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
@@ -44,8 +53,10 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
 
 $_isSold          = \ElanRegistry\Car\CarBadges::isSold($carData->solddate ?? null);
 $_verifiedStatus  = \ElanRegistry\Car\CarBadges::verifiedStatus($carData);
-$_emailBounced    = !empty($carData->email_bounced);
-$_emailSuppressed = !empty($carData->email_suppressed);
+$_emailBounced    = $ownerEmailState instanceof \ElanRegistry\Car\EffectiveEmailFlags && $ownerEmailState->bounced;
+// Suppressed covers a block and an opt-out until #2361 shows them separately.
+$_emailSuppressed = $ownerEmailState instanceof \ElanRegistry\Car\EffectiveEmailFlags
+    && ($ownerEmailState->blocked || $ownerEmailState->optedOut);
 // The row names a delivery problem with the owner's address, so only admins
 // and editors get it. The car's own owner does not.
 $_showEmailRow    = $viewerIsRegistryAdmin === true && ($_emailBounced || $_emailSuppressed);
@@ -203,7 +214,7 @@ $_registryDate = static function (object $carData, string $column): string {
                 <span class="me-3">Bounced <?= $_helpButton('What Bounced means', 'Email to this owner bounced. Verification emails start again when the owner confirms a different, working address.') ?></span>
                 <?php } ?>
                 <?php if ($_emailSuppressed) { ?>
-                <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab. If the cause is an owner opt-out, the owner can also use Resume verification emails in their Account Settings — this does not cover a suppression caused by a spam complaint, which only an admin can clear.") ?></span>
+                <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab. A block also ends when the owner confirms a changed email address. If the cause is only an owner opt-out, the owner can use Resume verification emails in their Account Settings. Resume does not clear a block.") ?></span>
                 <?php } ?>
             </dd>
             <?php } ?>

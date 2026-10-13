@@ -65,6 +65,7 @@ $hasError = $soldDateError !== null;
 
         <?php include __DIR__ . '/_verify_car_details.php'; ?>
 
+        <?php // No CSRF token by design: the vericode is the credential. See the "NO CSRF TOKEN" header in app/verify/verify_car.php. ?>
         <form method="POST" action="<?= $verifySelfAttr ?>?vericode=<?= $verifyCodeAttr ?>&amp;action=sold">
             <input type="hidden" name="vericode" value="<?= $verifyCodeAttr ?>">
 

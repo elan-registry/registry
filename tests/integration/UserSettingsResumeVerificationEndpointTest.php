@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -12,8 +13,8 @@ use PHPUnit\Framework\Attributes\Group;
  * usersc/user_settings.php.
  *
  * Redirect::to() always calls exit(), so each request runs in its own
- * `php -r` subprocess, and a shutdown function captures the usSuccess()
- * and usError() flashes to a temp file. POST tests assert on that flash and database state.
+ * `php -r` subprocess, and a shutdown function captures the usSuccess(),
+ * usError() and usWarning() flashes to a temp file. POST tests assert on that flash and database state.
  *
  * securePage() needs SCRIPT_FILENAME set before users/init.php (for
  * $php_self) and a real permission_id 1 match for the fixture user.
@@ -58,34 +59,27 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         }
     }
 
-    private function emailSuppressed(int $carId): int
+    /** @return array<string, mixed> The owner's profile flag columns, as stored */
+    private function flags(int $ownerId): array
     {
-        $row = $this->db->query('SELECT email_suppressed FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
-        return (int) $row->email_suppressed;
+        return $this->getOwnerEmailFlags($ownerId);
     }
 
-    private function emailBounced(int $carId): int
+    /** @return array<string, mixed> The full cars row as stored */
+    private function carRow(int $carId): array
     {
-        $row = $this->db->query('SELECT email_bounced FROM cars WHERE id = ?', [$carId])->first();
+        $row = (new CarRepository($this->db))->findById($carId);
         $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
-        return (int) $row->email_bounced;
+
+        return (array) $row;
     }
 
-    private function emailBouncedAddress(int $carId): ?string
+    /**
+     * @return list<array{date: string, flag: string, old: int, new: int, source: string, acting_user_id: int}>
+     */
+    private function flagChanges(int $ownerId): array
     {
-        $row = $this->db->query('SELECT email_bounced_address FROM cars WHERE id = ?', [$carId])->first();
-        $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
-        return $row->email_bounced_address === null ? null : (string) $row->email_bounced_address;
-    }
-
-    private function profileEmailSuppressed(int $ownerId): ?int
-    {
-        $result = $this->db->query('SELECT email_suppressed FROM profiles WHERE user_id = ?', [$ownerId]);
-        if ($this->db->count() === 0) {
-            return null;
-        }
-        return (int) $result->first()->email_suppressed;
+        return (new CarRepository($this->db))->recentFlagChanges($ownerId, 100);
     }
 
     private function profileCity(int $ownerId): string
@@ -95,14 +89,14 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         return (string) $row->city;
     }
 
-    /** @return list<string> operation values, in insertion order */
-    private function suppressionCarsHistOperations(int $carId): array
+    /** Number of cars_hist rows that name a suppression or bounce operation. None may be written (#2101). */
+    private function emailOperationHistRows(int $carId): int
     {
-        $rows = $this->db->query(
-            "SELECT operation FROM cars_hist WHERE car_id = ? AND operation LIKE '%SUPPRESSION%' ORDER BY id ASC",
+        return (int) $this->db->query(
+            "SELECT COUNT(*) AS cnt FROM cars_hist
+              WHERE car_id = ? AND (operation LIKE '%SUPPRESSION%' OR operation LIKE '%BOUNCE%')",
             [$carId]
-        )->results();
-        return array_map(static fn (object $row): string => (string) $row->operation, $rows);
+        )->first()->cnt;
     }
 
     /** A logged-in Member (permission_id 1) with a profiles row, for securePage(). */
@@ -122,7 +116,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
      * @param bool $omitCsrfKey Leave out the 'csrf' key entirely; overrides $withValidCsrf
      * @param bool $asGet Plain GET page load; the POST options are ignored
      * @param bool $withResumeField False sends the ordinary profile-update POST
-     * @return array{exitCode: int, raw: string, successFlash: string, errorFlash: string}
+     * @return array{exitCode: int, raw: string, successFlash: string, errorFlash: string, warningFlash: string}
      */
     private function invokeResumeEndpoint(
         int $loggedInUserId,
@@ -177,6 +171,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             '    file_put_contents($__captureFile, json_encode([ ' .
             '        "success" => $_SESSION[$sn . "valSuc"] ?? null, ' .
             '        "error" => $_SESSION[$sn . "valErr"] ?? null, ' .
+            '        "warning" => $_SESSION[$sn . "genMsg"] ?? null, ' .
             '    ])); ' .
             '}); ' .
             'require %s;',
@@ -208,6 +203,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             'raw' => trim($body),
             'successFlash' => self::flashText(is_array($decoded) ? ($decoded['success'] ?? null) : null),
             'errorFlash' => self::flashText(is_array($decoded) ? ($decoded['error'] ?? null) : null),
+            'warningFlash' => self::flashText(is_array($decoded) ? ($decoded['warning'] ?? null) : null),
         ];
     }
 
@@ -221,27 +217,25 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     }
 
     #[Group('fast')]
-    public function testValidClearWithValidCsrfClearsFlagsAndInsertsOneHistoryRowPerCar(): void
+    public function testValidResumeWithValidCsrfClearsTheOptOutAndWritesNothingToCars(): void
     {
         $ownerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $carOneId = $this->createTestCar($ownerId, ['email' => 'resume-one@example.com', 'email_suppressed' => 1]);
-        $carTwoId = $this->createTestCar($ownerId, ['email' => 'resume-two@example.com', 'email_suppressed' => 1]);
+        $this->setOwnerOptedOut($ownerId, true, '2026-01-02 03:04:05');
+        $carOneId = $this->createTestCar($ownerId, ['email' => 'resume-one@example.com']);
+        $carTwoId = $this->createTestCar($ownerId, ['email' => 'resume-two@example.com']);
+        $carsBefore = [$this->carRow($carOneId), $this->carRow($carTwoId)];
 
         $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
         $this->assertStringNotContainsStringIgnoringCase('fatal error', $result['raw']);
 
-        $this->assertSame(0, $this->emailSuppressed($carOneId));
-        $this->assertSame(0, $this->emailSuppressed($carTwoId));
-        $this->assertSame(0, $this->profileEmailSuppressed($ownerId));
-
-        foreach ([$carOneId, $carTwoId] as $carId) {
-            $ops = $this->suppressionCarsHistOperations($carId);
-            $this->assertCount(1, $ops, "Car {$carId} must get exactly one SUPPRESSION cars_hist row");
-            $this->assertSame('SUPPRESSION CLEARED BY OWNER', $ops[0]);
-        }
+        $flags = $this->flags($ownerId);
+        $this->assertSame('0', (string) $flags['email_opted_out']);
+        $this->assertNull($flags['email_opted_out_at']);
+        $this->assertSame($carsBefore, [$this->carRow($carOneId), $this->carRow($carTwoId)], 'No car row may change');
+        $this->assertSame(0, $this->emailOperationHistRows($carOneId), 'No email cars_hist row is written any more');
+        $this->assertSame(0, $this->emailOperationHistRows($carTwoId));
 
         $this->assertStringContainsString(
             'Verification emails have been resumed for your cars.',
@@ -251,55 +245,69 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     }
 
     #[Group('fast')]
+    public function testResumeWritesOneOwnerSourceLogRowWithTheOwnerAsActingUser(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->setOwnerOptedOut($ownerId);
+        $this->createTestCar($ownerId, ['email' => 'log-row@example.com']);
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $changes = $this->flagChanges($ownerId);
+        $this->assertCount(1, $changes, 'One flag change writes exactly one log row');
+        $this->assertSame('email_opted_out', $changes[0]['flag']);
+        $this->assertSame(1, $changes[0]['old']);
+        $this->assertSame(0, $changes[0]['new']);
+        $this->assertSame('owner', $changes[0]['source']);
+        $this->assertSame($ownerId, $changes[0]['acting_user_id']);
+    }
+
+    #[Group('fast')]
     public function testMissingCsrfKeyLeavesEverythingUntouched(): void
     {
         $ownerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $carId = $this->createTestCar($ownerId, ['email' => 'no-csrf-key@example.com', 'email_suppressed' => 1]);
+        $this->setOwnerOptedOut($ownerId);
+        $this->createTestCar($ownerId, ['email' => 'no-csrf-key@example.com']);
+        $before = $this->flags($ownerId);
 
         $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, omitCsrfKey: true);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertSame(1, $this->emailSuppressed($carId), 'A missing csrf key must leave the car untouched');
-        $this->assertSame(1, $this->profileEmailSuppressed($ownerId), 'A missing csrf key must leave the profile flag untouched');
-        $this->assertCount(0, $this->suppressionCarsHistOperations($carId), 'No cars_hist row may be inserted');
+        $this->assertSame($before, $this->flags($ownerId), 'A missing csrf key must leave the profile untouched');
+        $this->assertSame([], $this->flagChanges($ownerId), 'No log row may be written');
     }
 
     #[Group('fast')]
     public function testInvalidCsrfValueLeavesEverythingUntouched(): void
     {
         $ownerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $carId = $this->createTestCar($ownerId, ['email' => 'bad-csrf@example.com', 'email_suppressed' => 1]);
+        $this->setOwnerOptedOut($ownerId);
+        $this->createTestCar($ownerId, ['email' => 'bad-csrf@example.com']);
+        $before = $this->flags($ownerId);
 
         $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertSame(1, $this->emailSuppressed($carId), 'An invalid csrf token must leave the car untouched');
-        $this->assertSame(1, $this->profileEmailSuppressed($ownerId), 'An invalid csrf token must leave the profile flag untouched');
-        $this->assertCount(0, $this->suppressionCarsHistOperations($carId), 'No cars_hist row may be inserted');
+        $this->assertSame($before, $this->flags($ownerId), 'An invalid csrf token must leave the profile untouched');
+        $this->assertSame([], $this->flagChanges($ownerId), 'No log row may be written');
     }
 
     #[Group('fast')]
     public function testSpoofedOwnerIdInPostBodyIsIgnoredAndOnlySessionOwnerChanges(): void
     {
         $sessionOwnerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$sessionOwnerId]);
-        $sessionOwnerCarId = $this->createTestCar(
-            $sessionOwnerId,
-            ['email' => 'session-owner@example.com', 'email_suppressed' => 1]
-        );
+        $this->setOwnerOptedOut($sessionOwnerId);
+        $this->createTestCar($sessionOwnerId, ['email' => 'session-owner@example.com']);
 
         $spoofedOwnerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$spoofedOwnerId]);
-        $spoofedOwnerCarId = $this->createTestCar(
-            $spoofedOwnerId,
-            ['email' => 'spoofed-owner@example.com', 'email_suppressed' => 1]
-        );
+        $this->setOwnerOptedOut($spoofedOwnerId);
+        $spoofedOwnerCarId = $this->createTestCar($spoofedOwnerId, ['email' => 'spoofed-owner@example.com']);
+        $spoofedBefore = $this->flags($spoofedOwnerId);
 
-        // The new form carries no id field at all, so this proves the
-        // endpoint reads no POST-supplied id — not merely that it ignores
-        // one named 'user_id'. A spoofed car id is included too.
+        // The form carries no id field at all, so this proves the endpoint
+        // reads no POST-supplied id, not merely that it ignores one named
+        // 'user_id'. A spoofed car id is included too.
         $result = $this->invokeResumeEndpoint($sessionOwnerId, withValidCsrf: true, extraPost: [
             'user_id' => (string) $spoofedOwnerId,
             'owner_id' => (string) $spoofedOwnerId,
@@ -308,25 +316,18 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
 
-        $this->assertSame(0, $this->emailSuppressed($sessionOwnerCarId), 'The session owner\'s own car must be cleared');
-        $this->assertSame(0, $this->profileEmailSuppressed($sessionOwnerId));
-
-        $this->assertSame(1, $this->emailSuppressed($spoofedOwnerCarId), 'The spoofed owner\'s car must remain suppressed');
-        $this->assertSame(1, $this->profileEmailSuppressed($spoofedOwnerId), 'The spoofed owner\'s profile flag must remain untouched');
-
-        $this->assertCount(
-            0,
-            $this->suppressionCarsHistOperations($spoofedOwnerCarId),
-            'No history row may be written for the spoofed owner\'s car'
-        );
+        $this->assertSame('0', (string) $this->flags($sessionOwnerId)['email_opted_out'], 'The session owner is resumed');
+        $this->assertSame($spoofedBefore, $this->flags($spoofedOwnerId), 'The spoofed owner\'s profile must be untouched');
+        $this->assertSame([], $this->flagChanges($spoofedOwnerId), 'No log row may be written for the spoofed owner');
     }
 
     #[Group('fast')]
     public function testMixedPostWithOrdinaryProfileFieldsDoesNotWriteThoseFields(): void
     {
         $ownerId = $this->createEndpointTestUser();
-        $this->db->query("UPDATE profiles SET email_suppressed = 1, city = 'OriginalCity' WHERE user_id = ?", [$ownerId]);
-        $carId = $this->createTestCar($ownerId, ['email' => 'mixed-post@example.com', 'email_suppressed' => 1]);
+        $this->setOwnerOptedOut($ownerId);
+        $this->db->query("UPDATE profiles SET city = 'OriginalCity' WHERE user_id = ?", [$ownerId]);
+        $this->createTestCar($ownerId, ['email' => 'mixed-post@example.com']);
 
         $this->assertSame('OriginalCity', $this->profileCity($ownerId), 'Test sanity: city starts at the seeded value');
 
@@ -335,7 +336,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         ]);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertSame(0, $this->emailSuppressed($carId), 'The resume action must still have run');
+        $this->assertSame('0', (string) $this->flags($ownerId)['email_opted_out'], 'The resume action must still have run');
         $this->assertSame(
             'OriginalCity',
             $this->profileCity($ownerId),
@@ -344,101 +345,71 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     }
 
     #[Group('fast')]
-    public function testCarWithBouncedFlagIsUnaffectedOnBounceColumns(): void
+    public function testBouncedAndOptedOutOwnerKeepsTheBounceAfterResume(): void
     {
         $ownerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $carId = $this->createTestCar($ownerId, [
-            'email' => 'bounced-endpoint@example.com',
-            'email_suppressed' => 1,
-            'email_bounced' => 1,
-            'email_bounced_address' => 'bounced-endpoint@example.com',
-        ]);
+        $this->setOwnerOptedOut($ownerId);
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'bounced-endpoint@example.com');
+        $this->setOwnerBounced($ownerId, 'bounced-endpoint@example.com', '2026-03-04 05:06:07');
+        $this->createTestCar($ownerId, ['email' => 'bounced-endpoint@example.com']);
 
         $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertSame(0, $this->emailSuppressed($carId));
-        $this->assertSame(1, $this->emailBounced($carId), 'Bounce flag must be left exactly as it was');
-        $this->assertSame('bounced-endpoint@example.com', $this->emailBouncedAddress($carId));
+        $flags = $this->flags($ownerId);
+        $this->assertSame('0', (string) $flags['email_opted_out']);
+        $this->assertSame('1', (string) $flags['email_bounced'], 'Bounce flag must be left exactly as it was');
+        $this->assertSame('bounced-endpoint@example.com', $flags['email_bounced_address']);
+        $this->assertSame('2026-03-04 05:06:07', $flags['email_bounced_at']);
     }
 
     /**
-     * The operation string fits varchar(32) and differs from the admin
-     * path's 'EMAIL SUPPRESSION CLEARED'.
+     * An opted-out owner sees the control, with a count of every owned car,
+     * also a car added after the opt-out, and Resume clears the flag.
      */
     #[Group('fast')]
-    public function testCarsHistOperationStringExactAndDistinctFromAdminString(): void
+    public function testOptedOutOwnerShowsControlWithEveryOwnedCarAndResumeClearsIt(): void
     {
         $ownerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $carId = $this->createTestCar($ownerId, ['email' => 'operation-string@example.com', 'email_suppressed' => 1]);
-
-        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
-
-        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-
-        $ops = $this->suppressionCarsHistOperations($carId);
-        $this->assertNotEmpty($ops, 'A history row must have been inserted');
-        $this->assertSame('SUPPRESSION CLEARED BY OWNER', $ops[0]);
-        $this->assertSame(
-            strlen('SUPPRESSION CLEARED BY OWNER'),
-            strlen($ops[0]),
-            'The stored operation string must not be truncated against the live varchar(32) column'
-        );
-        $this->assertNotSame(
-            'EMAIL SUPPRESSION CLEARED',
-            $ops[0],
-            'The owner path\'s operation string must differ from the admin path\'s'
-        );
-    }
-
-    /**
-     * A Brevo spam or unsubscribe event (EmailEventApplier::apply()) sets
-     * only cars.email_suppressed on one car. The profile flag stays 0. The
-     * owner must still see the control, with a count of that one car, and
-     * the resume action must clear the car.
-     */
-    #[Group('fast')]
-    public function testCarOnlySuppressionShowsControlAndResumeClearsIt(): void
-    {
-        $ownerId = $this->createEndpointTestUser();
-        $this->assertSame(0, $this->profileEmailSuppressed($ownerId), 'Test sanity: profile flag starts at 0');
-        $suppressedCarId = $this->createTestCar($ownerId, ['email' => 'spam-complaint@example.com', 'email_suppressed' => 1]);
-        $this->createTestCar($ownerId, ['email' => 'spam-complaint-other@example.com']);
+        $this->setOwnerOptedOut($ownerId);
+        $this->createTestCar($ownerId, ['email' => 'profile-count-one@example.com']);
+        // A car added after the opt-out is also paused, because the flag is the owner's.
+        $this->createTestCar($ownerId, ['email' => 'profile-count-two@example.com']);
 
         $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
 
         $this->assertSame(0, $page['exitCode'], 'Subprocess must exit cleanly: ' . $page['raw']);
-        $this->assertStringContainsString('id="resume-emails"', $page['raw'], 'A car-only suppression must show the control');
+        $this->assertStringContainsString('id="resume-emails"', $page['raw'], 'An opt-out must show the control');
+        $this->assertStringContainsString('name="resume_verification_emails"', $page['raw']);
         $this->assertStringContainsString(
-            'Verification emails are currently paused for 1 of your cars.',
+            'Verification emails are currently paused for 2 of your cars.',
             $page['raw'],
-            'With the profile flag at 0, the count must be the suppressed cars only'
+            'The count must be every owned car'
         );
 
         $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertSame(0, $this->emailSuppressed($suppressedCarId), 'The resume action must clear the car flag');
-        $this->assertSame(0, $this->profileEmailSuppressed($ownerId));
-        $this->assertSame(['SUPPRESSION CLEARED BY OWNER'], $this->suppressionCarsHistOperations($suppressedCarId));
+        $this->assertSame('0', (string) $this->flags($ownerId)['email_opted_out']);
         $this->assertStringContainsString('Verification emails have been resumed for your cars.', $result['successFlash']);
     }
 
     /**
-     * Every paused car is a Brevo complaint, which only an admin can clear.
-     * The page must hide the button, and a forced POST must say that no car
-     * was resumed instead of a plain success message.
+     * The owner is blocked and never opted out. Resume cannot clear the
+     * block. The page hides the button, and a forced POST gives the reason
+     * and the next step, and changes nothing.
      */
     #[Group('fast')]
     #[Group('regression')]
-    public function testAllComplaintCarsHidesButtonAndPostReportsNothingResumed(): void
+    public function testBlockedOnlyOwnerHidesButtonAndPostReportsNothingResumed(): void
     {
         $ownerId = $this->createEndpointTestUser();
-        $email = 'all-complaint-' . uniqid() . '@example.com';
-        $carId = $this->createTestCar($ownerId, ['email' => $email, 'email_suppressed' => 1]);
-        (new CarRepository($this->db))->insertEmailEvent($carId, $email, 'spam', null, 'all-complaint-msg', '2026-03-10 09:30:00');
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'all-complaint@example.com');
+        $this->setOwnerBlocked($ownerId, 'all-complaint@example.com', '2026-03-10 09:30:00', 'spam');
+        $this->createTestCar($ownerId, ['email' => 'all-complaint@example.com']);
+        $before = $this->flags($ownerId);
 
         $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
 
@@ -449,40 +420,135 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             $page['raw'],
             'The button must not render when it would clear nothing'
         );
-        $this->assertStringContainsString('1 car was paused because our email provider flagged the address', $page['raw']);
+        $this->assertStringContainsString('Our email provider flagged your address.', $page['raw']);
 
         $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertSame(1, $this->emailSuppressed($carId), 'A Brevo complaint must stay suppressed');
-        $this->assertSame([], $this->suppressionCarsHistOperations($carId));
-        $this->assertStringNotContainsString('resumed where you paused', $result['successFlash']);
+        $this->assertSame($before, $this->flags($ownerId), 'A block must stay');
         $this->assertStringNotContainsString('have been resumed', $result['successFlash']);
-        $this->assertStringContainsString('No cars were resumed', $result['errorFlash']);
-        $this->assertStringContainsString('contact the registry', $result['errorFlash']);
-    }
-
-    #[Group('fast')]
-    public function testProfileSuppressionCountsEveryOwnedCar(): void
-    {
-        $ownerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $this->createTestCar($ownerId, ['email' => 'profile-count-one@example.com', 'email_suppressed' => 1]);
-        // A car added after the opt-out keeps its own flag at 0 but is still blocked.
-        $this->createTestCar($ownerId, ['email' => 'profile-count-two@example.com']);
-
-        $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
-
-        $this->assertSame(0, $page['exitCode'], 'Subprocess must exit cleanly: ' . $page['raw']);
-        $this->assertStringContainsString(
-            'Verification emails are currently paused for 2 of your cars.',
-            $page['raw'],
-            'With the profile flag at 1, the count must be every owned car'
+        $this->assertSame(
+            'Verification emails are paused because our email provider flagged your address. Change your email address or contact an admin.',
+            $result['errorFlash']
         );
     }
 
+    /**
+     * An owner who complained and then opted out: Resume removes the opt-out
+     * and tells the owner that emails stay paused. The block, its address,
+     * time and cause stay.
+     */
     #[Group('fast')]
-    public function testNoSuppressionHidesControl(): void
+    #[Group('regression')]
+    public function testBlockedAndOptedOutOwnerResumeKeepsTheBlockAndSaysEmailsStayPaused(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'complained@example.com');
+        $this->setOwnerBlocked($ownerId, 'complained@example.com', '2026-03-10 09:30:00', 'spam');
+        $this->setOwnerOptedOut($ownerId);
+        $this->createTestCar($ownerId, ['email' => 'complained@example.com']);
+
+        $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
+        $this->assertStringContainsString('name="resume_verification_emails"', $page['raw']);
+        $this->assertStringContainsString('This button does not turn verification emails back on.', $page['raw']);
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $flags = $this->flags($ownerId);
+        $this->assertSame('0', (string) $flags['email_opted_out'], 'Resume clears the opt-out');
+        $this->assertSame('1', (string) $flags['email_blocked'], 'Resume must not clear the block');
+        $this->assertSame('complained@example.com', $flags['email_blocked_address']);
+        $this->assertSame('2026-03-10 09:30:00', $flags['email_blocked_at']);
+        $this->assertSame('spam', $flags['email_blocked_cause']);
+        $this->assertSame(
+            'Your opt-out is removed. Verification emails stay paused because our email provider flagged your address. '
+            . 'Change your email address or contact an admin.',
+            $result['warningFlash'],
+            'The message must be a warning, not a success'
+        );
+        $this->assertSame('', $result['successFlash']);
+    }
+
+    /**
+     * An owner whose address bounced and who opted out: Resume removes the
+     * opt-out, but eligibility still excludes the owner on the bounce. The
+     * message must not say that emails resume.
+     */
+    #[Group('fast')]
+    #[Group('regression')]
+    public function testBouncedAndOptedOutOwnerResumeSaysEmailsStayPausedForTheBounce(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->setOwnerOptedOut($ownerId);
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'bounced-message@example.com');
+        $this->setOwnerBounced($ownerId, 'bounced-message@example.com', '2026-03-04 05:06:07');
+        $this->createTestCar($ownerId, ['email' => 'bounced-message@example.com']);
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertSame('0', (string) $this->flags($ownerId)['email_opted_out'], 'Resume clears the opt-out');
+        $this->assertSame(
+            'Your opt-out is removed. Verification emails stay paused because email to your address bounced. '
+            . 'Update your email address to turn them back on.',
+            $result['warningFlash'],
+            'The message must be a warning, not a success'
+        );
+        $this->assertSame('', $result['successFlash']);
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function oldAddressFlagProvider(): array
+    {
+        return [
+            'bounce for an old address' => ['email_bounced'],
+            'block for an old address'  => ['email_blocked'],
+        ];
+    }
+
+    /**
+     * A bounce or block stored for an old address does not apply (#2356). So
+     * Resume clears the opt-out, reports success, and leaves the stored row.
+     */
+    #[Group('fast')]
+    #[Group('regression')]
+    #[DataProvider('oldAddressFlagProvider')]
+    public function testOptedOutOwnerWithAFlagForAnOldAddressResumesAndKeepsTheStoredFlag(string $flag): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->setUserEmailRaw($ownerId, 'resume-current@example.com');
+        $this->setOwnerOptedOut($ownerId);
+        if ($flag === 'email_bounced') {
+            $this->setOwnerBounced($ownerId, 'resume-old@example.com', '2026-03-04 05:06:07');
+        } else {
+            $this->setOwnerBlocked($ownerId, 'resume-old@example.com', '2026-03-04 05:06:07', 'spam');
+        }
+        $this->createTestCar($ownerId, ['email' => 'resume-current@example.com']);
+        $before = $this->flags($ownerId);
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertStringContainsString('Verification emails have been resumed for your cars.', $result['successFlash']);
+        $this->assertSame('', $result['warningFlash']);
+        $this->assertSame('', $result['errorFlash']);
+        $after = $this->flags($ownerId);
+        $this->assertSame('0', (string) $after['email_opted_out'], 'Resume clears the opt-out');
+        $flagColumns = $flag === 'email_bounced'
+            ? ['email_bounced', 'email_bounced_address', 'email_bounced_at']
+            : ['email_blocked', 'email_blocked_address', 'email_blocked_at', 'email_blocked_cause'];
+        foreach ($flagColumns as $column) {
+            $this->assertSame($before[$column], $after[$column], "Resume must leave {$column} unchanged");
+        }
+    }
+
+    #[Group('fast')]
+    public function testNoFlagHidesControl(): void
     {
         $ownerId = $this->createEndpointTestUser();
         $this->createTestCar($ownerId, ['email' => 'not-suppressed@example.com']);
@@ -494,26 +560,46 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         $this->assertStringNotContainsString('id="resume-emails"', $page['raw'], 'No flag set means no control');
     }
 
+    #[Group('fast')]
+    public function testBouncedOnlyOwnerHidesControl(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        // A flag applies only while its address matches users.email (#2356).
+        $this->setUserEmailRaw($ownerId, 'bounced-only@example.com');
+        $this->setOwnerBounced($ownerId, 'bounced-only@example.com');
+        $this->createTestCar($ownerId, ['email' => 'bounced-only@example.com']);
+
+        $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
+
+        $this->assertSame(0, $page['exitCode'], 'Subprocess must exit cleanly: ' . $page['raw']);
+        $this->assertStringContainsString('updateAccount', $page['raw'], 'Test sanity: the settings page must have rendered');
+        $this->assertStringNotContainsString(
+            'id="resume-emails"',
+            $page['raw'],
+            'A bounce is not an opt-out, so the Resume section stays hidden'
+        );
+    }
+
     /**
-     * AC3: no path on Account Settings can set email_suppressed. The ordinary
+     * AC3: no path on Account Settings can set the opt-out. The ordinary
      * profile-update form POST (valid CSRF, no resume_verification_emails
-     * field) changes the city, and also carries a forged email_suppressed=1
-     * field. The profile flag and every owned car's flag must stay 0.
+     * field) changes the city, and also carries forged flag fields. Every
+     * owner flag must stay unchanged.
      */
     #[Group('fast')]
-    public function testOrdinaryProfileUpdateCannotSetEmailSuppressed(): void
+    public function testOrdinaryProfileUpdateCannotSetAnyOwnerFlag(): void
     {
         $ownerId = $this->createEndpointTestUser();
         $this->db->query(
             "UPDATE profiles SET city = 'OriginalCity', state = 'OriginalState', country = 'OriginalCountry' WHERE user_id = ?",
             [$ownerId]
         );
-        $carOneId = $this->createTestCar($ownerId, ['email' => 'ac3-one@example.com']);
-        $carTwoId = $this->createTestCar($ownerId, ['email' => 'ac3-two@example.com']);
+        $this->createTestCar($ownerId, ['email' => 'ac3-one@example.com']);
 
-        $this->assertSame(0, $this->profileEmailSuppressed($ownerId), 'Test sanity: profile flag starts at 0');
-        $this->assertSame(0, $this->emailSuppressed($carOneId), 'Test sanity: car flag starts at 0');
-        $this->assertSame(0, $this->emailSuppressed($carTwoId), 'Test sanity: car flag starts at 0');
+        $before = $this->flags($ownerId);
+        $this->assertSame('0', (string) $before['email_opted_out'], 'Test sanity: opt-out starts at 0');
+        $this->assertSame('0', (string) $before['email_blocked'], 'Test sanity: block starts at 0');
+        $this->assertSame('0', (string) $before['email_bounced'], 'Test sanity: bounce starts at 0');
 
         $owner = $this->db->query('SELECT username, fname, lname, email FROM users WHERE id = ?', [$ownerId])->first();
         $this->assertNotNull($owner, 'Test setup: owner row must exist');
@@ -529,7 +615,9 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             'state' => 'ChangedState',
             'country' => 'ChangedCountry',
             'website' => '',
-            'email_suppressed' => '1',
+            'email_opted_out' => '1',
+            'email_blocked' => '1',
+            'email_bounced' => '1',
         ], withResumeField: false);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
@@ -540,38 +628,6 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             'Test sanity: the ordinary profile-update path must have run: ' . $result['raw']
         );
 
-        $this->assertSame(0, $this->profileEmailSuppressed($ownerId), 'The profile-update path must not set the profile flag');
-        $this->assertSame(0, $this->emailSuppressed($carOneId), 'The profile-update path must not set a car flag');
-        $this->assertSame(0, $this->emailSuppressed($carTwoId), 'The profile-update path must not set a car flag');
-    }
-
-    /**
-     * Regression: cars_hist.year is SMALLINT UNSIGNED NULL and the database
-     * runs in strict mode. The history snapshot once used '' for a NULL year,
-     * which made the whole resume action fail.
-     */
-    #[Group('fast')]
-    public function testCarWithNullYearResumesAndRecordsNullYearInHistory(): void
-    {
-        $ownerId = $this->createEndpointTestUser();
-        $this->db->query('UPDATE profiles SET email_suppressed = 1 WHERE user_id = ?', [$ownerId]);
-        $carId = $this->createTestCar($ownerId, ['email' => 'null-year@example.com', 'email_suppressed' => 1, 'year' => null]);
-
-        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
-
-        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertStringContainsString(
-            'Verification emails have been resumed for your cars.',
-            $result['successFlash'],
-            'A NULL year must not make the resume action fail: ' . $result['raw']
-        );
-        $this->assertSame(0, $this->emailSuppressed($carId));
-
-        $histRow = $this->db->query(
-            "SELECT year FROM cars_hist WHERE car_id = ? AND operation = 'SUPPRESSION CLEARED BY OWNER'",
-            [$carId]
-        )->first();
-        $this->assertNotNull($histRow, 'The audit row must have been inserted');
-        $this->assertNull($histRow->year, 'The audit row must record the NULL year as NULL');
+        $this->assertSame($before, $this->flags($ownerId), 'The profile-update path must not set any owner flag');
     }
 }

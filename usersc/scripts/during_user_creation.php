@@ -1,5 +1,8 @@
 <?php
 use ElanRegistry\LogCategories;
+use ElanRegistry\Migration\DeliverabilityMigrationQueries;
+
+/** @var int $theNewId The script that includes this file sets it. */
 
 // This script is really useful for doing additional things when a user is created.
 
@@ -18,7 +21,29 @@ use ElanRegistry\LogCategories;
 $check = $db->query("SELECT id FROM profiles WHERE user_id = ?", [$theNewId])->count();
 if ($check < 1) {
     $now = new DateTime();
-    $db->insert('profiles', ['user_id' => $theNewId, 'bio' => "automatically added - " . $now->format('Y-m-d H:i:s')]);
+    // Read from the users row, not from the caller's scope: several UserSpice
+    // paths include this script, and not all of them define $join_date.
+    // join.php sends the sign-up mail before this script runs, so the
+    // address-since time must be join_date, not now, or a bounce on that
+    // mail does not match (#2101). The matching step that reads
+    // email_address_since comes in #2359.
+    $newUser = $db->query("SELECT email, join_date FROM users WHERE id = ?", [$theNewId])->first();
+    if (!$newUser) {
+        // No row can mean a failed query or a missing user. Add the DB error
+        // text when there is one, so the log row tells the two cases apart.
+        $readError = $db->error() ? ": {$db->errorString()}" : '';
+        logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "users row not found during user creation for user_id={$theNewId}; no profile row created{$readError}");
+    } else {
+        $insertResult = $db->insert('profiles', [
+            'user_id' => $theNewId,
+            'bio' => "automatically added - " . $now->format('Y-m-d H:i:s'),
+            'email_address_since' => $newUser->join_date,
+            'email_address_seen' => DeliverabilityMigrationQueries::normalizeAddress($newUser->email),
+        ]);
+        if (!$insertResult) {
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to create profile during user creation for user_id={$theNewId}: {$db->errorString()}");
+        }
+    }
 }
 
 
@@ -57,7 +82,9 @@ if (!$updateResult) {
 $e = $db->query("SELECT email_act FROM email")->first();
 if ($e->email_act != 1) {
     $user = new User();
-    $login = $user->loginEmail(Input::get('email'), trim(Input::get('password')), 'off');
+    // $remember must be false, not 'off': loginEmail() tests it for truth, and
+    // any non-empty string sets a remember-me token the user did not ask for (#2378).
+    $login = $user->loginEmail(Input::get('email'), trim(Input::get('password')), false);
     if (!$login) {
         Redirect::to('login.php?err=There+was+a+problem+logging+you+in+automatically.');
     }

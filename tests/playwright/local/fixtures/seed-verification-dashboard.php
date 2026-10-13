@@ -19,11 +19,19 @@ use ElanRegistry\DatabaseInterface;
  *  - PENDING_USERNAME / PENDING car: vericode set, vericode_sent_at recent
  *    (inside CarVerificationEmailComposer::LINK_TTL_DAYS), last_verified
  *    NULL — lands in the Pending pill (see verificationPendingWhereSql()).
- *  - BOUNCED_USERNAME / BOUNCED car: email_bounced = 1, otherwise pending —
- *    lands in the Bounced pill.
- *  - SUPPRESSED_USERNAME / SUPPRESSED car: email_suppressed = 1 — lands in
- *    the Suppressed pill.
- *  - SOFT_BOUNCE_USERNAME / SOFT_BOUNCE car: pending (not email_bounced),
+ *  The deliverability flags are on the owner profile (#2101). Every owner
+ *  below has a profile row, except NO_PROFILE.
+ *
+ *  - BOUNCED_USERNAME / BOUNCED car: profile email_bounced = 1, otherwise
+ *    pending — lands in the Bounced pill.
+ *  - SUPPRESSED_USERNAME / SUPPRESSED car: profile email_opted_out = 1 —
+ *    lands in the Suppressed pill, chip "Opted out".
+ *  - BLOCKED_USERNAME / BLOCKED car: profile email_blocked = 1 with cause
+ *    blocklist — lands in the Suppressed pill, chip "Brevo complaint" (the
+ *    chip says complaint for every cause until #2361).
+ *  - NO_PROFILE_USERNAME / NO_PROFILE car: pending, and the owner has no
+ *    profiles row — chip "No profile", with no action button.
+ *  - SOFT_BOUNCE_USERNAME / SOFT_BOUNCE car: pending (no bounce flag),
  *    with one `soft_bounce` er_email_events row after its `sent` row, so
  *    its Status chip reads "Soft bounce" and its Mark Bounced button must
  *    render `disabled` (one soft bounce does not confirm a dead address —
@@ -105,11 +113,18 @@ const SEED_PENDING_CAR_MODEL = '__PW_SEED_VD_PENDING__';
 const SEED_BOUNCED_USERNAME = '__playwright_seed_vd_bounced_owner__';
 const SEED_BOUNCED_EMAIL = 'playwright-seed-vd-bounced-owner@example.invalid';
 const SEED_BOUNCED_CAR_MODEL = '__PW_SEED_VD_BOUNCED__';
-const SEED_BOUNCED_ADDRESS = 'bounced-vd@example.invalid';
 
 const SEED_SUPPRESSED_USERNAME = '__playwright_seed_vd_suppressed_owner__';
 const SEED_SUPPRESSED_EMAIL = 'playwright-seed-vd-suppressed-owner@example.invalid';
 const SEED_SUPPRESSED_CAR_MODEL = '__PW_SEED_VD_SUPPRESSED__';
+
+const SEED_BLOCKED_USERNAME = '__playwright_seed_vd_blocked_owner__';
+const SEED_BLOCKED_EMAIL = 'playwright-seed-vd-blocked-owner@example.invalid';
+const SEED_BLOCKED_CAR_MODEL = '__PW_SEED_VD_BLOCKED__';
+
+const SEED_NO_PROFILE_USERNAME = '__playwright_seed_vd_noprofile_owner__';
+const SEED_NO_PROFILE_EMAIL = 'playwright-seed-vd-noprofile-owner@example.invalid';
+const SEED_NO_PROFILE_CAR_MODEL = '__PW_SEED_VD_NOPROFILE__';
 
 const SEED_SOFT_BOUNCE_USERNAME = '__playwright_seed_vd_softbounce_owner__';
 const SEED_SOFT_BOUNCE_EMAIL = 'playwright-seed-vd-softbounce-owner@example.invalid';
@@ -149,6 +164,8 @@ const SEED_USERNAME_MODEL_PAIRS = [
     [SEED_PENDING_USERNAME, SEED_PENDING_CAR_MODEL],
     [SEED_BOUNCED_USERNAME, SEED_BOUNCED_CAR_MODEL],
     [SEED_SUPPRESSED_USERNAME, SEED_SUPPRESSED_CAR_MODEL],
+    [SEED_BLOCKED_USERNAME, SEED_BLOCKED_CAR_MODEL],
+    [SEED_NO_PROFILE_USERNAME, SEED_NO_PROFILE_CAR_MODEL],
     [SEED_SOFT_BOUNCE_USERNAME, SEED_SOFT_BOUNCE_CAR_MODEL],
     [SEED_PRECEDENCE_USERNAME, SEED_PRECEDENCE_CAR_MODEL],
     [SEED_VERIFIED_USERNAME, SEED_VERIFIED_CAR_MODEL],
@@ -179,6 +196,7 @@ function cleanupSeedRows(DatabaseInterface $db): void
             [$username, $carModel]
         );
         $db->query('DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$username]);
+        $db->query('DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$username]);
         $db->query('DELETE FROM users WHERE username = ?', [$username]);
         $db->query('DELETE FROM cars WHERE model = ?', [$carModel]);
     }
@@ -197,14 +215,18 @@ $carRepository = new CarRepository($db);
  * Insert one owner + one car, returning [userId, carId].
  *
  * @param array<string, mixed> $carOverrides
+ * An empty $profileFlags array gives a profile with no flags. Null gives no profile row.
+ *
+ * @param array<string, int|string>|null $profileFlags Deliverability columns for the owner profile
  * @return array{0: int, 1: int}
  */
-function seedOwnerAndCar(
+function seedDashboardOwnerAndCar(
     DatabaseInterface $db,
     CarRepository $carRepository,
     string $username,
     string $email,
-    array $carOverrides
+    array $carOverrides,
+    ?array $profileFlags = []
 ): array {
     $userInserted = $db->insert('users', [
         'username'   => $username,
@@ -220,6 +242,22 @@ function seedOwnerAndCar(
         exit(1);
     }
     $userId = (int) $db->lastId();
+
+    if ($profileFlags !== null) {
+        // profiles.user_id is UNIQUE, so upsert.
+        $columns = array_merge(['bio' => '', 'city' => '', 'state' => '', 'country' => ''], $profileFlags);
+        $names = implode(', ', array_keys($columns));
+        $marks = implode(', ', array_fill(0, count($columns), '?'));
+        $updates = implode(', ', array_map(static fn(string $c): string => "{$c} = VALUES({$c})", array_keys($columns)));
+        $db->query(
+            "INSERT INTO profiles (user_id, {$names}) VALUES (?, {$marks}) ON DUPLICATE KEY UPDATE {$updates}",
+            array_merge([$userId], array_values($columns))
+        );
+        if ($db->error()) {
+            fwrite(STDERR, "ERROR: Failed to seed the profile for {$username}: {$db->errorString()}\n");
+            exit(1);
+        }
+    }
 
     $carFields = array_merge([
         'user_id'                => $userId,
@@ -309,7 +347,7 @@ function seedHistoryRow(
 $now = new \DateTimeImmutable();
 
 // --- Pending: a live link, no response yet, not bounced/suppressed -------
-[$pendingUserId, $pendingCarId] = seedOwnerAndCar(
+[$pendingUserId, $pendingCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
     SEED_PENDING_USERNAME,
@@ -325,7 +363,7 @@ $now = new \DateTimeImmutable();
 );
 
 // --- Bounced ---------------------------------------------------------------
-[$bouncedUserId, $bouncedCarId] = seedOwnerAndCar(
+[$bouncedUserId, $bouncedCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
     SEED_BOUNCED_USERNAME,
@@ -337,13 +375,17 @@ $now = new \DateTimeImmutable();
         'vericode_sent_at'       => $now->modify('-3 days')->format('Y-m-d H:i:s'),
         'last_verified'          => null,
         'owner_last_updated'     => $now->modify('-3 days')->format('Y-m-d H:i:s'),
-        'email_bounced'          => 1,
-        'email_bounced_address'  => SEED_BOUNCED_ADDRESS,
+    ],
+    [
+        'email_bounced'         => 1,
+        // A flag applies only when its address equals users.email (#2356).
+        'email_bounced_address' => SEED_BOUNCED_EMAIL,
+        'email_bounced_at'      => $now->modify('-3 days')->format('Y-m-d H:i:s'),
     ]
 );
 
 // --- Suppressed --------------------------------------------------------------
-[$suppressedUserId, $suppressedCarId] = seedOwnerAndCar(
+[$suppressedUserId, $suppressedCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
     SEED_SUPPRESSED_USERNAME,
@@ -355,12 +397,54 @@ $now = new \DateTimeImmutable();
         'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
         'last_verified'      => null,
         'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
-        'email_suppressed'   => 1,
+    ],
+    [
+        'email_opted_out'    => 1,
+        'email_opted_out_at' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
     ]
 );
 
+// --- Blocked: Suppressed pill, "Brevo complaint" chip (cause blocklist) ----
+[$blockedUserId, $blockedCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_BLOCKED_USERNAME,
+    SEED_BLOCKED_EMAIL,
+    [
+        'model'              => SEED_BLOCKED_CAR_MODEL,
+        'chassis'            => 'SEEDVDK' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-blocked-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ],
+    [
+        'email_blocked'         => 1,
+        'email_blocked_address' => SEED_BLOCKED_EMAIL,
+        'email_blocked_at'      => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'email_blocked_cause'   => 'blocklist',
+    ]
+);
+
+// --- No profile: Pending pill, "No profile" chip, no action button --------
+[$noProfileUserId, $noProfileCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_NO_PROFILE_USERNAME,
+    SEED_NO_PROFILE_EMAIL,
+    [
+        'model'              => SEED_NO_PROFILE_CAR_MODEL,
+        'chassis'            => 'SEEDVDN' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-noprofile-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ],
+    null
+);
+
 // --- Soft bounce: Pending pill, "Soft bounce" chip, Mark Bounced disabled --
-[$softBounceUserId, $softBounceCarId] = seedOwnerAndCar(
+[$softBounceUserId, $softBounceCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
     SEED_SOFT_BOUNCE_USERNAME,
@@ -395,7 +479,7 @@ seedEmailEvent(
 // Reproduces CarRepositoryEmailEventPrecedenceTest
 // ::testTerminalEventWinsOverALaterDeliveredInTheSameCycle at the UI layer:
 // the Status chip must show Bounced, never Delivered, for this car.
-[$precedenceUserId, $precedenceCarId] = seedOwnerAndCar(
+[$precedenceUserId, $precedenceCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
     SEED_PRECEDENCE_USERNAME,
@@ -435,7 +519,7 @@ seedEmailEvent(
 );
 
 // --- Verified: one VERIFIED cars_hist row, for Recent Activity -----------
-[$verifiedUserId, $verifiedCarId] = seedOwnerAndCar(
+[$verifiedUserId, $verifiedCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
     SEED_VERIFIED_USERNAME,
@@ -455,7 +539,7 @@ if ($verifiedCar === null) {
 seedHistoryRow($carRepository, $verifiedCar, 'VERIFIED', $now->modify('-1 day')->format('Y-m-d H:i:s'));
 
 // --- Sold: one VERIFIED SOLD cars_hist row, for Recent Activity ----------
-[$soldUserId, $soldCarId] = seedOwnerAndCar(
+[$soldUserId, $soldCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
     SEED_SOLD_USERNAME,
@@ -482,6 +566,10 @@ echo json_encode([
     'bouncedUserId'      => $bouncedUserId,
     'suppressedCarId'    => $suppressedCarId,
     'suppressedUserId'   => $suppressedUserId,
+    'blockedCarId'       => $blockedCarId,
+    'blockedUserId'      => $blockedUserId,
+    'noProfileCarId'     => $noProfileCarId,
+    'noProfileUserId'    => $noProfileUserId,
     'softBounceCarId'    => $softBounceCarId,
     'softBounceUserId'   => $softBounceUserId,
     'precedenceCarId'    => $precedenceCarId,

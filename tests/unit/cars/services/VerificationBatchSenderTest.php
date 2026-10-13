@@ -75,6 +75,11 @@ final class VerificationBatchSenderTest extends TestCase
     {
         $this->mockRepo = $this->createMock(CarRepository::class);
         $this->mockVerifier = $this->createMock(CarVerificationManager::class);
+        // Every owner has a profile with all three flags clear. The send
+        // service reads it before it mails (#2101).
+        $this->mockRepo->method('effectiveEmailFlags')->willReturn(
+            new \ElanRegistry\Car\EffectiveEmailFlags(true, false, null, false, null, null, null, false, null, null, 'owner@example.com')
+        );
         $composer = new CarVerificationEmailComposer(new EmailTemplate());
 
         $this->sendSvc = new CarVerificationSendService(
@@ -156,8 +161,7 @@ final class VerificationBatchSenderTest extends TestCase
     }
 
     /**
-     * Builds a minimal eligible + sendable car row: not sold, not bounced,
-     * not suppressed, has an email and owner, not recently verified/updated,
+     * Builds a minimal eligible + sendable car row: not sold, has an email and owner, not recently verified/updated,
      * under the attempt cap (so VerificationEligibility::skipReason()
      * returns null), plus the fields CarVerificationSendService::sendOne()
      * and CarVerificationEmailComposer::compose() read.
@@ -181,8 +185,6 @@ final class VerificationBatchSenderTest extends TestCase
             'solddate'                    => null,
             'image'                       => null,
             'website'                     => null,
-            'email_bounced'               => 0,
-            'email_suppressed'            => 0,
             'last_verified'               => null,
             'owner_last_updated'          => '2020-01-01 00:00:00',
             'verification_attempts'       => 0,

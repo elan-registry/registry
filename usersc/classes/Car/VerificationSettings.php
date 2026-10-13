@@ -95,15 +95,6 @@ final class VerificationSettings
     private const BREVO_INFO_XML_RELATIVE_PATH = 'usersc/plugins/sendinblue/info.xml';
 
     /**
-     * Path of the override file that ships with the plugin, relative to the site root.
-     *
-     * A plugin update replaces this file but never touches override.php. An
-     * override.php that differs from it is out of date and can drop
-     * `$opts['tags']` (#2184).
-     */
-    private const BREVO_BUNDLED_OVERRIDE_RELATIVE_PATH = 'usersc/plugins/sendinblue/override.RENAME.php';
-
-    /**
      * Path of the UserSpice plugin state file, relative to the site root.
      *
      * UserSpice includes a plugin's override.php only when this file gives the
@@ -120,7 +111,10 @@ final class VerificationSettings
      *
      * 1.8.0 added `$opts['tags']` to the plugin's `email()` override. Older
      * versions drop the tag without an error, so a verification email goes out
-     * untagged and the Brevo webhook never records its delivery (#2184).
+     * untagged and the Brevo webhook never records its delivery (#2184). This
+     * check reads info.xml, which a plugin update replaces. It does not check
+     * override.php, which an update never changes: an override kept from before
+     * 1.8.0 still drops the tag (accepted risk, #2374).
      */
     private const BREVO_MIN_PLUGIN_VERSION = '1.8.0';
 
@@ -509,10 +503,9 @@ final class VerificationSettings
      *
      * True only when {@see brevoNotReadyReason()} finds no problem: an API key
      * is saved in `plg_sendinblue`, the plugin is active and its override file
-     * is in place so UserSpice routes mail through Brevo, the installed plugin
-     * is version {@see self::BREVO_MIN_PLUGIN_VERSION} or later, and the
-     * override file matches the bundled copy. The last two make sure the
-     * verification tag reaches Brevo.
+     * is in place so UserSpice routes mail through Brevo, and the installed
+     * plugin is version {@see self::BREVO_MIN_PLUGIN_VERSION} or later. The
+     * content of the override file is not checked (#2374).
      *
      * Never throws. Every failure, including a missing `plg_sendinblue` table
      * or an unreadable file, reports "not ready", which is the safe answer
@@ -535,7 +528,6 @@ final class VerificationSettings
      * 3. The plugin is active (`sendinblue = 1` in `usersc/plugins/plugins.ini.php`).
      * 4. The override file exists.
      * 5. The plugin version in `usersc/plugins/sendinblue/info.xml`.
-     * 6. The override file matches the bundled `override.RENAME.php`.
      *
      * A missing, unreadable, or unparseable file counts as not ready.
      *
@@ -553,7 +545,7 @@ final class VerificationSettings
             // SQLSTATE 42S02 = table missing, i.e. the sendinblue plugin was never
             // installed — an expected, non-alarming "not ready". Any other error
             // (connection lost, grants revoked, lock timeout) means the true Brevo
-            // state is unknown, not "not configured" — logged distinctly so an
+            // state is unknown, not "not ready" — logged distinctly so an
             // admin who gets the enable-rejected message isn't sent to double-check
             // a key/override that may in fact already be correct.
             $sqlState = (string) ($this->db->errorInfo()[0] ?? '');
@@ -603,20 +595,6 @@ final class VerificationSettings
             );
         }
 
-        $overrideHash = $this->fileHash($siteRoot . self::BREVO_OVERRIDE_RELATIVE_PATH);
-        $bundledHash = $this->fileHash($siteRoot . self::BREVO_BUNDLED_OVERRIDE_RELATIVE_PATH);
-        if ($overrideHash === null || $bundledHash === null) {
-            return 'The Brevo override file cannot be compared with the copy that ships with the plugin. '
-                . 'Check that ' . self::BREVO_OVERRIDE_RELATIVE_PATH . ' and '
-                . self::BREVO_BUNDLED_OVERRIDE_RELATIVE_PATH . ' exist and are readable.';
-        }
-
-        if (!hash_equals($bundledHash, $overrideHash)) {
-            return 'The Brevo override file is out of date. On the Brevo plugin page, open '
-                . '"Show file contents" under "Override Update Available", then click '
-                . '"Replace my override.php with the bundled version".';
-        }
-
         return null;
     }
 
@@ -641,24 +619,6 @@ final class VerificationSettings
         $value = is_array($plugins) ? ($plugins[self::BREVO_PLUGIN_INI_KEY] ?? null) : null;
 
         return is_scalar($value) && $value == 1;
-    }
-
-    /**
-     * SHA-256 of a file, or null if the file is missing or unreadable
-     *
-     * @param string $path Absolute path to the file
-     * @return string|null Hex digest, or null if it cannot be read
-     */
-    private function fileHash(string $path): ?string
-    {
-        if (!is_file($path) || !is_readable($path)) {
-            return null;
-        }
-
-        // @ for a file that disappears between the check and the read.
-        $hash = @hash_file('sha256', $path);
-
-        return $hash === false ? null : $hash;
     }
 
     /**
@@ -747,7 +707,7 @@ final class VerificationSettings
      * Called from three places:
      * - The Brevo webhook receiver (#1887), `app/api/webhooks/brevo.php`'s
      *   `NO_CAR_MATCH` branch, when an event's recipient email matches no
-     *   `cars.email` value.
+     *   owner's `users.email` ({@see CarRepository::findByEmail()}).
      * - `BrevoEventReconciliationJob::applyEvent()`, which replays events
      *   fetched from Brevo's Events API and hits the same no-match condition
      *   as the live webhook receiver.
@@ -758,8 +718,8 @@ final class VerificationSettings
      *   not just ones tied to verification sends. This is accepted
      *   deliberately per #2085's scope, not an oversight.
      *
-     * A rising count with verification enabled signals recipients whose
-     * emails have drifted from what any car record has on file.
+     * A rising count with verification enabled signals recipients that no
+     * owner account holds now, for example after an owner changed email.
      *
      * Never throws: a failed UPDATE is logged and swallowed, matching this
      * class's fail-quietly contract for the write paths its callers depend

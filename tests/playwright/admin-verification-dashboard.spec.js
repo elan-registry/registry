@@ -12,8 +12,13 @@
 // CLI-bootstrap-via-users/init.php approach, same idempotent
 // delete-then-insert convention, same US_ENVIRONMENT=development guard):
 //   - one PENDING car (live link, no response yet)
-//   - one BOUNCED car (email_bounced = 1)
-//   - one SUPPRESSED car (email_suppressed = 1)
+//   The deliverability flags are on the owner profile (#2101):
+//   - one BOUNCED car (profile email_bounced = 1)
+//   - one SUPPRESSED car (profile email_opted_out = 1), chip "Opted out"
+//   - one BLOCKED car (profile email_blocked = 1, cause blocklist), chip
+//     "Brevo complaint" (every cause shows complaint until #2361)
+//   - one NO-PROFILE car: pending, and its owner has no profiles row. Chip
+//     "No profile", and no action button
 //   - one SOFT-BOUNCE car: Pending pill, but one `soft_bounce`
 //     er_email_events row after its `sent` row, so its Status chip reads
 //     "Soft bounce" and its Mark Bounced button must render disabled
@@ -64,6 +69,8 @@ const { ensureLoggedIn, login, logout } = require('./auth-helper.js');
 let pendingCarId;
 let bouncedCarId;
 let suppressedCarId;
+let blockedCarId;
+let noProfileCarId;
 let softBounceCarId;
 let precedenceCarId;
 let precedenceChassis;
@@ -96,13 +103,15 @@ test.describe('Admin Verification Dashboard', () => {
         pendingCarId = seeded.pendingCarId;
         bouncedCarId = seeded.bouncedCarId;
         suppressedCarId = seeded.suppressedCarId;
+        blockedCarId = seeded.blockedCarId;
+        noProfileCarId = seeded.noProfileCarId;
         softBounceCarId = seeded.softBounceCarId;
         precedenceCarId = seeded.precedenceCarId;
         precedenceChassis = seeded.precedenceChassis;
         verifiedCarId = seeded.verifiedCarId;
         soldCarId = seeded.soldCarId;
 
-        for (const id of [pendingCarId, bouncedCarId, suppressedCarId, softBounceCarId, precedenceCarId, verifiedCarId, soldCarId]) {
+        for (const id of [pendingCarId, bouncedCarId, suppressedCarId, blockedCarId, noProfileCarId, softBounceCarId, precedenceCarId, verifiedCarId, soldCarId]) {
             expect(id).toBeGreaterThan(0);
         }
         expect(precedenceChassis).toContain('<script>');
@@ -289,6 +298,39 @@ test.describe('Admin Verification Dashboard', () => {
 
             if (label === 'Mark Bounced') {
                 await expect(actionButtons.first()).toBeEnabled();
+            }
+        }
+    });
+
+    // --- Profile-state chips ------------------------------------------------
+
+    // The owner's profile state comes before the car's email events. Each case
+    // loads its own pill, for the row-flooding reason above. The no-profile
+    // car is pending, so the Pending pill lists it.
+    test('profile state sets the Status chip: opted out, blocked (any cause shows Brevo complaint), no profile', async ({ page }) => {
+        const cases = [
+            { id: suppressedCarId, status: 'suppressed', chip: 'opted_out', text: /Opted out/, action: 'Clear Suppression' },
+            { id: blockedCarId, status: 'suppressed', chip: 'complaint', text: /Brevo complaint/, action: 'Clear Suppression' },
+            { id: noProfileCarId, status: 'pending', chip: 'no_profile', text: /No profile/, action: null },
+        ];
+
+        for (const { id, status, chip, text, action } of cases) {
+            await page.goto(`app/admin/index.php?tab=verification&status=${status}&show=100`, { waitUntil: 'networkidle' });
+
+            const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${id}")`) });
+            await expect(row, `row for seeded car ${id} under status=${status}`).toBeVisible();
+
+            const badge = row.locator('td').nth(5).locator('span.badge');
+            await expect(badge).toHaveText(text);
+            await expect(badge).toHaveAttribute('data-chip', chip);
+
+            const actionButtons = row.locator('td').last().locator('button');
+            if (action === null) {
+                // An owner with no profile row has no action until an admin fixes the profile.
+                await expect(actionButtons).toHaveCount(0);
+            } else {
+                await expect(actionButtons).toHaveCount(1);
+                await expect(actionButtons.first()).toHaveText(action);
             }
         }
     });
