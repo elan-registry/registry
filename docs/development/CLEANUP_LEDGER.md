@@ -108,6 +108,11 @@ after an item is written.
 
 - [ ] Replace the hand-written DB proxy (~L55) with `PassThroughDatabase` (from #2169)
 
+### `tests/integration/UserCreationHookAutoLoginTest.php`
+
+- [ ] `setUp()` does not check the `us_ip_list` SELECT, and `tearDown()` does not check the re-insert. A failure deletes the developer's IP row with no error. Assert both results (found in #2378)
+- [ ] No test covers the `$readError` suffix in `usersc/scripts/during_user_creation.php` when the `users` SELECT itself fails. Force the failure with `PassThroughDatabase` and assert the error text in the log row (found in #2378)
+
 ### `tests/integration/UserDeletionReassignmentTest.php`
 
 - [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L380, renames `car_transfer_requests.admin_notes`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
@@ -223,3 +228,8 @@ after an item is written.
 
 - [ ] Remove the pre-6.1.7 version guards after production runs UserSpice 6.1.7 (v2.30.9, #2088): `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)
 - [ ] No test runs a successful login and checks that `users.logins` goes up by exactly one (`$recordCompletedLogin` ~L107, called at ~L192, 302, 356); only the text check in `LoginWiringTest.php:129` covers the version-guarded count. (found in /finish-milestone v2.30.6)
+
+### `usersc/scripts/during_user_creation.php`
+
+- [ ] A failed automatic sign-in after sign-up (~L87) redirects with a message but writes no log row. Log it with the user id before `Redirect::to()` (found in #2378)
+- [ ] The `email_act` read (~L81) is not checked. A failed read returns `[]`, so `$e->email_act` warns, `null != 1` is true, and the hook tries the automatic sign-in. Check the read, log `LOG_CATEGORY_DATABASE_ERROR`, and skip the sign-in (found in #2378)
