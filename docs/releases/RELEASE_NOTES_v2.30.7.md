@@ -80,3 +80,5 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - [#2378](https://github.com/elan-registry/registry/issues/2378) — Stop new-account sign-up from setting a remember-me token (also logs a failed
   profile insert, gap 5 of [#2393](https://github.com/elan-registry/registry/issues/2393), which stays open).
 - [#2403](https://github.com/elan-registry/registry/issues/2403) — Add a `/groom-tests` command that reviews the test suite for low-value tests.
+- [#2416](https://github.com/elan-registry/registry/issues/2416) — Keep settled review items under a `Notes` heading, so a review with no open
+  finding no longer stops the release.
