@@ -9,6 +9,7 @@ require_once __DIR__ . '/../Support/FakeBrevoEventReconciliationClient.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoEvent;
@@ -21,6 +22,9 @@ use Tests\Support\FakeBrevoEventReconciliationClient;
  *
  * Since #2358 the job ignores the site-wide verification switch, so each test
  * runs with the switch off, as it ships.
+ *
+ * Since #2359 the job applies only events of messages that this environment
+ * sent. makeJob() seeds a verification `sent` row for each event's message ID.
  *
  * Snapshots and restores the seeded `brevo_reconciliation` row, which
  * CronJobGuardIntegrationTest also changes.
@@ -42,6 +46,7 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
     private CarRepository $repo;
     private EmailEventApplier $applier;
     private int $userId;
+    private int $carId;
     private string $carEmail;
 
     protected function setUp(): void
@@ -74,9 +79,10 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
 
         // Events match the owner's users.email, so the owner holds the address.
+        // The owner joined before the seeded sends, so the join-date guard passes.
         $this->carEmail = 'runnow-bypass-' . uniqid() . '@example.com';
-        $this->userId = $this->createTestUser(['email' => $this->carEmail]);
-        $this->createTestCar($this->userId, ['email' => $this->carEmail]);
+        $this->userId = $this->createTestUser(['email' => $this->carEmail, 'join_date' => '2026-01-01 00:00:00']);
+        $this->carId = $this->createTestCar($this->userId, ['email' => $this->carEmail]);
     }
 
     protected function tearDown(): void
@@ -117,18 +123,34 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
     private function countEventRows(string $brevoMessageId): int
     {
         $row = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE user_id = ? AND brevo_message_id = ?',
+            "SELECT COUNT(*) AS cnt FROM er_email_events
+              WHERE user_id = ? AND brevo_message_id = ? AND event != 'sent'",
             [$this->userId, $brevoMessageId]
         )->first();
 
         return (int) $row->cnt;
     }
 
+    /**
+     * @param list<FakeBrevoEvent> $events
+     */
     private function makeJob(array $events): BrevoEventReconciliationJob
     {
+        foreach ($events as $event) {
+            $this->repo->insertEmailEvent(
+                $this->carId,
+                $this->carEmail,
+                'sent',
+                null,
+                (string) $event->getMessageId(),
+                '2026-09-08 04:00:00'
+            );
+        }
+
         return new BrevoEventReconciliationJob(
             $this->db,
             $this->repo,
+            new EmailEventMatcher($this->repo),
             $this->applier,
             new FakeBrevoEventReconciliationClient($events),
             new \DateTimeImmutable('2026-09-09 03:00:00')

@@ -9,6 +9,7 @@ require_once __DIR__ . '/../Support/FakeBrevoSuppressionSyncClient.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoBlockedContact;
@@ -130,6 +131,7 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
         return new BrevoSuppressionSyncJob(
             $this->db,
             $this->repo,
+            new EmailEventMatcher($this->repo),
             $this->applier,
             new FakeBrevoSuppressionSyncClient([
                 FakeBrevoSuppressionSyncClient::page([

@@ -181,12 +181,13 @@ final class CarRepositoryEmailEventPruneTest extends IntegrationTestCase
     public function testTheKeptCycleStartStillShowsOnTheDashboardAfterThePrune(): void
     {
         $this->insertEvent($this->carId, 'sent', 'local:cycle', $this->secondsFrom($this->shortCutoff, -86400 * 10), 'cycle@example.com');
-        $this->insertEvent(null, 'delivered', 'brevo-late', $this->secondsFrom($this->shortCutoff, 1));
+        // The verification delivery carries its car (#2359). A car-less delivered row does not show.
+        $this->insertEvent($this->carId, 'delivered', 'brevo-late', $this->secondsFrom($this->shortCutoff, 1));
 
         $this->prune();
 
         $latest = $this->repo->findLatestEmailEventsByCarIds([$this->carId]);
-        $this->assertSame('delivered', $latest[$this->carId]->event, 'The owner-level row is after the kept cycle start');
+        $this->assertSame('delivered', $latest[$this->carId]->event, 'The delivered row is after the kept cycle start');
         $this->assertTrue($this->exists('local:cycle'));
     }
 
@@ -239,7 +240,7 @@ final class CarRepositoryEmailEventPruneTest extends IntegrationTestCase
         $carA = $this->createTestCar($ownerA, ['email' => 'prune-a-' . uniqid() . '@example.com']);
         $this->insertEvent($carB, 'sent', 'local:b-cycle', $this->secondsFrom($this->shortCutoff, -86400 * 20), 'b@example.com', $ownerB);
         $this->insertEvent($carA, 'sent', 'local:a-newer', $this->secondsFrom($this->shortCutoff, -86400 * 10), 'a@example.com', $ownerA);
-        $this->insertEvent(null, 'delivered', 'brevo-b-late', $this->secondsFrom($this->shortCutoff, 60), 'b@example.com', $ownerB);
+        $this->insertEvent($carB, 'delivered', 'brevo-b-late', $this->secondsFrom($this->shortCutoff, 60), 'b@example.com', $ownerB);
         $this->assertTrue($this->repo->transferEmailEvents($carA, $carB), 'Test setup: the merge moves the events');
         $this->assertSame(
             'delivered',
@@ -276,6 +277,25 @@ final class CarRepositoryEmailEventPruneTest extends IntegrationTestCase
         $this->assertSame('', $this->emailOf('local:new-owner'));
         $this->assertFalse($this->exists('local:old-owner'), "The old owner's sent row follows the 90-day rule");
         $this->assertSame('sent', $this->repo->findLatestEmailEventsByCarIds([$this->carId])[$this->carId]->event);
+    }
+
+    /**
+     * The new owner has no `sent` row yet. The old owner's `sent` row is the
+     * car's only one, but it belongs to another owner, so it starts no cycle
+     * of the current owner and follows the 90-day rule. A keep rule that
+     * ignored `cars.user_id` would keep it.
+     */
+    public function testAfterATransferWithNoNewSendThePruneDeletesTheOldOwnersOnlySentRow(): void
+    {
+        $oldOwner = $this->userId;
+        $newOwner = $this->createTestUser([], true);
+        $this->insertEvent($this->carId, 'sent', 'local:old-owner-only', $this->secondsFrom($this->shortCutoff, -86400 * 20), 'old@example.com', $oldOwner);
+        $this->db->query('UPDATE cars SET user_id = ? WHERE id = ?', [$newOwner, $this->carId]);
+        $this->assertFalse($this->db->error(), 'Test setup: transfer: ' . $this->db->errorString());
+
+        $this->assertSame(1, $this->prune());
+
+        $this->assertFalse($this->exists('local:old-owner-only'), "The old owner's sent row is not the new owner's cycle start");
     }
 
     public function testASoftBounceWindowStillResetsAfterADeliveredRowInsideNinetyDays(): void

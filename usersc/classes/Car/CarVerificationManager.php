@@ -249,9 +249,8 @@ class CarVerificationManager
      */
     public function setBouncedFromEvent(int $ownerId, string $bouncedAddress, string $bouncedAt, string $source): bool
     {
-        // The event paths (webhook, reconciliation, import) run with no
-        // transaction, so the profile row lock ends at once. #2359 adds the
-        // transaction.
+        // EmailEventApplier::apply() calls this inside its transaction. The
+        // profile lock then holds until the event row and this flag commit.
         DeliverabilityFlagLog::assertValidSource($source);
 
         $old = $this->repo->setProfileBounced($ownerId, $bouncedAddress, $bouncedAt);
@@ -290,9 +289,8 @@ class CarVerificationManager
         string $blockedAt,
         string $source
     ): bool {
-        // The event paths (webhook, reconciliation, import) run with no
-        // transaction, so the profile row lock ends at once. #2359 adds the
-        // transaction.
+        // EmailEventApplier::apply() calls this inside its transaction. The
+        // profile lock then holds until the event row and this flag commit.
         DeliverabilityFlagLog::assertValidSource($source);
 
         $old = $this->repo->setProfileBlocked($ownerId, $blockedAddress, $cause, $blockedAt);

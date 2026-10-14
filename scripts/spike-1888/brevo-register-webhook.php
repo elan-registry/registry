@@ -82,12 +82,12 @@ const REPO_ROOT = __DIR__ . '/../..';
 const BREVO_API_BASE = 'https://api.brevo.com/v3';
 
 /**
- * The transactional events subscribed on --create. Matches what #1887's
- * bounce-detection endpoint needs to observe.
+ * The delivery events subscribed on --create. Open and click events are
+ * not subscribed, because the registry records no open or click.
  *
  * @var array<int, string>
  */
-const CREATE_EVENTS = ['delivered', 'opened', 'softBounce', 'hardBounce', 'blocked', 'invalid', 'spam'];
+const CREATE_EVENTS = ['delivered', 'softBounce', 'hardBounce', 'blocked', 'invalid', 'spam', 'unsubscribed'];
 
 /**
  * Read a single-valued option, taking the first if getopt collected repeats.

@@ -256,7 +256,9 @@ test.describe('Admin Verification Dashboard', () => {
 
     // AC: each queue row shows exactly one contextual action button, and the
     // disabled soft-bounce case is rendered correctly: chip shows "Soft
-    // bounce", Mark Bounced is rendered disabled.
+    // bounce", Mark Bounced is rendered disabled. The owner also has a later
+    // `delivered` row with car_id NULL (a password-reset email, #2359). It
+    // must not turn the chip to "Delivered".
     test('the soft-bounce row shows the "Soft bounce" chip and a disabled Mark Bounced button', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
 
@@ -383,9 +385,12 @@ test.describe('Admin Verification Dashboard', () => {
         await expect(statusCell).toHaveText('\u2014');
     });
 
-    // AC (#2358): the webhook stores one event per owner with car_id NULL.
-    // Every car of the owner must show it once its own cycle has started.
-    test('an owner-level Delivered row shows on every car of that owner', async ({ page }) => {
+    // AC (#2358, #2359): the webhook stores the event of mail that matched no
+    // verification send with car_id NULL. A hard bounce or block of that kind
+    // stops all mail to the owner, so every car of the owner shows it once its
+    // own cycle has started. A `delivered` row with car_id NULL shows on no
+    // car (see the soft-bounce row test above).
+    test('an owner-level hard bounce (car_id NULL) shows on every car of that owner', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
 
         for (const carId of [twinCarIdA, twinCarIdB]) {
@@ -393,8 +398,8 @@ test.describe('Admin Verification Dashboard', () => {
             await expect(row).toBeVisible();
 
             const chip = row.locator('td').nth(5).locator('span.badge');
-            await expect(chip).toHaveText(/Delivered/);
-            await expect(chip).toHaveAttribute('data-chip', 'delivered');
+            await expect(chip).toHaveText(/Bounced/);
+            await expect(chip).toHaveAttribute('data-chip', 'bounced');
         }
     });
 

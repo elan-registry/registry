@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Cron;
 
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -87,7 +88,10 @@ class BrevoEventReconciliationClient
     }
 
     /**
-     * Fetch one page of transactional delivery events for the given window.
+     * Fetch one page of transactional delivery events of one type for the given window.
+     *
+     * One type per call: in a mixed page, a high-volume type such as
+     * `delivered` can push the rare bounce out of the page.
      *
      * The window is inclusive of both dates at day granularity: Brevo's
      * statistics endpoint takes `YYYY-MM-DD` strings, not timestamps, so any
@@ -99,6 +103,8 @@ class BrevoEventReconciliationClient
      * @param \DateTimeImmutable $endDate   End of the window (date part only)
      * @param int                $limit     Page size (Brevo caps this at 2500)
      * @param int                $offset    Zero-based offset into the result set
+     * @param string             $eventType Brevo's name of the event type to fetch
+     *                                      (for example `hardBounces`, `delivered`)
      * @return \Brevo\Client\Model\GetEmailEventReportEvents[]|null Null if
      *         there is no API key, the SDK is not loaded, or the API call
      *         fails — never
@@ -111,7 +117,8 @@ class BrevoEventReconciliationClient
         \DateTimeImmutable $startDate,
         \DateTimeImmutable $endDate,
         int $limit,
-        int $offset
+        int $offset,
+        string $eventType
     ): ?array {
         $apiKey = $this->apiKey();
         if ($apiKey === null) {
@@ -140,8 +147,8 @@ class BrevoEventReconciliationClient
             // Positional arguments, per the generated SDK signature:
             //   getEmailEventReport($limit, $offset, $startDate, $endDate, $days,
             //       $email, $event, $tags, $messageId, $templateId, $sort)
-            // Everything past $endDate is an optional server-side filter this
-            // job does not use. They are passed explicitly as null rather than
+            // Past $endDate, the job uses only the $event filter. The other
+            // optional filters are passed explicitly as null rather than
             // omitted because $sort's default ('desc') sits at the end of the
             // list and cannot be reached otherwise; 'desc' is kept, so paging
             // walks newest-first consistently across calls.
@@ -152,7 +159,7 @@ class BrevoEventReconciliationClient
                 $endDate->format('Y-m-d'),
                 null,
                 null,
-                null,
+                $eventType,
                 null,
                 null,
                 null,
@@ -167,15 +174,17 @@ class BrevoEventReconciliationClient
             // also raises \InvalidArgumentException on malformed arguments and
             // \RuntimeException during response deserialization — none of which
             // should be allowed to abort a cron run.
+            // No message: a Brevo API error body can echo a
+            // recipient address, and log lines must not hold one (#2359).
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo event reconciliation poll FAILED (%s to %s, limit %d, offset %d): %s: %s. '
-                . 'No events backfilled this cycle.',
+                'Brevo event reconciliation poll FAILED (event type %s, %s to %s, limit %d, offset %d): %s. '
+                . 'No events of this type backfilled this cycle.',
+                $eventType,
                 $startDate->format('Y-m-d'),
                 $endDate->format('Y-m-d'),
                 $limit,
                 $offset,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return null;
         }
@@ -281,11 +290,10 @@ class BrevoEventReconciliationClient
             // catch-all as a generic job failure, with nothing pointing at the
             // SDK. Caught and identified here instead.
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo event reconciliation: SDK autoloader at %s failed to load (%s: %s) —'
+                'Brevo event reconciliation: SDK autoloader at %s failed to load (%s) —'
                 . ' the vendored Brevo SDK looks corrupt. Skipping poll.',
                 $autoload,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return false;
         }

@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../IntegrationTestCase.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
@@ -66,6 +67,32 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
     /**
      * @return array{owner: int, cars: list<int>}
      */
+    /**
+     * Apply a webhook-style event, matched to the owner, with the event time as the message time
+     *
+     * @return bool True when the call wrote a new event row
+     */
+    private function applyEvent(
+        int $ownerId,
+        string $address,
+        string $event,
+        ?string $reason,
+        string $messageId,
+        string $occurredAt,
+        string $source
+    ): bool {
+        return $this->applier->apply(
+            EmailEventMatch::matched($ownerId, null, $occurredAt),
+            $address,
+            $event,
+            $reason,
+            $messageId,
+            $occurredAt,
+            $source,
+            EmailEventApplier::MODE_EVENT
+        );
+    }
+
     private function createOwnerWithTwoCars(string $emailA, string $emailB): array
     {
         $ownerId = $this->createTestUser(['email' => $emailA], true);
@@ -73,6 +100,8 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         // A soft bounce before email_address_since does not count (#2358), and the
         // events in these tests are in the past. A new profile has since = now.
         $this->db->query('UPDATE profiles SET email_address_since = ? WHERE user_id = ?', ['2020-01-01 00:00:00', $ownerId]);
+        // The event step skips a message sent before join_date (#2359), so move it back too.
+        $this->db->query('UPDATE users SET join_date = ? WHERE id = ?', ['2020-01-01 00:00:00', $ownerId]);
         $cars = [];
         foreach ([$emailA, $emailB] as $email) {
             $carId = $this->createTestCar($ownerId, [
@@ -423,7 +452,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
     {
         $fixture = $this->createOwnerWithTwoCars('Block-A@Example.com', 'block-b@example.com');
 
-        $this->applier->apply($fixture['owner'], 'Block-A@Example.com', $event, null, 'msg-block-1', '2026-04-04 04:04:04', $source);
+        $this->applyEvent($fixture['owner'], 'Block-A@Example.com', $event, null, 'msg-block-1', '2026-04-04 04:04:04', $source);
 
         $flags = $this->getOwnerEmailFlags($fixture['owner']);
         $this->assertSame('1', (string) $flags['email_blocked']);
@@ -441,9 +470,9 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
     public function testBlockEventRepeatOnTheSameAddressKeepsTheFirstTimeAndCause(): void
     {
         $fixture = $this->createOwnerWithTwoCars('block-a@example.com', 'block-b@example.com');
-        $this->applier->apply($fixture['owner'], 'block-a@example.com', 'spam', null, 'msg-1', '2026-04-04 04:04:04', 'webhook');
+        $this->applyEvent($fixture['owner'], 'block-a@example.com', 'spam', null, 'msg-1', '2026-04-04 04:04:04', 'webhook');
 
-        $this->applier->apply($fixture['owner'], 'block-a@example.com', 'unsubscribed', null, 'msg-2', '2026-05-05 05:05:05', 'webhook');
+        $this->applyEvent($fixture['owner'], 'block-a@example.com', 'unsubscribed', null, 'msg-2', '2026-05-05 05:05:05', 'webhook');
 
         $flags = $this->getOwnerEmailFlags($fixture['owner']);
         $this->assertSame('2026-04-04 04:04:04', $flags['email_blocked_at']);
@@ -454,9 +483,11 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
     public function testBlockEventForAnotherAddressRewritesAddressTimeAndCause(): void
     {
         $fixture = $this->createOwnerWithTwoCars('block-a@example.com', 'block-b@example.com');
-        $this->applier->apply($fixture['owner'], 'block-a@example.com', 'spam', null, 'msg-1', '2026-04-04 04:04:04', 'webhook');
+        $this->applyEvent($fixture['owner'], 'block-a@example.com', 'spam', null, 'msg-1', '2026-04-04 04:04:04', 'webhook');
+        // An event flags only the current address (#2359), so the owner moves to B first.
+        $this->db->query('UPDATE users SET email = ? WHERE id = ?', ['block-b@example.com', $fixture['owner']]);
 
-        $this->applier->apply($fixture['owner'], 'block-b@example.com', 'unsubscribed', null, 'msg-2', '2026-05-05 05:05:05', 'webhook');
+        $this->applyEvent($fixture['owner'], 'block-b@example.com', 'unsubscribed', null, 'msg-2', '2026-05-05 05:05:05', 'webhook');
 
         $flags = $this->getOwnerEmailFlags($fixture['owner']);
         $this->assertSame('block-b@example.com', $flags['email_blocked_address']);
@@ -470,7 +501,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         $other = $this->createOwnerWithTwoCars('other-a@example.com', 'other-b@example.com');
         $carsBefore = $this->carSnapshot(array_merge($fixture['cars'], $other['cars']));
 
-        $this->applier->apply($fixture['owner'], 'block-a@example.com', 'spam', null, 'msg-1', '2026-04-04 04:04:04', 'webhook');
+        $this->applyEvent($fixture['owner'], 'block-a@example.com', 'spam', null, 'msg-1', '2026-04-04 04:04:04', 'webhook');
 
         $this->assertSame('1', (string) $this->getOwnerEmailFlags($fixture['owner'])['email_blocked']);
         $this->assertSame('0', (string) $this->getOwnerEmailFlags($other['owner'])['email_blocked']);
@@ -481,7 +512,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
     {
         $fixture = $this->createOwnerWithTwoCars('bounce-a@example.com', 'bounce-b@example.com');
 
-        $this->applier->apply($fixture['owner'], 'bounce-a@example.com', 'hard_bounce', null, 'msg-1', '2026-06-06 06:06:06', 'reconciliation');
+        $this->applyEvent($fixture['owner'], 'bounce-a@example.com', 'hard_bounce', null, 'msg-1', '2026-06-06 06:06:06', 'reconciliation');
 
         $flags = $this->getOwnerEmailFlags($fixture['owner']);
         $this->assertSame('1', (string) $flags['email_bounced']);
@@ -495,10 +526,10 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         $soft = 'soft-a-' . uniqid() . '@example.com';
         $fixture = $this->createOwnerWithTwoCars($soft, 'soft-b-' . uniqid() . '@example.com');
 
-        $this->applier->apply($fixture['owner'], $soft, 'soft_bounce', null, 'soft-1', '2026-07-01 00:00:00', 'webhook');
-        $this->applier->apply($fixture['owner'], $soft, 'soft_bounce', null, 'soft-2', '2026-07-02 00:00:00', 'webhook');
+        $this->applyEvent($fixture['owner'], $soft, 'soft_bounce', null, 'soft-1', '2026-07-01 00:00:00', 'webhook');
+        $this->applyEvent($fixture['owner'], $soft, 'soft_bounce', null, 'soft-2', '2026-07-02 00:00:00', 'webhook');
         $this->assertSame('0', (string) $this->getOwnerEmailFlags($fixture['owner'])['email_bounced'], 'Test setup: two cycles do not escalate');
-        $this->applier->apply($fixture['owner'], $soft, 'soft_bounce', null, 'soft-3', '2026-07-03 12:13:14', 'webhook');
+        $this->applyEvent($fixture['owner'], $soft, 'soft_bounce', null, 'soft-3', '2026-07-03 12:13:14', 'webhook');
 
         $flags = $this->getOwnerEmailFlags($fixture['owner']);
         $this->assertSame('1', (string) $flags['email_bounced']);
@@ -511,12 +542,12 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         $soft = 'soft-a-' . uniqid() . '@example.com';
         $fixture = $this->createOwnerWithTwoCars($soft, 'soft-b-' . uniqid() . '@example.com');
         $this->setOwnerBounced($fixture['owner'], $soft);
-        $this->applier->apply($fixture['owner'], $soft, 'soft_bounce', null, 'soft-1', '2026-07-01 00:00:00', 'webhook');
-        $this->applier->apply($fixture['owner'], $soft, 'soft_bounce', null, 'soft-2', '2026-07-02 00:00:00', 'webhook');
+        $this->applyEvent($fixture['owner'], $soft, 'soft_bounce', null, 'soft-1', '2026-07-01 00:00:00', 'webhook');
+        $this->applyEvent($fixture['owner'], $soft, 'soft_bounce', null, 'soft-2', '2026-07-02 00:00:00', 'webhook');
         $this->manager->clearBouncedForOwner($fixture['owner'], self::ADMIN_ID);
         $this->assertSame('0', (string) $this->getOwnerEmailFlags($fixture['owner'])['email_bounced'], 'Test setup: bounce cleared');
 
-        $this->applier->apply($fixture['owner'], $soft, 'soft_bounce', null, 'soft-3', $this->futureOrPast('+1 minute'), 'webhook');
+        $this->applyEvent($fixture['owner'], $soft, 'soft_bounce', null, 'soft-3', $this->futureOrPast('+1 minute'), 'webhook');
 
         $this->assertSame(
             '0',
@@ -566,7 +597,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         if ($path === 'applier') {
             // apply() returns nothing, so this path checks only the row and the log.
             $event = $flag === 'email_bounced' ? 'hard_bounce' : 'spam';
-            $this->applier->apply($fixture['owner'], 'new-b@example.com', $event, null, 'msg-new-b', $at, 'webhook');
+            $this->applyEvent($fixture['owner'], 'new-b@example.com', $event, null, 'msg-new-b', $at, 'webhook');
         } else {
             $changed = match ($path) {
                 'setBouncedFromEvent'    => $this->manager->setBouncedFromEvent($fixture['owner'], 'new-b@example.com', $at, 'webhook'),

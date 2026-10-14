@@ -6,39 +6,69 @@ namespace ElanRegistry\Car;
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
- * BrevoWebhookEventProcessor - Parsing, matching, and escalation logic for
- * inbound Brevo delivery-status webhook events
+ * BrevoWebhookEventProcessor - Parse, match and record one inbound Brevo
+ * delivery-status webhook event
  *
- * Owns all parsing/matching/escalation *logic* for issue #1887; no HTTP
- * concerns (`http_response_code()`, `exit`) live here — that separation is
- * what makes this class unit-testable without the subprocess dance the
- * endpoint itself needs (see `app/api/webhooks/brevo.php`).
+ * Owns the parsing and dispatch logic of the webhook (#1887). No HTTP code
+ * (`http_response_code()`, `exit`) lives here, so the class is unit-testable
+ * without the subprocess that the endpoint itself needs (see
+ * `app/api/webhooks/brevo.php`).
  *
- * ESCALATION RULES (externally-observable behavior of this endpoint; the rules
- * themselves now live in {@see EmailEventApplier}, which owns them so that the
- * #1889 reconciliation job escalates identically — change them there, not here):
- * - `hard_bounce` / `blocked` / `invalid` immediately flag the owner as bounced.
- * - `soft_bounce` does not immediately change anything. After the event row
- *   is recorded, {@see CarRepository::countSoftBouncesSinceLastDelivered()}
- *   is consulted; at 3 or more distinct send cycles (distinct
- *   `brevo_message_id` values) since the email's last `delivered` event, the
- *   owner is escalated to bounced via the same path as a hard bounce.
- * - `delivered` and `unique_opened` only ever record an event row. `delivered`
- *   implicitly resets the soft-bounce escalation window (the count query is
- *   scoped to occur after the most recent `delivered` row), so there is no
- *   separate "clear escalation" write. `unique_opened` never touches flags or
- *   the escalation count under any circumstance.
- * - `spam` flags the owner as blocked (a distinct signal from a bounce).
+ * Every registry mail counts, not only verification mail (#2359). There is no
+ * tag filter. The steps:
+ *
+ * 1. Accept only the delivery events in {@see self::DELIVERY_EVENTS}. Any
+ *    other event (for example `opened` or `click`) is {@see ProcessingResult::IGNORED}.
+ * 2. Reject an address longer than {@see EmailEventMatcher::MAX_ADDRESS_BYTES} bytes, or
+ *    one that fails `FILTER_VALIDATE_EMAIL`, before any match.
+ * 3. {@see EmailEventMatcher::matchByMessageId()} finds the user. A message
+ *    that this environment did not send is {@see ProcessingResult::IGNORED},
+ *    with no row and no log line.
+ * 4. {@see EmailEventApplier::apply()} records the event and applies the
+ *    flag in one transaction. The escalation rules live there, so the
+ *    reconciliation job escalates the same way.
+ * 5. `sendinblueRecordEvent()` puts the event on the plugin's message row,
+ *    when the installed plugin has that function. This step also runs for
+ *    an event that matched no user, which has no registry row.
+ *
+ * A stored value that cannot be parsed (for example a zero message time) is
+ * {@see ProcessingResult::MALFORMED}. It fails the same way on every retry.
+ *
+ * No log line or exception message of this class holds an email address.
+ * A line names the user ID or, with no user, {@see EmailEventMatcher::addressLogHash()}.
  *
  * @package ElanRegistry\Car
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1887
+ * @see https://github.com/elan-registry/registry/issues/2359
  */
 final class BrevoWebhookEventProcessor
 {
+    /**
+     * Brevo webhook event names that the registry records.
+     *
+     * `invalid` and `invalid_email` are both listed, because no live Brevo
+     * traffic has shown which spelling it sends (see
+     * {@see EmailEventApplier::HARD_BOUNCE_EVENTS}).
+     *
+     * @var list<string>
+     */
+    public const DELIVERY_EVENTS = [
+        'delivered',
+        'soft_bounce',
+        'hard_bounce',
+        'blocked',
+        'invalid',
+        'invalid_email',
+        'spam',
+        'unsubscribed',
+    ];
+
     /**
      * Latest Unix timestamp `resolveOccurredAt()` will accept (9999-12-31
      * 23:59:59 UTC). Bounds a malformed/overflowing `ts_event` so it cannot
@@ -48,20 +78,23 @@ final class BrevoWebhookEventProcessor
      */
     private const MAX_PLAUSIBLE_TIMESTAMP = 253402300799;
 
-    /** Matches er_email_events.event's column width (migration 20260907141817). */
-    private const MAX_EVENT_LENGTH = 32;
+    /**
+     * Seconds that `ts_event` can be later than receipt. A later time is
+     * treated as missing, because a far-future `delivered` row would stop
+     * soft-bounce escalation until that time.
+     */
+    private const MAX_FUTURE_SKEW_SECONDS = 300;
 
     /** Matches er_email_events.brevo_message_id's column width (migration 20260907141817). */
     private const MAX_MESSAGE_ID_LENGTH = 255;
 
     /**
-     * @param CarRepository      $repo    Used directly for recipient matching
-     *                                    ({@see CarRepository::findByEmail()}).
-     * @param EmailEventApplier  $applier Owns the event→escalation mapping,
-     *                                    shared with the #1889 reconciliation job.
+     * @param EmailEventMatcher $matcher Finds the user that the event belongs to.
+     * @param EmailEventApplier $applier Owns the event→escalation mapping,
+     *                                   shared with the #1889 reconciliation job.
      */
     public function __construct(
-        private CarRepository $repo,
+        private EmailEventMatcher $matcher,
         private EmailEventApplier $applier,
     ) {}
 
@@ -94,129 +127,180 @@ final class BrevoWebhookEventProcessor
             return ProcessingResult::MALFORMED;
         }
 
-        // Bounded against er_email_events' actual column widths
-        // (event varchar(32), brevo_message_id varchar(255)) so an
-        // oversized value is rejected here as MALFORMED (4xx, no retry)
-        // rather than reaching insertOwnerEmailEvent() and throwing a
-        // CarDatabaseException under STRICT_TRANS_TABLES — which would map
-        // to WRITE_FAILURE/5xx and put Brevo into a permanent retry loop on
-        // one poisoned payload, the same failure mode MAX_PLAUSIBLE_TIMESTAMP
-        // exists to prevent for ts_event.
-        if (strlen($event) > self::MAX_EVENT_LENGTH || strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
+        if (!in_array($event, self::DELIVERY_EVENTS, true)) {
+            return ProcessingResult::IGNORED;
+        }
+
+        // An oversized message ID would throw a CarDatabaseException under
+        // STRICT_TRANS_TABLES. That maps to a retryable 5xx, and Brevo would
+        // resend the poisoned payload forever.
+        if (strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo webhook: event or message-id exceeds storage width (event=%d bytes, message-id=%d bytes).',
-                strlen($event),
+                'Brevo webhook: message-id exceeds storage width (%d bytes).',
                 strlen($messageId)
             ));
             return ProcessingResult::MALFORMED;
         }
 
-        $tags = $decodedPayload['tags'] ?? [];
-        if (!is_array($tags)) {
-            // Not NO_TAG_MATCH: a non-list `tags` means Brevo's payload
-            // contract changed, not that this event is untagged. MALFORMED
-            // gives a 4xx an operator will notice, instead of a 200 that
-            // would silently discard every bounce event from here on — an
-            // untagged/no-match 200 is expected, routine traffic, so this
-            // shape needs a status that stands out from that noise.
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo webhook: "tags" was %s, expected a list — payload contract may have changed.',
-                get_debug_type($tags)
-            ));
+        $address = trim($email);
+        if (!EmailEventMatcher::isAcceptableAddress($address)) {
             return ProcessingResult::MALFORMED;
-        }
-        if (!in_array(AppConstants::VERIFICATION_EMAIL_TAG, array_values($tags), true)) {
-            return ProcessingResult::NO_TAG_MATCH;
         }
 
         $reason = $decodedPayload['reason'] ?? null;
         $reason = is_string($reason) ? $reason : null;
 
-        $occurredAt = $this->resolveOccurredAt($decodedPayload, $email, $event);
+        [$occurredAt, $occurredAtSeconds, $timeFallback] = $this->resolveOccurredAt($decodedPayload);
 
         try {
-            $matchedCars = $this->repo->findByEmail($email);
+            $match = $this->matcher->matchByMessageId($messageId, $address);
         } catch (CarDatabaseException $e) {
-            $this->logFailure($email, $event, $e);
+            $this->logFailure('match', $event, $e);
             return ProcessingResult::WRITE_FAILURE;
+        } catch (\InvalidArgumentException $e) {
+            // A bad stored row (for example a zero message time) fails on
+            // every retry, so a 5xx would make Brevo resend it forever.
+            $this->logDataFault('match', $event, $e, 'address hash ' . EmailEventMatcher::addressLogHash($address));
+            return ProcessingResult::MALFORMED;
         }
 
-        if ($matchedCars === []) {
+        if ($match->isNotOurs()) {
+            return ProcessingResult::IGNORED;
+        }
+
+        if ($match->isNoUser()) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo webhook: event "%s" (message-id %s) for %s matched no car.',
+                'Brevo webhook: event "%s" matched no single user (address hash %s).',
                 $event,
-                $messageId,
-                $email
+                EmailEventMatcher::addressLogHash($address)
             ));
-            return ProcessingResult::NO_CAR_MATCH;
+            $this->recordOnPluginRow($messageId, $event, $occurredAtSeconds, $reason);
+            return ProcessingResult::NO_USER_MATCH;
         }
 
-        $ownerIds = CarRepository::ownerIdsOf($matchedCars);
-
-        foreach ($ownerIds as $ownerId) {
-            try {
-                $this->applier->apply(
-                    $ownerId,
-                    $email,
-                    $event,
-                    $reason,
-                    $messageId,
-                    $occurredAt,
-                    DeliverabilityFlagLog::SOURCE_WEBHOOK
-                );
-            } catch (CarDatabaseException $e) {
-                // Fail the whole request on the first write failure, even if
-                // earlier owners in this loop already succeeded — Brevo's retry
-                // is safe against this because every write here is
-                // ON DUPLICATE KEY UPDATE-idempotent (insertOwnerEmailEvent) or a
-                // plain column UPDATE (setBouncedFromEvent/setSuppressedFromEvent).
-                $this->logFailure($email, $event, $e);
-                return ProcessingResult::WRITE_FAILURE;
-            }
+        if ($timeFallback !== null) {
+            // The event time orders the soft-bounce window, so say when it is a guess.
+            logger($match->userId(), LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo webhook: event "%s" for user %d had %s; occurred_at is the receipt time.',
+                $event,
+                $match->userId(),
+                $timeFallback
+            ));
         }
+
+        try {
+            $this->applier->apply(
+                $match,
+                $address,
+                $event,
+                $reason,
+                $messageId,
+                $occurredAt,
+                DeliverabilityFlagLog::SOURCE_WEBHOOK,
+                EmailEventApplier::MODE_EVENT
+            );
+        } catch (CarDatabaseException $e) {
+            // The applier rolled back the event row and the flag, so a
+            // Brevo retry starts clean.
+            $this->logFailure('apply', $event, $e, $match->userId());
+            return ProcessingResult::WRITE_FAILURE;
+        } catch (CarValidationException | \InvalidArgumentException $e) {
+            $this->logDataFault('apply', $event, $e, "user {$match->userId()}", $match->userId());
+            return ProcessingResult::MALFORMED;
+        }
+
+        $this->recordOnPluginRow($messageId, $event, $occurredAtSeconds, $reason);
 
         return ProcessingResult::MATCHED_AND_RECORDED;
     }
 
     /**
-     * Resolve the event's occurrence timestamp from the payload
+     * Tell whether a payload carries the verification-mail tag
      *
-     * Brevo sends a Unix timestamp in `ts_event` (or `ts` as a fallback on
-     * some event types); an absent or unparseable value falls back to "now"
-     * rather than rejecting an otherwise-valid, tag-matched, car-matched
-     * event over a missing timestamp field — but the fallback is logged, since
-     * it silently skews the `occurred_at` ordering
-     * {@see CarRepository::countSoftBouncesSinceLastDelivered()} depends on.
+     * The endpoint counts an unmatched recipient only for verification mail.
      *
-     * A value is only trusted if it parses as digits AND falls at or below
-     * {@see self::MAX_PLAUSIBLE_TIMESTAMP} — an overflowing value (verified:
-     * `(int) "999999999999999999999999"` produces a `DATETIME` string of year
-     * 292277026596) would otherwise reach `CarRepository::insertOwnerEmailEvent()`
-     * as a value MySQL rejects, turning one poisoned payload into a permanent
-     * Brevo retry loop (the resulting CarDatabaseException maps to a
-     * retryable 5xx, and Brevo resends the same payload forever).
-     *
-     * @param string $email Recipient email, for the fallback's log context only
-     * @param string $event Brevo event name, for the fallback's log context only
+     * @param mixed $decodedPayload The decoded webhook payload
+     * @return bool True when `tags` is a list that holds {@see AppConstants::VERIFICATION_EMAIL_TAG}
      */
-    private function resolveOccurredAt(array $payload, string $email, string $event): string
+    public static function hasVerificationTag(mixed $decodedPayload): bool
     {
+        if (!is_array($decodedPayload)) {
+            return false;
+        }
+        $tags = $decodedPayload['tags'] ?? null;
+
+        return is_array($tags) && in_array(AppConstants::VERIFICATION_EMAIL_TAG, array_values($tags), true);
+    }
+
+    /**
+     * Resolve the event's occurrence time from the payload
+     *
+     * Brevo sends a Unix timestamp in `ts_event` (or `ts` on some event
+     * types). A missing, unparseable or out-of-range value becomes the receipt
+     * time, and the third element names the problem for the log line. The
+     * caller logs it after the match, because the line names the user.
+     *
+     * A value is only trusted if it parses as digits, falls at or below
+     * {@see self::MAX_PLAUSIBLE_TIMESTAMP}, and is not more than
+     * {@see self::MAX_FUTURE_SKEW_SECONDS} after receipt. An overflowing value
+     * would reach the insert as a DATETIME that MySQL rejects, which maps to a
+     * retryable 5xx and a permanent Brevo retry loop.
+     *
+     * @param array<mixed> $payload The decoded payload
+     * @return array{0: string, 1: int, 2: ?string} The time in
+     *         AppConstants::DATETIME_FORMAT, the same time in Unix seconds,
+     *         and the fallback reason or null
+     */
+    private function resolveOccurredAt(array $payload): array
+    {
+        $receivedAt = time();
         $ts = $payload['ts_event'] ?? $payload['ts'] ?? null;
+        $fallback = 'no usable ts_event/ts (' . get_debug_type($ts) . ')';
+
         if (is_int($ts) || (is_string($ts) && ctype_digit($ts))) {
             $seconds = (int) $ts;
-            if ($seconds > 0 && $seconds <= self::MAX_PLAUSIBLE_TIMESTAMP) {
-                return date(AppConstants::DATETIME_FORMAT, $seconds);
+            if ($seconds > $receivedAt + self::MAX_FUTURE_SKEW_SECONDS && $seconds <= self::MAX_PLAUSIBLE_TIMESTAMP) {
+                $fallback = 'a ts_event more than 5 minutes after receipt';
+            } elseif ($seconds > 0 && $seconds <= self::MAX_PLAUSIBLE_TIMESTAMP) {
+                return [date(AppConstants::DATETIME_FORMAT, $seconds), $seconds, null];
             }
         }
 
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-            'Brevo webhook: event "%s" for %s carried no usable ts_event/ts (%s);'
-            . ' occurred_at defaulted to receipt time — soft-bounce windowing may be skewed.',
-            $event,
-            $email,
-            get_debug_type($ts)
-        ));
-        return date(AppConstants::DATETIME_FORMAT);
+        return [date(AppConstants::DATETIME_FORMAT, $receivedAt), $receivedAt, $fallback];
+    }
+
+    /**
+     * Put the event on the sendinblue plugin's message row, when the plugin can
+     *
+     * The plugin function is optional (#2355). A failure here is logged and
+     * never changes the response. The registry's own work for the event is
+     * already done: the applier committed, or the event matched no user and
+     * has no registry row.
+     */
+    private function recordOnPluginRow(string $messageId, string $event, int $occurredAtSeconds, ?string $reason): void
+    {
+        if (!function_exists('sendinblueRecordEvent')) {
+            return;
+        }
+
+        try {
+            $recorded = sendinblueRecordEvent($messageId, $event, $occurredAtSeconds, $reason ?? '');
+        } catch (\Throwable $e) {
+            // The message can hold an address, so the log line has no message.
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo webhook: sendinblueRecordEvent() threw %s for event "%s".',
+                ExceptionLogSummary::of($e),
+                $event
+            ));
+            return;
+        }
+
+        if ($recorded === false) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo webhook: sendinblueRecordEvent() returned false for event "%s".',
+                $event
+            ));
+        }
     }
 
     /**
@@ -234,13 +318,39 @@ final class BrevoWebhookEventProcessor
         return $array === [] || array_keys($array) !== range(0, count($array) - 1);
     }
 
-    private function logFailure(string $email, string $event, CarDatabaseException $e): void
+    /**
+     * Log a database failure without its message
+     *
+     * CarRepository puts the address in its exception messages, so the line
+     * holds the {@see ExceptionLogSummary} of the exception, not its message.
+     */
+    private function logFailure(string $step, string $event, CarDatabaseException $e, int $userId = 0): void
     {
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-            'Failed to process Brevo webhook event "%s" for %s: %s',
+        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+            'Brevo webhook: the %s step failed for event "%s"%s: %s.',
+            $step,
             $event,
-            $email,
-            $e->getMessage()
+            $userId > 0 ? " and user {$userId}" : '',
+            ExceptionLogSummary::of($e)
+        ));
+    }
+
+    /**
+     * Log a permanent data fault without its message
+     *
+     * The message can hold a stored value of the owner, so the line holds
+     * the {@see ExceptionLogSummary} of the exception, not its message.
+     *
+     * @param string $subject "user N" or "address hash H", never an address
+     */
+    private function logDataFault(string $step, string $event, \Throwable $e, string $subject, int $userId = 0): void
+    {
+        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+            'Brevo webhook: the %s step rejected event "%s" for %s as malformed data: %s.',
+            $step,
+            $event,
+            $subject,
+            ExceptionLogSummary::of($e)
         ));
     }
 }

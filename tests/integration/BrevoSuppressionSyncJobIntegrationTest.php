@@ -9,13 +9,14 @@ require_once __DIR__ . '/../Support/FakeBrevoSuppressionSyncClient.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoBlockedContact;
 use Tests\Support\FakeBrevoSuppressionSyncClient;
 
 /**
- * #1923, #2358: BrevoSuppressionSyncJob against real SQL; only the Brevo client is fake.
+ * #1923, #2358, #2359: BrevoSuppressionSyncJob against real SQL; only the Brevo client is fake.
  * Control flow is in tests/unit/cron/BrevoSuppressionSyncJobTest.php. This file
  * proves the cross-layer agreements a mocked repository cannot falsify.
  */
@@ -95,6 +96,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         return new BrevoSuppressionSyncJob(
             $this->db,
             $this->repo,
+            new EmailEventMatcher($this->repo),
             $this->applier,
             new FakeBrevoSuppressionSyncClient($pages),
             new \DateTimeImmutable(self::NOW)
@@ -151,7 +153,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         return (int) $row->cnt;
     }
 
-    /** The dashboard's running total of suppression contacts matching no car. */
+    /** The dashboard's running total of verification-tagged events with no user. */
     private function unmatchedRecipientCount(): int
     {
         $row = $this->db->query(
@@ -295,11 +297,12 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertCount(1, $this->flagChanges($carId), 'The second run changes nothing, so it logs nothing');
     }
 
-    // --- 4. Contact matching no car ----------------------------------------
+    // --- 4. Contact matching no user ---------------------------------------
 
     /**
-     * Most suppressed addresses were never registry cars. The counter tells an
-     * operator how much of Brevo's list the registry does not recognize.
+     * Most suppressed addresses were never registry users. The dashboard
+     * counter counts verification-tagged events only (#2359), and a
+     * blocklist entry has no tag, so the counter does not change.
      */
     public function testUnmatchedContactIsTalliedAndWritesNoEventRow(): void
     {
@@ -315,7 +318,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             ]),
         ])->runFullBackfill();
 
-        $this->assertSame(1, $summary->unmatchedCount, 'The address with no car must be counted unmatched');
+        $this->assertSame(1, $summary->unmatchedCount, 'The address with no user must be counted unmatched');
         $this->assertSame(1, $summary->matchedCount, 'The matched contact is unaffected by its neighbour');
 
         $stranded = $this->db->query(
@@ -327,15 +330,88 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->email_bounced);
 
         $this->assertSame(
-            $countBefore + 1,
+            $countBefore,
             $this->unmatchedRecipientCount(),
-            'The one unmatched contact must increment the dashboard unmatched-recipient counter by exactly one'
+            'An untagged blocklist entry must not change the dashboard unmatched-recipient counter'
         );
-        $this->assertSame(
-            0,
-            $summary->counterFailureCount,
-            'No counter increment may have failed'
-        );
+    }
+
+    // --- User who owns no car (#2359) ----------------------------------------
+
+    /** The flags belong to the owner's profile, so a user with no car gets the flag. */
+    public function testUserWithNoCarGetsTheBlockFlag(): void
+    {
+        $email = 'carless-' . uniqid() . '@integration-test-1923.example.com';
+        $userId = $this->createTestUser(['email' => $email], true);
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'unsubscribedViaEmail', null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(1, $summary->matchedCount);
+        $profile = $this->db->query(
+            'SELECT email_blocked, email_blocked_address, email_blocked_cause FROM profiles WHERE user_id = ?',
+            [$userId]
+        )->first();
+        $this->assertSame(1, (int) $profile->email_blocked);
+        $this->assertSame($email, $profile->email_blocked_address);
+        $this->assertSame('unsubscribed', $profile->email_blocked_cause);
+
+        $event = $this->db->query(
+            'SELECT event, car_id FROM er_email_events WHERE user_id = ?',
+            [$userId]
+        )->first();
+        $this->assertSame('unsubscribed', $event->event);
+        $this->assertNull($event->car_id);
+    }
+
+    // --- Address check and blockedAt fallback (#2359) -----------------------
+
+    /** An invalid address is skipped before any match: no row, no flag. */
+    public function testInvalidAddressesAreSkippedAndCounted(): void
+    {
+        [$carId, $email] = $this->createSuppressionCar();
+        // 156 bytes: valid under FILTER_VALIDATE_EMAIL, so only the length rule rejects it.
+        $tooLong = str_repeat('a', 64) . '@' . str_repeat('b', 63) . '.' . str_repeat('c', 23) . '.com';
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($tooLong, 'hardBounce', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason('not-an-address', 'hardBounce', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, 'hardBounce', null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(2, $summary->invalidAddressCount);
+        $this->assertSame(1, $summary->matchedCount);
+        $this->assertSame(3, $summary->contactsExamined);
+        $this->assertSame(1, $this->countEventRows($carId));
+        $stray = $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE email IN (?, ?)',
+            [$tooLong, 'not-an-address']
+        )->first();
+        $this->assertSame(0, (int) $stray->cnt, 'An invalid address writes no event row');
+    }
+
+    /** A wrong-typed `blockedAt` takes the run time as the event time. */
+    public function testWrongTypedBlockedAtTakesTheRunTime(): void
+    {
+        [$carId, $email] = $this->createSuppressionCar();
+
+        $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'contactFlaggedAsSpam', null, 1757332800),
+            ]),
+        ])->runFullBackfill();
+
+        $row = $this->db->query(
+            'SELECT occurred_at FROM er_email_events WHERE user_id = (SELECT user_id FROM cars WHERE id = ?)',
+            [$carId]
+        )->first();
+        $this->assertSame(self::NOW, $row->occurred_at);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->email_blocked);
     }
 
     // --- Owner whose users.email moved after a block (#2356) ----------------
@@ -440,9 +516,9 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $flags = $this->ownerFlagsForCar($carId);
         $this->assertSame(1, (int) $flags->email_blocked, 'adminBlocked must block');
-        $this->assertSame('unsubscribed', $flags->email_blocked_cause);
+        $this->assertSame('blocklist', $flags->email_blocked_cause, 'adminBlocked sets the blocklist cause (#2359)');
         $this->assertSame(0, (int) $flags->email_bounced, 'adminBlocked must NOT be treated as a dead mailbox');
-        $this->assertSame('unsubscribed', $this->eventRows($carId)[0]->event);
+        $this->assertSame('unsubscribed', $this->eventRows($carId)[0]->event, 'The event row stays unsubscribed');
     }
 
     public function testUnrecognizedReasonCodeChangesNothing(): void

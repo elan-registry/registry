@@ -297,6 +297,144 @@ final class CarVerificationSendServiceTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // sendOne() — Brevo message ID on the sent row (#2359)
+    // ------------------------------------------------------------------
+
+    /**
+     * Stubs the verifier and the bookkeeping calls, and records the message ID
+     * that each insertEmailEvent() call receives.
+     *
+     * @param list<string> $codes Codes that generateVerificationCode() returns in order
+     * @param list<string> $recorded Receives the message IDs in call order
+     */
+    private function recordSentMessageIds(array $codes, array &$recorded): void
+    {
+        $recorded = [];
+        $this->mockVerifier->method('generateVerificationCode')->willReturnOnConsecutiveCalls(...$codes);
+        $this->mockVerifier->method('setVerificationCode')->willReturn(true);
+        $this->mockVerifier->method('setVerificationSentAt')->willReturn(true);
+        $this->mockRepo->method('incrementVerificationAttempts')->willReturn(true);
+        $this->mockRepo->method('insertEmailEvent')->willReturnCallback(
+            function (int $carId, string $email, string $event, ?string $reason, string $messageId) use (&$recorded): int {
+                $recorded[] = $messageId;
+                return 1;
+            }
+        );
+    }
+
+    /**
+     * The real ID from the plugin goes on the sent row. The test stub returns
+     * null before the send and the real ID after it.
+     */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSentRowStoresTheRealBrevoMessageId(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-message-id.php';
+        $GLOBALS['mockLastMessageIds'] = [null, '<202610140900.1@smtp-relay.mailin.fr>'];
+        $GLOBALS['mockLogEntries'] = [];
+        $ids = [];
+        $this->recordSentMessageIds(['code-aaaaaaaaaaaaaaaa'], $ids);
+
+        $result = $this->service->sendOne($this->eligibleCar());
+
+        $this->assertSame(SendResult::STATUS_SENT, $result->status);
+        $this->assertSame(['<202610140900.1@smtp-relay.mailin.fr>'], $ids);
+        $this->assertSame([], $GLOBALS['mockLogEntries'], 'A real ID needs no fallback warning');
+    }
+
+    /**
+     * An empty ID after the send keeps the local ID and logs a warning that
+     * names the owner and the car but not the address.
+     */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSentRowKeepsLocalIdAndLogsWarningWhenPluginIdIsEmpty(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-message-id.php';
+        $GLOBALS['mockLastMessageIds'] = [null, ''];
+        $GLOBALS['mockLogEntries'] = [];
+        $ids = [];
+        $this->recordSentMessageIds(['code-bbbbbbbbbbbbbbbb'], $ids);
+
+        $result = $this->service->sendOne($this->eligibleCar());
+
+        $this->assertSame(SendResult::STATUS_SENT, $result->status);
+        $this->assertSame(['local:' . hash('sha256', 'code-bbbbbbbbbbbbbbbb')], $ids);
+        $warnings = array_values(array_filter(
+            $GLOBALS['mockLogEntries'] ?? [],
+            static fn (array $entry): bool => str_contains($entry['message'], 'no new Brevo message ID')
+        ));
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('owner 42', $warnings[0]['message']);
+        $this->assertStringContainsString('car 100', $warnings[0]['message']);
+        $this->assertStringNotContainsString('owner@example.com', $warnings[0]['message']);
+    }
+
+    /**
+     * An ID equal to the value before the send is stale, so the row keeps the
+     * local ID.
+     */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSentRowKeepsLocalIdWhenPluginIdEqualsTheEarlierValue(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-message-id.php';
+        $GLOBALS['mockLastMessageIds'] = ['<stale@relay>', '<stale@relay>'];
+        $ids = [];
+        $this->recordSentMessageIds(['code-cccccccccccccccc'], $ids);
+
+        $this->service->sendOne($this->eligibleCar());
+
+        $this->assertSame(['local:' . hash('sha256', 'code-cccccccccccccccc')], $ids);
+    }
+
+    /**
+     * Two sends to one owner with empty IDs make two sent rows. The new code
+     * of each send makes the local IDs differ.
+     */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    public function testTwoEmptyIdSendsToOneOwnerMakeTwoSentRowsWithDistinctLocalIds(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-message-id.php';
+        $GLOBALS['mockLastMessageIds'] = [null, '', '', ''];
+        $ids = [];
+        $this->recordSentMessageIds(['code-dddddddddddddddd', 'code-eeeeeeeeeeeeeeee'], $ids);
+
+        $this->service->sendOne($this->eligibleCar());
+        $this->service->sendOne($this->eligibleCar());
+
+        $this->assertCount(2, $ids);
+        $this->assertNotSame($ids[0], $ids[1]);
+        $this->assertStringStartsWith('local:', $ids[0]);
+        $this->assertStringStartsWith('local:', $ids[1]);
+    }
+
+    /**
+     * Two sends in one process. The second plugin write fails, so the plugin
+     * resets its value to null and the second row keeps a local ID. The first
+     * send leaves a real ID that the second send reads as the earlier value.
+     */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSecondSendKeepsLocalIdWhenItsPluginWriteFailsAfterAFirstRealId(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-message-id.php';
+        $GLOBALS['mockLastMessageIds'] = [null, '<first@relay>', '<first@relay>', null];
+        $ids = [];
+        $this->recordSentMessageIds(['code-ffffffffffffffff', 'code-gggggggggggggggg'], $ids);
+
+        $this->service->sendOne($this->eligibleCar());
+        $this->service->sendOne($this->eligibleCar());
+
+        $this->assertSame(
+            ['<first@relay>', 'local:' . hash('sha256', 'code-gggggggggggggggg')],
+            $ids
+        );
+    }
+
+    // ------------------------------------------------------------------
     // sendOne() — Brevo not ready (#2184)
     // ------------------------------------------------------------------
 

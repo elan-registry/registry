@@ -5,8 +5,10 @@ declare(strict_types=1);
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationClient;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -21,21 +23,24 @@ use ElanRegistry\LogCategories;
  *
  * Repeatable maintenance, not a one-time fix, hence `scripts/maintenance/`
  * (see CLAUDE.md). Safe to run as often as wanted: every write the job performs
- * is idempotent (`CarRepository::insertOwnerEmailEvent()` is ON DUPLICATE KEY
- * UPDATE, the flag writes are plain column updates, and the retention prune is
- * bounded by two fixed cutoffs: 24 months for terminal events, 90 days for
- * all other events).
+ * is idempotent (a replayed event changes no stored row and sets no flag
+ * again, and the retention prune is bounded by two fixed cutoffs: 24 months
+ * for terminal events, 90 days for all other events).
  *
  * Unlike the original `runNow()`, which is crash-isolated and returns void,
  * `runNowWithSummary()` logs and then **rethrows** on a genuinely failed run
  * so a crash cannot be rendered as a plausible all-zero summary. The
  * try/catch below therefore covers the call itself, not just the
- * construction above it. This job fetches exactly one bounded page per run
- * (see the job class's own docblock) — the same scope `AbstractCronJob`'s
+ * construction above it. This job fetches one bounded page for each event
+ * type (see the job class's own docblock) — the same scope `AbstractCronJob`'s
  * shared `runNow()` already budgets for — so unlike #1923's multi-page
  * backfill, no additional `set_time_limit()` is needed here.
  *
- * Issues #1889, #2061.
+ * The failure text on the page is fixed. The exception message can hold an
+ * owner's address (CarRepository puts it there), so the page never shows it
+ * and the log keeps only the ExceptionLogSummary of the exception.
+ *
+ * Issues #1889, #2061, #2359.
  */
 require_once '../../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/fix-script-core.php';
@@ -75,10 +80,10 @@ if (!isAdmin()) {
                             <div class="alert alert-info">
                                 <h5><i class="fa fa-info-circle"></i> What this script does:</h5>
                                 <ul class="mb-0">
-                                    <li>Polls Brevo for the last 48 hours of transactional delivery events (bounces, blocks, spam complaints, deliveries)</li>
-                                    <li>Backfills any event the webhook never received, applying it through the same escalation rules a live webhook event uses</li>
+                                    <li>Polls Brevo for the last 48 hours of transactional delivery events (bounces, blocks, spam complaints, unsubscribes, deliveries), one request for each event type</li>
+                                    <li>Backfills any event of registry mail that the webhook never received, applying it through the same matching and escalation rules a live webhook event uses</li>
                                     <li>Prunes <code>er_email_events</code>: terminal events after 24 months, all other rows after 90 days (each car's latest <code>sent</code> row is kept, with its address removed)</li>
-                                    <li>Shows owners matched, unmatched, and ignored counts plus a breakdown by event type below, so the result of this run is visible immediately rather than requiring a trip to Admin &rarr; Logs</li>
+                                    <li>Shows owners matched, unmatched, and invalid-address counts plus a breakdown by event type below, so the result of this run is visible immediately rather than requiring a trip to Admin &rarr; Logs</li>
                                     <li>Bypasses the normal 20-hour cron guard, so it runs even if the scheduled job has already run today</li>
                                     <li>Safe to run repeatedly — every write is idempotent, so re-applying an event already recorded is a no-op</li>
                                 </ul>
@@ -115,6 +120,7 @@ if (!isAdmin()) {
                                     $summary = (new BrevoEventReconciliationJob(
                                         dbi(),
                                         $reconciliationRepo,
+                                        new EmailEventMatcher($reconciliationRepo),
                                         new EmailEventApplier($reconciliationRepo, new CarVerificationManager($reconciliationRepo)),
                                         new BrevoEventReconciliationClient(dbi())
                                     ))->runNowWithSummary();
@@ -122,12 +128,12 @@ if (!isAdmin()) {
                                     logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                                         sprintf(
                                             'Brevo event reconciliation manually triggered (cron guard bypassed) —'
-                                            . ' %d owners matched, %d unmatched, %d skipped, %d ignored (non-verification tag),'
+                                            . ' %d owners matched, %d unmatched, %d skipped, %d invalid address(es),'
                                             . ' %d page(s) fetched%s%s',
                                             $summary->matchedCount,
                                             $summary->unmatchedCount,
                                             $summary->skippedCount,
-                                            $summary->ignoredByTagCount,
+                                            $summary->invalidAddressCount,
                                             $summary->pagesFetched,
                                             $summary->pollFailed ? ', a Brevo poll failed' : '',
                                             $summary->counterFailureCount > 0
@@ -142,7 +148,7 @@ if (!isAdmin()) {
                                     <?php if ($summary->pollFailed): ?>
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Reconciliation incomplete — Brevo poll failed</h5>
-                                        <p class="mb-0">The request to Brevo failed, so no events were fetched this run. The failure is logged under <code>CronJobFailure</code>. Re-run this script once Brevo is reachable — events already reconciled are re-applied harmlessly.</p>
+                                        <p class="mb-0">A request to Brevo failed, so the events of at least one type were not fetched this run. The failure is logged under <code>CronJobFailure</code>. Re-run this script once Brevo is reachable — events already reconciled are re-applied harmlessly.</p>
                                     </div>
                                     <?php endif; ?>
 
@@ -156,7 +162,14 @@ if (!isAdmin()) {
                                     <?php if ($summary->skippedCount > 0): ?>
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> <?= (int) $summary->skippedCount ?> item(s) could not be processed</h5>
-                                        <p class="mb-0">These were skipped due to a malformed Brevo payload, an oversized value, a failed car lookup, or a failed database write. Counted per owner for a failed write and per event otherwise, so an event matching several owners can appear here <em>and</em> in the owners matched total below. Each is logged individually under <code>EmailWebhook</code> or <code>CronJobFailure</code>. Re-running this script is safe and will retry them.</p>
+                                        <p class="mb-0">These were skipped due to a malformed Brevo payload, an oversized value, a failed owner lookup, or a failed database write. Each is logged individually under <code>EmailWebhook</code> or <code>CronJobFailure</code>. Re-running this script is safe and will retry them.</p>
+                                    </div>
+                                    <?php endif; ?>
+
+                                    <?php if ($summary->invalidAddressCount > 0): ?>
+                                    <div class="alert alert-warning">
+                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> <?= (int) $summary->invalidAddressCount ?> event(s) had an invalid recipient address</h5>
+                                        <p class="mb-0">The address was longer than 155 bytes or was not a valid email address, so the event was skipped. Each is logged under <code>EmailWebhook</code> with a hash of the address, not the address.</p>
                                     </div>
                                     <?php endif; ?>
 
@@ -165,7 +178,7 @@ if (!isAdmin()) {
                                         <strong><?= (int) $summary->eventsExamined ?></strong> event(s) examined —
                                         <strong><?= (int) $summary->matchedCount ?></strong> owners matched,
                                         <strong><?= (int) $summary->unmatchedCount ?></strong> unmatched,
-                                        <strong><?= (int) $summary->ignoredByTagCount ?></strong> ignored (non-verification tag),
+                                        <strong><?= (int) $summary->invalidAddressCount ?></strong> invalid address(es),
                                         across <strong><?= (int) $summary->pagesFetched ?></strong> page(s) fetched.
                                     </div>
 
@@ -173,7 +186,7 @@ if (!isAdmin()) {
                                     <?php if ($summary->eventTypeCounts === []): ?>
                                     <p class="text-muted mb-0">No events were recorded in this run.</p>
                                     <?php else: ?>
-                                    <p class="text-muted small mb-2">Counted per owner, like the owners matched total above — an event matching several owners adds one to its row for each successful write.</p>
+                                    <p class="text-muted small mb-2">Counted per written event, like the owners matched total above.</p>
                                     <div class="table-responsive">
                                         <table class="table table-sm table-striped mb-0">
                                             <thead>
@@ -202,13 +215,12 @@ if (!isAdmin()) {
                                     <?php
                                 } catch (\Throwable $e) {
                                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, sprintf(
-                                        'Brevo event reconciliation failed (manual run): %s: %s',
-                                        get_class($e),
-                                        $e->getMessage()
+                                        'Brevo event reconciliation failed (manual run): %s',
+                                        ExceptionLogSummary::of($e)
                                     ));
                                     ?>
                                     <div class="alert alert-danger mb-0">
-                                        <i class="fa fa-exclamation-triangle"></i> Reconciliation failed: <?= htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') ?>
+                                        <i class="fa fa-exclamation-triangle"></i> Reconciliation failed. The error is logged under <code>FIXScriptError</code>.
                                     </div>
                                     <?php
                                 }

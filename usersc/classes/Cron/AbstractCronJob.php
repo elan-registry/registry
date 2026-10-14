@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Cron;
 
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -36,6 +37,21 @@ use ElanRegistry\LogCategories;
  *      import must run while sends are off. `run()` checks it before the
  *      enabled read and the claim, so a refused run does not stamp
  *      `last_run_at`. `runNow()` checks it first.
+ *
+ * THE VERIFICATION SWITCH STOPS ONLY THE SEND BATCH
+ * ({@see SendVerificationBatchJob}). It does not stop event writes. During an
+ * incident, stop event writes in three steps:
+ *   1. Set `BREVO_WEBHOOK_TOKEN` to an empty value. The webhook then refuses
+ *      every call with 401 and Brevo retries.
+ *   2. Set `er_cron_job_runs.enabled = 0` for the reconciliation job and the
+ *      suppression import. This also stops the retention prune, because the
+ *      reconciliation job runs the prune.
+ *   3. Do not use Run Now for the two Brevo jobs,
+ *      `27-Reconcile-Brevo-Events.php` or
+ *      `28-Reconcile-Brevo-Suppressions.php`. These paths read neither the
+ *      switch nor `enabled`.
+ * After the incident, reconciliation must run within 48 hours of the empty
+ * token, because the job fetches the last 48 hours only.
  *
  * The enabled check is a dedicated read rather than an inference from
  * `CronJobGuard::claim()`'s boolean: `claim()` deliberately conflates
@@ -174,7 +190,9 @@ abstract class AbstractCronJob
             // whether a failure happened in the window between the two.
             (new CronJobGuard($this->db))->recordFailure($jobName);
 
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$jobName}' failed: " . get_class($e) . ': ' . $e->getMessage());
+            // No message. An exception message can hold an email address, and
+            // a log line must not.
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$jobName}' failed: " . ExceptionLogSummary::of($e));
         }
     }
 
@@ -214,7 +232,8 @@ abstract class AbstractCronJob
         try {
             $this->execute();
         } catch (\Throwable $e) {
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$this->jobName()}' failed (manual run): " . get_class($e) . ': ' . $e->getMessage());
+            // No message, for the same reason as in run().
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$this->jobName()}' failed (manual run): " . ExceptionLogSummary::of($e));
         }
     }
 

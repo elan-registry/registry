@@ -14,20 +14,20 @@ namespace ElanRegistry\Cron;
  * counts, the per-reason-code breakdown, and a warning when a full backfill
  * stopped early at its page cap.
  *
- * A contact counts as matched when its address resolved to at least one car;
- * as unmatched when it resolved to none (a suppression Brevo holds for an
- * address the registry does not know — expected, not an error); and as
- * already-flagged when the owner of every matching car was already in the
- * target state, so the run performed no write for it. The three buckets are disjoint, but
+ * A contact counts as matched when exactly one user holds its address (#2359);
+ * as unmatched when no user, or more than one user, holds it (a suppression
+ * Brevo holds for an address the registry cannot name — expected, not an
+ * error); and as already-flagged when that owner was already in the target
+ * state. The three buckets are disjoint, but
  * — unlike an earlier version of this docblock claimed — they are NOT
- * exhaustive: a contact with a malformed payload field, an unrecognized
- * reason code, an over-length synthetic value, a failed car lookup, or a
- * failed write for every matching owner reaches none of the three. Each such
- * skip is logged individually by the job; {@see $skippedCount} is the only
- * place their *total* is visible without reading the log. A reader adding
- * all three buckets therefore gets the number of contacts the run *recorded
- * a flag decision for*, not the number Brevo returned — use
- * {@see $contactsExamined} for that.
+ * exhaustive: a contact with a malformed payload field, an invalid address,
+ * an unrecognized reason code, an over-length synthetic value, a failed user
+ * lookup, or a failed write for the matching owner reaches none of the three.
+ * Each such skip is logged individually by the job. {@see $skippedCount} and
+ * {@see $invalidAddressCount} are the only places their *total* is visible
+ * without reading the log. A reader adding all three buckets therefore gets
+ * the number of contacts the run *recorded a flag decision for*, not the
+ * number Brevo returned — use {@see $contactsExamined} for that.
  *
  * {@see $reasonCodeCounts} is keyed on Brevo's own raw reason-code strings
  * rather than a normalized internal vocabulary, so a code the job does not
@@ -47,9 +47,9 @@ namespace ElanRegistry\Cron;
 final readonly class SuppressionSyncSummary
 {
     /**
-     * @param int                $matchedCount        Contacts matched to at least one car
-     * @param int                $unmatchedCount      Contacts matching no car in the registry
-     * @param int                $alreadyFlaggedCount Contacts whose owner(s) were already in the target state — no write performed
+     * @param int                $matchedCount        Contacts matched to one user and newly flagged
+     * @param int                $unmatchedCount      Contacts whose address no single user holds
+     * @param int                $alreadyFlaggedCount Contacts whose owner was already in the target state
      * @param array<string, int> $reasonCodeCounts    Contact counts keyed on Brevo's raw reason code (e.g. `hardBounce`,
      *                                                `contactFlaggedAsSpam`, `unsubscribedViaEmail`), plus an
      *                                                `'unrecognized'` bucket for codes this job does not map
@@ -64,7 +64,7 @@ final readonly class SuppressionSyncSummary
      *                                                contained even one skipped contact would stop the walk early
      * @param int                $skippedCount        Contacts examined but reaching none of the three buckets above
      *                                                (malformed payload, unrecognized reason code, oversized value,
-     *                                                failed lookup, or the write failed for every matching owner) — each is
+     *                                                failed lookup, or the write failed for the matching owner) — each is
      *                                                logged individually; this is their total, so an operator reading
      *                                                only the rendered summary still sees that something needs
      *                                                attention rather than a clean-looking run with a smaller number
@@ -73,15 +73,9 @@ final readonly class SuppressionSyncSummary
      *                                                (which means the safety cap was hit, not that Brevo itself
      *                                                failed to answer) — both mean "incomplete, re-run me", but an
      *                                                operator diagnosing *why* needs to tell them apart
-     * @param int                $counterFailureCount Unmatched contacts whose dashboard unmatched-recipient
-     *                                                counter increment did NOT land — a subset of
-     *                                                `unmatchedCount`, never added to it. Once the first
-     *                                                increment fails the job stops re-attempting the call for
-     *                                                the rest of the run (see
-     *                                                {@see BrevoSuppressionSyncJob::syncPage()}) but keeps
-     *                                                tallying here, so this stays the true number of unmatched
-     *                                                contacts missing from the counter even though only one
-     *                                                failure was logged
+     * @param int                $invalidAddressCount Contacts skipped because the address is longer
+     *                                                than 155 bytes or fails `FILTER_VALIDATE_EMAIL`.
+     *                                                Not part of `skippedCount`.
      */
     public function __construct(
         public int $matchedCount,
@@ -93,7 +87,7 @@ final readonly class SuppressionSyncSummary
         public int $contactsExamined = 0,
         public int $skippedCount = 0,
         public bool $pollFailed = false,
-        public int $counterFailureCount = 0,
+        public int $invalidAddressCount = 0,
     ) {
     }
 }

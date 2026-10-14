@@ -17,18 +17,29 @@ namespace ElanRegistry\Car;
  */
 enum ProcessingResult
 {
-    /** Payload parsed, recipient matched a car, and the write(s) committed. Maps to 2xx. */
+    /** The event matched one user, and the applier's transaction committed. Maps to 2xx. */
     case MATCHED_AND_RECORDED;
 
-    /** Payload parsed but carries no recognized verification-system tag. Maps to 2xx, logged. */
-    case NO_TAG_MATCH;
+    /**
+     * Not a delivery event (for example `opened`), or a message that this
+     * environment did not send. Maps to 2xx, no row, no log line.
+     */
+    case IGNORED;
 
-    /** Payload parsed and tagged, but the recipient matches no car. Maps to 2xx, logged, unmatched counter incremented. */
-    case NO_CAR_MATCH;
+    /**
+     * The message is ours, but no single user holds the address. Maps to 2xx,
+     * no row, logged. A verification-tagged event increments the unmatched counter.
+     */
+    case NO_USER_MATCH;
 
-    /** Payload is not a JSON object, or is missing a required field. Maps to 4xx, logged. */
+    /**
+     * The payload is not a JSON object, misses a required field, or has a bad
+     * address or a message ID over 255 bytes. Or the match or apply step
+     * cannot parse a stored value (for example a zero message time). Maps to
+     * 4xx, logged. A retry cannot succeed, so the status asks for none.
+     */
     case MALFORMED;
 
-    /** A database write failed. The only retryable case — maps to 5xx. */
+    /** A database read or write failed. Maps to 5xx, so Brevo can retry. */
     case WRITE_FAILURE;
 }

@@ -431,12 +431,15 @@ Follow these rules for the deploy:
 3. **Turn the webhook and the cron jobs off.** Turn off the verification
    feature switch in the Verification tab (see
    [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#asymmetric-enabledisable-gate)). The
-   switch stops the Brevo webhook and the send batch. Since #2358, it does not
-   stop the reconciliation job or the suppression-sync job. Pause both with
+   switch stops only the send batch (#2359). To stop event writes, follow
+   [Stop Event Writes in an Incident](EMAIL_SYSTEM.md#stop-event-writes-in-an-incident).
+   Set `BREVO_WEBHOOK_TOKEN` to an empty value, so that the webhook returns
+   401. Pause both cron jobs with
    `UPDATE er_cron_job_runs SET enabled = 0 WHERE job_name IN
    ('brevo_reconciliation', 'brevo_suppression_sync');`. A webhook event or a
-   cron job that writes a flag during the run can race the copy. Turn the
-   switch on and set `enabled` back to 1 after the checks below pass.
+   cron job that writes a flag during the run can race the copy. After the
+   checks below pass, turn the switch on, restore the token and set `enabled`
+   back to 1. Run the reconciliation within 48 hours of the empty token.
 4. **Check for duplicate profiles.** The migration stops, and changes nothing,
    when two `profiles` rows share a `user_id`. Run this before the push. It
    must return no rows.
@@ -526,14 +529,16 @@ Follow these rules for the deploy:
    needs `er_email_events.user_id`. The old code writes no `user_id` and fails
    once the migration has run.
 3. **Turn the webhook and the cron jobs off.** Turn off the verification
-   feature switch. It stops the webhook and the send batch. Pause the
-   reconciliation and suppression-sync jobs, because the switch does not stop
-   them:
+   feature switch. It stops only the send batch (#2359). Set
+   `BREVO_WEBHOOK_TOKEN` to an empty value, so that the webhook returns 401.
+   Pause the reconciliation and suppression-sync jobs, because the switch does
+   not stop them:
    `UPDATE er_cron_job_runs SET enabled = 0 WHERE job_name IN
    ('brevo_reconciliation', 'brevo_suppression_sync');`.
    An event that arrives during the run can write a row that the migration
-   then reads or deletes. After the checks below pass, turn the switch on and
-   set `enabled` back to 1.
+   then reads or deletes. After the checks below pass, turn the switch on,
+   restore the token and set `enabled` back to 1. Run the reconciliation
+   within 48 hours of the empty token.
 4. **Run the report script before the push.**
    `app/admin/scripts/maintenance/29-Report-Email-Event-Rekey.php` is read-only.
    It shows the event IDs that the migration matches by car owner, matches by

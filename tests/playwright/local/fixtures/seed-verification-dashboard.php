@@ -32,16 +32,20 @@ use ElanRegistry\DatabaseInterface;
  *  - NO_PROFILE_USERNAME / NO_PROFILE car: pending, and the owner has no
  *    profiles row — chip "No profile", with no action button.
  *  - SOFT_BOUNCE_USERNAME / SOFT_BOUNCE car: pending (no bounce flag),
- *    with one `soft_bounce` er_email_events row after its `sent` row (and an
- *    owner-level `delivered` row with car_id NULL BEFORE its `sent` row,
- *    which must not count: a row before the cycle start is ignored), so
- *    its Status chip reads "Soft bounce" and its Mark Bounced button must
+ *    with one `soft_bounce` er_email_events row after its `sent` row, and an
+ *    owner-level `delivered` row with car_id NULL AFTER that soft bounce. A
+ *    `delivered` row with no car is for mail that matched no verification
+ *    send (a password reset, say), so it must not count (#2359): its Status
+ *    chip reads "Soft bounce", not "Delivered", and its Mark Bounced button must
  *    render `disabled` (one soft bounce does not confirm a dead address —
  *    see tab-verification.php's $queueAction logic).
- *  - TWIN_USERNAME / TWIN_A and TWIN_B cars (#2358): one owner with two
- *    cars. Each car has its own `sent` row. One later `delivered` row has
- *    the owner's user_id and car_id NULL, as the webhook stores it. Both
- *    cars must show "Delivered" for it.
+ *  - TWIN_USERNAME / TWIN_A and TWIN_B cars (#2358, #2359): one owner with
+ *    two cars. Each car has its own `sent` row. One later `hard_bounce` row
+ *    has the owner's user_id and car_id NULL, as the webhook stores the
+ *    bounce of mail that matched no verification send. A hard bounce stops
+ *    all mail to the owner, so both cars must show "Bounced" for it. (A
+ *    `delivered` row with car_id NULL shows on neither car. The soft-bounce
+ *    owner above covers that.)
  *  - PRECEDENCE_USERNAME / PRECEDENCE car: `sent`, then `delivered` at
  *    T+10m, then `hard_bounce` at T+0 (same cycle, earlier timestamp) — the
  *    exact case the integration test
@@ -501,10 +505,12 @@ seedEmailEvent(
     $now->modify('-3 days +5 minutes')->format('Y-m-d H:i:s')
 );
 // An owner-level `delivered` row (car_id NULL, as the webhook stores it) dated
-// BEFORE this car's `sent` row. A row before the cycle start must not count,
-// so the chip stays "Soft bounce". If it were dated after the `sent` row it
-// would count, and (being the latest row) turn the chip to "Delivered". The
-// twin owner below covers the counting case.
+// AFTER this car's `sent` row and its soft bounce. The row is for mail that
+// matched no verification send (a password reset, say), and its `delivered`
+// does not tell whether the verification email arrived. So it must not count
+// (#2359), and the chip stays "Soft bounce". If it counted, being the latest
+// row, it would turn the chip to "Delivered". The twin owner below covers a
+// terminal event with no car, which does count.
 seedEmailEvent(
     $db,
     $softBounceUserId,
@@ -512,12 +518,13 @@ seedEmailEvent(
     SEED_SOFT_BOUNCE_EMAIL,
     'delivered',
     'seed-vd-softbounce-orphan-delivered',
-    $now->modify('-3 days -10 minutes')->format('Y-m-d H:i:s')
+    $now->modify('-3 days +20 minutes')->format('Y-m-d H:i:s')
 );
 
-// --- Twin: one owner, two cars, one owner-level `delivered` row -----------
-// Each car has its own `sent` row (its cycle start). The `delivered` row has
-// car_id NULL and comes after both, so it counts for both cars (#2358).
+// --- Twin: one owner, two cars, one owner-level `hard_bounce` row ---------
+// Each car has its own `sent` row (its cycle start). The `hard_bounce` row has
+// car_id NULL and comes after both. A terminal event with no car counts for
+// every car of the owner (#2358, #2359). A `delivered` row with no car does not.
 [$twinUserId, $twinCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
@@ -555,7 +562,7 @@ if (!$twinInserted) {
 $twinCarIdB = $carRepository->lastId();
 seedEmailEvent($db, $twinUserId, $twinCarId, SEED_TWIN_EMAIL, 'sent', 'seed-vd-twin-a-sent', $now->modify('-3 days')->format('Y-m-d H:i:s'));
 seedEmailEvent($db, $twinUserId, $twinCarIdB, SEED_TWIN_EMAIL, 'sent', 'seed-vd-twin-b-sent', $now->modify('-3 days')->format('Y-m-d H:i:s'));
-seedEmailEvent($db, $twinUserId, null, SEED_TWIN_EMAIL, 'delivered', 'seed-vd-twin-delivered', $now->modify('-3 days +10 minutes')->format('Y-m-d H:i:s'));
+seedEmailEvent($db, $twinUserId, null, SEED_TWIN_EMAIL, 'hard_bounce', 'seed-vd-twin-bounce', $now->modify('-3 days +10 minutes')->format('Y-m-d H:i:s'));
 
 // --- Precedence: delivered at T+10m, hard_bounce at T+0, same cycle -------
 // Reproduces CarRepositoryEmailEventPrecedenceTest

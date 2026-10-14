@@ -11,10 +11,15 @@ use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\PhpBuiltinServer;
 
 /**
- * Behavioral tests for app/api/webhooks/brevo.php (#1887).
+ * Behavioral tests for app/api/webhooks/brevo.php (#1887, #2359).
  *
  * Uses `php -S` and curl: under the CLI SAPI, php://input is empty, so a
  * `php -r` subprocess cannot send a request body or Authorization header.
+ *
+ * An event counts only when this environment sent its message (#2359), so a
+ * test that expects a write first seeds a verification `sent` row with
+ * seedSentRow(). The test schema has no `plg_sendinblue_messages` table, so
+ * the matcher uses step (a) only.
  */
 #[Group('integration')]
 final class BrevoWebhookEndpointTest extends IntegrationTestCase
@@ -97,6 +102,21 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
                 ? ''
                 : \$_SERVER['HTTP_X_TEST_BREVO_WEBHOOK_TOKEN'];
             \$_ENV['BREVO_WEBHOOK_TOKEN'] = \$testToken;
+        }
+        // Test-only stand-in for the plugin's optional sendinblueRecordEvent()
+        // (#2355). X-Test-Record-Event-Out names the file that gets the call
+        // arguments as JSON. X-Test-Record-Event-Mode is ok, false or throw.
+        if (isset(\$_SERVER['HTTP_X_TEST_RECORD_EVENT_OUT'])) {
+            \$GLOBALS['testRecordEventOut'] = \$_SERVER['HTTP_X_TEST_RECORD_EVENT_OUT'];
+            \$GLOBALS['testRecordEventMode'] = \$_SERVER['HTTP_X_TEST_RECORD_EVENT_MODE'] ?? 'ok';
+            function sendinblueRecordEvent(\$messageId, \$event, \$occurredAt = null, \$reason = '')
+            {
+                file_put_contents(\$GLOBALS['testRecordEventOut'], json_encode([\$messageId, \$event, \$occurredAt, \$reason]));
+                if (\$GLOBALS['testRecordEventMode'] === 'throw') {
+                    throw new \\RuntimeException('stub failed for leak-stub@example.com', 42);
+                }
+                return \$GLOBALS['testRecordEventMode'] !== 'false';
+            }
         }
         chdir('{$projectRoot}/app/api/webhooks');
         require '{$projectRoot}/app/api/webhooks/brevo.php';
@@ -265,6 +285,37 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     }
 
     /**
+     * Seed the verification `sent` row that makes a message ID ours (step (a))
+     *
+     * @return string The message ID
+     */
+    private function seedSentRow(int $carId, string $email, ?string $messageId = null): string
+    {
+        $messageId ??= 'msg-' . uniqid();
+        $written = (new CarRepository($this->db))->insertEmailEvent(
+            $carId,
+            $email,
+            'sent',
+            null,
+            $messageId,
+            date('Y-m-d H:i:s')
+        );
+        $this->assertSame(1, $written, 'Test setup: the sent row must be written');
+
+        return $messageId;
+    }
+
+    /** All er_email_events rows with this message ID, other than `sent` rows. */
+    private function eventRowsForMessage(string $messageId): array
+    {
+        return $this->db->query(
+            "SELECT user_id, car_id, email, event, reason, occurred_at FROM er_email_events
+              WHERE brevo_message_id = ? AND event != 'sent'",
+            [$messageId]
+        )->results();
+    }
+
+    /**
      * The deliverability flags of the car's owner profile, in one SELECT so
      * that the columns cannot be read in disagreement.
      */
@@ -296,18 +347,26 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     // ------------------------------------------------------------------
     // Gate tests
 
-    public function testSwitchOffRespondsSuccessfullyWithNoWrites(): void
+    /** The switch stops only the send batch. Events still count while it is off (#2359). */
+    public function testSwitchOffStillRecordsTheEventAndSetsTheFlag(): void
     {
+        $this->requireBrevoReady();
         $this->setSwitchEnabled(false);
 
-        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%');
-        $result = $this->postAuthorized($this->taggedPayload());
+        $email = 'switchoff-' . uniqid() . '@example.com';
+        $carId = $this->createFixtureCarWithEmail($email);
+        $messageId = $this->seedSentRow($carId, $email);
 
-        $this->assertGreaterThanOrEqual(200, $result['status']);
-        $this->assertLessThan(300, $result['status'], 'Switch-off must respond 2xx');
+        $result = $this->postAuthorized($this->taggedPayload([
+            'email' => $email,
+            'event' => 'spam',
+            'message-id' => $messageId,
+            'tags' => ['owner_contact'],
+        ]));
 
-        $after = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%');
-        $this->assertSame($before, $after, 'Switch-off must not write any EmailWebhook log row');
+        $this->assertSame(200, $result['status'], 'Switch-off must not stop the event');
+        $this->assertSame(1, $this->eventRowCount($carId, $messageId, 'spam'));
+        $this->assertSame(1, (int) $this->ownerFlagsOfCar($carId)->email_blocked, 'Switch-off must not stop the flag');
     }
 
     public function testBrevoNotReadyRespondsSuccessfullyWithOneLogLine(): void
@@ -393,16 +452,22 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertStringNotContainsString(self::TEST_TOKEN, (string) $logRow->lognote, 'The log must never contain the correct token value either');
     }
 
+    /** An empty token is the incident stop for event writes, so it must refuse a valid event (#2359). */
     public function testEmptyConfiguredTokenRejectsEverythingFailClosed(): void
     {
+        $email = 'emptytoken-' . uniqid() . '@example.com';
+        $carId = $this->createFixtureCarWithEmail($email);
+        $messageId = $this->seedSentRow($carId, $email);
+
         // An empty configured token must reject even a valid-looking token (fail closed).
-        $result = $this->postToWebhook($this->taggedPayload(), [
+        $result = $this->postToWebhook($this->taggedPayload(['email' => $email, 'event' => 'hard_bounce', 'message-id' => $messageId]), [
             'Authorization' => 'Bearer ' . self::TEST_TOKEN,
             'X-Test-Brevo-Webhook-Token' => '__EMPTY__',
         ]);
 
-        $this->assertGreaterThanOrEqual(400, $result['status']);
-        $this->assertLessThan(500, $result['status'], 'An empty configured token must reject every request, including a "valid-looking" one');
+        $this->assertSame(401, $result['status'], 'An empty configured token must reject every request, including a "valid-looking" one');
+        $this->assertSame([], $this->eventRowsForMessage($messageId), 'A refused event must write no row');
+        $this->assertSame(0, (int) $this->ownerFlagsOfCar($carId)->email_bounced);
     }
 
     // ------------------------------------------------------------------
@@ -419,47 +484,302 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertLessThan(500, $result['status'], 'A top-level JSON list body must be 4xx malformed');
     }
 
-    public function testCorrectTokenWithUntaggedPayloadIsAcceptedButNotRecorded(): void
+    /** Every registry mail counts, so an event needs no tag (#2359). */
+    public function testCorrectTokenWithUntaggedPayloadIsRecorded(): void
     {
         $this->requireBrevoReady();
 
         $email = 'untagged-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
+        $messageId = $this->seedSentRow($carId, $email);
 
-        $messageId = 'msg-' . uniqid();
         $payload = json_encode([
             'email' => $email,
-            'event' => 'delivered',
+            'event' => 'hard_bounce',
             'message-id' => $messageId,
-            'tags' => ['unrelated_tag'],
         ]);
-
-        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%no recognized verification-system tag%');
 
         $result = $this->postAuthorized($payload);
 
-        $this->assertGreaterThanOrEqual(200, $result['status']);
-        $this->assertLessThan(300, $result['status'], 'Untagged payload must respond 2xx');
-
-        $after = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%no recognized verification-system tag%');
-        $this->assertSame($before + 1, $after, 'Untagged payload must be logged');
-
-        $this->assertSame(0, $this->eventRowCount($carId, $messageId, 'delivered'), 'Untagged payload must not write an er_email_events row');
+        $this->assertSame(200, $result['status'], 'Untagged payload must respond 2xx');
+        $this->assertSame(1, $this->eventRowCount($carId, $messageId, 'hard_bounce'), 'Untagged payload must write its row');
+        $this->assertSame(1, (int) $this->ownerFlagsOfCar($carId)->email_bounced, 'Untagged payload must set the flag');
     }
 
-    public function testCorrectTokenWithTaggedPayloadMatchingNoCarIncrementsUnmatchedCounter(): void
+    /** A message that this environment did not send: 200, no row, no log line, no count. */
+    public function testMessageNotSentByThisEnvironmentIsIgnoredSilently(): void
     {
         $this->requireBrevoReady();
 
+        $email = 'notours-' . uniqid() . '@example.com';
+        $carId = $this->createFixtureCarWithEmail($email);
+        $messageId = 'msg-other-env-' . uniqid();
+        $counterBefore = $this->unmatchedCounter();
+        $logsBefore = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%');
+
+        $result = $this->postAuthorized($this->taggedPayload(['email' => $email, 'event' => 'hard_bounce', 'message-id' => $messageId]));
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame([], $this->eventRowsForMessage($messageId), 'An address match alone must not write a row');
+        $this->assertSame(0, (int) $this->ownerFlagsOfCar($carId)->email_bounced, 'An address match alone must not set a flag');
+        $this->assertSame($logsBefore, $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%'));
+        $this->assertSame($counterBefore, $this->unmatchedCounter());
+    }
+
+    /**
+     * Seed a sent row for another address, so the message is ours but its
+     * event address belongs to no user
+     *
+     * @return string The message ID
+     */
+    private function seedOurMessageForAnotherAddress(): string
+    {
+        $otherEmail = 'other-recipient-' . uniqid() . '@example.com';
+
+        return $this->seedSentRow($this->createFixtureCarWithEmail($otherEmail), $otherEmail);
+    }
+
+    public function testVerificationTaggedEventWithNoUserIncrementsUnmatchedCounter(): void
+    {
+        $this->requireBrevoReady();
+
+        $messageId = $this->seedOurMessageForAnotherAddress();
         $before = $this->unmatchedCounter();
 
-        $result = $this->postAuthorized($this->taggedPayload());
+        $result = $this->postAuthorized($this->taggedPayload(['message-id' => $messageId, 'event' => 'hard_bounce']));
 
-        $this->assertGreaterThanOrEqual(200, $result['status']);
-        $this->assertLessThan(300, $result['status'], 'No-car-match must respond 2xx');
+        $this->assertSame(200, $result['status'], 'No-user-match must respond 2xx');
+        $this->assertSame($before + 1, $this->unmatchedCounter(), 'unmatched_recipient_count must increment by exactly 1');
+        $this->assertSame([], $this->eventRowsForMessage($messageId), 'No row for an event with no user');
+    }
 
-        $after = $this->unmatchedCounter();
-        $this->assertSame($before + 1, $after, 'unmatched_recipient_count must increment by exactly 1');
+    public function testNonVerificationEventWithNoUserLeavesUnmatchedCounter(): void
+    {
+        $this->requireBrevoReady();
+
+        $messageId = $this->seedOurMessageForAnotherAddress();
+        $before = $this->unmatchedCounter();
+
+        $result = $this->postAuthorized($this->taggedPayload([
+            'message-id' => $messageId,
+            'event' => 'hard_bounce',
+            'tags' => ['password_reset'],
+        ]));
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame($before, $this->unmatchedCounter(), 'Only verification mail counts as unmatched');
+        $this->assertSame([], $this->eventRowsForMessage($messageId));
+    }
+
+    // ------------------------------------------------------------------
+    // Input checks (#2359)
+    // ------------------------------------------------------------------
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function badAddressProvider(): array
+    {
+        return [
+            'more than 155 bytes' => [str_repeat('a', 64) . '@' . str_repeat('b', 60) . '.' . str_repeat('c', 30) . '.example.com'],
+            'not an address' => ['not-an-address'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('badAddressProvider')]
+    public function testBadAddressIsMalformedBeforeAnyMatch(string $address): void
+    {
+        $this->requireBrevoReady();
+
+        $email = 'badaddr-' . uniqid() . '@example.com';
+        $messageId = $this->seedSentRow($this->createFixtureCarWithEmail($email), $email);
+
+        $result = $this->postAuthorized($this->taggedPayload(['email' => $address, 'event' => 'hard_bounce', 'message-id' => $messageId]));
+
+        $this->assertSame(400, $result['status'], 'A bad address must be MALFORMED, with no retry');
+        $this->assertSame([], $this->eventRowsForMessage($messageId));
+    }
+
+    public function testOpenedEventIsIgnoredWithNoRow(): void
+    {
+        $this->requireBrevoReady();
+
+        $email = 'opened-' . uniqid() . '@example.com';
+        $messageId = $this->seedSentRow($this->createFixtureCarWithEmail($email), $email);
+
+        $result = $this->postAuthorized($this->taggedPayload(['email' => $email, 'event' => 'opened', 'message-id' => $messageId]));
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame([], $this->eventRowsForMessage($messageId), 'An open event must write no row');
+    }
+
+    public function testFarFutureTsEventIsStoredAsTheReceiptTime(): void
+    {
+        $this->requireBrevoReady();
+
+        $email = 'future-' . uniqid() . '@example.com';
+        $carId = $this->createFixtureCarWithEmail($email);
+        $messageId = $this->seedSentRow($carId, $email);
+        $userId = (int) $this->ownerFlagsOfCar($carId)->user_id;
+        $before = time();
+
+        $result = $this->postAuthorized($this->taggedPayload([
+            'email' => $email,
+            'event' => 'delivered',
+            'message-id' => $messageId,
+            'ts_event' => $before + 86400 * 365,
+        ]));
+
+        $this->assertSame(200, $result['status']);
+        $rows = $this->eventRowsForMessage($messageId);
+        $this->assertCount(1, $rows);
+        $this->assertLessThanOrEqual(time() + 1, strtotime((string) $rows[0]->occurred_at), 'A far-future ts_event must not be stored');
+        $this->assertSame(
+            1,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%more than 5 minutes after receipt%', $userId),
+            'The fallback is logged with the user ID'
+        );
+        $this->assertSame(0, $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%' . $email . '%'));
+    }
+
+    /**
+     * A `delivered` row resets the soft-bounce count for the time it holds. A far-future
+     * `ts_event` stored as it is would reset the count until that time, so three
+     * soft bounces after it would never escalate (#2359).
+     */
+    public function testFarFutureDeliveredEventDoesNotStopSoftBounceEscalation(): void
+    {
+        $this->requireBrevoReady();
+
+        $email = 'escalate-' . uniqid() . '@example.com';
+        $carId = $this->createFixtureCarWithEmail($email);
+        $deliveredId = $this->seedSentRow($carId, $email);
+
+        $delivered = $this->postAuthorized($this->taggedPayload([
+            'email' => $email,
+            'event' => 'delivered',
+            'message-id' => $deliveredId,
+            'ts_event' => time() + 86400 * 365,
+        ]));
+        $this->assertSame(200, $delivered['status']);
+
+        // Later than the receipt of the delivered event, and inside the 5-minute allowance.
+        $bounceTs = time() + 60;
+        for ($cycle = 1; $cycle <= 3; $cycle++) {
+            $this->assertSame(0, (int) $this->ownerFlagsOfCar($carId)->email_bounced, "No escalation before soft bounce {$cycle}");
+            $messageId = $this->seedSentRow($carId, $email);
+            $result = $this->postAuthorized($this->taggedPayload([
+                'email' => $email,
+                'event' => 'soft_bounce',
+                'message-id' => $messageId,
+                'ts_event' => $bounceTs,
+            ]));
+            $this->assertSame(200, $result['status']);
+        }
+
+        $flags = $this->ownerFlagsOfCar($carId);
+        $this->assertSame(1, (int) $flags->email_bounced, 'Three soft bounces after the delivery must escalate');
+        $this->assertSame(strtolower($email), $flags->email_bounced_address);
+    }
+
+    public function testTenKilobyteReasonIsStoredAs255Characters(): void
+    {
+        $this->requireBrevoReady();
+
+        $email = 'longreason-' . uniqid() . '@example.com';
+        $carId = $this->createFixtureCarWithEmail($email);
+        $messageId = $this->seedSentRow($carId, $email);
+
+        $result = $this->postAuthorized($this->taggedPayload([
+            'email' => $email,
+            'event' => 'soft_bounce',
+            'message-id' => $messageId,
+            'reason' => str_repeat('r', 10240),
+        ]));
+
+        $this->assertSame(200, $result['status']);
+        $rows = $this->eventRowsForMessage($messageId);
+        $this->assertCount(1, $rows);
+        $this->assertSame(255, mb_strlen((string) $rows[0]->reason));
+    }
+
+    // ------------------------------------------------------------------
+    // sendinblueRecordEvent() (#2355)
+    // ------------------------------------------------------------------
+
+    /**
+     * Post a matched hard bounce with the plugin stub in the given mode
+     *
+     * @return array{status: int, call: mixed, email: string, messageId: string}
+     */
+    private function postWithRecordEventStub(string $mode): array
+    {
+        $email = 'record-' . uniqid() . '@example.com';
+        $messageId = $this->seedSentRow($this->createFixtureCarWithEmail($email), $email);
+        $outFile = (string) tempnam(sys_get_temp_dir(), 'brevo-record-event-');
+
+        try {
+            $result = $this->postToWebhook($this->taggedPayload([
+                'email' => $email,
+                'event' => 'hard_bounce',
+                'message-id' => $messageId,
+                'reason' => 'Mailbox does not exist',
+                'ts_event' => 1_700_000_000,
+            ]), [
+                'Authorization' => 'Bearer ' . self::TEST_TOKEN,
+                'X-Test-Record-Event-Out' => $outFile,
+                'X-Test-Record-Event-Mode' => $mode,
+            ]);
+            $call = json_decode((string) file_get_contents($outFile), true);
+        } finally {
+            @unlink($outFile);
+        }
+
+        $this->assertSame(1, count($this->eventRowsForMessage($messageId)), 'The registry row is written whatever the plugin does');
+
+        return ['status' => $result['status'], 'call' => $call, 'email' => $email, 'messageId' => $messageId];
+    }
+
+    public function testPluginFunctionGetsTheMessageIdEventIntegerTimeAndReason(): void
+    {
+        $this->requireBrevoReady();
+
+        $outcome = $this->postWithRecordEventStub('ok');
+
+        $this->assertSame(200, $outcome['status']);
+        $this->assertSame([$outcome['messageId'], 'hard_bounce', 1_700_000_000, 'Mailbox does not exist'], $outcome['call']);
+    }
+
+    public function testPluginFunctionThatThrowsStillGivesSuccessAndLogsNoAddress(): void
+    {
+        $this->requireBrevoReady();
+
+        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%sendinblueRecordEvent() threw RuntimeException (code 42)%');
+
+        $outcome = $this->postWithRecordEventStub('throw');
+
+        $this->assertSame(200, $outcome['status'], 'A plugin failure must not change the response');
+        $this->assertSame(
+            $before + 1,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%sendinblueRecordEvent() threw RuntimeException (code 42)%')
+        );
+        $this->assertSame(0, $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%leak-stub@example.com%'));
+        $this->assertSame(0, $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%' . $outcome['email'] . '%'));
+    }
+
+    public function testPluginFunctionThatReturnsFalseStillGivesSuccessAndIsLogged(): void
+    {
+        $this->requireBrevoReady();
+
+        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%sendinblueRecordEvent() returned false%');
+
+        $outcome = $this->postWithRecordEventStub('false');
+
+        $this->assertSame(200, $outcome['status']);
+        $this->assertSame(
+            $before + 1,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, '%sendinblueRecordEvent() returned false%')
+        );
     }
 
     // ------------------------------------------------------------------
@@ -472,7 +792,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
         $email = 'hardbounce-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
-        $messageId = 'msg-' . uniqid();
+        $messageId = $this->seedSentRow($carId, $email);
 
         $payload = json_encode([
             'email' => $email,
@@ -488,13 +808,13 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertLessThan(300, $result['status'], 'Matched hard_bounce must respond 2xx');
 
         $eventRow = $this->db->query(
-            'SELECT user_id, car_id, email, event, reason, brevo_message_id FROM er_email_events
-              WHERE user_id = (SELECT user_id FROM cars WHERE id = ?) AND brevo_message_id = ?',
+            "SELECT user_id, car_id, email, event, reason, brevo_message_id FROM er_email_events
+              WHERE user_id = (SELECT user_id FROM cars WHERE id = ?) AND brevo_message_id = ? AND event != 'sent'",
             [$carId, $messageId]
         )->first();
 
         $this->assertIsObject($eventRow, 'er_email_events row must exist for the matched owner/message');
-        $this->assertNull($eventRow->car_id, 'A webhook event belongs to the owner, so car_id is NULL');
+        $this->assertSame($carId, (int) $eventRow->car_id, 'A step (a) match keeps the car of the sent row');
         $this->assertSame($email, $eventRow->email);
         $this->assertSame('hard_bounce', $eventRow->event);
         $this->assertSame('Mailbox does not exist', $eventRow->reason);
@@ -538,6 +858,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $result = $this->postAuthorized($this->taggedPayload([
             'email' => $email,
             'event' => 'hard_bounce',
+            'message-id' => $this->seedSentRow($carId, $email),
             'reason' => 'Mailbox does not exist',
         ]));
         $this->assertGreaterThanOrEqual(200, $result['status']);
@@ -562,7 +883,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
         $email = 'spam-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
-        $messageId = 'msg-' . uniqid();
+        $messageId = $this->seedSentRow($carId, $email);
 
         $payload = json_encode([
             'email' => $email,
@@ -593,7 +914,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
         $email = 'dup-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
-        $messageId = 'msg-' . uniqid();
+        $messageId = $this->seedSentRow($carId, $email);
 
         $payload = json_encode([
             'email' => $email,
@@ -617,7 +938,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         );
     }
 
-    /** #2358: one event for an owner with three cars is one row, with car_id NULL. */
+    /** #2358: one event for an owner with three cars is one row, with the car of the sent row. */
     public function testEventForAnOwnerWithThreeCarsWritesOneOwnerLevelRow(): void
     {
         $this->requireBrevoReady();
@@ -627,23 +948,20 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $ownerId = (int) $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId])->first()->user_id;
         $this->createTestCar($ownerId, ['email' => $email]);
         $this->createTestCar($ownerId, ['email' => $email]);
-        $messageId = 'msg-' . uniqid();
+        $messageId = $this->seedSentRow($carId, $email);
 
         $result = $this->postAuthorized($this->taggedPayload(['email' => $email, 'event' => 'delivered', 'message-id' => $messageId]));
 
         $this->assertGreaterThanOrEqual(200, $result['status']);
         $this->assertLessThan(300, $result['status']);
-        $rows = $this->db->query(
-            'SELECT user_id, car_id FROM er_email_events WHERE brevo_message_id = ?',
-            [$messageId]
-        )->results();
+        $rows = $this->eventRowsForMessage($messageId);
         $this->assertCount(1, $rows, 'One row, not one row for each car');
         $this->assertSame($ownerId, (int) $rows[0]->user_id);
-        $this->assertNull($rows[0]->car_id);
+        $this->assertSame($carId, (int) $rows[0]->car_id);
     }
 
     /**
-     * #2358: until #2359, an event for an address that no owner holds writes no row and the
+     * An event on our message for an address that no user holds writes no row, and the
      * webhook still answers 2xx. This covers a car with a NULL user_id and the noowner account.
      */
     public function testEventForACarWithNoOwnerOrForTheNoownerAccountWritesNoRowAndRespondsSuccessfully(): void
@@ -664,7 +982,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         try {
             $counterBefore = $this->unmatchedCounter();
             foreach ([$orphanEmail, $noOwnerEmail] as $address) {
-                $messageId = 'msg-' . uniqid();
+                $messageId = $this->seedOurMessageForAnotherAddress();
                 $result = $this->postAuthorized($this->taggedPayload([
                     'email' => $address,
                     'event' => 'hard_bounce',
@@ -673,11 +991,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
                 $this->assertGreaterThanOrEqual(200, $result['status']);
                 $this->assertLessThan(300, $result['status'], 'The webhook must answer 2xx when no owner matches');
-                $this->assertSame(
-                    0,
-                    (int) $this->db->query('SELECT COUNT(*) AS cnt FROM er_email_events WHERE brevo_message_id = ?', [$messageId])->first()->cnt,
-                    'No row for an event with no owner'
-                );
+                $this->assertSame([], $this->eventRowsForMessage($messageId), 'No row for an event with no owner');
             }
             $this->assertSame($counterBefore + 2, $this->unmatchedCounter(), 'Both events count as unmatched');
         } finally {
@@ -1008,6 +1322,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
 
         $email = 'dberror-' . uniqid() . '@example.com';
         $carId = $this->createFixtureCarWithEmail($email);
+        $messageId = $this->seedSentRow($carId, $email);
 
         $this->db->query('ALTER TABLE er_email_events RENAME COLUMN reason TO reason_renamed_for_test');
         $this->assertFalse($this->db->error(), 'Test setup: failed to rename er_email_events.reason: ' . $this->db->errorString());
@@ -1016,7 +1331,7 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             $payload = json_encode([
                 'email' => $email,
                 'event' => 'delivered',
-                'message-id' => 'msg-' . uniqid(),
+                'message-id' => $messageId,
                 'tags' => ['car_verification'],
             ]);
 

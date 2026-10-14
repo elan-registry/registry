@@ -55,7 +55,8 @@ final class AbstractCronJobTest extends TestCase
         $this->assertCount(1, $mockLogEntries, 'A job failure must be logged, not silent');
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
         $this->assertStringContainsString('RuntimeException', $mockLogEntries[0]['message']);
-        $this->assertStringContainsString('boom', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('(code 0) at AbstractCronJobTest.php:', $mockLogEntries[0]['message'], 'The line must say where the exception came from');
+        $this->assertStringNotContainsString('boom', $mockLogEntries[0]['message'], 'The exception message can hold an address');
     }
 
     /**
@@ -138,7 +139,7 @@ final class AbstractCronJobTest extends TestCase
 
         $this->assertSame([LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE], array_values($categories));
         $this->assertNotEmpty(
-            array_filter($messages, static fn (string $m): bool => str_contains($m, 'boom')),
+            array_filter($messages, static fn (string $m): bool => str_contains($m, 'failed: RuntimeException (code 0)')),
             'The job\'s own failure line must still be written — it is the one an operator reads'
         );
         $this->assertNotEmpty(
@@ -161,7 +162,7 @@ final class AbstractCronJobTest extends TestCase
         $this->assertNotEmpty(
             array_filter(
                 array_column($mockLogEntries, 'message'),
-                static fn (string $m): bool => str_contains($m, 'boom')
+                static fn (string $m): bool => str_contains($m, 'failed: RuntimeException (code 0)')
             ),
             'An error()-reported stamp failure must not suppress the job failure line either'
         );

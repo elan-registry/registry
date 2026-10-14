@@ -706,8 +706,8 @@ final class VerificationSettings
      *
      * Called from three places:
      * - The Brevo webhook receiver (#1887), `app/api/webhooks/brevo.php`'s
-     *   `NO_CAR_MATCH` branch, when an event's recipient email matches no
-     *   owner's `users.email` ({@see CarRepository::findByEmail()}).
+     *   `NO_USER_MATCH` branch, when a `car_verification`-tagged event's
+     *   recipient matches no single user ({@see EmailEventMatcher::matchByMessageId()}).
      * - `BrevoEventReconciliationJob::applyEvent()`, which replays events
      *   fetched from Brevo's Events API and hits the same no-match condition
      *   as the live webhook receiver.

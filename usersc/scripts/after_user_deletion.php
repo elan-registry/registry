@@ -58,9 +58,9 @@ if ($id < 1) {
 
 // Privacy step (#2358). It runs first, in its own transaction, so that each
 // early return below keeps no personal data and leaves no transaction open.
-// The profile lock is the lock that the #2359 event step will take. Once
-// #2359 ships, no event row for this user can arrive between the address
-// read and the deletes. Today an event write takes no profile lock.
+// The event step (EmailEventApplier) takes the same profile lock first, so
+// no event row for this user can arrive between the address read and the
+// deletes.
 // The plugin delete reads the user's event message IDs, so it runs before the
 // event delete. A failure rolls back this step only, and the car cleanup
 // still runs. The log names the user ID, the stage, the exception class and
