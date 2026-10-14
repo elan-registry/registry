@@ -35,8 +35,9 @@ use ElanRegistry\LogCategories;
  * `$_ENV` isn't clobbered) — `getenv()` would therefore always return false
  * here, even with a correctly configured `.env`. Fails CLOSED: an empty/
  * missing value rejects every request rather than accepting everything.
- * An empty token is the documented incident stop for this endpoint: Brevo
- * gets 401 and retries later. The verification switch does not stop it.
+ * The verification switch stops only the send batch, not this endpoint. To
+ * stop it in an incident, see docs/development/EMAIL_SYSTEM.md, "Stop Event
+ * Writes in an Incident".
  * Never logs the token itself, only a short hashed prefix, so a leaked log
  * line cannot leak the credential.
  *
@@ -54,7 +55,7 @@ use ElanRegistry\LogCategories;
  *   | Situation                                         | Response |
  *   |---------------------------------------------------|----------|
  *   | Matched to one user, transaction committed        | 200      |
- *   | Not a delivery event (for example opened, click)  | 200, no log |
+ *   | Not a delivery event (for example opened, click)  | 200, logged (event name only) |
  *   | Message not sent by this environment              | 200, no log |
  *   | Our message, no single user holds the address     | 200, logged (address hash prefix only). A car_verification-tagged event increments the unmatched counter |
  *   | Brevo prerequisites not met                       | 200, logged |
@@ -226,7 +227,8 @@ try {
 
     // --- 3. Brevo prerequisites ---------------------------------------------
     // The verification switch stops only the send batch. Events from all
-    // registry mail still count while it is off (#2359).
+    // registry mail still count while it is off, because the switch does
+    // not stop other mail (for example join or password-reset mail).
     $settings = new VerificationSettings(dbi());
 
     // brevoReady() is brevoNotReadyReason() === null. One call gives the gate

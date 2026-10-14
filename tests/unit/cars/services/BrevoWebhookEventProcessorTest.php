@@ -9,6 +9,7 @@ use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Car\ProcessingResult;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -238,8 +239,9 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         ];
     }
 
+    /** The webhook subscribes only to delivery events, so another name signals a Brevo change. */
     #[DataProvider('nonDeliveryEventProvider')]
-    public function testNonDeliveryEventIsIgnoredWithNoMatchNoRowAndNoLog(string $event): void
+    public function testNonDeliveryEventIsIgnoredWithNoMatchNoRowAndLogsTheNameOnly(string $event): void
     {
         $this->expectNoMatch();
 
@@ -247,7 +249,24 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
         $this->assertSame(ProcessingResult::IGNORED, $result);
         $this->assertSame([], $this->applier->calls);
-        $this->assertSame([], $this->logMessages());
+        $messages = $this->logMessages();
+        $this->assertCount(1, $messages);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $GLOBALS['mockLogEntries'][0]['category']);
+        $this->assertSame(0, $GLOBALS['mockLogEntries'][0]['user_id']);
+        $this->assertStringContainsString('"' . substr($event, 0, 32) . '"', $messages[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testIgnoredEventLogCapsTheNameLength(): void
+    {
+        $this->expectNoMatch();
+
+        $this->processor->process($this->basePayload(['event' => str_repeat('y', 500)]));
+
+        $messages = $this->logMessages();
+        $this->assertCount(1, $messages);
+        $this->assertStringContainsString('"' . str_repeat('y', 32) . '"', $messages[0]);
+        $this->assertStringNotContainsString(str_repeat('y', 33), $messages[0]);
     }
 
     // --- No tag filter (#2359) ----------------------------------------------
@@ -285,6 +304,32 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         $this->assertFalse(BrevoWebhookEventProcessor::hasVerificationTag(['tags' => 'car_verification']));
         $this->assertFalse(BrevoWebhookEventProcessor::hasVerificationTag([]));
         $this->assertFalse(BrevoWebhookEventProcessor::hasVerificationTag(null));
+    }
+
+    #[AllowMockObjectsWithoutExpectations]
+    public function testHasVerificationTagLogsNothingForAListOrAMissingTags(): void
+    {
+        BrevoWebhookEventProcessor::hasVerificationTag(['tags' => ['password_reset']]);
+        BrevoWebhookEventProcessor::hasVerificationTag(['email' => self::ADDRESS]);
+
+        $this->assertSame([], $this->logMessages());
+    }
+
+    /** A `tags` value that is not a list is a payload contract change, so it must leave a trace. */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testHasVerificationTagLogsTheTypeOfATagsValueThatIsNotAList(): void
+    {
+        $result = BrevoWebhookEventProcessor::hasVerificationTag(
+            ['email' => self::ADDRESS, 'tags' => 'car_verification']
+        );
+
+        $this->assertFalse($result);
+        $messages = $this->logMessages();
+        $this->assertCount(1, $messages);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $GLOBALS['mockLogEntries'][0]['category']);
+        $this->assertStringContainsString('"tags" was string', $messages[0]);
+        $this->assertStringNotContainsString('car_verification', $messages[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
     }
 
     // --- Match results --------------------------------------------------------

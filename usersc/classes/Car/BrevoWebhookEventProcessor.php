@@ -23,7 +23,9 @@ use ElanRegistry\LogCategories;
  * tag filter. The steps:
  *
  * 1. Accept only the delivery events in {@see self::DELIVERY_EVENTS}. Any
- *    other event (for example `opened` or `click`) is {@see ProcessingResult::IGNORED}.
+ *    other event (for example `opened` or `click`) is {@see ProcessingResult::IGNORED},
+ *    and the log line names the event only. The webhook subscribes only to
+ *    delivery events, so another name shows that Brevo changed its events.
  * 2. Reject an address longer than {@see EmailEventMatcher::MAX_ADDRESS_BYTES} bytes, or
  *    one that fails `FILTER_VALIDATE_EMAIL`, before any match.
  * 3. {@see EmailEventMatcher::matchByMessageId()} finds the user. A message
@@ -71,10 +73,10 @@ final class BrevoWebhookEventProcessor
 
     /**
      * Latest Unix timestamp `resolveOccurredAt()` will accept (9999-12-31
-     * 23:59:59 UTC). Bounds a malformed/overflowing `ts_event` so it cannot
-     * produce a DATETIME string MySQL rejects — which would otherwise turn
-     * one poisoned payload into a permanent Brevo retry loop, since the
-     * resulting CarDatabaseException maps to a retryable 5xx.
+     * 23:59:59 UTC). Bounds a malformed/overflowing `ts_event`. The
+     * connection runs with `sql_mode = ''`, so MySQL does not reject an
+     * out-of-range DATETIME. It stores `0000-00-00 00:00:00`, which reads
+     * as the earliest event and breaks the date guards and the event order.
      */
     private const MAX_PLAUSIBLE_TIMESTAMP = 253402300799;
 
@@ -87,6 +89,12 @@ final class BrevoWebhookEventProcessor
 
     /** Matches er_email_events.brevo_message_id's column width (migration 20260907141817). */
     private const MAX_MESSAGE_ID_LENGTH = 255;
+
+    /**
+     * Longest event name that the log line of an ignored event keeps, in
+     * characters. Brevo sends the name, so a long value must not fill the log.
+     */
+    private const MAX_LOGGED_EVENT_CHARS = 32;
 
     /**
      * @param EmailEventMatcher $matcher Finds the user that the event belongs to.
@@ -128,12 +136,22 @@ final class BrevoWebhookEventProcessor
         }
 
         if (!in_array($event, self::DELIVERY_EVENTS, true)) {
+            // The webhook subscribes only to delivery events
+            // (scripts/spike-1888/brevo-register-webhook.php). Another name
+            // shows that Brevo added or renamed an event type, and a renamed
+            // bounce event would otherwise stop bounce detection with no sign.
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo webhook: ignored event "%s", which is not a delivery event.'
+                . ' Brevo may have added or renamed an event type.',
+                mb_substr(mb_scrub($event, 'UTF-8'), 0, self::MAX_LOGGED_EVENT_CHARS)
+            ));
             return ProcessingResult::IGNORED;
         }
 
-        // An oversized message ID would throw a CarDatabaseException under
-        // STRICT_TRANS_TABLES. That maps to a retryable 5xx, and Brevo would
-        // resend the poisoned payload forever.
+        // The connection sets sql_mode '' (users/classes/DB.php), so MySQL
+        // would silently cut an oversized message ID. The stored ID would not
+        // be Brevo's ID, and two IDs with the same first 255 bytes would be
+        // one row. A 4xx is correct, because a retry fails the same way.
         if (strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo webhook: message-id exceeds storage width (%d bytes).',
@@ -218,6 +236,9 @@ final class BrevoWebhookEventProcessor
      * Tell whether a payload carries the verification-mail tag
      *
      * The endpoint counts an unmatched recipient only for verification mail.
+     * A `tags` value that is present but not a list is logged, because it
+     * shows a change of Brevo's payload contract. The counter would
+     * otherwise stop with no sign.
      *
      * @param mixed $decodedPayload The decoded webhook payload
      * @return bool True when `tags` is a list that holds {@see AppConstants::VERIFICATION_EMAIL_TAG}
@@ -228,8 +249,18 @@ final class BrevoWebhookEventProcessor
             return false;
         }
         $tags = $decodedPayload['tags'] ?? null;
+        if ($tags === null) {
+            return false;
+        }
+        if (!is_array($tags)) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo webhook: "tags" was %s, expected a list. The payload contract may have changed.',
+                get_debug_type($tags)
+            ));
+            return false;
+        }
 
-        return is_array($tags) && in_array(AppConstants::VERIFICATION_EMAIL_TAG, array_values($tags), true);
+        return in_array(AppConstants::VERIFICATION_EMAIL_TAG, array_values($tags), true);
     }
 
     /**
@@ -243,8 +274,8 @@ final class BrevoWebhookEventProcessor
      * A value is only trusted if it parses as digits, falls at or below
      * {@see self::MAX_PLAUSIBLE_TIMESTAMP}, and is not more than
      * {@see self::MAX_FUTURE_SKEW_SECONDS} after receipt. An overflowing value
-     * would reach the insert as a DATETIME that MySQL rejects, which maps to a
-     * retryable 5xx and a permanent Brevo retry loop.
+     * would reach the insert as an out-of-range DATETIME, which MySQL stores
+     * as a zero date (`sql_mode = ''`).
      *
      * @param array<mixed> $payload The decoded payload
      * @return array{0: string, 1: int, 2: ?string} The time in

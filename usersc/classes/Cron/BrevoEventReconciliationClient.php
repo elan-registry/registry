@@ -174,8 +174,9 @@ class BrevoEventReconciliationClient
             // also raises \InvalidArgumentException on malformed arguments and
             // \RuntimeException during response deserialization — none of which
             // should be allowed to abort a cron run.
-            // No message: a Brevo API error body can echo a
-            // recipient address, and log lines must not hold one (#2359).
+            // No message: a Brevo API error body can echo a recipient
+            // address. An address is personal data, and the logs table must
+            // not hold it.
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                 'Brevo event reconciliation poll FAILED (event type %s, %s to %s, limit %d, offset %d): %s. '
                 . 'No events of this type backfilled this cycle.',

@@ -8,10 +8,10 @@ namespace ElanRegistry\Exceptions;
  * ExceptionLogSummary - a log-safe summary of an exception
  *
  * An exception message can hold an email address. CarRepository puts the
- * address in its messages, and driver text can echo it. A log line must not
- * hold an address (#2359), so the summary never includes the message. It
- * gives the class, the code, the SQLSTATE of a CarDatabaseException, and the
- * place of the throw. Most of these exceptions have code 0, so the SQLSTATE
+ * address in its messages, and driver text can echo it. An address is
+ * personal data that a log line must not hold, so the summary never includes
+ * the message. It gives the class, the code, the SQLSTATE of a
+ * CarDatabaseException, and the place of the throw. Most of these exceptions have code 0, so the SQLSTATE
  * and the place are the details that tell one failure from another.
  *
  * @package ElanRegistry

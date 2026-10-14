@@ -312,8 +312,8 @@ class CarVerificationManager
     private function logEventSkip(string $method, int $ownerId, string $why): void
     {
         // Brevo event tracking, not a bounce: the same category as the
-        // applier's log of an unrecognized event, so all skipped events of
-        // the three event paths land in one searchable category.
+        // applier's log of an event that it did not record, so all skipped
+        // events of the three event paths land in one searchable category.
         logger($ownerId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'CarVerificationManager::%s: event for owner %d not applied to a profile: %s',
             $method,

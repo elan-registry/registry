@@ -44,9 +44,11 @@ use ElanRegistry\LogCategories;
  * - `delivered` only records an event row. It resets the soft-bounce
  *   escalation window, because the count query starts after the most recent
  *   `delivered` row. So there is no separate "clear escalation" write.
- * - `unique_opened` records an event row and never touches a flag or the
- *   escalation count. No caller passes it now. It stays a known event so
- *   that a call from an older caller is not logged as unrecognized.
+ * - Any other event name, for example `unique_opened`, records an event row
+ *   and never touches a flag or the escalation count. No caller passes
+ *   another name now: the webhook drops and logs an event that is not in
+ *   {@see BrevoWebhookEventProcessor::DELIVERY_EVENTS}, and both jobs map
+ *   Brevo's data to known names.
  * - `spam` and `unsubscribed` set the owner's `email_blocked` (a distinct
  *   signal from a bounce), with cause `spam` or `unsubscribed`. Each is
  *   recorded under its own event name so the two remain distinguishable in
@@ -81,8 +83,8 @@ class EmailEventApplier
     /**
      * Brevo event names that immediately count as a confirmed bounce.
      *
-     * Both `invalid` and `invalid_email` are listed: the spike behind this
-     * issue (#1871) never actually observed this event live, and
+     * Both `invalid` and `invalid_email` are listed: spike #1871 never
+     * actually observed this event live, and
      * EMAIL_SYSTEM.md's own "Design deltas" section names `invalid_email` as
      * the expected wire value while this project's original issue text used
      * `invalid` — neither has been confirmed against real Brevo traffic.
@@ -98,22 +100,13 @@ class EmailEventApplier
     public const HARD_BOUNCE_EVENTS = ['hard_bounce', 'blocked', 'invalid', 'invalid_email'];
 
     /**
-     * Brevo event names known to have no flag or escalation effect
-     *
-     * An event in no known list (inert, bounce or suppression) still records
-     * its row, because Brevo can add or rename an event type at any time. It
-     * is logged once, when its row is new. An unknown event is more likely a
-     * change of the payload contract than routine traffic.
-     */
-    private const KNOWN_INERT_EVENTS = ['delivered', 'unique_opened'];
-
-    /**
      * Brevo event names that set `email_blocked` on the car owner's profile,
      * not `email_bounced`.
      *
      * `unsubscribed` comes from the webhook, the event reconciliation job
-     * and the suppression-list import job (#1923). It is recorded under its own event name and never
-     * as `spam`, so an audit can tell the two apart in `er_email_events`.
+     * and the suppression-list import job (#1923). It is recorded under its
+     * own event name and never as `spam`, so an audit can tell the two apart
+     * in `er_email_events`.
      *
      * Public because read-only consumers outside this class need the same
      * vocabulary to interpret stored `er_email_events.event` values (e.g.
@@ -292,7 +285,9 @@ class EmailEventApplier
     ): bool {
         $userId = $match->userId();
         $state = $this->repo->lockEventGuardState($userId);
-        $failedGuard = $state === null ? 'no users row' : self::failedGuard($state, $event, $messageTime, $eventTime);
+        $failedGuard = $state === null
+            ? 'no users row'
+            : self::failedGuard($userId, $state, $event, $messageTime, $eventTime);
         if ($failedGuard !== null) {
             // apply() commits on this path, so the line stays even though it
             // is written inside the transaction.
@@ -319,19 +314,6 @@ class EmailEventApplier
             $eventTime,
             $match->carId()
         ) === 1;
-
-        if ($isNew && !self::isKnownEvent($event)) {
-            // The message names no caller, because all three event paths
-            // reach this line. An unknown event is more likely a change of
-            // Brevo's payload than routine traffic, and it would otherwise
-            // turn off bounce detection for that event type with no sign.
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo: unrecognized event "%s" recorded for owner %d with no flag change'
-                . ' — Brevo may have added or renamed an event type.',
-                $event,
-                $userId
-            ));
-        }
 
         if (!$state['has_profile']) {
             logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
@@ -405,13 +387,20 @@ class EmailEventApplier
     /**
      * Check the owner's date guards (step 3 of {@see apply()})
      *
+     * @param int $userId Owner user ID, for the log line of a stored date that cannot be parsed
      * @param array{email: string, join_date: ?string, email_address_since: ?string,
      *              email_bounce_cleared_at: ?string, has_profile: bool} $state
      * @param string|null $messageTime Null in {@see self::MODE_STATE}
      * @param string $eventTime `$occurredAt` of {@see apply()}, normalized
      * @return string|null The column name of the first guard that fails, or null when all pass
      */
-    private static function failedGuard(array $state, string $event, ?string $messageTime, string $eventTime): ?string
+    private static function failedGuard(
+        int $userId,
+        array $state,
+        string $event,
+        ?string $messageTime,
+        string $eventTime
+    ): ?string
     {
         $checks = [];
         if ($messageTime !== null) {
@@ -423,23 +412,13 @@ class EmailEventApplier
         }
 
         foreach ($checks as $column => $time) {
-            $boundTime = self::storedWallTime($state[$column]);
+            $boundTime = self::storedWallTime($state[$column], $userId, $column);
             if ($boundTime !== null && strcmp($time, $boundTime) < 0) {
                 return $column;
             }
         }
 
         return null;
-    }
-
-    /**
-     * Tell whether an event name is one that this class knows
-     */
-    private static function isKnownEvent(string $event): bool
-    {
-        return in_array($event, self::BOUNCE_EVENTS, true)
-            || isset(self::SUPPRESSION_EVENT_CAUSES[$event])
-            || in_array($event, self::KNOWN_INERT_EVENTS, true);
     }
 
     /**
@@ -457,8 +436,11 @@ class EmailEventApplier
 
     /**
      * Normalize a stored guard date, or return null when it sets no bound
+     *
+     * @param int $userId Owner user ID, for the log line
+     * @param string $column Column name of the guard date, for the log line
      */
-    private static function storedWallTime(?string $value): ?string
+    private static function storedWallTime(?string $value, int $userId, string $column): ?string
     {
         if ($value === null) {
             return null;
@@ -468,7 +450,13 @@ class EmailEventApplier
             return self::wallTime($value, 'guard_date');
         } catch (CarValidationException) {
             // sql_mode = '' lets MySQL store a zero date. A zero date is
-            // earlier than every message, so it sets no bound.
+            // earlier than every message, so it sets no bound. The line
+            // shows that the guard is off for this owner.
+            logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo: owner %d has a %s that is not a valid datetime, so that date guard sets no bound.',
+                $userId,
+                $column
+            ));
             return null;
         }
     }

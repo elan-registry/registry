@@ -1006,7 +1006,9 @@ see [Stop Event Writes in an Incident](#stop-event-writes-in-an-incident).
    `BrevoWebhookEventProcessor::DELIVERY_EVENTS`: `delivered`, `soft_bounce`,
    `hard_bounce`, `blocked`, `invalid`, `invalid_email`, `spam` and
    `unsubscribed`. Any other event (for example `opened` or `click`) returns
-   `IGNORED`. It writes no row and no log line. There is no tag filter.
+   `IGNORED`. It writes no row. It logs the event name only, because the
+   webhook subscribes only to delivery events: another name shows that Brevo
+   added or renamed an event type. There is no tag filter.
 3. **Address check.** The processor trims the address. An address longer than
    155 bytes, or one that fails `FILTER_VALIDATE_EMAIL`, returns `MALFORMED`
    before any match. Brevo does not retry a 4xx.
@@ -1129,7 +1131,7 @@ retry a 2xx.
 | Situation | Response |
 | --- | --- |
 | Matched to one user, transaction committed | 2xx |
-| Not a delivery event (for example `opened`, `click`) | 2xx, no log |
+| Not a delivery event (for example `opened`, `click`) | 2xx, logged (event name only) |
 | Message not sent by this environment | 2xx, no log |
 | Our message, no single user holds the address | 2xx, logged (address hash prefix only). A `car_verification`-tagged event increments `er_verification_settings.unmatched_recipient_count` |
 | Brevo prerequisites not met | 2xx, logged |

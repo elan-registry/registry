@@ -1713,7 +1713,9 @@ dependency exists between the two.
 
 - Admin "Verification System" tab (`app/admin/index.php`, `app/admin/includes/tab-verification.php`)
 - Toggle endpoint (`app/api/admin/verification-toggle.php`)
-- Brevo webhook receiver (`app/api/webhooks/brevo.php`) — `isEnabled()`/`brevoReady()` gates, and `incrementUnmatchedRecipientCounter()` (#1887)
+- Brevo webhook receiver (`app/api/webhooks/brevo.php`) — the
+  `brevoNotReadyReason()` gate (it does not read the switch), and
+  `incrementUnmatchedRecipientCounter()` (#1887)
 - `SendVerificationBatchJob::refusesWhileSwitchOff()` — the `isEnabled()` gate,
   checked by `AbstractCronJob::run()` and `runNow()` before the job-level
   `enabled` flag. It is the only cron job that reads the switch (#2358). The
@@ -1965,7 +1967,9 @@ endpoint itself needs.
   that fails `FILTER_VALIDATE_EMAIL`
 - Accepts only the eight events in `DELIVERY_EVENTS` (`delivered`,
   `soft_bounce`, `hard_bounce`, `blocked`, `invalid`, `invalid_email`, `spam`,
-  `unsubscribed`). Any other event is `IGNORED`. There is no tag filter
+  `unsubscribed`). Any other event is `IGNORED`, and the log line names the
+  event only (at most 32 characters). The webhook subscribes only to delivery
+  events, so another name shows a Brevo change. There is no tag filter
 - Finds the user with `EmailEventMatcher::matchByMessageId()`. A message that
   this environment did not send is `IGNORED`
 - A missing or invalid `ts_event`/`ts`, or one more than 5 minutes after
@@ -1984,7 +1988,9 @@ endpoint itself needs.
   webhook payload. The only instance method that the endpoint calls
 - `static hasVerificationTag(mixed $decodedPayload): bool` - True when `tags`
   is a list that holds `AppConstants::VERIFICATION_EMAIL_TAG`. The endpoint
-  uses it to decide whether to increment the unmatched recipient counter
+  uses it to decide whether to increment the unmatched recipient counter. A
+  `tags` value that is present but not a list is logged (its type only) as a
+  payload contract change
 
 **Constructor Dependencies**:
 
@@ -2035,12 +2041,13 @@ same rules.
     (`brevo_message_id` values) since the email's last `delivered` event, the
     owner's last Clear Bounced and the owner's last address change. Then it
     escalates to bounced
-  - `delivered` and `unique_opened` only record the event row. `delivered`
-    implicitly resets the soft-bounce window
+  - `delivered` only records the event row, and implicitly resets the
+    soft-bounce window. Any other event name (for example `unique_opened`)
+    also only records the row. No caller passes another name: the webhook
+    logs and drops an event that is not a delivery event
   - `spam` sets the owner's `email_blocked` with cause `spam`, and
     `unsubscribed` sets it with cause `unsubscribed`. The event must be later
     than the owner's latest admin Clear Block
-  - Any other event is recorded and logged as unrecognized
 - The flag changes only when the event address is the owner's current
   `users.email`
 - `HARD_BOUNCE_EVENTS` and `SUPPRESSION_EVENTS` are `public const`, so

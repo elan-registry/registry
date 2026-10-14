@@ -249,10 +249,11 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * Latest Unix timestamp {@see self::resolveOccurredAt()} will accept
      * (9999-12-31 23:59:59 UTC).
      *
-     * Same value and purpose as {@see BrevoEventReconciliationJob}'s constant
-     * of the same name: Brevo's read API is external input, and an absurd date
-     * string ("+100000 years") parses without error into a DATETIME string
-     * MySQL rejects, which would fail every write for that contact.
+     * Same value as {@see \ElanRegistry\Car\BrevoWebhookEventProcessor}'s
+     * constant of the same name. Brevo's read API is external input, and an
+     * absurd date string ("+100000 years") parses without error into an out-of-range
+     * DATETIME. With `sql_mode = ''` MySQL stores that as a zero date, which
+     * breaks the date guards for that contact.
      */
     private const MAX_PLAUSIBLE_TIMESTAMP = 253402300799;
 
@@ -724,12 +725,13 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
             // Brevo's read API is external input, so it gets the same bound
             // check against er_email_events' real column widths that #1889's
-            // job applies, keeping an oversized value from reaching
-            // insertOwnerEmailEvent() and throwing under STRICT_TRANS_TABLES. Both
-            // values are in-bounds by construction here — the mapped event
-            // names are at most 12 characters and the synthetic id is always
-            // 51 — so this is a defensive no-op today, kept so that changing
-            // either scheme later cannot silently start failing writes.
+            // job applies. The connection sets sql_mode '' (users/classes/DB.php),
+            // so MySQL would silently cut an oversized value in
+            // insertOwnerEmailEvent(). Both values are in bounds by
+            // construction here: the mapped event names are at most 12
+            // characters and the synthetic ID is always 51. So the check is
+            // defensive today. It stays so that a later change to either
+            // scheme cannot silently store cut values.
             if (strlen($event) > self::MAX_EVENT_LENGTH || strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
                 $skipped++;
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
@@ -938,7 +940,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      *
      * A parsed value is trusted only when its Unix timestamp is positive and at
      * or below {@see self::MAX_PLAUSIBLE_TIMESTAMP} — an unbounded parse
-     * accepts strings like "+100000 years", producing a DATETIME MySQL rejects.
+     * accepts strings like "+100000 years", producing an out-of-range DATETIME
+     * that MySQL stores as a zero date.
      *
      * @param mixed  $rawBlockedAt The SDK's `blockedAt` field, untyped at the boundary
      * @param int    $userId       Matched user, for the fallback log line

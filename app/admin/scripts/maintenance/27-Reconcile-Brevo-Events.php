@@ -32,9 +32,12 @@ use ElanRegistry\LogCategories;
  * so a crash cannot be rendered as a plausible all-zero summary. The
  * try/catch below therefore covers the call itself, not just the
  * construction above it. This job fetches one bounded page for each event
- * type (see the job class's own docblock) — the same scope `AbstractCronJob`'s
- * shared `runNow()` already budgets for — so unlike #1923's multi-page
- * backfill, no additional `set_time_limit()` is needed here.
+ * type (seven Brevo calls, see the job class's own docblock). The page
+ * sets no `set_time_limit()`: on Linux, `max_execution_time` counts CPU
+ * time, not the network wait of a Brevo call. The wall-clock limit is
+ * Cloudflare's, about 100 seconds. Seven calls that each reach the
+ * client's 30-second timeout can pass it, and the operator then sees a
+ * Cloudflare 524 page. The job can still finish, so check the logs.
  *
  * The failure text on the page is fixed. The exception message can hold an
  * owner's address (CarRepository puts it there), so the page never shows it

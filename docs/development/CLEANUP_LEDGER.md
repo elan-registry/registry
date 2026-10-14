@@ -48,6 +48,10 @@ after an item is written.
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
 
+### `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
+
+- [ ] The `set_time_limit(120)` comment (~L110-132) says the network wait of a Brevo page counts toward `max_execution_time`. On Linux it counts CPU time only. The wall-clock limit is Cloudflare's, about 100 seconds. Correct the reason, or delete the call (found in #2359)
+
 ### `app/api/cars/list.php`
 
 - [ ] `(new CarShowcaseService())->getNewCarIds()` (~64) runs an uncached query on every DataTables request (page turn, sort, search) since #1900. Before, it ran once per page load. Memoize it per request or for a short time. Accepted as low risk for v2.30.4. (found in /finish-milestone v2.30.4)

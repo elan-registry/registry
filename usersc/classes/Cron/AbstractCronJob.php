@@ -39,19 +39,9 @@ use ElanRegistry\LogCategories;
  *      `last_run_at`. `runNow()` checks it first.
  *
  * THE VERIFICATION SWITCH STOPS ONLY THE SEND BATCH
- * ({@see SendVerificationBatchJob}). It does not stop event writes. During an
- * incident, stop event writes in three steps:
- *   1. Set `BREVO_WEBHOOK_TOKEN` to an empty value. The webhook then refuses
- *      every call with 401 and Brevo retries.
- *   2. Set `er_cron_job_runs.enabled = 0` for the reconciliation job and the
- *      suppression import. This also stops the retention prune, because the
- *      reconciliation job runs the prune.
- *   3. Do not use Run Now for the two Brevo jobs,
- *      `27-Reconcile-Brevo-Events.php` or
- *      `28-Reconcile-Brevo-Suppressions.php`. These paths read neither the
- *      switch nor `enabled`.
- * After the incident, reconciliation must run within 48 hours of the empty
- * token, because the job fetches the last 48 hours only.
+ * ({@see SendVerificationBatchJob}). It does not stop event writes. To stop
+ * event writes in an incident, follow docs/development/EMAIL_SYSTEM.md,
+ * "Stop Event Writes in an Incident" (#stop-event-writes-in-an-incident).
  *
  * The enabled check is a dedicated read rather than an inference from
  * `CronJobGuard::claim()`'s boolean: `claim()` deliberately conflates

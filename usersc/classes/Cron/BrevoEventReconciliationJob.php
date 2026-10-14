@@ -44,8 +44,9 @@ use ElanRegistry\LogCategories;
  * walk over a large backlog would hold the whole cron hit open. A bounded
  * page is safe to under-fetch because the work is self-healing:
  *
- *   - the 48-hour window is twice the ~24-hour claim interval, so every event
- *     is offered to at least two runs before it ages out of the window;
+ *   - the 48-hour window is more than twice the 20-hour claim interval
+ *     ({@see self::GUARD_INTERVAL_HOURS}), so every event is offered to at
+ *     least two runs before it ages out of the window;
  *   - a replayed event changes no stored row and sets no flag again
  *     ({@see EmailEventApplier::apply()});
  *   - events are fetched newest-first, so the freshest signal is never the
@@ -106,8 +107,8 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     /**
      * How far back to ask Brevo for events, in hours.
      *
-     * Double the guard interval, so every event is covered by at least two
-     * runs — one missed or partially-completed night cannot lose an event.
+     * More than double the guard interval, so every event is covered by at
+     * least two runs — one missed or partially-completed night cannot lose an event.
      * Note the window is applied at *day* granularity by
      * {@see BrevoEventReconciliationClient::fetchEvents()} (Brevo's endpoint
      * takes `YYYY-MM-DD`), so the real window is this rounded outward to whole
@@ -159,7 +160,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     private readonly \DateTimeImmutable $now;
 
     /**
-     * Set once {@see self::applyEvent()} has seen the unmatched-recipient
+     * Set once {@see self::countUnmatched()} has seen the unmatched-recipient
      * counter increment fail, to stop re-attempting it for the remainder of
      * this run — see that method's own comment for why. Scoped to the job
      * instance because each invocation is one bounded run; nothing resets
@@ -244,7 +245,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                 : '',
             // Without this clause the line above reads as a clean run while the
             // dashboard's unmatched-recipient counter silently under-reports.
-            // Only the first failure logs its own cause (see applyEvent()), so
+            // Only the first failure logs its own cause (see countUnmatched()), so
             // this is the only place the run's true scale is recorded.
             $summary->counterFailureCount > 0
                 ? sprintf(
@@ -450,8 +451,9 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         }
 
         // Brevo's read API is external input exactly as the webhook body is.
-        // Skipping here keeps an oversized value from reaching the insert and
-        // throwing under STRICT_TRANS_TABLES.
+        // The connection sets sql_mode '' (users/classes/DB.php), so MySQL
+        // would silently cut an oversized message ID, and the stored ID
+        // would not be Brevo's ID.
         if (strlen($rawMessageId) > self::MAX_MESSAGE_ID_LENGTH) {
             $counts['skipped']++;
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(

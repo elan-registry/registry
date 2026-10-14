@@ -23,8 +23,8 @@ class CarDatabaseException extends CarException
      * Get the SQLSTATE from the message
      *
      * DB::errorString() writes "ERROR #<sqlstate>: <driver text>". The driver
-     * text can hold an email address, but the SQLSTATE cannot. A log line can
-     * so name the database error without the message (#2359).
+     * text can hold an email address, but the SQLSTATE cannot. So a log line
+     * can name the database error without the message.
      *
      * @return string|null The 5-character SQLSTATE, or null when the message has none
      */

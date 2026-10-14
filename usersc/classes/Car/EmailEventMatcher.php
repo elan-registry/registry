@@ -50,16 +50,21 @@ class EmailEventMatcher
     /**
      * Match a delivery event to a user by its message ID
      *
-     * 1. Not ours: no `sent` row and no plugin row has the ID.
-     * 2. Step (a): exactly one `sent` row with the ID has the event address.
-     *    The result has that row's user and car, and the row's
-     *    `occurred_at` as the message time. More than one such row (two
-     *    users) gives {@see EmailEventMatch::noUser()}.
-     * 3. Step (b): the plugin row with the ID has the event address as its
-     *    one whole `recipient_email` (a row with more than one recipient
-     *    matches nothing), and exactly one user holds that address. The
-     *    result has no car, and `accepted_at` as the message time.
-     * 4. Step (c): {@see EmailEventMatch::noUser()}.
+     * First, the "not ours" check: when no `sent` row and no plugin row has
+     * the ID, the result is {@see EmailEventMatch::notOurs()}. One plugin-row
+     * lookup ({@see CarRepository::findSendinblueMessageById()}) serves both
+     * this check and step (b). Then the steps of the matching rule
+     * (EMAIL_SYSTEM.md, "The Matching Rule"):
+     *
+     * - (a) Exactly one `sent` row with the ID has the event address.
+     *   The result has that row's user and car, and the row's
+     *   `occurred_at` as the message time. More than one such row (two
+     *   users) gives {@see EmailEventMatch::noUser()}.
+     * - (b) The plugin row with the ID has the event address as its
+     *   one whole `recipient_email` (a row with more than one recipient
+     *   matches nothing), and exactly one user holds that address. The
+     *   result has no car, and `accepted_at` as the message time.
+     * - (c) None of the above: {@see EmailEventMatch::noUser()}.
      *
      * @param string $messageId Message ID from the event
      * @param string $address Recipient address from the event
@@ -152,8 +157,11 @@ class EmailEventMatcher
      */
     private function pluginTableExists(): bool
     {
-        // A site without the plugin has no table. The lookup would then fail
-        // on every event, and the webhook would ask Brevo to retry forever.
+        // A site without the plugin has no table, and the lookup would then
+        // fail on every event. The webhook cannot get here without the
+        // plugin, because brevoNotReadyReason() returns 200 first. The
+        // reconciliation job does not check it, so without this check the
+        // job would skip every event.
         return $this->pluginTableExists ??= $this->repo->sendinblueMessagesTableExists();
     }
 }

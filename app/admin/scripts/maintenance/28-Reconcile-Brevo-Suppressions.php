@@ -183,14 +183,14 @@ if (!isAdmin()) {
                                     <?php if ($summary->invalidAddressCount > 0): ?>
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> <?= (int) $summary->invalidAddressCount ?> contact(s) had an invalid address</h5>
-                                        <p class="mb-0">The address is longer than 155 bytes or is not a valid email address. These contacts were skipped and are counted in none of the totals below. Each is logged under <code>EmailWebhook</code> with a hash of the address.</p>
+                                        <p class="mb-0">The address is longer than 155 bytes or is not a valid email address. These contacts were skipped and are not in the matched, unmatched or already-flagged totals. Each is logged under <code>EmailWebhook</code> with a hash of the address.</p>
                                     </div>
                                     <?php endif; ?>
 
                                     <?php if ($summary->skippedCount > 0): ?>
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> <?= (int) $summary->skippedCount ?> contact(s) could not be processed</h5>
-                                        <p class="mb-0">These were skipped due to a malformed Brevo payload, an unmapped reason code, an oversized value, or a failed database write, and are counted in none of the totals below. Each is logged individually under <code>EmailWebhook</code> or <code>CronJobFailure</code>. Re-running this script is safe and will retry them.</p>
+                                        <p class="mb-0">These were skipped due to a malformed Brevo payload, an unmapped reason code, an oversized value, or a failed database write, and are not in the matched, unmatched or already-flagged totals. Each is logged individually under <code>EmailWebhook</code> or <code>CronJobFailure</code>. Re-running this script is safe and will retry them.</p>
                                     </div>
                                     <?php endif; ?>
 

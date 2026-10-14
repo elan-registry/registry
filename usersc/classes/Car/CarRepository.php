@@ -2597,7 +2597,7 @@ class CarRepository
      * Insert one er_email_events row from a SELECT source, and keep a duplicate unchanged
      *
      * A duplicate of the unique key `(user_id, brevo_message_id, event)`
-     * changes no column (`ON DUPLICATE KEY UPDATE id = id`, #2359). The
+     * changes no column (`ON DUPLICATE KEY UPDATE id = id`). The
      * column is qualified with the table name, because the SELECT source
      * also has an `id` column, and MySQL then refuses a bare `id`. The
      * first report of an event is the record. A replay or a Brevo retry

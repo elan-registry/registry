@@ -188,18 +188,22 @@ final class EmailEventApplierTest extends TestCase
     }
 
     /**
+     * Every caller passes only known names. The webhook logs an unknown
+     * name and drops it, so the applier records any other name silently.
+     *
      * @return array<string, array{string}>
      */
-    public static function knownInertEventProvider(): array
+    public static function inertEventProvider(): array
     {
         return [
             'delivered' => ['delivered'],
             'unique_opened' => ['unique_opened'],
+            'unknown name' => ['deferred'],
         ];
     }
 
-    #[DataProvider('knownInertEventProvider')]
-    public function testKnownInertEventRecordsRowWithoutFlagChangeOrLog(string $event): void
+    #[DataProvider('inertEventProvider')]
+    public function testInertEventRecordsRowWithoutFlagChangeOrLog(string $event): void
     {
         $this->givenState();
         $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent');
@@ -211,19 +215,35 @@ final class EmailEventApplierTest extends TestCase
         $this->assertNoLogEntries();
     }
 
-    public function testUnrecognizedEventIsRecordedAndLogged(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function guardColumnProvider(): array
     {
-        $this->givenState();
-        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
-        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
+        return [
+            'join_date' => ['join_date'],
+            'email_address_since' => ['email_address_since'],
+            'email_bounce_cleared_at' => ['email_bounce_cleared_at'],
+        ];
+    }
 
-        $this->apply('deferred', 13);
+    /** A zero date turns a guard off, so the log must show which owner and which guard. */
+    #[DataProvider('guardColumnProvider')]
+    public function testZeroGuardDateSetsNoBoundAndLogsTheUserIdAndColumnButNoAddress(string $column): void
+    {
+        $this->givenState([$column => '0000-00-00 00:00:00']);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent');
+        $this->mockManager->expects($this->once())->method('setBouncedFromEvent');
+
+        $this->assertTrue($this->apply('hard_bounce', 23));
 
         global $mockLogEntries;
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $mockLogEntries[0]['category']);
-        $this->assertStringContainsString('unrecognized event "deferred"', $mockLogEntries[0]['message']);
-        $this->assertStringContainsString('owner 13', $mockLogEntries[0]['message']);
+        $this->assertSame(23, $mockLogEntries[0]['user_id']);
+        $this->assertStringContainsString('owner 23', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString($column, $mockLogEntries[0]['message']);
+        $this->assertStringNotContainsString(self::ADDRESS, $mockLogEntries[0]['message']);
     }
 
     // --- Steps 2, 3 and 5 ------------------------------------------------

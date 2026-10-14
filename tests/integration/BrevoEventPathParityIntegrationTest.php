@@ -226,9 +226,10 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
     /**
      * Drive one event through the reconciliation job
      *
-     * `runNowWithSummary()` bypasses the switch gate, as `run()` and `runNow()`
-     * do not. A test of the switch passes `$viaRunNow` and reads the result
-     * from the database.
+     * `runNow()` checks `refusesWhileSwitchOff()`, which this job does not
+     * override, so the job runs with the switch off on every path. A test of
+     * the switch passes `$viaRunNow`, so the call goes through that check,
+     * and reads the result from the database.
      *
      * @return int The number of events that the job applied, or 0 for `runNow()` (it returns no summary)
      */
@@ -566,7 +567,8 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
         $this->assertSame(0, $this->eventRowCount($owner['userId'], $messageId));
 
         $this->seedSentRow($owner['carId'], $owner['email'], $messageId, $this->eventTs - 600);
-        // runNow() reads the switch gate. runNowWithSummary() does not.
+        // runNow() checks the switch gate. This job does not refuse, so it
+        // runs with the switch off.
         $this->driveReconciliation($owner['email'], $messageId, 'hardBounces', $this->eventTs, viaRunNow: true);
 
         $snapshot = $this->snapshot($owner['userId']);

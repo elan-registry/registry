@@ -14,7 +14,7 @@ namespace ElanRegistry\Cron;
  * breakdown, and a warning when the poll itself failed.
  *
  * COUNTING. Each count is per event. The matcher gives one user or none for
- * an event (#2359), so one event makes at most one write.
+ * an event, so one event makes at most one write.
  * {@see $eventsExamined} is NOT the sum of the other counts: an event that
  * is not ours, and an unmatched event without the verification tag, add to
  * no count. `eventsExamined` is the only field here that answers "how many

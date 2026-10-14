@@ -59,8 +59,9 @@ if ($id < 1) {
 // Privacy step (#2358). It runs first, in its own transaction, so that each
 // early return below keeps no personal data and leaves no transaction open.
 // The event step (EmailEventApplier) takes the same profile lock first, so
-// no event row for this user can arrive between the address read and the
-// deletes.
+// for a user with a profiles row no event row can arrive between the address
+// read and the deletes. A user with no profiles row gets only a gap lock (see
+// CarRepository::lockProfileAndFindAddresses()).
 // The plugin delete reads the user's event message IDs, so it runs before the
 // event delete. A failure rolls back this step only, and the car cleanup
 // still runs. The log names the user ID, the stage, the exception class and
