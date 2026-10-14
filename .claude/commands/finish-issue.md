@@ -523,10 +523,12 @@ against) is done once the code is merged and the issue is closed; the merged
 diff and closed issue are now the source of truth.
 
 `docs/plans/` is gitignored, so this is a plain delete with no git operation
-and nothing to mention in the PR:
+and nothing to mention in the PR. Use `find`, not a shell glob: zsh stops
+the command when a glob has no match.
 
 ```bash
-rm -f docs/plans/issues/issue-<issue-number>-*.md docs/plans/issue-<issue-number>-*.md
+find docs/plans -maxdepth 2 \( -path 'docs/plans/issue-<issue-number>-*.md' \
+  -o -path 'docs/plans/issues/issue-<issue-number>-*.md' \) -delete
 ```
 
 Commit the release notes update. If every entry was already done, there is

@@ -206,7 +206,7 @@ A previous run may have created the branch and written the plan. Check for
 both:
 
 ```bash
-ls docs/plans/issues/issue-ISSUE_NUMBER-*.md
+find docs/plans/issues -maxdepth 1 -name 'issue-ISSUE_NUMBER-*.md' 2>/dev/null
 git branch --list '*/ISSUE_NUMBER-*'
 git ls-remote --heads origin '*/ISSUE_NUMBER-*'
 ```
