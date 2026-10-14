@@ -78,6 +78,18 @@ final class SendOwnerEmailOwnerMismatchTest extends IntegrationTestCase
         );
     }
 
+    /**
+     * Count the rows that the endpoint writes after email() returns, sent or
+     * failed. Only a request that reached email() can write one. A refusal
+     * exits before these rows, so a count of 0 does not prove that no message
+     * went out.
+     */
+    private function countSendOutcomeLogs(int $senderId): int
+    {
+        return $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ELAN_REGISTRY, 'send-owner-email.php sent from %', $senderId)
+            + $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'send-owner-email.php SEND FAILED from %', $senderId);
+    }
+
     public function testRecipientWhoDoesNotOwnTheCarIsRefusedWith403AndLogged(): void
     {
         $senderId = $this->createSender();
@@ -114,11 +126,13 @@ final class SendOwnerEmailOwnerMismatchTest extends IntegrationTestCase
         $result = $this->sendMessage($senderId, $ownerId, $carId);
 
         // Control for the mismatch test: a guard that refuses every recipient would pass it.
-        // The send gives 200 or 500, depending on the Brevo setup of the checkout. A 302 or
-        // 400 would mean the request stopped before the owner check, so accept only these two.
+        // The send gives 200 or 500, depending on the Brevo setup of the checkout. A 500
+        // can also come from a step before the owner check, so the send-outcome row is
+        // the proof that the request reached email().
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
         $this->assertIsArray($result['json'], 'The endpoint must answer with JSON: ' . $result['raw']);
         $this->assertContains($result['httpCode'], [200, 500], 'The real owner must pass the owner check: ' . $result['raw']);
+        $this->assertSame(1, $this->countSendOutcomeLogs($senderId), 'The real owner must reach email(): ' . $result['raw']);
         $this->assertSame(
             $before,
             $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, $needle, $senderId),

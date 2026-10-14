@@ -216,8 +216,8 @@ always gets into `raw`, whatever `php.ini` sets.
 Parameters:
 
 - `$endpointFile` — repo-relative path, for example
-  `app/api/admin/verification-toggle.php`. An absolute path works only inside
-  the repository. The helper resolves the path with `realpath()` before it
+  `app/api/admin/verification-toggle.php`. An absolute path inside the
+  repository also works. The helper resolves the path with `realpath()` before it
   checks it, so a `..` segment cannot point outside the repository. Any other
   path throws `InvalidArgumentException`.
 - `$post` — `$_POST` fields. A value can be a scalar, `null`, or an array of
@@ -232,7 +232,7 @@ Parameters:
   | Mode | Effect |
   | --- | --- |
   | `'valid'` (default) | Sets a token from `Token::generate()` |
-  | `'invalid'` | Sets a fixed bad token |
+  | `'invalid'` | Generates a session token, then sends a well-formed token that does not match it |
   | `'omit'` | Sets no `csrf` key |
 
   Any other value throws `InvalidArgumentException`. The subprocess sets the
@@ -243,7 +243,7 @@ Return value:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `status` | `bool\|null` | `success` from the JSON body. `false` if the JSON body has no `success` key. `null` if the body is not JSON |
+| `status` | `bool\|null` | `success` from the JSON body. `null` if the body is not JSON, or if `success` is missing or not a bool |
 | `message` | `string` | `message` from the JSON body. Empty if there is none |
 | `httpCode` | `int\|null` | HTTP status code. `null` if the endpoint set no code, if the subprocess stopped before the endpoint ran (marker missing), or if other output follows the marker |
 | `exitCode` | `int` | Exit code of the subprocess. `-1` if the exit marker is missing |

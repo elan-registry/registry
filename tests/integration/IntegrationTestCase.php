@@ -135,15 +135,23 @@ abstract class IntegrationTestCase extends TestCase
             }
 
             foreach ($this->createdPermissionMatchIds as $id) {
-                $this->db->query('DELETE FROM user_permission_matches WHERE id = ?', [$id]);
-                if ($this->db->error()) {
-                    fwrite(STDERR, "NOTE: tearDown() cleanup failed for user_permission_matches ID {$id}: {$this->db->errorString()}\n");
+                try {
+                    $this->db->query('DELETE FROM user_permission_matches WHERE id = ?', [$id]);
+                    if ($this->db->error()) {
+                        fwrite(STDERR, "NOTE: tearDown() cleanup failed for user_permission_matches ID {$id}: {$this->db->errorString()}\n");
+                    }
+                } catch (RuntimeException $e) {
+                    fwrite(STDERR, "NOTE: tearDown() cleanup failed for user_permission_matches ID {$id}: {$e->getMessage()}\n");
                 }
             }
             foreach ($this->rateLimitIdFloors as $action => $floor) {
-                $this->db->query('DELETE FROM us_rate_limits WHERE id > ? AND action = ?', [$floor, $action]);
-                if ($this->db->error()) {
-                    fwrite(STDERR, "NOTE: tearDown() cleanup failed for us_rate_limits action '{$action}': {$this->db->errorString()}\n");
+                try {
+                    $this->db->query('DELETE FROM us_rate_limits WHERE id > ? AND action = ?', [$floor, $action]);
+                    if ($this->db->error()) {
+                        fwrite(STDERR, "NOTE: tearDown() cleanup failed for us_rate_limits action '{$action}': {$this->db->errorString()}\n");
+                    }
+                } catch (RuntimeException $e) {
+                    fwrite(STDERR, "NOTE: tearDown() cleanup failed for us_rate_limits action '{$action}': {$e->getMessage()}\n");
                 }
             }
 
@@ -276,7 +284,7 @@ abstract class IntegrationTestCase extends TestCase
      * when the subprocess stopped before the endpoint ran, or when other output
      * follows the status marker. In the last case `raw` keeps the marker and
      * the output after it, so assertNoPhpErrorText() can see that output.
-     * `status` is null when the body is not JSON.
+     * `status` is null when the body is not JSON or has no bool `success` value.
      *
      * The subprocess sets $post values after the CSRF value. Thus a 'csrf' key
      * in $post overrides $csrfMode.
@@ -284,7 +292,7 @@ abstract class IntegrationTestCase extends TestCase
      * @param string $endpointFile Repo-relative path (e.g. 'app/api/contact/send-owner-email.php'), or an absolute path inside this repository
      * @param array<string, scalar|null|array<mixed>> $post $_POST fields; values pass through var_export(), so nested arrays of scalars and null are allowed
      * @param int|null $loggedInUserId User to log in inside the subprocess; null = logged out
-     * @param string $csrfMode 'valid' (Token::generate()), 'invalid' (a fixed bad token), or 'omit' (no csrf key)
+     * @param string $csrfMode 'valid' (Token::generate()), 'invalid' (a well-formed token that does not match the session token), or 'omit' (no csrf key)
      * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null}
      * @throws InvalidArgumentException If $csrfMode is unknown, $endpointFile is not a file in this repository, or a $post value is not a scalar, null, or an array of those
      * @throws RuntimeException If shell_exec() cannot run the subprocess
@@ -305,7 +313,9 @@ abstract class IntegrationTestCase extends TestCase
 
         $csrfSnippet = match ($csrfMode) {
             'valid'   => '$_POST["csrf"] = \Token::generate();',
-            'invalid' => '$_POST["csrf"] = "deliberately-invalid-token";',
+            // A session token must exist and the bad one must be well formed, or
+            // Token::check() refuses it before the hash_equals() comparison.
+            'invalid' => '\Token::generate(); $_POST["csrf"] = str_repeat("0", 64);',
             'omit'    => '',
             default   => throw new InvalidArgumentException(
                 "invokeEndpoint(): unknown csrfMode '{$csrfMode}' (use 'valid', 'invalid', or 'omit')"
@@ -399,7 +409,7 @@ abstract class IntegrationTestCase extends TestCase
         $json = is_array($decoded) ? $decoded : null;
 
         return [
-            'status'   => $json !== null ? (bool) ($json['success'] ?? false) : null,
+            'status'   => is_bool($json['success'] ?? null) ? $json['success'] : null,
             'message'  => $json !== null ? (string) ($json['message'] ?? '') : '',
             'httpCode' => $httpCode,
             'exitCode' => $exitCode,
