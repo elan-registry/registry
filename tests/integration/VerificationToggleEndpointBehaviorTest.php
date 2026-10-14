@@ -18,6 +18,8 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('integration')]
 final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 {
+    private const DENIED_NOTE = 'verification-toggle.php: non-admin toggle attempt';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -57,7 +59,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 
     /**
      * @param string|null $enabledValue Raw POST 'enabled' value, or null to omit it entirely.
-     * @return array{status: bool, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<string, mixed>|null}
+     * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null}
      */
     private function invokeToggleEndpoint(?int $loggedInUserId, ?string $enabledValue, bool $withValidCsrf = true): array
     {
@@ -79,6 +81,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         $this->grantTestPermission($editorUserId, 3); // 3 = Editor per CLAUDE.md's role hierarchy
 
         $this->setSwitchEnabled(false);
+        $deniedBefore = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::DENIED_NOTE . '%', $editorUserId);
 
         $result = $this->invokeToggleEndpoint($editorUserId, '1');
 
@@ -87,6 +90,11 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         $this->assertFalse($result['status'], 'Editor must not be able to toggle verification: ' . $result['raw']);
         $this->assertStringContainsString('Admin access required', $result['message']);
         $this->assertFalse($this->currentSwitchState(), 'Setting must remain unchanged after a rejected editor request');
+        $this->assertSame(
+            $deniedBefore + 1,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::DENIED_NOTE . '%', $editorUserId),
+            'Exactly one access-denied log row must record the editor attempt'
+        );
     }
 
     public function testLoggedOutUserCannotToggle(): void
@@ -116,6 +124,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         // An empty API key makes Brevo not ready on every checkout, also one
         // with ready plugin files. The finally block restores the key.
         $existingKeyRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
+        $this->assertFalse($this->db->error(), 'Failed to read the Brevo key row: ' . $this->db->errorString());
         $hasKeyRow = is_object($existingKeyRow) && isset($existingKeyRow->id);
         if ($hasKeyRow) {
             $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['', $existingKeyRow->id]);
@@ -177,6 +186,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         // "Brevo plugin local setup"). The finally block restores the key row.
         $keyInsertedByThisTest = false;
         $existingKeyRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
+        $this->assertFalse($this->db->error(), 'Failed to read the Brevo key row: ' . $this->db->errorString());
 
         try {
             if (is_object($existingKeyRow) && isset($existingKeyRow->id)) {
@@ -282,11 +292,12 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 
     public function testInvalidCsrfTokenRejectedBeforeAdminCheck(): void
     {
-        $adminUserId = $this->createTestUser();
-        $this->grantTestPermission($adminUserId, 2);
+        // A non-admin fails both checks. The 400 proves that the CSRF check runs first.
+        $userId = $this->createTestUser();
+        $this->grantTestPermission($userId, 1); // 1 = User
         $this->setSwitchEnabled(false);
 
-        $result = $this->invokeToggleEndpoint($adminUserId, '1', withValidCsrf: false);
+        $result = $this->invokeToggleEndpoint($userId, '1', withValidCsrf: false);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
         $this->assertSame(400, $result['httpCode'], $result['raw']);

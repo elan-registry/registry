@@ -265,10 +265,10 @@ abstract class IntegrationTestCase extends TestCase
      * POST to a real endpoint file in a `php -r` subprocess and capture its response.
      *
      * A subprocess is necessary because ApiResponse::send() calls exit, and a
-     * securePage() refusal exits through Redirect::to() or die(). Either would end
-     * the PHPUnit process. The subprocess runs the
-     * real UserSpice bootstrap, so Token::check(), hasPerm(), and securePage() run
-     * unchanged. The login uses the same reflection as loginAsTestUser().
+     * securePage() refusal exits through Redirect::to() or die(). Either would
+     * end the PHPUnit process. The subprocess runs the real UserSpice bootstrap,
+     * so Token::check(), hasPerm(), and securePage() run unchanged. The login
+     * uses the same reflection as loginAsTestUser().
      *
      * `raw` holds the stdout and stderr bytes of the subprocess (2>&1), not
      * trimmed, so two responses can be compared byte for byte. PHP error text
@@ -276,12 +276,16 @@ abstract class IntegrationTestCase extends TestCase
      * when the subprocess stopped before the endpoint ran, or when other output
      * follows the status marker. In the last case `raw` keeps the marker and
      * the output after it, so assertNoPhpErrorText() can see that output.
+     * `status` is null when the body is not JSON.
+     *
+     * The subprocess sets $post values after the CSRF value. Thus a 'csrf' key
+     * in $post overrides $csrfMode.
      *
      * @param string $endpointFile Repo-relative path (e.g. 'app/api/contact/send-owner-email.php'), or an absolute path inside this repository
      * @param array<string, scalar|null|array<mixed>> $post $_POST fields; values pass through var_export(), so nested arrays of scalars and null are allowed
      * @param int|null $loggedInUserId User to log in inside the subprocess; null = logged out
      * @param string $csrfMode 'valid' (Token::generate()), 'invalid' (a fixed bad token), or 'omit' (no csrf key)
-     * @return array{status: bool, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<string, mixed>|null}
+     * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null}
      * @throws InvalidArgumentException If $csrfMode is unknown, $endpointFile is not a file in this repository, or a $post value is not a scalar, null, or an array of those
      * @throws RuntimeException If shell_exec() cannot run the subprocess
      */
@@ -361,7 +365,11 @@ abstract class IntegrationTestCase extends TestCase
             var_export($absoluteFile, true)
         );
 
-        $output = shell_exec('php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"');
+        // php.ini can hide errors or print them to stdout only. These flags send
+        // all PHP error text to stderr, so raw always holds it.
+        $output = shell_exec(
+            'php -d display_errors=stderr -d error_reporting=-1 -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"'
+        );
         if (!is_string($output)) {
             throw new RuntimeException('invokeEndpoint(): shell_exec failed to run the subprocess for ' . $endpointFile);
         }
@@ -391,7 +399,7 @@ abstract class IntegrationTestCase extends TestCase
         $json = is_array($decoded) ? $decoded : null;
 
         return [
-            'status'   => $json !== null ? (bool) ($json['success'] ?? false) : false,
+            'status'   => $json !== null ? (bool) ($json['success'] ?? false) : null,
             'message'  => $json !== null ? (string) ($json['message'] ?? '') : '',
             'httpCode' => $httpCode,
             'exitCode' => $exitCode,
@@ -476,8 +484,8 @@ abstract class IntegrationTestCase extends TestCase
 
     /**
      * Pass the test DB credentials to the subprocess so it uses the test
-     * schema, not the real .env. putenv() alone did not give users/init.php a
-     * working $settings, so the subprocess also reloads .env.test.local.
+     * schema, not the real .env. The subprocess also reloads .env.test.local
+     * so users/init.php connects to the test schema.
      *
      * Private: several test classes declare a private method with this name,
      * and a protected one here would be a fatal error in those classes.

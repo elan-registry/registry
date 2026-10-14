@@ -28,8 +28,8 @@ final class AdminAjaxGuardBehaviorTest extends IntegrationTestCase
     private const DENIED_NOTE = 'Unauthorized owner search attempt';
     private const CSRF_NOTE = 'Invalid CSRF token in owner search';
 
-    /** @var int Highest logs.id before the test, so tearDown() deletes only rows written after it */
-    private int $logIdFloor = 0;
+    /** @var int|null Highest logs.id before the test, so tearDown() deletes only rows written after it */
+    private ?int $logIdFloor = null;
 
     /** @var int[] Users this class created, whose new logs rows tearDown() deletes */
     private array $guardUserIds = [];
@@ -39,6 +39,7 @@ final class AdminAjaxGuardBehaviorTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
         $this->guardUserIds = [];
+        $this->logIdFloor = null;
 
         $max = $this->db->query('SELECT COALESCE(MAX(id), 0) AS max_id FROM logs')->first();
         $this->assertFalse($this->db->error(), 'Failed to read logs MAX(id) for test setup: ' . $this->db->errorString());
@@ -47,9 +48,9 @@ final class AdminAjaxGuardBehaviorTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        // A floor of 0 means the setUp() snapshot failed. Deleting then would
-        // remove rows that other runs wrote.
-        if ($this->databaseConnected && $this->logIdFloor > 0) {
+        // A null floor means setUp() did not take the snapshot. Deleting then
+        // would remove rows that other runs wrote.
+        if ($this->databaseConnected && $this->logIdFloor !== null) {
             foreach ($this->guardUserIds as $userId) {
                 $this->db->query('DELETE FROM logs WHERE id > ? AND user_id = ?', [$this->logIdFloor, $userId]);
                 if ($this->db->error()) {
@@ -80,7 +81,7 @@ final class AdminAjaxGuardBehaviorTest extends IntegrationTestCase
     }
 
     /**
-     * @param array{status: bool, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<string, mixed>|null} $result
+     * @param array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null} $result
      */
     private function assertCleanGuardRefusal(array $result): void
     {
@@ -187,6 +188,48 @@ final class AdminAjaxGuardBehaviorTest extends IntegrationTestCase
         $result = $this->invokeEndpoint(self::ENDPOINT, ['query' => 'smith'], $adminId);
 
         // Control for the two refusal tests: a setup that refuses every request would pass them.
+        $this->assertGuardPassed($result);
+    }
+
+    public function testEditorWithValidCsrfPassesTheGuard(): void
+    {
+        $editorId = $this->createGuardUser(3); // 3 = Editor
+
+        // This request passes the guard, so it writes rate-limit rows. tearDown() deletes them.
+        $this->trackNewRateLimitRows('admin_ajax_search');
+
+        $result = $this->invokeEndpoint(self::ENDPOINT, ['query' => 'smith'], $editorId);
+
+        // Some admin tools allow the editor role, so the guard must let an editor through.
+        $this->assertGuardPassed($result);
+    }
+
+    public function testLoggedOutRequestIsRefusedByAuthorizationCheck(): void
+    {
+        $deniedBefore = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::DENIED_NOTE . '%');
+        $csrfBefore = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_SECURITY, self::CSRF_NOTE . '%');
+
+        $result = $this->invokeEndpoint(self::ENDPOINT, ['query' => 'smith'], null);
+
+        $this->assertCleanGuardRefusal($result);
+        $this->assertSame('Unauthorized access', $result['message']);
+        $this->assertSame(
+            $deniedBefore + 1,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::DENIED_NOTE . '%'),
+            'Exactly one access-denied log row must be written'
+        );
+        $this->assertSame(
+            $csrfBefore,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_SECURITY, self::CSRF_NOTE . '%'),
+            'The authorization check must refuse the request before the CSRF check runs'
+        );
+    }
+
+    /**
+     * @param array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null} $result
+     */
+    private function assertGuardPassed(array $result): void
+    {
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
         $this->assertSame(200, $result['httpCode'], $result['raw']);
         $this->assertIsArray($result['json'], 'Response must be valid JSON: ' . $result['raw']);

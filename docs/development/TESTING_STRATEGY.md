@@ -209,7 +209,9 @@ protected function invokeEndpoint(
 `invokeEndpoint()` starts a `php -r` subprocess. The subprocess uses the test
 database (`.env.test.local`) and loads the real UserSpice bootstrap. So
 `Token::check()`, `hasPerm()`, and `securePage()` run unchanged. It then
-posts `$post` to the endpoint and captures the output.
+posts `$post` to the endpoint and captures the output. The subprocess runs
+with `-d display_errors=stderr -d error_reporting=-1`, so PHP error text
+always gets into `raw`, whatever `php.ini` sets.
 
 Parameters:
 
@@ -233,18 +235,20 @@ Parameters:
   | `'invalid'` | Sets a fixed bad token |
   | `'omit'` | Sets no `csrf` key |
 
-  Any other value throws `InvalidArgumentException`.
+  Any other value throws `InvalidArgumentException`. The subprocess sets the
+  `$post` values after the CSRF value, so a `csrf` key in `$post` overrides
+  `$csrfMode`.
 
 Return value:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `status` | `bool` | `success` from the JSON body. `false` if the body is not a JSON object |
+| `status` | `bool\|null` | `success` from the JSON body. `false` if the JSON body has no `success` key. `null` if the body is not JSON |
 | `message` | `string` | `message` from the JSON body. Empty if there is none |
 | `httpCode` | `int\|null` | HTTP status code. `null` if the endpoint set no code, if the subprocess stopped before the endpoint ran (marker missing), or if other output follows the marker |
 | `exitCode` | `int` | Exit code of the subprocess. `-1` if the exit marker is missing |
 | `raw` | `string` | Exact stdout and stderr bytes of the subprocess, so PHP error text is included. It is not trimmed, so you can compare two responses byte for byte. If output follows the status marker, `raw` keeps the marker and that output |
-| `json` | `array\|null` | Decoded body. `null` if the trimmed body is not a JSON object or array |
+| `json` | `array<mixed>\|null` | Decoded body. `null` if the trimmed body is not a JSON object or array |
 
 Example, from `tests/integration/VerificationToggleEndpointBehaviorTest.php`:
 

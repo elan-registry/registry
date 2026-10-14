@@ -8,8 +8,8 @@ use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * #2165 gap 2: app/api/contact/send-owner-email.php refuses a to_user_id that
- * is not the owner of car_id (IDOR guard), at the HTTP layer.
+ * app/api/contact/send-owner-email.php refuses a to_user_id that is not the
+ * owner of car_id (IDOR guard), at the HTTP layer. See #2165.
  *
  * Each request runs in its own `php -r` subprocess because ApiResponse::send()
  * calls exit.
@@ -44,32 +44,51 @@ final class SendOwnerEmailOwnerMismatchTest extends IntegrationTestCase
         parent::tearDown();
     }
 
-    public function testRecipientWhoDoesNotOwnTheCarIsRefusedWith403AndLogged(): void
+    /**
+     * Create a sender that securePage() lets through to the owner check.
+     * tearDown() deletes the logs rows of this user.
+     */
+    private function createSender(): int
     {
         // createTestUser() omits users.permissions, so MySQL stores an implicit 0.
         // securePage() treats 0 as banned and redirects (302), so the sender gets 1.
         $senderId = $this->createTestUser(['permissions' => 1]);
-        // Page 13 is private with permission 1. Without this row, securePage()
-        // redirects (302) before the owner check runs.
+        // app/api/contact/send-owner-email.php is a private page for permission 1.
+        // Without this row, securePage() redirects (302) before the owner check runs.
         $this->grantTestPermission($senderId, 1);
-        $ownerId = $this->createTestUser();
-        $otherUserId = $this->createTestUser(); // real user, owns no car
-        $carId = $this->createTestCar($ownerId);
-        $this->loggedUserIds = [$senderId];
+        $this->loggedUserIds[] = $senderId;
 
-        $needle = "%does not match owner of car_id={$carId}%";
-        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, $needle);
+        return $senderId;
+    }
 
-        $result = $this->invokeEndpoint(
+    /**
+     * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null}
+     */
+    private function sendMessage(int $senderId, int $toUserId, int $carId): array
+    {
+        return $this->invokeEndpoint(
             self::ENDPOINT,
             [
                 'action' => 'send_message',
-                'message' => 'Owner mismatch test message',
-                'to_user_id' => (string) $otherUserId,
+                'message' => 'Owner check test message',
+                'to_user_id' => (string) $toUserId,
                 'car_id' => (string) $carId,
             ],
             $senderId
         );
+    }
+
+    public function testRecipientWhoDoesNotOwnTheCarIsRefusedWith403AndLogged(): void
+    {
+        $senderId = $this->createSender();
+        $ownerId = $this->createTestUser();
+        $otherUserId = $this->createTestUser(); // real user, owns no car
+        $carId = $this->createTestCar($ownerId);
+
+        $needle = "%does not match owner of car_id={$carId}%";
+        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, $needle, $senderId);
+
+        $result = $this->sendMessage($senderId, $otherUserId, $carId);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
         $this->assertSame(403, $result['httpCode'], $result['raw']);
@@ -78,8 +97,32 @@ final class SendOwnerEmailOwnerMismatchTest extends IntegrationTestCase
         $this->assertNoPhpErrorText($result['raw']);
         $this->assertSame(
             $before + 1,
-            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, $needle),
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, $needle, $senderId),
             'Exactly one AccessDenied row must record the owner mismatch'
+        );
+    }
+
+    public function testRecipientWhoOwnsTheCarPassesTheOwnerCheck(): void
+    {
+        $senderId = $this->createSender();
+        $ownerId = $this->createTestUser();
+        $carId = $this->createTestCar($ownerId);
+
+        $needle = "%does not match owner of car_id={$carId}%";
+        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, $needle, $senderId);
+
+        $result = $this->sendMessage($senderId, $ownerId, $carId);
+
+        // Control for the mismatch test: a guard that refuses every recipient would pass it.
+        // The send gives 200 or 500, depending on the Brevo setup of the checkout. A 302 or
+        // 400 would mean the request stopped before the owner check, so accept only these two.
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertIsArray($result['json'], 'The endpoint must answer with JSON: ' . $result['raw']);
+        $this->assertContains($result['httpCode'], [200, 500], 'The real owner must pass the owner check: ' . $result['raw']);
+        $this->assertSame(
+            $before,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, $needle, $senderId),
+            'No AccessDenied row may record an owner mismatch for the real owner'
         );
     }
 }

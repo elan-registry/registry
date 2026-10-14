@@ -106,7 +106,8 @@ after an item is written.
 ### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
 
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
-- [ ] The subprocess sets `$_SERVER["PHP_SELF"]` (~L138), which `Server::get('PHP_SELF')` ignores under CLI. So `$php_self` is `/`, and `securePage()` never checks the real `app/admin/index.php` page. The class doc claim "an editor passes securePage()" is not tested. Fix: set `$_SERVER["SCRIPT_FILENAME"]` to `$page` instead. All 12 tests pass with that change (checked in #2165). This fix does not need the migration item above. (found in #2165)
+- [ ] The subprocess sets `$_SERVER["PHP_SELF"]` (~L138), which `Server::get('PHP_SELF')` ignores under CLI. So `$php_self` is `/`, and `securePage()` never checks the real `app/admin/index.php` page. The class doc claim "an editor passes securePage()" is not tested. `invokeEndpoint()` already sets `SCRIPT_FILENAME`. This class does not. Fix: set `$_SERVER["SCRIPT_FILENAME"]` to `$page` instead. The 12 tests in this class still pass with that change. This fix does not need the migration item above. (found in #2165)
+- [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
 
 ### `tests/integration/BrevoWebhookEndpointTest.php`
 
@@ -136,6 +137,7 @@ after an item is written.
 ### `tests/integration/UserSettingsResumeVerificationEndpointTest.php`
 
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
+- [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L196). The migration item above fixes it. (found in #2165)
 
 ### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 
@@ -271,7 +273,6 @@ after an item is written.
 ### `usersc/login.php` + `tests/bootstrap-integration.php`
 
 - [ ] Remove the pre-6.1.7 version guards after production runs UserSpice 6.1.7 (v2.30.9, #2088): `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)
-- [ ] No test runs a successful login and checks that `users.logins` goes up by exactly one (`$recordCompletedLogin` ~L107, called at ~L192, 302, 356); only the text check in `LoginWiringTest.php:129` covers the version-guarded count. (found in /finish-milestone v2.30.6)
 
 ### `usersc/scripts/during_user_creation.php`
 
