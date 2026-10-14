@@ -12,6 +12,18 @@ deletes them with the account. Admins see the email state of each owner.
 
 ## Admin-Facing Changes
 
+- The registry stores each delivery event once for each owner, and every car of the owner shows it on the Verification dashboard.
+  ([#2358](https://github.com/elan-registry/registry/issues/2358))
+- A deleted car, a merged car, or a transferred car no longer loses or mixes up the owner's delivery events, and account deletion removes them.
+  ([#2358](https://github.com/elan-registry/registry/issues/2358))
+- The nightly prune keeps terminal events for 24 months, and `soft_bounce`, `delivered` and `sent` rows for 90 days,
+  except each car's latest `sent` row for its current owner, whose address it blanks only when the row is older than 90 days.
+  ([#2358](https://github.com/elan-registry/registry/issues/2358))
+- The prune, the reconciliation and the suppression import now run with the verification switch off, and among the cron jobs only the send batch honours it.
+  ([#2358](https://github.com/elan-registry/registry/issues/2358))
+- Maintenance script 27 shows "owners matched", and the new read-only script 29 previews the event re-key.
+  ([#2358](https://github.com/elan-registry/registry/issues/2358))
+
 ## Issues Resolved
 
 - [#2165](https://github.com/elan-registry/registry/issues/2165) — Add `IntegrationTestCase::invokeEndpoint()` and HTTP-level tests for the owner-contact

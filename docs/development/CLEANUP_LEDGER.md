@@ -38,7 +38,7 @@ after an item is written.
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
-- [ ] The comment at ~L220 says "a send to it sets the bounce flag again". Name which Brevo event sets which flag (`blocked` sets `email_bounced`, `spam` and `unsubscribed` set `email_blocked`). Reword the "comes in #2359" note here and in `usersc/scripts/during_user_creation.php` (~L29), and the "#2359 adds the transaction" notes in `CarVerificationManager.php` (~L255, ~L296), so they stay true after #2359 ships (found in /finish-milestone v2.30.7)
+- [ ] The comment at ~L221 says "a send to it sets the bounce flag again". Name which Brevo event sets which flag (`blocked` sets `email_bounced`, `spam` and `unsubscribed` set `email_blocked`). Reword the "comes in #2359" note here and in `usersc/scripts/during_user_creation.php` (~L29), and the "#2359 adds the transaction" notes in `CarVerificationManager.php` (~L253, ~L294), so they stay true after #2359 ships (found in /finish-milestone v2.30.7)
 
 ### `app/admin/includes/process-admin-contact.php`
 
@@ -76,13 +76,13 @@ after an item is written.
 
 - [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Catch `CarDatabaseException`: an uncaught one turns a logged redirect into a 500. Keep the redirect to `/` on not-found (from #2002)
 
-### `app/verify/verify_car.php` + `usersc/classes/Car/CarVerificationManager.php`
-
-- [ ] A failed opt-out lookup or write (`verify_car.php` ~L692, ~L708) and a skipped spam or unsubscribe event (`CarVerificationManager.php` ~L346) log under `LOG_CATEGORY_EMAIL_BOUNCED`. They are not bounces, and `user_settings.php` logs the same read failure under `LOG_CATEGORY_DATABASE_ERROR`. Use one fitting category (found in /finish-milestone v2.30.7)
-
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
+
+### `docs/development/DATABASE.md`
+
+- [ ] "Cleanup Process" item 1 (~L533) names only orphaned `profiles` rows. Describe the account-deletion privacy step (plugin rows, events, profile, in its own transaction first), or link to the section that does (found in #2358 review)
 
 ### `error/500.php`
 
@@ -95,13 +95,12 @@ after an item is written.
 ### `scripts/spike-1871/` (est. −960)
 
 - [ ] Delete the directory (capture receiver, send-test CLI, README). Its README says it stays "until #1887 ships its own fixtures". #1887 is closed, and the Brevo payload fixtures now live in `BrevoWebhookEventProcessorTest.php` and `EmailEventApplierTest.php`. `scripts/spike-1888/brevo-webhook-capture.php` covers the same capture job. (found in the #2208 audit)
-- [ ] Update the two pointers in `docs/development/EMAIL_SYSTEM.md` (~746, ~814). (found in the #2208 audit)
+- [ ] Update the two pointers in `docs/development/EMAIL_SYSTEM.md` (~L1468, ~L1536). (found in the #2208 audit)
 
-### `tests/Support/BrevoOverrideStub.php` + `tests/Support/BrevoSiteRoot.php` + `tests/Support/SpyEmailEventApplier.php` (test-only)
+### `tests/Support/BrevoOverrideStub.php` + `tests/Support/BrevoSiteRoot.php` (test-only)
 
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
 - [ ] `BrevoSiteRoot::PLUGIN_FILES` keeps `override.RENAME.php` only for the #2374 regression test (`VerificationSettingsTest.php` ~L656). Add a comment that says so (found in /finish-milestone v2.30.7)
-- [ ] `SpyEmailEventApplier` skips the parent constructor. A new public method on `EmailEventApplier` then runs real code on uninitialized collaborators. Make the spy fail on an unexpected call, or extract an interface (found in /finish-milestone v2.30.7)
 
 ### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
 
@@ -111,7 +110,7 @@ after an item is written.
 
 ### `tests/integration/BrevoWebhookEndpointTest.php`
 
-- [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L901, renames `er_email_events.reason`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
+- [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L1012, renames `er_email_events.reason`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
 
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
@@ -120,6 +119,10 @@ after an item is written.
 ### `tests/integration/CronJobFailureRoundTripTest.php`
 
 - [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L200, drops `er_cron_job_runs.last_failure_at`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
+
+### `tests/integration/EmailEventRekeyReportAuthTest.php` (test coverage)
+
+- [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
 
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
@@ -146,6 +149,10 @@ after an item is written.
 ### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 
 - [ ] The class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move it onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copy (found in #2167)
+
+### `tests/integration/database/CarRepositoryEmailEventPruneTest.php` (test coverage)
+
+- [ ] The transfer test passes on the old keep rule. Add a case: the new owner has no `sent` row yet, and the old owner's `sent` row is older than 90 days. The current rule deletes it. The old rule kept it (found in #2358 review)
 
 ### `tests/integration/database/MigrationSandbox.php` + `tests/integration/database/MigrationSandboxTest.php` (test coverage)
 
@@ -178,9 +185,17 @@ after an item is written.
 
 - [ ] `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
 
+### `tests/unit/classes/EmailEventRekeyQueriesFailureTest.php` (test coverage)
+
+- [ ] Only the `DatabaseInterface` branch is tested. Add the `PDO` branch: `prepare()` returns false, `execute()` returns false, and a `PDOException` comes back as the previous exception of `OwnerDatabaseException` (found in #2358 review)
+
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
+
+### `tests/unit/scripts/AfterUserDeletionPrivacyStepTest.php` (test coverage)
+
+- [ ] The hook catches a failure in the car cleanup and only logs "Cleanup failed", so an unrecorded fake call there fails no test. Assert no "Cleanup failed" line in one happy-path test. Also assert no `DELETE FROM profiles` in the privacy-failure test, as its docblock says (found in #2358 review)
 
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
@@ -220,6 +235,10 @@ after an item is written.
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
 
+### `usersc/classes/Cron/BrevoSuppressionSyncJob.php`
+
+- [ ] Comments and one log line (~L387, ~L504, ~L570) still say "matching car(s)". The writes are per owner since #2358. Say "matching owner(s)" (found in #2358 review)
+
 ### `usersc/classes/InputSanitizer.php` (est. −8)
 
 - [ ] `stripHeaderInjectionChars()`: replace `preg_replace` and its PCRE-failure throw with `str_replace(["\r", "\n", "\t"], '', (string) $value)`. `str_replace` cannot fail. Related: #1786. (found in the #2208 audit)
@@ -234,10 +253,9 @@ after an item is written.
   - Check first: `ApiResponseTest.php` (~406, ~692) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
   - Do this with #1997, which splits the overloaded categories in the same file.
 
-### `usersc/classes/Migration/DeliverabilityMigrationQueries.php` + `usersc/classes/Car/CarRepository.php` + `usersc/classes/Owner.php`
+### `usersc/classes/Car/CarRepository.php` + `usersc/classes/Owner.php`
 
-- [ ] Runtime code (`Owner.php` ~L327, `CarRepository.php` ~L571 and 7 more, `account-cleanup-helpers.php` ~L234, `during_user_creation.php` ~L41) takes its address-matching rule from the migration helper `normalizeAddress()`. Move the rule to a runtime type, for example `ElanRegistry\Car\EmailAddress::normalize()`, and keep a frozen copy in the migration class (found in /finish-milestone v2.30.7)
-- [ ] The "flag applies" rule exists as SQL (`FLAG_ACTIVE_BLOCKED`, `FLAG_ACTIVE_BOUNCED`) and as PHP (`CarRepository::flagApplies()`, ~L595), tied only by a "Change the two together" comment. Put the PHP form next to `EffectiveEmailFlags` and add a parity test that runs both forms on a fixed set of addresses (found in /finish-milestone v2.30.7)
+- [ ] The "flag applies" rule exists as SQL (`FLAG_ACTIVE_BLOCKED`, `FLAG_ACTIVE_BOUNCED`) and as PHP (`CarRepository::flagApplies()`, ~L603), tied only by a "Change the two together" comment. Put the PHP form next to `EffectiveEmailFlags` and add a parity test that runs both forms on a fixed set of addresses (found in /finish-milestone v2.30.7)
 - [ ] The "address changed" compare exists in `Owner::update()` (~L328) and in `clearFlagsForConfirmedEmailChange()` (`CarRepository.php` ~L911-913). Use one named method in both (found in /finish-milestone v2.30.7)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)

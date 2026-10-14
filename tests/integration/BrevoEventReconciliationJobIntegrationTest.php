@@ -15,9 +15,27 @@ use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
 
 /**
- * #1889: BrevoEventReconciliationJob with a real CarRepository and
+ * A Brevo client whose poll throws, to test the prune after a failed backfill.
+ */
+final class ThrowingBrevoEventReconciliationClient extends FakeBrevoEventReconciliationClient
+{
+    public function fetchEvents(
+        \DateTimeImmutable $startDate,
+        \DateTimeImmutable $endDate,
+        int $limit,
+        int $offset
+    ): ?array {
+        throw new \RuntimeException('Brevo is down (test)');
+    }
+}
+
+/**
+ * #1889, #2358: BrevoEventReconciliationJob with a real CarRepository and
  * EmailEventApplier, so the dedup and purge SQL runs for real. Control flow
  * is in tests/unit/cron/BrevoEventReconciliationJobTest.php.
+ *
+ * An event belongs to the owner. It is one row with `car_id` NULL, whatever
+ * the number of the owner's cars.
  *
  * @see https://github.com/elan-registry/registry/issues/1889
  */
@@ -27,7 +45,6 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     private CarRepository $repo;
     private EmailEventApplier $applier;
     private int $userId;
-    private int $carId;
     private string $carEmail;
 
     /** Original er_verification_settings.enabled value, restored in tearDown(). */
@@ -41,16 +58,17 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         parent::setUp();
         $this->requireDatabase();
 
-        // execute() returns early while verification is off (the default), so force
-        // it on. Also restore unmatched_recipient_count: tables are not reset
-        // between tests.
+        // The verification switch ships off. Since #2358 the reconciliation job
+        // ignores it, so most tests leave it off. testExecuteRunsWithTheSwitchOn
+        // turns it on. Also restore unmatched_recipient_count: tables are not
+        // reset between tests.
         $this->db->query('SELECT enabled, unmatched_recipient_count FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
         $this->originalUnmatchedCount = is_object($verificationRow)
             ? (int) $verificationRow->unmatched_recipient_count
             : 0;
-        $this->db->query('UPDATE er_verification_settings SET enabled = 1 WHERE id = 1');
+        $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
 
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
@@ -58,13 +76,12 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         // Events match the owner's users.email, so the owner holds the address.
         $this->carEmail = 'reconcile-' . uniqid() . '@example.com';
         $this->userId = $this->createTestUser(['email' => $this->carEmail], true);
-        $this->carId = $this->createTestCar($this->userId, ['email' => $this->carEmail]);
+        $this->createTestCar($this->userId, ['email' => $this->carEmail]);
     }
 
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
-            $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$this->carId]);
             $this->db->query(
                 'UPDATE er_verification_settings SET enabled = ?, unmatched_recipient_count = ? WHERE id = 1',
                 [$this->originalVerificationEnabled ? 1 : 0, $this->originalUnmatchedCount]
@@ -90,8 +107,8 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     private function countEventRows(string $brevoMessageId): int
     {
         $row = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ? AND brevo_message_id = ?',
-            [$this->carId, $brevoMessageId]
+            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE user_id = ? AND brevo_message_id = ?',
+            [$this->userId, $brevoMessageId]
         )->first();
 
         return (int) $row->cnt;
@@ -126,7 +143,7 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             1,
             $this->countEventRows('reconcile-dedup-msg'),
             'Reprocessing the same event on a subsequent run must dedup via '
-                . 'insertEmailEvent()\'s real ON DUPLICATE KEY UPDATE, not append a second row'
+                . 'insertOwnerEmailEvent()\'s real ON DUPLICATE KEY UPDATE, not append a second row'
         );
     }
 
@@ -166,42 +183,121 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         $this->assertSame(0, $changes[0]['acting_user_id'], 'A delivery event has no acting user');
     }
 
-    // --- Retention purge exercised through execute() ------------------------
+    // --- Owner-level write (#2358) -------------------------------------------
+
+    /** An owner with three cars gets one row for one event, with car_id NULL. */
+    public function testAnEventForAnOwnerWithThreeCarsWritesOneRowWithCarIdNull(): void
+    {
+        $this->createTestCar($this->userId, ['email' => $this->carEmail]);
+        $this->createTestCar($this->userId, ['email' => $this->carEmail]);
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(
+                email: $this->carEmail,
+                event: 'delivered',
+                messageId: 'reconcile-three-cars',
+                date: '2026-09-08T12:00:00Z'
+            ),
+        ], new \DateTimeImmutable('2026-09-09 03:00:00'))->runNowWithSummary();
+
+        $rows = $this->db->query(
+            'SELECT user_id, car_id FROM er_email_events WHERE brevo_message_id = ?',
+            ['reconcile-three-cars']
+        )->results();
+        $this->assertCount(1, $rows, 'One event is one row, not one row for each car');
+        $this->assertSame($this->userId, (int) $rows[0]->user_id);
+        $this->assertNull($rows[0]->car_id);
+        $this->assertSame(1, $summary->matchedCount, 'The summary counts owners, not cars');
+    }
+
+    // --- The verification switch does not stop the job (#2358) ----------------
+
+    public function testExecuteRunsWithTheSwitchOffAndWithTheSwitchOn(): void
+    {
+        foreach ([0, 1] as $switch) {
+            $this->db->query('UPDATE er_verification_settings SET enabled = ? WHERE id = 1', [$switch]);
+            $messageId = 'reconcile-switch-' . $switch;
+
+            $this->makeJob([
+                new FakeBrevoEvent(
+                    email: $this->carEmail,
+                    event: 'delivered',
+                    messageId: $messageId,
+                    date: '2026-09-08T12:00:00Z'
+                ),
+            ], new \DateTimeImmutable('2026-09-09 03:00:00'))->runNow();
+
+            $this->assertSame(1, $this->countEventRows($messageId), "switch={$switch}: the job must run");
+        }
+    }
+
+    // --- Retention prune ------------------------------------------------------
 
     /**
-     * execute() drives the purge with its real 24-month cutoff. No events, so
-     * the backfill cannot affect the result.
+     * The prune keeps a terminal event 24 months and any other event 90 days. It runs with
+     * the verification switch off (setUp leaves it off).
      */
-    public function testExecutePurgesOnlyRowsOlderThanTheTwentyFourMonthCutoff(): void
+    public function testThePruneDeletesRowsPastBothCutoffsWithTheSwitchOff(): void
     {
         $now = new \DateTimeImmutable('2026-09-09 03:00:00');
-
-        $this->repo->insertEmailEvent(
-            $this->carId,
-            $this->carEmail,
-            'delivered',
-            null,
-            'reconcile-purge-old',
-            '2024-08-09 03:00:00'
-        );
-        $this->repo->insertEmailEvent(
-            $this->carId,
-            $this->carEmail,
-            'delivered',
-            null,
-            'reconcile-purge-recent',
-            '2026-08-09 03:00:00'
-        );
+        foreach ([
+            ['delivered', 'reconcile-purge-old', '2024-08-09 03:00:00'],
+            ['delivered', 'reconcile-purge-100d', '2026-05-31 03:00:00'],
+            ['delivered', 'reconcile-purge-recent', '2026-08-09 03:00:00'],
+            ['hard_bounce', 'reconcile-purge-terminal-old', '2024-08-09 03:00:00'],
+            ['hard_bounce', 'reconcile-purge-terminal-100d', '2026-05-31 03:00:00'],
+        ] as [$event, $messageId, $at]) {
+            $this->repo->insertOwnerEmailEvent($this->userId, $this->carEmail, $event, null, $messageId, $at);
+        }
+        $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
 
         $this->makeJob([], $now)->runNow();
 
-        $remaining = $this->db->query(
-            'SELECT brevo_message_id FROM er_email_events WHERE car_id = ?',
-            [$this->carId]
-        )->results();
+        $remaining = array_map(
+            static fn (object $row): string => (string) $row->brevo_message_id,
+            $this->db->query(
+                'SELECT brevo_message_id FROM er_email_events WHERE user_id = ? ORDER BY brevo_message_id',
+                [$this->userId]
+            )->results()
+        );
+        $this->assertSame(
+            ['reconcile-purge-recent', 'reconcile-purge-terminal-100d'],
+            $remaining,
+            'A delivered row past 90 days and a terminal row past 24 months go. A terminal row inside 24 months stays.'
+        );
+    }
 
-        $this->assertCount(1, $remaining, 'Only the row older than the 24-month cutoff should be purged');
-        $this->assertSame('reconcile-purge-recent', $remaining[0]->brevo_message_id);
+    public function testThePruneRunsAfterAFailedBackfillAndTheBackfillFailureStillSurfaces(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-09 03:00:00');
+        $this->repo->insertOwnerEmailEvent(
+            $this->userId,
+            $this->carEmail,
+            'delivered',
+            null,
+            'reconcile-prune-after-failure',
+            '2026-05-31 03:00:00'
+        );
+        $job = new BrevoEventReconciliationJob(
+            $this->db,
+            $this->repo,
+            $this->applier,
+            new ThrowingBrevoEventReconciliationClient(),
+            $now
+        );
+
+        try {
+            $job->runNowWithSummary();
+            $this->fail('The backfill failure must reach the caller');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('Brevo is down', $e->getMessage());
+        }
+
+        $this->assertSame(
+            0,
+            $this->countEventRows('reconcile-prune-after-failure'),
+            'The prune must run in finally, after the failed backfill'
+        );
     }
 
     // --- Unmatched recipient counter (#2085) --------------------------------

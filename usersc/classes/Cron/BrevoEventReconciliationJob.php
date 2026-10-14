@@ -22,7 +22,7 @@ use ElanRegistry\LogCategories;
  * Brevo outage, a 5xx Brevo eventually stops retrying. This job closes that
  * gap by re-reading the same events from Brevo's statistics API and applying
  * them through {@see EmailEventApplier}, the *same* escalation code the
- * webhook runs, so a backfilled event flags a car identically to a live one.
+ * webhook runs, so a backfilled event flags an owner identically to a live one.
  *
  * BOUNDED WORK PER INVOCATION. This job fetches exactly one page of events
  * per run — never a pagination loop. cron.php dispatches jobs in-process with
@@ -32,7 +32,7 @@ use ElanRegistry\LogCategories;
  *
  *   - the 48-hour window is twice the ~24-hour claim interval, so every event
  *     is offered to at least two runs before it ages out of the window;
- *   - `CarRepository::insertEmailEvent()` is `ON DUPLICATE KEY UPDATE`, and
+ *   - `CarRepository::insertOwnerEmailEvent()` is `ON DUPLICATE KEY UPDATE`, and
  *     the flag writes are plain column UPDATEs, so re-applying an event
  *     already recorded (by the webhook or by an earlier run) is a no-op;
  *   - events are fetched newest-first, so the freshest signal is never the
@@ -90,8 +90,18 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      */
     private const PAGE_OFFSET = 0;
 
-    /** How long delivery-event rows are retained before nightly pruning. */
-    private const RETENTION_MONTHS = 24;
+    /**
+     * How long the prune keeps a terminal event row (hard bounce, block,
+     * spam report and the like).
+     */
+    private const TERMINAL_RETENTION_MONTHS = 24;
+
+    /**
+     * How long the prune keeps every other event row. Each car's latest
+     * `sent` row stays. It loses its address only when it is older than
+     * 90 days.
+     */
+    private const SHORT_RETENTION_DAYS = 90;
 
     /** Matches er_email_events.event's column width (migration 20260907141817). */
     private const MAX_EVENT_LENGTH = 32;
@@ -109,7 +119,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * string ("+100000 years", "9999999-01-01") parses without error into a
      * DATETIME string MySQL rejects, which would fail every write for that
      * event. Clamping here keeps the poisoned value from ever reaching
-     * {@see \ElanRegistry\Car\CarRepository::insertEmailEvent()}.
+     * {@see \ElanRegistry\Car\CarRepository::insertOwnerEmailEvent()}.
      */
     private const MAX_PLAUSIBLE_TIMESTAMP = 253402300799;
 
@@ -132,7 +142,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      *
      * @param DatabaseInterface $db AbstractCronJob's enabled-check/guard connection
      * @param \DateTimeImmutable|null $now Fixes "now" for the window and
-     *        retention cutoff; defaults to wall-clock time. Injectable so
+     *        retention cutoffs; defaults to wall-clock time. Injectable so
      *        tests can assert exact boundaries rather than tolerances.
      */
     public function __construct(
@@ -162,10 +172,13 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * Reached only after {@see AbstractCronJob::run()} has won the guard
      * claim, so every entry here is a real run — there is no separate
      * "should this actually do work" check to make.
+     *
+     * A backfill failure goes on to `run()` after the prune
+     * ({@see self::backfillThenPrune()}).
      */
     protected function execute(): void
     {
-        $summary = $this->backfillEvents();
+        $summary = $this->backfillThenPrune();
 
         // Logged under EMAIL_WEBHOOK rather than either CRON_JOB_* category:
         // both of those are exception channels (a fault, or a deliberate
@@ -205,12 +218,6 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                 )
                 : ''
         ));
-
-        // Independent of the backfill, and deliberately outside its error
-        // handling: a Brevo outage must not stop retention pruning, and a
-        // failed prune must not be mistaken for a failed backfill. Both retry
-        // on their own next cycle.
-        $this->pruneExpiredEvents();
     }
 
     /**
@@ -241,31 +248,17 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * `BrevoSuppressionSyncJob::syncPage()`'s identical null-poll handling.
      * Only something genuinely unexpected escapes here.
      *
-     * Also honors the site-wide verification switch, same as {@see AbstractCronJob::run()}
-     * and {@see AbstractCronJob::runNow()} — this method bypasses both of those
-     * (see class docblock above) so it cannot inherit their check and must
-     * repeat it. Unlike the silent skip in run()/runNow(), this throws: an
-     * operator who explicitly triggers a manual run needs to know why nothing
-     * happened, not see a fabricated all-zero summary.
+     * The prune runs as in {@see self::execute()}
+     * ({@see self::backfillThenPrune()}).
      *
      * @return ReconciliationSummary
-     * @throws \RuntimeException If verification is switched off site-wide
      * @throws \Throwable Rethrown after logging, so the caller can distinguish
      *         a failed run from an empty successful one
      */
     public function runNowWithSummary(): ReconciliationSummary
     {
-        if (!(new VerificationSettings($this->db))->isEnabled()) {
-            throw new \RuntimeException(
-                'Verification is switched off site-wide (see the Verification System tab) — manual reconciliation runs are disabled while it is off.'
-            );
-        }
-
         try {
-            $summary = $this->backfillEvents();
-            $this->pruneExpiredEvents();
-
-            return $summary;
+            return $this->backfillThenPrune();
         } catch (\Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                 "Cron job '%s' failed (manual run): %s: %s",
@@ -278,7 +271,22 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     }
 
     /**
-     * Fetch one page of events and apply each tag-matching one to its cars.
+     * Backfill one page of events, then prune expired event rows.
+     *
+     * The prune runs in `finally`, so a failed backfill does not stop it.
+     * The backfill exception then goes on to the caller.
+     */
+    private function backfillThenPrune(): ReconciliationSummary
+    {
+        try {
+            return $this->backfillEvents();
+        } finally {
+            $this->pruneExpiredEvents();
+        }
+    }
+
+    /**
+     * Fetch one page of events and apply each tag-matching one to its owners.
      */
     private function backfillEvents(): ReconciliationSummary
     {
@@ -335,14 +343,14 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     }
 
     /**
-     * Apply one Brevo event to every car registered to its recipient address.
+     * Apply one Brevo event once to each owner whose account address is its recipient.
      *
      * Threads run counts through `$counts` (keys: `matched`, `unmatched`,
      * `skipped`, `ignoredByTag`, `counterFailures`) and `$eventTypeCounts` (keyed on the raw
      * Brevo event name) rather than returning them, so the counting logic
      * sits directly alongside the branch it is counting — see
      * {@see ReconciliationSummary}'s docblock for why `matched`/`skipped` are
-     * incremented per car-write here, not once per event.
+     * incremented per owner-write here, not once per event.
      *
      * @param \Brevo\Client\Model\GetEmailEventReportEvents $event
      * @param array<string, int> $counts
@@ -415,7 +423,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // Brevo's read API is external input exactly as the webhook body is,
         // so it gets the same bound check against er_email_events' real column
         // widths. Skipping here keeps an oversized value from reaching
-        // insertEmailEvent() and throwing under STRICT_TRANS_TABLES.
+        // insertOwnerEmailEvent() and throwing under STRICT_TRANS_TABLES.
         //
         // Logged under EMAIL_WEBHOOK rather than CRON_JOB_FAILURE: an
         // oversized value is a possible Brevo payload-contract change worth
@@ -479,10 +487,12 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             return;
         }
 
-        foreach ($matchedCars as $car) {
+        $ownerIds = CarRepository::ownerIdsOf($matchedCars);
+
+        foreach ($ownerIds as $ownerId) {
             try {
                 $this->applier->apply(
-                    (int) $car->id,
+                    $ownerId,
                     $email,
                     $eventName,
                     $reason,
@@ -499,11 +509,10 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                 // every event behind it in this page.
                 $counts['skipped']++;
                 logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                    'Brevo event reconciliation: write FAILED for car %s, event "%s" (%s) —'
+                    'Brevo event reconciliation: write FAILED for owner %d, event "%s" —'
                     . ' skipped, will retry next cycle: %s',
-                    (string) $car->id,
+                    $ownerId,
                     $eventName,
-                    $email,
                     $e->getMessage()
                 ));
                 continue;
@@ -515,24 +524,29 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     }
 
     /**
-     * Delete event rows past the retention horizon.
+     * Delete event rows past the two retention cutoffs.
      *
-     * Wrapped in its own try/catch so a prune failure is logged as such rather
-     * than escaping to {@see AbstractCronJob::run()}'s catch-all, where it
-     * would read as a generic job failure and obscure whether the backfill
-     * (which has already completed by this point) succeeded.
+     * The prune has its own try/catch, so its failure gets its own log line
+     * and does not read as a backfill failure. It runs from `finally` after
+     * the backfill, so a throw here would also hide a backfill exception.
      */
     private function pruneExpiredEvents(): void
     {
-        $cutoff = $this->now->modify('-' . self::RETENTION_MONTHS . ' months');
+        $terminalCutoff = $this->now->modify('-' . self::TERMINAL_RETENTION_MONTHS . ' months');
+        $shortCutoff = $this->now->modify('-' . self::SHORT_RETENTION_DAYS . ' days');
 
         try {
-            $this->repo->deleteEmailEventsOlderThan($cutoff);
-        } catch (CarDatabaseException $e) {
+            $changed = $this->repo->deleteEmailEventsOlderThan($terminalCutoff, $shortCutoff);
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo event reconciliation: retention prune deleted or cleared %d er_email_events rows',
+                $changed
+            ));
+        } catch (CarDatabaseException | \PDOException $e) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo event reconciliation: retention prune FAILED for cutoff %s'
-                . ' (backfill for this run was unaffected): %s',
-                $cutoff->format(AppConstants::DATETIME_FORMAT),
+                'Brevo event reconciliation: retention prune FAILED for terminal cutoff %s'
+                . ' and short cutoff %s (the backfill is a separate step): %s',
+                $terminalCutoff->format(AppConstants::DATETIME_FORMAT),
+                $shortCutoff->format(AppConstants::DATETIME_FORMAT),
                 $e->getMessage()
             ));
         }

@@ -15,9 +15,12 @@ use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
 
 /**
- * #1889, #2034: BrevoEventReconciliationJob::runNow() bypasses
+ * #1889, #2034, #2358: BrevoEventReconciliationJob::runNow() bypasses
  * CronJobGuard::claim() against the real `er_cron_job_runs` table (the unit
  * test uses a fake DB). Used by 27-Reconcile-Brevo-Events.php "run now".
+ *
+ * Since #2358 the job ignores the site-wide verification switch, so each test
+ * runs with the switch off, as it ships.
  *
  * Snapshots and restores the seeded `brevo_reconciliation` row, which
  * CronJobGuardIntegrationTest also changes.
@@ -39,7 +42,6 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
     private CarRepository $repo;
     private EmailEventApplier $applier;
     private int $userId;
-    private int $carId;
     private string $carEmail;
 
     protected function setUp(): void
@@ -62,12 +64,11 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
         $this->originalEnabled = (bool) $row->enabled;
         $this->originalLastRunAt = !empty($row->last_run_at) ? (string) $row->last_run_at : null;
 
-        // run()/runNow() check the site-wide verification switch first and it
-        // ships off, so force it on. Restored in tearDown().
+        // The switch ships off. The job must run with it off (#2358). Restored in tearDown().
         $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
-        $this->db->query('UPDATE er_verification_settings SET enabled = 1 WHERE id = 1');
+        $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
 
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
@@ -75,14 +76,12 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
         // Events match the owner's users.email, so the owner holds the address.
         $this->carEmail = 'runnow-bypass-' . uniqid() . '@example.com';
         $this->userId = $this->createTestUser(['email' => $this->carEmail]);
-        $this->carId = $this->createTestCar($this->userId, ['email' => $this->carEmail]);
+        $this->createTestCar($this->userId, ['email' => $this->carEmail]);
     }
 
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
-            $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$this->carId]);
-
             $this->db->query(
                 'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
                 [$this->originalEnabled ? 1 : 0, $this->originalLastRunAt, self::JOB_NAME]
@@ -118,8 +117,8 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
     private function countEventRows(string $brevoMessageId): int
     {
         $row = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ? AND brevo_message_id = ?',
-            [$this->carId, $brevoMessageId]
+            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE user_id = ? AND brevo_message_id = ?',
+            [$this->userId, $brevoMessageId]
         )->first();
 
         return (int) $row->cnt;
@@ -189,6 +188,29 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
             $this->fetchLastRunAt(),
             'runNow() must not touch last_run_at — it never calls the guard, disabled or not'
         );
+    }
+
+    /** #2358: run() claims the run and reaches execute() while the verification switch is off. */
+    public function testRunReachesExecuteWithTheVerificationSwitchOff(): void
+    {
+        $this->setFixtureState(enabled: true, lastRunAt: null);
+        $this->assertSame(
+            0,
+            (int) $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1')->first()->enabled,
+            'Test setup: the verification switch is off'
+        );
+
+        $this->makeJob([
+            new FakeBrevoEvent(
+                email: $this->carEmail,
+                event: 'delivered',
+                messageId: 'runnow-bypass-switch-off-run',
+                date: '2026-09-08T12:00:00Z'
+            ),
+        ])->run();
+
+        $this->assertSame(1, $this->countEventRows('runnow-bypass-switch-off-run'), 'run() must do the backfill');
+        $this->assertNotNull($this->fetchLastRunAt(), 'run() claimed the run');
     }
 
     /** Control: run() is blocked by the same disabled row, so the bypass is real. */

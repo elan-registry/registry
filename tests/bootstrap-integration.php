@@ -628,7 +628,19 @@ try {
             );
         }
 
-        fwrite(STDERR, "NOTE: Reference data verified (car_models: {$carModelsCount} records, settings, noowner, cars.vericode schema)\n");
+        // er_email_events.user_id comes from migration 20261013000000 (#2358).
+        // `composer migrate` updates only the dev database, so a test schema
+        // without the column is stale and every email-event test would fail.
+        $eventUserIdColumn = $db->query("SHOW COLUMNS FROM er_email_events LIKE 'user_id'")->first();
+        if (!$eventUserIdColumn) {
+            abortBootstrap(
+                "ERROR: er_email_events.user_id is missing. The test schema is older than migration 20261013000000 (#2358).",
+                "Run: docker compose exec -u www-data app scripts/provision-schema.sh",
+                "Aborting."
+            );
+        }
+
+        fwrite(STDERR, "NOTE: Reference data verified (car_models: {$carModelsCount} records, settings, noowner, cars.vericode schema, er_email_events.user_id)\n");
     }
 } catch (Throwable $e) {
     abortMissingSeed("ERROR: Failed to verify reference data: {$e->getMessage()}");

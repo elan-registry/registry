@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Car\EmailAddress;
 use ElanRegistry\DatabaseInterface;
-use ElanRegistry\Migration\DeliverabilityMigrationQueries;
 
 /**
  * Return unverified (email_verified=0) accounts with no car associations older than $days.
@@ -232,7 +232,7 @@ function restoreArchivedAccount(DatabaseInterface $db, int $archiveId, int $rest
             'email_opted_out'     => (int) $row->email_opted_out,
             'email_opted_out_at'  => $row->email_opted_out_at,
             'email_address_since' => date('Y-m-d H:i:s'),
-            'email_address_seen'  => DeliverabilityMigrationQueries::normalizeAddress($row->email),
+            'email_address_seen'  => EmailAddress::normalize($row->email),
         ]);
         if (!$ok) {
             throw new RuntimeException(

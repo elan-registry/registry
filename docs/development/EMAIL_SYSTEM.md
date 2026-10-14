@@ -277,12 +277,27 @@ when `US_ENVIRONMENT=development`.
 
 ## Verification System Feature Switch
 
-The Lotus Elan Registry uses a feature switch to gate all verification-related
-email sends (webhooks, reconciliation, suppression import, and future
-verification sends), enabled only once Brevo is confirmed operational. Cron
-readiness is not a gate — it is surfaced as an advisory indicator, since a
-stalled cron transport delays reminders rather than losing the ability to
-send them at all.
+The Lotus Elan Registry uses a feature switch to gate verification email
+sends. An administrator turns it on only after Brevo is confirmed operational.
+Cron readiness is not a gate. It is an advisory indicator, because a stalled
+cron transport delays reminders and does not stop them for good.
+
+**What the switch gates:**
+
+| Part | With the switch off |
+| --- | --- |
+| `SendVerificationBatchJob` (`run()` and `runNow()`) | Sends nothing. A refused `run()` does not change `er_cron_job_runs.last_run_at`. |
+| Brevo webhook (`app/api/webhooks/brevo.php`) | Returns 2xx and writes nothing. The #2359 issue removes this gate. |
+| `BrevoEventReconciliationJob` (backfill and prune) | Runs. |
+| `BrevoSuppressionSyncJob` | Runs. |
+| Manual "run now" paths of both Brevo jobs | Run. |
+
+Among the cron jobs, only the send batch honours the switch. The prune, the
+reconciliation and the suppression import must run while sends are off. They
+read from Brevo and write the registry's own records. They send no email.
+`AbstractCronJob::refusesWhileSwitchOff()` makes the choice. The default
+returns `false`. The send batch overrides it. See
+[DEPLOYMENT.md, Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager).
 
 ### VerificationSettings Class
 
@@ -888,7 +903,7 @@ Brevo `message_id`. Instead, a synthetic id is written to `er_email_events.brevo
 'local:' . hash('sha256', $verificationCode)
 ```
 
-This ensures every row in the `UNIQUE(car_id, brevo_message_id, event)` index
+This ensures every row in the `UNIQUE(user_id, brevo_message_id, event)` index
 has a distinct key (no NULL collision), so dedup still works if the same email
 is sent twice. Brevo webhook events (which have real message ids from Brevo)
 are distinguished from admin sends by this `'local:'` prefix.
@@ -929,10 +944,9 @@ for the per-environment setup step.
 `!isEnabled()` → 2xx, silent. `isEnabled() && !brevoReady()` → 2xx, logged
 once under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`.
 
-The same `isEnabled()` switch also gates the nightly reconciliation and
-suppression-sync cron jobs (and their manual "run now" admin-script paths)
-— not just this webhook. See `docs/development/DEPLOYMENT.md`'s cron-author
-contract for how `AbstractCronJob` enforces this uniformly across both jobs.
+The reconciliation and suppression-sync cron jobs do not read the switch.
+Only the send batch does. The webhook gate stays until #2359 removes it. See
+[Verification System Feature Switch](#verification-system-feature-switch).
 
 **Tag filter:** the payload's `tags` array must contain
 `AppConstants::VERIFICATION_EMAIL_TAG` (`'car_verification'`) — Brevo also
@@ -943,9 +957,11 @@ and this receiver only ever acts on verification-email events.
 `users.email` (`CarRepository::findByEmail()`, #2356). The send mails that
 address, so the match uses it too. `cars.email` is only a copy, and a stale
 copy does not match. Both sides are normalized (trim, then lower case), and
-the `noowner` account never matches. Every car of each matching owner gets
-its own `er_email_events` row and its own escalation. The reconciliation job
-and the suppression sync use the same lookup.
+the `noowner` account never matches. `findByEmail()` returns the car ID,
+the owner's `user_id` and the owner's `users.email` for each car. The
+processor takes the distinct owners from the result and records the event once
+for each owner, whatever the number of the owner's cars. The reconciliation
+job and the suppression sync use the same lookup and the same rule.
 
 An event for mail sent before this rule, to an old `cars.email` that differs
 from the owner's `users.email`, matches no owner. It counts as an unmatched
@@ -986,9 +1002,107 @@ does not retry a 2xx, so acking early on a write that then fails would
 silently lose the event forever.
 
 **Storage:** `er_email_events` (see [DATABASE.md](DATABASE.md)) is the
-durable per-car event log. The current-state flags it drives are on the
+durable event log, keyed by user. The current-state flags it drives are on the
 owner's `profiles` row: `email_bounced`, `email_blocked` and their address,
 time and cause columns.
+
+### Event Recording and the Car Chip
+
+Events belong to the owner (#2358). `EmailEventApplier::apply(int $userId, ...)`
+takes the owner's user ID and takes no car. The webhook, the reconciliation
+job and the suppression import each call it once for each matched owner.
+
+- **Owner-level rows.** A webhook, reconciliation or import event is stored
+  once, with `car_id` NULL, by `CarRepository::insertOwnerEmailEvent()`. The
+  unique key is `(user_id, brevo_message_id, event)`, so a repeat of the event
+  does not add a row.
+- **Only `sent` rows carry a car.** `CarVerificationSendService` writes the
+  `sent` row through `CarRepository::insertEmailEvent()` with the car's ID.
+  It starts that car's send cycle.
+- **No owner, no row.** A user that does not exist and the `noowner` account
+  get no row. The webhook still returns 2xx.
+- **One escalation for each owner.** The soft-bounce count and the flag write
+  run once for the owner. The count is keyed by `user_id` and by the exact
+  address (`COLLATE utf8mb4_bin`), so a former holder of the address, or an
+  accent variant of it, does not count.
+
+**What the dashboard chip shows.** A car shows the owner-level rows of its
+owner after the car's cycle start. The cycle start is the car's latest `sent`
+row (`car_id` = the car and `user_id` = the car's owner). The chip counts
+that `sent` row and every later non-`sent` row with `user_id` = the car's
+owner, whatever the row's `car_id`. So:
+
+- One `delivered` row with `car_id` NULL changes the chip of every car of
+  the owner whose cycle started before it.
+- A row from before a car's cycle start does not change that car's chip.
+- A car with no cycle start shows only the rows with its own `car_id`.
+- After a car transfer, the new owner sees the car as not sent. The previous
+  owner's rows do not show, and the transfer changes no row.
+
+The readers are `CarRepository::findLatestEmailEventsByCarIds()` and
+`CarRepository::findLatestEmailEventPerCarWithPrecedence()`.
+
+**Car delete, merge and account deletion.**
+
+- A car delete sets `car_id` to NULL on the car's rows. The events stay with
+  the owner.
+- A car merge moves `car_id` from the merged car to the surviving car. It
+  changes no other column.
+- An account deletion runs a privacy step first, in its own transaction. The
+  step locks the profile row (`SELECT ... FOR UPDATE`). This is the lock that
+  the event step of #2359 will take. Today an event write takes no profile
+  lock. The step reads the user's
+  addresses from the profile, the user's event rows and the user's cars. It
+  deletes the user's `plg_sendinblue_messages` rows, then the user's event
+  rows, then the profile. It skips an address that is another user's current
+  `users.email`. If the plugin table is absent, the step logs this and
+  continues. If the step fails, it rolls back, logs a CRITICAL line with the
+  user ID, the stage and the exception class, and the hook continues with the
+  car cleanup. After the commit, the step logs its summary at once.
+
+  The address sources include `cars.email` of the user's cars. On a
+  transferred car, this field can hold the old address of a previous owner.
+  So the step can delete the plugin mail-log rows of that person. This
+  over-deletes log rows. It does not leak data.
+
+  Known gaps:
+
+  - The step cannot read the current `users.email`, because the hook already
+    deleted that row. So a stale `email_address_seen` or a pending `email_new`
+    is not covered. See [#2419](https://github.com/elan-registry/registry/issues/2419).
+  - A failed privacy step leaves the data in place, and nothing retries it.
+    See [#2421](https://github.com/elan-registry/registry/issues/2421).
+
+### Event Retention
+
+`BrevoEventReconciliationJob` prunes `er_email_events` after each run, with
+two cutoffs (`CarRepository::deleteEmailEventsOlderThan()`):
+
+| Rows | Kept for | Constant |
+| --- | --- | --- |
+| Terminal events (`hard_bounce`, `blocked`, `invalid`, `invalid_email`, `spam`, `unsubscribed`) | 24 months | `TERMINAL_RETENTION_MONTHS` |
+| `soft_bounce`, `delivered`, `sent`, `unique_opened` and unknown event names | 90 days | `SHORT_RETENTION_DAYS` |
+| The latest `sent` row of each car, when its `user_id` is the car's current owner | Kept. Its `email` is set to `''` only when the row is older than 90 days | — |
+
+- **Why the latest `sent` row stays.** It starts the car's send cycle. The
+  prune removes only its address, and only when the row is older than 90 days.
+  A `sent` row does not reset the soft-bounce count. The count resets only on
+  a `delivered` row, on `email_bounce_cleared_at` and on `email_address_since`.
+- **Rows of a previous owner.** After a car transfer, the car's latest `sent`
+  row can have the previous owner as `user_id`. The prune does not keep that
+  row. It ages out after 90 days like any other row.
+- **Soft-bounce count.** Both rows use the 90-day cutoff. So the prune
+  deletes every soft bounce that is older than a `delivered` row it deletes.
+  A pruned `delivered` row cannot let an older soft bounce count again. Two
+  soft bounces 100 days apart, with a pruned `delivered` row between them, do
+  not reach the escalation threshold of 3.
+- **Switch off.** The prune runs with the verification switch off.
+- **After a failed backfill.** The prune runs in a `finally` block, so a
+  failed backfill does not stop it. The backfill failure still reaches
+  `run()`.
+- **Argument check.** The method throws `\InvalidArgumentException` when the
+  terminal cutoff is not before the short cutoff, so swapped arguments fail.
+- **Second run.** A second run with the same cutoffs changes no row.
 
 **Out of scope for #1887** (see that issue's non-goals): no outbound Brevo
 API calls of any kind (webhook *registration* is #1888, blocked-contacts
@@ -1010,7 +1124,7 @@ a bounce with no stored address applies (fail closed):
 | NULL or empty | The flag applies (fail closed) |
 
 - The compare normalizes both sides. PHP uses
-  `DeliverabilityMigrationQueries::normalizeAddress()` (trim, then lower case).
+  `EmailAddress::normalize()` (trim, then lower case).
   SQL uses `LOWER(REGEXP_REPLACE(<column>, '^[[:space:]]+|[[:space:]]+$', ''))`,
   because MySQL `TRIM()` removes spaces only. SQL then compares with
   `COLLATE utf8mb4_bin`, so the compare is byte-exact, as PHP `===` is.
@@ -1143,8 +1257,10 @@ addresses that can never receive it.
 registered under `users/cron/`, alongside #1889's reconciliation job. Applies
 every suppression through the same `EmailEventApplier` the webhook and
 reconciliation job use, so an imported suppression flags the owner identically
-to a live event. The job passes the source `import` to the audit row. The
-reconciliation job passes `reconciliation`.
+to a live event. It calls `apply()` once for each matched owner and stores an
+owner-level row (`car_id` NULL). The job passes the source `import` to the
+audit row. The reconciliation job passes `reconciliation`. The job runs with
+the verification switch off.
 
 **Two fetch modes:**
 
@@ -1173,11 +1289,12 @@ return value.
 **Admin UI:** `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
 — the manual "run now" wrapper, sharing `27-Reconcile-Brevo-Events.php`'s
 gate/two-phase-UI pattern. Both scripts render their run's summary inline
-(matched/unmatched/skipped counts and a per-event-type or per-reason-code
-breakdown, plus warnings when the run was incomplete or something was
-skipped) rather than requiring a trip to Admin → Logs — #1923 introduced the
+(matched/unmatched/skipped counts, a per-event-type or per-reason-code
+breakdown, and warnings when the run was incomplete or something was skipped)
+rather than requiring a trip to Admin → Logs — #1923 introduced the
 pattern via `SuppressionSyncSummary`/`runNowWithSummary()`, and #2061 applied
-the same shape to the reconciliation job via `ReconciliationSummary`.
+the same shape to the reconciliation job via `ReconciliationSummary`. Script 27
+counts "owners matched". Script 28 counts contacts.
 
 ### Feature Switch Related Documentation
 
@@ -1282,7 +1399,7 @@ The vericode is the unguessable credential; session-less CSRF tokens would add n
 
 **Logging:** A successful opt-out writes the flag-change `logs` row described in
 [Flag-change audit rows](#flag-change-audit-rows). Failures (a DB error while counting cars, or during the opt-out transaction) are logged under
-`LogCategories::LOG_CATEGORY_EMAIL_BOUNCED` before `verify_car.php` renders the post-authentication failure page
+`LogCategories::LOG_CATEGORY_DATABASE_ERROR` before `verify_car.php` renders the post-authentication failure page
 (`renderActionFailed()`), which states plainly that the write did not complete — deliberately not the generic
 "expired or invalid link" copy, since the vericode has already authenticated by this point.
 

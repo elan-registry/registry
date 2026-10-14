@@ -32,10 +32,16 @@ use ElanRegistry\DatabaseInterface;
  *  - NO_PROFILE_USERNAME / NO_PROFILE car: pending, and the owner has no
  *    profiles row — chip "No profile", with no action button.
  *  - SOFT_BOUNCE_USERNAME / SOFT_BOUNCE car: pending (no bounce flag),
- *    with one `soft_bounce` er_email_events row after its `sent` row, so
+ *    with one `soft_bounce` er_email_events row after its `sent` row (and an
+ *    owner-level `delivered` row with car_id NULL BEFORE its `sent` row,
+ *    which must not count: a row before the cycle start is ignored), so
  *    its Status chip reads "Soft bounce" and its Mark Bounced button must
  *    render `disabled` (one soft bounce does not confirm a dead address —
  *    see tab-verification.php's $queueAction logic).
+ *  - TWIN_USERNAME / TWIN_A and TWIN_B cars (#2358): one owner with two
+ *    cars. Each car has its own `sent` row. One later `delivered` row has
+ *    the owner's user_id and car_id NULL, as the webhook stores it. Both
+ *    cars must show "Delivered" for it.
  *  - PRECEDENCE_USERNAME / PRECEDENCE car: `sent`, then `delivered` at
  *    T+10m, then `hard_bounce` at T+0 (same cycle, earlier timestamp) — the
  *    exact case the integration test
@@ -51,6 +57,9 @@ use ElanRegistry\DatabaseInterface;
  *    and status chip can disagree").
  *  - VERIFIED_USERNAME / VERIFIED car: one `VERIFIED` cars_hist row, for the
  *    Recent Activity list and the Verified pill/summary card.
+ *  - TRANSFER_USERNAME / TRANSFER car: its only `sent` row belongs to the
+ *    previous owner (the VERIFIED owner), so its Status chip is empty
+ *    ("not sent") for the new owner (#2358).
  *  - SOLD_USERNAME / SOLD car: one `VERIFIED SOLD` cars_hist row, for the
  *    same two sections' Sold half.
  *
@@ -159,6 +168,15 @@ const SEED_SOLD_USERNAME = '__playwright_seed_vd_sold_owner__';
 const SEED_SOLD_EMAIL = 'playwright-seed-vd-sold-owner@example.invalid';
 const SEED_SOLD_CAR_MODEL = '__PW_SEED_VD_SOLD__';
 
+const SEED_TWIN_USERNAME = '__playwright_seed_vd_twin_owner__';
+const SEED_TWIN_EMAIL = 'playwright-seed-vd-twin-owner@example.invalid';
+const SEED_TWIN_CAR_MODEL = '__PW_SEED_VD_TWIN_A__';
+const SEED_TWIN_CAR_MODEL_B = '__PW_SEED_VD_TWIN_B__';
+
+const SEED_TRANSFER_USERNAME = '__playwright_seed_vd_transfer_owner__';
+const SEED_TRANSFER_EMAIL = 'playwright-seed-vd-transfer-owner@example.invalid';
+const SEED_TRANSFER_CAR_MODEL = '__PW_SEED_VD_TRANSFER__';
+
 /** @var list<array{0: string, 1: string}> */
 const SEED_USERNAME_MODEL_PAIRS = [
     [SEED_PENDING_USERNAME, SEED_PENDING_CAR_MODEL],
@@ -170,6 +188,9 @@ const SEED_USERNAME_MODEL_PAIRS = [
     [SEED_PRECEDENCE_USERNAME, SEED_PRECEDENCE_CAR_MODEL],
     [SEED_VERIFIED_USERNAME, SEED_VERIFIED_CAR_MODEL],
     [SEED_SOLD_USERNAME, SEED_SOLD_CAR_MODEL],
+    [SEED_TRANSFER_USERNAME, SEED_TRANSFER_CAR_MODEL],
+    [SEED_TWIN_USERNAME, SEED_TWIN_CAR_MODEL],
+    [SEED_TWIN_USERNAME, SEED_TWIN_CAR_MODEL_B],
 ];
 
 $db = dbi();
@@ -177,17 +198,16 @@ $db = dbi();
 /**
  * Idempotent cleanup: delete every row this fixture seeds, including
  * dependent er_email_events/cars_hist rows (neither table has an FK/CASCADE
- * on cars.id — see DATABASE.md's "No Enforced Foreign Key Constraints" — so
- * each is deleted explicitly).
+ * — see DATABASE.md's "No Enforced Foreign Key Constraints" — so each is
+ * deleted explicitly).
  */
 function cleanupSeedRows(DatabaseInterface $db): void
 {
     foreach (SEED_USERNAME_MODEL_PAIRS as [$username, $carModel]) {
+        // Events belong to the user (#2358), and some rows have no car.
         $db->query(
-            'DELETE FROM er_email_events WHERE car_id IN (
-                SELECT id FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?) OR model = ?
-            )',
-            [$username, $carModel]
+            'DELETE FROM er_email_events WHERE user_id IN (SELECT id FROM users WHERE username = ?)',
+            [$username]
         );
         $db->query(
             'DELETE FROM cars_hist WHERE car_id IN (
@@ -281,27 +301,31 @@ function seedDashboardOwnerAndCar(
 
 /**
  * Insert one er_email_events row, mirroring
- * CarRepositoryEmailEventPrecedenceTest::insertRawEvent()'s raw INSERT —
- * CarRepository has no public helper that writes an arbitrary `event` (only
- * insertEmailEvent(), which upserts on a unique key keyed on
- * (car_id, email, event, brevo_message_id) — fine here since every row below
- * uses a distinct brevo_message_id per event anyway).
+ * CarRepositoryEmailEventPrecedenceTest::insertRawEvent()'s raw INSERT.
+ *
+ * A raw INSERT, because the seed sets `car_id` and `occurred_at` directly.
+ * CarRepository::insertOwnerEmailEvent() accepts any event, but it always
+ * writes `car_id` NULL.
+ *
+ * $carId is null for an owner-level row, the row that the webhook writes
+ * for every event other than `sent`.
  */
 function seedEmailEvent(
     DatabaseInterface $db,
-    int $carId,
+    int $userId,
+    ?int $carId,
     string $email,
     string $event,
     string $brevoMessageId,
     string $occurredAt
 ): void {
     $db->query(
-        'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
-         VALUES (?, ?, ?, NULL, ?, ?)',
-        [$carId, $email, $event, $brevoMessageId, $occurredAt]
+        'INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+         VALUES (?, ?, ?, ?, NULL, ?, ?)',
+        [$userId, $carId, $email, $event, $brevoMessageId, $occurredAt]
     );
     if ($db->error()) {
-        fwrite(STDERR, "ERROR: Failed to seed er_email_events row (car={$carId} event={$event}): {$db->errorString()}\n");
+        fwrite(STDERR, "ERROR: Failed to seed er_email_events row (user={$userId} car={$carId} event={$event}): {$db->errorString()}\n");
         exit(1);
     }
 }
@@ -460,6 +484,7 @@ $now = new \DateTimeImmutable();
 );
 seedEmailEvent(
     $db,
+    $softBounceUserId,
     $softBounceCarId,
     SEED_SOFT_BOUNCE_EMAIL,
     'sent',
@@ -468,12 +493,69 @@ seedEmailEvent(
 );
 seedEmailEvent(
     $db,
+    $softBounceUserId,
     $softBounceCarId,
     SEED_SOFT_BOUNCE_EMAIL,
     'soft_bounce',
     'seed-vd-softbounce-bounce',
     $now->modify('-3 days +5 minutes')->format('Y-m-d H:i:s')
 );
+// An owner-level `delivered` row (car_id NULL, as the webhook stores it) dated
+// BEFORE this car's `sent` row. A row before the cycle start must not count,
+// so the chip stays "Soft bounce". If it were dated after the `sent` row it
+// would count, and (being the latest row) turn the chip to "Delivered". The
+// twin owner below covers the counting case.
+seedEmailEvent(
+    $db,
+    $softBounceUserId,
+    null,
+    SEED_SOFT_BOUNCE_EMAIL,
+    'delivered',
+    'seed-vd-softbounce-orphan-delivered',
+    $now->modify('-3 days -10 minutes')->format('Y-m-d H:i:s')
+);
+
+// --- Twin: one owner, two cars, one owner-level `delivered` row -----------
+// Each car has its own `sent` row (its cycle start). The `delivered` row has
+// car_id NULL and comes after both, so it counts for both cars (#2358).
+[$twinUserId, $twinCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_TWIN_USERNAME,
+    SEED_TWIN_EMAIL,
+    [
+        'model'              => SEED_TWIN_CAR_MODEL,
+        'chassis'            => 'SEEDVDWA' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-twin-a-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ]
+);
+$twinInserted = $carRepository->insertCar([
+    'user_id'            => $twinUserId,
+    'year'               => 1968,
+    'series'             => 'S4',
+    'variant'            => 'SE',
+    'type'               => 'FHC',
+    'color'              => 'Red',
+    'ctime'              => date('Y-m-d H:i:s'),
+    'email'              => SEED_TWIN_EMAIL,
+    'model'              => SEED_TWIN_CAR_MODEL_B,
+    'chassis'            => 'SEEDVDWB' . bin2hex(random_bytes(3)),
+    'vericode'           => hashVericode('seed-vd-twin-b-code'),
+    'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    'last_verified'      => null,
+    'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+]);
+if (!$twinInserted) {
+    fwrite(STDERR, "ERROR: Failed to insert the second twin car: {$carRepository->errorString()}\n");
+    exit(1);
+}
+$twinCarIdB = $carRepository->lastId();
+seedEmailEvent($db, $twinUserId, $twinCarId, SEED_TWIN_EMAIL, 'sent', 'seed-vd-twin-a-sent', $now->modify('-3 days')->format('Y-m-d H:i:s'));
+seedEmailEvent($db, $twinUserId, $twinCarIdB, SEED_TWIN_EMAIL, 'sent', 'seed-vd-twin-b-sent', $now->modify('-3 days')->format('Y-m-d H:i:s'));
+seedEmailEvent($db, $twinUserId, null, SEED_TWIN_EMAIL, 'delivered', 'seed-vd-twin-delivered', $now->modify('-3 days +10 minutes')->format('Y-m-d H:i:s'));
 
 // --- Precedence: delivered at T+10m, hard_bounce at T+0, same cycle -------
 // Reproduces CarRepositoryEmailEventPrecedenceTest
@@ -495,6 +577,7 @@ seedEmailEvent(
 );
 seedEmailEvent(
     $db,
+    $precedenceUserId,
     $precedenceCarId,
     SEED_PRECEDENCE_EMAIL,
     'sent',
@@ -503,6 +586,7 @@ seedEmailEvent(
 );
 seedEmailEvent(
     $db,
+    $precedenceUserId,
     $precedenceCarId,
     SEED_PRECEDENCE_EMAIL,
     'hard_bounce',
@@ -511,6 +595,7 @@ seedEmailEvent(
 );
 seedEmailEvent(
     $db,
+    $precedenceUserId,
     $precedenceCarId,
     SEED_PRECEDENCE_EMAIL,
     'delivered',
@@ -559,6 +644,33 @@ if ($soldCar === null) {
 }
 seedHistoryRow($carRepository, $soldCar, 'VERIFIED SOLD', $now->modify('-1 day')->format('Y-m-d H:i:s'));
 
+// --- Transferred: the `sent` row belongs to the previous owner ----------
+// The Verified owner stands in as previous owner. A transfer changes no event
+// row, so the new owner must see "not sent" (an empty Status chip).
+[$transferUserId, $transferCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_TRANSFER_USERNAME,
+    SEED_TRANSFER_EMAIL,
+    [
+        'model'              => SEED_TRANSFER_CAR_MODEL,
+        'chassis'            => 'SEEDVDT' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-transfer-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ]
+);
+seedEmailEvent(
+    $db,
+    $verifiedUserId,
+    $transferCarId,
+    SEED_VERIFIED_EMAIL,
+    'sent',
+    'seed-vd-transfer-sent',
+    $now->modify('-3 days')->format('Y-m-d H:i:s')
+);
+
 echo json_encode([
     'pendingCarId'       => $pendingCarId,
     'pendingUserId'      => $pendingUserId,
@@ -579,4 +691,9 @@ echo json_encode([
     'verifiedUserId'     => $verifiedUserId,
     'soldCarId'          => $soldCarId,
     'soldUserId'         => $soldUserId,
+    'transferCarId'      => $transferCarId,
+    'transferUserId'     => $transferUserId,
+    'twinCarIdA'         => $twinCarId,
+    'twinCarIdB'         => $twinCarIdB,
+    'twinUserId'         => $twinUserId,
 ]) . "\n";

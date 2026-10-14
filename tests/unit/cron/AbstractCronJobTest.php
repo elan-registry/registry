@@ -6,11 +6,13 @@ use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\AbstractCronJobFakeDatabase;
+use Tests\Support\RefusingSpyCronJob;
 use Tests\Support\SpyCronJob;
 
 require_once __DIR__ . '/../../Support/FakeDatabase.php';
 require_once __DIR__ . '/../../Support/AbstractCronJobFakeDatabase.php';
 require_once __DIR__ . '/../../Support/SpyCronJob.php';
+require_once __DIR__ . '/../../Support/RefusingSpyCronJob.php';
 
 /**
  * Unit tests for AbstractCronJob — the template-method base every cron job
@@ -396,36 +398,68 @@ final class AbstractCronJobTest extends TestCase
     }
 
     /**
-     * The site-wide verification switch (since v2.30.2) is checked before
-     * anything else in run() — including the job-level `enabled` flag this
-     * class otherwise gates on. This is the one behaviour the milestone's
-     * "no real email sends until this closes" framing rests on, so it gets
-     * its own direct test rather than relying on the fixture default
-     * (verificationEnabled: true) that every other test in this file uses.
+     * The base class no longer reads the site-wide verification switch (#2358).
+     * The prune, the reconciliation and the suppression import must run while
+     * sends are off, so only a job that overrides refusesWhileSwitchOff() stops.
      */
-    public function testRunDoesNotExecuteWhenVerificationSwitchIsOff(): void
+    public function testRunExecutesWhenVerificationSwitchIsOff(): void
     {
         $job = new SpyCronJob(new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true, verificationEnabled: false));
 
         $job->run();
 
-        $this->assertSame(0, $job->executeCalls, 'No Brevo-driven write may happen while verification is switched off');
+        $this->assertSame(1, $job->executeCalls, 'The base class must not gate on the verification switch');
     }
 
-    /**
-     * runNow() bypasses the job-level enabled check and the guard claim (see
-     * testRunNowExecutesEvenWhenDisabledAndClaimWouldFail above) but must NOT
-     * bypass the site-wide verification switch — an operator manually
-     * triggering a run has made the scheduling decision, not the go-live
-     * decision.
-     */
-    public function testRunNowDoesNotExecuteWhenVerificationSwitchIsOff(): void
+    public function testRunNowExecutesWhenVerificationSwitchIsOff(): void
     {
         $job = new SpyCronJob(new AbstractCronJobFakeDatabase(enabled: false, claimSucceeds: false, verificationEnabled: false));
 
         $job->runNow();
 
-        $this->assertSame(0, $job->executeCalls, 'The manual bypass must not also bypass the verification switch');
+        $this->assertSame(1, $job->executeCalls, 'The base class must not gate on the verification switch');
+    }
+
+    /**
+     * A refusing job must stop before the enabled read and before the claim.
+     * The claim stamps last_run_at, so a claim here would make the first run
+     * after the switch goes on look not due. An empty SQL log proves neither
+     * query ran.
+     */
+    public function testRunRefusesBeforeTheEnabledReadAndTheClaim(): void
+    {
+        $db = new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true);
+        $job = new RefusingSpyCronJob($db);
+
+        $job->run();
+
+        $this->assertSame(0, $job->executeCalls);
+        $this->assertSame([], $db->sqlLog(), 'A refused run must issue no query: no enabled read and no claim');
+    }
+
+    public function testRunNowRefusesBeforeAnyQuery(): void
+    {
+        $db = new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true);
+        $job = new RefusingSpyCronJob($db);
+
+        $job->runNow();
+
+        $this->assertSame(0, $job->executeCalls, 'The manual bypass must not bypass the gate');
+        $this->assertSame([], $db->sqlLog());
+    }
+
+    public function testRunClaimsAndExecutesOnceTheJobStopsRefusing(): void
+    {
+        $db = new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: true);
+        $job = new RefusingSpyCronJob($db);
+        $job->run();
+        $job->refuse = false;
+
+        $job->run();
+
+        $this->assertSame(1, $job->executeCalls);
+        $claims = array_filter($db->sqlLog(), static fn (string $sql): bool => stripos($sql, 'last_run_at = NOW()') !== false);
+        $this->assertCount(1, $claims, 'Only the second run claims');
     }
 
     public function testRunNowSwallowsThrowableFromExecute(): void

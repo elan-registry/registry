@@ -11,7 +11,6 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
-use ElanRegistry\Migration\DeliverabilityMigrationQueries;
 use InvalidArgumentException;
 
 /**
@@ -78,7 +77,7 @@ class CarRepository
 
     /**
      * SQL that normalizes a column the way
-     * {@see DeliverabilityMigrationQueries::normalizeAddress()} does: strip
+     * {@see EmailAddress::normalize()} does: strip
      * leading and trailing white space, then lower case. Wrap a column name
      * as `NORMALIZE_SQL_OPEN . <column> . NORMALIZE_SQL_CLOSE`.
      *
@@ -546,7 +545,7 @@ class CarRepository
      * One query reads the profile and the owner's `users.email`. A stored
      * `email_blocked` or `email_bounced` applies when its normalized
      * `_address` is empty or equals the normalized `users.email`
-     * ({@see DeliverabilityMigrationQueries::normalizeAddress()}).
+     * ({@see EmailAddress::normalize()}).
      * `email_opted_out` applies whatever the address. This is the PHP form of
      * {@see emailFlagActiveSql()}.
      *
@@ -577,7 +576,7 @@ class CarRepository
             return EffectiveEmailFlags::none();
         }
 
-        $current = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($row->user_email));
+        $current = EmailAddress::normalize(self::nullableString($row->user_email));
 
         return new EffectiveEmailFlags(
             true,
@@ -607,7 +606,7 @@ class CarRepository
             return false;
         }
 
-        $stored = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($address));
+        $stored = EmailAddress::normalize(self::nullableString($address));
 
         return $stored === '' || $stored === $current;
     }
@@ -617,7 +616,7 @@ class CarRepository
      */
     private static function currentAddress(object $state): string
     {
-        return DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($state->user_email ?? null));
+        return EmailAddress::normalize(self::nullableString($state->user_email ?? null));
     }
 
     /**
@@ -625,7 +624,7 @@ class CarRepository
      */
     private static function isEmptyAddress(mixed $address): bool
     {
-        return DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($address)) === '';
+        return EmailAddress::normalize(self::nullableString($address)) === '';
     }
 
     /**
@@ -910,8 +909,8 @@ class CarRepository
 
         $bounced = (int) $row->email_bounced;
         $blocked = (int) $row->email_blocked;
-        $current = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($row->user_email));
-        $seen    = DeliverabilityMigrationQueries::normalizeAddress(self::nullableString($row->email_address_seen));
+        $current = EmailAddress::normalize(self::nullableString($row->user_email));
+        $seen    = EmailAddress::normalize(self::nullableString($row->email_address_seen));
         $changed = $current !== $seen;
 
         if ($changed) {
@@ -983,7 +982,7 @@ class CarRepository
      */
     private static function requireAddress(string $address, string $method, int $userId): string
     {
-        $normalized = DeliverabilityMigrationQueries::normalizeAddress($address);
+        $normalized = EmailAddress::normalize($address);
         if ($normalized === '') {
             throw new CarValidationException(
                 "CarRepository::{$method} (userId={$userId}): a non-empty address is required when setting the flag."
@@ -1001,7 +1000,7 @@ class CarRepository
      */
     private static function sameAddress(mixed $stored, string $normalized): bool
     {
-        $storedNormalized = DeliverabilityMigrationQueries::normalizeAddress(is_string($stored) ? $stored : null);
+        $storedNormalized = EmailAddress::normalize(is_string($stored) ? $stored : null);
 
         return $storedNormalized !== '' && $storedNormalized === $normalized;
     }
@@ -2031,40 +2030,6 @@ class CarRepository
     }
 
     /**
-     * Find the owner of a car, for a deliverability write
-     *
-     * A delivery event arrives for a car, but the flag belongs to the owner's
-     * profile (#2101). The caller uses `user_id` and `username` to skip a car
-     * with no owner, a deleted owner, or the `noowner` system account.
-     *
-     * @param int $carId Car ID
-     * @return object{user_id: int|string|null, username: ?string}|null Null when the car does not exist.
-     *         `username` is null when `user_id` is NULL or points at no users row.
-     * @throws CarDatabaseException If the query fails
-     */
-    public function findOwnerOfCar(int $carId): ?object
-    {
-        $result = $this->db->query(
-            'SELECT c.user_id, u.username
-               FROM cars c
-               LEFT JOIN users u ON u.id = c.user_id
-              WHERE c.id = ?',
-            [$carId]
-        );
-        if ($this->db->error()) {
-            throw new CarDatabaseException(
-                "CarRepository::findOwnerOfCar failed for car={$carId}: " . $this->db->errorString()
-            );
-        }
-        if ($this->db->count() === 0) {
-            return null;
-        }
-        $row = $result->first();
-
-        return is_object($row) ? $row : null;
-    }
-
-    /**
      * Find when an owner's profile flag was last cleared by a given source
      *
      * Reads the `logs` rows that {@see DeliverabilityFlagLog::record()} writes.
@@ -2315,7 +2280,7 @@ class CarRepository
      * Find the cars of the owner whose account email matches a given address
      *
      * Used by the Brevo webhook, the event reconciliation job and the
-     * suppression sync to map an event's recipient address to cars. The
+     * suppression sync to map an event's recipient address to owners. The
      * verification send mails `users.email`, so the match uses that address.
      * `cars.email` is only a copy, and an old copy must not take the event.
      *
@@ -2326,8 +2291,9 @@ class CarRepository
      * cars of each such owner.
      *
      * @param string $email Recipient address from the event
-     * @return array<object> Objects with `id` (the car) and `email` (the owner's
-     *                       `users.email`). Empty when no owner matches.
+     * @return array<object> Objects with `id` (the car), `user_id` (the car's
+     *                       owner) and `email` (the owner's `users.email`).
+     *                       Empty when no owner matches.
      * @throws CarDatabaseException If the query fails
      */
     public function findByEmail(string $email): array
@@ -2340,7 +2306,7 @@ class CarRepository
         // removes them. Such an address normalizes to '' and would match
         // every owner with an empty email, so the SQL also rejects ''.
         $result = $this->db->query(
-            'SELECT cars.id, u.email
+            'SELECT cars.id, cars.user_id, u.email
                FROM cars
               INNER JOIN users u ON u.id = cars.user_id
               WHERE u.username != \'noowner\'
@@ -2359,29 +2325,59 @@ class CarRepository
     }
 
     /**
-     * Record one Brevo delivery-status event against a car
+     * Distinct owner IDs of the cars from {@see findByEmail()}, in first-seen order
      *
-     * Deliberately does NOT use {@see \DB::insert()}'s `$update = true` mode:
-     * that mode's `ON DUPLICATE KEY UPDATE` clause updates every non-`id` key
-     * indiscriminately, which would also reassign `car_id`/`email`/`event`/
-     * `brevo_message_id` on conflict — exactly the columns the unique index
-     * is keyed on. This writes the raw parameterized query instead, naming
-     * only `reason` and `occurred_at` in the UPDATE clause, so a duplicate
-     * delivery of the same event updates its detail fields without ever
-     * touching identity columns.
+     * A delivery event belongs to the owner, not to one car (#2358), so a
+     * caller applies an event once per owner, whatever the number of cars.
+     *
+     * @param array<mixed> $cars Rows with a `user_id` property
+     * @return list<int>
+     * @throws CarValidationException If an element is not an object, has no
+     *                                `user_id`, or its `user_id` is not a
+     *                                positive whole number
+     */
+    public static function ownerIdsOf(array $cars): array
+    {
+        $ownerIds = [];
+        foreach ($cars as $car) {
+            // A bad row would cast to owner 0 and apply the event to no one, with no error.
+            $userId = is_object($car) && property_exists($car, 'user_id') ? $car->user_id : null;
+            if (!(is_int($userId) || (is_string($userId) && ctype_digit($userId))) || (int) $userId < 1) {
+                throw new CarValidationException(
+                    'CarRepository::ownerIdsOf received a row of type ' . get_debug_type($car)
+                    . ' with no positive user_id.'
+                );
+            }
+            $ownerIds[] = (int) $userId;
+        }
+
+        return array_values(array_unique($ownerIds));
+    }
+
+    /**
+     * Record the `sent` event of one verification email for the owner of a car
+     *
+     * Only CarVerificationSendService calls this, for `sent` rows. A `sent`
+     * row carries its car, because it starts that car's send cycle. Every
+     * other event belongs to the owner and goes through
+     * {@see insertOwnerEmailEvent()}.
+     *
+     * The row gets the car's owner as `user_id` (#2358). The unique key is
+     * `(user_id, brevo_message_id, event)`. A car with no owner, an owner
+     * with no users row, or the `noowner` system account writes no row.
+     *
+     * The upsert rule is in {@see upsertEmailEvent()}.
      *
      * @param int $carId Car ID the event is being recorded against
-     * @param string $email Recipient email address from the Brevo payload
+     * @param string $email Recipient email address from the Brevo payload. Stored
+     *                      normalized ({@see EmailAddress::normalize()}).
      * @param string $event Brevo event name (e.g. 'hard_bounce', 'delivered')
      * @param string|null $reason Optional reason/detail text from the payload
      * @param string $brevoMessageId Brevo's message id for this send (or a
      *                                locally-generated id for the 'sent' event)
      * @param string $occurredAt Datetime string in AppConstants::DATETIME_FORMAT
-     * @return int MySQL's `rowCount()` for an `INSERT ... ON DUPLICATE KEY
-     *             UPDATE`: 1 for a fresh insert, 2 if a duplicate's `reason`/
-     *             `occurred_at` were actually changed, 0 if a duplicate
-     *             arrived with identical values (no-op). Never a failure
-     *             signal on its own — a real failure throws.
+     * @return int See {@see upsertEmailEvent()}. Also 0 when the car has no
+     *             owner (no row written).
      * @throws CarDatabaseException If the query fails
      */
     public function insertEmailEvent(
@@ -2392,16 +2388,117 @@ class CarRepository
         string $brevoMessageId,
         string $occurredAt
     ): int {
+        return $this->upsertEmailEvent(
+            "SELECT c.user_id, c.id, ?, ?, ?, ?, ?
+               FROM cars c
+              INNER JOIN users u ON u.id = c.user_id
+              WHERE c.id = ?
+                AND u.username != 'noowner'",
+            [$carId],
+            $email,
+            $event,
+            $reason,
+            $brevoMessageId,
+            $occurredAt,
+            "insertEmailEvent failed for car={$carId}"
+        );
+    }
+
+    /**
+     * Record one Brevo delivery-status event for an owner
+     *
+     * The webhook cannot tell which of the owner's cars an email was for, so
+     * the row has `car_id` NULL. Every car of the owner shows it after the
+     * car's cycle start (#2358). The upsert rule is in
+     * {@see upsertEmailEvent()}. A user that does not exist, or the
+     * `noowner` system account, writes no row.
+     *
+     * @param int $userId Owner user ID. A value less than 1 issues no query.
+     * @param string $email Recipient email address from the Brevo payload. Stored
+     *                      normalized ({@see EmailAddress::normalize()}).
+     * @param string $event Brevo event name (e.g. 'hard_bounce', 'delivered')
+     * @param string|null $reason Optional reason/detail text from the payload
+     * @param string $messageId Brevo's message id for this send
+     * @param string $occurredAt Datetime string in AppConstants::DATETIME_FORMAT
+     * @return int See {@see upsertEmailEvent()}. Also 0 when no row was
+     *             written for the user.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function insertOwnerEmailEvent(
+        int $userId,
+        string $email,
+        string $event,
+        ?string $reason,
+        string $messageId,
+        string $occurredAt
+    ): int {
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        return $this->upsertEmailEvent(
+            "SELECT u.id, NULL, ?, ?, ?, ?, ?
+               FROM users u
+              WHERE u.id = ?
+                AND u.username != 'noowner'",
+            [$userId],
+            $email,
+            $event,
+            $reason,
+            $messageId,
+            $occurredAt,
+            "insertOwnerEmailEvent failed for user={$userId}"
+        );
+    }
+
+    /**
+     * Insert or update one er_email_events row from a SELECT source
+     *
+     * Deliberately does NOT use {@see \DB::insert()}'s `$update = true` mode:
+     * that mode's `ON DUPLICATE KEY UPDATE` clause updates every non-`id` key,
+     * which would also change the identity columns. This query names only
+     * `reason` and `occurred_at` in the UPDATE clause. A duplicate keeps the
+     * earliest `occurred_at`, so a `delivered` reset point does not move later.
+     *
+     * @param string $selectSql SELECT that yields `user_id`, `car_id` and five
+     *                          `?` placeholders for the event values. When it
+     *                          yields no row, no row is written.
+     * @param list<int> $whereParams Values for the placeholders after the five
+     * @param string $email Recipient address, stored normalized
+     *                      ({@see EmailAddress::normalize()})
+     * @param string $event Brevo event name
+     * @param string|null $reason Optional reason/detail text
+     * @param string $messageId Brevo's message id (or a local id for `sent`)
+     * @param string $occurredAt Datetime string in AppConstants::DATETIME_FORMAT
+     * @param string $failureLabel Start of the failure message, after the class name
+     * @return int MySQL's `rowCount()` for an `INSERT ... ON DUPLICATE KEY
+     *             UPDATE`: 1 for a fresh insert, 2 if a duplicate's `reason`/
+     *             `occurred_at` were actually changed, 0 if a duplicate
+     *             changed nothing or the SELECT yielded no row.
+     *             Never a failure signal on its own — a real failure throws.
+     * @throws CarDatabaseException If the query fails
+     */
+    private function upsertEmailEvent(
+        string $selectSql,
+        array $whereParams,
+        string $email,
+        string $event,
+        ?string $reason,
+        string $messageId,
+        string $occurredAt,
+        string $failureLabel
+    ): int {
         $this->db->query(
-            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
-             VALUES (?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE reason = VALUES(reason), occurred_at = VALUES(occurred_at)',
-            [$carId, $email, $event, $reason, $brevoMessageId, $occurredAt]
+            "INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+             " . $selectSql . "
+             ON DUPLICATE KEY UPDATE reason = VALUES(reason),
+                                     occurred_at = LEAST(occurred_at, VALUES(occurred_at))",
+            [EmailAddress::normalize($email), $event, $reason, $messageId, $occurredAt, ...$whereParams]
         );
 
         if ($this->db->error()) {
             throw new CarDatabaseException(
-                "CarRepository::insertEmailEvent failed for car={$carId} event={$event}: " . $this->db->errorString()
+                "CarRepository::{$failureLabel} event={$event}: " . $this->db->errorString()
             );
         }
 
@@ -2409,51 +2506,65 @@ class CarRepository
     }
 
     /**
-     * Count distinct soft-bounce send cycles for an email since its last delivery
+     * Count distinct soft-bounce send cycles for an owner's address since its last delivery
      *
      * A "send cycle" is one distinct `brevo_message_id`, not a raw event row —
      * Brevo can report the same soft bounce more than once for one send. Only
-     * cycles after the later of these two times count:
-     * - the most recent `delivered` event for this email, and
-     * - the `email_bounce_cleared_at` of the car owner's profile (#2101), so a
-     *   soft bounce before an admin Clear Bounced does not count again.
-     * When neither exists, all soft-bounce cycles on record count. This is the
-     * query the event applier uses to decide whether repeated soft bounces
-     * escalate to a bounce.
+     * the owner's `soft_bounce` rows for this address count, and only those
+     * after the latest of these times:
+     * - the owner's latest `delivered` row for this address,
+     * - the `email_bounce_cleared_at` of the owner's profile (#2101), so a
+     *   soft bounce before an admin Clear Bounced does not count again, and
+     * - the `email_address_since` of the owner's profile, so a soft bounce
+     *   for an earlier address of the owner does not count.
+     * When none exists, all of the owner's soft-bounce cycles for the address
+     * count. The event applier uses this count to decide whether repeated soft
+     * bounces escalate to a bounce. The 90-day prune of `soft_bounce` rows
+     * keeps the count correct after the prune deletes a `delivered` row.
      *
-     * @param string $email Email address to count soft bounces for
-     * @param int $carId Car the event was recorded against. Its owner's
-     *                   profile gives `email_bounce_cleared_at`. A car with no
-     *                   owner or no profile has no clear time.
-     * @return int Number of distinct soft-bounce message ids since the later of the two times
+     * The address compare uses `COLLATE utf8mb4_bin`, because the column
+     * collation would match an accent or case variant of the address.
+     *
+     * @param int $userId Owner user ID
+     * @param string $email Address to count soft bounces for. Normalized here
+     *                      ({@see EmailAddress::normalize()}).
+     * @return int Number of distinct soft-bounce message ids since the latest of the three times
      * @throws CarDatabaseException If the query fails
      */
-    public function countSoftBouncesSinceLastDelivered(string $email, int $carId): int
+    public function countSoftBouncesSinceLastDelivered(int $userId, string $email): int
     {
+        $address = EmailAddress::normalize($email);
+
         $this->db->query(
             "SELECT COUNT(DISTINCT brevo_message_id) AS cnt
                FROM er_email_events
-              WHERE email = ?
+              WHERE user_id = ?
+                AND email = ? COLLATE utf8mb4_bin
                 AND event = 'soft_bounce'
                 AND occurred_at > GREATEST(
                     COALESCE(
-                        (SELECT MAX(occurred_at) FROM er_email_events WHERE email = ? AND event = 'delivered'),
+                        (SELECT MAX(d.occurred_at)
+                           FROM er_email_events d
+                          WHERE d.user_id = ?
+                            AND d.email = ? COLLATE utf8mb4_bin
+                            AND d.event = 'delivered'),
                         '1970-01-01 00:00:00'
                     ),
                     COALESCE(
-                        (SELECT p.email_bounce_cleared_at
-                           FROM cars c
-                           INNER JOIN profiles p ON p.user_id = c.user_id
-                          WHERE c.id = ?),
+                        (SELECT p.email_bounce_cleared_at FROM profiles p WHERE p.user_id = ?),
+                        '1970-01-01 00:00:00'
+                    ),
+                    COALESCE(
+                        (SELECT p.email_address_since FROM profiles p WHERE p.user_id = ?),
                         '1970-01-01 00:00:00'
                     )
                 )",
-            [$email, $email, $carId]
+            [$userId, $address, $userId, $address, $userId, $userId]
         );
 
         if ($this->db->error()) {
             throw new CarDatabaseException(
-                "CarRepository::countSoftBouncesSinceLastDelivered failed for car={$carId}: "
+                "CarRepository::countSoftBouncesSinceLastDelivered failed for user={$userId}: "
                 . $this->db->errorString()
             );
         }
@@ -2465,41 +2576,59 @@ class CarRepository
             // count is zero. Returning 0 would silently disable soft-bounce
             // escalation for this email instead of surfacing the fault.
             throw new CarDatabaseException(
-                "CarRepository::countSoftBouncesSinceLastDelivered returned no COUNT row for car={$carId}"
+                "CarRepository::countSoftBouncesSinceLastDelivered returned no COUNT row for user={$userId}"
             );
         }
         return (int) $row->cnt;
     }
 
     /**
-     * Delete all er_email_events rows for a set of car ids
+     * Delete all er_email_events rows of one user (account deletion)
      *
-     * Used by account-deletion cleanup: a departing owner's email history
-     * must not survive the account, and cars are keyed off `car_id` in this
-     * table (see class docblock's account-deletion note). No-ops cleanly on
-     * an empty array rather than issuing a query with an empty IN() list.
+     * A departing owner's email history must not survive the account. This
+     * deletes all rows with this `user_id`, with or without a `car_id`. Rows
+     * of a previous owner on the user's car have another `user_id`, so they
+     * stay.
      *
-     * @param array<int> $carIds Car ids whose event history should be deleted
-     * @return int Number of rows actually deleted (0 for the empty-array no-op
-     *             case, or if the matching cars simply had no event history)
+     * @param int $userId User ID. A value less than 1 issues no query.
+     * @return int Number of rows deleted (0 when the user ID is less than 1
+     *             or the user has no event rows)
      * @throws CarDatabaseException If the query fails
      */
-    public function deleteEmailEventsForCarIds(array $carIds): int
+    public function deleteEmailEventsForUser(int $userId): int
     {
-        if ($carIds === []) {
+        if ($userId <= 0) {
             return 0;
         }
 
-        $placeholders = implode(',', array_fill(0, count($carIds), '?'));
-        $this->db->query(
-            "DELETE FROM er_email_events WHERE car_id IN ({$placeholders})",
-            array_values($carIds)
-        );
+        $this->db->query('DELETE FROM er_email_events WHERE user_id = ?', [$userId]);
 
         if ($this->db->error()) {
             throw new CarDatabaseException(
-                'CarRepository::deleteEmailEventsForCarIds failed for car_ids=' . implode(',', $carIds)
-                . ': ' . $this->db->errorString()
+                "CarRepository::deleteEmailEventsForUser failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
+    }
+
+    /**
+     * Keep a deleted car's email events with its owner (car deletion)
+     *
+     * Sets `car_id` to NULL. The rows keep their `user_id`, so a terminal
+     * event still applies to the owner (#2358).
+     *
+     * @param int $carId ID of the car that is deleted
+     * @return int Number of rows changed
+     * @throws CarDatabaseException If the query fails
+     */
+    public function detachEmailEventsFromCar(int $carId): int
+    {
+        $this->db->query('UPDATE er_email_events SET car_id = NULL WHERE car_id = ?', [$carId]);
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::detachEmailEventsFromCar failed for car={$carId}: " . $this->db->errorString()
             );
         }
 
@@ -2509,58 +2638,24 @@ class CarRepository
     /**
      * Find the most recent er_email_events row for each of a set of car ids
      *
-     * Self-joins the table against its own `(car_id, MAX(occurred_at))`
-     * aggregate rather than using a window function — no window functions are
-     * used anywhere else in this codebase's SQL. If a car somehow has two rows
-     * sharing the same maximum `occurred_at`, the join yields both and the
-     * later one wins the array key; either is equally "latest" by the only
-     * ordering the table records. No-ops cleanly on an empty array rather than
-     * issuing a query with an empty IN() list.
+     * The rows of a car are the rows that {@see findCarCycleEvents()}
+     * selects. The latest row wins: `occurred_at DESC, id DESC`.
      *
-     * @param array<int> $carIds
-     * @return array<int, object{event: string, occurred_at: string, reason: ?string}>
-     *         Keyed by car_id. Cars with no event history are simply absent from
-     *         the returned array — callers must treat a missing key as "no events
-     *         recorded," not query it as an error.
+     * @param array<int> $carIds Positive car ids. Duplicates are removed.
+     * @return array<int, object{car_id: int|string, event: string, occurred_at: string, reason: ?string,
+     *         brevo_message_id: string}>
+     *         Keyed by car_id. A car with no row in its cycle is absent.
+     *         Callers must treat a missing key as "no events", not as an error.
+     * @throws CarValidationException If an element of $carIds is not a positive int
      * @throws CarDatabaseException If the query fails
      */
     public function findLatestEmailEventsByCarIds(array $carIds): array
     {
-        if ($carIds === []) {
-            return [];
-        }
-
-        $ids          = array_values($carIds);
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-
-        $result = $this->db->query(
-            "SELECT e.car_id, e.event, e.occurred_at, e.reason
-               FROM er_email_events e
-               JOIN (
-                     SELECT car_id, MAX(occurred_at) AS max_occurred_at
-                       FROM er_email_events
-                      WHERE car_id IN ({$placeholders})
-                      GROUP BY car_id
-                    ) latest
-                 ON latest.car_id = e.car_id
-                AND latest.max_occurred_at = e.occurred_at
-              WHERE e.car_id IN ({$placeholders})",
-            array_merge($ids, $ids)
+        return $this->findCarCycleEvents(
+            self::normalizeCarIds($carIds, 'findLatestEmailEventsByCarIds'),
+            false,
+            'findLatestEmailEventsByCarIds'
         );
-
-        if ($this->db->error()) {
-            throw new CarDatabaseException(
-                'CarRepository::findLatestEmailEventsByCarIds failed for car_ids=' . implode(',', $ids)
-                . ': ' . $this->db->errorString()
-            );
-        }
-
-        $latest = [];
-        foreach ($result->results() as $row) {
-            $latest[(int) $row->car_id] = $row;
-        }
-
-        return $latest;
     }
 
     /**
@@ -2568,10 +2663,8 @@ class CarRepository
      *
      * This is the rule in the car-owner-verification FRD §10.10.
      *
-     * 1. Scope to the current send cycle. The cycle starts at the car's
-     *    latest `sent` row and holds that row and every later event. A car
-     *    with no `sent` row (for example, only suppression-import rows) uses
-     *    all of its events.
+     * 1. Scope to the car's rows in the current send cycle, as
+     *    {@see findCarCycleEvents()} selects them.
      * 2. In the cycle, a terminal event wins over all other events, at any
      *    timestamp. Terminal events are EmailEventApplier::HARD_BOUNCE_EVENTS
      *    and EmailEventApplier::SUPPRESSION_EVENTS. A message that was
@@ -2580,22 +2673,13 @@ class CarRepository
      *    tiebreak stops the chip from changing between two rows that share
      *    a timestamp.
      *
-     * Why the cycle is not a `brevo_message_id` match: the `sent` row that
-     * CarVerificationSendService writes has a local id
-     * (`local:` + SHA-256 of the code), because the mailer returns no Brevo
-     * id. Webhook rows carry Brevo's own `message-id`. The two ids never
-     * match, and `cars` has no message-id column. The `sent` row's
-     * `occurred_at` is the send time (it equals `cars.vericode_sent_at`),
+     * Why the cycle is a time boundary and not only a `brevo_message_id`
+     * match: the `sent` row that CarVerificationSendService writes has a
+     * local id (`local:` + SHA-256 of the code), because the mailer returns
+     * no Brevo id. Webhook rows carry Brevo's own `message-id`. The `sent`
+     * row's `occurred_at` is the send time (it equals `cars.vericode_sent_at`),
      * and webhook times use the same server clock, so the time boundary
      * gives the cycle.
-     *
-     * A webhook event matches cars by email, so it is recorded on every car
-     * of that owner. An event for one car's message can therefore show on
-     * another car of the same owner if that car's cycle is open.
-     *
-     * Ranking happens in SQL. PHP keeps the first row for each car. A cycle
-     * holds only a few rows, so this is less complex than a three-level
-     * MAX() self-join and needs no window function.
      *
      * @param array<int> $carIds Positive car ids. Duplicates are removed.
      * @return array<int, object{car_id: int|string, event: string, occurred_at: string, reason: ?string,
@@ -2607,7 +2691,42 @@ class CarRepository
      */
     public function findLatestEmailEventPerCarWithPrecedence(array $carIds): array
     {
-        $ids = self::normalizeCarIds($carIds, 'findLatestEmailEventPerCarWithPrecedence');
+        return $this->findCarCycleEvents(
+            self::normalizeCarIds($carIds, 'findLatestEmailEventPerCarWithPrecedence'),
+            true,
+            'findLatestEmailEventPerCarWithPrecedence'
+        );
+    }
+
+    /**
+     * Pick one er_email_events row for each car from the car's current send cycle
+     *
+     * Events belong to the user (#2358), so a car's rows are rows with
+     * `user_id = cars.user_id`. After a transfer, the rows of the previous
+     * owner do not show on the car.
+     *
+     * The cycle starts at the car's latest `sent` row with `car_id` = the car
+     * and `user_id = cars.user_id` (ties: highest `id`). The cycle holds that
+     * row and every later non-`sent` row of the owner, whatever its `car_id`.
+     * The webhook cannot tell which car an email was for, so it records each
+     * event once for the owner with `car_id` NULL. Every car of the owner
+     * must show it. Another car's `sent` row starts that car's cycle, so it
+     * does not count here. A car with no such row uses only the rows with
+     * `car_id` = the car, so a transferred car shows "not sent" and not the
+     * new owner's events for other cars.
+     *
+     * Ranking happens in SQL. PHP keeps the first row for each car. A cycle
+     * holds only a few rows, so this needs no window function.
+     *
+     * @param list<int> $ids Unique positive car ids
+     * @param bool $terminalFirst True to rank a terminal event before all other events
+     * @param string $method Calling method name, for the exception message
+     * @return array<int, object{car_id: int|string, event: string, occurred_at: string, reason: ?string,
+     *         brevo_message_id: string}> Keyed by car_id
+     * @throws CarDatabaseException If the query fails
+     */
+    private function findCarCycleEvents(array $ids, bool $terminalFirst, string $method): array
+    {
         if ($ids === []) {
             return [];
         }
@@ -2619,30 +2738,38 @@ class CarRepository
 
         $idPlaceholders       = implode(',', array_fill(0, count($ids), '?'));
         $terminalPlaceholders = implode(',', array_fill(0, count($terminal), '?'));
+        $terminalOrderSql     = $terminalFirst
+            ? "CASE WHEN e.event IN ({$terminalPlaceholders}) THEN 1 ELSE 0 END DESC,"
+            : '';
 
         $result = $this->db->query(
-            "SELECT e.car_id, e.event, e.occurred_at, e.reason, e.brevo_message_id
-               FROM er_email_events e
-               LEFT JOIN (
-                     SELECT car_id, MAX(occurred_at) AS cycle_start
-                       FROM er_email_events
-                      WHERE car_id IN ({$idPlaceholders})
-                        AND event = ?
-                      GROUP BY car_id
-                    ) cycle
-                 ON cycle.car_id = e.car_id
-              WHERE e.car_id IN ({$idPlaceholders})
-                AND (cycle.cycle_start IS NULL OR e.occurred_at >= cycle.cycle_start)
-              ORDER BY e.car_id ASC,
-                       CASE WHEN e.event IN ({$terminalPlaceholders}) THEN 1 ELSE 0 END DESC,
+            "SELECT cyc.car_id, e.event, e.occurred_at, e.reason, e.brevo_message_id
+               FROM (
+                     SELECT c.id AS car_id, c.user_id,
+                            (SELECT s.id
+                               FROM er_email_events s
+                              WHERE s.car_id = c.id
+                                AND s.user_id = c.user_id
+                                AND s.event = ?
+                              ORDER BY s.occurred_at DESC, s.id DESC
+                              LIMIT 1) AS cycle_id
+                       FROM cars c
+                      WHERE c.id IN ({$idPlaceholders})
+                    ) cyc
+               LEFT JOIN er_email_events cs ON cs.id = cyc.cycle_id
+              INNER JOIN er_email_events e ON e.user_id = cyc.user_id
+              WHERE (cs.id IS NULL AND e.car_id = cyc.car_id)
+                 OR (e.occurred_at >= cs.occurred_at AND (e.id = cs.id OR e.event != ?))
+              ORDER BY cyc.car_id ASC,
+                       {$terminalOrderSql}
                        e.occurred_at DESC,
                        e.id DESC",
-            array_merge($ids, [self::EVENT_SENT], $ids, $terminal)
+            array_merge([self::EVENT_SENT], $ids, [self::EVENT_SENT], $terminalFirst ? $terminal : [])
         );
 
         if ($this->db->error()) {
             throw new CarDatabaseException(
-                'CarRepository::findLatestEmailEventPerCarWithPrecedence failed for car_ids=' . implode(',', $ids)
+                "CarRepository::{$method} failed for car_ids=" . implode(',', $ids)
                 . ': ' . $this->db->errorString()
             );
         }
@@ -2681,32 +2808,288 @@ class CarRepository
     }
 
     /**
-     * Delete er_email_events rows older than a given cutoff
+     * Delete er_email_events rows past their retention period (#2358)
      *
-     * Used by the nightly reconciliation job (#1889) to enforce the 24-month
-     * retention policy for Brevo delivery-status event history stated in the
-     * v2.30.0 privacy policy.
+     * - A terminal event (EmailEventApplier::HARD_BOUNCE_EVENTS and
+     *   EmailEventApplier::SUPPRESSION_EVENTS) is deleted when its
+     *   `occurred_at` is before `$terminalCutoff` (24 months).
+     * - Every other event, including `soft_bounce`, `delivered`, `sent`,
+     *   `unique_opened` and an unknown event name, is deleted when its
+     *   `occurred_at` is before `$shortCutoff` (90 days).
+     * - Each car's latest `sent` row of its current owner stays, because it
+     *   starts the car's send cycle. When it is older than `$shortCutoff`,
+     *   its `email` becomes ''. The row is the `sent` row with `car_id` = the
+     *   car and `user_id` = `cars.user_id`, with the latest `occurred_at`
+     *   (ties: highest `id`). This is the same rule as
+     *   {@see findCarCycleEvents()}. A `sent` row of a previous owner on the
+     *   car, after a merge or a transfer, follows the 90-day rule. A row with
+     *   `car_id` NULL is never the latest row of a car.
      *
-     * @param \DateTimeImmutable $cutoff Rows with `occurred_at` before this
-     *                                   instant are deleted
-     * @return int Number of rows actually deleted (0 if none were older than the cutoff)
-     * @throws CarDatabaseException If the query fails
+     * A second run with the same cutoffs changes no row.
+     *
+     * @param DateTimeImmutable $terminalCutoff Terminal rows before this instant are deleted
+     * @param DateTimeImmutable $shortCutoff All other rows before this instant are deleted
+     * @return int Number of rows deleted plus the number of `sent` rows whose `email` became ''
+     * @throws InvalidArgumentException If $terminalCutoff is not before $shortCutoff
+     * @throws CarDatabaseException If a query fails
      */
-    public function deleteEmailEventsOlderThan(\DateTimeImmutable $cutoff): int
+    public function deleteEmailEventsOlderThan(DateTimeImmutable $terminalCutoff, DateTimeImmutable $shortCutoff): int
     {
-        $this->db->query(
-            'DELETE FROM er_email_events WHERE occurred_at < ?',
-            [$cutoff->format(AppConstants::DATETIME_FORMAT)]
-        );
+        $terminalAt = $terminalCutoff->format(AppConstants::DATETIME_FORMAT);
+        $shortAt    = $shortCutoff->format(AppConstants::DATETIME_FORMAT);
 
-        if ($this->db->error()) {
-            throw new CarDatabaseException(
-                'CarRepository::deleteEmailEventsOlderThan failed for cutoff='
-                . $cutoff->format(AppConstants::DATETIME_FORMAT) . ': ' . $this->db->errorString()
+        // Swapped arguments would delete terminal rows after 90 days.
+        if ($terminalCutoff >= $shortCutoff) {
+            throw new InvalidArgumentException(
+                "CarRepository::deleteEmailEventsOlderThan: the terminal cutoff ({$terminalAt}) must be"
+                . " before the short cutoff ({$shortAt})."
             );
         }
 
-        return $this->db->count();
+        $terminal = array_values(array_unique(array_merge(
+            EmailEventApplier::HARD_BOUNCE_EVENTS,
+            EmailEventApplier::SUPPRESSION_EVENTS
+        )));
+        $terminalPlaceholders = implode(',', array_fill(0, count($terminal), '?'));
+
+        // MySQL refuses a subquery on the table that the statement changes
+        // (error 1093). The GROUP BY makes MySQL materialize the derived
+        // table first, so the subquery reads a copy.
+        // The join to cars keeps only the current owner's rows. The reader
+        // starts the cycle at that owner's row, so the prune must keep it.
+        $latestSentIdsSql = "SELECT keep_ids.id FROM (
+                                 SELECT MAX(s.id) AS id
+                                   FROM er_email_events s
+                                  INNER JOIN cars sc ON sc.id = s.car_id AND sc.user_id = s.user_id
+                                  INNER JOIN (
+                                        SELECT me.car_id, MAX(me.occurred_at) AS max_at
+                                          FROM er_email_events me
+                                         INNER JOIN cars mc ON mc.id = me.car_id AND mc.user_id = me.user_id
+                                         WHERE me.event = ?
+                                         GROUP BY me.car_id
+                                       ) m ON m.car_id = s.car_id AND m.max_at = s.occurred_at
+                                  WHERE s.event = ?
+                                  GROUP BY s.car_id
+                             ) keep_ids";
+
+        $this->db->query(
+            "DELETE FROM er_email_events
+              WHERE ((event IN ({$terminalPlaceholders}) AND occurred_at < ?)
+                     OR (event NOT IN ({$terminalPlaceholders}) AND occurred_at < ?))
+                AND id NOT IN ({$latestSentIdsSql})",
+            array_merge($terminal, [$terminalAt], $terminal, [$shortAt, self::EVENT_SENT, self::EVENT_SENT])
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::deleteEmailEventsOlderThan delete failed for cutoffs={$terminalAt},{$shortAt}: "
+                . $this->db->errorString()
+            );
+        }
+        $deleted = $this->db->count();
+
+        $this->db->query(
+            "UPDATE er_email_events
+                SET email = ''
+              WHERE event = ?
+                AND occurred_at < ?
+                AND email != ''
+                AND id IN ({$latestSentIdsSql})",
+            [self::EVENT_SENT, $shortAt, self::EVENT_SENT, self::EVENT_SENT]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::deleteEmailEventsOlderThan address clear failed for cutoff={$shortAt}: "
+                . $this->db->errorString()
+            );
+        }
+
+        return $deleted + $this->db->count();
+    }
+
+    /**
+     * Lock a user's profile row and read the addresses that the account used
+     *
+     * The account-deletion privacy step calls this inside its transaction.
+     * `SELECT ... FOR UPDATE` on the profile row takes the lock that the
+     * event step of #2359 will take. Once #2359 ships, no event row for the
+     * user can arrive between this read and the delete. Today an event write
+     * takes no profile lock. A user with no profile row gets a gap lock.
+     *
+     * The addresses come from these sources:
+     * - `email_address_seen`, `email_bounced_address` and
+     *   `email_blocked_address` of the profile,
+     * - `DISTINCT email` of the user's er_email_events rows,
+     * - `cars.email` of the user's cars.
+     *
+     * @param int $userId User ID
+     * @return list<string> Unique non-empty addresses, normalized
+     *                      ({@see EmailAddress::normalize()})
+     * @throws CarDatabaseException If a query fails
+     */
+    public function lockProfileAndFindAddresses(int $userId): array
+    {
+        $queries = [
+            'profile' => 'SELECT email_address_seen, email_bounced_address, email_blocked_address
+                            FROM profiles
+                           WHERE user_id = ?
+                             FOR UPDATE',
+            'events'  => 'SELECT DISTINCT email FROM er_email_events WHERE user_id = ?',
+            'cars'    => 'SELECT email FROM cars WHERE user_id = ?',
+        ];
+
+        $addresses = [];
+        foreach ($queries as $source => $sql) {
+            $result = $this->db->query($sql, [$userId]);
+            if ($this->db->error()) {
+                throw new CarDatabaseException(
+                    "CarRepository::lockProfileAndFindAddresses failed to read {$source} for user={$userId}: "
+                    . $this->db->errorString()
+                );
+            }
+            foreach ($result->results(true) as $row) {
+                foreach ($row as $address) {
+                    $addresses[] = $address;
+                }
+            }
+        }
+
+        return self::normalizeAddressList($addresses);
+    }
+
+    /**
+     * Tell whether the sendinblue plugin's message log table exists
+     *
+     * The plugin creates `plg_sendinblue_messages`. A site without the
+     * plugin has no such table.
+     *
+     * @return bool True when the table exists in the current schema
+     * @throws CarDatabaseException If the query fails
+     */
+    public function sendinblueMessagesTableExists(): bool
+    {
+        $this->db->query(
+            'SELECT COUNT(*) AS cnt
+               FROM information_schema.tables
+              WHERE table_schema = DATABASE()
+                AND table_name = ?',
+            ['plg_sendinblue_messages']
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::sendinblueMessagesTableExists failed: ' . $this->db->errorString()
+            );
+        }
+        $row = $this->db->first();
+
+        return is_object($row) && (int) ($row->cnt ?? 0) > 0;
+    }
+
+    /**
+     * Delete a user's rows from the sendinblue plugin's message log (account deletion)
+     *
+     * Deletes the `plg_sendinblue_messages` rows of these two kinds:
+     * - rows whose `message_id` is a `brevo_message_id` of the user's
+     *   er_email_events rows,
+     * - rows whose normalized `recipient_email` equals an address in
+     *   `$addresses`. An address that is the current `users.email` of
+     *   another user is skipped, because those rows belong to that user.
+     *
+     * Call {@see deleteEmailEventsForUser()} after this method, because the
+     * first delete reads the user's er_email_events rows. Check
+     * {@see sendinblueMessagesTableExists()} first. The compares use
+     * `COLLATE utf8mb4_bin` on normalized values, because the column
+     * collations ignore case and accents.
+     *
+     * @param int $userId User ID. A value less than 1 issues no query.
+     * @param array<mixed> $addresses Addresses from {@see lockProfileAndFindAddresses()}.
+     *                                A value that is not a string, is empty after
+     *                                normalization, or is a duplicate is dropped.
+     * @return int Number of rows deleted
+     * @throws CarDatabaseException If a query fails
+     */
+    public function deleteSendinblueMessagesForUser(int $userId, array $addresses): int
+    {
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        // The two tables have different collations. Without an explicit
+        // COLLATE, MySQL refuses the compare (error 1267).
+        $this->db->query(
+            "DELETE FROM plg_sendinblue_messages
+              WHERE message_id COLLATE utf8mb4_bin IN (
+                    SELECT e.brevo_message_id COLLATE utf8mb4_bin
+                      FROM er_email_events e
+                     WHERE e.user_id = ?
+                       AND e.brevo_message_id != ''
+                    )",
+            [$userId]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::deleteSendinblueMessagesForUser failed to delete by message id for user={$userId}: "
+                . $this->db->errorString()
+            );
+        }
+        $deleted = $this->db->count();
+
+        $list = self::normalizeAddressList($addresses);
+        if ($list === []) {
+            return $deleted;
+        }
+
+        $recipientSql = self::NORMALIZE_SQL_OPEN . 'm.recipient_email' . self::NORMALIZE_SQL_CLOSE;
+        $placeholders = implode(
+            ',',
+            array_fill(0, count($list), self::NORMALIZE_SQL_OPEN . '?' . self::NORMALIZE_SQL_CLOSE)
+        );
+
+        // The SQL form also removes white space that PHP trim() keeps, so a
+        // recipient can normalize to ''. The first predicate stops a match
+        // on such a row.
+        $this->db->query(
+            "DELETE m FROM plg_sendinblue_messages m
+              WHERE {$recipientSql} != ''
+                AND {$recipientSql} COLLATE utf8mb4_bin IN ({$placeholders})
+                AND NOT EXISTS (
+                    SELECT 1
+                      FROM users u
+                     WHERE u.id != ?
+                       AND " . self::CURRENT_ADDRESS_SQL . " COLLATE utf8mb4_bin = {$recipientSql} COLLATE utf8mb4_bin
+                    )",
+            array_merge($list, [$userId])
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::deleteSendinblueMessagesForUser failed to delete by address for user={$userId}: "
+                . $this->db->errorString()
+            );
+        }
+
+        return $deleted + $this->db->count();
+    }
+
+    /**
+     * Normalize a list of addresses for an `IN (...)` compare
+     *
+     * @param array<mixed> $addresses Raw values
+     * @return list<string> Unique non-empty normalized addresses. A value that
+     *                      is not a string is dropped.
+     */
+    private static function normalizeAddressList(array $addresses): array
+    {
+        $list = [];
+        foreach ($addresses as $address) {
+            if (!is_string($address)) {
+                continue;
+            }
+            $normalized = EmailAddress::normalize($address);
+            if ($normalized !== '') {
+                $list[$normalized] = true;
+            }
+        }
+
+        return array_map('strval', array_keys($list));
     }
 
     /**
@@ -2761,12 +3144,11 @@ class CarRepository
     /**
      * Reassign er_email_events rows from one car to another (car merge, #1887)
      *
-     * Unlike deleteEmailEventsForCarIds() (used on account/car deletion, where
-     * the history has nowhere to go), a merge's surviving car should keep both
-     * cars' bounce/suppression signal rather than lose the source's. No
-     * ON DUPLICATE KEY UPDATE here — a genuine collision on the unique index
-     * (car_id, brevo_message_id, event) between the two cars' histories throws
-     * rather than silently dropping one side's row.
+     * Only `car_id` changes. The rows keep their `user_id`, so the events stay
+     * with the user who received them (#2358). A car transfer to a new owner
+     * does not call this method and changes no event row. The unique key is
+     * `(user_id, brevo_message_id, event)` and has no `car_id`, so this update
+     * cannot cause a duplicate-key collision.
      *
      * @param int $fromCarId Source (merged-away) car ID
      * @param int $toCarId Target (surviving) car ID

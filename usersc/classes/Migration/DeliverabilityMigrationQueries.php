@@ -105,6 +105,11 @@ final class DeliverabilityMigrationQueries
      * Both sides of a compare go through this function, then the compare is
      * byte for byte. NULL becomes '', and '' matches no real address.
      *
+     * This is the frozen copy of the rule for the #2101 migration
+     * (20261012000000). Do not change it. A migration must give the same
+     * result when it runs again after the runtime rule changes. Runtime code
+     * must call {@see \ElanRegistry\Car\EmailAddress::normalize()}.
+     *
      * @param string|null $address A raw address from `users`, `cars`, `profiles` or an event
      * @return string The trimmed, lower-case address
      */

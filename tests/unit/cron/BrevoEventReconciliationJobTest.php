@@ -118,11 +118,16 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     // --- Happy path ------------------------------------------------------
 
-    public function testTagMatchingEventIsAppliedToEveryMatchedCarWithReconciliationSource(): void
+    /**
+     * The event belongs to the owner (#2358): an owner with three cars gets
+     * one apply() call, not three.
+     */
+    public function testTagMatchingEventIsAppliedOnceForAnOwnerWithThreeCars(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([
-            (object) ['id' => 7],
-            (object) ['id' => 9],
+            (object) ['id' => 7, 'user_id' => 50],
+            (object) ['id' => 8, 'user_id' => 50],
+            (object) ['id' => 9, 'user_id' => 50],
         ]);
 
         $this->makeJob([
@@ -137,16 +142,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
         $this->assertSame([
             [
-                'carId' => 7,
-                'email' => 'owner@example.com',
-                'event' => 'hard_bounce',
-                'reason' => 'mailbox unavailable',
-                'messageId' => 'brevo-msg-42',
-                'occurredAt' => self::EVENT_DATE_LOCAL,
-                'source' => 'reconciliation',
-            ],
-            [
-                'carId' => 9,
+                'userId' => 50,
                 'email' => 'owner@example.com',
                 'event' => 'hard_bounce',
                 'reason' => 'mailbox unavailable',
@@ -157,9 +153,23 @@ final class BrevoEventReconciliationJobTest extends TestCase
         ], $this->applier->calls);
     }
 
+    /** findByEmail() can return two owners for one address: one call each. */
+    public function testTwoOwnersOnOneAddressGetOneApplyCallEach(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([
+            (object) ['id' => 7, 'user_id' => 50],
+            (object) ['id' => 8, 'user_id' => 51],
+            (object) ['id' => 9, 'user_id' => 50],
+        ]);
+
+        $this->makeJob([new FakeBrevoEvent(messageId: 'm1')])->runNow();
+
+        $this->assertSame([50, 51], array_column($this->applier->calls, 'userId'));
+    }
+
     public function testEveryEventInThePageIsProcessed(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([
             new FakeBrevoEvent(messageId: 'm1'),
@@ -172,7 +182,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testAbsentReasonIsPassedAsNull(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(reason: null)])->runNow();
 
@@ -202,7 +212,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
     /** Untagged events between verification events are routine traffic. */
     public function testUntaggedEventDoesNotBlockLaterTaggedEvents(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([
             new FakeBrevoEvent(messageId: 'm1'),
@@ -229,7 +239,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
     /** The 48h window and idempotent writes cover a skipped event. */
     public function testWriteFailureForOneEventDoesNotAbortTheRest(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
         $this->applier->failOn('m2');
 
         $this->makeJob([
@@ -243,7 +253,10 @@ final class BrevoEventReconciliationJobTest extends TestCase
             $this->applier->messageIds(),
             'A failed write must not stop later events in the page'
         );
-        $this->assertNotEmpty($this->logsContaining('write FAILED'), 'A skipped event must be logged, not silent');
+        $failed = $this->logsContaining('write FAILED');
+        $this->assertNotEmpty($failed, 'A skipped event must be logged, not silent');
+        $this->assertStringContainsString('write FAILED for owner 10, event "delivered" —', $failed[0]['message']);
+        $this->assertStringNotContainsString('@', $failed[0]['message'], 'The log line must not hold an address');
     }
 
     public function testCarLookupFailureSkipsOnlyThatEvent(): void
@@ -253,7 +266,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
                 if ($email === 'broken@example.com') {
                     throw new CarDatabaseException('lookup failed');
                 }
-                return [(object) ['id' => 1]];
+                return [(object) ['id' => 1, 'user_id' => 10]];
             }
         );
 
@@ -270,7 +283,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testExactlyOneBoundedPageIsFetchedPerRun(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         // One bounded page per run, never a pagination walk.
         $events = array_map(
@@ -300,14 +313,20 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     // --- Retention prune -------------------------------------------------
 
-    public function testPruneUsesA24MonthCutoff(): void
+    public function testPruneBindsTheTerminalCutoffThenTheShortCutoff(): void
     {
         $this->expectRepoCalls()->expects($this->once())
             ->method('deleteEmailEventsOlderThan')
-            ->with($this->callback(
-                static fn (DateTimeImmutable $cutoff): bool
-                    => $cutoff->format('Y-m-d H:i:s') === '2024-09-09 03:00:00'
-            ))
+            ->with(
+                $this->callback(
+                    static fn (DateTimeImmutable $cutoff): bool
+                        => $cutoff->format('Y-m-d H:i:s') === '2024-09-09 03:00:00'
+                ),
+                $this->callback(
+                    static fn (DateTimeImmutable $cutoff): bool
+                        => $cutoff->format('Y-m-d H:i:s') === '2026-06-11 03:00:00'
+                )
+            )
             ->willReturn(0);
 
         $this->makeJob([])->runNow();
@@ -315,7 +334,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testPruneRunsAfterEventsAreProcessedAndItsFailureIsContained(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
         $this->mockRepo->method('deleteEmailEventsOlderThan')
             ->willThrowException(new CarDatabaseException('delete failed'));
 
@@ -332,6 +351,34 @@ final class BrevoEventReconciliationJobTest extends TestCase
             $this->logsContaining("failed: ElanRegistry"),
             'It must not surface as a generic AbstractCronJob job failure'
         );
+        $this->assertSame([], $this->logsContaining('retention prune deleted'), 'A failed prune logs no count');
+    }
+
+    /** A PDOException from the driver is a prune failure too, so the run must not crash. */
+    public function testPrunePdoExceptionIsContainedAndLogged(): void
+    {
+        $this->mockRepo->method('deleteEmailEventsOlderThan')
+            ->willThrowException(new \PDOException('server has gone away'));
+
+        $this->makeJob([])->runNow();
+
+        $pruneLogs = $this->logsContaining('retention prune FAILED');
+        $this->assertCount(1, $pruneLogs);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $pruneLogs[0]['category']);
+        $this->assertStringContainsString('server has gone away', $pruneLogs[0]['message']);
+        $this->assertSame([], $this->logsContaining("failed: PDOException"));
+    }
+
+    public function testPruneSuccessLogsTheCountOfChangedRows(): void
+    {
+        $this->mockRepo->method('deleteEmailEventsOlderThan')->willReturn(17);
+
+        $this->makeJob([])->runNow();
+
+        $logs = $this->logsContaining('retention prune deleted or cleared');
+        $this->assertCount(1, $logs);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $logs[0]['category']);
+        $this->assertStringContainsString('cleared 17 er_email_events rows', $logs[0]['message']);
     }
 
     // --- Oversized values ------------------------------------------------
@@ -352,7 +399,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testMaxLengthEventNameIsAccepted(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(event: str_repeat('a', 32))])->runNow();
 
@@ -375,7 +422,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testMaxLengthMessageIdIsAccepted(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(messageId: str_repeat('m', 255))])->runNow();
 
@@ -443,7 +490,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testNonStringPayloadFieldDoesNotBlockLaterEvents(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([
             new FakeBrevoEvent(messageId: 'm1'),
@@ -458,7 +505,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testUnparseableDateFallsBackToRunTimeAndLogs(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(date: 'not-a-date')])->runNow();
 
@@ -473,7 +520,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
      */
     public function testUtcDateIsStoredInThePhpDefaultTimezoneLikeTheWebhook(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(date: self::EVENT_DATE_UTC)])->runNow();
 
@@ -489,7 +536,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
     /** An int date (the webhook's `ts_event` shape) is not trusted. */
     public function testNonStringDateFallsBackToRunTimeAndLogs(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(date: 1_700_000_000)])->runNow();
 
@@ -503,7 +550,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testMissingDateFallsBackToRunTime(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(date: null)])->runNow();
 
@@ -519,7 +566,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('outOfRangeDates')]
     public function testOutOfRangeDateFallsBackToRunTimeAndLogs(string $date): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(date: $date)])->runNow();
 
@@ -539,7 +586,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
     /** CRON_JOB_FAILURE must stay an operator's "really broken" filter. */
     public function testDateFallbackIsNotLoggedAsAJobFailure(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $this->makeJob([new FakeBrevoEvent(date: 'not-a-date')])->runNow();
 
@@ -632,7 +679,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     public function testRunNowWithSummaryHappyPathCountsAreCorrect(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
 
         $summary = $this->makeJob([
             new FakeBrevoEvent(email: 'a@example.com', event: 'delivered', messageId: 'm1'),
@@ -734,28 +781,47 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * Counts are per car-write, not per event (#2061). Two failing writes, not
-     * one: with one, an event-level bug also gives skippedCount = 1.
+     * Counts are per owner-write, not per event (#2061, #2358). Two failing
+     * writes, not one: with one, an event-level bug also gives skippedCount = 1.
      */
-    public function testOneEventMatchingThreeCarsWithTwoFailedWritesCountsPerCar(): void
+    public function testOneEventMatchingThreeOwnersWithTwoFailedWritesCountsPerOwner(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([
-            (object) ['id' => 1],
-            (object) ['id' => 2],
-            (object) ['id' => 3],
+            (object) ['id' => 1, 'user_id' => 101],
+            (object) ['id' => 2, 'user_id' => 102],
+            (object) ['id' => 3, 'user_id' => 103],
         ]);
-        // One message-id for all three calls, so failOnCarId() targets cars 2 and 3.
-        $this->applier->failOnCarId(2, 3);
+        // One message-id for all three calls, so failOnUserId() targets owners 102 and 103.
+        $this->applier->failOnUserId(102, 103);
 
         $summary = $this->makeJob([
             new FakeBrevoEvent(email: 'multi@example.com', event: 'hard_bounce', messageId: 'm1'),
         ])->runNowWithSummary();
 
-        $this->assertCount(3, $this->applier->calls, 'All three car writes must be attempted');
-        $this->assertSame(1, $summary->matchedCount, 'One of three car writes succeeded');
-        $this->assertSame(2, $summary->skippedCount, 'Two of three car writes failed');
+        $this->assertCount(3, $this->applier->calls, 'All three owner writes must be attempted');
+        $this->assertSame(1, $summary->matchedCount, 'One of three owner writes succeeded');
+        $this->assertSame(2, $summary->skippedCount, 'Two of three owner writes failed');
         $this->assertSame(0, $summary->unmatchedCount);
-        $this->assertSame(1, $summary->eventsExamined, 'One event was examined, regardless of car count');
+        $this->assertSame(1, $summary->eventsExamined, 'One event was examined, regardless of owner count');
+        $this->assertSame(['hard_bounce' => 1], $summary->eventTypeCounts);
+    }
+
+    /** The summary counts owners, so an owner with three cars adds one. */
+    public function testOwnerWithThreeCarsCountsAsOneMatchedWrite(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([
+            (object) ['id' => 1, 'user_id' => 101],
+            (object) ['id' => 2, 'user_id' => 101],
+            (object) ['id' => 3, 'user_id' => 101],
+        ]);
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(email: 'multi@example.com', event: 'hard_bounce', messageId: 'm1'),
+        ])->runNowWithSummary();
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertSame(1, $summary->matchedCount);
+        $this->assertSame(0, $summary->skippedCount);
         $this->assertSame(['hard_bounce' => 1], $summary->eventTypeCounts);
     }
 
@@ -802,17 +868,61 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
-     * runNowWithSummary() bypasses run(), so it repeats the verification-switch
-     * check and throws so the operator sees why.
+     * Only the send batch honours the verification switch (#2358). The
+     * backfill and the prune must run while sends are off.
      */
-    public function testRunNowWithSummaryThrowsWhenVerificationSwitchIsOff(): void
+    public function testRunNowWithSummaryRunsWhenVerificationSwitchIsOff(): void
     {
-        $job = $this->makeJob([], verificationEnabled: false);
+        $repo = $this->expectRepoCalls();
+        $repo->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/switched off site-wide/');
+        $summary = $this->makeJob([new FakeBrevoEvent(tag: 'newsletter')], $client, verificationEnabled: false)
+            ->runNowWithSummary();
 
-        $job->runNowWithSummary();
+        $this->assertSame(1, $client->fetchCalls, 'The backfill must poll Brevo with the switch off');
+        $this->assertSame(1, $summary->eventsExamined);
+    }
+
+    public function testRunReachesExecuteWhenVerificationSwitchIsOff(): void
+    {
+        $repo = $this->expectRepoCalls();
+        $repo->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
+
+        $this->makeJob([], $client, verificationEnabled: false)->run();
+
+        $this->assertSame(1, $client->fetchCalls, 'run() must reach execute() with the switch off');
+    }
+
+    /** The prune is a separate step: a crash in the backfill must not stop it. */
+    public function testPruneRunsAfterAFailedBackfillAndTheFailureStillReachesRun(): void
+    {
+        $this->mockRepo = $this->createMock(CarRepository::class);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
+        $this->mockRepo->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
+        // A non-database exception escapes applyEvent()'s catch, so it is a crash of the backfill.
+        $this->applier->failWith(new RuntimeException('backfill crashed'));
+
+        $this->makeJob([new FakeBrevoEvent()])->run();
+
+        $this->assertNotEmpty(
+            $this->logsContaining('backfill crashed'),
+            'The backfill failure must still be logged by run() after the prune'
+        );
+    }
+
+    public function testRunNowWithSummaryPrunesAfterAFailedBackfillAndRethrows(): void
+    {
+        $this->mockRepo = $this->createMock(CarRepository::class);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1, 'user_id' => 10]]);
+        $this->mockRepo->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
+        $this->applier->failWith(new RuntimeException('backfill crashed'));
+
+        try {
+            $this->makeJob([new FakeBrevoEvent()])->runNowWithSummary();
+            $this->fail('The backfill failure must be rethrown');
+        } catch (RuntimeException $e) {
+            $this->assertSame('backfill crashed', $e->getMessage());
+        }
     }
 
     // --- Helpers ---------------------------------------------------------

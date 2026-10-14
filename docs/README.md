@@ -67,7 +67,8 @@ order.
 
 #### 🔧 SPECIALIZED TOPICS
 
-- **[DEPLOYMENT.md](development/DEPLOYMENT.md)** - Production deployment procedures
+- **[DEPLOYMENT.md](development/DEPLOYMENT.md)** - Production deployment procedures, migration run orders,
+  and the read-only maintenance script `29-Report-Email-Event-Rekey.php` (#2358)
 - **[FIX_SCRIPTS.md](development/FIX_SCRIPTS.md)** - Fix script creation guidelines
 - **[BACKUP_SYSTEM.md](development/BACKUP_SYSTEM.md)** - BackupManager class API and usage
 - **[EMAIL_SYSTEM.md](development/EMAIL_SYSTEM.md)** - Brevo email plugin setup and configuration

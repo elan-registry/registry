@@ -625,7 +625,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `effectiveEmailFlags(int $userId): EffectiveEmailFlags` - Read the flags that apply to one owner now
   (#2356). One query joins `profiles` to `users`. A stored `email_blocked` or `email_bounced` applies
   when its `_address` is NULL, empty, or equal to `users.email`. The compare normalizes both sides with
-  `DeliverabilityMigrationQueries::normalizeAddress()` (trim, then lower case). `email_opted_out`
+  `EmailAddress::normalize()` (trim, then lower case). `email_opted_out`
   applies whatever the address. Returns `EffectiveEmailFlags::none()` when the owner has no `profiles`
   row or no `users` row. Throws `CarDatabaseException` if the query fails.
 - `emailFlagActiveSql(string $flag): string` - Static. Returns the SQL predicate
@@ -662,8 +662,6 @@ to provide a focused, testable data access layer wrapping the `cars`,
     empty address, an unknown cause or an invalid time, and `CarDatabaseException` on a query failure.
 - `BLOCKED_CAUSE_SPAM`, `BLOCKED_CAUSE_UNSUBSCRIBED`, `BLOCKED_CAUSE_BLOCKLIST` and `BLOCKED_CAUSES` -
   Public constants for `profiles.email_blocked_cause`.
-- `findOwnerOfCar(int $carId): ?object` - `user_id` and `username` of the car's owner. Event writes
-  use it to skip a car with no owner, a deleted owner or the `noowner` account.
 - `latestFlagClearAt(int $ownerId, string $flag, string $source): ?string` - Time of the latest
   `logs` row that cleared the flag (`new = 0`) for this owner and source. It reads the metadata
   `cleared_at` when the row has one (#2357), else `logdate`. Returns `null` when no row matches. It
@@ -684,28 +682,83 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `users.email` matches a given address (#1887, #2356). Both sides are
   normalized (trim, then lower case). The `noowner` account never matches, and
   `cars.email` is not read. A blank address returns `[]` with no query. Each
-  row holds `id` (the car) and `email` (the owner's `users.email`). The Brevo
-  webhook receiver, the reconciliation job and the suppression sync use it to
-  map an event's recipient to cars. Throws `CarDatabaseException` on query error.
+  row holds `id` (the car), `user_id` (the car's owner) and `email` (the owner's
+  `users.email`). The Brevo webhook receiver, the reconciliation job and the
+  suppression sync use it to find the owners of an event's recipient. They
+  take the distinct `user_id` values and call `EmailEventApplier::apply()`
+  once for each owner (#2358). Throws `CarDatabaseException` on query error.
+- `static ownerIdsOf(array $cars): array` - Distinct owner IDs of the rows that
+  `findByEmail()` returns, in first-seen order (#2358). It throws
+  `CarValidationException` for a bad element.
+  Callers apply one event for each owner, whatever the number of cars.
 - `insertEmailEvent(int $carId, string $email, string $event, ?string $reason, string $brevoMessageId, string $occurredAt): int` -
-  Record one Brevo delivery-status event against a car (`er_email_events`),
-  deduping on `(car_id, brevo_message_id, event)` via a hand-written
-  `ON DUPLICATE KEY UPDATE` (deliberately not `DB::insert()`'s `$update`
-  mode, which would also reassign identity columns on conflict); returns
-  MySQL's `rowCount()` (1 insert, 2 changed duplicate, 0 unchanged
-  duplicate) (#1887)
-- `countSoftBouncesSinceLastDelivered(string $email, int $carId): int` - Count distinct
-  soft-bounce send cycles (`brevo_message_id` values) for an email since the later of its
-  most recent `delivered` event and the car owner's `profiles.email_bounce_cleared_at`.
-  The soft-bounce escalation threshold is checked against this query (#1887, #2101)
-- `deleteEmailEventsForCarIds(array $carIds): int` - Delete all
-  `er_email_events` rows for a set of car ids; used by account-deletion and
-  direct car-deletion cleanup, returns the number of rows deleted (0 for an
-  empty array) (#1887)
-- `deleteEmailEventsOlderThan(\DateTimeImmutable $cutoff): int` - Delete all
-  `er_email_events` rows with `occurred_at` before the cutoff (retention
-  pruning); used by nightly reconciliation job, returns the number of rows
-  deleted (#1889)
+  Record the `sent` event of one verification email (`er_email_events`).
+  Only `CarVerificationSendService` calls it. The row carries the car, because
+  it starts that car's send cycle. It is an `INSERT ... SELECT` from `cars`
+  joined to `users`, so the row gets the car's owner as `user_id`. A car with
+  no owner, an owner with no `users` row, or the `noowner` account writes no
+  row and returns 0. The address is stored normalized. It dedups on
+  `(user_id, brevo_message_id, event)` with a hand-written
+  `ON DUPLICATE KEY UPDATE` that sets `reason` and keeps the earliest
+  `occurred_at` (`LEAST()`). It is deliberately not `DB::insert()`'s `$update`
+  mode, which would also reassign identity columns on conflict. Returns
+  MySQL's `rowCount()` (1 insert, 2 changed duplicate, 0 unchanged duplicate
+  or no row written) (#1887, #2358)
+- `insertOwnerEmailEvent(int $userId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt): int` -
+  Record a webhook, reconciliation or suppression-import event for an owner
+  (#2358). The row has `car_id` NULL, because the webhook cannot tell which of
+  the owner's cars the email was for. The upsert rule is the same as in
+  `insertEmailEvent()`. A `$userId` less than 1, a user that does not exist, or
+  the `noowner` account writes no row and returns 0. The method does not check
+  the address or the time. The callers clamp the time
+  (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it
+- `countSoftBouncesSinceLastDelivered(int $userId, string $email): int` - Count
+  distinct soft-bounce send cycles (`brevo_message_id` values) for the owner and
+  the address, since the latest of: the owner's most recent `delivered` event for
+  the address, `profiles.email_bounce_cleared_at` and `profiles.email_address_since`.
+  The address compare uses `COLLATE utf8mb4_bin`, so a former holder of the
+  address or an accent variant does not count. The soft-bounce escalation
+  threshold is checked against this query (#1887, #2101, #2358)
+- `deleteEmailEventsForUser(int $userId): int` - Delete all `er_email_events`
+  rows with this `user_id`, including rows with `car_id` NULL. The account-deletion
+  privacy step uses it. A `$userId` less than 1 issues no query and returns 0 (#2358)
+- `detachEmailEventsFromCar(int $carId): int` - Set `car_id` to NULL on the
+  rows of a car, so the events stay with the owner. `CarAdministrationService::delete()`
+  uses it. Returns the number of rows changed (#2358)
+- `deleteEmailEventsOlderThan(\DateTimeImmutable $terminalCutoff, \DateTimeImmutable $shortCutoff): int` -
+  Retention prune, used by the nightly reconciliation job. It deletes a
+  terminal event (`EmailEventApplier::HARD_BOUNCE_EVENTS` and
+  `SUPPRESSION_EVENTS`) older than `$terminalCutoff` (24 months). It deletes
+  every other row older than `$shortCutoff` (90 days). It keeps each car's
+  latest `sent` row whose `user_id` is the car's current owner. It sets that
+  row's `email` to `''` only when the row is older than `$shortCutoff`. A
+  previous owner's row on the car ages out after 90 days. A derived table
+  avoids MySQL error 1093. Throws
+  `\InvalidArgumentException` when `$terminalCutoff` is not before
+  `$shortCutoff`. Returns the rows deleted plus the `sent` rows whose `email`
+  was cleared. A second run with the same cutoffs changes no row (#1889, #2358)
+- `lockProfileAndFindAddresses(int $userId): array` - First call of the
+  account-deletion privacy step, inside its transaction. It runs
+  `SELECT ... FROM profiles WHERE user_id = ? FOR UPDATE`. This is the lock that
+  the event step of #2359 will take. Then no event row for the user can arrive
+  between the read and the delete. Today an event write takes no profile lock,
+  so this design applies after #2359 ships. A user with no profile row gets a
+  gap lock.
+  Returns the unique, non-empty, normalized addresses from five sources:
+  `email_address_seen`, `email_bounced_address` and `email_blocked_address` of
+  the profile, `DISTINCT email` of the user's event rows, and `cars.email` of
+  the user's cars (#2358)
+- `sendinblueMessagesTableExists(): bool` - Whether the sendinblue plugin's
+  `plg_sendinblue_messages` table exists in the current schema. A site without
+  the plugin has no such table (#2358)
+- `deleteSendinblueMessagesForUser(int $userId, array $addresses): int` - Delete
+  a user's `plg_sendinblue_messages` rows: the rows whose `message_id` is a
+  `brevo_message_id` of the user's event rows, and the rows whose normalized
+  `recipient_email` equals an address in `$addresses`. Call it before
+  `deleteEmailEventsForUser()`, because the first delete reads the user's event
+  rows. It skips an address that is another user's current `users.email`. It
+  drops an empty, non-string or duplicate address, and issues no `IN ()` for an
+  empty list. A `$userId` less than 1 issues no query (#2358)
 - `clearFlagsForConfirmedEmailChange(int $userId): ?array` - Clear the bounce and the block when a
   confirmed email change gives a new address (#2356). Call it inside a transaction. It locks the
   `profiles` row and the `users` row (`SELECT ... FOR UPDATE OF p, u`), profiles first, the same order
@@ -717,10 +770,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool}` with the flag values from
   before the call, or `null` when the owner has no `profiles` row or no `users` row. Used by
   `CarVerificationManager::clearFlagsForConfirmedEmailChange()`.
-- `transferEmailEvents(int $fromCarId, int $toCarId): bool` - Reassign
-  `er_email_events` rows from one car to another; used by car merge, so the
-  surviving car keeps the merged-away car's bounce/suppression history
-  instead of losing it (#1887)
+- `transferEmailEvents(int $fromCarId, int $toCarId): bool` - Move
+  `er_email_events` rows from one car to another by changing `car_id` only.
+  Car merge uses it. The rows keep their `user_id`. A car transfer to a new
+  owner does not call it and changes no event row (#1887, #2358)
 - `freshnessSql(string $alias = 'cars'): string` - Static; returns a SQL
   boolean expression determining if a car is fresh (verified within 1 year via
   `last_verified` OR edited by owner within 1 year via `owner_last_updated`).
@@ -796,13 +849,16 @@ to provide a focused, testable data access layer wrapping the `cars`,
   the owner's deliverability flags, use `effectiveEmailFlags()` (#2356). Backs the admin
   user-view's "Verification & Email" card (#1924). PDO driver typing decides the type of a numeric
   column, so cast it at the call site.
-- `findLatestEmailEventsByCarIds(array $carIds): array` - Latest (max
-  `occurred_at`) `er_email_events` row per car id, keyed by `(int) car_id`; a
-  car with no event history is simply absent from the map. Single aggregate
-  query regardless of car count (self-join against a `(car_id, MAX(occurred_at))`
-  subquery). Used alongside `findVerificationStateByOwner()` to back the
-  per-car event detail (#1924). No-ops to `[]` with no
-  query issued on an empty `$carIds` array.
+- `findLatestEmailEventsByCarIds(array $carIds): array` - Latest
+  `occurred_at DESC, id DESC` `er_email_events` row per car id in the car's
+  send cycle, keyed by `(int) car_id`. A car with no row in its cycle is absent
+  from the map. The cycle starts at the car's latest `sent` row (`car_id` = the
+  car and `user_id` = the car's owner). It holds that row and every later
+  non-`sent` row of the owner, whatever the row's `car_id`. A car with no
+  `sent` row uses only the rows with its own `car_id`. Used alongside
+  `findVerificationStateByOwner()` to back the per-car event detail (#1924,
+  #2358). Returns `[]` with no query on an empty `$carIds` array. Throws
+  `CarValidationException` for a car id that is not a positive int.
 - `findVerificationEligible(int $limit, int $offset): array` - Paginated
   query for cars eligible for a verification email: not sold, an owner with a
   non-empty `users.email` (the address the send mails), and stale — neither verified nor updated by its owner within the last
@@ -855,8 +911,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   failure.
 - `findLatestEmailEventPerCarWithPrecedence(array $carIds): array` - Find the
   `er_email_events` row that sets each car's dashboard Status chip (#1896).
-  Scopes to the car's current send cycle (from its latest `sent` event
-  onward, or all events if it has none); within the cycle, a terminal event
+  Scopes to the car's current send cycle, as `findLatestEmailEventsByCarIds()`
+  does (#2358): the car's latest `sent` row and every later non-`sent` row of
+  the owner, whatever the row's `car_id`. A car with no `sent` row uses only
+  the rows with its own `car_id`. Within the cycle, a terminal event
   (hard bounce or suppression) outranks any later non-terminal event, and
   otherwise the latest event wins. Keyed by car id; a car with no event in
   its cycle is absent from the result. Throws `CarValidationException` for a
@@ -928,13 +986,17 @@ row. Add a row and a test here when you add one.
 
 - Car class (composed data-access layer)
 - `app/api/cars/chassis-availability.php`, `app/api/cars/transfer-request.php` (`findByChassisKey()`)
-- User-deletion hook (`reassignCarsByUser()`, `deleteEmailEventsForCarIds()`)
-- `CarAdministrationService` (`deleteEmailEventsForCarIds()` on car deletion, `transferEmailEvents()` on car merge)
+- User-deletion hook (`reassignCarsByUser()`, and in the privacy step
+  `lockProfileAndFindAddresses()`, `sendinblueMessagesTableExists()`,
+  `deleteSendinblueMessagesForUser()`, `deleteEmailEventsForUser()`)
+- `CarAdministrationService` (`detachEmailEventsFromCar()` on car deletion, `transferEmailEvents()` on car merge)
 - `CarVerificationManager::clearFlagsForConfirmedEmailChange()` (the `verifySuccess` hook) (#2356)
 - `EmailNoticeBuilder`, `CarVerificationSendService`, `BrevoSuppressionSyncJob`, `user_form_hook.php`, `user_settings.php`, and the Email on file row (`effectiveEmailFlags()`)
 - Sitemap generation (`getAllForSitemap()`)
-- `BrevoWebhookEventProcessor` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#1887)
-- `BrevoEventReconciliationJob` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`, `deleteEmailEventsOlderThan()`) (#1889)
+- `BrevoWebhookEventProcessor` (`findByEmail()`) (#1887)
+- `EmailEventApplier` (`insertOwnerEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#2358)
+- `CarVerificationSendService` (`insertEmailEvent()`)
+- `BrevoEventReconciliationJob` (`findByEmail()`, `deleteEmailEventsOlderThan()`) (#1889)
 - `app/admin/includes/tab-verification.php` (`countVerificationSummary()`,
   `findVerificationQueue()`, `findRecentVerificationActivity()`,
   `findLatestEmailEventPerCarWithPrecedence()`, `QUEUE_STATUSES`) — the
@@ -1081,14 +1143,15 @@ on success.
 - `generateVerificationCode(): string` - Generate a new verification code; pure function, no repository call
 - `markVerified(object $carData): bool` - Record that a car has been verified (sets `last_verified` to now)
 - `setVerificationSentAt(object $carData, string $dateTime): bool` - Record when a verification email was sent
-- `setBounced(int $carId, string $bouncedAddress, string $bouncedAt, string $source): bool` - Event path.
-  Finds the car's owner and sets `email_bounced` on the owner's profile with the address and time.
-  Skips with a log row (and returns false) for a car that does not exist, has no owner, has a deleted owner,
-  belongs to `noowner`, or has an owner with no `profiles` row. Returns true when a bounce now applies and none applied before.
-  `$source` is one of `DeliverabilityFlagLog::SOURCES`.
-- `setSuppressed(int $carId, string $blockedAddress, ?string $cause, string $blockedAt, string $source): bool` - Event path.
-  Sets `email_blocked` on the owner's profile with address, time and cause (a Brevo `spam` or `unsubscribed`
-  event). Same skip rules and return value as `setBounced()`.
+- `setBouncedFromEvent(int $ownerId, string $bouncedAddress, string $bouncedAt, string $source): bool` - Event entry
+  point, keyed by the owner (#2358). Sets `email_bounced` on the owner's profile with the address and time.
+  Skips with a log row (and returns false) for an owner with no `profiles` row. Returns true when a bounce now
+  applies and none applied before. `$source` is one of `DeliverabilityFlagLog::SOURCES`.
+  `EmailEventApplier::apply()` calls it.
+- `setSuppressedFromEvent(int $ownerId, string $blockedAddress, ?string $cause, string $blockedAt, string $source): bool` -
+  Event entry point, keyed by the owner (#2358). Sets `email_blocked` on the owner's profile with address, time and
+  cause (a Brevo `spam` or `unsubscribed` event). Same skip rule and return value as `setBouncedFromEvent()`.
+  `EmailEventApplier::apply()` calls it.
 - `setSuppressedForOwner(int $ownerId): bool` -
   Owner opt-out (the link in the verification email). Sets `email_opted_out` and `email_opted_out_at`
   on the owner's profile, also when `email_blocked` or `email_bounced` is set. Source `owner`. Returns
@@ -1128,9 +1191,9 @@ on success.
 **Used By**:
 
 - Backend foundation for the car-owner verification system (issue #1155).
-  `setBounced()`/`setSuppressed()` gained their first production caller in
-  #1887: `EmailEventApplier` calls them when a Brevo delivery-status event
-  reports a bounce or spam complaint. The
+  Since #2358, `EmailEventApplier` calls `setBouncedFromEvent()` and
+  `setSuppressedFromEvent()` when a Brevo delivery-status event reports a
+  bounce or spam complaint. The
   verification-email-sending consumer for `setVerificationCode()`/
   `markVerified()`/`setVerificationSentAt()` still lands in a later
   verification-system milestone.
@@ -1637,12 +1700,11 @@ dependency exists between the two.
 - Admin "Verification System" tab (`app/admin/index.php`, `app/admin/includes/tab-verification.php`)
 - Toggle endpoint (`app/api/admin/verification-toggle.php`)
 - Brevo webhook receiver (`app/api/webhooks/brevo.php`) — `isEnabled()`/`brevoReady()` gates, and `incrementUnmatchedRecipientCounter()` (#1887)
-- `AbstractCronJob::run()`/`runNow()` — `isEnabled()` gate, checked before the
-  job-level `enabled` flag; covers both concrete cron jobs
-  (`BrevoEventReconciliationJob`, `BrevoSuppressionSyncJob`) and,
-  transitively, their `runNow()`-invoking admin scripts. Each job's separate
-  `runNowWithSummary()` bypass repeats the same check directly, since it does
-  not go through `run()`/`runNow()`. See
+- `SendVerificationBatchJob::refusesWhileSwitchOff()` — the `isEnabled()` gate,
+  checked by `AbstractCronJob::run()` and `runNow()` before the job-level
+  `enabled` flag. It is the only cron job that reads the switch (#2358). The
+  reconciliation and suppression-sync jobs, and their `runNowWithSummary()`
+  methods, run with the switch off. See
   `docs/development/DEPLOYMENT.md`'s cron-author contract for the full
   rationale.
 
@@ -1799,16 +1861,17 @@ subprocess dance the endpoint itself needs.
 - Rejects malformed payloads (non-object JSON, a top-level list, missing
   `email`/`event`/`message-id`, or a non-list `tags`) before any DB call
 - Filters to only events tagged `AppConstants::VERIFICATION_EMAIL_TAG`
-- Matches the payload's `email` against the owner's `users.email` and takes
-  every car of each matching owner (`CarRepository::findByEmail()`, #2356),
-  applying each car's transition independently. A stale `cars.email` does not match
+- Matches the payload's `email` against the owner's `users.email`
+  (`CarRepository::findByEmail()`, #2356) and takes the distinct owners of the
+  matching cars. It calls the applier once for each owner, whatever the number
+  of the owner's cars (#2358). A stale `cars.email` does not match
 - A malformed/overflowing `ts_event`/`ts` falls back to receipt time
   (logged) rather than producing a `DATETIME` value MySQL would reject
 - Delegates escalation rules to injected `EmailEventApplier`, shared with the
   reconciliation job (#1889), so both webhook and nightly backfill escalate
   identically
-- The whole per-car write loop fails the entire request on the first write
-  failure, even if earlier cars already succeeded — safe because every
+- The whole per-owner write loop fails the entire request on the first write
+  failure, even if earlier owners already succeeded — safe because every
   write is idempotent (`ON DUPLICATE KEY UPDATE` or a plain column update)
 
 **Methods**:
@@ -1840,9 +1903,10 @@ subprocess dance the endpoint itself needs.
 
 **Namespace**: `ElanRegistry\Car`
 
-**Purpose**: Records one Brevo delivery-status event against one car and
-applies whatever flag escalation that event implies. The flag is written to
-the car owner's profile (#2101). Extracted
+**Purpose**: Records one Brevo delivery-status event for one owner and
+applies whatever flag escalation that event implies. The event row has
+`car_id` NULL (#2358), and the flag is written to the owner's profile (#2101).
+Extracted
 from `BrevoWebhookEventProcessor` (where it was private) because the nightly
 reconciliation job (#1889) replays events the webhook never delivered, and
 both paths must escalate identically.
@@ -1875,14 +1939,16 @@ both paths must escalate identically.
 
 **Constructor Dependencies**:
 
-- `CarRepository $repo` - Event insertion and soft-bounce cycle counting
-- `CarVerificationManager $verificationManager` - Flag writes (`setBounced()`, `setSuppressed()`)
+- `CarRepository $repo` - Event insertion (`insertOwnerEmailEvent()`) and soft-bounce cycle counting
+- `CarVerificationManager $verificationManager` - Flag writes (`setBouncedFromEvent()`, `setSuppressedFromEvent()`)
 
 **Methods**:
 
-- `apply(int $carId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt,
+- `apply(int $userId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt,
   string $source): void`
-  — Record the event and apply escalation. `$source` goes into the flag-change
+  — Record the event for the owner with `$userId` and apply escalation. It takes
+  no car. Each caller calls it once for each matched owner, so an owner with
+  several cars gets one row and at most one escalation. `$source` goes into the flag-change
   log row. It has no default. The webhook passes `webhook`, the reconciliation
   job passes `reconciliation`, and the suppression import passes `import`.
   Throws `InvalidArgumentException` for an unknown `$source` (nothing is
@@ -1890,8 +1956,9 @@ both paths must escalate identically.
 
 **Used By**:
 
-- `BrevoWebhookEventProcessor::process()` — Per-car write loop
+- `BrevoWebhookEventProcessor::process()` — Per-owner write loop
 - `BrevoEventReconciliationJob::applyEvent()` — Backfill of missed events (#1889)
+- `BrevoSuppressionSyncJob` — Suppression import, one call for each matched owner (#1923, #2358)
 
 **See Also**:
 
@@ -1953,10 +2020,11 @@ a job-owned enabled flag independent of UserSpice's own `crons.active`.
   (`LOG_CATEGORY_CRON_JOB_FAILURE`)
 - **Manual run path**: `runNow()` bypasses enabled check and guard claim for
   admin-triggered immediate execution, retaining crash isolation only
-- **Verification feature switch**: `VerificationSettings::isEnabled()` is
-  checked unconditionally in both `run()` and `runNow()` for every
-  `AbstractCronJob` subclass, by design — not just Brevo-driven ones, and with
-  no per-subclass opt-out; fails closed like the `enabled` flag above
+- **Verification feature switch (opt-in)**: `refusesWhileSwitchOff()` returns
+  `false` by default, so a job runs with the switch off. A job that sends
+  email overrides it to return `!$settings->isEnabled()`. `run()` checks it
+  before the enabled read and the guard claim, so a refused run does not stamp
+  `last_run_at`. `runNow()` checks it first (#2358)
 
 **Abstract Methods (implemented by subclasses)**:
 
@@ -1966,12 +2034,19 @@ a job-owned enabled flag independent of UserSpice's own `crons.active`.
 - `execute(): void` — The job's actual work; any `\Throwable` is caught and
   logged by `run()`
 
+**Protected Methods (override in a subclass)**:
+
+- `refusesWhileSwitchOff(): bool` — Whether the job must not run now because
+  the site-wide verification switch is off. The default returns `false`.
+  Only `SendVerificationBatchJob` overrides it
+
 **Public Methods**:
 
-- `run(): void` — Check enabled state, claim the guard, set time-limit
-  backstop, execute with crash isolation; never throws
-- `runNow(): void` — Execute immediately, bypassing enabled check and guard;
-  for admin-triggered manual runs only; never throws
+- `run(): void` — Check `refusesWhileSwitchOff()`, check enabled state, claim
+  the guard, set time-limit backstop, execute with crash isolation; never throws
+- `runNow(): void` — Check `refusesWhileSwitchOff()`, then execute immediately,
+  bypassing enabled check and guard; for admin-triggered manual runs only;
+  never throws
 
 **Constructor**:
 
@@ -1984,8 +2059,8 @@ public function __construct(protected readonly DatabaseInterface $db)
 - `BrevoEventReconciliationJob` (extends `AbstractCronJob`)
 - `BrevoSuppressionSyncJob` (extends `AbstractCronJob`)
 - `SendVerificationBatchJob` (extends `AbstractCronJob`; no `runNowWithSummary()`
-  override — relies entirely on inherited `run()`/`runNow()`, including their
-  verification-switch check)
+  override — relies entirely on inherited `run()`/`runNow()`. It overrides
+  `refusesWhileSwitchOff()`, so it is the only job that the switch stops)
 
 **See Also**:
 
@@ -2209,6 +2284,11 @@ handler already calls, so the two paths can never drift apart.
 
 **Key Features**:
 
+- **The only job that the verification switch stops**: it overrides
+  `refusesWhileSwitchOff()` to return `!$this->settings->isEnabled()` (#2358).
+  With the switch off, `run()` and `runNow()` send nothing, and `run()` leaves
+  `er_cron_job_runs.last_run_at` unchanged. The first `run()` after the switch
+  goes on claims the run and sends
 - **Bounded work per invocation**: one page of at most
   `VerificationSettings::batchSize()` cars (clamped to `[1, 25]`) per claimed
   run, never a loop until the eligible set empties — both for cron's
@@ -2256,6 +2336,9 @@ public function __construct(
 
 - `jobName(): string` — Returns `'send_verification_batch'`
 - `guardIntervalHours(): int` — Returns `20`
+- `refusesWhileSwitchOff(): bool` — Protected. Returns `true` while the
+  verification switch is off. `AbstractCronJob::run()` and `runNow()` call it
+  before any other step
 - `execute(): void` — Read the configured batch size, ask
   `CarVerificationSendService::findEligible()` for that many candidates,
   hand ids to `VerificationBatchSender::processBatch()`, persist outcome
@@ -2414,8 +2497,16 @@ backfilled events escalate identically to live ones. It passes the source
 - **Per-event skip on write failure**: Individual event write failures are
   logged and skipped (not aborting the page) because retry model already
   covers them and aborting would starve every event behind it
-- **Separate retention prune**: 24-month retention cleanup wrapped in its own
-  try/catch, so prune failures do not report as backfill failures
+- **Separate retention prune**: a step of its own with two cutoffs (24 months
+  for terminal events, 90 days for the rest, #2358). It has its own try/catch,
+  so prune failures do not report as backfill failures. It runs in a `finally`
+  block after the backfill, so a failed backfill does not stop it. A backfill
+  failure still rethrows after the prune
+- **Runs with the verification switch off**: the job does not override
+  `AbstractCronJob::refusesWhileSwitchOff()`. `run()` reaches `execute()` and
+  `runNowWithSummary()` runs its work with the switch off
+- **One write for each owner**: `applyEvent()` calls `EmailEventApplier::apply()`
+  once for each owner that `findByEmail()` returns, not once for each car
 
 **Constructor**:
 
@@ -2438,14 +2529,19 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 - `LOOKBACK_HOURS = 48` — Fetch window (doubled guard interval for overlap)
 - `PAGE_SIZE = 1000` — Events per run (Brevo caps at 2500; 1000 is deliberate step below)
 - `PAGE_OFFSET = 0` — Always zero (fetch newest first; nonzero would skip them)
-- `RETENTION_MONTHS = 24` — Delete events older than this
+- `TERMINAL_RETENTION_MONTHS = 24` — The prune keeps a terminal event (hard
+  bounce, block, spam report, unsubscribe) this long
+- `SHORT_RETENTION_DAYS = 90` — The prune keeps every other row this long,
+  except each car's latest `sent` row of its current owner. That row loses its
+  address only when it is older than 90 days
 
 **Methods**:
 
 - `jobName(): string` — Returns `'brevo_reconciliation'`
 - `guardIntervalHours(): int` — Returns `20`
-- `execute(): void` — Backfill one page, log a one-line summary (with a
-  distinct suffix if the poll failed), then prune expired rows
+- `execute(): void` — Backfill one page, prune expired rows in a `finally`
+  block, then log a one-line summary (with a distinct suffix if the poll
+  failed). The prune logs its count
 - `runNowWithSummary(): ReconciliationSummary` — Sibling to the inherited
   `final runNow()` for the manual "run now" admin path (#2061). Not an
   override — `runNow()` stays `final`/void. Wraps the backfill and prune in
@@ -2459,12 +2555,12 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 - `backfillEvents(): ReconciliationSummary` — Fetch one page and apply each
   tag-matching event, returning the run's counts
 - `applyEvent(object $event, array &$counts, array &$eventTypeCounts): void`
-  — Apply one Brevo statistics-API event to its cars (tag/email/event/
+  — Apply one Brevo statistics-API event to its owners (tag/email/event/
   message-id validation, `EmailEventApplier::apply()`), incrementing the
-  passed-by-reference counters. Counts at *car-write* granularity, not event
+  passed-by-reference counters. Counts at *owner-write* granularity, not event
   granularity — see `ReconciliationSummary`
-- `pruneExpiredEvents(): void` — Delete `er_email_events` rows older than
-  retention cutoff
+- `pruneExpiredEvents(): void` — Call `CarRepository::deleteEmailEventsOlderThan()`
+  with the two cutoffs
 - `resolveOccurredAt(mixed $rawDate, string $email, string $event): string` —
   Parse Brevo's UTC date string into a PHP-default-timezone DATETIME string,
   with logged fallback to "now" on parse failure or out-of-range value
@@ -2502,15 +2598,17 @@ inline, instead of requiring a trip to Admin → Logs. Mirrors
 **Key Features**:
 
 - Pure value object — no behavior, just readonly properties
-- **Car-write granularity, not event granularity**: `matchedCount` and
-  `skippedCount` are incremented per car-write, not per event, because one
-  Brevo event can match several cars (a shared verified email) and each
-  car's write succeeds or fails independently. A single event matching 3
-  cars where 2 writes succeed and 1 fails contributes +2 to `matchedCount`
-  AND +1 to `skippedCount` simultaneously. As a direct consequence,
-  `eventsExamined` is **not** the sum of the other counts — it is the only
-  field answering "how many events did Brevo return," in a different unit
-  than the car-write counts
+- **Owner-write granularity, not event granularity** (#2358): `matchedCount`
+  and `skippedCount` are incremented per owner-write, not per event and not
+  per car. One Brevo event can match several owners (more than one account can
+  hold the same address), and each owner's write succeeds or fails
+  independently. An owner with several cars gets one write. A single event
+  matching 3 owners where 2 writes succeed and 1 fails contributes +2 to
+  `matchedCount` AND +1 to `skippedCount` simultaneously. As a direct
+  consequence, `eventsExamined` is **not** the sum of the other counts — it is
+  the only field answering "how many events did Brevo return," in a different
+  unit than the owner-write counts. Script 27 labels `matchedCount` "owners
+  matched"
 
 **Constructor** (all params required except `pollFailed`):
 
@@ -2535,7 +2633,7 @@ public function __construct(
 **See Also**:
 
 - `BrevoEventReconciliationJob` — Producer
-- `SuppressionSyncSummary` — Sibling DTO for the suppression-sync job, contrasting per-contact vs. this class's per-car-write counting
+- `SuppressionSyncSummary` — Sibling DTO for the suppression-sync job, contrasting per-contact vs. this class's per-owner-write counting
 
 ---
 
@@ -2694,6 +2792,97 @@ if ($result['valid']) {
 
 ## Support Classes
 
+### EmailAddress
+
+**Location**: `/usersc/classes/Car/EmailAddress.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: `final class` that holds the matching rule for owner email
+addresses (#2358). Runtime code compares addresses from `users`, `cars`,
+`profiles`, `er_email_events` and the sendinblue plugin with this rule.
+
+**Methods**:
+
+- `static normalize(?string $address): string` - Trim and lower-case. NULL
+  becomes `''`, and `''` matches no real address. Both sides of a compare go
+  through it, then the compare is byte for byte in PHP, or in SQL with
+  `COLLATE utf8mb4_bin`. The column collations ignore case and accents, so a
+  plain SQL `=` would match `jose@` and `josé@`.
+
+**Used By**:
+
+- `CarRepository` (event writes, flag reads, the privacy-step address list)
+- `Owner`, `usersc/scripts/during_user_creation.php`,
+  `app/admin/includes/account-cleanup-helpers.php`
+
+**See Also**:
+
+- `DeliverabilityMigrationQueries::normalizeAddress()` and
+  `EmailEventRekeyQueries::normalizeAddress()` - Frozen copies for migrations.
+  A migration must give the same result when it runs again after this rule
+  changes, so it does not call `EmailAddress`.
+
+---
+
+### EmailEventRekeyQueries
+
+**Location**: `/usersc/classes/Migration/EmailEventRekeyQueries.php`
+
+**Namespace**: `ElanRegistry\Migration`
+
+**Purpose**: The reads that decide what migration
+`20261013000000_key_er_email_events_by_user` writes (#2358). The migration and
+the read-only report script `29-Report-Email-Event-Rekey.php` call the same
+methods, so the migration does what the report shows. The class only reads.
+
+**Key Features**:
+
+- Constructor takes a `PDO` (the migration) or a `DatabaseInterface` (the
+  report script, `dbi()`).
+- The first call reads the database once and keeps the result. Make a new
+  instance after a write.
+- Every address compare uses `normalizeAddress()` and compares byte for byte in
+  PHP. SQL does no address compare, because `er_email_events.email` uses
+  `utf8mb4_unicode_ci`.
+- The matching rule and the `noowner` name are frozen copies, not references to
+  runtime classes.
+- The three outcomes of steps (b) and (c) do not overlap: a row is matched by
+  car owner, matched by address, or dropped.
+
+**Methods**:
+
+- `static normalizeAddress(?string $address): string` - Trim and lower-case. The
+  frozen copy of `EmailAddress::normalize()`.
+- `isRekeyed(): bool` - True when `user_id` is NOT NULL and `car_id` allows
+  NULL (step (e) is done). The migration skips its data phase then. The report
+  prints "already migrated".
+- `reportCounts(): array` - The five counts that the report script prints:
+  `owner_matched`, `address_matched`, `dropped`, `collapsed_removed` and
+  `collapse_groups`.
+- `assignments(): array` - Step (b). Each row that keeps a user, keyed by event
+  ID, with `user_id`, the normalized `email` and `matched_by`. Never print the
+  `email`.
+- `ownerMatchedIds(): array`, `addressMatchedIds(): array` - Step (b). The event
+  IDs matched by the car owner, and by the one user with the same address.
+- `droppedIds(): array` - Step (c). The event IDs with no user, or whose user is
+  `noowner`.
+- `collapseGroups(): array` - Step (d). Each group of rows with the same user,
+  message ID and event: the kept ID (the lowest), the removed IDs and the
+  earliest `occurred_at` of the group.
+
+**Used By**:
+
+- `database/migrations/20261013000000_key_er_email_events_by_user.php`
+- `app/admin/scripts/maintenance/29-Report-Email-Event-Rekey.php`
+
+**See Also**:
+
+- [DATABASE.md](DATABASE.md) - `er_email_events`
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Deploy steps for this migration
+
+---
+
 ### DeliverabilityMigrationQueries
 
 **Location**: `/usersc/classes/Migration/DeliverabilityMigrationQueries.php`
@@ -2723,7 +2912,8 @@ class because `phinx.php` loads `vendor/autoload.php`.
 
 - `static normalizeAddress(?string $address): string` - Trim and lower-case. NULL
   becomes `''`, and `''` matches no real address. The rule for every address
-  compare in #2101 (also used by `CarRepository` and the restore).
+  compare in #2101. It is a frozen copy since #2358. Runtime code
+  (`CarRepository`, `Owner` and the hooks) uses `EmailAddress::normalize()`.
 - `carFlagColumnsExist(): bool`, `duplicateProfileUserIds(): array`,
   `profilesToInsert(): array`, `bounceCopies(): array`, `droppedBounces(): array`,
   `optOutRestores(): array`, `blockCopies(): array`, `unknownCauseBlocks(): array`,

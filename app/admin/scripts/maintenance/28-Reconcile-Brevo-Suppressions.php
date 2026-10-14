@@ -75,7 +75,7 @@ if (!isAdmin()) {
                                 <ul class="mb-0">
                                     <li>Polls Brevo's blocked-contacts list for every suppressed address: hard bounces, spam complaints, and unsubscribes</li>
                                     <li>Runs a <strong>full backfill</strong> with no date window — unlike the nightly job's single 48-hour page — walking up to 500 pages (about 50,000 contacts), stopping early if that page count or a 20-second time limit is reached first</li>
-                                    <li>Maps Brevo's reason codes onto the registry's bounce and suppression flags through the same <code>EmailEventApplier</code> a live webhook event uses, so an imported suppression flags a car identically to a live one</li>
+                                    <li>Maps Brevo's reason codes onto the registry's bounce and suppression flags through the same <code>EmailEventApplier</code> a live webhook event uses, so an imported suppression flags the owner the same way as a live one</li>
                                     <li>Skips any reason code it does not recognize rather than guessing — unmapped codes are tallied in the breakdown below and logged</li>
                                     <li>Bypasses the normal 20-hour cron guard, so it runs even if the scheduled job has already run today</li>
                                     <li>Safe to run repeatedly — every write is idempotent under a synthetic message-id scheme, so re-importing a suppression already recorded is a no-op</li>

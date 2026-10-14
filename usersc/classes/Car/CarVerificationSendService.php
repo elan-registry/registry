@@ -380,20 +380,23 @@ final class CarVerificationSendService
         }
 
         // $eventRowsWritten === 0 IS NOT A FAILURE SIGNAL ON ITS OWN.
-        // insertEmailEvent() uses INSERT ... ON DUPLICATE KEY UPDATE, and
-        // MySQL reports 0 affected rows for that statement in TWO different
-        // situations: nothing was written at all, and the duplicate-key row
-        // already held byte-identical values so the UPDATE changed nothing.
-        // The second case is a fully-recorded send. Escalating it to
-        // sentUnrecorded() would show the admin a "this car may be emailed
-        // again" warning for a send that is, in fact, completely recorded —
-        // so it is logged as an informational note below and nothing more.
+        // insertEmailEvent() reports 0 rows in THREE situations:
+        // - nothing was written at all,
+        // - the duplicate-key row already held the same values, so the
+        //   ON DUPLICATE KEY UPDATE changed nothing,
+        // - the car has no owner, or its owner is `noowner`, so the
+        //   INSERT ... SELECT found no row to write (#2358).
+        // The second case is a fully-recorded send. The checks above stop a
+        // send to a car with no live owner, so the third case needs an owner
+        // change between those checks and the insert. A sentUnrecorded()
+        // result would show the admin a "this car may be emailed again"
+        // warning for a send that is recorded, so the code logs a note only.
         if ($eventRowsWritten === 0) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: insertEmailEvent reported 0 rows for car %d. '
-                . 'Informational only: ON DUPLICATE KEY UPDATE reports 0 both when nothing was written '
-                . 'and when the existing row already held identical values, so this alone does not mean '
-                . 'the send went unrecorded.',
+                . 'Informational only: 0 rows means one of these: nothing was written, the existing row '
+                . 'already held identical values, or the car has no owner or a noowner owner. This alone '
+                . 'does not mean the send went unrecorded.',
                 $carId
             ));
         }

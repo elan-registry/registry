@@ -430,10 +430,13 @@ Follow these rules for the deploy:
    "Roll Back This Migration" below).
 3. **Turn the webhook and the cron jobs off.** Turn off the verification
    feature switch in the Verification tab (see
-   [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#asymmetric-enabledisable-gate)). The same
-   switch gates the Brevo webhook and every `AbstractCronJob`. A webhook
-   event or a cron job that writes a flag during the run can race the copy.
-   Turn the switch back on after the checks below pass.
+   [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#asymmetric-enabledisable-gate)). The
+   switch stops the Brevo webhook and the send batch. Since #2358, it does not
+   stop the reconciliation job or the suppression-sync job. Pause both with
+   `UPDATE er_cron_job_runs SET enabled = 0 WHERE job_name IN
+   ('brevo_reconciliation', 'brevo_suppression_sync');`. A webhook event or a
+   cron job that writes a flag during the run can race the copy. Turn the
+   switch on and set `enabled` back to 1 after the checks below pass.
 4. **Check for duplicate profiles.** The migration stops, and changes nothing,
    when two `profiles` rows share a `user_id`. Run this before the push. It
    must return no rows.
@@ -481,7 +484,8 @@ Restore the backup from rule 2, then push the previous code. Do not use
 hook removes `composer.json` and `database/` (`.deployignore`), so the
 command and the migration files are not there.
 
-1. Turn off the verification feature switch, as in rule 3.
+1. Turn off the verification feature switch and pause the two Brevo cron
+   jobs, as in rule 3.
 2. In the host's phpMyAdmin, drop the tables `cars`, `cars_hist`, `profiles`
    and `deleted_accounts_archive`. Import the rule-2 export.
 3. Delete the migration records, so that the next deploy runs the migration
@@ -491,13 +495,113 @@ command and the migration files are not there.
 5. Check the restored state. `SHOW COLUMNS FROM cars LIKE 'email%'` returns
    `email`, `email_bounced`, `email_bounced_address` and `email_suppressed`.
    `SHOW TRIGGERS LIKE 'cars'` returns 3 rows.
-6. Turn the verification feature switch on again.
+6. Turn the verification feature switch on again. Set `enabled` back to 1
+   for the two paused cron jobs:
+   `UPDATE er_cron_job_runs SET enabled = 1 WHERE job_name IN
+   ('brevo_reconciliation', 'brevo_suppression_sync');`.
 
 A flag or profile change made after the deploy is lost, because the backup
 is older. A restore keeps every value that the migration changed. The
 `down()` methods do not: they lose the `cars_hist` flag values, the flags of
 a `noowner` car, the block cause, the dates, `email_address_since`,
 `email_address_seen`, and the opt-out kept for an archived account.
+
+### Migration That Keys Email Events by User (#2358)
+
+Migration `20261013000000_key_er_email_events_by_user` changes
+`er_email_events`. It adds `user_id`, makes `car_id` optional, and replaces
+the unique key `(car_id, brevo_message_id, event)` with
+`(user_id, brevo_message_id, event)`. It sets `user_id` for each row, deletes
+the rows that match no user, and collapses duplicate rows. See
+[DATABASE.md](DATABASE.md#er_email_events---brevo-delivery-status-event-log-1887-2358)
+for the schema and the matching rules.
+
+Follow these rules for the deploy:
+
+1. **Back up before the push.** Export `er_email_events` through the host's
+   phpMyAdmin (structure and data). The migration deletes and merges rows. The
+   `down()` method restores the schema only. This backup is the only full
+   rollback.
+2. **Deploy the migration and the code together.** Use one push. The new code
+   needs `er_email_events.user_id`. The old code writes no `user_id` and fails
+   once the migration has run.
+3. **Turn the webhook and the cron jobs off.** Turn off the verification
+   feature switch. It stops the webhook and the send batch. Pause the
+   reconciliation and suppression-sync jobs, because the switch does not stop
+   them:
+   `UPDATE er_cron_job_runs SET enabled = 0 WHERE job_name IN
+   ('brevo_reconciliation', 'brevo_suppression_sync');`.
+   An event that arrives during the run can write a row that the migration
+   then reads or deletes. After the checks below pass, turn the switch on and
+   set `enabled` back to 1.
+4. **Run the report script before the push.**
+   `app/admin/scripts/maintenance/29-Report-Email-Event-Rekey.php` is read-only.
+   It shows the event IDs that the migration matches by car owner, matches by
+   address, drops and collapses. Production does not have the script until the
+   deploy. So run it on a copy of production data, as in rule 7 of the
+   [#2101 migration](#migration-that-moves-email-flags-to-profiles-2101): load a
+   fresh dump into a local `elanregi_*` schema, point the local app at it, and
+   open the script as an admin. Check the counts and IDs. The migration output
+   names the same IDs. After the migration has run, the script shows "already
+   migrated" and no counts.
+5. **Rehearse the migration** on the same copy:
+   `docker compose exec -u www-data -e DB_NAME=elanregi_rehearsal app composer migrate`.
+   `composer migrate:dry-run` prints a notice for this migration and shows no
+   SQL. Compare the run output with the report.
+
+The migration output names event IDs only, never an address. It is in the
+push output.
+
+The migration stops before it changes the keys in two cases. Each stop
+leaves the committed data phase in place.
+
+- **A row still has `user_id` NULL.** An event arrived during the run, so
+  rule 3 was not followed. The error names the count. Stop the event source
+  and run the migration again. The data phase runs again and gives the late
+  row a user, or drops it.
+- **Two rows share `user_id`, `brevo_message_id` and `event`.** The new unique
+  key cannot be built. The error names the count and the lowest event ID of
+  up to five such groups. Delete or merge those rows by hand, then run the
+  migration again. It skips the steps that are done.
+
+After the deploy, check on the target database:
+
+- `SELECT version FROM phinxlog WHERE version = 20261013000000` returns one row.
+- `SHOW COLUMNS FROM er_email_events` shows `user_id` as NOT NULL and
+  `car_id` as NULL.
+- `SHOW INDEX FROM er_email_events` lists
+  `uniq_er_email_events_user_message_event`,
+  `idx_er_email_events_user_occurred` and
+  `idx_er_email_events_brevo_message_id`. It does not list a unique key on
+  `car_id`.
+
+Then run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` on test
+and verify. After that, run it on production. The script sets the permissions
+of pages that already have a row in the UserSpice `pages` table. It does not
+create rows. UserSpice creates the row for `29-Report-Email-Event-Rekey.php`
+when an admin first opens that page. So open the script once as an admin
+before you run `21-Fix-Page-Permissions.php`. See
+[UserSpice Page Permissions](#userspice-page-permissions).
+
+#### Roll Back This Migration (#2358)
+
+A rollback loses data. Restore the backup from rule 1.
+
+1. Turn off the verification feature switch and pause the two Brevo cron
+   jobs, as in rule 3.
+2. In the host's phpMyAdmin, drop the table `er_email_events`. Import the
+   rule-1 export.
+3. Delete the migration record, so that the next deploy runs the migration
+   again: `DELETE FROM phinxlog WHERE version = 20261013000000;`.
+4. Push the previous release, as in "Rollback Procedure", step 1.
+5. Turn the switch on and set `enabled` back to 1.
+
+Events recorded after the deploy are lost, because the backup is older.
+`composer migrate:rollback` runs `down()`. It deletes the rows with
+`car_id` NULL and restores the schema only. It does not restore the rows that
+`up()` deleted or collapsed. Use it only on a database where that loss is
+acceptable. After a deploy, the server has no `composer.json` and no
+`database/` directory (`.deployignore`), so it cannot run there.
 
 ### One-Time: Stamping the ElanRegistry Baseline Migration
 
@@ -643,9 +747,10 @@ Run `./scripts/update-version.sh` to generate VERSION file locally after creatin
 ### UserSpice Page Permissions
 
 - **Problem:** New pages and admin scripts need proper access permissions registered
-- **Solution:** Run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php`
-  on test, verify, then run on prod — this scans all pages and corrects their
-  permission entries in UserSpice's `pages` table
+- **Solution:** Open a new page once as an admin, so UserSpice creates its
+  `pages` row. Then run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php`
+  on test, verify, then run on prod. The script scans the pages that have a
+  `pages` row and corrects their permission entries
 - **Required whenever:** A new page, admin script, or route is added or renamed
 
 ### Brevo Sendinblue Plugin
@@ -781,21 +886,18 @@ and its shim `users/cron/brevo_event_reconciliation.php` for the required
 patterns.
 
 **The site-wide verification switch** (`VerificationSettings::isEnabled()`,
-`er_verification_settings.enabled`): checked before the job-owned `enabled`
-flag above, in both `run()` and `runNow()`. This check applies unconditionally
-to every `AbstractCronJob` subclass, by design — not scoped to Brevo-driven
-jobs specifically, the same way the webhook receiver already honors it. This
-is what makes the switch's "no real email sends until this closes" framing
-actually true across every Brevo-driven write path (webhook, both cron jobs,
-both manual admin scripts), not just the webhook. There is currently no
-opt-out: a future non-Brevo job that extends `AbstractCronJob` before the
-switch is enabled will silently never run. A job's separate
-`runNowWithSummary()` method (if used) bypasses `run()`/`runNow()` entirely
-and so cannot inherit this check; it must repeat the `isEnabled()` check
-directly and throw rather than fabricate an empty summary, so an operator
-manually triggering a run while the switch is off sees why nothing happened.
-See `docs/development/CLASSES.md`'s `AbstractCronJob` entry for the full
-"Used By" list and which jobs implement this pattern.
+`er_verification_settings.enabled`): a job opts in. `AbstractCronJob` has the
+method `refusesWhileSwitchOff(): bool`, which returns `false` by default. A job
+that sends email overrides it to return `!$settings->isEnabled()`. Only
+`SendVerificationBatchJob` does this. `run()` checks the method before the
+job-owned `enabled` flag and before the claim, so a refused run does not
+change `er_cron_job_runs.last_run_at`. `runNow()` checks it first. The
+reconciliation and suppression-sync jobs do not override it. They run with the
+switch off, because the prune, the backfill and the suppression import must
+not wait for sends. A job's separate `runNowWithSummary()` method (if used)
+bypasses `run()` and `runNow()`. It runs its work with no switch check. See
+`docs/development/CLASSES.md`'s `AbstractCronJob` entry for the full "Used By"
+list.
 
 **Implementing a new cron job:**
 
@@ -803,8 +905,10 @@ See `docs/development/CLASSES.md`'s `AbstractCronJob` entry for the full
    entry in `CronJobGuard::ALLOWED_JOB_NAMES` in `usersc/classes/Cron/CronJobGuard.php`),
    `guardIntervalHours(): int` (>= 1), and `execute(): void` (the actual work).
    Do not override `run()` or `runNow()` — both are `final`.
-   **Note**: The site-wide verification switch applies to your job unconditionally
-   even if its work has nothing to do with Brevo; don't assume you're exempt.
+   **Note**: Your job runs with the site-wide verification switch off. If the
+   job sends email, override `refusesWhileSwitchOff()` to return
+   `!$settings->isEnabled()`, so that the switch stops it. A job that reads
+   from Brevo or prunes data must not override it.
 2. Add the job name to `CronJobGuard::ALLOWED_JOB_NAMES` (manually maintained
    allowlist).
 3. Create a migration seeding a row in `er_cron_job_runs` for your job, with

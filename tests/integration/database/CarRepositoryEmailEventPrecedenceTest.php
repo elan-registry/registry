@@ -42,14 +42,6 @@ final class CarRepositoryEmailEventPrecedenceTest extends IntegrationTestCase
         ]);
     }
 
-    protected function tearDown(): void
-    {
-        if ($this->databaseConnected) {
-            $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$this->carId]);
-        }
-        parent::tearDown();
-    }
-
     private function carEmail(int $carId): string
     {
         $row = $this->db->query('SELECT email FROM cars WHERE id = ?', [$carId])->first();
@@ -59,9 +51,11 @@ final class CarRepositoryEmailEventPrecedenceTest extends IntegrationTestCase
     private function insertRawEvent(int $carId, string $event, string $brevoMessageId, string $occurredAt): void
     {
         $this->db->query(
-            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
-             VALUES (?, ?, ?, NULL, ?, ?)',
-            [$carId, $this->carEmail($carId), $event, $brevoMessageId, $occurredAt]
+            'INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+             SELECT c.user_id, c.id, ?, ?, NULL, ?, ?
+               FROM cars c
+              WHERE c.id = ?',
+            [$this->carEmail($carId), $event, $brevoMessageId, $occurredAt, $carId]
         );
         $this->assertFalse($this->db->error(), 'Failed to seed er_email_events row: ' . $this->db->errorString());
     }
@@ -208,9 +202,8 @@ final class CarRepositoryEmailEventPrecedenceTest extends IntegrationTestCase
 
     public function testCarWithNoSentRowUsesAllOfItsEvents(): void
     {
-        // No 'sent' row at all for this car (e.g. only a suppression-import
-        // row) — the method's docblock states this falls back to using every
-        // event for the car, which still means the terminal event wins.
+        // No 'sent' row at all for this car. The method then uses only the rows
+        // with this car's car_id, and the terminal event still wins.
         $this->insertRawEvent($this->carId, 'delivered', 'nosend-delivered', '2026-08-01 00:00:00');
         $this->insertRawEvent($this->carId, 'spam', 'nosend-spam', '2026-08-02 00:00:00');
 
@@ -232,9 +225,10 @@ final class CarRepositoryEmailEventPrecedenceTest extends IntegrationTestCase
         );
     }
 
-    public function testEachCarGetsItsOwnCycleScopedResultNotAnotherCarsEvent(): void
+    public function testEachCarGetsItsOwnCycleScopedResultNotAnotherOwnersEvent(): void
     {
-        $otherCarId = $this->createTestCar($this->userId, [
+        // Another owner: the events of one owner show on every car of that owner (#2358).
+        $otherCarId = $this->createTestCar($this->createTestUser(), [
             'email' => 'precedence-other-' . uniqid() . '@example.com',
         ]);
 
@@ -253,7 +247,6 @@ final class CarRepositoryEmailEventPrecedenceTest extends IntegrationTestCase
         $this->assertSame('hard_bounce', $result[$this->carId]->event, "Car A must get its own result, not car B's");
         $this->assertSame('delivered', $result[$otherCarId]->event, "Car B must get its own result, not car A's");
 
-        $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$otherCarId]);
         $this->deleteTestCar($otherCarId);
     }
 
@@ -301,7 +294,6 @@ final class CarRepositoryEmailEventPrecedenceTest extends IntegrationTestCase
             . 'from a correct single-car lookup'
         );
 
-        $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$otherCarId]);
         $this->deleteTestCar($otherCarId);
     }
 }

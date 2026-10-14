@@ -40,7 +40,6 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
     private CarRepository $repo;
     private EmailEventApplier $applier;
     private int $userId;
-    private int $carId;
     private string $carEmail;
 
     protected function setUp(): void
@@ -63,11 +62,11 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
         $this->originalEnabled = (bool) $row->enabled;
         $this->originalLastRunAt = !empty($row->last_run_at) ? (string) $row->last_run_at : null;
 
-        // The verification switch ships off and would short-circuit both paths.
+        // The verification switch ships off. Since #2358 the job ignores it, so the tests run with it off.
         $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
-        $this->db->query('UPDATE er_verification_settings SET enabled = 1 WHERE id = 1');
+        $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
 
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
@@ -75,14 +74,12 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
         // Contacts match the owner's users.email, so the owner holds the address.
         $this->carEmail = 'suppression-bypass-' . uniqid() . '@example.com';
         $this->userId = $this->createTestUser(['email' => $this->carEmail]);
-        $this->carId = $this->createTestCar($this->userId, ['email' => $this->carEmail]);
+        $this->createTestCar($this->userId, ['email' => $this->carEmail]);
     }
 
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
-            $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$this->carId]);
-
             $this->db->query(
                 'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
                 [$this->originalEnabled ? 1 : 0, $this->originalLastRunAt, self::JOB_NAME]
@@ -118,8 +115,8 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
     private function countEventRows(string $event): int
     {
         $row = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ? AND event = ?',
-            [$this->carId, $event]
+            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE user_id = ? AND event = ?',
+            [$this->userId, $event]
         )->first();
 
         return (int) $row->cnt;
@@ -201,6 +198,22 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
             $this->fetchLastRunAt(),
             'runNowWithSummary() must not touch last_run_at at all — it never calls the guard'
         );
+    }
+
+    /** #2358: run() claims the run and reaches execute() while the verification switch is off. */
+    public function testRunReachesExecuteWithTheVerificationSwitchOff(): void
+    {
+        $this->setFixtureState(enabled: true, lastRunAt: null);
+        $this->assertSame(
+            0,
+            (int) $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1')->first()->enabled,
+            'Test setup: the verification switch is off'
+        );
+
+        $this->makeJob()->run();
+
+        $this->assertSame(1, $this->countEventRows('blocked'), 'run() must apply the suppression');
+        $this->assertNotNull($this->fetchLastRunAt(), 'run() claimed the run');
     }
 
     /**

@@ -1,6 +1,6 @@
 <?php
 use ElanRegistry\LogCategories;
-use ElanRegistry\Migration\DeliverabilityMigrationQueries;
+use ElanRegistry\Car\EmailAddress;
 
 /** @var int $theNewId The script that includes this file sets it. */
 
@@ -38,7 +38,7 @@ if ($check < 1) {
             'user_id' => $theNewId,
             'bio' => "automatically added - " . $now->format('Y-m-d H:i:s'),
             'email_address_since' => $newUser->join_date,
-            'email_address_seen' => DeliverabilityMigrationQueries::normalizeAddress($newUser->email),
+            'email_address_seen' => EmailAddress::normalize($newUser->email),
         ]);
         if (!$insertResult) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to create profile during user creation for user_id={$theNewId}: {$db->errorString()}");

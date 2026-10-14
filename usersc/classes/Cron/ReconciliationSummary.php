@@ -15,20 +15,21 @@ namespace ElanRegistry\Cron;
  *
  * COUNTING GRANULARITY — READ BEFORE ADDING UP THESE FIELDS. Unlike
  * {@see SuppressionSyncSummary}, which counts one bucket per *contact*, this
- * summary counts {@see $matchedCount} and {@see $skippedCount} at *car-write*
- * granularity, because one Brevo event can match several cars (the same
- * verified email address can be registered to more than one car), and each
- * car's write is applied and can fail independently through
- * {@see \ElanRegistry\Car\EmailEventApplier::apply()}. A single event that
- * matches 3 cars, where 2 writes succeed and 1 throws, contributes +2 to
- * `matchedCount` AND +1 to `skippedCount` at the same time — it is not "the
- * event counted as matched" or "the event counted as skipped", both happen
- * for that one event. As a direct consequence, {@see $eventsExamined} is NOT
+ * summary counts {@see $matchedCount} and {@see $skippedCount} at *owner-write*
+ * granularity, because one Brevo event can match several owners (more than
+ * one account can hold the same address), and each owner's write is applied
+ * and can fail independently through
+ * {@see \ElanRegistry\Car\EmailEventApplier::apply()}. An owner with several
+ * cars gets one write (#2358). A single event that matches 3 owners, where
+ * 2 writes succeed and 1 throws, contributes +2 to `matchedCount` AND +1 to
+ * `skippedCount` at the same time — it is not "the event counted as matched"
+ * or "the event counted as skipped", both happen for that one event. As a
+ * direct consequence, {@see $eventsExamined} is NOT
  * `matchedCount + unmatchedCount + skippedCount + ignoredByTagCount`: the
- * left side counts events, the first two terms on the right count car-writes,
- * so they are not even the same unit of measure. `eventsExamined` is the only
- * field here that answers "how many events did Brevo return this run" — do
- * not try to reconstruct it from the other counts.
+ * left side counts events, the first two terms on the right count
+ * owner-writes, so they are not even the same unit of measure.
+ * `eventsExamined` is the only field here that answers "how many events did
+ * Brevo return this run" — do not try to reconstruct it from the other counts.
  *
  * A pure value object with no behavior: it is written by the job and read by
  * the admin script, and any interpretation of the numbers belongs to one of
@@ -41,21 +42,21 @@ namespace ElanRegistry\Cron;
 final readonly class ReconciliationSummary
 {
     /**
-     * @param int                $matchedCount      Car-writes that succeeded via
+     * @param int                $matchedCount      Owner-writes that succeeded via
      *                                              {@see \ElanRegistry\Car\EmailEventApplier::apply()} —
-     *                                              counted per car, not per event; see the class
+     *                                              counted per owner, not per event; see the class
      *                                              docblock's counting-granularity note
      * @param int                $unmatchedCount    Events whose recipient address matched zero cars
      *                                              via {@see \ElanRegistry\Car\CarRepository::findByEmail()}
-     * @param int                $skippedCount      Events or car-writes skipped for any other reason:
+     * @param int                $skippedCount      Events or owner-writes skipped for any other reason:
      *                                              a non-string payload field, an empty required field,
      *                                              an oversized value, a failed `findByEmail()` lookup, or
-     *                                              a failed per-car write — counted per car for the
-     *                                              per-car write failure, per event for everything else;
+     *                                              a failed per-owner write — counted per owner for the
+     *                                              per-owner write failure, per event for everything else;
      *                                              see the class docblock's counting-granularity note
-     * @param array<string, int> $eventTypeCounts   Car-write counts keyed on Brevo's raw event name
+     * @param array<string, int> $eventTypeCounts   Owner-write counts keyed on Brevo's raw event name
      *                                              (`hard_bounce`, `delivered`, ...), incremented once
-     *                                              per successfully-applied car-write
+     *                                              per successfully-applied owner-write
      * @param int                $eventsExamined    Rows returned by `fetchEvents()` this run, independent
      *                                              of how each was bucketed — NOT the sum of the other
      *                                              counts; see the class docblock

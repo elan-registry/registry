@@ -71,13 +71,6 @@ final class CarVerificationManagerTest extends TestCase
         return $row['metadata'];
     }
 
-    /** Stub findOwnerOfCar() with a live individual owner. */
-    private function stubOwnerOfCar(int $carId = 11, int $userId = 42, string $username = 'realowner'): void
-    {
-        $this->mockRepo->method('findOwnerOfCar')->with($carId)
-            ->willReturn((object) ['user_id' => $userId, 'username' => $username]);
-    }
-
     public function testSetVerificationCodeSucceeds(): void
     {
         $code = 'VERIFY12345678';
@@ -288,111 +281,83 @@ final class CarVerificationManagerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Event writers: setBounced() / setSuppressed()
+    // Event writers: setBouncedFromEvent() / setSuppressedFromEvent()
     // ------------------------------------------------------------------
 
-    public function testSetBouncedWritesOneProfileRowForTheCarsOwnerAndLogsTheChange(): void
+    public function testSetBouncedFromEventWritesOneProfileRowForTheOwnerAndLogsTheChange(): void
     {
-        $this->stubOwnerOfCar();
         $this->mockRepo->expects($this->once())->method('setProfileBounced')
             ->with(42, 'owner@example.com', '2026-09-01 10:00:00')->willReturn(0);
         $this->mockRepo->expects($this->never())->method('updateCar');
         $this->mockRepo->expects($this->never())->method('findByOwner');
 
-        $changed = $this->manager->setBounced(11, 'owner@example.com', '2026-09-01 10:00:00', 'webhook');
+        $changed = $this->manager->setBouncedFromEvent(42, 'owner@example.com', '2026-09-01 10:00:00', 'webhook');
 
         $this->assertTrue($changed);
         $this->assertOneFlagLogRow(0, 42, 'email_bounced', 0, 1, 'webhook');
     }
 
     /** A repeat bounce on the same address changes nothing, so it logs nothing. */
-    public function testSetBouncedReturnsFalseAndLogsNothingWhenAlreadyBounced(): void
+    public function testSetBouncedFromEventReturnsFalseAndLogsNothingWhenAlreadyBounced(): void
     {
-        $this->stubOwnerOfCar();
         $this->mockRepo->method('setProfileBounced')->willReturn(1);
 
-        $this->assertFalse($this->manager->setBounced(11, 'owner@example.com', '2026-09-01 10:00:00', 'webhook'));
+        $this->assertFalse($this->manager->setBouncedFromEvent(42, 'owner@example.com', '2026-09-01 10:00:00', 'webhook'));
         $this->assertSame([], $this->flagLogRows);
     }
 
-    public function testSetBouncedPassesTheReconciliationSourceToTheAuditRow(): void
+    public function testSetBouncedFromEventPassesTheReconciliationSourceToTheAuditRow(): void
     {
-        $this->stubOwnerOfCar();
         $this->mockRepo->method('setProfileBounced')->willReturn(0);
 
-        $this->manager->setBounced(11, 'owner@example.com', '2026-09-01 10:00:00', 'reconciliation');
+        $this->manager->setBouncedFromEvent(42, 'owner@example.com', '2026-09-01 10:00:00', 'reconciliation');
 
         $this->assertOneFlagLogRow(0, 42, 'email_bounced', 0, 1, 'reconciliation');
     }
 
-    /**
-     * @return array<string, array{?object, string}>
-     */
-    public static function unwritableEventOwnerProvider(): array
+    /** Brevo does not retry, so an event for an owner with no profile is logged and skipped, not thrown. */
+    public function testSetBouncedFromEventReturnsFalseAndLogsWhenTheOwnerHasNoProfileRow(): void
     {
-        return [
-            'car does not exist' => [null, 'the car does not exist'],
-            'car has no owner' => [(object) ['user_id' => null, 'username' => null], 'the car has no owner'],
-            'owner account deleted' => [(object) ['user_id' => 42, 'username' => null], 'the owner account does not exist'],
-            'noowner system account' => [(object) ['user_id' => 3, 'username' => 'noowner'], 'noowner system account'],
-        ];
-    }
+        $this->mockRepo->expects($this->once())->method('setProfileBounced')
+            ->with(42, 'owner@example.com', '2026-09-01 10:00:00')
+            ->willReturn(null);
 
-    #[DataProvider('unwritableEventOwnerProvider')]
-    public function testSetBouncedSkipsAndLogsWhenThereIsNoIndividualOwner(?object $owner, string $why): void
-    {
-        $this->mockRepo->method('findOwnerOfCar')->willReturn($owner);
-        $this->mockRepo->expects($this->never())->method('setProfileBounced');
-
-        $this->assertFalse($this->manager->setBounced(11, 'owner@example.com', '2026-09-01 10:00:00', 'webhook'));
+        $this->assertFalse($this->manager->setBouncedFromEvent(42, 'owner@example.com', '2026-09-01 10:00:00', 'webhook'));
 
         global $mockLogEntries;
         $this->assertCount(1, $mockLogEntries, 'A skipped event must leave one log row so the cause can be found');
-        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $mockLogEntries[0]['category']);
-        $this->assertStringContainsString($why, $mockLogEntries[0]['message']);
+        // A skipped event is Brevo event tracking, so it logs under the webhook category (#2358).
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $mockLogEntries[0]['category']);
+        $this->assertSame(42, $mockLogEntries[0]['user_id'], 'The log row names the owner as its user');
+        $this->assertStringContainsString('setBouncedFromEvent', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('for owner 42', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('the owner has no profiles row', $mockLogEntries[0]['message']);
         $this->assertStringNotContainsString('@', $mockLogEntries[0]['message']);
         $this->assertSame([], $this->flagLogRows);
     }
 
-    /** Brevo does not retry, so an event for an owner with no profile is logged and skipped, not thrown. */
-    public function testSetBouncedSkipsAndLogsWhenTheOwnerHasNoProfileRow(): void
+    public function testSetBouncedFromEventRejectsAnUnknownSourceBeforeAnyWrite(): void
     {
-        $this->stubOwnerOfCar();
-        $this->mockRepo->method('setProfileBounced')->willReturn(null);
-
-        $this->assertFalse($this->manager->setBounced(11, 'owner@example.com', '2026-09-01 10:00:00', 'webhook'));
-
-        global $mockLogEntries;
-        $this->assertCount(1, $mockLogEntries);
-        $this->assertStringContainsString('owner 42 has no profiles row', $mockLogEntries[0]['message']);
-        $this->assertSame([], $this->flagLogRows);
-    }
-
-    public function testSetBouncedRejectsAnUnknownSourceBeforeAnyRead(): void
-    {
-        $this->mockRepo->expects($this->never())->method('findOwnerOfCar');
         $this->mockRepo->expects($this->never())->method('setProfileBounced');
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->manager->setBounced(11, 'owner@example.com', '2026-09-01 10:00:00', 'bogus');
+        $this->manager->setBouncedFromEvent(42, 'owner@example.com', '2026-09-01 10:00:00', 'bogus');
     }
 
-    public function testSetBouncedPropagatesCarDatabaseExceptionFromTheProfileWrite(): void
+    public function testSetBouncedFromEventPropagatesCarDatabaseExceptionFromTheProfileWrite(): void
     {
-        $this->stubOwnerOfCar();
         $this->mockRepo->method('setProfileBounced')->willThrowException(new CarDatabaseException('lock timeout'));
 
         $this->expectException(CarDatabaseException::class);
-        $this->manager->setBounced(11, 'owner@example.com', '2026-09-01 10:00:00', 'webhook');
+        $this->manager->setBouncedFromEvent(42, 'owner@example.com', '2026-09-01 10:00:00', 'webhook');
     }
 
-    public function testSetBouncedPropagatesCarValidationExceptionForAnEmptyAddress(): void
+    public function testSetBouncedFromEventPropagatesCarValidationExceptionForAnEmptyAddress(): void
     {
-        $this->stubOwnerOfCar();
         $this->mockRepo->method('setProfileBounced')->willThrowException(new CarValidationException('address required'));
 
         $this->expectException(CarValidationException::class);
-        $this->manager->setBounced(11, '', '2026-09-01 10:00:00', 'webhook');
+        $this->manager->setBouncedFromEvent(42, '', '2026-09-01 10:00:00', 'webhook');
     }
 
     /**
@@ -408,60 +373,51 @@ final class CarVerificationManagerTest extends TestCase
     }
 
     #[DataProvider('blockCauseProvider')]
-    public function testSetSuppressedWritesOneProfileRowWithTheCauseAndLogsTheChange(string $cause): void
+    public function testSetSuppressedFromEventWritesOneProfileRowWithTheCauseAndLogsTheChange(string $cause): void
     {
-        $this->stubOwnerOfCar();
         $this->mockRepo->expects($this->once())->method('setProfileBlocked')
             ->with(42, 'owner@example.com', $cause, '2026-09-01 10:00:00')->willReturn(0);
         $this->mockRepo->expects($this->never())->method('updateCar');
 
-        $changed = $this->manager->setSuppressed(11, 'owner@example.com', $cause, '2026-09-01 10:00:00', 'import');
+        $changed = $this->manager->setSuppressedFromEvent(42, 'owner@example.com', $cause, '2026-09-01 10:00:00', 'import');
 
         $this->assertTrue($changed);
         $this->assertOneFlagLogRow(0, 42, 'email_blocked', 0, 1, 'import');
     }
 
-    public function testSetSuppressedReturnsFalseAndLogsNothingWhenAlreadyBlocked(): void
+    public function testSetSuppressedFromEventReturnsFalseAndLogsNothingWhenAlreadyBlocked(): void
     {
-        $this->stubOwnerOfCar();
         $this->mockRepo->method('setProfileBlocked')->willReturn(1);
 
-        $this->assertFalse($this->manager->setSuppressed(11, 'owner@example.com', 'spam', '2026-09-01 10:00:00', 'webhook'));
+        $this->assertFalse($this->manager->setSuppressedFromEvent(42, 'owner@example.com', 'spam', '2026-09-01 10:00:00', 'webhook'));
         $this->assertSame([], $this->flagLogRows);
     }
 
-    #[DataProvider('unwritableEventOwnerProvider')]
-    public function testSetSuppressedSkipsAndLogsWhenThereIsNoIndividualOwner(?object $owner, string $why): void
+    public function testSetSuppressedFromEventReturnsFalseAndLogsWhenTheOwnerHasNoProfileRow(): void
     {
-        $this->mockRepo->method('findOwnerOfCar')->willReturn($owner);
-        $this->mockRepo->expects($this->never())->method('setProfileBlocked');
+        $this->mockRepo->expects($this->once())->method('setProfileBlocked')
+            ->with(42, 'owner@example.com', 'spam', '2026-09-01 10:00:00')
+            ->willReturn(null);
 
-        $this->assertFalse($this->manager->setSuppressed(11, 'owner@example.com', 'spam', '2026-09-01 10:00:00', 'webhook'));
+        $this->assertFalse($this->manager->setSuppressedFromEvent(42, 'owner@example.com', 'spam', '2026-09-01 10:00:00', 'webhook'));
 
         global $mockLogEntries;
         $this->assertCount(1, $mockLogEntries);
-        $this->assertStringContainsString($why, $mockLogEntries[0]['message']);
-    }
-
-    public function testSetSuppressedSkipsAndLogsWhenTheOwnerHasNoProfileRow(): void
-    {
-        $this->stubOwnerOfCar();
-        $this->mockRepo->method('setProfileBlocked')->willReturn(null);
-
-        $this->assertFalse($this->manager->setSuppressed(11, 'owner@example.com', 'spam', '2026-09-01 10:00:00', 'webhook'));
-
-        global $mockLogEntries;
-        $this->assertStringContainsString('owner 42 has no profiles row', $mockLogEntries[0]['message']);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $mockLogEntries[0]['category']);
+        $this->assertSame(42, $mockLogEntries[0]['user_id'], 'The log row names the owner as its user');
+        $this->assertStringContainsString('setSuppressedFromEvent', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('for owner 42', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('the owner has no profiles row', $mockLogEntries[0]['message']);
+        $this->assertStringNotContainsString('@', $mockLogEntries[0]['message']);
         $this->assertSame([], $this->flagLogRows);
     }
 
-    public function testSetSuppressedRejectsAnUnknownSourceBeforeAnyRead(): void
+    public function testSetSuppressedFromEventRejectsAnUnknownSourceBeforeAnyWrite(): void
     {
-        $this->mockRepo->expects($this->never())->method('findOwnerOfCar');
         $this->mockRepo->expects($this->never())->method('setProfileBlocked');
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->manager->setSuppressed(11, 'owner@example.com', 'spam', '2026-09-01 10:00:00', 'bogus');
+        $this->manager->setSuppressedFromEvent(42, 'owner@example.com', 'spam', '2026-09-01 10:00:00', 'bogus');
     }
 
     // ------------------------------------------------------------------

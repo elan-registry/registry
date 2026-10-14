@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Cron;
 
-use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\LogCategories;
 
@@ -30,17 +29,13 @@ use ElanRegistry\LogCategories;
  *      hung job doesn't run forever.
  *   3. A job-owned `enabled` flag (`er_cron_job_runs.enabled`, independent of
  *      UserSpice's own `crons.active`) checked before any work runs.
- *   4. The site-wide verification feature switch ({@see VerificationSettings::isEnabled()})
- *      is also checked before any work runs — both `run()` and `runNow()`. This
- *      check is unconditional for every AbstractCronJob subclass, by design:
- *      there is no per-subclass opt-out today, so a future non-Brevo job
- *      extending this class would be silently gated too, and its author should
- *      expect that rather than be surprised by it. The switch exists because
- *      every Brevo-driven write to car records (webhook, both cron jobs, both
- *      manual admin scripts) must honor it so it actually gates "no real email
- *      sends" as documented, not just the webhook receiver. Fails closed like
- *      the `enabled` flag above: a database hiccup reading the switch hides the
- *      feature rather than running anyway.
+ *   4. A switch gate: {@see self::refusesWhileSwitchOff()}. The base class
+ *      returns false, so a job runs with the site-wide verification switch
+ *      off. A job that must stop while the switch is off overrides it. Only
+ *      the send batch does: the prune, the reconciliation and the suppression
+ *      import must run while sends are off. `run()` checks it before the
+ *      enabled read and the claim, so a refused run does not stamp
+ *      `last_run_at`. `runNow()` checks it first.
  *
  * The enabled check is a dedicated read rather than an inference from
  * `CronJobGuard::claim()`'s boolean: `claim()` deliberately conflates
@@ -59,8 +54,9 @@ use ElanRegistry\LogCategories;
  * section, for the full rationale — this docblock intentionally doesn't
  * duplicate it.
  *
- * Subclasses implement `jobName()`, `guardIntervalHours()` and `execute()`
- * only. `run()` is `final` — subclasses must not override the
+ * Subclasses implement `jobName()`, `guardIntervalHours()` and `execute()`.
+ * A subclass may also override `refusesWhileSwitchOff()`, and nothing else.
+ * `run()` is `final` — subclasses must not override the
  * crash-isolation/guard sequencing.
  *
  * CONVENTION: pair `runNow()` with a subclass-defined `runNowWithSummary()`.
@@ -100,18 +96,32 @@ abstract class AbstractCronJob
     abstract protected function execute(): void;
 
     /**
-     * Run this job: check enabled, claim the guard, set a time-limit
-     * backstop, execute with crash isolation. Never throws.
+     * Whether this job must not run now because of the site-wide verification
+     * switch.
+     *
+     * The default is false: most jobs must run with the switch off. A job
+     * that sends email overrides this.
+     *
+     * @return bool True to refuse the run
+     */
+    protected function refusesWhileSwitchOff(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Run this job: check the switch gate ({@see self::refusesWhileSwitchOff()}),
+     * check enabled, claim the guard, set a time-limit backstop, execute with
+     * crash isolation. Never throws.
      */
     final public function run(): void
     {
         $jobName = $this->jobName();
 
-        if (!(new VerificationSettings($this->db))->isEnabled()) {
-            // Verification is switched off site-wide — no Brevo-driven write
-            // should happen anywhere, cron included. Not worth a log line per
-            // hit: same reasoning as the webhook's own silent drop for this
-            // same state.
+        if ($this->refusesWhileSwitchOff()) {
+            // Before the claim, so that the first run after the switch goes on
+            // is due. No log line: the switch is an operator choice, and cron
+            // hits about 144 times each day.
             return;
         }
 
@@ -170,7 +180,7 @@ abstract class AbstractCronJob
 
     /**
      * Run this job's work immediately, bypassing both the enabled check and
-     * the CronJobGuard claim.
+     * the CronJobGuard claim. The switch gate still applies.
      *
      * For the manual "run now" admin maintenance path only — an operator who
      * explicitly triggers a run has already made the scheduling decision the
@@ -195,10 +205,9 @@ abstract class AbstractCronJob
      */
     final public function runNow(): void
     {
-        if (!(new VerificationSettings($this->db))->isEnabled()) {
-            // Same site-wide gate as run() — an operator manually triggering
-            // a run has made the scheduling decision, not the go-live
-            // decision. Silent, matching run()'s own silent drop.
+        if ($this->refusesWhileSwitchOff()) {
+            // The switch gate applies to a manual run too. The switch is the
+            // go-live decision, and a button click does not override it.
             return;
         }
 

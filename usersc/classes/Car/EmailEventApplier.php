@@ -9,14 +9,14 @@ use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 
 /**
- * EmailEventApplier - Records one Brevo delivery-status event against one car
+ * EmailEventApplier - Records one Brevo delivery-status event for one owner
  * and applies whatever verification-flag escalation that event implies
  *
  * Extracted from {@see BrevoWebhookEventProcessor} (where it lived as a private
  * method) because a second, non-webhook caller now needs the identical mapping:
  * the nightly reconciliation job of issue #1889 replays events Brevo's webhook
  * never delivered (a dropped POST, an outage, a 5xx Brevo eventually gave up
- * retrying). Both call paths must escalate a car identically, and the only way
+ * retrying). Both call paths must escalate an owner identically, and the only way
  * to guarantee that is for both to run this same code — the alternative would
  * be either a duplicated copy of the rules that silently drifts, or forcing the
  * cron job to synthesize fake webhook payloads just to reach
@@ -28,8 +28,11 @@ use ElanRegistry\LogCategories;
  * discovered the event (webhook POST body vs. Brevo API poll).
  *
  * The flags belong to the owner's profile, not to the car (#2101). The event
- * row is still recorded against the car. {@see CarVerificationManager} finds
- * the car's owner and writes the profile, with the flag's address and time.
+ * row belongs to the owner too (#2358): the webhook cannot tell which of the
+ * owner's cars an email was for, so the row has `car_id` NULL and every car
+ * of the owner shows it. A user that does not exist, or the `noowner`
+ * system account, gets no row. {@see CarVerificationManager} writes the
+ * profile, with the flag's address and time.
  *
  * ESCALATION RULES:
  * - `hard_bounce` / `blocked` / `invalid` / `invalid_email` immediately set
@@ -73,7 +76,7 @@ class EmailEventApplier
 {
     /**
      * Number of distinct soft-bounce send cycles since the last delivery that
-     * escalates a car to a confirmed bounce.
+     * escalates an owner to a confirmed bounce.
      */
     private const SOFT_BOUNCE_ESCALATION_THRESHOLD = 3;
 
@@ -136,8 +139,12 @@ class EmailEventApplier
     ) {}
 
     /**
-     * Record the event for one matched car and apply any resulting escalation
+     * Record the event for one owner and apply any resulting escalation
      *
+     * Each caller calls this once per matched owner, not once per car, so an
+     * owner with several cars gets one row and at most one escalation.
+     *
+     * @param int $userId Owner user ID
      * @param string $source Who found the event: one of {@see DeliverabilityFlagLog::SOURCES},
      *                       normally `webhook`, `reconciliation` or `import`
      * @throws \InvalidArgumentException If $source is not a permitted value (nothing is written)
@@ -145,7 +152,7 @@ class EmailEventApplier
      * @throws CarDatabaseException If any write fails
      */
     public function apply(
-        int $carId,
+        int $userId,
         string $email,
         string $event,
         ?string $reason,
@@ -155,24 +162,24 @@ class EmailEventApplier
     ): void {
         DeliverabilityFlagLog::assertValidSource($source);
 
-        $this->repo->insertEmailEvent($carId, $email, $event, $reason, $messageId, $occurredAt);
+        $this->repo->insertOwnerEmailEvent($userId, $email, $event, $reason, $messageId, $occurredAt);
 
         if (in_array($event, self::HARD_BOUNCE_EVENTS, true)) {
-            $this->verificationManager->setBounced($carId, $email, $occurredAt, $source);
+            $this->verificationManager->setBouncedFromEvent($userId, $email, $occurredAt, $source);
             return;
         }
 
         if ($event === 'soft_bounce') {
-            $cycles = $this->repo->countSoftBouncesSinceLastDelivered($email, $carId);
+            $cycles = $this->repo->countSoftBouncesSinceLastDelivered($userId, $email);
             if ($cycles >= self::SOFT_BOUNCE_ESCALATION_THRESHOLD) {
-                $this->verificationManager->setBounced($carId, $email, $occurredAt, $source);
+                $this->verificationManager->setBouncedFromEvent($userId, $email, $occurredAt, $source);
             }
             return;
         }
 
         if (isset(self::SUPPRESSION_EVENT_CAUSES[$event])) {
-            $this->verificationManager->setSuppressed(
-                $carId,
+            $this->verificationManager->setSuppressedFromEvent(
+                $userId,
                 $email,
                 self::SUPPRESSION_EVENT_CAUSES[$event],
                 $occurredAt,
@@ -200,10 +207,10 @@ class EmailEventApplier
             // event was discovered, so all three call paths' unrecognized events
             // land in one searchable category.
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo: unrecognized event "%s" recorded for car %d with no flag change'
+                'Brevo: unrecognized event "%s" recorded for owner %d with no flag change'
                 . ' — Brevo may have added or renamed an event type.',
                 $event,
-                $carId
+                $userId
             ));
         }
     }
