@@ -394,6 +394,12 @@ logger($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created');
 logger($userId, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'Car update failed: ' . $e->getMessage());
 ```
 
+**No address in a log line**: an exception message can hold an email address
+(`CarRepository` puts the address in some messages). In code that handles
+owner addresses, log `ExceptionLogSummary::of($e)` instead of the message. It
+gives `<Class> (code <code>[, SQLSTATE <x>]) at <file>:<line>`. The SQLSTATE
+comes from `CarDatabaseException::sqlState()` (#2359).
+
 ### Exceptions
 
 **Choose appropriate exception type**: Use specific exceptions (CarValidationException, OwnerValidationException) not generic Exception.

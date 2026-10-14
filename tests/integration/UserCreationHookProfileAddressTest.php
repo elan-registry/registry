@@ -7,6 +7,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatch;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -141,7 +142,16 @@ final class UserCreationHookProfileAddressTest extends IntegrationTestCase
         $repo = new CarRepository($this->db);
         $applier = new EmailEventApplier($repo, new CarVerificationManager($repo));
 
-        $applier->apply($userId, 'signup-bounce@example.com', 'hard_bounce', null, 'signup-msg-1', $bounceTime, 'webhook');
+        $applier->apply(
+            EmailEventMatch::matched($userId, null, $bounceTime),
+            'signup-bounce@example.com',
+            'hard_bounce',
+            null,
+            'signup-msg-1',
+            $bounceTime,
+            'webhook',
+            EmailEventApplier::MODE_EVENT
+        );
 
         $flags = $this->getOwnerEmailFlags($userId);
         $this->assertSame('1', (string) $flags['email_bounced']);

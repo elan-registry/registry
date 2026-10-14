@@ -11,9 +11,13 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * #2358: the two dashboard readers select a car's events by the car's owner.
  *
- * A webhook event belongs to the owner and has `car_id` NULL. After a car's
- * cycle start (its latest `sent` row), the car shows every non-`sent` row of
- * `user_id = cars.user_id`, whatever the row's `car_id`. Real rows, real SQL.
+ * After a car's cycle start (its latest `sent` row), the car shows every
+ * non-`sent` row of `user_id = cars.user_id` with `car_id` = the car. A row
+ * for another car of the owner never shows. A row with `car_id` NULL is for
+ * mail that matched no verification send. It shows only when it is a
+ * terminal event (#2359, criterion 41). A row with the message ID of the
+ * car's cycle-start `sent` row also shows, whatever its `car_id` (a row that
+ * the #2358 migration collapsed). Real rows, real SQL.
  */
 #[Group('integration')]
 final class CarRepositoryEmailEventReadersTest extends IntegrationTestCase
@@ -65,7 +69,7 @@ final class CarRepositoryEmailEventReadersTest extends IntegrationTestCase
         ];
     }
 
-    public function testOneOwnerLevelDeliveredRowChangesTheChipOfAllThreeCars(): void
+    public function testAnOwnerLevelDeliveredRowLeavesTheChipAndAnOwnerLevelHardBounceChangesIt(): void
     {
         $carIds = [$this->newCar($this->ownerId), $this->newCar($this->ownerId), $this->newCar($this->ownerId)];
         // Each car has its own cycle start, at a different time.
@@ -78,13 +82,20 @@ final class CarRepositoryEmailEventReadersTest extends IntegrationTestCase
             }
         }
 
-        // The webhook cannot tell the car. It writes one row for the owner, after all three cycle starts.
+        // A password reset after all three cycle starts: its rows have no car.
         $this->insertEvent($this->ownerId, null, 'delivered', 'brevo-1', '2026-05-01 10:20:00');
 
         foreach ($this->bothReaders($carIds) as $reader => $result) {
             foreach ($carIds as $carId) {
-                $this->assertArrayHasKey($carId, $result, "{$reader}: car {$carId}");
-                $this->assertSame('delivered', $result[$carId]->event, "{$reader}: the owner-level row must change the chip of car {$carId}");
+                $this->assertSame('sent', $result[$carId]->event, "{$reader}: a car-less delivered row must not change the chip of car {$carId}");
+            }
+        }
+
+        $this->insertEvent($this->ownerId, null, 'hard_bounce', 'brevo-1', '2026-05-01 10:21:00');
+
+        foreach ($this->bothReaders($carIds) as $reader => $result) {
+            foreach ($carIds as $carId) {
+                $this->assertSame('hard_bounce', $result[$carId]->event, "{$reader}: a car-less hard bounce must show on car {$carId}");
                 $this->assertSame('brevo-1', $result[$carId]->brevo_message_id);
             }
         }
@@ -187,10 +198,10 @@ final class CarRepositoryEmailEventReadersTest extends IntegrationTestCase
             $this->assertSame('local:next', $result[$car]->brevo_message_id);
         }
 
-        // An owner-level row of the new owner counts after the new cycle start.
-        $this->insertEvent($newOwnerId, null, 'delivered', 'brevo-new', '2026-05-06 10:00:00');
+        // An owner-level terminal row of the new owner counts after the new cycle start.
+        $this->insertEvent($newOwnerId, null, 'hard_bounce', 'brevo-new', '2026-05-06 10:00:00');
         foreach ($this->bothReaders([$car]) as $reader => $result) {
-            $this->assertSame('delivered', $result[$car]->event, $reader);
+            $this->assertSame('hard_bounce', $result[$car]->event, $reader);
             $this->assertSame('brevo-new', $result[$car]->brevo_message_id);
         }
     }
@@ -208,16 +219,39 @@ final class CarRepositoryEmailEventReadersTest extends IntegrationTestCase
         }
     }
 
-    public function testTheOwnersOtherCarRowWithACarIdShowsAfterTheCycleStart(): void
+    public function testAnotherCarsEventsOfTheSameOwnerDoNotChangeThisCarsChip(): void
     {
-        // A collapsed migration group keeps the car_id of one car. The reader ignores car_id on a non-sent row.
-        $car = $this->newCar($this->ownerId);
-        $otherCar = $this->newCar($this->ownerId);
-        $this->insertEvent($this->ownerId, $car, 'sent', 'local:a', '2026-05-08 09:00:00');
-        $this->insertEvent($this->ownerId, $otherCar, 'delivered', 'brevo-kept-on-other-car', '2026-05-08 09:30:00');
+        $carA = $this->newCar($this->ownerId);
+        $carB = $this->newCar($this->ownerId);
+        $this->insertEvent($this->ownerId, $carA, 'sent', 'local:car-a', '2026-05-08 10:00:00');
+        $this->insertEvent($this->ownerId, $carA, 'soft_bounce', 'brevo-car-a', '2026-05-08 10:05:00');
+        $this->insertEvent($this->ownerId, $carB, 'sent', 'local:car-b', '2026-05-08 11:00:00');
+        $this->insertEvent($this->ownerId, $carB, 'delivered', 'brevo-car-b', '2026-05-08 11:05:00');
 
-        foreach ($this->bothReaders([$car]) as $reader => $result) {
-            $this->assertSame('delivered', $result[$car]->event, $reader);
+        foreach ($this->bothReaders([$carA, $carB]) as $reader => $result) {
+            $this->assertSame('soft_bounce', $result[$carA]->event, "{$reader}: car B's delivered must not hide car A's bounce");
+            $this->assertSame('brevo-car-a', $result[$carA]->brevo_message_id, $reader);
+            $this->assertSame('delivered', $result[$carB]->event, $reader);
+            $this->assertSame('brevo-car-b', $result[$carB]->brevo_message_id, $reader);
+        }
+    }
+
+    /**
+     * The #2358 migration collapsed duplicate rows and kept the `car_id` of
+     * the lowest-id row. So a `delivered` for car B's message can carry car
+     * A's ID. The message ID still ties it to car B's cycle.
+     */
+    public function testARowWithTheCycleMessageIdShowsOnThatCarWhateverItsCarId(): void
+    {
+        $carA = $this->newCar($this->ownerId);
+        $carB = $this->newCar($this->ownerId);
+        $this->insertEvent($this->ownerId, $carA, 'sent', 'brevo-m-x', '2026-05-08 10:00:00');
+        $this->insertEvent($this->ownerId, $carB, 'sent', 'brevo-m-y', '2026-05-08 11:00:00');
+        $this->insertEvent($this->ownerId, $carA, 'delivered', 'brevo-m-y', '2026-05-08 11:05:00');
+
+        foreach ($this->bothReaders([$carA, $carB]) as $reader => $result) {
+            $this->assertSame('delivered', $result[$carB]->event, "{$reader}: the delivered for car B's message must show on car B");
+            $this->assertSame('brevo-m-y', $result[$carB]->brevo_message_id, $reader);
         }
     }
 }

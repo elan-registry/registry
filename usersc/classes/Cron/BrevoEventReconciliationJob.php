@@ -7,10 +7,15 @@ namespace ElanRegistry\Cron;
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\DeliverabilityFlagLog;
+use ElanRegistry\Car\EmailAddress;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatch;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -21,20 +26,29 @@ use ElanRegistry\LogCategories;
  * delivery-status events; it is also lossy by nature — a dropped POST, a
  * Brevo outage, a 5xx Brevo eventually stops retrying. This job closes that
  * gap by re-reading the same events from Brevo's statistics API and applying
- * them through {@see EmailEventApplier}, the *same* escalation code the
- * webhook runs, so a backfilled event flags an owner identically to a live one.
+ * them through {@see EmailEventMatcher} and {@see EmailEventApplier}, the
+ * *same* match and escalation code the webhook runs, so a backfilled event
+ * flags an owner identically to a live one.
  *
- * BOUNDED WORK PER INVOCATION. This job fetches exactly one page of events
- * per run — never a pagination loop. cron.php dispatches jobs in-process with
- * no subprocess boundary (see {@see AbstractCronJob}), so an unbounded walk
- * over a large backlog would hold the whole cron hit open. A single page is
- * safe to under-fetch because the work is inherently self-healing:
+ * ALL REGISTRY MAIL (#2359). The job applies events of every message that
+ * this environment sent, not only verification mail. The matcher decides
+ * whether a message is ours by its message ID. Test and production share
+ * one Brevo account, so most events of the other environment are "not
+ * ours" and the job skips them silently.
  *
- *   - the 48-hour window is twice the ~24-hour claim interval, so every event
- *     is offered to at least two runs before it ages out of the window;
- *   - `CarRepository::insertOwnerEmailEvent()` is `ON DUPLICATE KEY UPDATE`, and
- *     the flag writes are plain column UPDATEs, so re-applying an event
- *     already recorded (by the webhook or by an earlier run) is a no-op;
+ * ONE PAGE PER EVENT TYPE. The job asks Brevo for each delivery event type
+ * separately ({@see self::EVENT_TYPES}), one bounded page each. A single
+ * mixed page would let a busy day of `delivered` events push a bounce out of
+ * the page. It never walks more pages. cron.php dispatches jobs in-process
+ * with no subprocess boundary (see {@see AbstractCronJob}), so an unbounded
+ * walk over a large backlog would hold the whole cron hit open. A bounded
+ * page is safe to under-fetch because the work is self-healing:
+ *
+ *   - the 48-hour window is more than twice the 20-hour claim interval
+ *     ({@see self::GUARD_INTERVAL_HOURS}), so every event is offered to at
+ *     least two runs before it ages out of the window;
+ *   - a replayed event changes no stored row and sets no flag again
+ *     ({@see EmailEventApplier::apply()});
  *   - events are fetched newest-first, so the freshest signal is never the
  *     part that gets dropped.
  *
@@ -43,14 +57,41 @@ use ElanRegistry\LogCategories;
  * than aborting the page: the retry model already covers them, and letting
  * one poisoned row abort the run would starve every event behind it.
  *
+ * NO ADDRESS IN LOGS. Log lines name the user ID, or, with no user, the
+ * first 8 hex characters of the SHA-256 of the normalized address. Catch
+ * blocks log {@see ExceptionLogSummary}, not the message, because CarRepository
+ * puts the address in its exception messages.
+ *
  * @package ElanRegistry\Cron
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1889
+ * @see https://github.com/elan-registry/registry/issues/2359
  */
 final class BrevoEventReconciliationJob extends AbstractCronJob
 {
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
     public const JOB_NAME = 'brevo_reconciliation';
+
+    /**
+     * The event types that the job fetches, as Brevo's statistics API names
+     * them, mapped to the webhook's event name.
+     *
+     * The job records each event under the webhook's name. Then a backfilled
+     * row and a webhook row of the same event are one row (the unique key
+     * includes the event name), and the applier sees the event names that it
+     * knows.
+     *
+     * @var array<string, string>
+     */
+    public const EVENT_TYPES = [
+        'hardBounces'  => 'hard_bounce',
+        'softBounces'  => 'soft_bounce',
+        'blocked'      => 'blocked',
+        'invalid'      => 'invalid_email',
+        'spam'         => 'spam',
+        'unsubscribed' => 'unsubscribed',
+        'delivered'    => 'delivered',
+    ];
 
     /**
      * Minimum hours between claimed runs.
@@ -66,8 +107,8 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     /**
      * How far back to ask Brevo for events, in hours.
      *
-     * Double the guard interval, so every event is covered by at least two
-     * runs — one missed or partially-completed night cannot lose an event.
+     * More than double the guard interval, so every event is covered by at
+     * least two runs — one missed or partially-completed night cannot lose an event.
      * Note the window is applied at *day* granularity by
      * {@see BrevoEventReconciliationClient::fetchEvents()} (Brevo's endpoint
      * takes `YYYY-MM-DD`), so the real window is this rounded outward to whole
@@ -76,10 +117,10 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     private const LOOKBACK_HOURS = 48;
 
     /**
-     * Events requested per run. Brevo caps this at 2500; 1000 is a deliberate
-     * step below that ceiling, comfortably above the registry's real nightly
-     * event volume while keeping one page's processing (a `findByEmail()` plus
-     * up to a few writes per event) within a single cron hit.
+     * Events requested per event type. Brevo caps this at 2500; 1000 is a
+     * deliberate step below that ceiling, comfortably above the registry's
+     * real nightly volume of each type while keeping the run within a single
+     * cron hit.
      */
     private const PAGE_SIZE = 1000;
 
@@ -103,34 +144,27 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      */
     private const SHORT_RETENTION_DAYS = 90;
 
-    /** Matches er_email_events.event's column width (migration 20260907141817). */
-    private const MAX_EVENT_LENGTH = 32;
-
     /** Matches er_email_events.brevo_message_id's column width (migration 20260907141817). */
     private const MAX_MESSAGE_ID_LENGTH = 255;
 
     /**
-     * Latest Unix timestamp {@see self::resolveOccurredAt()} will accept
-     * (9999-12-31 23:59:59 UTC).
+     * Latest event date the job trusts, in seconds after the run time.
      *
-     * Same value and purpose as
-     * {@see \ElanRegistry\Car\BrevoWebhookEventProcessor}'s constant of the
-     * same name: Brevo's statistics API is external input, and an absurd date
-     * string ("+100000 years", "9999999-01-01") parses without error into a
-     * DATETIME string MySQL rejects, which would fail every write for that
-     * event. Clamping here keeps the poisoned value from ever reaching
-     * {@see \ElanRegistry\Car\CarRepository::insertOwnerEmailEvent()}.
+     * A later date is clock skew or a bad payload. As `occurred_at` it would
+     * sort after every real event, and a far-future `delivered` row would
+     * stop the soft-bounce count
+     * ({@see CarRepository::countSoftBouncesSinceLastDelivered()}) for good.
      */
-    private const MAX_PLAUSIBLE_TIMESTAMP = 253402300799;
+    private const MAX_FUTURE_SECONDS = 300;
 
     private readonly \DateTimeImmutable $now;
 
     /**
-     * Set once {@see self::applyEvent()} has seen the unmatched-recipient
+     * Set once {@see self::countUnmatched()} has seen the unmatched-recipient
      * counter increment fail, to stop re-attempting it for the remainder of
      * this run — see that method's own comment for why. Scoped to the job
-     * instance because `backfillEvents()` runs exactly one page per
-     * invocation; nothing resets it, and nothing needs to.
+     * instance because each invocation is one bounded run; nothing resets
+     * it, and nothing needs to.
      */
     private bool $unmatchedCounterFailed = false;
 
@@ -141,6 +175,10 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * Brevo SDK present.
      *
      * @param DatabaseInterface $db AbstractCronJob's enabled-check/guard connection
+     * @param CarRepository $repo Event-row store for the retention prune
+     * @param EmailEventMatcher $matcher Finds the user of each event by its message ID
+     * @param EmailEventApplier $applier Records each matched event and applies its flag
+     * @param BrevoEventReconciliationClient $client Brevo statistics API poll
      * @param \DateTimeImmutable|null $now Fixes "now" for the window and
      *        retention cutoffs; defaults to wall-clock time. Injectable so
      *        tests can assert exact boundaries rather than tolerances.
@@ -148,6 +186,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     public function __construct(
         DatabaseInterface $db,
         private readonly CarRepository $repo,
+        private readonly EmailEventMatcher $matcher,
         private readonly EmailEventApplier $applier,
         private readonly BrevoEventReconciliationClient $client,
         ?\DateTimeImmutable $now = null,
@@ -167,7 +206,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     }
 
     /**
-     * Backfill one page of Brevo events, then prune expired event rows.
+     * Backfill one page of each event type, then prune expired event rows.
      *
      * Reached only after {@see AbstractCronJob::run()} has won the guard
      * claim, so every entry here is a real run — there is no separate
@@ -188,26 +227,25 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // choice for its own incremental-run summary line.
         //
         // The pollFailed suffix matters here specifically: without it, a
-        // failed poll (all counts 0) logs a line byte-for-byte identical to a
-        // genuinely quiet night with nothing to backfill — the same
-        // fabricated-all-zero-summary problem runNowWithSummary()'s own
-        // docblock argues against, just on the nightly path nobody is
-        // actively watching. fetchEvents() already logs the specific cause
-        // under CRON_JOB_FAILURE; this suffix only prevents this summary line
-        // itself from reading as a false all-clear.
+        // failed poll logs a line that reads as a quiet night with nothing
+        // to backfill. fetchEvents() already logs the specific cause under
+        // CRON_JOB_FAILURE. This suffix only stops the summary line from
+        // reading as a false all-clear.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo event reconciliation: incremental run complete —'
-            . ' %d matched, %d unmatched, %d skipped, %d ignored (non-verification tag),'
+            . ' %d matched, %d unmatched, %d skipped, %d invalid address(es),'
             . ' %d page(s) fetched%s%s.',
             $summary->matchedCount,
             $summary->unmatchedCount,
             $summary->skippedCount,
-            $summary->ignoredByTagCount,
+            $summary->invalidAddressCount,
             $summary->pagesFetched,
-            $summary->pollFailed ? ' — a Brevo poll failed, nothing was backfilled this cycle' : '',
+            $summary->pollFailed
+                ? ' — a Brevo poll failed, the events of that type were not backfilled this cycle'
+                : '',
             // Without this clause the line above reads as a clean run while the
             // dashboard's unmatched-recipient counter silently under-reports.
-            // Only the first failure logs its own cause (see applyEvent()), so
+            // Only the first failure logs its own cause (see countUnmatched()), so
             // this is the only place the run's true scale is recorded.
             $summary->counterFailureCount > 0
                 ? sprintf(
@@ -261,17 +299,16 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             return $this->backfillThenPrune();
         } catch (\Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                "Cron job '%s' failed (manual run): %s: %s",
+                "Cron job '%s' failed (manual run): %s",
                 self::JOB_NAME,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             throw $e;
         }
     }
 
     /**
-     * Backfill one page of events, then prune expired event rows.
+     * Backfill one page of each event type, then prune expired event rows.
      *
      * The prune runs in `finally`, so a failed backfill does not stop it.
      * The backfill exception then goes on to the caller.
@@ -286,47 +323,46 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     }
 
     /**
-     * Fetch one page of events and apply each tag-matching one to its owners.
+     * Fetch one page of each event type and apply each event to its user.
      */
     private function backfillEvents(): ReconciliationSummary
     {
-        // fetchEvents() never throws — a poll failure returns null and is
-        // already logged there (under LOG_CATEGORY_CRON_JOB_FAILURE for a
-        // genuine failure, or LOG_CATEGORY_CRON_JOB_SKIPPED when Brevo simply
-        // isn't configured — see fetchEvents()'s own docblock).
-        $events = $this->client->fetchEvents(
-            $this->now->modify('-' . self::LOOKBACK_HOURS . ' hours'),
-            $this->now,
-            self::PAGE_SIZE,
-            self::PAGE_OFFSET
-        );
-
-        if ($events === null) {
-            return new ReconciliationSummary(
-                matchedCount: 0,
-                unmatchedCount: 0,
-                skippedCount: 0,
-                eventTypeCounts: [],
-                eventsExamined: 0,
-                ignoredByTagCount: 0,
-                pagesFetched: 0,
-                pollFailed: true,
-            );
-        }
+        $windowStart = $this->now->modify('-' . self::LOOKBACK_HOURS . ' hours');
 
         /** @var array<string, int> $counts */
         $counts = [
             'matched' => 0,
             'unmatched' => 0,
             'skipped' => 0,
-            'ignoredByTag' => 0,
+            'invalidAddress' => 0,
             'counterFailures' => 0,
         ];
         /** @var array<string, int> $eventTypeCounts */
         $eventTypeCounts = [];
+        $eventsExamined = 0;
+        $pagesFetched = 0;
+        $pollFailed = false;
 
-        foreach ($events as $event) {
-            $this->applyEvent($event, $counts, $eventTypeCounts);
+        foreach (self::EVENT_TYPES as $apiEventType => $eventName) {
+            // fetchEvents() never throws. It logs a poll failure itself and
+            // returns null. One failed type does not stop the other types.
+            $events = $this->client->fetchEvents(
+                $windowStart,
+                $this->now,
+                self::PAGE_SIZE,
+                self::PAGE_OFFSET,
+                $apiEventType
+            );
+            if ($events === null) {
+                $pollFailed = true;
+                continue;
+            }
+
+            $pagesFetched++;
+            $eventsExamined += count($events);
+            foreach ($events as $event) {
+                $this->applyEvent($event, $apiEventType, $eventName, $counts, $eventTypeCounts);
+            }
         }
 
         return new ReconciliationSummary(
@@ -334,192 +370,231 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             unmatchedCount: $counts['unmatched'],
             skippedCount: $counts['skipped'],
             eventTypeCounts: $eventTypeCounts,
-            eventsExamined: count($events),
-            ignoredByTagCount: $counts['ignoredByTag'],
-            pagesFetched: 1,
-            pollFailed: false,
+            eventsExamined: $eventsExamined,
+            invalidAddressCount: $counts['invalidAddress'],
+            pagesFetched: $pagesFetched,
+            pollFailed: $pollFailed,
             counterFailureCount: $counts['counterFailures'],
         );
     }
 
     /**
-     * Apply one Brevo event once to each owner whose account address is its recipient.
+     * Match one Brevo event to its user and apply it.
      *
      * Threads run counts through `$counts` (keys: `matched`, `unmatched`,
-     * `skipped`, `ignoredByTag`, `counterFailures`) and `$eventTypeCounts` (keyed on the raw
-     * Brevo event name) rather than returning them, so the counting logic
-     * sits directly alongside the branch it is counting — see
-     * {@see ReconciliationSummary}'s docblock for why `matched`/`skipped` are
-     * incremented per owner-write here, not once per event.
+     * `skipped`, `invalidAddress`, `counterFailures`) and `$eventTypeCounts`
+     * (keyed on the webhook event name) rather than returning them, so the
+     * counting logic sits directly alongside the branch it is counting.
      *
      * @param \Brevo\Client\Model\GetEmailEventReportEvents $event
+     * @param string $apiEventType The type that the poll asked for
+     * @param string $eventName The webhook name of that type
      * @param array<string, int> $counts
      * @param array<string, int> $eventTypeCounts
      */
-    private function applyEvent(object $event, array &$counts, array &$eventTypeCounts): void
-    {
-        // Same gate BrevoWebhookEventProcessor::process() applies to the
-        // webhook's `tags` array — but the statistics API returns a single
-        // `tag` string per event, not a list.
-        //
-        // is_string() rather than an unconditional (string) cast: getTag() is
-        // untyped at the SDK boundary like the three fields guarded below, and
-        // an unconditional cast would emit the same "Array to string
-        // conversion" warning that guard exists to avoid. A non-string tag
-        // can never equal VERIFICATION_EMAIL_TAG, so it is routine
-        // non-matching traffic — skip silently, same as any other tag.
-        $rawTag = $event->getTag();
-        if (!is_string($rawTag) || $rawTag !== AppConstants::VERIFICATION_EMAIL_TAG) {
-            $counts['ignoredByTag']++;
-            return;
-        }
-
+    private function applyEvent(
+        object $event,
+        string $apiEventType,
+        string $eventName,
+        array &$counts,
+        array &$eventTypeCounts
+    ): void {
         $rawEmail = $event->getEmail();
-        $rawEventName = $event->getEvent();
+        $rawEventType = $event->getEvent();
         $rawMessageId = $event->getMessageId();
 
         // The SDK's getters are untyped at the boundary, so a payload-contract
         // change could hand us an array or an int here. An unconditional
         // (string) cast would turn an array into the literal "Array" (with a
-        // warning) and an int into a numeric string, either of which would then
-        // be recorded as a genuine event name and fed to
-        // EmailEventApplier::apply()'s escalation logic. Skip instead, and log
-        // it under EMAIL_WEBHOOK for the same reason the bound check below
-        // does: it is a Brevo payload problem, not a broken job.
-        if (!is_string($rawEmail) || !is_string($rawEventName) || !is_string($rawMessageId)) {
+        // warning) and an int into a numeric string. Skip instead, and log
+        // it under EMAIL_WEBHOOK: it is a Brevo payload problem, not a
+        // broken job.
+        if (!is_string($rawEmail) || !is_string($rawEventType) || !is_string($rawMessageId)) {
             $counts['skipped']++;
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo event reconciliation: non-string field in event payload'
                 . ' (email=%s, event=%s, message-id=%s) — event skipped.',
                 get_debug_type($rawEmail),
-                get_debug_type($rawEventName),
+                get_debug_type($rawEventType),
                 get_debug_type($rawMessageId)
             ));
             return;
         }
 
-        $email = $rawEmail;
-        $eventName = $rawEventName;
-        $messageId = $rawMessageId;
-
-        if ($email === '' || $eventName === '' || $messageId === '') {
+        if ($rawEmail === '' || $rawEventType === '' || $rawMessageId === '') {
             $counts['skipped']++;
-            // Logged for the same reason the non-string branch above is:
-            // #2061 made skippedCount visible on the admin script, whose own
-            // warning banner tells the operator every skip is logged under
-            // EmailWebhook or CronJobFailure. Before that count existed, this
-            // branch's silence was invisible; now an unlogged skip here would
-            // be a count with no matching log entry to find.
+            // Every skip has a log entry: the admin script tells the
+            // operator to look for one under EmailWebhook or CronJobFailure.
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo event reconciliation: empty required field in event payload'
                 . ' (email=%s, event=%s, message-id=%s) — event skipped.',
-                $email === '' ? '(empty)' : $email,
-                $eventName === '' ? '(empty)' : $eventName,
-                $messageId === '' ? '(empty)' : $messageId
+                $rawEmail === '' ? '(empty)' : '(set)',
+                $rawEventType === '' ? '(empty)' : '(set)',
+                $rawMessageId === '' ? '(empty)' : '(set)'
             ));
             return;
         }
 
-        // Brevo's read API is external input exactly as the webhook body is,
-        // so it gets the same bound check against er_email_events' real column
-        // widths. Skipping here keeps an oversized value from reaching
-        // insertOwnerEmailEvent() and throwing under STRICT_TRANS_TABLES.
-        //
-        // Logged under EMAIL_WEBHOOK rather than CRON_JOB_FAILURE: an
-        // oversized value is a possible Brevo payload-contract change worth
-        // investigating, but the job itself is healthy and the run continues.
-        // BrevoWebhookEventProcessor logs its identical bound check under the
-        // same category, so both call paths' payload problems are searchable
-        // together, and CRON_JOB_FAILURE stays the category an operator can
-        // filter on to find genuinely broken jobs.
-        if (strlen($eventName) > self::MAX_EVENT_LENGTH || strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
+        // The job records the event under the name of the type that it asked
+        // for. An event of another type means that Brevo did not apply the
+        // filter. Recording it under the asked-for name would turn, for
+        // example, a delivery into a bounce.
+        if ($rawEventType !== $apiEventType) {
             $counts['skipped']++;
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo event reconciliation: event or message-id exceeds storage width'
-                . ' (event=%d bytes, message-id=%d bytes) — event skipped.',
-                strlen($eventName),
-                strlen($messageId)
+                'Brevo event reconciliation: the poll for "%s" returned an event of another type'
+                . ' (%d bytes) — event skipped.',
+                $apiEventType,
+                strlen($rawEventType)
             ));
             return;
         }
 
-        $reason = $event->getReason();
-        $reason = is_string($reason) && $reason !== '' ? $reason : null;
+        // Brevo's read API is external input exactly as the webhook body is.
+        // The connection sets sql_mode '' (users/classes/DB.php), so MySQL
+        // would silently cut an oversized message ID, and the stored ID
+        // would not be Brevo's ID.
+        if (strlen($rawMessageId) > self::MAX_MESSAGE_ID_LENGTH) {
+            $counts['skipped']++;
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo event reconciliation: message-id exceeds storage width'
+                . ' (event=%s, message-id=%d bytes) — event skipped.',
+                $eventName,
+                strlen($rawMessageId)
+            ));
+            return;
+        }
 
-        $occurredAt = $this->resolveOccurredAt($event->getDate(), $email, $eventName);
+        $normalized = EmailAddress::normalize($rawEmail);
+        if (!EmailEventMatcher::isAcceptableAddress($normalized)) {
+            $counts['invalidAddress']++;
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo event reconciliation: invalid recipient address (hash %s, event "%s") — event skipped.',
+                EmailEventMatcher::addressLogHash($normalized),
+                $eventName
+            ));
+            return;
+        }
 
         try {
-            $matchedCars = $this->repo->findByEmail($email);
+            $match = $this->matcher->matchByMessageId($rawMessageId, $normalized);
         } catch (CarDatabaseException $e) {
             $counts['skipped']++;
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo event reconciliation: car lookup FAILED for %s (event "%s") — event skipped: %s',
-                $email,
+                'Brevo event reconciliation: user lookup FAILED (hash %s, event "%s") — event skipped: %s',
+                EmailEventMatcher::addressLogHash($normalized),
                 $eventName,
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
+            ));
+            return;
+        } catch (\InvalidArgumentException $e) {
+            // A bad stored row fails the same way on every run, so it must
+            // not stop the events behind it.
+            $counts['skipped']++;
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                'Brevo event reconciliation: user lookup REJECTED bad stored data (hash %s, event "%s")'
+                . ' — event skipped: %s',
+                EmailEventMatcher::addressLogHash($normalized),
+                $eventName,
+                ExceptionLogSummary::of($e)
             ));
             return;
         }
 
-        if ($matchedCars === []) {
-            $counts['unmatched']++;
-
-            // incrementUnmatchedRecipientCounter() never throws and logs its
-            // own failure — but the return value still has to be honored, or
-            // execute()'s summary line would silently imply every unmatched
-            // event reached the dashboard counter even on the one path where
-            // the method just logged that it could not (the same reasoning
-            // app/api/webhooks/brevo.php's NO_CAR_MATCH branch spells out).
-            //
-            // After the first failure the call itself is not re-attempted for
-            // the rest of this run: the failure is a settings-row-level fault,
-            // not a per-event one, so retrying would write one identical
-            // warning row per unmatched event — thousands on a bad run. The
-            // tally keeps counting regardless, so the summary reports the real
-            // number of unmatched events missing from the counter.
-            if ($this->unmatchedCounterFailed) {
-                $counts['counterFailures']++;
-            } elseif (!(new VerificationSettings($this->db))->incrementUnmatchedRecipientCounter()) {
-                $this->unmatchedCounterFailed = true;
-                $counts['counterFailures']++;
-            }
-
+        // Mail of the other environment on the shared Brevo account, or mail
+        // sent before message IDs were stored. Routine, so no count and no log.
+        if ($match->isNotOurs()) {
             return;
         }
 
-        $ownerIds = CarRepository::ownerIdsOf($matchedCars);
+        if (!$match->isMatched()) {
+            $this->countUnmatched($event->getTag(), $counts);
+            return;
+        }
 
-        foreach ($ownerIds as $ownerId) {
-            try {
-                $this->applier->apply(
-                    $ownerId,
-                    $email,
-                    $eventName,
-                    $reason,
-                    $messageId,
-                    $occurredAt,
-                    DeliverabilityFlagLog::SOURCE_RECONCILIATION
-                );
-            } catch (CarDatabaseException $e) {
-                // Log and continue, unlike the webhook (which fails the whole
-                // request so Brevo retries). There is no caller to retry here,
-                // and this run's own retry model — the 48-hour window plus
-                // idempotent writes — already covers the skipped event on the
-                // next claim. Aborting instead would let one bad row starve
-                // every event behind it in this page.
-                $counts['skipped']++;
-                logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                    'Brevo event reconciliation: write FAILED for owner %d, event "%s" —'
-                    . ' skipped, will retry next cycle: %s',
-                    $ownerId,
-                    $eventName,
-                    $e->getMessage()
-                ));
-                continue;
-            }
+        $userId = $match->userId();
+        $reason = $event->getReason();
+        $reason = is_string($reason) && $reason !== '' ? $reason : null;
+        $occurredAt = $this->resolveOccurredAt($event->getDate(), $userId, $eventName);
 
-            $counts['matched']++;
-            $eventTypeCounts[$eventName] = ($eventTypeCounts[$eventName] ?? 0) + 1;
+        try {
+            $this->applier->apply(
+                $match,
+                $normalized,
+                $eventName,
+                $reason,
+                $rawMessageId,
+                $occurredAt,
+                DeliverabilityFlagLog::SOURCE_RECONCILIATION,
+                EmailEventApplier::MODE_EVENT
+            );
+        } catch (CarDatabaseException $e) {
+            // Log and continue, unlike the webhook (which fails the whole
+            // request so Brevo retries). There is no caller to retry here,
+            // and this run's own retry model — the 48-hour window plus
+            // idempotent writes — already covers the skipped event on the
+            // next claim. Aborting instead would let one bad row starve
+            // every event behind it in this page.
+            $counts['skipped']++;
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                'Brevo event reconciliation: write FAILED for owner %d, event "%s" —'
+                . ' skipped, will retry next cycle: %s',
+                $userId,
+                $eventName,
+                ExceptionLogSummary::of($e)
+            ));
+            return;
+        } catch (CarValidationException | \InvalidArgumentException $e) {
+            // A bad stored value (for example a zero message time) fails
+            // the same way on every run, so the next run does not fix it.
+            $counts['skipped']++;
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                'Brevo event reconciliation: write REJECTED bad data for owner %d, event "%s" — skipped: %s',
+                $userId,
+                $eventName,
+                ExceptionLogSummary::of($e)
+            ));
+            return;
+        }
+
+        $counts['matched']++;
+        $eventTypeCounts[$eventName] = ($eventTypeCounts[$eventName] ?? 0) + 1;
+    }
+
+    /**
+     * Count an event of our mail that matched no single user.
+     *
+     * Only verification mail goes to car addresses that an owner may not
+     * hold. The dashboard counter shows those, so only a verification-tagged
+     * event counts. Any other unmatched event is routine and stays silent.
+     *
+     * @param mixed $rawTag The SDK's `tag` field, untyped at the boundary
+     * @param array<string, int> $counts
+     */
+    private function countUnmatched(mixed $rawTag, array &$counts): void
+    {
+        if ($rawTag !== AppConstants::VERIFICATION_EMAIL_TAG) {
+            return;
+        }
+
+        $counts['unmatched']++;
+
+        // incrementUnmatchedRecipientCounter() never throws and logs its
+        // own failure — but the return value still has to be honored, or
+        // execute()'s summary line would silently imply every unmatched
+        // event reached the dashboard counter.
+        //
+        // After the first failure the call itself is not re-attempted for
+        // the rest of this run: the failure is a settings-row-level fault,
+        // not a per-event one, so retrying would write one identical
+        // warning row per unmatched event — thousands on a bad run. The
+        // tally keeps counting regardless, so the summary reports the real
+        // number of unmatched events missing from the counter.
+        if ($this->unmatchedCounterFailed) {
+            $counts['counterFailures']++;
+        } elseif (!(new VerificationSettings($this->db))->incrementUnmatchedRecipientCounter()) {
+            $this->unmatchedCounterFailed = true;
+            $counts['counterFailures']++;
         }
     }
 
@@ -547,7 +622,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                 . ' and short cutoff %s (the backfill is a separate step): %s',
                 $terminalCutoff->format(AppConstants::DATETIME_FORMAT),
                 $shortCutoff->format(AppConstants::DATETIME_FORMAT),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
         }
     }
@@ -558,8 +633,8 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * The statistics API returns `date` as a UTC date-time *string* (unlike
      * the webhook's Unix `ts_event`), so this parses rather than formats an
      * integer — but it keeps the webhook's defensive posture: an absent or
-     * unparseable value falls back to now rather than discarding an otherwise
-     * valid event, and the fallback is logged because it skews the
+     * unparseable value falls back to the run time rather than discarding an
+     * otherwise valid event, and the fallback is logged because it skews the
      * `occurred_at` ordering
      * {@see CarRepository::countSoftBouncesSinceLastDelivered()} depends on.
      *
@@ -570,20 +645,21 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * the two paths sort against each other hours apart.
      *
      * A parsed value is only trusted when its Unix timestamp is positive and
-     * at or below {@see self::MAX_PLAUSIBLE_TIMESTAMP} — an unbounded parse
-     * accepts strings like "+100000 years", producing a DATETIME MySQL
-     * rejects. Out-of-range values take the same logged "now" fallback as an
-     * unparseable one; both mean "Brevo gave us no usable date".
+     * not more than {@see self::MAX_FUTURE_SECONDS} after the run time. A
+     * value outside that range takes the same logged fallback as an
+     * unparseable one. Both mean "Brevo gave us no usable date".
      *
      * @param mixed $rawDate The SDK's `date` field, untyped at the boundary
+     * @param int $userId The matched user, for the log line
+     * @param string $eventName The webhook event name, for the log line
      */
-    private function resolveOccurredAt(mixed $rawDate, string $email, string $event): string
+    private function resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): string
     {
         if (is_string($rawDate) && $rawDate !== '') {
             try {
                 $parsed = new \DateTimeImmutable($rawDate);
                 $seconds = $parsed->getTimestamp();
-                if ($seconds > 0 && $seconds <= self::MAX_PLAUSIBLE_TIMESTAMP) {
+                if ($seconds > 0 && $seconds <= $this->now->getTimestamp() + self::MAX_FUTURE_SECONDS) {
                     // date(), not $parsed->format(): date() renders in PHP's
                     // default timezone, matching
                     // BrevoWebhookEventProcessor::resolveOccurredAt().
@@ -595,7 +671,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                     // backfilled rows against webhook-written ones.
                     return date(AppConstants::DATETIME_FORMAT, $seconds);
                 }
-            } catch (\Exception $e) {
+            } catch (\Exception) {
                 // Fall through to the logged fallback below.
             }
         }
@@ -605,14 +681,15 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // event is still recorded. It matches the category
         // BrevoWebhookEventProcessor::resolveOccurredAt() uses for the
         // identical condition, so both call paths' date problems land in one
-        // searchable place, and keeps CRON_JOB_FAILURE meaning "the job
-        // itself is broken".
+        // searchable place.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-            'Brevo event reconciliation: event "%s" for %s carried no usable date (%s);'
-            . ' occurred_at defaulted to run time — soft-bounce windowing may be skewed.',
-            $event,
-            $email,
-            get_debug_type($rawDate)
+            'Brevo event reconciliation: event "%s" for user %d carried no usable date (%s, missing,'
+            . ' unparseable or more than %d seconds after the run time); occurred_at defaulted to'
+            . ' run time — soft-bounce windowing may be skewed.',
+            $eventName,
+            $userId,
+            get_debug_type($rawDate),
+            self::MAX_FUTURE_SECONDS
         ));
 
         return $this->now->format(AppConstants::DATETIME_FORMAT);

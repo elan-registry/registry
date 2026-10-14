@@ -7,6 +7,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Car\EmailNoticeBuilder;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -73,6 +74,8 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
         // A soft bounce before email_address_since does not count (#2358), and these tests use
         // fixed past times. A new profile has since = now.
         $this->db->query('UPDATE profiles SET email_address_since = ? WHERE user_id = ?', ['2020-01-01 00:00:00', $ownerId]);
+        // The event step skips a message sent before join_date (#2359), so move it back too.
+        $this->db->query('UPDATE users SET join_date = ? WHERE id = ?', ['2020-01-01 00:00:00', $ownerId]);
 
         return $ownerId;
     }
@@ -529,7 +532,16 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
                 ['soft-3', '2026-07-04 12:13:14'],
             ] as [$messageId, $occurredAt]
         ) {
-            $this->applier->apply($fixture['owner'], $fixture['email'], 'soft_bounce', null, $messageId, $occurredAt, 'webhook');
+            $this->applier->apply(
+                EmailEventMatch::matched($fixture['owner'], null, $occurredAt),
+                $fixture['email'],
+                'soft_bounce',
+                null,
+                $messageId,
+                $occurredAt,
+                'webhook',
+                EmailEventApplier::MODE_EVENT
+            );
         }
     }
 

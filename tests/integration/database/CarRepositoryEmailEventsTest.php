@@ -360,24 +360,24 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testDuplicateKeepsTheEarliestOccurredAtWhateverTheArrivalOrder(): void
+    public function testDuplicateKeepsTheFirstOccurredAtWhateverTheArrivalOrder(): void
     {
         $email = $this->carEmail();
 
-        // T2, then T1 (earlier), then T3 (later).
+        // T2, then T1 (earlier), then T3 (later). A duplicate changes no column (#2359).
         $this->repo->insertEmailEvent($this->carId, $email, 'delivered', null, 'order-1', '2026-01-01 12:00:00');
         $this->assertSame('2026-01-01 12:00:00', $this->occurredAtFor('order-1'));
 
         $this->repo->insertEmailEvent($this->carId, $email, 'delivered', null, 'order-1', '2026-01-01 10:00:00');
-        $this->assertSame('2026-01-01 10:00:00', $this->occurredAtFor('order-1'), 'An earlier time must replace the later one');
+        $this->assertSame('2026-01-01 12:00:00', $this->occurredAtFor('order-1'), 'An earlier time must not replace the first one');
 
         $this->repo->insertEmailEvent($this->carId, $email, 'delivered', null, 'order-1', '2026-01-01 15:00:00');
-        $this->assertSame('2026-01-01 10:00:00', $this->occurredAtFor('order-1'), 'A later time must not move the row later');
+        $this->assertSame('2026-01-01 12:00:00', $this->occurredAtFor('order-1'), 'A later time must not move the row later');
         $this->assertSame(1, $this->eventCountForMessage('order-1'));
     }
 
     #[Group('fast')]
-    public function testDuplicateDeliveryUpdatesReasonAndKeepsTheEarliestTimeButNotIdentityColumns(): void
+    public function testDuplicateDeliveryChangesNoColumnAndReportsZeroRows(): void
     {
         $email = $this->carEmail();
 
@@ -400,7 +400,9 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
             'dup-msg-1',
             '2026-01-01 10:00:00'
         );
-        $this->assertSame(2, $secondCount, "MySQL's rowCount() for a changed ON DUPLICATE KEY UPDATE row is 2");
+        // The connection sets no MYSQL_ATTR_FOUND_ROWS, so the `id = id` no-op counts 0.
+        // With that attribute set, a duplicate would count 1 and look new.
+        $this->assertSame(0, $secondCount, 'A duplicate must report rowCount() == 0');
 
         $rows = $this->db->query(
             'SELECT user_id, car_id, email, event, reason, brevo_message_id, occurred_at FROM er_email_events WHERE user_id = ?',
@@ -415,8 +417,8 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         $this->assertSame($email, $row->email, 'email must be unchanged by the update');
         $this->assertSame('hard_bounce', $row->event, 'event must be unchanged by the update');
         $this->assertSame('dup-msg-1', $row->brevo_message_id, 'brevo_message_id must be unchanged by the update');
-        $this->assertSame('Mailbox permanently full', $row->reason, "reason must be the second payload's value");
-        $this->assertSame('2026-01-01 10:00:00', $row->occurred_at, 'occurred_at must be the earliest time');
+        $this->assertSame('Mailbox full', $row->reason, "reason must be the first payload's value");
+        $this->assertSame('2026-01-02 15:30:00', $row->occurred_at, 'occurred_at must be the first time');
     }
 
     #[Group('fast')]
@@ -467,13 +469,13 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testInsertOwnerEmailEventKeepsTheEarliestOccurredAtInTheT2T1T3Order(): void
+    public function testInsertOwnerEmailEventKeepsTheFirstOccurredAtInTheT2T1T3Order(): void
     {
-        $this->repo->insertOwnerEmailEvent($this->userId, 'a@example.com', 'delivered', null, 'ord-owner', '2026-01-01 12:00:00');
-        $this->repo->insertOwnerEmailEvent($this->userId, 'a@example.com', 'delivered', null, 'ord-owner', '2026-01-01 10:00:00');
-        $this->repo->insertOwnerEmailEvent($this->userId, 'a@example.com', 'delivered', null, 'ord-owner', '2026-01-01 15:00:00');
+        $this->assertSame(1, $this->repo->insertOwnerEmailEvent($this->userId, 'a@example.com', 'delivered', null, 'ord-owner', '2026-01-01 12:00:00'));
+        $this->assertSame(0, $this->repo->insertOwnerEmailEvent($this->userId, 'a@example.com', 'delivered', null, 'ord-owner', '2026-01-01 10:00:00'));
+        $this->assertSame(0, $this->repo->insertOwnerEmailEvent($this->userId, 'a@example.com', 'delivered', null, 'ord-owner', '2026-01-01 15:00:00'));
 
-        $this->assertSame('2026-01-01 10:00:00', $this->occurredAtFor('ord-owner'));
+        $this->assertSame('2026-01-01 12:00:00', $this->occurredAtFor('ord-owner'));
         $this->assertSame(1, $this->eventCountForMessage('ord-owner'));
     }
 

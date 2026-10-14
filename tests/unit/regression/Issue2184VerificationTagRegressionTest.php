@@ -10,8 +10,11 @@ use PHPUnit\Framework\TestCase;
  *
  * CarVerificationSendService called `email($to, $subject, $body)` with no
  * `$opts`, so the sendinblue override sent the mail untagged and the Brevo
- * webhook, which filters on the `car_verification` tag, never recorded it.
- * The fix passes `['tags' => AppConstants::VERIFICATION_EMAIL_TAG]` as the
+ * webhook, which then filtered on the `car_verification` tag, never recorded
+ * it. Since #2359 the webhook records every event of our mail without a tag
+ * filter. The tag still matters: only a `car_verification`-tagged event with
+ * no user counts in the dashboard's unmatched-recipient counter, and Brevo
+ * statistics group the mail by it. The fix passes `['tags' => AppConstants::VERIFICATION_EMAIL_TAG]` as the
  * fourth argument. `$opts` is optional, so a later edit that drops it still
  * runs and still sends mail. This test fails if the service source no longer
  * passes the tag. CarVerificationSendServiceTest checks the `$opts` value

@@ -48,9 +48,9 @@ after an item is written.
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
 
-### `app/admin/includes/tab-verification.php`
+### `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
 
-- [ ] The status-chip comment (~L364) says the profile state "comes first, because it stops all verification email", but a bounce that applies also stops it and the chip does not test it. Say why bounce is left out, and that `$blocked` means "applies to the current address" since #2356 (found in /finish-milestone v2.30.7)
+- [ ] The `set_time_limit(120)` comment (~L110-132) says the network wait of a Brevo page counts toward `max_execution_time`. On Linux it counts CPU time only. The wall-clock limit is Cloudflare's, about 100 seconds. Correct the reason, or delete the call (found in #2359)
 
 ### `app/api/cars/list.php`
 
@@ -80,10 +80,6 @@ after an item is written.
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
 
-### `docs/development/DATABASE.md`
-
-- [ ] "Cleanup Process" item 1 (~L533) names only orphaned `profiles` rows. Describe the account-deletion privacy step (plugin rows, events, profile, in its own transaction first), or link to the section that does (found in #2358 review)
-
 ### `error/500.php`
 
 - [ ] Restore a unit pin: all nine status codes (400/401/403/404/405/408/500/502/504) have entries in both `$errorMessages` and `$logCategoryMap` (from #2169)
@@ -107,6 +103,10 @@ after an item is written.
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 - [ ] The subprocess sets `$_SERVER["PHP_SELF"]` (~L138), which `Server::get('PHP_SELF')` ignores under CLI. So `$php_self` is `/`, and `securePage()` never checks the real `app/admin/index.php` page. The class doc claim "an editor passes securePage()" is not tested. `invokeEndpoint()` already sets `SCRIPT_FILENAME`. This class does not. Fix: set `$_SERVER["SCRIPT_FILENAME"]` to `$page` instead. The 12 tests in this class still pass with that change. This fix does not need the migration item above. (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
+
+### `tests/integration/BrevoEventPathParityIntegrationTest.php`
+
+- [ ] The `plg_sendinblue_messages` `CREATE TABLE` text is copied in about eight integration test classes and can drift from the plugin schema. Move it to one shared test helper (found in #2359 review)
 
 ### `tests/integration/BrevoWebhookEndpointTest.php`
 
@@ -150,10 +150,6 @@ after an item is written.
 
 - [ ] The class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move it onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copy (found in #2167)
 
-### `tests/integration/database/CarRepositoryEmailEventPruneTest.php` (test coverage)
-
-- [ ] The transfer test passes on the old keep rule. Add a case: the new owner has no `sent` row yet, and the old owner's `sent` row is older than 90 days. The current rule deletes it. The old rule kept it (found in #2358 review)
-
 ### `tests/integration/database/MigrationSandbox.php` + `tests/integration/database/MigrationSandboxTest.php` (test coverage)
 
 - [ ] No self-test covers the `migrateTo()` unknown-version pre-check (~L190) or the `phinxlog` post-check (~L209), the non-PDO guard in `connect()` (~L455), or the drop-on-failure path in `MigrationSandboxTestCase::setUpBeforeClass()`. A later edit can remove a guard and the suite stays green (found in #2167)
@@ -189,6 +185,10 @@ after an item is written.
 
 - [ ] Only the `DatabaseInterface` branch is tested. Add the `PDO` branch: `prepare()` returns false, `execute()` returns false, and a `PDOException` comes back as the previous exception of `OwnerDatabaseException` (found in #2358 review)
 
+### `tests/unit/regression/Issue2359NoEmailInLogsRegressionTest.php`
+
+- [ ] The logger-argument scan does not see `->getEmail()`, `->email_address`, `['email_address']` or `\logger(` (`T_NAME_FULLY_QUALIFIED`), and no negative control proves the safe-call allowance ends at its closing `)`. Add each, with a control (found in #2359 review)
+
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
@@ -217,7 +217,7 @@ after an item is written.
 
 ### `usersc/classes/Car/CarRepository.php`
 
-- [ ] `latestFlagClearAt()` (~L2063) and `recentFlagChanges()` (~L2097) have no production caller, and `latestFlagClearAt()` reads a `cleared_at` key that `DeliverabilityFlagLog::record()` never writes. Delete them, or let #2357 add them with their first caller (found in /finish-milestone v2.30.7)
+- [ ] `recentFlagChanges()` (~L2096) has no production caller. Delete it, or let #2357 add it with its first caller (found in /finish-milestone v2.30.7)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
@@ -234,10 +234,6 @@ after an item is written.
 ### `usersc/classes/Car/SendResult.php`
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
-
-### `usersc/classes/Cron/BrevoSuppressionSyncJob.php`
-
-- [ ] Comments and one log line (~L387, ~L504, ~L570) still say "matching car(s)". The writes are per owner since #2358. Say "matching owner(s)" (found in #2358 review)
 
 ### `usersc/classes/InputSanitizer.php` (est. −8)
 

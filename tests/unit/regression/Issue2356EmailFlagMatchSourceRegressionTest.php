@@ -590,8 +590,8 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
 
     /**
      * cars.email is only a copy of the owner's email. The verification send
-     * mails users.email, and the Brevo event match finds cars by users.email.
-     * Neither may read the car copy.
+     * mails users.email, and the Brevo event match finds the user by
+     * users.email (#2359). Neither may read the car copy.
      */
     public function testSendAndEventMatchUseTheAccountEmailOnly(): void
     {
@@ -606,11 +606,11 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
             'The sent event row records the address that the send mailed.'
         );
 
-        $finder = self::methodBody($this->codeOnly('usersc/classes/Car/CarRepository.php'), 'findByEmail');
-        $this->assertStringContainsString('INNER JOIN users u ON u.id = cars.user_id', $finder);
+        $finder = self::methodBody($this->codeOnly('usersc/classes/Car/CarRepository.php'), 'findUserIdsByAddress');
+        $this->assertStringContainsString('FROM users u', $finder);
         $this->assertStringContainsString('self::CURRENT_ADDRESS_SQL', $finder);
         $this->assertStringNotContainsString('cars.email', $finder, 'The event match must not use the car copy.');
-        $this->assertStringNotContainsString('WHERE email = ?', $finder);
+        $this->assertDoesNotMatchRegularExpression('/\bcars\b/', $finder, 'The event match must not read the cars table.');
 
         $eligible = self::methodBody($this->codeOnly('usersc/classes/Car/CarRepository.php'), 'verificationEligibleFromSql');
         $this->assertStringContainsString('$address = self::CURRENT_ADDRESS_SQL;', $eligible);

@@ -249,9 +249,8 @@ class CarVerificationManager
      */
     public function setBouncedFromEvent(int $ownerId, string $bouncedAddress, string $bouncedAt, string $source): bool
     {
-        // The event paths (webhook, reconciliation, import) run with no
-        // transaction, so the profile row lock ends at once. #2359 adds the
-        // transaction.
+        // EmailEventApplier::apply() calls this inside its transaction. The
+        // profile lock then holds until the event row and this flag commit.
         DeliverabilityFlagLog::assertValidSource($source);
 
         $old = $this->repo->setProfileBounced($ownerId, $bouncedAddress, $bouncedAt);
@@ -290,9 +289,8 @@ class CarVerificationManager
         string $blockedAt,
         string $source
     ): bool {
-        // The event paths (webhook, reconciliation, import) run with no
-        // transaction, so the profile row lock ends at once. #2359 adds the
-        // transaction.
+        // EmailEventApplier::apply() calls this inside its transaction. The
+        // profile lock then holds until the event row and this flag commit.
         DeliverabilityFlagLog::assertValidSource($source);
 
         $old = $this->repo->setProfileBlocked($ownerId, $blockedAddress, $cause, $blockedAt);
@@ -314,8 +312,8 @@ class CarVerificationManager
     private function logEventSkip(string $method, int $ownerId, string $why): void
     {
         // Brevo event tracking, not a bounce: the same category as the
-        // applier's log of an unrecognized event, so all skipped events of
-        // the three event paths land in one searchable category.
+        // applier's log of an event that it did not record, so all skipped
+        // events of the three event paths land in one searchable category.
         logger($ownerId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'CarVerificationManager::%s: event for owner %d not applied to a profile: %s',
             $method,

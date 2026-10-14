@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Support;
 
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Exceptions\CarDatabaseException;
 
 /**
@@ -39,11 +40,23 @@ use ElanRegistry\Exceptions\CarDatabaseException;
  */
 class SpyEmailEventApplier extends EmailEventApplier
 {
-    /** @var list<array{userId: int, email: string, event: string, reason: ?string, messageId: string, occurredAt: string, source: string}> */
+    /**
+     * `userId` is 0 when the match is not a matched result. `email` is the
+     * address that the caller passed.
+     *
+     * @var list<array{match: EmailEventMatch, userId: int, email: string, event: string, reason: ?string,
+     *                 messageId: string, occurredAt: string, source: string, mode: string, blockedCause: ?string}>
+     */
     public array $calls = [];
 
-    /** apply() throws CarDatabaseException when the message-id equals this. */
+    /** The value that apply() returns: true means "a new event row was written". */
+    private bool $returnValue = true;
+
+    /** apply() throws $failOnException when the message-id equals this. */
     private ?string $failOnMessageId = null;
+
+    /** The exception for $failOnMessageId. Null throws CarDatabaseException. */
+    private ?\Throwable $failOnException = null;
 
     /**
      * apply() throws CarDatabaseException when the owner user ID is in this set.
@@ -62,10 +75,15 @@ class SpyEmailEventApplier extends EmailEventApplier
         // collaborators are never touched.
     }
 
-    /** Make apply() throw for the event carrying this message-id. */
-    public function failOn(string $messageId): void
+    /**
+     * Make apply() throw for the event carrying this message-id
+     *
+     * @param \Throwable|null $e The exception to throw. Null throws CarDatabaseException.
+     */
+    public function failOn(string $messageId, ?\Throwable $e = null): void
     {
         $this->failOnMessageId = $messageId;
+        $this->failOnException = $e;
     }
 
     /**
@@ -84,32 +102,56 @@ class SpyEmailEventApplier extends EmailEventApplier
     }
 
     /**
-     * Make apply() throw $e, whatever its type. A CarDatabaseException is a
-     * handled write failure; any other type models a crash of the job.
+     * Make apply() throw $e on every call, whatever its type
      */
     public function failWith(\Throwable $e): void
     {
         $this->failWith = $e;
     }
 
+    /** Make apply() return this value (true by default). */
+    public function willReturn(bool $isNew): void
+    {
+        $this->returnValue = $isNew;
+    }
+
     public function apply(
-        int $userId,
-        string $email,
+        EmailEventMatch $match,
+        string $address,
         string $event,
         ?string $reason,
         string $messageId,
         string $occurredAt,
-        string $source
-    ): void {
-        $this->calls[] = compact('userId', 'email', 'event', 'reason', 'messageId', 'occurredAt', 'source');
+        string $source,
+        string $mode,
+        ?string $blockedCause = null
+    ): bool {
+        $userId = $match->isMatched() ? $match->userId() : 0;
+        $this->calls[] = [
+            'match'        => $match,
+            'userId'       => $userId,
+            'email'        => $address,
+            'event'        => $event,
+            'reason'       => $reason,
+            'messageId'    => $messageId,
+            'occurredAt'   => $occurredAt,
+            'source'       => $source,
+            'mode'         => $mode,
+            'blockedCause' => $blockedCause,
+        ];
 
         if ($this->failWith !== null) {
             throw $this->failWith;
         }
 
+        if ($messageId === $this->failOnMessageId && $this->failOnException !== null) {
+            throw $this->failOnException;
+        }
         if ($messageId === $this->failOnMessageId || in_array($userId, $this->failOnUserIds, true)) {
             throw new CarDatabaseException('simulated write failure');
         }
+
+        return $this->returnValue;
     }
 
     /** @return list<string> The message-id of each recorded call, in order. */

@@ -5,8 +5,10 @@ declare(strict_types=1);
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoSuppressionSyncClient;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -75,6 +77,7 @@ if (!isAdmin()) {
                                 <ul class="mb-0">
                                     <li>Polls Brevo's blocked-contacts list for every suppressed address: hard bounces, spam complaints, and unsubscribes</li>
                                     <li>Runs a <strong>full backfill</strong> with no date window — unlike the nightly job's single 48-hour page — walking up to 500 pages (about 50,000 contacts), stopping early if that page count or a 20-second time limit is reached first</li>
+                                    <li>Matches each address to the one user that holds it, so a user who owns no car also gets the flag. An address that no user or more than one user holds sets no flag</li>
                                     <li>Maps Brevo's reason codes onto the registry's bounce and suppression flags through the same <code>EmailEventApplier</code> a live webhook event uses, so an imported suppression flags the owner the same way as a live one</li>
                                     <li>Skips any reason code it does not recognize rather than guessing — unmapped codes are tallied in the breakdown below and logged</li>
                                     <li>Bypasses the normal 20-hour cron guard, so it runs even if the scheduled job has already run today</li>
@@ -139,6 +142,7 @@ if (!isAdmin()) {
                                     $summary = (new BrevoSuppressionSyncJob(
                                         dbi(),
                                         $suppressionRepo,
+                                        new EmailEventMatcher($suppressionRepo),
                                         new EmailEventApplier($suppressionRepo, new CarVerificationManager($suppressionRepo)),
                                         new BrevoSuppressionSyncClient(dbi())
                                     ))->runNowWithSummary();
@@ -147,17 +151,15 @@ if (!isAdmin()) {
                                         sprintf(
                                             'Brevo suppression sync manually triggered (cron guard bypassed) —'
                                             . ' %d matched, %d unmatched, %d already flagged, %d skipped,'
-                                            . ' %d page(s) fetched%s%s%s',
+                                            . ' %d invalid address(es), %d page(s) fetched%s%s',
                                             $summary->matchedCount,
                                             $summary->unmatchedCount,
                                             $summary->alreadyFlaggedCount,
                                             $summary->skippedCount,
+                                            $summary->invalidAddressCount,
                                             $summary->pagesFetched,
                                             $summary->backfillCapped ? ', stopped at a safety cap (page count or elapsed time)' : '',
-                                            $summary->pollFailed ? ', a Brevo poll failed mid-run' : '',
-                                            $summary->counterFailureCount > 0
-                                                ? sprintf(', %d unmatched-recipient counter update(s) failed', $summary->counterFailureCount)
-                                                : ''
+                                            $summary->pollFailed ? ', a Brevo poll failed mid-run' : ''
                                         ));
                                     $recordingWarning = null;
                                     admin_script_record_completion(__FILE__, (int) $user->data()->id, function (string $msg) use (&$recordingWarning) {
@@ -178,17 +180,17 @@ if (!isAdmin()) {
                                     </div>
                                     <?php endif; ?>
 
-                                    <?php if ($summary->counterFailureCount > 0): ?>
+                                    <?php if ($summary->invalidAddressCount > 0): ?>
                                     <div class="alert alert-warning">
-                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Unmatched-recipient counter under-reporting</h5>
-                                        <p class="mb-0"><?= (int) $summary->counterFailureCount ?> of the <?= (int) $summary->unmatchedCount ?> unmatched contact(s) were not recorded in the dashboard unmatched-recipient counter — that counter is under-reporting. Check the system log for <code>VerificationConfigWarning</code> entries.</p>
+                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> <?= (int) $summary->invalidAddressCount ?> contact(s) had an invalid address</h5>
+                                        <p class="mb-0">The address is longer than 155 bytes or is not a valid email address. These contacts were skipped and are not in the matched, unmatched or already-flagged totals. Each is logged under <code>EmailWebhook</code> with a hash of the address.</p>
                                     </div>
                                     <?php endif; ?>
 
                                     <?php if ($summary->skippedCount > 0): ?>
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> <?= (int) $summary->skippedCount ?> contact(s) could not be processed</h5>
-                                        <p class="mb-0">These were skipped due to a malformed Brevo payload, an unmapped reason code, an oversized value, or a failed database write, and are counted in none of the totals below. Each is logged individually under <code>EmailWebhook</code> or <code>CronJobFailure</code>. Re-running this script is safe and will retry them.</p>
+                                        <p class="mb-0">These were skipped due to a malformed Brevo payload, an unmapped reason code, an oversized value, or a failed database write, and are not in the matched, unmatched or already-flagged totals. Each is logged individually under <code>EmailWebhook</code> or <code>CronJobFailure</code>. Re-running this script is safe and will retry them.</p>
                                     </div>
                                     <?php endif; ?>
 
@@ -231,14 +233,15 @@ if (!isAdmin()) {
                                     <?php endif; ?>
                                     <?php
                                 } catch (\Throwable $e) {
+                                    // The message can hold an address (CarRepository puts it
+                                    // there), so neither the log nor the page shows it.
                                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, sprintf(
-                                        'Brevo suppression sync failed (manual run): %s: %s',
-                                        get_class($e),
-                                        $e->getMessage()
+                                        'Brevo suppression sync failed (manual run): %s',
+                                        ExceptionLogSummary::of($e)
                                     ));
                                     ?>
                                     <div class="alert alert-danger mb-0">
-                                        <i class="fa fa-exclamation-triangle"></i> Suppression sync failed: <?= htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') ?>
+                                        <i class="fa fa-exclamation-triangle"></i> Suppression sync failed. Check the system log for <code>FIXScriptError</code> and <code>CronJobFailure</code> entries.
                                     </div>
                                     <?php
                                 }

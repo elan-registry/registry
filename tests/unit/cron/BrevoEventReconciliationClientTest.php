@@ -39,7 +39,8 @@ final class BrevoEventReconciliationClientTest extends TestCase
             new DateTimeImmutable('2026-09-07'),
             new DateTimeImmutable('2026-09-09'),
             1000,
-            0
+            0,
+            'hardBounces'
         );
     }
 

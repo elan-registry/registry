@@ -95,8 +95,11 @@ After your Brevo account is set up and DNS is verified:
 ## Mail Tags
 
 Brevo tags let the registry tell verification mail from all other mail. The
-webhook receiver and the reconciliation job keep only events that carry the tag
-`car_verification` (`AppConstants::VERIFICATION_EMAIL_TAG`).
+tag `car_verification` (`AppConstants::VERIFICATION_EMAIL_TAG`) marks
+verification mail. The webhook receiver and the reconciliation job do not
+filter events by tag. They use the tag for one purpose only: the unmatched
+recipient counter counts an event only when it carries this tag. See
+[Brevo Webhook Receiver](#brevo-webhook-receiver-1887).
 
 ### The `tags` option
 
@@ -148,9 +151,8 @@ Core `users/join.php` and `users/user_settings.php` also call `email()`. Their
 tags are `join` and `user_settings`. To find new callers, run
 `grep -rn "email(" app usersc users --include='*.php'`.
 
-The webhook and reconciliation tag filters did not change. Every mail now
-carries a tag, and only `car_verification` is kept. The nightly reconciliation
-job therefore reports a higher `ignoredByTag` count than before.
+The webhook and the reconciliation job apply events of all registry mail
+(#2359). They no longer filter by tag, so a missing tag never hides an event.
 
 ## Environment Setup
 
@@ -278,7 +280,8 @@ when `US_ENVIRONMENT=development`.
 ## Verification System Feature Switch
 
 The Lotus Elan Registry uses a feature switch to gate verification email
-sends. An administrator turns it on only after Brevo is confirmed operational.
+sends. The switch stops only the send batch. It does not stop event writes.
+An administrator turns it on only after Brevo is confirmed operational.
 Cron readiness is not a gate. It is an advisory indicator, because a stalled
 cron transport delays reminders and does not stop them for good.
 
@@ -287,7 +290,7 @@ cron transport delays reminders and does not stop them for good.
 | Part | With the switch off |
 | --- | --- |
 | `SendVerificationBatchJob` (`run()` and `runNow()`) | Sends nothing. A refused `run()` does not change `er_cron_job_runs.last_run_at`. |
-| Brevo webhook (`app/api/webhooks/brevo.php`) | Returns 2xx and writes nothing. The #2359 issue removes this gate. |
+| Brevo webhook (`app/api/webhooks/brevo.php`) | Runs. It records events and sets flags. It does not read the switch (#2359). |
 | `BrevoEventReconciliationJob` (backfill and prune) | Runs. |
 | `BrevoSuppressionSyncJob` | Runs. |
 | Manual "run now" paths of both Brevo jobs | Run. |
@@ -298,6 +301,25 @@ read from Brevo and write the registry's own records. They send no email.
 `AbstractCronJob::refusesWhileSwitchOff()` makes the choice. The default
 returns `false`. The send batch overrides it. See
 [DEPLOYMENT.md, Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager).
+
+### Stop Event Writes in an Incident
+
+Turning the switch off does not stop the webhook, the reconciliation job or
+the suppression import. To stop all event writes, do these three steps:
+
+1. Set `BREVO_WEBHOOK_TOKEN` to an empty value. The webhook then refuses
+   every call with 401, and Brevo retries the call later.
+2. Set `er_cron_job_runs.enabled = 0` for `brevo_reconciliation` and
+   `brevo_suppression_sync`. This also stops the retention prune, because the
+   reconciliation job runs the prune.
+3. Do not use Run Now for the two Brevo jobs, `27-Reconcile-Brevo-Events.php`
+   or `28-Reconcile-Brevo-Suppressions.php`. These paths read neither the
+   switch nor `enabled`. Run Now for the send batch still reads the switch.
+
+After the incident, restore the token and set `enabled = 1` for both jobs.
+Reconciliation must run within 48 hours of the empty token. The job fetches
+the last 48 hours only. An event that Brevo stops retrying and that is older than 48
+hours is not recovered by the nightly run.
 
 ### VerificationSettings Class
 
@@ -423,9 +445,9 @@ and expanded at the top when it is not. See
 - Last reconciliation run — muted "Not yet implemented (#1889)"
 - Unmatched recipients — badge `text-bg-warning` if the counter is above 0,
   `text-bg-success` if 0, `text-bg-danger` "Unavailable" if the read itself
-  failed; counts Brevo signals (webhook events, reconciliation events,
-  suppression-list contacts) whose recipient matched no owner's
-  `users.email` (#2085, #2356)
+  failed; counts verification-tagged Brevo events (webhook and reconciliation)
+  of our mail whose recipient no single user holds (#2085, #2356, #2359). The
+  suppression import does not count.
 
 **Toggle Control:**
 
@@ -583,16 +605,21 @@ unsubscribed). For example, Brevo can report a message as delivered and then
 hard bounce it. The chip shows Bounced. Rules that select the chip event:
 
 1. The current send cycle starts at the car's latest `sent` event. The cycle
-   holds that event and all later events. A car with no `sent` event uses all
-   of its events.
+   holds that event and all later events with the same `car_id` or the same
+   `brevo_message_id` as that `sent` event. Other events for the owner's
+   other cars never count. Another later event with `car_id` NULL counts only
+   when it is a hard bounce or a suppression event.
+   A car with no `sent` event uses only the events with its own `car_id`.
 2. In the cycle, a terminal event wins over any other event, at any time.
 3. If no terminal event exists, the latest event wins (`occurred_at DESC`,
    then `id DESC`).
 
-The send cycle is set by time, not by `brevo_message_id`. The local `sent`
-event carries a local id, and Brevo webhook events carry Brevo's own id.
-The two ids never match. This differs from the original FRD text. The
-project owner approved the difference.
+The send cycle is set by time, not only by `brevo_message_id`. A `sent` row
+has a `local:` ID when the mailer gave no Brevo message ID. A webhook event
+always carries Brevo's own ID. The two IDs never match, and the chip does not
+need them to. The message ID match only adds rows that carry another car's
+`car_id` (see "What the dashboard chip shows" below). This differs from the original FRD text. The project owner approved
+the difference.
 
 The project owner also approved `unsubscribed` as a terminal event. The FRD
 list did not include it.
@@ -610,7 +637,13 @@ checks run in this order, and the first match wins (`vsStatusChip()`):
 4. Otherwise the chip shows the latest event, as the rules above select it.
 
 The tab does not read suppression events or `cars_hist` to find the cause.
-The cause is the stored `email_blocked_cause`.
+The cause is the stored `email_blocked_cause`. `blocked` means that the block
+applies to the owner's current address (#2356).
+
+The chip does not test the bounce flag, although a bounce that applies also
+stops all mail to the owner. The chip reports what happened to the last email.
+A hard-bounce event already shows "Bounced" through step 4. The Bounced pill
+and the row action read the bounce flag instead.
 
 **Why the filter pill and the status chip can disagree.** The pill is based
 on the car's current state. The chip is based on the latest email event.
@@ -627,7 +660,15 @@ The car moves to the **Bounced** pill only when the owner's `email_bounced`
 flag becomes 1. This is not a fault. Use the pill to find the car. Use the chip
 to see what happened to the last email.
 
-A second case: after an admin clicks **Clear Bounced**, the car's Status
+A second case: mail that is not a verification send. A hard bounce on a
+password-reset email sets the owner's `email_bounced` flag. The event row has
+`car_id` NULL, and the chip of each car of the owner shows **Bounced**. A
+`delivered` event for the same password-reset email has `car_id` NULL too, and
+it does not change any chip. The chip of a car shows a `car_id` NULL row only
+when the event is a hard bounce or a suppression event. See
+[Event Recording and the Car Chip](#event-recording-and-the-car-chip).
+
+A third case: after an admin clicks **Clear Bounced**, the car's Status
 chip can still show **Bounced**. Clear Bounced clears `profiles.email_bounced`
 and writes a `logs` audit row. It does not change or delete the car's
 `er_email_events` rows. The hard-bounce event stays the latest terminal
@@ -887,6 +928,8 @@ environment belongs in `app/admin/index.php` (the Verification tab's POST comman
   no email address."). It writes the mailed address to the `sent` event row
   and to `$carData->email`, so the admin report shows the real recipient.
   It passes `['tags' => AppConstants::VERIFICATION_EMAIL_TAG]` to `email()`.
+  It stores Brevo's message ID on the `sent` row (see
+  [Message ID of the `sent` Row](#message-id-of-the-sent-row)).
   It does not send when `VerificationSettings::brevoReady()` is false. It
   returns a failed `SendResult`, and the vericode stays unrotated.
 
@@ -894,19 +937,26 @@ environment belongs in `app/admin/index.php` (the Verification tab's POST comman
 `sendOne()` in the same sequence, with the same eligibility rules. This prevents
 the admin preview and cron from disagreeing about which cars are due.
 
-### Local Synthetic Email Event ID
+### Message ID of the `sent` Row
 
-For manually-sent verification emails (via the admin tool), there is no real
-Brevo `message_id`. Instead, a synthetic id is written to `er_email_events.brevo_message_id`:
+The webhook matches an event to a `sent` row by message ID. So the `sent` row
+must carry the real Brevo message ID (#2359). `CarVerificationSendService`
+reads `sendinblueLastMessageId()` before and after `email()`. The plugin
+resets this value to null at the start of each `sendinblue()` call. The service
+still compares the two reads, because a stale value must never pass for the ID
+of this send.
 
-```php
-'local:' . hash('sha256', $verificationCode)
-```
+| Condition after `email()` returns `true` | Value of `er_email_events.brevo_message_id` |
+| --- | --- |
+| The value is not empty and differs from the earlier read | The real Brevo message ID |
+| The value is empty, or equals the earlier read | `'local:' . hash('sha256', $newVericode)`. The send logs a warning (`LOG_CATEGORY_EMAIL_ERROR`). |
 
-This ensures every row in the `UNIQUE(user_id, brevo_message_id, event)` index
-has a distinct key (no NULL collision), so dedup still works if the same email
-is sent twice. Brevo webhook events (which have real message ids from Brevo)
-are distinguished from admin sends by this `'local:'` prefix.
+The `local:` fallback gives every row a distinct key in the
+`UNIQUE(user_id, brevo_message_id, event)` index (no NULL collision). Two sends
+with no Brevo ID make two `sent` rows. A webhook event never carries a
+`local:` ID, so step (a) of the matcher cannot match a `local:` row. An event
+for that send can still match by step (b), through the plugin's own message
+row. The row stores a hash of the code, never the code.
 
 ### Brevo Webhook Receiver (#1887)
 
@@ -940,66 +990,171 @@ for the per-environment setup step.
   invalid-token attack from unboundedly growing the `logs` table while
   preserving the security invariant above.
 
-**Verification-system gates** (unchanged from the pre-#1887 stub):
-`!isEnabled()` → 2xx, silent. `isEnabled() && !brevoReady()` → 2xx, logged
-once under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`.
+**Gates, in order:** method, auth, rate limit, Brevo prerequisites. The
+verification switch is not a gate. The webhook records events of all registry
+mail while the switch is off (#2359). If `brevoNotReadyReason()` returns a
+reason, the webhook returns 2xx and logs the reason once under
+`LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`. To stop the webhook in an incident,
+see [Stop Event Writes in an Incident](#stop-event-writes-in-an-incident).
 
-The reconciliation and suppression-sync cron jobs do not read the switch.
-Only the send batch does. The webhook gate stays until #2359 removes it. See
-[Verification System Feature Switch](#verification-system-feature-switch).
+**Processing steps** (`BrevoWebhookEventProcessor::process()`):
 
-**Tag filter:** the payload's `tags` array must contain
-`AppConstants::VERIFICATION_EMAIL_TAG` (`'car_verification'`) — Brevo also
-delivers webhook events for other kinds of mail this app may someday send,
-and this receiver only ever acts on verification-email events.
+1. **Shape check.** The payload must be a JSON object. It must have the string
+   fields `email`, `event` and `message-id`, and none may be empty. A message ID
+   longer than 255 bytes is also malformed. These cases return `MALFORMED`.
+2. **Event filter.** The processor accepts only the eight events in
+   `BrevoWebhookEventProcessor::DELIVERY_EVENTS`: `delivered`, `soft_bounce`,
+   `hard_bounce`, `blocked`, `invalid`, `invalid_email`, `spam` and
+   `unsubscribed`. Any other event (for example `opened` or `click`) returns
+   `IGNORED`. It writes no row. It logs the event name only, because the
+   webhook subscribes only to delivery events: another name shows that Brevo
+   added or renamed an event type. There is no tag filter.
+3. **Address check.** The processor trims the address. An address longer than
+   155 bytes, or one that fails `FILTER_VALIDATE_EMAIL`, returns `MALFORMED`
+   before any match. Brevo does not retry a 4xx.
+4. **Event time.** `occurred_at` is the payload's `ts_event` (or `ts`). The
+   receipt time replaces a missing or invalid value. It also replaces a value
+   more than 5 minutes after receipt. Reason: a far-future `delivered` row
+   would stop soft-bounce escalation until that time. The log line for this
+   case names the user ID only.
+5. **"Ours?" and user match.** `EmailEventMatcher::matchByMessageId()` decides
+   (see [The Matching Rule](#the-matching-rule)). A message that this
+   environment did not send returns `IGNORED`. It writes no row and no log line.
+6. **Apply.** `EmailEventApplier::apply()` records the event and sets the flag
+   in one transaction (see [Event Recording and the Car Chip](#event-recording-and-the-car-chip)).
+7. **Plugin record.** The processor calls `sendinblueRecordEvent()` when the
+   function exists (see below).
 
-**Matching:** the payload's `email` is looked up against the owner's
-`users.email` (`CarRepository::findByEmail()`, #2356). The send mails that
-address, so the match uses it too. `cars.email` is only a copy, and a stale
-copy does not match. Both sides are normalized (trim, then lower case), and
-the `noowner` account never matches. `findByEmail()` returns the car ID,
-the owner's `user_id` and the owner's `users.email` for each car. The
-processor takes the distinct owners from the result and records the event once
-for each owner, whatever the number of the owner's cars. The reconciliation
-job and the suppression sync use the same lookup and the same rule.
+#### The "Ours?" Step
 
-An event for mail sent before this rule, to an old `cars.email` that differs
-from the owner's `users.email`, matches no owner. It counts as an unmatched
-recipient.
+Test and production share one Brevo account. So the webhook receives events
+for mail that the other environment sent. An event is "ours" only when its
+message ID is in this environment's `er_email_events` `sent` rows or in
+`plg_sendinblue_messages`. An address match alone never makes an event ours.
+An event that is not ours sets no flag and writes no row.
 
-**Escalation rules** (`BrevoWebhookEventProcessor`):
+A test database refreshed from production holds production's
+`plg_sendinblue_messages` rows and `sent` rows. So test treats production
+events for those messages as its own. The webhook has no time window for
+this. The two jobs read only their 48-hour window of Brevo's data.
+Production is not affected, because its database holds none of test's
+message IDs.
+
+#### The Matching Rule
+
+The matcher normalizes both addresses with `EmailAddress::normalize()`. This
+means lower case and trim, and nothing else. PHP then compares the bytes. SQL
+only selects candidates, because the column collations ignore accents and
+trailing spaces. Matching never uses `LIKE`, `FIND_IN_SET` or a substring.
+
+| Step | Source | Condition | Result |
+| --- | --- | --- | --- |
+| (a) | `sent` row with this message ID | The row's address equals the event address | The row's user and car. Message time is the row's `occurred_at`. Two such rows give no user. |
+| (b) | Plugin row with this message ID | `recipient_email` is one whole address that equals the event address, and exactly one user holds that address | That user, with `car_id` NULL. Message time is `accepted_at`. A row with more than one recipient matches no user. |
+| (c) | None of the above | | No user. |
+
+- A message-ID match whose `sent` row has another address falls through to step (b).
+- Step (b) reads only the plugin row with the event's message ID. It never
+  selects a row by address.
+- The matcher never reads `cars.user_id` at event time.
+- An event that arrives before its `sent` row exists matches by step (b). The
+  row gets `car_id` NULL, and the flag is set the same way.
+- The suppression import uses `EmailEventMatcher::matchUserByAddress()`. It
+  matches one user by address under the same rule. See
+  [Brevo Suppression List Import](#brevo-suppression-list-import-1923).
+
+An event for our message with no matching user returns `NO_USER_MATCH`. The
+webhook returns 2xx and writes no row. It logs the first 8 hex characters of
+the SHA-256 of the normalized address, never the address. Only an event that
+carries the tag `car_verification` increments
+`er_verification_settings.unmatched_recipient_count`.
+
+#### Date Guards
+
+The applier compares the message time with dates on the user. A failed guard
+writes no row and sets no flag. It logs the user ID and the name of the guard
+column, so a dropped event leaves a trace.
+
+- The message time must not be before `users.join_date` or
+  `profiles.email_address_since`. Reason: the message went to an earlier
+  holder of the address.
+- For a bounce event (`hard_bounce`, `soft_bounce`, `blocked`, `invalid`,
+  `invalid_email`), the message time must also not be before
+  `profiles.email_bounce_cleared_at`. A late bounce on a message that an admin
+  already cleared does not set the flag.
+- A spam or unsubscribe event passes this last guard. It sets `email_blocked`
+  only when its `occurred_at` is later than the user's latest admin Clear Block
+  log row. An earlier event is recorded and sets nothing.
+
+#### `sendinblueRecordEvent()`
+
+The sendinblue plugin may define `sendinblueRecordEvent()` (#2355). The webhook
+calls it after the apply step, and also for an event with no user. The call is:
+
+```php
+sendinblueRecordEvent($messageId, $event, $occurredAtSeconds, $reason ?? '');
+```
+
+The third argument is an integer Unix time. If the function does not exist, the
+webhook skips the call and logs nothing. If the call returns `false` or throws,
+the webhook logs the `ExceptionLogSummary` of the exception (no message), and
+the response does not change. The webhook does not call it for an event that is not ours.
+
+**Escalation rules** (`EmailEventApplier`):
 
 | Brevo event | Effect |
 | --- | --- |
-| `hard_bounce`, `blocked`, `invalid` | Immediately flags the owner of the car as bounced (`profiles.email_bounced = 1`, with `email_bounced_address` set to the reported address and `email_bounced_at` set to the event time) |
-| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event — then escalates via the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` do not count |
+| `hard_bounce`, `blocked`, `invalid`, `invalid_email` | Immediately flags the owner as bounced (`profiles.email_bounced = 1`, with `email_bounced_address` set to the reported address and `email_bounced_at` set to the event time) |
+| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
 | `delivered` | Event row only. Implicitly resets the soft-bounce escalation window (the count query only looks at soft bounces after the most recent `delivered` row) |
-| `unique_opened` | Event row only, never touches flags or the escalation count |
-| `spam` | Flags the owner of the car as blocked (`profiles.email_blocked = 1`, cause `spam`, with the address and event time) — a distinct signal from a bounce |
-| `unsubscribed` | The same as `spam`, with cause `unsubscribed`. This event comes from the suppression import |
+| `spam` | Flags the owner as blocked (`profiles.email_blocked = 1`, cause `spam`, with the address and event time). This is a distinct signal from a bounce |
+| `unsubscribed` | The same as `spam`, with cause `unsubscribed` |
 
-The flags belong to the owner, so one event flags the owner for every car. The
-applier passes the source (`webhook`, `reconciliation` or `import`) to the
-audit row. An event for a car with no owner, a deleted owner, the `noowner`
-account, or an owner with no `profiles` row writes the event row and one log
-entry, and no flag. The webhook does not throw in this case, because Brevo does
-not retry a 2xx.
+No current path writes `unique_opened`. The applier still treats it as an event
+that changes no flag, and rows from earlier releases can hold it.
+
+The flags belong to the owner, so one event flags the owner for every car.
+The flag changes only when the event address is the owner's current
+`users.email`. In MODE_EVENT (the webhook and the event reconciliation job),
+the flag changes only when the event row is new, so a replayed event changes
+neither `email_bounced_at` nor `email_blocked_at`. MODE_STATE (the
+suppression-list import) applies the flag when the row exists already. The applier passes the
+source (`webhook`, `reconciliation` or `import`) to the audit row. An event
+for a user with no `users` row, or for the `noowner` account, writes no row
+and logs the user ID.
+An event for a user with no `profiles` row records the event, logs the user ID,
+and sets no flag. The webhook returns 2xx in both cases, because Brevo does not
+retry a 2xx.
 
 **HTTP status contract:**
 
 | Situation | Response |
 | --- | --- |
-| Parsed and durably written | 2xx |
-| No recognized tag | 2xx, logged |
-| Recipient matches no car | 2xx, logged, `er_verification_settings.unmatched_recipient_count` incremented |
-| Malformed/unparseable payload (incl. a top-level JSON list — Brevo's `batched: false` guarantee means a list body is never legitimate) | 4xx, logged |
-| Auth token missing/empty/wrong | 4xx, logged (hashed prefix only) |
-| Database write failure | 5xx — the only retryable case |
+| Matched to one user, transaction committed | 2xx |
+| Not a delivery event (for example `opened`, `click`) | 2xx, logged (event name only) |
+| Message not sent by this environment | 2xx, no log |
+| Our message, no single user holds the address | 2xx, logged (address hash prefix only). A `car_verification`-tagged event increments `er_verification_settings.unmatched_recipient_count` |
+| Brevo prerequisites not met | 2xx, logged |
+| Malformed or unparseable payload (including a top-level JSON list and a bad address) | 400, logged |
+| Stored data that cannot be parsed (for example a zero message time). It fails the same way on every retry | 400, logged (no message) |
+| Auth token missing, empty or wrong (an empty `BREVO_WEBHOOK_TOKEN` refuses every call) | 401, logged (hashed prefix only) |
+| Method is not POST | 405, no log |
+| Rate limit exceeded | 429 |
+| Database read or write failure | 500, logged |
+| Any other unhandled failure | 500, logged (no message) |
 
-No response body on any status — Brevo parses no body, only the HTTP status.
-Never acknowledges (2xx) before the `er_email_events` write commits: Brevo
-does not retry a 2xx, so acking early on a write that then fails would
-silently lose the event forever.
+A failure in the apply step rolls back the event row and the flag together.
+The webhook then returns 500, and Brevo can send the event again.
+
+No log line or exception message of the webhook holds an email address. Lines
+name the user ID or the address hash prefix. No `catch` block logs
+`getMessage()`, because `CarRepository` puts the address in its exception
+messages.
+
+No response body on any status. Brevo parses no body, only the HTTP status.
+The webhook never acknowledges (2xx) before the `er_email_events` write
+commits. Brevo does not retry a 2xx, so an early acknowledgement of a write
+that then fails would lose the event.
 
 **Storage:** `er_email_events` (see [DATABASE.md](DATABASE.md)) is the
 durable event log, keyed by user. The current-state flags it drives are on the
@@ -1008,19 +1163,60 @@ time and cause columns.
 
 ### Event Recording and the Car Chip
 
-Events belong to the owner (#2358). `EmailEventApplier::apply(int $userId, ...)`
-takes the owner's user ID and takes no car. The webhook, the reconciliation
-job and the suppression import each call it once for each matched owner.
+Events belong to the owner (#2358). `EmailEventMatcher` finds the owner first.
+Then `EmailEventApplier::apply()` takes the `EmailEventMatch` result, the
+address, the event name, the reason, the message ID, the time, the source and
+a mode. The webhook, the reconciliation job and the suppression import each
+call it once for each matched event.
 
-- **Owner-level rows.** A webhook, reconciliation or import event is stored
-  once, with `car_id` NULL, by `CarRepository::insertOwnerEmailEvent()`. The
-  unique key is `(user_id, brevo_message_id, event)`, so a repeat of the event
-  does not add a row.
-- **Only new `sent` rows get a car.** `CarVerificationSendService` writes the
-  `sent` row through `CarRepository::insertEmailEvent()` with the car's ID.
-  It starts that car's send cycle. The #2358 migration does not clear
-  `car_id`, so a row written before it keeps its car until the prune deletes
-  it.
+**The transaction.** `apply()` runs one transaction for each event:
+
+1. It locks the owner's `profiles` row with `SELECT ... FOR UPDATE`. Then it
+   reads `users.email`, `join_date`, `email_address_since` and
+   `email_bounce_cleared_at`. Every reader and writer that locks both rows
+   locks `profiles` first.
+2. A user with no `users` row, or the `noowner` account, gets no row.
+3. The date guards run (see [Date Guards](#date-guards)).
+4. It inserts the event row. A duplicate changes nothing and is not new.
+5. A user with no `profiles` row keeps the event row, gets a log line with
+   the user ID, and gets no flag.
+6. It sets the flag only when the event address is the current `users.email`.
+7. `email_blocked` changes only when the event time is later than the owner's
+   latest admin Clear Block.
+8. It commits. A failure rolls back the event row, the flag and the audit row,
+   and throws a `CarDatabaseException`. The webhook then returns 500.
+
+Two modes set the flag rule:
+
+- `MODE_EVENT` (webhook and reconciliation). The flag changes only when the
+  event row is new. A replayed event changes nothing, and it leaves
+  `email_bounced_at` and `email_blocked_at` as they are. The join and address
+  guards use the message time.
+- `MODE_STATE` (suppression import). Brevo's blocklist is a current state, not
+  an event. The flag changes when it is clear, or when its stored address
+  differs from the event address under the matching rule. The join and
+  address guards do not apply, because the import matched the user by the
+  current address. The bounce guard and the Clear Block bound compare Brevo's
+  `blockedAt`.
+
+The optional `$blockedCause` argument sets the `email_blocked_cause` that the
+profile stores. It is allowed only for a suppression event in `MODE_STATE`.
+The import uses it to set `blocklist` for Brevo's `adminBlocked`, while the
+event row stays `unsubscribed`.
+
+The applier cuts `reason` to 255 characters of valid UTF-8
+(`mb_substr(mb_scrub($reason, 'UTF-8'), 0, 255)`) before the insert.
+
+- **Write rule.** `CarRepository::insertOwnerEmailEvent()` inserts with
+  `ON DUPLICATE KEY UPDATE er_email_events.id = er_email_events.id`. The first
+  write of an event wins. A replay or a Brevo retry with another `occurred_at`
+  or `reason` changes nothing. The unique key is
+  `(user_id, brevo_message_id, event)`.
+- **Car on the row.** A `sent` row has the car, because it starts that car's
+  send cycle. A row from a step (a) match has the car of the matched `sent`
+  row. A row from a step (b) match has `car_id` NULL.
+  The #2358 migration does not clear `car_id`, so a row written before it keeps
+  its car until the prune deletes it.
 - **No owner, no row.** A user that does not exist and the `noowner` account
   get no row. The webhook still returns 2xx.
 - **One escalation for each owner.** The soft-bounce count and the flag write
@@ -1028,21 +1224,39 @@ job and the suppression import each call it once for each matched owner.
   address (`COLLATE utf8mb4_bin`), so a former holder of the address, or an
   accent variant of it, does not count.
 
-**What the dashboard chip shows.** A car shows the owner-level rows of its
-owner after the car's cycle start. The cycle start is the car's latest `sent`
-row (`car_id` = the car and `user_id` = the car's owner). The chip counts
-that `sent` row and every later non-`sent` row with `user_id` = the car's
-owner, whatever the row's `car_id`. So:
+**What the dashboard chip shows.** A car shows the rows of its owner after
+the car's cycle start. The cycle start is the car's latest `sent` row
+(`car_id` = the car and `user_id` = the car's owner). The chip counts that
+`sent` row and each later non-`sent` row with `user_id` = the car's owner
+that meets one of these rules:
 
-- One `delivered` row with `car_id` NULL changes the chip of every car of
-  the owner whose cycle started before it.
+- A later row with `car_id` = the car counts.
+- A later row with the same `brevo_message_id` as the car's `sent` row counts,
+  whatever its `car_id`. The #2358 migration collapsed duplicate rows and kept
+  the `car_id` of the lowest-id row. So a `delivered` for this car's message
+  can carry the ID of another car of the owner. A `local:` ID never matches,
+  because no webhook row has one. An empty ID never matches.
+- Another later row with `car_id` NULL counts only when its event is a hard
+  bounce (`EmailEventApplier::HARD_BOUNCE_EVENTS`) or a suppression event
+  (`spam`, `unsubscribed`).
+- Any other later row with the `car_id` of another car does not count.
+
+So:
+
+- A `delivered` row with `car_id` NULL does not change the chip. It comes from
+  mail that matched no verification send, for example a password reset. It
+  does not show whether the verification email arrived.
+- A `hard_bounce` row with `car_id` NULL changes the chip of every car of the
+  owner whose cycle started before it. A hard bounce stops all mail to the
+  owner.
 - A row from before a car's cycle start does not change that car's chip.
 - A car with no cycle start shows only the rows with its own `car_id`.
 - After a car transfer, the new owner sees the car as not sent. The previous
   owner's rows do not show, and the transfer changes no row.
 
 The readers are `CarRepository::findLatestEmailEventsByCarIds()` and
-`CarRepository::findLatestEmailEventPerCarWithPrecedence()`.
+`CarRepository::findLatestEmailEventPerCarWithPrecedence()`. Both use
+`findCarCycleEvents()`.
 
 **Car delete, merge and account deletion.**
 
@@ -1051,9 +1265,9 @@ The readers are `CarRepository::findLatestEmailEventsByCarIds()` and
 - A car merge moves `car_id` from the merged car to the surviving car. It
   changes no other column.
 - An account deletion runs a privacy step first, in its own transaction. The
-  step locks the profile row (`SELECT ... FOR UPDATE`). This is the lock that
-  the event step of #2359 will take. Today an event write takes no profile
-  lock. The step reads the user's
+  step locks the profile row (`SELECT ... FOR UPDATE`). This is the same lock
+  that the event step takes first. So no event row for the user can arrive
+  between the address read and the deletes. The step reads the user's
   addresses from the profile, the user's event rows and the user's cars. It
   deletes the user's `plg_sendinblue_messages` rows, then the user's event
   rows, then the profile. It skips an address that is another user's current
@@ -1245,6 +1459,55 @@ it.
 - `CarRepository::setProfileBounced()` — the write method that sets the bounce
   flag (forbids writing a null/empty address at the same time)
 
+### Brevo Event Reconciliation (#1889, #2359)
+
+**Job:** `BrevoEventReconciliationJob` (`usersc/classes/Cron/`). The webhook
+can lose an event (a dropped POST, a Brevo outage, a 5xx that Brevo stops
+retrying). The job reads the same events from Brevo's statistics API and
+applies them through `EmailEventMatcher` and `EmailEventApplier`, in
+`MODE_EVENT`. A backfilled event flags the owner as a live event does. The job
+passes the source `reconciliation` to the audit row. It runs with the
+verification switch off.
+
+- **All registry mail.** The job applies events of every message that this
+  environment sent. It skips an event of another environment silently
+  (not ours).
+- **One fetch for each event type.** The job asks Brevo for one page of 1000
+  events for each type, over the last 48 hours. A mixed page could let
+  `delivered` events push a bounce out of the page. The job maps each API
+  type name to the webhook event name and records the event under the webhook
+  name. So a backfilled row and a webhook row of one event are one row.
+
+  | Brevo API type | Webhook event name |
+  | --- | --- |
+  | `hardBounces` | `hard_bounce` |
+  | `softBounces` | `soft_bounce` |
+  | `blocked` | `blocked` |
+  | `invalid` | `invalid_email` |
+  | `spam` | `spam` |
+  | `unsubscribed` | `unsubscribed` |
+  | `delivered` | `delivered` |
+
+- **Input checks.** The job skips an address longer than 155 bytes, or one that
+  fails `FILTER_VALIDATE_EMAIL`, and counts it in `invalidAddressCount`. It
+  treats an event date more than 5 minutes after the run time as missing, and
+  uses the run time.
+- **Unmatched events.** The job increments the unmatched recipient counter only
+  for a `car_verification`-tagged event of our mail with no single user.
+- **Bad stored data.** A stored value that cannot be parsed (for example a
+  zero message time) fails the same way on every run. The job counts the
+  event in `skippedCount`, logs the `ExceptionLogSummary`, and continues with
+  the next event.
+- **Summary** (`ReconciliationSummary`): `matchedCount`, `unmatchedCount`,
+  `skippedCount`, `eventTypeCounts` (keyed on the webhook event name),
+  `eventsExamined`, `invalidAddressCount`, `pagesFetched` (one for each event
+  type whose poll succeeded), `pollFailed` and `counterFailureCount`. Each
+  count is per event. `eventsExamined` is not the sum of the other counts,
+  because an event that is not ours, and an unmatched event without the tag,
+  add to no count.
+- **Privacy.** No log line holds an address. A `catch` block logs the
+  `ExceptionLogSummary` of the exception, not its message.
+
 ### Brevo Suppression List Import (#1923)
 
 Brevo maintains an account-level suppression list (`GET /v3/smtp/blockedContacts`)
@@ -1258,10 +1521,30 @@ addresses that can never receive it.
 registered under `users/cron/`, alongside #1889's reconciliation job. Applies
 every suppression through the same `EmailEventApplier` the webhook and
 reconciliation job use, so an imported suppression flags the owner identically
-to a live event. It calls `apply()` once for each matched owner and stores an
-owner-level row (`car_id` NULL). The job passes the source `import` to the
-audit row. The reconciliation job passes `reconciliation`. The job runs with
-the verification switch off.
+to a live event. The job matches one user by address
+(`EmailEventMatcher::matchUserByAddress()`), under the
+[matching rule](#the-matching-rule). A blocklist entry has no message ID, so
+the message-ID steps do not apply. The user needs no car. An address that no
+user holds, or that two users hold, is counted as unmatched and sets no flag.
+The job calls `apply()` once for the matched user with `MODE_STATE`. It stores
+an owner-level row (`car_id` NULL) under a message ID that it builds from the
+address, the reason code and `blockedAt`, so a repeat run writes no second row.
+The job passes the source `import` to the audit row. The reconciliation job
+passes `reconciliation`. The job runs with the verification switch off.
+
+**Input checks.** The job skips an address longer than 155 bytes, or one that
+fails `FILTER_VALIDATE_EMAIL`, before any match. The summary counts it in
+`invalidAddressCount`. The log line holds the address hash prefix only.
+
+**Time.** `blockedAt` is the event time. A missing, wrong-typed or unparseable
+value takes the run time.
+
+**Window.** The nightly run asks Brevo for the last 48 hours only. It does not
+find a blocklist entry that is older. An owner can change back from address B
+to a blocked address A through the `email_act = 0` path or an admin edit. The
+nightly run then does not set `email_blocked` again. Run the full backfill
+(script 28) to restore it. The next send to A also gives a `blocked` event that
+sets `email_bounced`.
 
 **Two fetch modes:**
 
@@ -1278,14 +1561,34 @@ the verification switch off.
 | --- | --- | --- |
 | `hardBounce` | `blocked` | sets the owner's `email_bounced` |
 | `contactFlaggedAsSpam` | `spam` | sets the owner's `email_blocked`, cause `spam` |
-| `unsubscribedViaEmail`, `unsubscribedViaMA`, `unsubscribedViaApi`, `adminBlocked` | `unsubscribed` | sets the owner's `email_blocked`, cause `unsubscribed` |
+| `unsubscribedViaEmail`, `unsubscribedViaMA`, `unsubscribedViaApi` | `unsubscribed` | sets the owner's `email_blocked`, cause `unsubscribed` |
+| `adminBlocked` | `unsubscribed` | sets the owner's `email_blocked`, cause `blocklist` |
 | anything else | (none) | logged, tallied under `'unrecognized'`, skipped |
 
-`adminBlocked` maps to `unsubscribed` rather than `blocked` deliberately: it
-means a human suppressed the address at Brevo, a suppression decision rather
-than evidence the mailbox is dead. See the job class's own docblock for the
-full rationale and the count-accuracy notes behind its `SuppressionSyncSummary`
-return value.
+`adminBlocked` maps to the event `unsubscribed` rather than `blocked`
+deliberately: it means a human suppressed the address at Brevo, a suppression
+decision rather than evidence the mailbox is dead. Only the cause on the
+profile is `blocklist`. The job passes `blocklist` as the `$blockedCause`
+argument of `apply()`. Before #2359 the cause was `unsubscribed`. The event
+names, the Status chip and the prune do not change. See the job class's own
+docblock for the full rationale and the count-accuracy notes behind its
+`SuppressionSyncSummary` return value.
+
+**Shared blocklist.** Test and production share one Brevo blocklist. An
+unsubscribe from test mail, at an address that a production user holds, flags
+that user in production. This is by design: Brevo already blocks the address
+for the whole account, so production mail to it would not arrive.
+
+**Bad data.** A value that cannot be parsed fails the same way on every run.
+The job counts the contact in `skippedCount`, logs the `ExceptionLogSummary`,
+and continues with the next contact.
+
+**Import guards.** `MODE_STATE` skips the `join_date` and
+`email_address_since` guards. The bounce guard and the Clear Block bound
+compare `blockedAt`. So an entry whose `blockedAt` is not later than the
+owner's latest admin Clear Block does not set `email_blocked`. The import does
+not increment the unmatched recipient counter. A blocklist entry has no
+verification tag.
 
 **Admin UI:** `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
 — the manual "run now" wrapper, sharing `27-Reconcile-Brevo-Events.php`'s
@@ -1567,8 +1870,9 @@ requests and the docs; treat them as unverified.
 3. Body: single object per request; `batched` is `false` and there is no UI to change it.
 4. `blocked` is the steady-state event for a suppressed address; treat it as a
    confirmed bounce, not an error.
-5. `spam` carries no `reason`; `tags` is present on every event, so tag filtering is
-   safe for all of them.
+5. `spam` carries no `reason`. `tags` is present on every event, so the tag test of
+   the unmatched recipient counter works for all of them. Since #2359, no path
+   filters events by tag.
 6. `message-id` arrives with angle brackets — store the send API's `messageId` verbatim.
 
 ## Sender Reputation (#1922)

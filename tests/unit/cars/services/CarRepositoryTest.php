@@ -1721,66 +1721,6 @@ final class CarRepositoryTest extends TestCase
         $repo->effectiveEmailFlags(42);
     }
 
-    // findByEmail(): event matching by the owner's account email (#2356)
-
-    /**
-     * The verification send mails users.email, so an event must find its
-     * cars through the owner's account email. A stale cars.email copy must
-     * not take the event, and the noowner account must never match.
-     */
-    public function testFindByEmailMatchesTheOwnersAccountEmailOnly(): void
-    {
-        $queries = [];
-        (new CarRepository($this->makeRecordingDb(null, $queries)))->findByEmail('Owner@Example.com');
-
-        $this->assertCount(1, $queries);
-        $sql = $queries[0]['sql'];
-        $this->assertStringContainsString(
-            'SELECT cars.id, cars.user_id, u.email',
-            $sql,
-            'The callers record each event once per owner, so each row must name the owner (#2358)'
-        );
-        $this->assertStringContainsString('INNER JOIN users u ON u.id = cars.user_id', $sql);
-        $this->assertStringContainsString("u.username != 'noowner'", $sql);
-        $this->assertStringContainsString(
-            "LOWER(REGEXP_REPLACE(u.email, '^[[:space:]]+|[[:space:]]+$', '')) != ''",
-            $sql,
-            'An address that normalizes to empty must not match an owner with an empty email'
-        );
-        $this->assertStringContainsString(
-            "LOWER(REGEXP_REPLACE(u.email, '^[[:space:]]+|[[:space:]]+$', ''))"
-                . " = LOWER(REGEXP_REPLACE(?, '^[[:space:]]+|[[:space:]]+$', '')) COLLATE utf8mb4_bin",
-            $sql,
-            'Both sides are normalized, so case and outer white space do not stop a match'
-        );
-        $this->assertStringNotContainsString('cars.email', $sql, 'A stale cars.email copy must not match an event');
-        $this->assertSame(['Owner@Example.com'], $queries[0]['params']);
-    }
-
-    public function testFindByEmailReturnsNoCarsForABlankAddressWithoutAQuery(): void
-    {
-        $queries = [];
-        $repo = new CarRepository($this->makeRecordingDb(null, $queries));
-
-        $this->assertSame([], $repo->findByEmail(" \t"));
-        $this->assertSame([], $queries);
-    }
-
-    public function testFindByEmailThrowsOnDatabaseError(): void
-    {
-        $queries = [];
-        $repo = new CarRepository($this->makeRecordingDb(null, $queries, 1));
-
-        try {
-            $repo->findByEmail('owner@example.com');
-            $this->fail('findByEmail() must throw when the query fails.');
-        } catch (CarDatabaseException $e) {
-            $this->assertStringContainsString('findByEmail failed: Deadlock found', $e->getMessage());
-            // The message goes to the log. A recipient address is personal data.
-            $this->assertStringNotContainsString('owner@example.com', $e->getMessage());
-        }
-    }
-
     // clearFlagsForConfirmedEmailChange() (#2356)
 
     /**

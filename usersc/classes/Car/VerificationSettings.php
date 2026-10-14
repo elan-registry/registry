@@ -702,30 +702,25 @@ final class VerificationSettings
     }
 
     /**
-     * Increment the count of inbound Brevo signals matched to no car
+     * Increment the count of inbound Brevo signals matched to no single user
      *
-     * Called from three places:
+     * Called from two places, each only for a `car_verification`-tagged
+     * event whose recipient matches no single user
+     * ({@see EmailEventMatcher::matchByMessageId()}):
      * - The Brevo webhook receiver (#1887), `app/api/webhooks/brevo.php`'s
-     *   `NO_CAR_MATCH` branch, when an event's recipient email matches no
-     *   owner's `users.email` ({@see CarRepository::findByEmail()}).
-     * - `BrevoEventReconciliationJob::applyEvent()`, which replays events
-     *   fetched from Brevo's Events API and hits the same no-match condition
-     *   as the live webhook receiver.
-     * - `BrevoSuppressionSyncJob::syncPage()`, which walks Brevo's
-     *   account-wide suppression list. That source is broader and noisier
-     *   than the other two: it is not filtered to any specific email tag or
-     *   campaign, so it counts any suppressed address with no matching car,
-     *   not just ones tied to verification sends. This is accepted
-     *   deliberately per #2085's scope, not an oversight.
+     *   `NO_USER_MATCH` branch.
+     * - `BrevoEventReconciliationJob::countUnmatched()`, which replays events
+     *   fetched from Brevo's Events API.
+     *
+     * The suppression import does not count.
      *
      * A rising count with verification enabled signals recipients that no
      * owner account holds now, for example after an owner changed email.
      *
      * Never throws: a failed UPDATE is logged and swallowed, matching this
      * class's fail-quietly contract for the write paths its callers depend
-     * on — none of the webhook receiver's, the reconciliation job's, or the
-     * suppression sync job's own success/response handling may hinge on this
-     * counter succeeding.
+     * on — neither the webhook receiver's response nor the reconciliation
+     * job's run may hinge on this counter succeeding.
      *
      * @return bool True if the counter was incremented successfully
      */

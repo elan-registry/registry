@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Cron;
 
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -36,6 +37,11 @@ use ElanRegistry\LogCategories;
  *      import must run while sends are off. `run()` checks it before the
  *      enabled read and the claim, so a refused run does not stamp
  *      `last_run_at`. `runNow()` checks it first.
+ *
+ * THE VERIFICATION SWITCH STOPS ONLY THE SEND BATCH
+ * ({@see SendVerificationBatchJob}). It does not stop event writes. To stop
+ * event writes in an incident, follow docs/development/EMAIL_SYSTEM.md,
+ * "Stop Event Writes in an Incident" (#stop-event-writes-in-an-incident).
  *
  * The enabled check is a dedicated read rather than an inference from
  * `CronJobGuard::claim()`'s boolean: `claim()` deliberately conflates
@@ -174,7 +180,9 @@ abstract class AbstractCronJob
             // whether a failure happened in the window between the two.
             (new CronJobGuard($this->db))->recordFailure($jobName);
 
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$jobName}' failed: " . get_class($e) . ': ' . $e->getMessage());
+            // No message. An exception message can hold an email address, and
+            // a log line must not.
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$jobName}' failed: " . ExceptionLogSummary::of($e));
         }
     }
 
@@ -214,7 +222,8 @@ abstract class AbstractCronJob
         try {
             $this->execute();
         } catch (\Throwable $e) {
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$this->jobName()}' failed (manual run): " . get_class($e) . ': ' . $e->getMessage());
+            // No message, for the same reason as in run().
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$this->jobName()}' failed (manual run): " . ExceptionLogSummary::of($e));
         }
     }
 

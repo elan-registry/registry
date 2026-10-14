@@ -6,6 +6,7 @@ namespace Tests\Unit\Cars\Services;
 
 use DateTimeImmutable;
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
@@ -93,7 +94,7 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
         $this->assertSame([], $queries);
     }
 
-    public function testInsertOwnerEmailEventWritesOneRowWithNoCarAndTheEarliestTime(): void
+    public function testInsertOwnerEmailEventWritesOneRowWithNoCarAndKeepsADuplicateUnchanged(): void
     {
         $queries = [];
         $repo = new CarRepository($this->makeRecordingDb($queries, count: 1));
@@ -110,14 +111,29 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
         $this->assertSame(1, $written);
         $this->assertCount(1, $queries);
         $sql = $queries[0]['sql'];
-        $this->assertStringContainsString('SELECT u.id, NULL,', $sql, 'The row carries the user and no car');
-        $this->assertStringContainsString('occurred_at = LEAST(occurred_at, VALUES(occurred_at))', $sql);
+        $this->assertStringContainsString('SELECT u.id, ?,', $sql, 'The row carries the user and a bound car');
+        $this->assertStringContainsString('ON DUPLICATE KEY UPDATE er_email_events.id = er_email_events.id', $sql);
+        $this->assertStringNotContainsString('LEAST(', $sql, 'A duplicate changes no column (#2359)');
         $this->assertStringContainsString("u.username != 'noowner'", $sql);
         $this->assertStringContainsString('WHERE u.id = ?', $sql);
         $this->assertSame(
-            ['owner@example.com', 'hard_bounce', 'mailbox full', 'msg-1', '2026-01-01 00:00:00', 42],
+            [null, 'owner@example.com', 'hard_bounce', 'mailbox full', 'msg-1', '2026-01-01 00:00:00', 42],
             $queries[0]['params'],
-            'The address is stored in the normalized form and the user ID is the last value'
+            'The car is NULL, the address is stored normalized and the user ID is the last value'
+        );
+    }
+
+    /** A step (a) match records the car of the verification `sent` row (#2359). */
+    public function testInsertOwnerEmailEventBindsTheCarOfTheMatchedSentRow(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries));
+
+        $repo->insertOwnerEmailEvent(42, 'a@example.com', 'delivered', null, 'msg-1', '2026-01-01 00:00:00', 15);
+
+        $this->assertSame(
+            [15, 'a@example.com', 'delivered', null, 'msg-1', '2026-01-01 00:00:00', 42],
+            $queries[0]['params']
         );
     }
 
@@ -491,46 +507,16 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
 
         $repo->findLatestEmailEventsByCarIds([3, 3, 4]);
 
-        $this->assertSame(['sent', 3, 4, 'sent'], $queries[0]['params']);
-        $this->assertSame(4, substr_count($queries[0]['sql'], '?'), 'One placeholder for each bound value');
-    }
-
-    // ---- ownerIdsOf() -----------------------------------------------------------------
-
-    public function testOwnerIdsOfReturnsDistinctOwnerIdsInFirstSeenOrder(): void
-    {
-        $cars = [
-            (object) ['id' => 1, 'user_id' => 7],
-            (object) ['id' => 2, 'user_id' => '3'],
-            (object) ['id' => 3, 'user_id' => '7'],
-        ];
-
-        $this->assertSame([7, 3], CarRepository::ownerIdsOf($cars));
-    }
-
-    /**
-     * @return array<string, array{0: mixed}>
-     */
-    public static function invalidOwnerRowProvider(): array
-    {
-        return [
-            'array, not object'   => [['user_id' => 7]],
-            'missing user_id'     => [(object) ['id' => 1]],
-            'null user_id'        => [(object) ['user_id' => null]],
-            'non-numeric user_id' => [(object) ['user_id' => 'abc']],
-            'zero user_id'        => [(object) ['user_id' => 0]],
-            'zero string user_id' => [(object) ['user_id' => '0']],
-            'negative user_id'    => [(object) ['user_id' => -4]],
-        ];
-    }
-
-    /** A bad row would otherwise cast to owner 0 and apply the event to no one. */
-    #[DataProvider('invalidOwnerRowProvider')]
-    public function testOwnerIdsOfThrowsForARowWithNoPositiveUserId(mixed $row): void
-    {
-        $this->expectException(CarValidationException::class);
-        $this->expectExceptionMessage('CarRepository::ownerIdsOf');
-
-        CarRepository::ownerIdsOf([(object) ['user_id' => 5], $row]);
+        // The terminal events follow: a car-less row shows only when it is terminal (#2359).
+        $terminal = array_values(array_unique(array_merge(
+            EmailEventApplier::HARD_BOUNCE_EVENTS,
+            EmailEventApplier::SUPPRESSION_EVENTS
+        )));
+        $this->assertSame(array_merge(['sent', 3, 4, 'sent'], $terminal), $queries[0]['params']);
+        $this->assertSame(
+            count($queries[0]['params']),
+            substr_count($queries[0]['sql'], '?'),
+            'One placeholder for each bound value'
+        );
     }
 }

@@ -7,10 +7,14 @@ namespace ElanRegistry\Cron;
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\DeliverabilityFlagLog;
+use ElanRegistry\Car\EmailAddress;
 use ElanRegistry\Car\EmailEventApplier;
-use ElanRegistry\Car\VerificationSettings;
+use ElanRegistry\Car\EmailEventMatch;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -27,12 +31,14 @@ use ElanRegistry\LogCategories;
  * mail to addresses that can never receive it, forever.
  *
  * This job closes that gap by reading `GET /smtp/blockedContacts` through
- * {@see BrevoSuppressionSyncClient} and applying each suppression through
- * {@see EmailEventApplier} — the *same* escalation code the webhook (#1887)
- * and the daily event reconciliation job (#1889) run, so an owner flagged by
- * an imported suppression is flagged identically to one flagged by a live
- * event. The flags belong to the owner's profile (#2101). The job passes the
- * source `import`, which goes into the flag-change audit row.
+ * {@see BrevoSuppressionSyncClient}. It finds the one user that holds each
+ * address with {@see EmailEventMatcher::matchUserByAddress()} and applies the
+ * suppression through {@see EmailEventApplier} in
+ * {@see EmailEventApplier::MODE_STATE} (#2359). The webhook (#1887) and the
+ * daily event reconciliation job (#1889) use the same applier, so an imported
+ * suppression sets the same flag as a live event. The flags belong to the
+ * owner's profile (#2101), so a user who owns no car also gets the flag. The
+ * job passes the source `import`, which goes into the flag-change audit row.
  *
  * TWO FETCH MODES, DELIBERATELY SEPARATED
  * ---------------------------------------
@@ -57,44 +63,63 @@ use ElanRegistry\LogCategories;
  *
  * The incremental mode's under-fetching is safe for the same reason #1889's is:
  * the window is roughly twice the guard interval so every suppression is
- * offered to at least two runs, and re-applying an already-recorded
- * suppression is a no-op (`insertOwnerEmailEvent()` is `ON DUPLICATE KEY UPDATE`
- * and the flag writes are plain column UPDATEs). The synthetic message id
- * below is what makes that idempotence hold across re-runs.
+ * offered to at least two runs. A repeat of an imported suppression writes
+ * no second event row (`insertOwnerEmailEvent()` ignores a duplicate key),
+ * and the profile writers skip a flag that already names the same address.
+ * The synthetic message id below makes the duplicate key hold across runs.
  *
  * REASON-CODE MAPPING
  * -------------------
- * Brevo's reason codes are collapsed onto the three event names
- * {@see EmailEventApplier} already understands:
+ * Brevo's reason codes go onto the three event names
+ * {@see EmailEventApplier} knows:
  *
- *   | Brevo reason code        | Applied event  | Effect on the owner's profile            |
+ *   | Brevo reason code        | Event row      | Effect on the owner's profile            |
  *   | ------------------------ | -------------- | ---------------------------------------- |
  *   | `hardBounce`             | `blocked`      | sets `email_bounced`                     |
  *   | `contactFlaggedAsSpam`   | `spam`         | sets `email_blocked`, cause spam         |
  *   | `unsubscribedViaEmail`   | `unsubscribed` | sets `email_blocked`, cause unsubscribed |
  *   | `unsubscribedViaMA`      | `unsubscribed` | sets `email_blocked`, cause unsubscribed |
  *   | `unsubscribedViaApi`     | `unsubscribed` | sets `email_blocked`, cause unsubscribed |
- *   | `adminBlocked`           | `unsubscribed` | sets `email_blocked`, cause unsubscribed |
+ *   | `adminBlocked`           | `unsubscribed` | sets `email_blocked`, cause blocklist    |
  *   | anything else            | (none)         | logged, tallied, skipped                 |
  *
  * An unmapped code is never guessed at — it is tallied under `'unrecognized'`
  * in the summary's reason-code breakdown and the contact is skipped entirely,
- * because flagging a car on a code whose meaning is unknown is a worse error
- * than not flagging it. `adminBlocked` maps to `unsubscribed` rather than
- * `blocked` on purpose: it means a human deliberately suppressed the address
- * at Brevo, which is a suppression decision, not evidence the mailbox is dead.
+ * because flagging an owner on a code whose meaning is unknown is a worse
+ * error than not flagging it. `adminBlocked` is not `blocked`: a person
+ * suppressed the address at Brevo, which does not show that the mailbox is
+ * dead. Its event row stays `unsubscribed`, so the event names, the status
+ * chip and the prune do not change. Only the cause on the profile is
+ * `blocklist`.
+ *
+ * `blockedAt` is the event time. A missing, wrong-typed or unparseable value
+ * takes the run time.
+ *
+ * ADDRESS CHECK AND PRIVACY
+ * -------------------------
+ * The job skips an address longer than {@see EmailEventMatcher::MAX_ADDRESS_BYTES} bytes,
+ * or one that fails `FILTER_VALIDATE_EMAIL`, before any match. The summary
+ * counts it in `invalidAddressCount`. No log line holds an address. A line
+ * names the user ID or, with no user, {@see EmailEventMatcher::addressLogHash()}. A
+ * `catch` block logs {@see ExceptionLogSummary}, not the message, because
+ * {@see CarRepository} puts the address in its exception messages.
+ *
+ * NO UNMATCHED-RECIPIENT COUNTER
+ * ------------------------------
+ * The dashboard counter counts verification-tagged events with no user
+ * (#2359). A blocklist entry has no tag, so an unmatched contact goes only
+ * into the summary's `unmatchedCount`.
  *
  * COUNT ACCURACY
  * --------------
  * {@see SuppressionSyncSummary}'s three contact buckets are disjoint, which
- * requires knowing whether an owner was *already* in the target state
- * before the write. {@see CarRepository::findByEmail()} returns the owner's
- * `user_id` but no flags, so this job spends one extra indexed read per
- * matched owner ({@see CarRepository::effectiveEmailFlags()}) to read whether
- * the owner's `email_bounced`/`email_blocked` applies to the current address
- * first. That read
- * is deliberate rather than approximated away: an approximation would leave
- * `alreadyFlaggedCount` permanently zero and report every re-run of the
+ * requires knowing whether the owner was *already* in the target state
+ * before the write. The matcher returns only the user ID, so this job
+ * spends one extra indexed read per matched contact
+ * ({@see CarRepository::effectiveEmailFlags()}) to read whether the owner's
+ * `email_bounced`/`email_blocked` applies to the current address first. That
+ * read is deliberate rather than approximated away: an approximation would
+ * leave `alreadyFlaggedCount` permanently zero and report every re-run of the
  * backfill as though it had newly flagged the entire suppression list, which
  * is exactly the number an operator watching the admin page is trying to
  * judge. The cost is bounded — matched contacts only, one indexed lookup each.
@@ -224,10 +249,11 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * Latest Unix timestamp {@see self::resolveOccurredAt()} will accept
      * (9999-12-31 23:59:59 UTC).
      *
-     * Same value and purpose as {@see BrevoEventReconciliationJob}'s constant
-     * of the same name: Brevo's read API is external input, and an absurd date
-     * string ("+100000 years") parses without error into a DATETIME string
-     * MySQL rejects, which would fail every write for that contact.
+     * Same value as {@see \ElanRegistry\Car\BrevoWebhookEventProcessor}'s
+     * constant of the same name. Brevo's read API is external input, and an
+     * absurd date string ("+100000 years") parses without error into an out-of-range
+     * DATETIME. With `sql_mode = ''` MySQL stores that as a zero date, which
+     * breaks the date guards for that contact.
      */
     private const MAX_PLAUSIBLE_TIMESTAMP = 253402300799;
 
@@ -259,20 +285,12 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     private readonly \DateTimeImmutable $now;
 
     /**
-     * Set once {@see self::syncPage()} has seen the unmatched-recipient counter
-     * increment fail, to stop re-attempting it for the remainder of this run —
-     * see that method's own comment for why. Scoped to the job instance rather
-     * than the page so a {@see self::runFullBackfill()} walk does not restart
-     * the retrying on every page.
-     */
-    private bool $unmatchedCounterFailed = false;
-
-    /**
      * Collaborators are injected rather than constructed internally, matching
      * {@see BrevoEventReconciliationJob}'s convention — it keeps this class
      * unit-testable without a real database or the vendored Brevo SDK present.
      *
      * @param DatabaseInterface       $db  AbstractCronJob's enabled-check/guard connection
+     * @param EmailEventMatcher       $matcher Finds the one user that holds each address
      * @param \DateTimeImmutable|null $now Fixes "now" for the incremental
      *        window; defaults to wall-clock time. Injectable so tests can
      *        assert exact boundaries rather than tolerances.
@@ -280,6 +298,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     public function __construct(
         DatabaseInterface $db,
         private readonly CarRepository $repo,
+        private readonly EmailEventMatcher $matcher,
         private readonly EmailEventApplier $applier,
         private readonly BrevoSuppressionSyncClient $client,
         ?\DateTimeImmutable $now = null,
@@ -328,24 +347,14 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         // outcome sits alongside the events it acted on.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo suppression sync: incremental run complete —'
-            . ' %d matched, %d unmatched, %d already flagged, %d skipped, %d page(s) fetched%s.',
+            . ' %d matched, %d unmatched, %d already flagged, %d skipped,'
+            . ' %d invalid address(es), %d page(s) fetched.',
             $summary->matchedCount,
             $summary->unmatchedCount,
             $summary->alreadyFlaggedCount,
             $summary->skippedCount,
-            $summary->pagesFetched,
-            // Without this clause the line above reads as a clean run while the
-            // dashboard's unmatched-recipient counter silently under-reports.
-            // Only the first failure logs its own cause (see syncPage()), so
-            // this is the only place the run's true scale is recorded.
-            $summary->counterFailureCount > 0
-                ? sprintf(
-                    ' — %d of the %d unmatched contact(s) were NOT recorded in the dashboard'
-                    . ' unmatched-recipient counter; see VerificationConfigWarning log entries',
-                    $summary->counterFailureCount,
-                    $summary->unmatchedCount
-                )
-                : ''
+            $summary->invalidAddressCount,
+            $summary->pagesFetched
         ));
     }
 
@@ -383,8 +392,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * `contactsExamined` — the row count Brevo actually returned on that
      * page — separately from the three flag-decision buckets (matched /
      * unmatched / already-flagged), because those three are NOT exhaustive:
-     * a contact with a malformed field, an unrecognized reason code, or a
-     * write that failed on every matching car reaches none of them (see
+     * a contact with a malformed field, an invalid address, an unrecognized
+     * reason code, or a failed write for the matching owner reaches none of
+     * them (see
      * SuppressionSyncSummary's docblock). An earlier version of this method
      * summed the three buckets and compared THAT against PAGE_SIZE — so a
      * full page containing even one such contact undercounted, looked like a
@@ -401,7 +411,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         $unmatched = 0;
         $alreadyFlagged = 0;
         $skipped = 0;
-        $counterFailures = 0;
+        $invalidAddresses = 0;
         $pages = 0;
         $exhausted = false;
         $pollFailed = false;
@@ -435,7 +445,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $unmatched += $pageSummary->unmatchedCount;
             $alreadyFlagged += $pageSummary->alreadyFlaggedCount;
             $skipped += $pageSummary->skippedCount;
-            $counterFailures += $pageSummary->counterFailureCount;
+            $invalidAddresses += $pageSummary->invalidAddressCount;
             $pages += $pageSummary->pagesFetched;
 
             foreach ($pageSummary->reasonCodeCounts as $code => $count) {
@@ -488,7 +498,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                     ? sprintf('%d-second', self::MAX_BACKFILL_SECONDS)
                     : sprintf('%d-page', self::MAX_BACKFILL_PAGES),
                 $pagesWalked,
-                $matched + $unmatched + $alreadyFlagged + $skipped
+                $matched + $unmatched + $alreadyFlagged + $skipped + $invalidAddresses
             ));
         }
 
@@ -501,8 +511,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo suppression sync: %d contact(s) across this run were examined but'
                 . ' reached no flag-decision bucket (malformed payload, unrecognized reason'
-                . ' code, oversized value, failed lookup, or every matching car\'s write'
-                . ' failed) — see the per-contact lines above for each reason.',
+                . ' code, oversized value, failed lookup, or a failed write for the matching'
+                . ' owner) — see the per-contact lines above for each reason.',
                 $skipped
             ));
         }
@@ -514,10 +524,10 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $reasonCodeCounts,
             $pages,
             $capped,
-            $matched + $unmatched + $alreadyFlagged + $skipped,
+            $matched + $unmatched + $alreadyFlagged + $skipped + $invalidAddresses,
             $skipped,
             $pollFailed,
-            $counterFailures
+            $invalidAddresses
         );
     }
 
@@ -557,17 +567,16 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             return $this->runFullBackfill();
         } catch (\Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                "Cron job '%s' failed (manual backfill): %s: %s",
+                "Cron job '%s' failed (manual backfill): %s",
                 self::JOB_NAME,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             throw $e;
         }
     }
 
     /**
-     * Fetch one page of blocked contacts and apply each to its matching cars.
+     * Fetch one page of blocked contacts and apply each to its matching owner.
      *
      * The single worker shared by both modes; the only difference between them
      * is the arguments passed here.
@@ -597,7 +606,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         $unmatched = 0;
         $alreadyFlagged = 0;
         $skipped = 0;
-        $counterFailures = 0;
+        $invalidAddresses = 0;
         /** @var array<string, int> $reasonCodeCounts */
         $reasonCodeCounts = [];
 
@@ -637,7 +646,17 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                 continue;
             }
 
-            $email = $rawEmail;
+            $email = EmailAddress::normalize($rawEmail);
+            $addressHash = EmailEventMatcher::addressLogHash($email);
+
+            if (!EmailEventMatcher::isAcceptableAddress($email)) {
+                $invalidAddresses++;
+                logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                    'Brevo suppression sync: invalid address (hash %s) — contact skipped.',
+                    $addressHash
+                ));
+                continue;
+            }
 
             // getReason() is declared as returning the Reason model, but the
             // generated SDK enforces nothing at deserialization time, so a
@@ -649,9 +668,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             if ($reason === null) {
                 $skipped++;
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                    'Brevo suppression sync: blocked contact %s carried no reason object'
+                    'Brevo suppression sync: blocked contact (hash %s) carried no reason object'
                     . ' — contact skipped.',
-                    $email
+                    $addressHash
                 ));
                 continue;
             }
@@ -660,9 +679,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             if (!is_string($rawCode) || $rawCode === '') {
                 $skipped++;
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                    'Brevo suppression sync: blocked contact %s carried a non-string reason code (%s)'
+                    'Brevo suppression sync: blocked contact (hash %s) carried a non-string reason code (%s)'
                     . ' — contact skipped.',
-                    $email,
+                    $addressHash,
                     get_debug_type($rawCode)
                 ));
                 continue;
@@ -676,18 +695,18 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                 // that Brevo has added a suppression reason this job does not
                 // yet understand, and the summary's raw-code breakdown is the
                 // one place an operator would see it. No apply() call is made —
-                // flagging a car on a code of unknown meaning is worse than not
-                // flagging it.
+                // flagging an owner on a code of unknown meaning is worse than
+                // not flagging it.
                 $reasonCodeCounts[self::UNRECOGNIZED_REASON_BUCKET] =
                     ($reasonCodeCounts[self::UNRECOGNIZED_REASON_BUCKET] ?? 0) + 1;
                 $skipped++;
 
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                    'Brevo suppression sync: unrecognized reason code "%s" for %s'
+                    'Brevo suppression sync: unrecognized reason code "%s" (hash %s)'
                     . ' — contact skipped, no flag change. Brevo may have added a'
                     . ' suppression reason this job does not map.',
                     $code,
-                    $email
+                    $addressHash
                 ));
                 continue;
             }
@@ -695,141 +714,104 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $reasonMessage = $reason->getMessage();
             $reasonMessage = is_string($reasonMessage) && $reasonMessage !== '' ? $reasonMessage : null;
 
-            $occurredAt = $this->resolveOccurredAt($rawBlockedAt, $email, $code);
-
             // Deterministic, so re-running the backfill produces the same id
             // for the same contact and collides with the existing row under
             // er_email_events' UNIQUE (user_id, brevo_message_id, event) — which
-            // is what makes the import idempotent. Built from the raw
-            // `blockedAt` rather than the resolved occurred_at so that a
-            // contact whose date fell back to run time still gets a stable id
-            // across runs.
-            $messageId = 'suppression-import-' . md5($email . '|' . $code . '|' . $this->messageIdDatePart($rawBlockedAt));
+            // is what makes the import idempotent. Built from the raw address
+            // and the raw `blockedAt`, so rows that earlier releases wrote
+            // keep their id, and a contact whose date fell back to run time
+            // still gets a stable id across runs.
+            $messageId = 'suppression-import-' . md5($rawEmail . '|' . $code . '|' . $this->messageIdDatePart($rawBlockedAt));
 
             // Brevo's read API is external input, so it gets the same bound
             // check against er_email_events' real column widths that #1889's
-            // job applies, keeping an oversized value from reaching
-            // insertOwnerEmailEvent() and throwing under STRICT_TRANS_TABLES. Both
-            // values are in-bounds by construction here — the mapped event
-            // names are at most 12 characters and the synthetic id is always
-            // 51 — so this is a defensive no-op today, kept so that changing
-            // either scheme later cannot silently start failing writes.
+            // job applies. The connection sets sql_mode '' (users/classes/DB.php),
+            // so MySQL would silently cut an oversized value in
+            // insertOwnerEmailEvent(). Both values are in bounds by
+            // construction here: the mapped event names are at most 12
+            // characters and the synthetic ID is always 51. So the check is
+            // defensive today. It stays so that a later change to either
+            // scheme cannot silently store cut values.
             if (strlen($event) > self::MAX_EVENT_LENGTH || strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
                 $skipped++;
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                     'Brevo suppression sync: event or message-id exceeds storage width'
-                    . ' (event=%d bytes, message-id=%d bytes) — contact %s skipped.',
+                    . ' (event=%d bytes, message-id=%d bytes) — contact (hash %s) skipped.',
                     strlen($event),
                     strlen($messageId),
-                    $email
+                    $addressHash
                 ));
                 continue;
             }
 
             try {
-                $matchedCars = $this->repo->findByEmail($email);
+                $userId = $this->matcher->matchUserByAddress($email);
             } catch (CarDatabaseException $e) {
                 $skipped++;
                 logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                    'Brevo suppression sync: car lookup FAILED for %s (reason "%s") — contact skipped: %s',
-                    $email,
+                    'Brevo suppression sync: user lookup FAILED (hash %s, reason "%s") — contact skipped: %s',
+                    $addressHash,
                     $code,
-                    $e->getMessage()
+                    ExceptionLogSummary::of($e)
                 ));
                 continue;
             }
 
-            if ($matchedCars === []) {
+            if ($userId === null) {
                 // Not an error. Brevo's suppression list covers every address
-                // this account has ever sent to, including owners who have
-                // since been removed and addresses that were never registry
-                // cars at all.
+                // this account has ever sent to, including users who have
+                // since been removed, addresses that were never registry
+                // users, and the test site's mail. An address that two users
+                // share also lands here: no flag is better than a guess.
                 $unmatched++;
-
-                // incrementUnmatchedRecipientCounter() never throws and logs
-                // its own failure — but the return value still has to be
-                // honored, or execute()'s summary line would silently imply
-                // every unmatched contact reached the dashboard counter even
-                // on the one path where the method just logged that it could
-                // not (the same reasoning app/api/webhooks/brevo.php's
-                // NO_CAR_MATCH branch spells out).
-                //
-                // After the first failure the call itself is not re-attempted
-                // for the rest of this run: the failure is a settings-row-level
-                // fault, not a per-contact one, so retrying would write one
-                // identical warning row per unmatched contact — thousands
-                // across a full backfill. The tally keeps counting regardless,
-                // so the summary reports the real number missing.
-                if ($this->unmatchedCounterFailed) {
-                    $counterFailures++;
-                } elseif (!(new VerificationSettings($this->db))->incrementUnmatchedRecipientCounter()) {
-                    $this->unmatchedCounterFailed = true;
-                    $counterFailures++;
-                }
-
                 continue;
             }
 
-            $contactCounted = false;
-            $contactAlreadyFlagged = true;
+            $occurredAt = $this->resolveOccurredAt($rawBlockedAt, $userId, $code);
+            $wasFlagged = $this->isAlreadyInTargetState($userId, $event);
 
-            $ownerIds = CarRepository::ownerIdsOf($matchedCars);
-
-            foreach ($ownerIds as $ownerId) {
-                $wasFlagged = $this->isAlreadyInTargetState($ownerId, $event);
-
-                try {
-                    $this->applier->apply(
-                        $ownerId,
-                        $email,
-                        $event,
-                        $reasonMessage,
-                        $messageId,
-                        $occurredAt,
-                        DeliverabilityFlagLog::SOURCE_IMPORT
-                    );
-                } catch (CarDatabaseException $e) {
-                    // Log and continue rather than aborting the page: there is
-                    // no caller to retry, the import is idempotent so the next
-                    // run covers this contact, and letting one poisoned row
-                    // abort would starve every contact behind it.
-                    logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                        'Brevo suppression sync: write FAILED for owner %d, event "%s" —'
-                        . ' skipped, will retry next run: %s',
-                        $ownerId,
-                        $event,
-                        $e->getMessage()
-                    ));
-                    continue;
-                }
-
-                $contactCounted = true;
-                if (!$wasFlagged) {
-                    $contactAlreadyFlagged = false;
-                }
-            }
-
-            // Counted per contact, not per owner, so the three buckets sum to the
-            // number of contacts examined as SuppressionSyncSummary documents.
-            // A contact counts as already-flagged only when EVERY matching owner
-            // was already in the target state — if even one owner needed the
-            // flag, the run did real work for that contact.
-            if (!$contactCounted) {
-                // Every owner's write failed; already logged per-owner above, and
-                // tallied here too so the operator sees SOMETHING went wrong
-                // in the rendered summary even if they never open the log —
-                // a wholly-failed contact must not render as indistinguishable
-                // from a clean run just because its count sums smaller.
-                // Counting it as matched would overstate what the run
-                // achieved, and as unmatched would be a lie about why. Left
-                // out of all three buckets deliberately — the failure detail
-                // is in the log, and the summary should not imply the contact
-                // was handled.
+            try {
+                $this->applier->apply(
+                    EmailEventMatch::matched($userId, null, $occurredAt),
+                    $email,
+                    $event,
+                    $reasonMessage,
+                    $messageId,
+                    $occurredAt,
+                    DeliverabilityFlagLog::SOURCE_IMPORT,
+                    EmailEventApplier::MODE_STATE,
+                    $code === self::REASON_CODE_ADMIN_BLOCKED ? CarRepository::BLOCKED_CAUSE_BLOCKLIST : null
+                );
+            } catch (CarDatabaseException $e) {
+                // Log and continue rather than aborting the page: there is
+                // no caller to retry, the import is idempotent so the next
+                // run covers this contact, and letting one poisoned row
+                // abort would starve every contact behind it. Counted as
+                // skipped, not matched: the summary must not imply that the
+                // contact was handled.
                 $skipped++;
+                logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                    'Brevo suppression sync: write FAILED for owner %d, event "%s" —'
+                    . ' skipped, will retry next run: %s',
+                    $userId,
+                    $event,
+                    ExceptionLogSummary::of($e)
+                ));
+                continue;
+            } catch (CarValidationException | \InvalidArgumentException $e) {
+                // A bad value fails the same way on every run, so it must
+                // not stop the contacts behind it.
+                $skipped++;
+                logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                    'Brevo suppression sync: write REJECTED bad data for owner %d, event "%s" — skipped: %s',
+                    $userId,
+                    $event,
+                    ExceptionLogSummary::of($e)
+                ));
                 continue;
             }
 
-            if ($contactAlreadyFlagged) {
+            if ($wasFlagged) {
                 $alreadyFlagged++;
             } else {
                 $matched++;
@@ -848,7 +830,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $contactsExamined,
             $skipped,
             false,
-            $counterFailures
+            $invalidAddresses
         );
     }
 
@@ -870,7 +852,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * be wrong here — the alternative, treating an unreadable profile as
      * already handled, would hide from the operator that the read is broken.
      *
-     * @param int $ownerId Owner user ID from findByEmail()
+     * @param int $ownerId Owner user ID from EmailEventMatcher::matchUserByAddress()
      * @param string $event One of the mapped event names
      */
     private function isAlreadyInTargetState(int $ownerId, string $event): bool
@@ -883,7 +865,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                 . ' — suppression still applied, but the already-flagged count for this'
                 . ' run is understated: %s',
                 $ownerId,
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return false;
         }
@@ -896,8 +878,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     /**
      * Map a Brevo suppression reason code onto an EmailEventApplier event name.
      *
-     * See the class docblock for the full table and the rationale behind
-     * `adminBlocked` mapping to `unsubscribed` rather than `blocked`.
+     * See the class docblock for the full table and the reason that
+     * `adminBlocked` maps to `unsubscribed` rather than `blocked`. Its
+     * `blocklist` cause is set by the caller.
      *
      * @param string $code Brevo's raw reason code
      * @return string|null The event name, or null if the code is unrecognized
@@ -957,13 +940,14 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      *
      * A parsed value is trusted only when its Unix timestamp is positive and at
      * or below {@see self::MAX_PLAUSIBLE_TIMESTAMP} — an unbounded parse
-     * accepts strings like "+100000 years", producing a DATETIME MySQL rejects.
+     * accepts strings like "+100000 years", producing an out-of-range DATETIME
+     * that MySQL stores as a zero date.
      *
      * @param mixed  $rawBlockedAt The SDK's `blockedAt` field, untyped at the boundary
-     * @param string $email        Recipient address, for the fallback log line
+     * @param int    $userId       Matched user, for the fallback log line
      * @param string $code         Brevo's raw reason code, for the fallback log line
      */
-    private function resolveOccurredAt(mixed $rawBlockedAt, string $email, string $code): string
+    private function resolveOccurredAt(mixed $rawBlockedAt, int $userId, string $code): string
     {
         // Carries the specific reason the fallback below fires — not just the
         // debug type, which for the interesting cases (unparseable string,
@@ -980,7 +964,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                 }
                 $detail = sprintf('implausible timestamp %d parsed from "%s"', $seconds, $rawBlockedAt);
             } catch (\Exception $e) {
-                $detail = sprintf('unparseable "%s" (%s: %s)', $rawBlockedAt, get_class($e), $e->getMessage());
+                $detail = sprintf('unparseable "%s" (%s)', $rawBlockedAt, get_class($e));
             }
         }
 
@@ -991,9 +975,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         // the identical condition, so all three paths' date problems land in
         // one searchable place.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-            'Brevo suppression sync: contact %s (reason "%s") carried no usable blocked-at date (%s);'
+            'Brevo suppression sync: contact of owner %d (reason "%s") carried no usable blocked-at date (%s);'
             . ' occurred_at defaulted to run time — event ordering may be skewed.',
-            $email,
+            $userId,
             $code,
             $detail
         ));

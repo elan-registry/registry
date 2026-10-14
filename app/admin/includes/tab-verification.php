@@ -30,6 +30,9 @@ use ElanRegistry\Owner;
  * healthy it is at the bottom and closed.
  */
 
+// THE VERIFICATION SWITCH STOPS ONLY THE SEND BATCH. The stop for event writes
+// is in the Feature Switch help text below and in docs/development/EMAIL_SYSTEM.md.
+
 // ---------------------------------------------------------------------------
 // Context variables supplied by the parent admin/index.php page. Guard here so
 // static analysis (and any direct include) always sees them initialized.
@@ -364,6 +367,13 @@ if (!function_exists('vsStatusChip')) {
      * block, then an opt-out. Otherwise the chip shows the car's latest
      * email event, as chosen by
      * CarRepository::findLatestEmailEventPerCarWithPrecedence().
+     *
+     * A bounce that applies also stops email, but the chip does not test it.
+     * The chip reports what happened to the last email, and a hard-bounce
+     * event already shows "Bounced" through the event path. The Bounced pill
+     * and the row action read the bounce flag. So the pill and the chip can
+     * differ, as EMAIL_SYSTEM.md describes. `$blocked` means the block
+     * applies to the owner's current address (#2356).
      *
      * Until #2361 separates the states, a block shows "Brevo complaint"
      * with the stored cause as its reason.
@@ -792,9 +802,27 @@ ob_start();
         <?php } else { ?>
             <small class="form-text text-muted d-block mt-1">
                 <i class="fas fa-info-circle"></i>
-                Turning this off hides all verification UI and stops reminder emails, the inbound webhook,
-                and both cron jobs (reconciliation and suppression sync) from writing bounce or suppression
-                state to car records. It can always be turned off, even while Brevo or cron are unavailable.
+                Turning this off hides all verification UI and stops the automatic send batch. It stops
+                nothing else. The webhook and both cron jobs (reconciliation and suppression sync) still
+                write delivery events and bounce or suppression state. It can always be turned off, even
+                while Brevo or cron are unavailable.
+            </small>
+            <small class="form-text text-muted d-block mt-2">
+                <i class="fas fa-exclamation-triangle"></i>
+                To stop event writes in an incident, do all three steps:
+            </small>
+            <ol class="small text-muted mb-0">
+                <li>Set <code>BREVO_WEBHOOK_TOKEN</code> to an empty value. The webhook then refuses every
+                    call with 401, and Brevo retries.</li>
+                <li>Set <code>er_cron_job_runs.enabled = 0</code> for the reconciliation job and the
+                    suppression import. This also stops the retention prune of the reconciliation job.</li>
+                <li>Do not use Run Now for the two Brevo jobs, <code>27-Reconcile-Brevo-Events.php</code> or
+                    <code>28-Reconcile-Brevo-Suppressions.php</code>. These paths read neither the switch
+                    nor <code>enabled</code>.</li>
+            </ol>
+            <small class="form-text text-muted d-block mt-1">
+                After the incident, reconciliation must run within 48 hours of the empty token. The job
+                fetches the last 48 hours only.
             </small>
         <?php } ?>
 
