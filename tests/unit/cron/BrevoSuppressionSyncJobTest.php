@@ -98,35 +98,32 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * Every car reads back unflagged, so the pre-check always says "write".
+     * Every owner reads back unflagged, so the pre-check always says "write".
+     * Each ID is one owner with one car.
      *
-     * @param list<int> $carIds
+     * @param list<int> $ownerIds
      */
-    private function matchEveryEmailTo(array $carIds): void
+    private function matchEveryEmailTo(array $ownerIds): void
     {
         $this->mockRepo->method('findByEmail')->willReturn(array_map(
-            static fn (int $id): object => (object) ['id' => $id],
-            $carIds
+            static fn (int $id): object => (object) ['id' => 1000 + $id, 'user_id' => $id],
+            $ownerIds
         ));
         $this->stubOwnerFlags([]);
     }
 
     /**
-     * Stub the owner and profile reads the pre-check makes for each car.
+     * Stub the profile read the pre-check makes for each owner.
      *
-     * Car N belongs to owner 100 + N. An owner not listed in $flagsByCarId has
-     * a profile with every flag clear.
+     * An owner not listed in $flagsByUserId has a profile with every flag clear.
      *
-     * @param array<int, array{bounced?: int, blocked?: int}> $flagsByCarId
+     * @param array<int, array{bounced?: int, blocked?: int}> $flagsByUserId
      */
-    private function stubOwnerFlags(array $flagsByCarId): void
+    private function stubOwnerFlags(array $flagsByUserId): void
     {
-        $this->mockRepo->method('findOwnerOfCar')->willReturnCallback(
-            static fn (int $carId): object => (object) ['user_id' => 100 + $carId, 'username' => 'owner' . $carId]
-        );
         $this->mockRepo->method('effectiveEmailFlags')->willReturnCallback(
-            static function (int $userId) use ($flagsByCarId): EffectiveEmailFlags {
-                $flags = $flagsByCarId[$userId - 100] ?? [];
+            static function (int $userId) use ($flagsByUserId): EffectiveEmailFlags {
+                $flags = $flagsByUserId[$userId] ?? [];
                 $blocked = ($flags['blocked'] ?? 0) === 1;
                 $bounced = ($flags['bounced'] ?? 0) === 1;
 
@@ -214,7 +211,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
         $this->assertCount(1, $this->applier->calls);
         $this->assertSame($expectedEvent, $this->applier->calls[0]['event']);
-        $this->assertSame(7, $this->applier->calls[0]['carId']);
+        $this->assertSame(7, $this->applier->calls[0]['userId']);
         $this->assertSame('owner@example.com', $this->applier->calls[0]['email']);
     }
 
@@ -313,7 +310,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Applied payload -------------------------------------------------
 
-    public function testEveryMatchedCarReceivesTheSuppression(): void
+    public function testEveryMatchedOwnerReceivesTheSuppression(): void
     {
         $this->matchEveryEmailTo([7, 9]);
 
@@ -321,9 +318,47 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', 'mailbox unavailable'),
         ])->runNow();
 
-        $this->assertSame([7, 9], array_column($this->applier->calls, 'carId'));
+        $this->assertSame([7, 9], array_column($this->applier->calls, 'userId'));
         $this->assertSame('mailbox unavailable', $this->applier->calls[0]['reason']);
         $this->assertSame(self::BLOCKED_AT_LOCAL, $this->applier->calls[0]['occurredAt']);
+    }
+
+    /**
+     * The event belongs to the owner (#2358): an owner with three cars gets
+     * one apply() call, not three.
+     */
+    public function testOwnerWithThreeCarsReceivesOneSuppressionCall(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([
+            (object) ['id' => 1, 'user_id' => 55],
+            (object) ['id' => 2, 'user_id' => 55],
+            (object) ['id' => 3, 'user_id' => 55],
+        ]);
+        $this->stubOwnerFlags([]);
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
+        ])->runNowWithSummary();
+
+        $this->assertSame([55], array_column($this->applier->calls, 'userId'));
+        $this->assertSame(1, $summary->matchedCount, 'The contact counts once');
+    }
+
+    /** Two owners on one address (findByEmail() can return it): one call each. */
+    public function testTwoOwnersOnOneAddressReceiveOneCallEach(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([
+            (object) ['id' => 1, 'user_id' => 55],
+            (object) ['id' => 2, 'user_id' => 56],
+            (object) ['id' => 3, 'user_id' => 55],
+        ]);
+        $this->stubOwnerFlags([]);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
+        ])->runNowWithSummary();
+
+        $this->assertSame([55, 56], array_column($this->applier->calls, 'userId'));
     }
 
     /** '' would claim that Brevo said something. */
@@ -749,14 +784,14 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->mockRepo->method('findByEmail')->willReturnCallback(
             static fn (string $email): array => match ($email) {
                 'unknown-a@example.com', 'unknown-b@example.com' => [],
-                'already@example.com' => [(object) ['id' => 30]],
-                'bounce@example.com' => [(object) ['id' => 10]],
-                'spam@example.com' => [(object) ['id' => 20]],
+                'already@example.com' => [(object) ['id' => 300, 'user_id' => 30]],
+                'bounce@example.com' => [(object) ['id' => 100, 'user_id' => 10]],
+                'spam@example.com' => [(object) ['id' => 200, 'user_id' => 20]],
                 default => [],
             }
         );
 
-        // Car 30's owner is already blocked.
+        // Owner 30 is already blocked.
         $this->stubOwnerFlags([30 => ['blocked' => 1]]);
 
         $summary = $this->makeJobWithContacts([
@@ -802,11 +837,11 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
     }
 
-    public function testContactWithOneUnflaggedCarCountsAsMatchedNotAlreadyFlagged(): void
+    public function testContactWithOneUnflaggedOwnerCountsAsMatchedNotAlreadyFlagged(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([
-            (object) ['id' => 1],
-            (object) ['id' => 2],
+            (object) ['id' => 11, 'user_id' => 1],
+            (object) ['id' => 12, 'user_id' => 2],
         ]);
         $this->stubOwnerFlags([1 => ['bounced' => 1]]);
 
@@ -821,7 +856,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     /** 'blocked' reads the owner's email_bounced; the others read email_blocked. */
     public function testAlreadyFlaggedCheckReadsTheOwnerFlagTheEventWouldSet(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 11, 'user_id' => 1]]);
         $this->stubOwnerFlags([1 => ['blocked' => 1]]);
 
         $summary = $this->makeJobWithContacts([
@@ -835,8 +870,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     /** Fails open: hiding a broken read is worse than overstating new matches. */
     public function testUnreadableOwnerFlagsStillApplyTheSuppressionAndLog(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
-        $this->mockRepo->method('findOwnerOfCar')
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 11, 'user_id' => 1]]);
+        $this->mockRepo->method('effectiveEmailFlags')
             ->willThrowException(new CarDatabaseException('flag read failed'));
 
         $summary = $this->makeJobWithContacts([
@@ -852,30 +887,10 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
     }
 
-    /** A car that vanished between reads gets its own log line for triage. */
-    public function testCarVanishedBetweenLookupAndPreCheckStillAppliesTheSuppressionAndLogs(): void
+    /** The flags are owner-level: an owner with no profile cannot be "already flagged". */
+    public function testOwnerWithNoProfileCountsAsMatchedNotAlreadyFlagged(): void
     {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
-        $this->mockRepo->method('findOwnerOfCar')->willReturn(null);
-
-        $summary = $this->makeJobWithContacts([
-            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
-        ])->runNowWithSummary();
-
-        $this->assertCount(1, $this->applier->calls, 'A vanished car must never cost a suppression');
-        $this->assertSame(1, $summary->matchedCount);
-        $this->assertSame(0, $summary->alreadyFlaggedCount);
-
-        $log = $this->logsContaining('vanished before the flag pre-check');
-        $this->assertNotEmpty($log);
-        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
-    }
-
-    /** The flags are owner-level: a car whose owner has no profile cannot be "already flagged". */
-    public function testCarWhoseOwnerHasNoProfileCountsAsMatchedNotAlreadyFlagged(): void
-    {
-        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
-        $this->mockRepo->method('findOwnerOfCar')->willReturn((object) ['user_id' => 101, 'username' => 'owner1']);
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 11, 'user_id' => 1]]);
         $this->mockRepo->method('effectiveEmailFlags')->willReturn(EffectiveEmailFlags::none());
 
         $summary = $this->makeJobWithContacts([
@@ -922,20 +937,34 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * runNowWithSummary() bypasses run(), so it repeats the verification-switch
-     * check and throws so the operator sees why.
+     * Only the send batch honours the verification switch (#2358). The
+     * suppression import must run while sends are off.
      */
-    public function testRunNowWithSummaryThrowsWhenVerificationSwitchIsOff(): void
+    public function testRunNowWithSummaryRunsWhenVerificationSwitchIsOff(): void
     {
-        $job = $this->makeJobWithContacts(
+        $this->matchEveryEmailTo([1]);
+
+        $summary = $this->makeJobWithContacts(
             [FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce')],
             verificationEnabled: false,
-        );
+        )->runNowWithSummary();
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/switched off site-wide/');
+        $this->assertSame(1, $summary->matchedCount);
+        $this->assertCount(1, $this->applier->calls, 'The import must write with the switch off');
+    }
 
-        $job->runNowWithSummary();
+    public function testRunReachesExecuteWhenVerificationSwitchIsOff(): void
+    {
+        $this->matchEveryEmailTo([1]);
+
+        $this->makeJobWithContacts(
+            [FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce')],
+            $client,
+            verificationEnabled: false,
+        )->run();
+
+        $this->assertSame(1, $client->fetchCalls, 'run() must reach execute() with the switch off');
+        $this->assertCount(1, $this->applier->calls);
     }
 
     // --- Per-contact / per-car failure isolation --------------------------
@@ -960,8 +989,10 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
 
         $log = $this->logsContaining('write FAILED');
-        $this->assertCount(1, $log, 'A skipped car must be logged, not silent');
+        $this->assertCount(1, $log, 'A skipped write must be logged, not silent');
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+        $this->assertStringContainsString('write FAILED for owner 1, event "blocked" —', $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
 
         $this->assertSame(2, $summary->matchedCount);
         $this->assertSame(0, $summary->unmatchedCount);
@@ -969,7 +1000,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(['hardBounce' => 2], $summary->reasonCodeCounts);
     }
 
-    public function testWriteFailureForOneCarDoesNotStopTheContactsOtherCars(): void
+    public function testWriteFailureForOneOwnerDoesNotStopTheContactsOtherOwners(): void
     {
         $this->matchEveryEmailTo([1, 2, 3]);
         $this->applier->failOn($this->syntheticId('owner@example.com', 'hardBounce'));
@@ -978,8 +1009,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
         ])->runFullBackfill();
 
-        // All cars share the message-id, so all three fail; all must be attempted.
-        $this->assertSame([1, 2, 3], array_column($this->applier->calls, 'carId'));
+        // All owners share the message-id, so all three fail; all must be attempted.
+        $this->assertSame([1, 2, 3], array_column($this->applier->calls, 'userId'));
         $this->assertCount(3, $this->logsContaining('write FAILED'));
         $this->assertSame(0, $summary->matchedCount, 'No write landed, so no bucket may claim the contact');
     }
@@ -991,7 +1022,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
                 if ($email === 'broken@example.com') {
                     throw new CarDatabaseException('lookup failed');
                 }
-                return [(object) ['id' => 1]];
+                return [(object) ['id' => 11, 'user_id' => 1]];
             }
         );
         $this->stubOwnerFlags([]);
@@ -1085,7 +1116,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Synthetic message-id determinism ---------------------------------
 
-    /** A stable id makes a re-import collide with UNIQUE (car_id, brevo_message_id, event). */
+    /** A stable id makes a re-import collide with UNIQUE (user_id, brevo_message_id, event). */
     public function testSyntheticMessageIdIsStableAcrossRuns(): void
     {
         $this->matchEveryEmailTo([1]);
@@ -1185,8 +1216,8 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertCount(4, array_unique($ids), 'Each distinct contact must get a distinct id');
     }
 
-    /** Every car of one contact shares the contact's id — the id keys the contact, not the car. */
-    public function testAllCarsOfOneContactShareTheSameSyntheticId(): void
+    /** Every owner of one contact shares the contact's id — the id keys the contact, not the owner. */
+    public function testAllOwnersOfOneContactShareTheSameSyntheticId(): void
     {
         $this->matchEveryEmailTo([1, 2, 3]);
 

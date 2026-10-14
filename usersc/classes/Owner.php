@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace ElanRegistry;
 
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\EmailAddress;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\OwnerCreationException;
@@ -11,7 +12,6 @@ use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Exceptions\OwnerSearchException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
-use ElanRegistry\Migration\DeliverabilityMigrationQueries;
 
 /**
  * Manages owner profile data across the `users` and `profiles` tables,
@@ -324,8 +324,8 @@ class Owner
             // With no profile row there is nothing to write, the same as the
             // profile update below.
             if ($lockedProfile !== null && array_key_exists('email', $userFields)) {
-                $normalizedEmail = DeliverabilityMigrationQueries::normalizeAddress((string) $userFields['email']);
-                if ($normalizedEmail !== DeliverabilityMigrationQueries::normalizeAddress($lockedProfile->email_address_seen)) {
+                $normalizedEmail = EmailAddress::normalize((string) $userFields['email']);
+                if ($normalizedEmail !== EmailAddress::normalize($lockedProfile->email_address_seen)) {
                     $profileFields['email_address_since'] = date(AppConstants::DATETIME_FORMAT);
                     $profileFields['email_address_seen'] = $normalizedEmail;
                 }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\LogCategories;
 
 /**
@@ -16,8 +17,9 @@ use ElanRegistry\LogCategories;
  * - $db: Database instance (global)
  *
  * Note: deleteUsers() (users/helpers/users.php) has already removed the `users`
- * and `user_permission_matches` rows before this script runs. This transaction
- * covers profiles/cars cleanup only — not the user row deletion itself.
+ * and `user_permission_matches` rows before this script runs. The two
+ * transactions below cover the privacy step and the car cleanup only — not the
+ * user row deletion itself.
  */
 
 // Shadows the ambient page-scope $db global (untyped — mixed per phpstan-bootstrap.php)
@@ -47,11 +49,79 @@ $inTransaction = function (callable $work) use ($repo, $id): bool {
     }
 };
 
+// A user ID below 1 matches no row. Each later step would then work on the
+// wrong rows or on none, so the hook stops here.
+if ($id < 1) {
+    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf('CRITICAL: after_user_deletion received user ID %d, cleanup skipped', $id));
+    return;
+}
+
+// Privacy step (#2358). It runs first, in its own transaction, so that each
+// early return below keeps no personal data and leaves no transaction open.
+// The profile lock is the lock that the #2359 event step will take. Once
+// #2359 ships, no event row for this user can arrive between the address
+// read and the deletes. Today an event write takes no profile lock.
+// The plugin delete reads the user's event message IDs, so it runs before the
+// event delete. A failure rolls back this step only, and the car cleanup
+// still runs. The log names the user ID, the stage, the exception class and
+// code only, because an exception message can contain an address.
+$privacyCommitted = false;
+$pluginTableAbsent = false;
+$deletedEmailEventCount = 0;
+$deletedPluginMessageCount = 0;
+$privacyStage = 'begin';
+try {
+    $repo->beginTransaction();
+    $privacyStage = 'lock and read addresses';
+    $addresses = $repo->lockProfileAndFindAddresses($id);
+    $privacyStage = 'plugin delete';
+    $pluginRows = 0;
+    if ($repo->sendinblueMessagesTableExists()) {
+        $pluginRows = $repo->deleteSendinblueMessagesForUser($id, $addresses);
+    } else {
+        $pluginTableAbsent = true;
+    }
+    $privacyStage = 'event delete';
+    $eventRows = $repo->deleteEmailEventsForUser($id);
+    $privacyStage = 'profile delete';
+    $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
+    if ($db->error()) {
+        throw new OwnerDatabaseException("Failed to delete profile for user $id");
+    }
+    $privacyStage = 'commit';
+    $repo->commit();
+    $privacyCommitted = true;
+    $deletedEmailEventCount = $eventRows;
+    $deletedPluginMessageCount = $pluginRows;
+} catch (\Throwable $e) {
+    // The users row is already gone. Stopping here would leave the user's
+    // cars pointing at a deleted user, so the hook logs and continues.
+    $repo->rollback();
+    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
+        'CRITICAL: privacy step failed for user %d at stage %s, rolled back, personal data remains: %s (code %s)',
+        $id,
+        $privacyStage,
+        get_class($e),
+        (string) $e->getCode()
+    ));
+}
+
+// The log rows are written after the commit, so a rollback cannot remove them.
+if ($pluginTableAbsent && $privacyCommitted) {
+    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "Privacy step: plg_sendinblue_messages is absent, no plugin rows to delete for user $id");
+}
+logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
+    'Privacy step for user %d: %s, deleted %d er_email_events rows and %d plg_sendinblue_messages rows',
+    $id,
+    $privacyCommitted ? 'committed' : 'rolled back',
+    $deletedEmailEventCount,
+    $deletedPluginMessageCount
+));
+
 // Capture car list before cleanup so both branches below can log per-car
-// after commit and clean up er_email_events rows (#1887) before the
-// car->owner link is severed. Hoisted above the noowner-exists split so both
-// branches — including the fallback, which previously never fetched a car
-// list at all before calling reassignCarsByUser() — capture it identically.
+// after commit. Hoisted above the noowner-exists split so both branches —
+// including the fallback, which previously never fetched a car list at all
+// before calling reassignCarsByUser() — capture it identically.
 try {
     $userCars = $repo->findByOwner($id);
 } catch (CarDatabaseException $e) {
@@ -59,14 +129,6 @@ try {
     return;
 }
 $carCount = count($userCars);
-$userCarIds = array_column($userCars, 'id');
-
-// Populated inside whichever transaction closure below runs, with the actual
-// row count deleteEmailEventsForCarIds() reports, so the post-commit log line
-// states what was actually deleted rather than merely how many cars were
-// considered — the count() difference: a user with cars but no event history
-// should log "0 rows", not imply cleanup that never happened.
-$deletedEmailEventCount = 0;
 
 // Find the "no owner" user dynamically
 $noOwnerQuery = $db->query('SELECT id FROM users WHERE username = ?', ['noowner']);
@@ -95,7 +157,7 @@ if ($noOwnerQuery->count() > 0) {
         return;
     }
 
-    $committed = $inTransaction(function () use ($db, $repo, $id, $noOwnerUserId, $userCars, $userCarIds, $adminUserId, &$deletedEmailEventCount): void {
+    $committed = $inTransaction(function () use ($db, $id, $noOwnerUserId, $userCars, $adminUserId): void {
         // Expire any non-terminal transfer requests the user initiated — prevents orphaned
         // requester FK references and ensures the current car owner sees a clean audit trail.
         $db->query(
@@ -109,13 +171,6 @@ if ($noOwnerQuery->count() > 0) {
         if ($db->error()) {
             throw new \RuntimeException("Failed to expire pending transfer requests for user $id: " . $db->errorString());
         }
-        $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-        if ($db->error()) {
-            throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
-        }
-        // #1887: clear the departing owner's email-webhook event history before the
-        // car->owner link is severed below.
-        $deletedEmailEventCount = $repo->deleteEmailEventsForCarIds($userCarIds);
         foreach ($userCars as $carObj) {
             $car = new \ElanRegistry\Car\Car((int) $carObj->id);
             $car->transfer(
@@ -138,7 +193,7 @@ if ($noOwnerQuery->count() > 0) {
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "Complete cleanup: reassigned $carCount cars to noowner user (ID: $noOwnerUserId)");
 } else {
     // Fallback if noowner doesn't exist - preserve cars but mark as ownerless
-    $committed = $inTransaction(function () use ($db, $repo, $id, $userCarIds, &$deletedEmailEventCount): void {
+    $committed = $inTransaction(function () use ($db, $repo, $id): void {
         $db->query(
             "UPDATE car_transfer_requests
                 SET status = 'expired',
@@ -150,13 +205,6 @@ if ($noOwnerQuery->count() > 0) {
         if ($db->error()) {
             throw new \RuntimeException("Failed to expire pending transfer requests for user $id: " . $db->errorString());
         }
-        $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-        if ($db->error()) {
-            throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
-        }
-        // #1887: clear the departing owner's email-webhook event history before the
-        // car->owner link is severed below.
-        $deletedEmailEventCount = $repo->deleteEmailEventsForCarIds($userCarIds);
         $repo->reassignCarsByUser($id, null);
     });
 
@@ -166,5 +214,3 @@ if ($noOwnerQuery->count() > 0) {
 
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Fallback cleanup: noowner user not found, set cars to NULL');
 }
-
-logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "er_email_events: deleted $deletedEmailEventCount rows across $carCount cars for user $id");

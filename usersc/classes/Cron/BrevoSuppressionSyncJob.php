@@ -58,7 +58,7 @@ use ElanRegistry\LogCategories;
  * The incremental mode's under-fetching is safe for the same reason #1889's is:
  * the window is roughly twice the guard interval so every suppression is
  * offered to at least two runs, and re-applying an already-recorded
- * suppression is a no-op (`insertEmailEvent()` is `ON DUPLICATE KEY UPDATE`
+ * suppression is a no-op (`insertOwnerEmailEvent()` is `ON DUPLICATE KEY UPDATE`
  * and the flag writes are plain column UPDATEs). The synthetic message id
  * below is what makes that idempotence hold across re-runs.
  *
@@ -87,12 +87,12 @@ use ElanRegistry\LogCategories;
  * COUNT ACCURACY
  * --------------
  * {@see SuppressionSyncSummary}'s three contact buckets are disjoint, which
- * requires knowing whether a car's owner was *already* in the target state
- * before the write. {@see CarRepository::findByEmail()} returns only `id` and
- * `email`, so this job spends two extra indexed reads per matched car
- * ({@see CarRepository::findOwnerOfCar()} and
- * {@see CarRepository::effectiveEmailFlags()}) to read whether the owner's
- * `email_bounced`/`email_blocked` applies to the current address first. That read
+ * requires knowing whether an owner was *already* in the target state
+ * before the write. {@see CarRepository::findByEmail()} returns the owner's
+ * `user_id` but no flags, so this job spends one extra indexed read per
+ * matched owner ({@see CarRepository::effectiveEmailFlags()}) to read whether
+ * the owner's `email_bounced`/`email_blocked` applies to the current address
+ * first. That read
  * is deliberate rather than approximated away: an approximation would leave
  * `alreadyFlaggedCount` permanently zero and report every re-run of the
  * backfill as though it had newly flagged the entire suppression list, which
@@ -547,26 +547,12 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * failure — all are handled and logged below the throw line, and produce a
      * real (partial) summary. Only something genuinely unexpected escapes here.
      *
-     * Also honors the site-wide verification switch, same as {@see AbstractCronJob::run()}
-     * and {@see AbstractCronJob::runNow()} — this method bypasses both of those
-     * (see class docblock above) so it cannot inherit their check and must
-     * repeat it. Unlike the silent skip in run()/runNow(), this throws: an
-     * operator who explicitly triggers a manual run needs to know why nothing
-     * happened, not see a fabricated all-zero summary.
-     *
      * @return SuppressionSyncSummary Aggregated over every page walked
-     * @throws \RuntimeException If verification is switched off site-wide
      * @throws \Throwable Rethrown after logging, so the caller can distinguish
      *         a failed run from an empty successful one
      */
     public function runNowWithSummary(): SuppressionSyncSummary
     {
-        if (!(new VerificationSettings($this->db))->isEnabled()) {
-            throw new \RuntimeException(
-                'Verification is switched off site-wide (see the Verification System tab) — manual suppression sync runs are disabled while it is off.'
-            );
-        }
-
         try {
             return $this->runFullBackfill();
         } catch (\Throwable $e) {
@@ -713,7 +699,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
             // Deterministic, so re-running the backfill produces the same id
             // for the same contact and collides with the existing row under
-            // er_email_events' UNIQUE (car_id, brevo_message_id, event) — which
+            // er_email_events' UNIQUE (user_id, brevo_message_id, event) — which
             // is what makes the import idempotent. Built from the raw
             // `blockedAt` rather than the resolved occurred_at so that a
             // contact whose date fell back to run time still gets a stable id
@@ -723,7 +709,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             // Brevo's read API is external input, so it gets the same bound
             // check against er_email_events' real column widths that #1889's
             // job applies, keeping an oversized value from reaching
-            // insertEmailEvent() and throwing under STRICT_TRANS_TABLES. Both
+            // insertOwnerEmailEvent() and throwing under STRICT_TRANS_TABLES. Both
             // values are in-bounds by construction here — the mapped event
             // names are at most 12 characters and the synthetic id is always
             // 51 — so this is a defensive no-op today, kept so that changing
@@ -787,13 +773,14 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $contactCounted = false;
             $contactAlreadyFlagged = true;
 
-            foreach ($matchedCars as $car) {
-                $carId = (int) $car->id;
-                $wasFlagged = $this->isAlreadyInTargetState($carId, $event);
+            $ownerIds = CarRepository::ownerIdsOf($matchedCars);
+
+            foreach ($ownerIds as $ownerId) {
+                $wasFlagged = $this->isAlreadyInTargetState($ownerId, $event);
 
                 try {
                     $this->applier->apply(
-                        $carId,
+                        $ownerId,
                         $email,
                         $event,
                         $reasonMessage,
@@ -807,11 +794,10 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                     // run covers this contact, and letting one poisoned row
                     // abort would starve every contact behind it.
                     logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                        'Brevo suppression sync: write FAILED for car %d, event "%s" (%s) —'
+                        'Brevo suppression sync: write FAILED for owner %d, event "%s" —'
                         . ' skipped, will retry next run: %s',
-                        $carId,
+                        $ownerId,
                         $event,
-                        $email,
                         $e->getMessage()
                     ));
                     continue;
@@ -823,13 +809,13 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                 }
             }
 
-            // Counted per contact, not per car, so the three buckets sum to the
+            // Counted per contact, not per owner, so the three buckets sum to the
             // number of contacts examined as SuppressionSyncSummary documents.
-            // A contact counts as already-flagged only when EVERY matching car
-            // was already in the target state — if even one car needed the
+            // A contact counts as already-flagged only when EVERY matching owner
+            // was already in the target state — if even one owner needed the
             // flag, the run did real work for that contact.
             if (!$contactCounted) {
-                // Every car's write failed; already logged per-car above, and
+                // Every owner's write failed; already logged per-owner above, and
                 // tallied here too so the operator sees SOMETHING went wrong
                 // in the rendered summary even if they never open the log —
                 // a wholly-failed contact must not render as indistinguishable
@@ -867,62 +853,38 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     }
 
     /**
-     * Whether this car's owner already carries the flag the given event would set.
+     * Whether this owner already carries the flag the given event would set.
      *
-     * Two extra reads, `findOwnerOfCar()` and `effectiveEmailFlags()`, make
+     * One extra read, `effectiveEmailFlags()`, makes
      * {@see SuppressionSyncSummary}'s `alreadyFlaggedCount` bucket real rather
      * than always-zero. The class docblock's count-accuracy note says why
-     * those reads are worth paying for.
+     * that read is worth paying for.
      *
      * A flag stored for an old address does not count: it does not apply to
      * the owner's current email (#2356), so the contact counts as newly matched.
+     * An owner with no profiles row holds no flag, so it is not already flagged.
      *
-     * Fails *open* (returns false, i.e. "not already flagged"): if the car or
-     * the owner's profile cannot be read, the apply() call still happens and
-     * the contact is counted as newly matched. Overstating new matches is the right way to be wrong
-     * here — the alternative, treating an unreadable car as already handled,
-     * would hide from the operator that the read is broken.
+     * Fails *open* (returns false, i.e. "not already flagged"): if the owner's
+     * profile cannot be read, the apply() call still happens and the contact
+     * is counted as newly matched. Overstating new matches is the right way to
+     * be wrong here — the alternative, treating an unreadable profile as
+     * already handled, would hide from the operator that the read is broken.
      *
+     * @param int $ownerId Owner user ID from findByEmail()
      * @param string $event One of the mapped event names
      */
-    private function isAlreadyInTargetState(int $carId, string $event): bool
+    private function isAlreadyInTargetState(int $ownerId, string $event): bool
     {
         try {
-            $car = $this->repo->findOwnerOfCar($carId);
-            $flags = $car === null || $car->user_id === null
-                ? null
-                : $this->repo->effectiveEmailFlags((int) $car->user_id);
+            $flags = $this->repo->effectiveEmailFlags($ownerId);
         } catch (CarDatabaseException $e) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo suppression sync: could not read current flags for car %d'
+                'Brevo suppression sync: could not read current flags for owner %d'
                 . ' — suppression still applied, but the already-flagged count for this'
                 . ' run is understated: %s',
-                $carId,
+                $ownerId,
                 $e->getMessage()
             ));
-            return false;
-        }
-
-        if ($car === null) {
-            // findByEmail() returned this car id moments earlier, so a null
-            // here means the row vanished between the two reads — a deleted
-            // car, or a read-consistency problem, not the routine "no row"
-            // case findOwnerOfCar() otherwise returns silently for. Logged (unlike
-            // the routine case) because the apply() call that follows may
-            // then fail against a car id that no longer exists.
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo suppression sync: car %d matched by email lookup but vanished before'
-                . ' the flag pre-check — row deleted mid-run, or a read-consistency problem.'
-                . ' Treating as not-already-flagged; the write below may fail.',
-                $carId
-            ));
-            return false;
-        }
-
-        if ($flags === null) {
-            // No owner: apply() writes no flag for this car and logs why, so
-            // the car is not already flagged. An owner with no profiles row
-            // needs no check here, because EffectiveEmailFlags then holds no flag.
             return false;
         }
 

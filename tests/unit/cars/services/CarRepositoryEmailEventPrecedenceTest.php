@@ -177,12 +177,11 @@ final class CarRepositoryEmailEventPrecedenceTest extends TestCase
             ->with(
                 $this->anything(),
                 $this->callback(function (array $params): bool {
-                    // $ids (deduped) appears twice in the bound params: once for the
-                    // cycle subquery's IN(), once for the outer query's IN(). A
-                    // dedup regression would make the id count 3 instead of 1 in
-                    // each place.
+                    // The id list is bound once, between the two 'sent' values. A
+                    // dedup regression would bind id 3 three times, so the
+                    // placeholders and values would no longer match.
                     $idOccurrences = array_filter($params, static fn ($p) => $p === 3);
-                    return count($idOccurrences) === 2;
+                    return count($idOccurrences) === 1 && array_slice($params, 0, 3) === ['sent', 3, 'sent'];
                 })
             )
             ->willReturn($stubDb);

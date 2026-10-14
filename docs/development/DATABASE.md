@@ -241,38 +241,91 @@ creation.
 storing both the transfer request metadata and a snapshot of all submitted car
 data for verification and potential updates.
 
-#### `er_email_events` - Brevo delivery-status webhook event log (#1887)
+#### `er_email_events` - Brevo delivery-status event log (#1887, #2358)
+
+Each event belongs to the user (the owner), not to one car. The table has no
+audit trigger and no FK. This codebase has no FK constraints on car-adjacent
+tables. `cars.user_id`'s own FK was dropped in
+`20260719120000_drop_cars_user_id_fk.php`.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `int UNSIGNED` | PRIMARY KEY, AUTO_INCREMENT |
-| `car_id` | `int NOT NULL` | Car the event applies to. **No FK** — this codebase has no FK constraints on car-adjacent tables; `cars.user_id`'s own FK was deliberately dropped (`20260719120000_drop_cars_user_id_fk.php`). |
-| `email` | `varchar(155) NOT NULL` | Recipient address from the Brevo payload (INDEXED) |
-| `event` | `varchar(32) NOT NULL` | Brevo event name (`hard_bounce`, `soft_bounce`, `blocked`, `invalid`, `spam`, `delivered`, `unique_opened`, …) |
-| `reason` | `text NULL` | Optional reason/detail text from the payload (e.g. why a bounce occurred); absent for events like `spam` |
-| `brevo_message_id` | `varchar(255) NOT NULL DEFAULT ''` | Brevo's message id for the send this event applies to (or a locally-generated id for a synthetic `sent` row). **`NOT NULL DEFAULT ''`, not nullable, is correctness-critical**: MySQL treats every `NULL` as distinct in a unique index, so a nullable column would silently defeat the unique index below for exactly the rows that need dedup most. |
+| `user_id` | `int NOT NULL` | Owner the event applies to. Added by `20261013000000_key_er_email_events_by_user.php` (#2358). |
+| `car_id` | `int NULL` | Car that the row starts a send cycle for. From #2358, only a `sent` row gets a car: a new webhook, reconciliation or suppression-import row has `car_id` NULL. Rows written before the #2358 migration keep their `car_id` until the prune deletes them. A car delete also sets `car_id` to NULL. |
+| `email` | `varchar(155) NOT NULL` | Recipient address, stored normalized (trimmed, lower case) (INDEXED). The prune sets it to `''` on a car's latest `sent` row only when the row is older than 90 days. |
+| `event` | `varchar(32) NOT NULL` | Brevo event name (`hard_bounce`, `soft_bounce`, `blocked`, `invalid`, `spam`, `delivered`, `unique_opened`, …) or the local `sent` event |
+| `reason` | `text NULL` | Optional reason/detail text from the payload (e.g. why a bounce occurred). Absent for events like `spam`. |
+| `brevo_message_id` | `varchar(255) NOT NULL DEFAULT ''` | Brevo's message id for the send this event applies to (or a locally-generated id for a `sent` row). **`NOT NULL DEFAULT ''`, not nullable, is correctness-critical**: MySQL treats every `NULL` as distinct in a unique index, so a nullable column would silently defeat the unique index below for exactly the rows that need dedup most. |
 | `occurred_at` | `datetime NOT NULL` | When the event occurred, per the payload's `ts_event`/`ts` field (falls back to receipt time if absent) |
 
-**Indexes:** `UNIQUE (car_id, brevo_message_id, event)` — the dedup key; a
-retried/duplicate Brevo delivery of the same event lands as a single row
-(`INSERT ... ON DUPLICATE KEY UPDATE reason, occurred_at`, never touching the
-identity columns the index is keyed on). Plus `(car_id, occurred_at)` for
-per-car history queries and `(email)` for the webhook receiver's lookup path.
+**Indexes:**
 
-**Retention:** no automatic purge yet — the 24-month retention policy is
-issue #1889's job (nightly reconciliation), out of scope for #1887.
+- `UNIQUE (user_id, brevo_message_id, event)` is the dedup key. A retried
+  or duplicate delivery of the same event lands as one row. The write is
+  `INSERT ... ON DUPLICATE KEY UPDATE`. It sets `reason` to the new value and
+  keeps the earliest `occurred_at` (`LEAST()`), so a `delivered` row that
+  resets the soft-bounce window does not move later. It never changes the
+  identity columns.
+- `(user_id, occurred_at)`: no current query is known to use this index.
+  #2359 decides which lookups it needs.
+- `(brevo_message_id)` serves the message lookup.
+- `(car_id, occurred_at)` and `(email)` stay from the earlier schema.
 
-**Written by:** `app/api/webhooks/brevo.php` via
-`BrevoWebhookEventProcessor`/`CarRepository::insertEmailEvent()`. **Cleaned
-up by:** `usersc/scripts/after_user_deletion.php`
-(`CarRepository::deleteEmailEventsForCarIds()`) when an owner's account is
-deleted, in the same transaction as car reassignment, before the car→owner
-link is severed; and by `CarAdministrationService::delete()`
-(`deleteEmailEventsForCarIds()`) on a direct car deletion, same transaction as
-the car row. **Reassigned by:** `CarAdministrationService::merge()`
-(`CarRepository::transferEmailEvents()`) — a merge moves the source car's
-history onto the surviving car rather than deleting it, since the target
-owner should keep the merged bounce/suppression signal.
+**Owner-level rows.** The webhook cannot tell which of an owner's cars an
+email was for. So a webhook, reconciliation or suppression-import event is
+stored once, with `car_id` NULL, whatever the number of the owner's cars.
+A new `sent` row is the only new row that gets a car, because it starts that
+car's send cycle. The migration does not clear `car_id`, so a row written
+before it keeps its car until the prune deletes it. The readers ignore
+`car_id` on a non-`sent` row after the cycle start. Every car of the owner
+shows an owner-level row after the car's cycle start.
+See [EMAIL_SYSTEM.md, Event recording](EMAIL_SYSTEM.md#event-recording-and-the-car-chip).
+
+**Retention.** The nightly reconciliation job prunes the table
+(`CarRepository::deleteEmailEventsOlderThan()`):
+
+| Rows | Kept for |
+|------|----------|
+| Terminal events (`hard_bounce`, `blocked`, `invalid`, `invalid_email`, `spam`, `unsubscribed`) | 24 months |
+| Every other row (`soft_bounce`, `delivered`, `sent`, `unique_opened`, unknown names) | 90 days |
+| The latest `sent` row of each car, when its `user_id` is the car's current owner | Kept. Its `email` is set to `''` only when the row is older than 90 days. |
+
+The latest `sent` row is the row with the latest `occurred_at` for its car.
+The highest `id` breaks a tie. A `sent` row of a previous owner of the car is
+not kept. It ages out after 90 days. A `sent` row with `car_id` NULL is never a
+car's latest row, so the prune deletes it after 90 days. The prune runs with
+the verification switch off. See
+[EMAIL_SYSTEM.md, Event retention](EMAIL_SYSTEM.md#event-retention).
+
+**Written by:** `app/api/webhooks/brevo.php` through
+`BrevoWebhookEventProcessor`, the reconciliation job and the suppression
+sync. All three call `EmailEventApplier::apply()` once per owner, which calls
+`CarRepository::insertOwnerEmailEvent()`. The send path writes `sent` rows
+through `CarRepository::insertEmailEvent()`.
+
+**Changed or removed by:**
+
+- `CarAdministrationService::delete()` calls
+  `CarRepository::detachEmailEventsFromCar()`. The events stay with the
+  owner and `car_id` becomes NULL.
+- `CarAdministrationService::merge()` calls
+  `CarRepository::transferEmailEvents()`. It changes `car_id` only.
+- A car transfer to a new owner changes no row. The previous owner's rows
+  stay with the previous owner, and the new owner sees the car as not sent.
+- `usersc/scripts/after_user_deletion.php` runs a privacy step first, in its
+  own transaction. It deletes the user's `plg_sendinblue_messages` rows
+  (`deleteSendinblueMessagesForUser()`), then the user's `er_email_events`
+  rows (`deleteEmailEventsForUser()`), including rows with `car_id` NULL.
+
+**Migration.** `20261013000000_key_er_email_events_by_user.php` sets
+`user_id` from the car owner, or else from the one user with the same
+address. It deletes rows that match no user or only `noowner`. It collapses
+rows with the same user, message ID and event into one row with the earliest
+`occurred_at`. `down()` restores the schema only. It deletes the rows with
+`car_id` NULL and does not restore the rows that `up()` deleted or collapsed.
+The database backup is the only full rollback. Run order:
+[DEPLOYMENT.md](DEPLOYMENT.md#migration-that-keys-email-events-by-user-2358).
 
 ### Factory Reference Data
 

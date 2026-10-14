@@ -59,7 +59,8 @@ Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.
   the audit row for every deliverability flag change: opt-out, block and bounce, set or cleared)
 - `LOG_CATEGORY_EMAIL_SETTINGS` → `EmailSettings` (Configuration changed)
 - `LOG_CATEGORY_EMAIL_WEBHOOK` → `EmailWebhook` (Inbound Brevo delivery-status webhook event
-  processed; auth/rate-limit rejections on the same endpoint use `LOG_CATEGORY_SECURITY` instead)
+  processed. Also skipped and unrecognized Brevo events from the reconciliation and import paths, and
+  the retention prune count. Auth/rate-limit rejections on the same endpoint use `LOG_CATEGORY_SECURITY` instead)
 - `LOG_CATEGORY_FEEDBACK_FORM` → `FeedbackForm` (Submission received)
 - `LOG_CATEGORY_SENDINBLUE` → `SendinblueDebug` (Third-party service)
 

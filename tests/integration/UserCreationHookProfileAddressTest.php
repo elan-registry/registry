@@ -26,16 +26,12 @@ final class UserCreationHookProfileAddressTest extends IntegrationTestCase
     private bool $seededEmailRow = false;
 
     /** @var list<int> */
-    private array $eventCarIds = [];
-
-    /** @var list<int> */
     private array $hookedUserIds = [];
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
-        $this->eventCarIds = [];
         $this->hookedUserIds = [];
 
         // email_act = 1 makes the script skip its automatic login.
@@ -57,9 +53,7 @@ final class UserCreationHookProfileAddressTest extends IntegrationTestCase
             } elseif ($this->originalEmailAct !== null) {
                 $this->db->query('UPDATE email SET email_act = ? WHERE id = 1', [$this->originalEmailAct]);
             }
-            foreach ($this->eventCarIds as $carId) {
-                $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
-            }
+            // The base class deletes the er_email_events rows of the test users (#2358).
             foreach ($this->hookedUserIds as $userId) {
                 $this->db->query('DELETE FROM logs WHERE lognote LIKE ?', ["New user {$userId}: no coordinates%"]);
                 $this->db->query(
@@ -137,7 +131,6 @@ final class UserCreationHookProfileAddressTest extends IntegrationTestCase
         $userId = $this->createTestUser(['email' => 'signup-bounce@example.com', 'join_date' => '2026-01-02 03:04:05']);
         $this->runUserCreationHook($userId);
         $carId = $this->createTestCar($userId, ['email' => 'signup-bounce@example.com']);
-        $this->eventCarIds[] = $carId;
         $profile = $this->onlyProfileOf($userId);
         $bounceTime = '2026-01-02 03:05:05';
         $this->assertLessThanOrEqual(
@@ -148,7 +141,7 @@ final class UserCreationHookProfileAddressTest extends IntegrationTestCase
         $repo = new CarRepository($this->db);
         $applier = new EmailEventApplier($repo, new CarVerificationManager($repo));
 
-        $applier->apply($carId, 'signup-bounce@example.com', 'hard_bounce', null, 'signup-msg-1', $bounceTime, 'webhook');
+        $applier->apply($userId, 'signup-bounce@example.com', 'hard_bounce', null, 'signup-msg-1', $bounceTime, 'webhook');
 
         $flags = $this->getOwnerEmailFlags($userId);
         $this->assertSame('1', (string) $flags['email_bounced']);

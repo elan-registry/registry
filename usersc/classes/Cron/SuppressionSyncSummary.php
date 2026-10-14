@@ -17,12 +17,12 @@ namespace ElanRegistry\Cron;
  * A contact counts as matched when its address resolved to at least one car;
  * as unmatched when it resolved to none (a suppression Brevo holds for an
  * address the registry does not know — expected, not an error); and as
- * already-flagged when every matching car was already in the target state,
- * so the run performed no write for it. The three buckets are disjoint, but
+ * already-flagged when the owner of every matching car was already in the
+ * target state, so the run performed no write for it. The three buckets are disjoint, but
  * — unlike an earlier version of this docblock claimed — they are NOT
  * exhaustive: a contact with a malformed payload field, an unrecognized
  * reason code, an over-length synthetic value, a failed car lookup, or a
- * failed write on every matching car reaches none of the three. Each such
+ * failed write for every matching owner reaches none of the three. Each such
  * skip is logged individually by the job; {@see $skippedCount} is the only
  * place their *total* is visible without reading the log. A reader adding
  * all three buckets therefore gets the number of contacts the run *recorded
@@ -49,7 +49,7 @@ final readonly class SuppressionSyncSummary
     /**
      * @param int                $matchedCount        Contacts matched to at least one car
      * @param int                $unmatchedCount      Contacts matching no car in the registry
-     * @param int                $alreadyFlaggedCount Contacts whose car(s) were already in the target state — no write performed
+     * @param int                $alreadyFlaggedCount Contacts whose owner(s) were already in the target state — no write performed
      * @param array<string, int> $reasonCodeCounts    Contact counts keyed on Brevo's raw reason code (e.g. `hardBounce`,
      *                                                `contactFlaggedAsSpam`, `unsubscribedViaEmail`), plus an
      *                                                `'unrecognized'` bucket for codes this job does not map
@@ -64,7 +64,7 @@ final readonly class SuppressionSyncSummary
      *                                                contained even one skipped contact would stop the walk early
      * @param int                $skippedCount        Contacts examined but reaching none of the three buckets above
      *                                                (malformed payload, unrecognized reason code, oversized value,
-     *                                                failed lookup, or every matching car's write failed) — each is
+     *                                                failed lookup, or the write failed for every matching owner) — each is
      *                                                logged individually; this is their total, so an operator reading
      *                                                only the rendered summary still sees that something needs
      *                                                attention rather than a clean-looking run with a smaller number

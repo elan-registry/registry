@@ -27,7 +27,7 @@ use PHPUnit\Framework\TestCase;
  * directly, at the unit it now lives in.
  *
  * NOTE on the "retried identical local 'sent' row" dedup scenario from the
- * plan's Test Plan: insertEmailEvent() is mocked at this tier, so there is
+ * plan's Test Plan: insertOwnerEmailEvent() is mocked at this tier, so there is
  * nothing for a unit test to assert about MySQL's ON DUPLICATE KEY UPDATE
  * behavior — that is real-database behavior, covered instead at the
  * integration tier by BrevoWebhookEndpointTest's duplicate-delivery test.
@@ -68,8 +68,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     public function testListBodyIsMalformed(): void
     {
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process([1, 2, 3]);
 
@@ -79,8 +79,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     public function testEmptyArrayIsMalformed(): void
     {
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process([]);
 
@@ -90,8 +90,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     public function testNonArrayPayloadIsMalformed(): void
     {
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process('not an array');
 
@@ -138,8 +138,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     public function testMissingOrEmptyRequiredFieldIsMalformed(array $payload): void
     {
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($payload);
 
@@ -151,8 +151,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     public function testUntaggedPayloadReturnsNoTagMatch(): void
     {
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['tags' => ['unrelated_tag']]));
 
@@ -165,8 +165,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         unset($payload['tags']);
 
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($payload);
 
@@ -181,8 +181,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         // into a permanent retry loop on this one poisoned payload. Rejecting
         // it here as MALFORMED (4xx, no retry) before any DB call is the fix.
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => str_repeat('x', 33)]));
 
@@ -191,11 +191,11 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testEventNameAtExactColumnWidthIsAccepted(): void
     {
-        $car = (object) ['id' => 1, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 1, 'user_id' => 1, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent')->willReturn(1);
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => str_repeat('x', 32)]));
 
@@ -207,8 +207,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         // er_email_events.brevo_message_id is varchar(255) — same failure
         // mode and same fix as the oversized event name above.
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['message-id' => str_repeat('x', 256)]));
 
@@ -223,8 +223,8 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         // correct outcome here, since the latter would silently discard
         // every subsequent event under a contract change with no visible signal.
         $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['tags' => 'car_verification']));
 
@@ -239,9 +239,9 @@ final class BrevoWebhookEventProcessorTest extends TestCase
             ->method('findByEmail')
             ->with('owner@example.com')
             ->willReturn([]);
-        $this->mockRepo->expects($this->never())->method('insertEmailEvent');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload());
 
@@ -253,9 +253,9 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         $this->mockRepo->expects($this->once())
             ->method('findByEmail')
             ->willThrowException(new CarDatabaseException('connection lost'));
-        $this->mockRepo->expects($this->never())->method('insertEmailEvent');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload());
 
@@ -281,19 +281,19 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     }
 
     #[DataProvider('hardBounceClassEventProvider')]
-    public function testHardBounceClassEventCallsSetBouncedWithCarIdEmailAndWebhookSource(string $event): void
+    public function testHardBounceClassEventCallsSetBouncedFromEventWithOwnerIdEmailAndWebhookSource(string $event): void
     {
-        $car = (object) ['id' => 42, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 42, 'user_id' => 42, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(42, 'owner@example.com', $event, null, 'brevo-msg-1', $this->isString());
 
         $this->mockManager->expects($this->once())
-            ->method('setBounced')
+            ->method('setBouncedFromEvent')
             ->with(42, 'owner@example.com', $this->isString(), 'webhook')
             ->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => $event]));
 
@@ -302,19 +302,19 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     // --- Spam --------------------------------------------------------
 
-    public function testSpamCallsSetSuppressedWithCauseSpamNotSetBounced(): void
+    public function testSpamCallsSetSuppressedFromEventWithCauseSpamNotSetBounced(): void
     {
-        $car = (object) ['id' => 7, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 7, 'user_id' => 7, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(7, 'owner@example.com', 'spam', null, 'brevo-msg-1', $this->isString());
 
         $this->mockManager->expects($this->once())
-            ->method('setSuppressed')
+            ->method('setSuppressedFromEvent')
             ->with(7, 'owner@example.com', 'spam', $this->isString(), 'webhook')
             ->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setBounced');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
 
         // No 'reason' field required for spam, per spike.
         $payload = $this->basePayload(['event' => 'spam']);
@@ -329,16 +329,16 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testSoftBounceBelowThresholdDoesNotEscalate(): void
     {
-        $car = (object) ['id' => 3, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 3, 'user_id' => 3, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent')->willReturn(1);
         $this->mockRepo->expects($this->once())
             ->method('countSoftBouncesSinceLastDelivered')
-            ->with('owner@example.com')
+            ->with(3, 'owner@example.com')
             ->willReturn(2);
 
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => 'soft_bounce']));
 
@@ -347,15 +347,15 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testSoftBounceAtThresholdEscalatesToSetBounced(): void
     {
-        $car = (object) ['id' => 3, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 3, 'user_id' => 3, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent')->willReturn(1);
         $this->mockRepo->expects($this->once())
             ->method('countSoftBouncesSinceLastDelivered')
             ->willReturn(3);
 
         $this->mockManager->expects($this->once())
-            ->method('setBounced')
+            ->method('setBouncedFromEvent')
             ->with(3, 'owner@example.com', $this->isString(), 'webhook')
             ->willReturn(true);
 
@@ -366,14 +366,14 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testSoftBounceAboveThresholdEscalatesToSetBounced(): void
     {
-        $car = (object) ['id' => 3, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 3, 'user_id' => 3, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent')->willReturn(1);
         $this->mockRepo->expects($this->once())
             ->method('countSoftBouncesSinceLastDelivered')
             ->willReturn(5);
 
-        $this->mockManager->expects($this->once())->method('setBounced')->willReturn(true);
+        $this->mockManager->expects($this->once())->method('setBouncedFromEvent')->willReturn(true);
 
         $result = $this->processor->process($this->basePayload(['event' => 'soft_bounce']));
 
@@ -384,13 +384,13 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testDeliveredRecordsEventRowOnlyNoException(): void
     {
-        $car = (object) ['id' => 9, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 9, 'user_id' => 9, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent')->willReturn(1);
         $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
 
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => 'delivered']));
 
@@ -401,58 +401,51 @@ final class BrevoWebhookEventProcessorTest extends TestCase
      * unique_opened must never touch flags or the escalation count, even
      * "after prior soft bounces" — since this is a unit test with a mocked
      * repo, that scenario collapses to: the processor itself never calls
-     * countSoftBouncesSinceLastDelivered/setBounced/setSuppressed for this
+     * countSoftBouncesSinceLastDelivered/setBouncedFromEvent/setSuppressedFromEvent for this
      * event type. The "since last delivered" windowing logic that would
      * otherwise matter here is countSoftBouncesSinceLastDelivered()'s own
      * job, tested at the repository/integration tier, not re-tested here.
      */
     public function testUniqueOpenedNeverTouchesFlagsOrEscalationCount(): void
     {
-        $car = (object) ['id' => 11, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 11, 'user_id' => 11, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent')->willReturn(1);
         $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
 
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => 'unique_opened']));
 
         $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
     }
 
-    // --- Multiple cars sharing one email ---------------------------------
+    // --- One owner, several cars (#2358) ----------------------------------
 
-    public function testMultipleCarsShareEmailEachProcessedIndependentlyWithSameMessageId(): void
+    /**
+     * An owner with three cars is one event for one owner. The webhook cannot
+     * tell which car the email was for, so the row has no car.
+     */
+    public function testOwnerWithThreeCarsGetsOneApplyCallAndOneEventRow(): void
     {
-        $carA = (object) ['id' => 100, 'email' => 'shared@example.com'];
-        $carB = (object) ['id' => 101, 'email' => 'shared@example.com'];
-
+        $cars = [
+            (object) ['id' => 100, 'user_id' => 55, 'email' => 'shared@example.com'],
+            (object) ['id' => 101, 'user_id' => 55, 'email' => 'shared@example.com'],
+            (object) ['id' => 102, 'user_id' => 55, 'email' => 'shared@example.com'],
+        ];
         $this->mockRepo->expects($this->once())
             ->method('findByEmail')
             ->with('shared@example.com')
-            ->willReturn([$carA, $carB]);
-
-        $insertCalls = [];
-        $this->mockRepo->expects($this->exactly(2))
-            ->method('insertEmailEvent')
-            ->willReturnCallback(function (int $carId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt) use (&$insertCalls) {
-                $insertCalls[] = [$carId, $messageId];
-                return 1;
-            });
-
-        // One inbound event dispatches identically to every matched car, so
-        // both cars escalate via setBounced — asserting the call count and
-        // the id passed on each invocation proves each car's transition is
-        // applied independently (not, e.g., only the first or last car).
-        $bouncedCarIds = [];
-        $this->mockManager->expects($this->exactly(2))
-            ->method('setBounced')
-            ->willReturnCallback(function (int $carId, string $email) use (&$bouncedCarIds) {
-                $bouncedCarIds[] = $carId;
-                $this->assertSame('shared@example.com', $email);
-                return true;
-            });
+            ->willReturn($cars);
+        $this->mockRepo->expects($this->once())
+            ->method('insertOwnerEmailEvent')
+            ->with(55, 'shared@example.com', 'hard_bounce', null, 'shared-msg-1', $this->isString())
+            ->willReturn(1);
+        $this->mockManager->expects($this->once())
+            ->method('setBouncedFromEvent')
+            ->with(55, 'shared@example.com', $this->isString(), 'webhook')
+            ->willReturn(true);
 
         $result = $this->processor->process([
             'email' => 'shared@example.com',
@@ -462,39 +455,30 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         ]);
 
         $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-        $this->assertCount(2, $insertCalls);
-        $this->assertSame([100, 'shared-msg-1'], $insertCalls[0]);
-        $this->assertSame([101, 'shared-msg-1'], $insertCalls[1]);
-        $this->assertSame([100, 101], $bouncedCarIds);
     }
 
     /**
-     * Two matched cars for the same email, each receiving DIFFERENT mocked
-     * call outcomes on the manager — proves dispatch is genuinely per-car,
-     * not a single shared decision. Car 1's countSoftBouncesSinceLastDelivered
-     * (keyed on the shared email, so identical for both cars) determines
-     * escalation for the whole event, but this test's real assertion is that
-     * insertEmailEvent is called once per matched car id with the same
-     * message id, matching the "multiple cars sharing one email" scenario in
-     * the plan.
+     * findByEmail() can return two owners for one address. Each owner gets
+     * its own call, with the same message ID.
      */
-    public function testMultipleCarsWithDifferentTransitionsDispatchIndependently(): void
+    public function testTwoOwnersOnOneAddressGetOneApplyCallEach(): void
     {
-        $carHardBounce = (object) ['id' => 200, 'email' => 'shared2@example.com'];
-        $carSpam = (object) ['id' => 201, 'email' => 'shared2@example.com'];
+        $cars = [
+            (object) ['id' => 200, 'user_id' => 61, 'email' => 'shared2@example.com'],
+            (object) ['id' => 201, 'user_id' => 62, 'email' => 'shared2@example.com'],
+            (object) ['id' => 202, 'user_id' => 61, 'email' => 'shared2@example.com'],
+        ];
+        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn($cars);
 
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$carHardBounce, $carSpam]);
-
-        $insertedCarIds = [];
+        $inserts = [];
         $this->mockRepo->expects($this->exactly(2))
-            ->method('insertEmailEvent')
-            ->willReturnCallback(function (int $carId) use (&$insertedCarIds) {
-                $insertedCarIds[] = $carId;
+            ->method('insertOwnerEmailEvent')
+            ->willReturnCallback(function (int $userId, string $email, string $event, ?string $reason, string $messageId) use (&$inserts) {
+                $inserts[] = [$userId, $messageId];
                 return 1;
             });
-
         $this->mockManager->expects($this->exactly(2))
-            ->method('setBounced')
+            ->method('setBouncedFromEvent')
             ->willReturn(true);
 
         $result = $this->processor->process([
@@ -505,37 +489,36 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         ]);
 
         $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-        $this->assertSame([200, 201], $insertedCarIds);
+        $this->assertSame([[61, 'shared2-msg-1'], [62, 'shared2-msg-1']], $inserts);
     }
 
     // --- Mid-loop write failure -------------------------------------------
 
-    public function testMidLoopWriteFailureReturnsWriteFailureAndStopsProcessingRemainingCars(): void
+    public function testMidLoopWriteFailureReturnsWriteFailureAndStopsProcessingRemainingOwners(): void
     {
-        $carOne = (object) ['id' => 1, 'email' => 'shared3@example.com'];
-        $carTwo = (object) ['id' => 2, 'email' => 'shared3@example.com'];
-        $carThree = (object) ['id' => 3, 'email' => 'shared3@example.com'];
+        $cars = [
+            (object) ['id' => 1, 'user_id' => 71, 'email' => 'shared3@example.com'],
+            (object) ['id' => 2, 'user_id' => 72, 'email' => 'shared3@example.com'],
+            (object) ['id' => 3, 'user_id' => 73, 'email' => 'shared3@example.com'],
+        ];
+        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn($cars);
 
-        $this->mockRepo->expects($this->once())
-            ->method('findByEmail')
-            ->willReturn([$carOne, $carTwo, $carThree]);
-
-        // First car succeeds, second car's insertEmailEvent throws, third car
-        // must never be reached at all.
+        // The first owner succeeds, the second owner's insert throws, and the
+        // third owner must never be reached.
         $callCount = 0;
         $this->mockRepo->expects($this->exactly(2))
-            ->method('insertEmailEvent')
-            ->willReturnCallback(function (int $carId) use (&$callCount) {
+            ->method('insertOwnerEmailEvent')
+            ->willReturnCallback(function (int $userId) use (&$callCount) {
                 $callCount++;
-                if ($carId === 2) {
-                    throw new CarDatabaseException('write failed for car 2');
+                if ($userId === 72) {
+                    throw new CarDatabaseException('write failed for owner 72');
                 }
                 return 1;
             });
 
         $this->mockManager->expects($this->once())
-            ->method('setBounced')
-            ->with(1, 'shared3@example.com', $this->isString(), 'webhook')
+            ->method('setBouncedFromEvent')
+            ->with(71, 'shared3@example.com', $this->isString(), 'webhook')
             ->willReturn(true);
 
         $result = $this->processor->process([
@@ -546,22 +529,23 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         ]);
 
         $this->assertSame(ProcessingResult::WRITE_FAILURE, $result);
-        $this->assertSame(2, $callCount, 'Third car must never be processed after the second car throws');
+        $this->assertSame(2, $callCount, 'The third owner must never be processed after the second owner throws');
     }
 
     public function testMidLoopFailureInManagerCallReturnsWriteFailure(): void
     {
-        $carOne = (object) ['id' => 1, 'email' => 'shared4@example.com'];
-        $carTwo = (object) ['id' => 2, 'email' => 'shared4@example.com'];
-
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$carOne, $carTwo]);
-        $this->mockRepo->expects($this->exactly(2))->method('insertEmailEvent')->willReturn(1);
+        $cars = [
+            (object) ['id' => 1, 'user_id' => 81, 'email' => 'shared4@example.com'],
+            (object) ['id' => 2, 'user_id' => 82, 'email' => 'shared4@example.com'],
+        ];
+        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn($cars);
+        $this->mockRepo->expects($this->exactly(2))->method('insertOwnerEmailEvent')->willReturn(1);
 
         $this->mockManager->expects($this->exactly(2))
-            ->method('setBounced')
-            ->willReturnCallback(function (int $carId) {
-                if ($carId === 2) {
-                    throw new CarDatabaseException('setBounced failed for car 2');
+            ->method('setBouncedFromEvent')
+            ->willReturnCallback(function (int $userId) {
+                if ($userId === 82) {
+                    throw new CarDatabaseException('setBouncedFromEvent failed for owner 82');
                 }
                 return true;
             });
@@ -580,14 +564,14 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testReasonFieldPassedThroughWhenPresentAndString(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 5, 'user_id' => 5, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(5, 'owner@example.com', 'hard_bounce', 'Mailbox full', 'brevo-msg-1', $this->isString());
 
-        $this->mockManager->expects($this->once())->method('setBounced')->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->once())->method('setBouncedFromEvent')->willReturn(true);
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'reason' => 'Mailbox full']));
 
@@ -596,13 +580,13 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testNonStringReasonBecomesNull(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 5, 'user_id' => 5, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(5, 'owner@example.com', 'delivered', null, 'brevo-msg-1', $this->isString());
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => 'delivered', 'reason' => ['not', 'a', 'string']]));
 
@@ -613,17 +597,17 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testOccurredAtResolvesFromTsEvent(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 5, 'user_id' => 5, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
 
         $ts = 1_700_000_000;
         $expected = date('Y-m-d H:i:s', $ts);
 
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(5, 'owner@example.com', 'delivered', null, 'brevo-msg-1', $expected);
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => 'delivered', 'ts_event' => $ts]));
 
@@ -632,17 +616,17 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testOccurredAtFallsBackToTsWhenTsEventAbsent(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 5, 'user_id' => 5, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
 
         $ts = 1_700_000_100;
         $expected = date('Y-m-d H:i:s', $ts);
 
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(5, 'owner@example.com', 'delivered', null, 'brevo-msg-1', $expected);
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => 'delivered', 'ts' => (string) $ts]));
 
@@ -651,14 +635,14 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testOccurredAtFallsBackToNowWhenAbsent(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
+        $car = (object) ['id' => 5, 'user_id' => 5, 'email' => 'owner@example.com'];
         $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
 
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(5, 'owner@example.com', 'delivered', null, 'brevo-msg-1', $this->isString());
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $result = $this->processor->process($this->basePayload(['event' => 'delivered']));
 

@@ -44,12 +44,13 @@ use ElanRegistry\LogCategories;
  * reputation is the constraint here, not throughput. Whatever this run doesn't
  * reach is simply picked up by the next claim, oldest-verified first.
  *
- * {@see AbstractCronJob::run()} already applies the site-wide
- * {@see VerificationSettings::isEnabled()} gate, the job-owned
+ * This is the only cron job that honours the site-wide verification switch:
+ * {@see self::refusesWhileSwitchOff()} reads {@see VerificationSettings::isEnabled()}.
+ * {@see AbstractCronJob::run()} applies that gate before the job-owned
  * `er_cron_job_runs.enabled` pause flag, the `CronJobGuard` claim, the
  * `set_time_limit()` backstop, and top-level crash isolation. None of that is
- * repeated here — this class implements only the three abstract methods plus
- * its own dashboard bookkeeping.
+ * repeated here — this class implements only the three abstract methods, the
+ * switch gate, and its own dashboard bookkeeping.
  *
  * @package ElanRegistry\Cron
  * @since v2.30.3
@@ -84,7 +85,8 @@ final class SendVerificationBatchJob extends AbstractCronJob
      *
      * @param DatabaseInterface $db AbstractCronJob's enabled-check/guard
      *        connection, also used by {@see self::recordRunCounts()}
-     * @param VerificationSettings $settings Read only for the effective batch size
+     * @param VerificationSettings $settings Read for the switch gate and the
+     *        effective batch size
      * @param CarVerificationSendService $sendSvc Read only for
      *        {@see CarVerificationSendService::findEligible()} — the same
      *        shared eligibility query the admin preview and
@@ -118,6 +120,19 @@ final class SendVerificationBatchJob extends AbstractCronJob
     protected function guardIntervalHours(): int
     {
         return self::GUARD_INTERVAL_HOURS;
+    }
+
+    /**
+     * Refuse the run while the site-wide verification switch is off.
+     *
+     * This job sends email, so the switch must stop it. The check runs before
+     * the claim, so the first run after the switch goes on is due.
+     *
+     * @return bool True while the switch is off
+     */
+    protected function refusesWhileSwitchOff(): bool
+    {
+        return !$this->settings->isEnabled();
     }
 
     /**

@@ -144,7 +144,7 @@ foreach ($argv ?? [] as $arg) {
 // Delete all earlier marker rows, so a re-run is idempotent and --cleanup works.
 $cleanupQueries = [];
 foreach ($owners as $owner) {
-    $cleanupQueries[] = ['DELETE FROM er_email_events WHERE car_id IN (SELECT id FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?))', [$owner['username']]];
+    $cleanupQueries[] = ['DELETE FROM er_email_events WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$owner['username']]];
     $cleanupQueries[] = ['DELETE FROM cars_hist WHERE car_id IN (SELECT id FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?))', [$owner['username']]];
     $cleanupQueries[] = ['DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$owner['username']]];
     $cleanupQueries[] = ['DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$owner['username']]];
@@ -152,7 +152,6 @@ foreach ($owners as $owner) {
     $cleanupQueries[] = ['DELETE FROM users WHERE username = ?', [$owner['username']]];
 }
 $cleanupQueries[] = ['DELETE FROM cars_hist WHERE car_id IN (SELECT id FROM cars WHERE model = ?)', [SEED_CAR_MODEL]];
-$cleanupQueries[] = ['DELETE FROM er_email_events WHERE car_id IN (SELECT id FROM cars WHERE model = ?)', [SEED_CAR_MODEL]];
 $cleanupQueries[] = ['DELETE FROM cars WHERE model = ?', [SEED_CAR_MODEL]];
 foreach ($cleanupQueries as [$cleanupSql, $cleanupParams]) {
     $db->query($cleanupSql, $cleanupParams);

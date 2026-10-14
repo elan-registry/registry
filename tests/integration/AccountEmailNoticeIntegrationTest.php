@@ -37,9 +37,6 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
     private CarVerificationManager $manager;
     private EmailEventApplier $applier;
 
-    /** @var list<int> Cars whose er_email_events rows tearDown deletes */
-    private array $eventCarIds = [];
-
     /** @var list<int> Owners whose EmailBounced log rows tearDown deletes */
     private array $loggedOwnerIds = [];
 
@@ -50,16 +47,13 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
         $this->repo = new CarRepository($this->db);
         $this->manager = new CarVerificationManager($this->repo);
         $this->applier = new EmailEventApplier($this->repo, $this->manager);
-        $this->eventCarIds = [];
         $this->loggedOwnerIds = [];
     }
 
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
-            foreach ($this->eventCarIds as $carId) {
-                $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
-            }
+            // The base class deletes the er_email_events rows of the test users (#2358).
             foreach ($this->loggedOwnerIds as $ownerId) {
                 $this->db->query("DELETE FROM logs WHERE logtype = 'EmailBounced' AND user_id = ?", [$ownerId]);
             }
@@ -76,6 +70,9 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
     {
         $ownerId = $this->createTestUser(['email' => $email ?? 'notice-' . uniqid() . '@example.com'], true);
         $this->loggedOwnerIds[] = $ownerId;
+        // A soft bounce before email_address_since does not count (#2358), and these tests use
+        // fixed past times. A new profile has since = now.
+        $this->db->query('UPDATE profiles SET email_address_since = ? WHERE user_id = ?', ['2020-01-01 00:00:00', $ownerId]);
 
         return $ownerId;
     }
@@ -515,7 +512,6 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
             'last_verified'      => null,
             'owner_last_updated' => '2020-01-01 00:00:00',
         ]);
-        $this->eventCarIds[] = $carId;
 
         return ['owner' => $ownerId, 'car' => $carId, 'email' => $email];
     }
@@ -533,7 +529,7 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
                 ['soft-3', '2026-07-04 12:13:14'],
             ] as [$messageId, $occurredAt]
         ) {
-            $this->applier->apply($fixture['car'], $fixture['email'], 'soft_bounce', null, $messageId, $occurredAt, 'webhook');
+            $this->applier->apply($fixture['owner'], $fixture['email'], 'soft_bounce', null, $messageId, $occurredAt, 'webhook');
         }
     }
 
@@ -573,16 +569,19 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
         $newEmail = 'after-change-' . uniqid() . '@example.com';
         $this->setUserEmailRaw($ownerId, $newEmail);
         $this->assertTrue($this->manager->clearFlagsForConfirmedEmailChange($ownerId, $ownerId), 'Test setup: the change clears the bounce');
-        $this->db->query('UPDATE profiles SET email_bounce_cleared_at = ? WHERE user_id = ?', ['2026-07-01 00:00:00', $ownerId]);
+        // The confirmed change sets email_address_since to now. Use a fixed time before the soft bounces.
+        $this->db->query(
+            'UPDATE profiles SET email_bounce_cleared_at = ?, email_address_since = ? WHERE user_id = ?',
+            ['2026-07-01 00:00:00', '2026-07-01 00:00:00', $ownerId]
+        );
         $carId = $this->createTestCar($ownerId, [
             'email'              => $newEmail,
             'last_verified'      => null,
             'owner_last_updated' => '2020-01-01 00:00:00',
         ]);
-        $this->eventCarIds[] = $carId;
         $this->assertSame('', trim($this->renderNotice($ownerId)), 'Test setup: no notice after the change');
 
-        $this->applyThreeSoftBouncesAfter(['car' => $carId, 'email' => $newEmail]);
+        $this->applyThreeSoftBouncesAfter(['owner' => $ownerId, 'email' => $newEmail]);
 
         $notice = $this->noticeFor($ownerId);
         $this->assertSame("Email to {$newEmail} bounced on 4 July 2026.", $notice['message']);

@@ -1735,6 +1735,11 @@ final class CarRepositoryTest extends TestCase
 
         $this->assertCount(1, $queries);
         $sql = $queries[0]['sql'];
+        $this->assertStringContainsString(
+            'SELECT cars.id, cars.user_id, u.email',
+            $sql,
+            'The callers record each event once per owner, so each row must name the owner (#2358)'
+        );
         $this->assertStringContainsString('INNER JOIN users u ON u.id = cars.user_id', $sql);
         $this->assertStringContainsString("u.username != 'noowner'", $sql);
         $this->assertStringContainsString(
@@ -2064,19 +2069,21 @@ final class CarRepositoryTest extends TestCase
     // countSoftBouncesSinceLastDelivered()
 
     /**
-     * Soft bounces before the owner's Clear Bounced must not count. The clear
-     * time comes from the profile of the car's owner, found through the car.
+     * Soft bounces before the owner's Clear Bounced, or before the owner took
+     * the address, must not count. Events belong to the user, so the count
+     * binds the user ID, not a car ID (#2358).
      */
-    public function testCountSoftBouncesSinceLastDeliveredUsesTheOwnersClearTimeAndTheCarId(): void
+    public function testCountSoftBouncesSinceLastDeliveredBindsTheUserAndTheNormalizedAddress(): void
     {
         $db = $this->makeDbMock();
         $db->expects($this->once())
             ->method('query')
             ->with(
                 $this->callback(static fn (string $sql): bool => str_contains($sql, 'p.email_bounce_cleared_at')
-                    && str_contains($sql, 'INNER JOIN profiles p ON p.user_id = c.user_id')
-                    && str_contains($sql, 'WHERE c.id = ?')),
-                ['owner@example.com', 'owner@example.com', 17]
+                    && str_contains($sql, 'p.email_address_since')
+                    && str_contains($sql, 'WHERE user_id = ?')
+                    && str_contains($sql, 'COLLATE utf8mb4_bin')),
+                [17, 'owner@example.com', 17, 'owner@example.com', 17, 17]
             )
             ->willReturnSelf();
         $db->method('error')->willReturn(false);
@@ -2084,7 +2091,7 @@ final class CarRepositoryTest extends TestCase
 
         $repo = new CarRepository($db);
 
-        $this->assertSame(2, $repo->countSoftBouncesSinceLastDelivered('owner@example.com', 17));
+        $this->assertSame(2, $repo->countSoftBouncesSinceLastDelivered(17, '  Owner@Example.COM '));
     }
 
     // findVerificationStateByOwner() / findLatestEmailEventsByCarIds() (#1924)
@@ -2189,8 +2196,8 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame('mailbox full', $result[20]->reason);
     }
 
-    /** On a tie, the later row in the result set wins. */
-    public function testFindLatestEmailEventsByCarIdsReturnsMaxOccurredAtRowWhenMultipleEventsExist(): void
+    /** The SQL ranks the rows (`occurred_at DESC, id DESC`), so the first row of a car wins. */
+    public function testFindLatestEmailEventsByCarIdsKeepsTheFirstRowOfACarBecauseTheSqlRanksThem(): void
     {
         $rows = [
             (object) ['car_id' => 10, 'event' => 'soft_bounce', 'occurred_at' => '2026-03-01 00:00:00', 'reason' => 'first'],
@@ -2206,8 +2213,8 @@ final class CarRepositoryTest extends TestCase
         $result = $repo->findLatestEmailEventsByCarIds([10]);
 
         $this->assertCount(1, $result);
-        $this->assertSame('hard_bounce', $result[10]->event, 'The later-joined row must win on a tie');
-        $this->assertSame('second', $result[10]->reason);
+        $this->assertSame('soft_bounce', $result[10]->event, 'The first row is the best-ranked row');
+        $this->assertSame('first', $result[10]->reason);
     }
 
     /** A missing key means "no events", not an error. */

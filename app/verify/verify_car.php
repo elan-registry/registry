@@ -633,7 +633,7 @@ if ($isPost && $action === 'optout') {
         // and show the owner that the opt-out did not take effect. This
         // includes CarDatabaseException for an owner with no profiles row.
         $repo->rollback();
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+        logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "verify_car.php: setSuppressedForOwner failed for owner {$ownerId}: "
             . get_class($e) . ': ' . $e->getMessage());
         // Post-authentication write failure — see renderActionFailed()'s
@@ -689,7 +689,7 @@ if ($action === 'optout') {
     } catch (ElanRegistryException $e) {
         // Show the confirmation form. A POST from it is safe to repeat, so an
         // owner who already opted out loses nothing.
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+        logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "verify_car.php: opt-out state lookup failed for owner {$ownerId}: " . $e->getMessage());
         $optOutAlreadyOptedOut = false;
     }
@@ -705,7 +705,7 @@ if ($action === 'optout') {
         // speak generically rather than assert a specific car count we do
         // not actually have (a fixed fallback like 1 would tell a multi-car
         // owner their action affects only one car, which is simply false).
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+        logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "verify_car.php: owner car count failed for owner {$ownerId}: " . $e->getMessage());
         $optOutCarCount = null;
     }

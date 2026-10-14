@@ -38,6 +38,12 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
         $this->processor = new BrevoWebhookEventProcessor($this->repo, $applier);
     }
 
+    /** Event rows of a user, whatever their car_id (#2358: events belong to the user). */
+    private function eventRowCount(int $userId): int
+    {
+        return (int) $this->db->query('SELECT COUNT(*) AS n FROM er_email_events WHERE user_id = ?', [$userId])->first()->n;
+    }
+
     /** @return array<string, mixed> */
     private function hardBounce(string $email): array
     {
@@ -63,6 +69,7 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
         $flags = $this->getOwnerEmailFlags($ownerId);
         $this->assertSame('1', (string) $flags['email_bounced'], 'The bounce lands on the owner who holds the address');
         $this->assertTrue($this->repo->effectiveEmailFlags($ownerId)->bounced, 'The bounce applies to users.email');
+        $this->assertSame(1, $this->eventRowCount($ownerId), 'One owner-level event row');
     }
 
     /** An event for an old cars.email copy matches no owner, so nothing is flagged. */
@@ -79,7 +86,7 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
         $this->assertSame('0', (string) $this->getOwnerEmailFlags($ownerId)['email_bounced']);
         $this->assertSame(
             0,
-            (int) $this->db->query('SELECT COUNT(*) AS n FROM er_email_events WHERE car_id = ?', [$carId])->first()->n,
+            $this->eventRowCount($ownerId),
             'An unmatched event writes no event row'
         );
     }
@@ -106,10 +113,9 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
             (string) $this->getOwnerEmailFlags($otherId)['email_bounced'],
             'The other owner only shares a stale car copy and must not get the flag'
         );
-        $this->assertSame(
-            0,
-            (int) $this->db->query('SELECT COUNT(*) AS n FROM er_email_events WHERE car_id = ?', [$otherCarId])->first()->n
-        );
+        $this->assertSame(0, $this->eventRowCount($otherId), 'The other owner gets no event row');
+        // The control: the event was recorded, once, for the holder. Without it a count of 0 could mean a dead query.
+        $this->assertSame(1, $this->eventRowCount($holderId), 'The holder gets exactly one event row');
     }
 
     /** One owner with two cars gets the event on both cars, whatever each car copy holds. */
@@ -148,10 +154,7 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
         }
 
         $this->assertSame($flagsBefore, $this->profileFlagRow($noOwnerId), 'The noowner profile must not get a flag');
-        $this->assertSame(
-            0,
-            (int) $this->db->query('SELECT COUNT(*) AS n FROM er_email_events WHERE car_id = ?', [$carId])->first()->n
-        );
+        $this->assertSame(0, $this->eventRowCount($noOwnerId), 'No event row for the noowner account');
     }
 
     /** A stored users.email with case and white space (a tab too) still matches the plain event address. */

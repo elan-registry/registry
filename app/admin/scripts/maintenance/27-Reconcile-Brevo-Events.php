@@ -21,9 +21,10 @@ use ElanRegistry\LogCategories;
  *
  * Repeatable maintenance, not a one-time fix, hence `scripts/maintenance/`
  * (see CLAUDE.md). Safe to run as often as wanted: every write the job performs
- * is idempotent (`CarRepository::insertEmailEvent()` is ON DUPLICATE KEY UPDATE,
- * the flag writes are plain column updates, and the retention prune is bounded
- * by a fixed cutoff).
+ * is idempotent (`CarRepository::insertOwnerEmailEvent()` is ON DUPLICATE KEY
+ * UPDATE, the flag writes are plain column updates, and the retention prune is
+ * bounded by two fixed cutoffs: 24 months for terminal events, 90 days for
+ * all other events).
  *
  * Unlike the original `runNow()`, which is crash-isolated and returns void,
  * `runNowWithSummary()` logs and then **rethrows** on a genuinely failed run
@@ -76,8 +77,8 @@ if (!isAdmin()) {
                                 <ul class="mb-0">
                                     <li>Polls Brevo for the last 48 hours of transactional delivery events (bounces, blocks, spam complaints, deliveries)</li>
                                     <li>Backfills any event the webhook never received, applying it through the same escalation rules a live webhook event uses</li>
-                                    <li>Purges <code>er_email_events</code> rows older than 24 months</li>
-                                    <li>Shows matched, unmatched, and ignored counts plus a breakdown by event type below, so the result of this run is visible immediately rather than requiring a trip to Admin &rarr; Logs</li>
+                                    <li>Prunes <code>er_email_events</code>: terminal events after 24 months, all other rows after 90 days (each car's latest <code>sent</code> row is kept, with its address removed)</li>
+                                    <li>Shows owners matched, unmatched, and ignored counts plus a breakdown by event type below, so the result of this run is visible immediately rather than requiring a trip to Admin &rarr; Logs</li>
                                     <li>Bypasses the normal 20-hour cron guard, so it runs even if the scheduled job has already run today</li>
                                     <li>Safe to run repeatedly — every write is idempotent, so re-applying an event already recorded is a no-op</li>
                                 </ul>
@@ -121,7 +122,7 @@ if (!isAdmin()) {
                                     logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                                         sprintf(
                                             'Brevo event reconciliation manually triggered (cron guard bypassed) —'
-                                            . ' %d matched, %d unmatched, %d skipped, %d ignored (non-verification tag),'
+                                            . ' %d owners matched, %d unmatched, %d skipped, %d ignored (non-verification tag),'
                                             . ' %d page(s) fetched%s%s',
                                             $summary->matchedCount,
                                             $summary->unmatchedCount,
@@ -155,14 +156,14 @@ if (!isAdmin()) {
                                     <?php if ($summary->skippedCount > 0): ?>
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> <?= (int) $summary->skippedCount ?> item(s) could not be processed</h5>
-                                        <p class="mb-0">These were skipped due to a malformed Brevo payload, an oversized value, a failed car lookup, or a failed database write. Counted per car for a failed write and per event otherwise, so an event matching several cars can appear here <em>and</em> in the matched total below. Each is logged individually under <code>EmailWebhook</code> or <code>CronJobFailure</code>. Re-running this script is safe and will retry them.</p>
+                                        <p class="mb-0">These were skipped due to a malformed Brevo payload, an oversized value, a failed car lookup, or a failed database write. Counted per owner for a failed write and per event otherwise, so an event matching several owners can appear here <em>and</em> in the owners matched total below. Each is logged individually under <code>EmailWebhook</code> or <code>CronJobFailure</code>. Re-running this script is safe and will retry them.</p>
                                     </div>
                                     <?php endif; ?>
 
                                     <div class="alert alert-success">
                                         <i class="fa fa-check-circle"></i> Reconciliation completed:
                                         <strong><?= (int) $summary->eventsExamined ?></strong> event(s) examined —
-                                        <strong><?= (int) $summary->matchedCount ?></strong> matched,
+                                        <strong><?= (int) $summary->matchedCount ?></strong> owners matched,
                                         <strong><?= (int) $summary->unmatchedCount ?></strong> unmatched,
                                         <strong><?= (int) $summary->ignoredByTagCount ?></strong> ignored (non-verification tag),
                                         across <strong><?= (int) $summary->pagesFetched ?></strong> page(s) fetched.
@@ -172,7 +173,7 @@ if (!isAdmin()) {
                                     <?php if ($summary->eventTypeCounts === []): ?>
                                     <p class="text-muted mb-0">No events were recorded in this run.</p>
                                     <?php else: ?>
-                                    <p class="text-muted small mb-2">Counted per car, like the matched total above — an event matching several cars adds one to its row for each successful write.</p>
+                                    <p class="text-muted small mb-2">Counted per owner, like the owners matched total above — an event matching several owners adds one to its row for each successful write.</p>
                                     <div class="table-responsive">
                                         <table class="table table-sm table-striped mb-0">
                                             <thead>

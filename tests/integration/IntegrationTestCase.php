@@ -167,6 +167,14 @@ abstract class IntegrationTestCase extends TestCase
                 }
             }
 
+            // Events belong to the user (#2358), so they go before the users.
+            // A row with car_id NULL has no car to find it by.
+            try {
+                $this->deleteEmailEventsForUserIds($this->createdUserIds);
+            } catch (RuntimeException $e) {
+                fwrite(STDERR, "NOTE: tearDown() cleanup of er_email_events failed: {$e->getMessage()}\n");
+            }
+
             // Then delete users
             foreach ($this->createdUserIds as $userId) {
                 try {
@@ -927,6 +935,7 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         try {
+            $this->deleteEmailEventsForUserIds([$userId]);
             $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
             $this->db->delete('users', ['id', '=', $userId]);
             // Remove from tracking so tearDown doesn't double-delete
@@ -976,9 +985,37 @@ abstract class IntegrationTestCase extends TestCase
      */
     private function deleteCarRows(int $carId): void
     {
+        // Only the `sent` rows carry a car. The owner's other rows go with the
+        // owner (see deleteEmailEventsForUserIds()), because a car delete
+        // keeps them with the user (#2358).
         $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
         $this->db->delete('cars', ['id', '=', $carId]);
         $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
+    }
+
+    /**
+     * Delete the `er_email_events` rows of some users, whatever their `car_id`.
+     *
+     * An event row belongs to a user. A car delete sets its `car_id` to NULL, so a
+     * cleanup by car ID alone leaves such rows in the shared schema.
+     *
+     * @param array<int> $userIds User IDs. An empty list issues no query.
+     * @throws RuntimeException If the delete fails
+     */
+    protected function deleteEmailEventsForUserIds(array $userIds): void
+    {
+        $userIds = array_values(array_unique(array_map('intval', $userIds)));
+        if ($userIds === []) {
+            return;
+        }
+
+        $this->db->query(
+            'DELETE FROM er_email_events WHERE user_id IN (' . implode(',', array_fill(0, count($userIds), '?')) . ')',
+            $userIds
+        );
+        if ($this->db->error()) {
+            throw new RuntimeException('Failed to delete er_email_events rows: ' . $this->db->errorString());
+        }
     }
 
     /**

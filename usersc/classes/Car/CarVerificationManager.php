@@ -19,8 +19,9 @@ use ElanRegistry\LogCategories;
  *
  * For an owner, it writes the email deliverability flags on the owner's
  * `profiles` row: bounced, blocked and opted out. These methods are
- * setBounced(), setSuppressed(), setSuppressedForOwner(), setBouncedForOwner(),
- * the clear and resume methods, and clearFlagsForConfirmedEmailChange(). Each flag
+ * setBouncedFromEvent(), setSuppressedFromEvent(), setSuppressedForOwner(),
+ * setBouncedForOwner(), the clear and resume methods, and
+ * clearFlagsForConfirmedEmailChange(). Each flag
  * change also writes one audit row to `logs` through DeliverabilityFlagLog.
  *
  * @package ElanRegistry\Car
@@ -230,15 +231,12 @@ class CarVerificationManager
     }
 
     /**
-     * Record a bounce from a delivery event on the profile of the car's owner
+     * Record a bounce from a delivery event on an owner's profile
      *
-     * A delivery event arrives for a car, but the flag belongs to the owner
-     * (#2101). This method finds the owner and sets `email_bounced` with the
-     * address and `email_bounced_at`. It skips, with a log row, a car that
-     * does not exist, has no owner, belongs to a deleted owner or to the
-     * `noowner` system account, or whose owner has no profiles row.
+     * Sets `email_bounced` with the address and `email_bounced_at` (#2101).
+     * It skips, with a log row, an owner who has no profiles row.
      *
-     * @param int $carId Car the event was recorded against
+     * @param int $ownerId Owner user ID
      * @param string $bouncedAddress The address that bounced
      * @param string $bouncedAt When the bounce happened, in AppConstants::DATETIME_FORMAT
      * @param string $source One of {@see DeliverabilityFlagLog::SOURCES}, normally
@@ -249,21 +247,16 @@ class CarVerificationManager
      * @throws CarValidationException If the address is empty or the time is not valid
      * @throws CarDatabaseException If a query fails
      */
-    public function setBounced(int $carId, string $bouncedAddress, string $bouncedAt, string $source): bool
+    public function setBouncedFromEvent(int $ownerId, string $bouncedAddress, string $bouncedAt, string $source): bool
     {
         // The event paths (webhook, reconciliation, import) run with no
         // transaction, so the profile row lock ends at once. #2359 adds the
         // transaction.
         DeliverabilityFlagLog::assertValidSource($source);
 
-        $ownerId = $this->resolveEventOwner($carId, 'setBounced');
-        if ($ownerId === null) {
-            return false;
-        }
-
         $old = $this->repo->setProfileBounced($ownerId, $bouncedAddress, $bouncedAt);
         if ($old === null) {
-            $this->logEventSkip('setBounced', $carId, "owner {$ownerId} has no profiles row");
+            $this->logEventSkip('setBouncedFromEvent', $ownerId, 'the owner has no profiles row');
             return false;
         }
 
@@ -271,14 +264,14 @@ class CarVerificationManager
     }
 
     /**
-     * Record a block from a delivery event on the profile of the car's owner
+     * Record a block from a delivery event on an owner's profile
      *
      * A spam complaint, an unsubscribe or a blocklist entry means Brevo will
-     * not deliver to the address. This method finds the car's owner and sets
-     * `email_blocked` with the address, the time and the cause. It skips the
-     * same cases as {@see setBounced()}, with a log row.
+     * not deliver to the address. This method sets `email_blocked` with the
+     * address, the time and the cause. It skips, with a log row, an owner
+     * who has no profiles row.
      *
-     * @param int $carId Car the event was recorded against
+     * @param int $ownerId Owner user ID
      * @param string $blockedAddress The blocked address
      * @param string|null $cause One of {@see CarRepository::BLOCKED_CAUSES}, or null when unknown
      * @param string $blockedAt When the block happened, in AppConstants::DATETIME_FORMAT
@@ -290,21 +283,21 @@ class CarVerificationManager
      * @throws CarValidationException If the address is empty, the cause is not permitted or the time is not valid
      * @throws CarDatabaseException If a query fails
      */
-    public function setSuppressed(int $carId, string $blockedAddress, ?string $cause, string $blockedAt, string $source): bool
-    {
+    public function setSuppressedFromEvent(
+        int $ownerId,
+        string $blockedAddress,
+        ?string $cause,
+        string $blockedAt,
+        string $source
+    ): bool {
         // The event paths (webhook, reconciliation, import) run with no
         // transaction, so the profile row lock ends at once. #2359 adds the
         // transaction.
         DeliverabilityFlagLog::assertValidSource($source);
 
-        $ownerId = $this->resolveEventOwner($carId, 'setSuppressed');
-        if ($ownerId === null) {
-            return false;
-        }
-
         $old = $this->repo->setProfileBlocked($ownerId, $blockedAddress, $cause, $blockedAt);
         if ($old === null) {
-            $this->logEventSkip('setSuppressed', $carId, "owner {$ownerId} has no profiles row");
+            $this->logEventSkip('setSuppressedFromEvent', $ownerId, 'the owner has no profiles row');
             return false;
         }
 
@@ -312,43 +305,21 @@ class CarVerificationManager
     }
 
     /**
-     * Find the individual owner of a car for an event write, or log why there is none
-     *
-     * @return int|null The owner's user ID, or null when the event must be skipped
-     * @throws CarDatabaseException If the query fails
-     */
-    private function resolveEventOwner(int $carId, string $method): ?int
-    {
-        $owner = $this->repo->findOwnerOfCar($carId);
-        if ($owner === null) {
-            $this->logEventSkip($method, $carId, 'the car does not exist');
-            return null;
-        }
-        if ($owner->user_id === null) {
-            $this->logEventSkip($method, $carId, 'the car has no owner');
-            return null;
-        }
-        if ($owner->username === null) {
-            $this->logEventSkip($method, $carId, 'the owner account does not exist');
-            return null;
-        }
-        if ($owner->username === 'noowner') {
-            $this->logEventSkip($method, $carId, 'the car belongs to the noowner system account');
-            return null;
-        }
-
-        return (int) $owner->user_id;
-    }
-
-    /**
      * Log a delivery event that changed no profile. The row has no address.
+     *
+     * @param string $method Calling method name
+     * @param int $ownerId Owner user ID, also the log row's user ID
+     * @param string $why Why the event changed no profile
      */
-    private function logEventSkip(string $method, int $carId, string $why): void
+    private function logEventSkip(string $method, int $ownerId, string $why): void
     {
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, sprintf(
-            'CarVerificationManager::%s: event for car %d not applied to a profile: %s',
+        // Brevo event tracking, not a bounce: the same category as the
+        // applier's log of an unrecognized event, so all skipped events of
+        // the three event paths land in one searchable category.
+        logger($ownerId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+            'CarVerificationManager::%s: event for owner %d not applied to a profile: %s',
             $method,
-            $carId,
+            $ownerId,
             $why
         ));
     }

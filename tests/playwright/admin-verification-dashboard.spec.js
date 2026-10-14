@@ -76,6 +76,9 @@ let precedenceCarId;
 let precedenceChassis;
 let verifiedCarId;
 let soldCarId;
+let transferCarId;
+let twinCarIdA;
+let twinCarIdB;
 
 test.describe('Admin Verification Dashboard', () => {
     // SERIAL, NOT PARALLEL. With fullyParallel (playwright.config.js) and no
@@ -110,8 +113,11 @@ test.describe('Admin Verification Dashboard', () => {
         precedenceChassis = seeded.precedenceChassis;
         verifiedCarId = seeded.verifiedCarId;
         soldCarId = seeded.soldCarId;
+        transferCarId = seeded.transferCarId;
+        twinCarIdA = seeded.twinCarIdA;
+        twinCarIdB = seeded.twinCarIdB;
 
-        for (const id of [pendingCarId, bouncedCarId, suppressedCarId, blockedCarId, noProfileCarId, softBounceCarId, precedenceCarId, verifiedCarId, soldCarId]) {
+        for (const id of [pendingCarId, bouncedCarId, suppressedCarId, blockedCarId, noProfileCarId, softBounceCarId, precedenceCarId, verifiedCarId, soldCarId, transferCarId, twinCarIdA, twinCarIdB]) {
             expect(id).toBeGreaterThan(0);
         }
         expect(precedenceChassis).toContain('<script>');
@@ -361,6 +367,35 @@ test.describe('Admin Verification Dashboard', () => {
         await expect(chip).toHaveText(/Bounced/);
         await expect(chip).toHaveAttribute('data-chip', 'bounced');
         await expect(chip).not.toHaveText(/Delivered/);
+    });
+
+    // AC (#2358): events belong to the user. The transferred car's only
+    // `sent` row belongs to the previous owner, so the new owner sees "not
+    // sent": the em dash placeholder, with no badge.
+    test('a transferred car shows "not sent" and not the previous owner\'s sent row', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
+
+        const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${transferCarId}")`) });
+        await expect(row).toBeVisible();
+
+        const statusCell = row.locator('td').nth(5);
+        await expect(statusCell.locator('span.badge')).toHaveCount(0);
+        await expect(statusCell).toHaveText('\u2014');
+    });
+
+    // AC (#2358): the webhook stores one event per owner with car_id NULL.
+    // Every car of the owner must show it once its own cycle has started.
+    test('an owner-level Delivered row shows on every car of that owner', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
+
+        for (const carId of [twinCarIdA, twinCarIdB]) {
+            const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${carId}")`) });
+            await expect(row).toBeVisible();
+
+            const chip = row.locator('td').nth(5).locator('span.badge');
+            await expect(chip).toHaveText(/Delivered/);
+            await expect(chip).toHaveAttribute('data-chip', 'delivered');
+        }
     });
 
     // --- <script>-chassis escaping ------------------------------------------

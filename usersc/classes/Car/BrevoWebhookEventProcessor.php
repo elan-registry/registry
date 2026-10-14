@@ -20,18 +20,18 @@ use ElanRegistry\LogCategories;
  * ESCALATION RULES (externally-observable behavior of this endpoint; the rules
  * themselves now live in {@see EmailEventApplier}, which owns them so that the
  * #1889 reconciliation job escalates identically — change them there, not here):
- * - `hard_bounce` / `blocked` / `invalid` immediately flag the car as bounced.
+ * - `hard_bounce` / `blocked` / `invalid` immediately flag the owner as bounced.
  * - `soft_bounce` does not immediately change anything. After the event row
  *   is recorded, {@see CarRepository::countSoftBouncesSinceLastDelivered()}
  *   is consulted; at 3 or more distinct send cycles (distinct
  *   `brevo_message_id` values) since the email's last `delivered` event, the
- *   car is escalated to bounced via the same path as a hard bounce.
+ *   owner is escalated to bounced via the same path as a hard bounce.
  * - `delivered` and `unique_opened` only ever record an event row. `delivered`
  *   implicitly resets the soft-bounce escalation window (the count query is
  *   scoped to occur after the most recent `delivered` row), so there is no
  *   separate "clear escalation" write. `unique_opened` never touches flags or
  *   the escalation count under any circumstance.
- * - `spam` flags the car as suppressed (a distinct signal from a bounce).
+ * - `spam` flags the owner as blocked (a distinct signal from a bounce).
  *
  * @package ElanRegistry\Car
  * @since v2.30.2
@@ -97,7 +97,7 @@ final class BrevoWebhookEventProcessor
         // Bounded against er_email_events' actual column widths
         // (event varchar(32), brevo_message_id varchar(255)) so an
         // oversized value is rejected here as MALFORMED (4xx, no retry)
-        // rather than reaching insertEmailEvent() and throwing a
+        // rather than reaching insertOwnerEmailEvent() and throwing a
         // CarDatabaseException under STRICT_TRANS_TABLES — which would map
         // to WRITE_FAILURE/5xx and put Brevo into a permanent retry loop on
         // one poisoned payload, the same failure mode MAX_PLAUSIBLE_TIMESTAMP
@@ -151,10 +151,12 @@ final class BrevoWebhookEventProcessor
             return ProcessingResult::NO_CAR_MATCH;
         }
 
-        foreach ($matchedCars as $car) {
+        $ownerIds = CarRepository::ownerIdsOf($matchedCars);
+
+        foreach ($ownerIds as $ownerId) {
             try {
                 $this->applier->apply(
-                    (int) $car->id,
+                    $ownerId,
                     $email,
                     $event,
                     $reason,
@@ -164,10 +166,10 @@ final class BrevoWebhookEventProcessor
                 );
             } catch (CarDatabaseException $e) {
                 // Fail the whole request on the first write failure, even if
-                // earlier cars in this loop already succeeded — Brevo's retry
+                // earlier owners in this loop already succeeded — Brevo's retry
                 // is safe against this because every write here is
-                // ON DUPLICATE KEY UPDATE-idempotent (insertEmailEvent) or a
-                // plain column UPDATE (setBounced/setSuppressed).
+                // ON DUPLICATE KEY UPDATE-idempotent (insertOwnerEmailEvent) or a
+                // plain column UPDATE (setBouncedFromEvent/setSuppressedFromEvent).
                 $this->logFailure($email, $event, $e);
                 return ProcessingResult::WRITE_FAILURE;
             }
@@ -189,7 +191,7 @@ final class BrevoWebhookEventProcessor
      * A value is only trusted if it parses as digits AND falls at or below
      * {@see self::MAX_PLAUSIBLE_TIMESTAMP} — an overflowing value (verified:
      * `(int) "999999999999999999999999"` produces a `DATETIME` string of year
-     * 292277026596) would otherwise reach `CarRepository::insertEmailEvent()`
+     * 292277026596) would otherwise reach `CarRepository::insertOwnerEmailEvent()`
      * as a value MySQL rejects, turning one poisoned payload into a permanent
      * Brevo retry loop (the resulting CarDatabaseException maps to a
      * retryable 5xx, and Brevo resends the same payload forever).

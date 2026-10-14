@@ -65,15 +65,15 @@ final class EmailEventApplierTest extends TestCase
     public function testHardBounceClassEventSetsOwnerBouncedWithEventTimeAndSource(string $event): void
     {
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(42, 'owner@example.com', $event, null, 'msg-1', '2026-01-01 00:00:00');
         $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
 
         $this->mockManager->expects($this->once())
-            ->method('setBounced')
+            ->method('setBouncedFromEvent')
             ->with(42, 'owner@example.com', '2026-01-01 00:00:00', 'webhook')
             ->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $this->applier->apply(42, 'owner@example.com', $event, null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
@@ -84,14 +84,14 @@ final class EmailEventApplierTest extends TestCase
 
     public function testSoftBounceBelowThresholdDoesNotEscalate(): void
     {
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent')->willReturn(1);
         $this->mockRepo->expects($this->once())
             ->method('countSoftBouncesSinceLastDelivered')
-            ->with('owner@example.com', 3)
+            ->with(3, 'owner@example.com')
             ->willReturn(2);
 
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $this->applier->apply(3, 'owner@example.com', 'soft_bounce', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
@@ -112,17 +112,17 @@ final class EmailEventApplierTest extends TestCase
     #[DataProvider('softBounceEscalatingCountProvider')]
     public function testSoftBounceAtOrAboveThresholdEscalatesToBounced(int $cycles): void
     {
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent')->willReturn(1);
         $this->mockRepo->expects($this->once())
             ->method('countSoftBouncesSinceLastDelivered')
-            ->with('owner@example.com', 3)
+            ->with(3, 'owner@example.com')
             ->willReturn($cycles);
 
         $this->mockManager->expects($this->once())
-            ->method('setBounced')
+            ->method('setBouncedFromEvent')
             ->with(3, 'owner@example.com', '2026-01-01 00:00:00', 'webhook')
             ->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $this->applier->apply(3, 'owner@example.com', 'soft_bounce', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
     }
@@ -132,15 +132,15 @@ final class EmailEventApplierTest extends TestCase
     public function testSpamBlocksTheOwnerWithCauseSpamRatherThanBouncing(): void
     {
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(7, 'owner@example.com', 'spam', null, 'msg-1', '2026-01-01 00:00:00');
         $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
 
         $this->mockManager->expects($this->once())
-            ->method('setSuppressed')
+            ->method('setSuppressedFromEvent')
             ->with(7, 'owner@example.com', 'spam', '2026-01-01 00:00:00', 'webhook')
             ->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setBounced');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
 
         $this->applier->apply(7, 'owner@example.com', 'spam', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
@@ -157,15 +157,15 @@ final class EmailEventApplierTest extends TestCase
     public function testUnsubscribedEventBlocksTheOwnerWithCauseUnsubscribedRatherThanBouncing(): void
     {
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(7, 'owner@example.com', 'unsubscribed', null, 'msg-1', '2026-01-01 00:00:00');
         $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
 
         $this->mockManager->expects($this->once())
-            ->method('setSuppressed')
+            ->method('setSuppressedFromEvent')
             ->with(7, 'owner@example.com', 'unsubscribed', '2026-01-01 00:00:00', 'webhook')
             ->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setBounced');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
 
         $this->applier->apply(7, 'owner@example.com', 'unsubscribed', null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
@@ -195,12 +195,12 @@ final class EmailEventApplierTest extends TestCase
     public function testKnownInertEventRecordsRowWithoutFlagChangeOrLog(string $event): void
     {
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(9, 'owner@example.com', $event, null, 'msg-1', '2026-01-01 00:00:00');
         $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
 
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $this->applier->apply(9, 'owner@example.com', $event, null, 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
@@ -218,12 +218,12 @@ final class EmailEventApplierTest extends TestCase
     public function testUnrecognizedEventIsRecordedAndLogged(): void
     {
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->with(13, 'owner@example.com', 'deferred', 'greylisted', 'msg-1', '2026-01-01 00:00:00');
         $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
 
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $this->applier->apply(13, 'owner@example.com', 'deferred', 'greylisted', 'msg-1', '2026-01-01 00:00:00', 'webhook');
 
@@ -231,7 +231,7 @@ final class EmailEventApplierTest extends TestCase
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $mockLogEntries[0]['category']);
         $this->assertStringContainsString('unrecognized event "deferred"', $mockLogEntries[0]['message']);
-        $this->assertStringContainsString('car 13', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('owner 13', $mockLogEntries[0]['message']);
     }
 
     // --- Write failures propagate ----------------------------------------
@@ -244,10 +244,10 @@ final class EmailEventApplierTest extends TestCase
     public function testInsertFailurePropagatesAndSkipsEscalation(): void
     {
         $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
+            ->method('insertOwnerEmailEvent')
             ->willThrowException(new CarDatabaseException('write failed'));
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
         $this->expectException(CarDatabaseException::class);
 
@@ -263,15 +263,15 @@ final class EmailEventApplierTest extends TestCase
     #[AllowMockObjectsWithoutExpectations]
     public function testSourceIsPassedToTheOwnerFlagWriters(): void
     {
-        $this->mockRepo->method('insertEmailEvent')->willReturn(1);
+        $this->mockRepo->method('insertOwnerEmailEvent')->willReturn(1);
         $this->mockRepo->method('countSoftBouncesSinceLastDelivered')->willReturn(3);
 
         $this->mockManager->expects($this->exactly(2))
-            ->method('setBounced')
+            ->method('setBouncedFromEvent')
             ->with(5, 'owner@example.com', '2026-01-01 00:00:00', 'reconciliation')
             ->willReturn(true);
         $this->mockManager->expects($this->once())
-            ->method('setSuppressed')
+            ->method('setSuppressedFromEvent')
             ->with(5, 'owner@example.com', 'spam', '2026-01-01 00:00:00', 'import')
             ->willReturn(true);
 
@@ -283,8 +283,8 @@ final class EmailEventApplierTest extends TestCase
     /** An unknown source throws before anything is written. */
     public function testUnknownSourceThrowsAndWritesNothing(): void
     {
-        $this->mockRepo->expects($this->never())->method('insertEmailEvent');
-        $this->mockManager->expects($this->never())->method('setBounced');
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
 
         $this->expectException(\InvalidArgumentException::class);
 

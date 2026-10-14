@@ -242,10 +242,12 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         return (int) $row->unmatched_recipient_count;
     }
 
+    /** Rows of the car's owner. Events belong to the owner, with car_id NULL (#2358). */
     private function eventRowCount(int $carId, string $brevoMessageId, string $event): int
     {
         $row = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ? AND brevo_message_id = ? AND event = ?',
+            'SELECT COUNT(*) AS cnt FROM er_email_events
+              WHERE user_id = (SELECT user_id FROM cars WHERE id = ?) AND brevo_message_id = ? AND event = ?',
             [$carId, $brevoMessageId, $event]
         )->first();
         return (int) $row->cnt;
@@ -486,11 +488,13 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertLessThan(300, $result['status'], 'Matched hard_bounce must respond 2xx');
 
         $eventRow = $this->db->query(
-            'SELECT car_id, email, event, reason, brevo_message_id FROM er_email_events WHERE car_id = ? AND brevo_message_id = ?',
+            'SELECT user_id, car_id, email, event, reason, brevo_message_id FROM er_email_events
+              WHERE user_id = (SELECT user_id FROM cars WHERE id = ?) AND brevo_message_id = ?',
             [$carId, $messageId]
         )->first();
 
-        $this->assertIsObject($eventRow, 'er_email_events row must exist for the matched car/message');
+        $this->assertIsObject($eventRow, 'er_email_events row must exist for the matched owner/message');
+        $this->assertNull($eventRow->car_id, 'A webhook event belongs to the owner, so car_id is NULL');
         $this->assertSame($email, $eventRow->email);
         $this->assertSame('hard_bounce', $eventRow->event);
         $this->assertSame('Mailbox does not exist', $eventRow->reason);
@@ -611,6 +615,75 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             $this->eventRowCount($carId, $messageId, 'delivered'),
             'Exactly one er_email_events row must exist after two identical deliveries — real MySQL unique-index/ON DUPLICATE KEY behavior'
         );
+    }
+
+    /** #2358: one event for an owner with three cars is one row, with car_id NULL. */
+    public function testEventForAnOwnerWithThreeCarsWritesOneOwnerLevelRow(): void
+    {
+        $this->requireBrevoReady();
+
+        $email = 'threecars-' . uniqid() . '@example.com';
+        $carId = $this->createFixtureCarWithEmail($email);
+        $ownerId = (int) $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId])->first()->user_id;
+        $this->createTestCar($ownerId, ['email' => $email]);
+        $this->createTestCar($ownerId, ['email' => $email]);
+        $messageId = 'msg-' . uniqid();
+
+        $result = $this->postAuthorized($this->taggedPayload(['email' => $email, 'event' => 'delivered', 'message-id' => $messageId]));
+
+        $this->assertGreaterThanOrEqual(200, $result['status']);
+        $this->assertLessThan(300, $result['status']);
+        $rows = $this->db->query(
+            'SELECT user_id, car_id FROM er_email_events WHERE brevo_message_id = ?',
+            [$messageId]
+        )->results();
+        $this->assertCount(1, $rows, 'One row, not one row for each car');
+        $this->assertSame($ownerId, (int) $rows[0]->user_id);
+        $this->assertNull($rows[0]->car_id);
+    }
+
+    /**
+     * #2358: until #2359, an event for an address that no owner holds writes no row and the
+     * webhook still answers 2xx. This covers a car with a NULL user_id and the noowner account.
+     */
+    public function testEventForACarWithNoOwnerOrForTheNoownerAccountWritesNoRowAndRespondsSuccessfully(): void
+    {
+        $this->requireBrevoReady();
+
+        // A car with no owner: its address is on no users row, so no owner matches.
+        $orphanEmail = 'orphan-' . uniqid() . '@example.com';
+        $orphanCarId = $this->createTestCar($this->createTestUser(), ['email' => $orphanEmail]);
+        $this->db->query('UPDATE cars SET user_id = NULL WHERE id = ?', [$orphanCarId]);
+
+        // The noowner account holds this address.
+        $noOwnerRow = $this->db->query('SELECT id, email FROM users WHERE username = ?', ['noowner'])->first();
+        $this->assertIsObject($noOwnerRow, 'noowner system account missing. Run composer migrate (RegisterNoownerAccount).');
+        $noOwnerEmail = 'noowner-hook-' . uniqid() . '@example.com';
+        $this->db->query('UPDATE users SET email = ? WHERE id = ?', [$noOwnerEmail, $noOwnerRow->id]);
+
+        try {
+            $counterBefore = $this->unmatchedCounter();
+            foreach ([$orphanEmail, $noOwnerEmail] as $address) {
+                $messageId = 'msg-' . uniqid();
+                $result = $this->postAuthorized($this->taggedPayload([
+                    'email' => $address,
+                    'event' => 'hard_bounce',
+                    'message-id' => $messageId,
+                ]));
+
+                $this->assertGreaterThanOrEqual(200, $result['status']);
+                $this->assertLessThan(300, $result['status'], 'The webhook must answer 2xx when no owner matches');
+                $this->assertSame(
+                    0,
+                    (int) $this->db->query('SELECT COUNT(*) AS cnt FROM er_email_events WHERE brevo_message_id = ?', [$messageId])->first()->cnt,
+                    'No row for an event with no owner'
+                );
+            }
+            $this->assertSame($counterBefore + 2, $this->unmatchedCounter(), 'Both events count as unmatched');
+        } finally {
+            // The shared test schema keeps the seeded account, so its email must go back.
+            $this->db->query('UPDATE users SET email = ? WHERE id = ?', [$noOwnerRow->email, $noOwnerRow->id]);
+        }
     }
 
     // ------------------------------------------------------------------
