@@ -252,7 +252,7 @@ tables. `cars.user_id`'s own FK was dropped in
 |--------|------|-------------|
 | `id` | `int UNSIGNED` | PRIMARY KEY, AUTO_INCREMENT |
 | `user_id` | `int NOT NULL` | Owner the event applies to. Added by `20261013000000_key_er_email_events_by_user.php` (#2358). |
-| `car_id` | `int NULL` | Car that the row starts a send cycle for. Only a `sent` row carries a car. A webhook, reconciliation or suppression-import row has `car_id` NULL. A car delete also sets `car_id` to NULL. |
+| `car_id` | `int NULL` | Car that the row starts a send cycle for. From #2358, only a `sent` row gets a car: a new webhook, reconciliation or suppression-import row has `car_id` NULL. Rows written before the #2358 migration keep their `car_id` until the prune deletes them. A car delete also sets `car_id` to NULL. |
 | `email` | `varchar(155) NOT NULL` | Recipient address, stored normalized (trimmed, lower case) (INDEXED). The prune sets it to `''` on a car's latest `sent` row only when the row is older than 90 days. |
 | `event` | `varchar(32) NOT NULL` | Brevo event name (`hard_bounce`, `soft_bounce`, `blocked`, `invalid`, `spam`, `delivered`, `unique_opened`, …) or the local `sent` event |
 | `reason` | `text NULL` | Optional reason/detail text from the payload (e.g. why a bounce occurred). Absent for events like `spam`. |
@@ -267,17 +267,19 @@ tables. `cars.user_id`'s own FK was dropped in
   keeps the earliest `occurred_at` (`LEAST()`), so a `delivered` row that
   resets the soft-bounce window does not move later. It never changes the
   identity columns.
-- `(user_id, occurred_at)` has no known reader. `EXPLAIN` shows that both
-  dashboard readers use the unique key. No current query is known to use this
-  index.
+- `(user_id, occurred_at)`: no current query is known to use this index.
+  #2359 decides which lookups it needs.
 - `(brevo_message_id)` serves the message lookup.
 - `(car_id, occurred_at)` and `(email)` stay from the earlier schema.
 
 **Owner-level rows.** The webhook cannot tell which of an owner's cars an
 email was for. So a webhook, reconciliation or suppression-import event is
 stored once, with `car_id` NULL, whatever the number of the owner's cars.
-Only a `sent` row carries a car, because it starts that car's send cycle.
-Every car of the owner shows an owner-level row after the car's cycle start.
+A new `sent` row is the only new row that gets a car, because it starts that
+car's send cycle. The migration does not clear `car_id`, so a row written
+before it keeps its car until the prune deletes it. The readers ignore
+`car_id` on a non-`sent` row after the cycle start. Every car of the owner
+shows an owner-level row after the car's cycle start.
 See [EMAIL_SYSTEM.md, Event recording](EMAIL_SYSTEM.md#event-recording-and-the-car-chip).
 
 **Retention.** The nightly reconciliation job prunes the table

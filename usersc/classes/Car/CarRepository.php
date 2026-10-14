@@ -96,8 +96,9 @@ class CarRepository
      * not hold them. Both sides of the compare are normalized, so a stored
      * `_address` that a writer did not normalize still agrees with the PHP
      * rule. The predicates add `COLLATE utf8mb4_bin` because the compare must
-     * be byte-exact, as PHP `===` is. The column collation ignores case and
-     * trailing spaces.
+     * match case and accents exactly, as PHP `===` does. The column collation
+     * ignores case and accents. `utf8mb4_bin` still ignores trailing spaces
+     * (PAD SPACE), but both sides are trimmed first.
      */
     private const NORMALIZE_SQL_OPEN  = 'LOWER(REGEXP_REPLACE(';
     private const NORMALIZE_SQL_CLOSE = ", '^[[:space:]]+|[[:space:]]+$', ''))";
@@ -2368,14 +2369,15 @@ class CarRepository
      *
      * The upsert rule is in {@see upsertEmailEvent()}.
      *
-     * @param int $carId Car ID the event is being recorded against
-     * @param string $email Recipient email address from the Brevo payload. Stored
+     * @param int $carId Car whose send cycle the row starts
+     * @param string $email Recipient of the verification email. Stored
      *                      normalized ({@see EmailAddress::normalize()}).
-     * @param string $event Brevo event name (e.g. 'hard_bounce', 'delivered')
-     * @param string|null $reason Optional reason/detail text from the payload
-     * @param string $brevoMessageId Brevo's message id for this send (or a
-     *                                locally-generated id for the 'sent' event)
-     * @param string $occurredAt Datetime string in AppConstants::DATETIME_FORMAT
+     * @param string $event Event name. The only caller passes 'sent'.
+     * @param string|null $reason Optional reason/detail text
+     * @param string $brevoMessageId The local id of the send (`local:` + the
+     *                                SHA-256 of the new vericode). The mailer
+     *                                returns no Brevo id.
+     * @param string $occurredAt Send time in AppConstants::DATETIME_FORMAT
      * @return int See {@see upsertEmailEvent()}. Also 0 when the car has no
      *             owner (no row written).
      * @throws CarDatabaseException If the query fails
@@ -2963,7 +2965,7 @@ class CarRepository
      * plugin has no such table.
      *
      * @return bool True when the table exists in the current schema
-     * @throws CarDatabaseException If the query fails
+     * @throws CarDatabaseException If the query fails or returns no COUNT row
      */
     public function sendinblueMessagesTableExists(): bool
     {
@@ -2980,8 +2982,17 @@ class CarRepository
             );
         }
         $row = $this->db->first();
+        if (!is_object($row) || !isset($row->cnt)) {
+            // A COUNT() query always returns one row. A missing row means the
+            // query did not run as written. Returning false would make the
+            // account-deletion privacy step skip the plugin rows and keep
+            // personal data.
+            throw new CarDatabaseException(
+                'CarRepository::sendinblueMessagesTableExists returned no COUNT row'
+            );
+        }
 
-        return is_object($row) && (int) ($row->cnt ?? 0) > 0;
+        return (int) $row->cnt > 0;
     }
 
     /**

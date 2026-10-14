@@ -1016,9 +1016,11 @@ job and the suppression import each call it once for each matched owner.
   once, with `car_id` NULL, by `CarRepository::insertOwnerEmailEvent()`. The
   unique key is `(user_id, brevo_message_id, event)`, so a repeat of the event
   does not add a row.
-- **Only `sent` rows carry a car.** `CarVerificationSendService` writes the
+- **Only new `sent` rows get a car.** `CarVerificationSendService` writes the
   `sent` row through `CarRepository::insertEmailEvent()` with the car's ID.
-  It starts that car's send cycle.
+  It starts that car's send cycle. The #2358 migration does not clear
+  `car_id`, so a row written before it keeps its car until the prune deletes
+  it.
 - **No owner, no row.** A user that does not exist and the `noowner` account
   get no row. The webhook still returns 2xx.
 - **One escalation for each owner.** The soft-bounce count and the flag write
@@ -1058,7 +1060,8 @@ The readers are `CarRepository::findLatestEmailEventsByCarIds()` and
   `users.email`. If the plugin table is absent, the step logs this and
   continues. If the step fails, it rolls back, logs a CRITICAL line with the
   user ID, the stage and the exception class, and the hook continues with the
-  car cleanup. After the commit, the step logs its summary at once.
+  car cleanup. The step then logs a summary line, whether it committed or
+  rolled back.
 
   The address sources include `cars.email` of the user's cars. On a
   transferred car, this field can hold the old address of a previous owner.
@@ -1093,9 +1096,7 @@ two cutoffs (`CarRepository::deleteEmailEventsOlderThan()`):
   row. It ages out after 90 days like any other row.
 - **Soft-bounce count.** Both rows use the 90-day cutoff. So the prune
   deletes every soft bounce that is older than a `delivered` row it deletes.
-  A pruned `delivered` row cannot let an older soft bounce count again. Two
-  soft bounces 100 days apart, with a pruned `delivered` row between them, do
-  not reach the escalation threshold of 3.
+  A pruned `delivered` row cannot let an older soft bounce count again.
 - **Switch off.** The prune runs with the verification switch off.
 - **After a failed backfill.** The prune runs in a `finally` block, so a
   failed backfill does not stop it. The backfill failure still reaches

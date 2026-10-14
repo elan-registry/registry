@@ -41,7 +41,8 @@ use ElanRegistry\LogCategories;
  *   recorded, {@see CarRepository::countSoftBouncesSinceLastDelivered()} is
  *   consulted; at {@see self::SOFT_BOUNCE_ESCALATION_THRESHOLD} or more distinct
  *   send cycles (distinct `brevo_message_id` values) since the email's last
- *   `delivered` event and the owner's last Clear Bounced, the owner is
+ *   `delivered` event, the owner's last Clear Bounced and the owner's last
+ *   address change (`profiles.email_address_since`), the owner is
  *   escalated to bounced via the same path as a hard bounce, with
  *   `email_bounced_at` = the time of the soft bounce that escalated.
  * - `delivered` and `unique_opened` only ever record an event row. `delivered`

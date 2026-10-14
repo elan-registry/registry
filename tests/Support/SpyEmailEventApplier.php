@@ -23,8 +23,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
  * Records every apply() call so tests can assert both the arguments and the
  * ordering, and can be scripted to throw CarDatabaseException for one chosen
  * message-id (per-event failure isolation) or owner. The owner case tests
- * per-owner-write counting, which came with #2358 (#2061 counted per car).
- * One event that matches several owners makes calls that share one
+ * per-owner-write counting. One event that matches several owners makes calls that share one
  * message-id, so the message-id alone cannot tell them apart.
  *
  * The constructor skips the parent's, so an inherited public method would

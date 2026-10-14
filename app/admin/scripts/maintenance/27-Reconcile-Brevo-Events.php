@@ -77,8 +77,8 @@ if (!isAdmin()) {
                                 <ul class="mb-0">
                                     <li>Polls Brevo for the last 48 hours of transactional delivery events (bounces, blocks, spam complaints, deliveries)</li>
                                     <li>Backfills any event the webhook never received, applying it through the same escalation rules a live webhook event uses</li>
-                                    <li>Purges <code>er_email_events</code> rows older than 24 months</li>
-                                    <li>Shows matched, unmatched, and ignored counts plus a breakdown by event type below, so the result of this run is visible immediately rather than requiring a trip to Admin &rarr; Logs</li>
+                                    <li>Prunes <code>er_email_events</code>: terminal events after 24 months, all other rows after 90 days (each car's latest <code>sent</code> row is kept, with its address removed)</li>
+                                    <li>Shows owners matched, unmatched, and ignored counts plus a breakdown by event type below, so the result of this run is visible immediately rather than requiring a trip to Admin &rarr; Logs</li>
                                     <li>Bypasses the normal 20-hour cron guard, so it runs even if the scheduled job has already run today</li>
                                     <li>Safe to run repeatedly — every write is idempotent, so re-applying an event already recorded is a no-op</li>
                                 </ul>

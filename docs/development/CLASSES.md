@@ -711,7 +711,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `insertEmailEvent()`. A `$userId` less than 1, a user that does not exist, or
   the `noowner` account writes no row and returns 0. The method does not check
   the address or the time. The callers clamp the time
-  (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it
+  (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it.
 - `countSoftBouncesSinceLastDelivered(int $userId, string $email): int` - Count
   distinct soft-bounce send cycles (`brevo_message_id` values) for the owner and
   the address, since the latest of: the owner's most recent `delivered` event for

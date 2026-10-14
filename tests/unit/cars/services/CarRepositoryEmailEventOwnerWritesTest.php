@@ -287,7 +287,6 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
         return [
             'table present' => [(object) ['cnt' => '1'], true],
             'table absent' => [(object) ['cnt' => '0'], false],
-            'no row' => [(object) [], false],
         ];
     }
 
@@ -299,6 +298,17 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
 
         $this->assertSame($expected, $repo->sendinblueMessagesTableExists());
         $this->assertSame(['plg_sendinblue_messages'], $queries[0]['params']);
+    }
+
+    public function testSendinblueMessagesTableExistsThrowsWhenNoCountRowComesBack(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, firstRow: (object) []));
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessage('returned no COUNT row');
+
+        $repo->sendinblueMessagesTableExists();
     }
 
     public function testSendinblueMessagesTableExistsThrowsWhenTheQueryFails(): void
