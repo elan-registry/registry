@@ -32,20 +32,8 @@ PHP application for the Lotus Elan Registry at <https://elanregistry.org>.
 UserSpice 6 provides authentication; custom code provides the car registry.
 Cloudflare provides edge caching and CDN (US, EU, AU users).
 
-**Directory Structure:**
-
-- `/app/` — application pages: `owner/` (owner-facing pages), `api/` (AJAX
-  JSON endpoints by resource: `cars/`, `contact/`, `shared/`, `admin/`),
-  `views/` (partials), `verify/` (public vericode pages), `admin/`
-- `/docs/` — user-facing documentation: `guides/`, `reference/`, `stories/`
-- `/error/` — branded 403, 404, 500 pages
-- `/users/` — UserSpice framework (upstream — do not edit)
-- `/usersc/` — UserSpice customizations; `/usersc/classes/` holds application
-  classes (PSR-4: `ElanRegistry\` → `usersc/classes/`,
-  `ElanRegistry\Exceptions\` → `usersc/classes/Exceptions/`)
-- `/tests/` — `unit/` (no DB, incl. `unit/regression/` tagged
-  `#[Group('regression')]`), `integration/` (real DB), `playwright/`, `manual/`,
-  `hooks/` (shell tests for `scripts/` and the git hooks: `bash tests/hooks/test-*.sh`)
+`/users/` is upstream UserSpice — do not edit.
+Shell tests: `bash tests/hooks/test-*.sh`.
 
 **Key Integration Points:**
 
@@ -76,19 +64,12 @@ npm install
 npm run build                   # Required after install/clone — frontend is build output
 ./scripts/setup-git-hooks.sh    # Pre-commit quality checks (once per developer)
 
-composer test:quick             # Unit tests (<30s), host
-composer check:php              # Coding standards + PHPStan, host
-composer check                  # PHP standards + PHPStan + ESLint, host
 scripts/run-verification-suite.sh  # Unit + integration (in the container) + docs + PHPStan
 
 # Database commands — run in the app container:
 docker compose exec -u www-data app composer test:integration  # Integration tests
 docker compose exec -u www-data app composer test:full         # All PHP tests
 docker compose exec -u www-data app composer migrate           # Also :status, :dry-run, :rollback
-
-npm run lint                    # ESLint (lint:fix to auto-fix)
-npm run playwright:test         # Local Playwright tests (also :security, :maps, :csp)
-npm run test:e2e                # E2E on elanregistry.org (:test for test site, :dev for local)
 ```
 
 Bypass the pre-commit hooks with `git commit --no-verify` in an emergency
@@ -104,10 +85,8 @@ only. See `DEPLOYMENT.md` for hook details.
   encoding. Apply `htmlspecialchars()` at the render layer only.
 - **Frontend API client:** AJAX endpoints use `ApiResponse` (PHP) +
   `ElanRegistryAPI` (JS); response format `{success, message, ...}`.
-- **Server globals:** never use `$_SERVER` directly.
-  `usersc/includes/server_globals.php` sets `$php_self`, `$is_https`, `$host`,
-  `$method`, `$request_uri`, `$current_url`, `$current_origin`,
-  `$remote_addr`, `$referer`, `$user_agent`. See `PAGE_LOADING_FLOW.md`.
+- **Server globals:** never use `$_SERVER` directly. Use the variables that
+  `usersc/includes/server_globals.php` sets. See `PAGE_LOADING_FLOW.md`.
 - **Terminology:** *Users* = authentication/session context (UserSpice,
   `users` table). *Owners* = car registry business domain. Use
   `(new Owner($userId))->data()` for user and profile data together.
@@ -120,8 +99,6 @@ only. See `DEPLOYMENT.md` for hook details.
   files or introduces a new pattern. Edit a single-file task directly.
 - Run `/security-review` when changes touch forms, SQL queries, auth, or user
   input.
-- Resolve lint and type errors. Pre-commit hooks run PHPStan on staged files.
-- Run the test suites for the changed functionality.
 
 Semgrep (GitHub App managed scan) runs on every PR; the
 `semgrep-cloud-platform/scan` check fails on new issues. Triage steps are in
@@ -138,22 +115,12 @@ targeting the milestone branch. Each command describes its own steps.
   per issue: /start-issue → /execute-plan → /commit → /review-pr
              → /commit-push-pr → /address-pr-comments → /finish-issue
 /finish-milestone → /review-milestone → /release-milestone
-Other: /new-issue, /found, /security-review, /sprint-status, /groom-tests,
-       /groom-backlog, /revise-claude-md, /clean_gone
 ```
 
 `/finish-milestone` runs its own review of the milestone diff (Steps 9.5 to
 9.8), so do not run `/review-pr` at the milestone boundary.
 
-Hotfix (production broken, data at risk, or a security exposure):
-
-1. Capture the issue with `/new-issue` (`signal:defect`). During another
-   issue, use `/found`, which records the paused issue.
-2. `/start-issue <N> --hotfix` branches from `main`. The per-issue commands
-   then run as usual, with PR base `main`.
-3. Do the patch release in `DEPLOYMENT.md`, "Patch Release from main".
-4. To resume a paused issue, type `/start-issue <paused-N>`. `/finish-issue`
-   names it.
+Hotfix: `/start-issue <N> --hotfix`, PR base `main`. Full procedure: the `hotfix` skill.
 
 `/commit` is the plugin skill `commit-commands:commit`; this project has no
 `/commit` command. `.claude/settings.json` denies the plugin skill
