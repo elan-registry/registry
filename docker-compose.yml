@@ -161,7 +161,7 @@ services:
     # variables the services above publish on, so the links always match
     # this checkout's ports. The link targets are the host's published ports,
     # so this needs no network access to the other services.
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     restart: "no"
     environment:
       CHECKOUT_NAME: ${CHECKOUT_NAME:-Registry}
@@ -213,7 +213,7 @@ services:
     # The cron request sends the Host header the browser sends (#2228).
     # Apache then reports the published port, so links in emails that a job
     # sends point at http://localhost:$APP_HOST_PORT, not http://127.0.0.1.
-    image: curlimages/curl:8.11.1
+    image: curlimages/curl:8.23.0
     restart: "no"
     profiles: [cron]
     depends_on: [app]
