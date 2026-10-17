@@ -34,6 +34,3 @@ Local admin e2e tests (`tests/playwright/e2e/admin.spec.js`,
 unset, the auth setup step skips, but the admin tests still run
 unauthenticated: tests that expect a logged-in session fail, and tests of
 public pages such as `factory.php` pass.
-
-Run `npm run test:e2e` to check public pages against production
-(`playwright.config.prod.js`).
