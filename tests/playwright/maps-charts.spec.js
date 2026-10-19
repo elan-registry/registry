@@ -16,6 +16,11 @@ test.describe('Maps and Charts', () => {
     // Canvas is created by MapLibre GL JS
     const canvas = page.locator('.maplibregl-canvas');
     await expect(canvas).toBeAttached({ timeout: 15000 });
+
+    // The map and canvas exist before the worker runs. statistics.js adds the
+    // markers only in map.on('load'), so a worker that loads but does not work
+    // leaves zero markers and no console error.
+    await expect(page.locator('#map .elan-marker').first()).toBeVisible({ timeout: 15000 });
   });
 
   // A map container + canvas existing (the test above) is necessary but not
@@ -84,6 +89,24 @@ test.describe('Maps and Charts', () => {
     expect(style.projection?.type).toBe('mercator');
   });
 
+  // usersc/js/* is cached for a year (see the Cloudflare cache notes in
+  // DEPLOYMENT.md). Without a ?v= query on the bundle and on the worker, a
+  // returning browser keeps the old MapLibre, and an old worker with a new
+  // bundle crashes the map. The expected version comes from node_modules, so
+  // a Dependabot bump does not need a test edit.
+  test('statistics page loads the installed MapLibre with cache-busted URLs', async ({ page }) => {
+    const installed = require('maplibre-gl/package.json').version;
+    const bundleRequest = page.waitForRequest(/usersc\/js\/maplibre-gl\.min\.js\?v=/);
+    const workerResponse = page.waitForResponse(
+      (r) => r.url().endsWith(`maplibre-gl-worker.js?v=${installed}`) && r.status() === 200
+    );
+
+    await page.goto('app/owner/reports/statistics.php');
+    await bundleRequest;
+    await workerResponse;
+    expect(await page.evaluate(() => window.maplibregl.getVersion())).toBe(installed);
+  });
+
   test('statistics page marker data is inlined as JSON', async ({ page }) => {
     await page.goto('app/owner/reports/statistics.php');
     await page.waitForLoadState('networkidle');
@@ -131,18 +154,20 @@ test.describe('Maps and Charts', () => {
   });
 
   test('car details page map renders with MapLibre GL JS', async ({ page }) => {
+    const pageErrors = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
     await page.goto(`app/owner/cars/details.php?car_id=${CAR_ID_WITH_HISTORY}`);
-    await page.waitForLoadState('networkidle');
 
-    // Map renders only when the car has GPS coordinates; otherwise the location
-    // section shows a "not available" placeholder — accept either outcome
-    const mapContainer = page.locator('.map-container, #map');
-    const noLocationMsg = page.locator('text=Location information not available');
-
-    const hasMap = await mapContainer.count() > 0;
-    const hasNoLocation = await noLocationMsg.count() > 0;
-
-    expect(hasMap || hasNoLocation, 'Expected map container or no-location placeholder on car details page').toBe(true);
+    // CAR_ID_WITH_HISTORY has GPS coordinates, so the map must render. An
+    // either-outcome check here passed with a broken map bundle.
+    await expect(page.locator('.maplibregl-canvas')).toBeAttached({ timeout: 15000 });
+    // The Map constructor creates the canvas at once. A fatal map error
+    // replaces it, but that can happen after the canvas check passes. The
+    // marker is added only in map.on('load'), which needs a working worker.
+    await expect(page.locator('#map .elan-marker')).toBeVisible({ timeout: 15000 });
+    expect(await page.evaluate(() => window.maplibregl.getVersion()))
+      .toBe(require('maplibre-gl/package.json').version);
+    expect(pageErrors).toEqual([]);
   });
 
   test('statistics page chart data loads', async ({ page }) => {

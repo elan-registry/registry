@@ -82,8 +82,8 @@ foreach ($markerRows as $car) {
 .elan-marker.unknown { background:#718096; }
 </style>
 
-<link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css">
-<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js" data-cfasync="false"></script>
+<link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css?v=<?= ASSET_VERSION ?>">
+<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js?v=<?= ASSET_VERSION ?>" data-cfasync="false"></script>
 
 <div class="page-wrapper">
     <div class="container-fluid">

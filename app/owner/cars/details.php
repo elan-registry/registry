@@ -540,8 +540,8 @@ window.img_root = <?= json_encode((string)($us_url_root . ELAN_IMAGE_DIR), JSON_
 
 <?php if (!empty($carData->lat) && is_numeric($carData->lat) && $carData->lat != 0 &&
           !empty($carData->lon) && is_numeric($carData->lon) && $carData->lon != 0): ?>
-<link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css">
-<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js" data-cfasync="false"></script>
+<link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css?v=<?= ASSET_VERSION ?>">
+<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js?v=<?= ASSET_VERSION ?>" data-cfasync="false"></script>
 <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 window.carDetailsMapConfig = {
     lat: <?= (float)$carData->lat ?>,
