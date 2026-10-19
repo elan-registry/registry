@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Support;
 
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventApplyResult;
 use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Exceptions\CarDatabaseException;
 
@@ -49,8 +50,11 @@ class SpyEmailEventApplier extends EmailEventApplier
      */
     public array $calls = [];
 
-    /** The value that apply() returns: true means "a new event row was written". */
+    /** apply() returns this as `eventRowWritten`. */
     private bool $returnValue = true;
+
+    /** apply() returns this as `flagApplied`. */
+    private bool $flagApplied = true;
 
     /** apply() throws $failOnException when the message-id equals this. */
     private ?string $failOnMessageId = null;
@@ -109,10 +113,11 @@ class SpyEmailEventApplier extends EmailEventApplier
         $this->failWith = $e;
     }
 
-    /** Make apply() return this value (true by default). */
-    public function willReturn(bool $isNew): void
+    /** Make apply() return these values (both true by default). */
+    public function willReturn(bool $isNew, bool $flagApplied = true): void
     {
         $this->returnValue = $isNew;
+        $this->flagApplied = $flagApplied;
     }
 
     public function apply(
@@ -125,7 +130,7 @@ class SpyEmailEventApplier extends EmailEventApplier
         string $source,
         string $mode,
         ?string $blockedCause = null
-    ): bool {
+    ): EmailEventApplyResult {
         $userId = $match->isMatched() ? $match->userId() : 0;
         $this->calls[] = [
             'match'        => $match,
@@ -151,7 +156,7 @@ class SpyEmailEventApplier extends EmailEventApplier
             throw new CarDatabaseException('simulated write failure');
         }
 
-        return $this->returnValue;
+        return new EmailEventApplyResult($this->returnValue, $this->flagApplied);
     }
 
     /** @return list<string> The message-id of each recorded call, in order. */

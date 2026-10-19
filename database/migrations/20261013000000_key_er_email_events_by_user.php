@@ -167,7 +167,17 @@ final class KeyErEmailEventsByUser extends AbstractMigration
 
             $adapter->commitTransaction();
         } catch (\Throwable $e) {
-            $adapter->rollbackTransaction();
+            try {
+                $adapter->rollbackTransaction();
+            } catch (\Throwable $rollbackFailure) {
+                throw new \RuntimeException(
+                    'Rollback failed while handling: ' . $e->getMessage()
+                    . ' (rollback error: ' . $rollbackFailure->getMessage() . ')',
+                    0,
+                    $e
+                );
+            }
+
             throw $e;
         }
 

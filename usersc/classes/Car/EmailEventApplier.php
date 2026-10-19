@@ -7,6 +7,7 @@ namespace ElanRegistry\Car;
 use ElanRegistry\AppConstants;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -198,7 +199,12 @@ class EmailEventApplier
      *                                  {@see self::MODE_STATE}. The import uses
      *                                  it for Brevo's `adminBlocked` (`blocklist`),
      *                                  which it records as `unsubscribed`.
-     * @return bool True when the call wrote a new event row
+     * @return EmailEventApplyResult Whether the call wrote a new event row,
+     *                               and whether it ran the flag step for the
+     *                               current address (false for no users row,
+     *                               a failed date guard, no profiles row, an
+     *                               address that is not the current one, or a
+     *                               duplicate in MODE_EVENT)
      * @throws \InvalidArgumentException If the match is not a matched result,
      *                                   the source or mode is not permitted, or
      *                                   `$blockedCause` is not permitted here (nothing is written)
@@ -216,7 +222,7 @@ class EmailEventApplier
         string $source,
         string $mode,
         ?string $blockedCause = null
-    ): bool {
+    ): EmailEventApplyResult {
         DeliverabilityFlagLog::assertValidSource($source);
         if ($mode !== self::MODE_EVENT && $mode !== self::MODE_STATE) {
             throw new \InvalidArgumentException("EmailEventApplier::apply: unknown mode '{$mode}'");
@@ -242,7 +248,7 @@ class EmailEventApplier
 
         $this->repo->beginTransaction();
         try {
-            $isNew = $this->applyLocked(
+            $result = $this->applyLocked(
                 $match,
                 $address,
                 $event,
@@ -256,11 +262,27 @@ class EmailEventApplier
             );
             $this->repo->commit();
         } catch (\Throwable $e) {
-            $this->repo->rollback();
+            try {
+                $this->repo->rollback();
+            } catch (\Throwable $rollbackFailure) {
+                // A throw from rollback() would replace $e, and the callers
+                // choose their response from the type of $e.
+                // ExceptionLogSummary only: a repository message can hold an address.
+                $message = 'EmailEventApplier::apply() rollback failed for userId='
+                    . $match->userId() . ': ' . ExceptionLogSummary::of($rollbackFailure)
+                    . ' (original failure: ' . get_class($e) . ')';
+                try {
+                    logger($match->userId(), LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
+                } catch (\Throwable $logFailure) {
+                    // logger() writes to the database. If that fails too, the
+                    // PHP error log is the only record left.
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . ExceptionLogSummary::of($logFailure) . ')');
+                }
+            }
             throw $e;
         }
 
-        return $isNew;
+        return $result;
     }
 
     /**
@@ -268,7 +290,6 @@ class EmailEventApplier
      *
      * @param string|null $messageTime Null in {@see self::MODE_STATE}: no
      *                                 join or address guard applies
-     * @return bool True when the call wrote a new event row
      * @throws CarDatabaseException If a read or a write fails
      */
     private function applyLocked(
@@ -282,7 +303,7 @@ class EmailEventApplier
         string $source,
         string $mode,
         ?string $blockedCause
-    ): bool {
+    ): EmailEventApplyResult {
         $userId = $match->userId();
         $state = $this->repo->lockEventGuardState($userId);
         $failedGuard = $state === null
@@ -302,7 +323,7 @@ class EmailEventApplier
                     default => "the message is before {$failedGuard}",
                 }
             ));
-            return false;
+            return new EmailEventApplyResult(false, false);
         }
 
         $isNew = $this->repo->insertOwnerEmailEvent(
@@ -321,21 +342,28 @@ class EmailEventApplier
                 $event,
                 $userId
             ));
-            return $isNew;
+            return new EmailEventApplyResult($isNew, false);
         }
 
+        // Before the address check: reconciliation replays events each cycle,
+        // and a replay must not write the skip line below again.
+        if ($mode === self::MODE_EVENT && !$isNew) {
+            return new EmailEventApplyResult(false, false);
+        }
         $normalized = EmailAddress::normalize($address);
         if ($normalized === '' || $normalized !== EmailAddress::normalize($state['email'])) {
             // A flag for an old address would replace the flag of the current one.
-            return $isNew;
-        }
-        if ($mode === self::MODE_EVENT && !$isNew) {
-            return $isNew;
+            logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo: event "%s" recorded for owner %d with no flag change: the address is not the current one.',
+                $event,
+                $userId
+            ));
+            return new EmailEventApplyResult($isNew, false);
         }
 
         $this->applyFlag($userId, $address, $event, $eventTime, $source, $blockedCause);
 
-        return $isNew;
+        return new EmailEventApplyResult($isNew, true);
     }
 
     /**

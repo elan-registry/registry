@@ -9,6 +9,7 @@ use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Car\ProcessingResult;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ProfileFlagValueException;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -427,6 +428,34 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         $this->assertStringContainsString(get_class($fault), $this->logMessages()[0]);
         $this->assertNoLogHolds(self::ADDRESS);
         $this->assertNoLogHolds('bad ');
+    }
+
+    /** A stored flag that is not 0 or 1 fails on every retry, so a 5xx would make Brevo resend it forever. */
+    public function testProfileFlagValueFailureIsMalformedAndLogsTheUserIdButNoAddress(): void
+    {
+        $this->matchUser(77);
+        $this->applier->failWith(new ProfileFlagValueException(
+            'CarRepository: profiles.email_blocked for user=77 holds int, expected 0 or 1. ' . self::ADDRESS
+        ));
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('user 77', $this->logMessages()[0]);
+        $this->assertStringContainsString(ProfileFlagValueException::class, $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    /** Pins the catch order: the subclass is caught before CarDatabaseException. */
+    public function testPlainCarDatabaseExceptionStillGivesWriteFailureNotMalformed(): void
+    {
+        $this->matchUser(77);
+        $this->applier->failWith(new CarDatabaseException('insert failed'));
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::WRITE_FAILURE, $result);
     }
 
     // --- Reason field handling -------------------------------------------

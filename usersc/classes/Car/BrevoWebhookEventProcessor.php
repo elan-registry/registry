@@ -8,6 +8,7 @@ use ElanRegistry\AppConstants;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ExceptionLogSummary;
+use ElanRegistry\Exceptions\ProfileFlagValueException;
 use ElanRegistry\LogCategories;
 
 /**
@@ -217,6 +218,11 @@ final class BrevoWebhookEventProcessor
                 DeliverabilityFlagLog::SOURCE_WEBHOOK,
                 EmailEventApplier::MODE_EVENT
             );
+        } catch (ProfileFlagValueException $e) {
+            // A stored flag that is not 0 or 1 fails on every retry, so a
+            // 5xx would make Brevo resend the event forever.
+            $this->logDataFault('apply', $event, $e, "user {$match->userId()}", $match->userId());
+            return ProcessingResult::MALFORMED;
         } catch (CarDatabaseException $e) {
             // The applier rolled back the event row and the flag, so a
             // Brevo retry starts clean.

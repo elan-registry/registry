@@ -144,13 +144,20 @@ if (!empty($_POST)) {
             // \Throwable, not only ElanRegistryException: a narrower catch
             // would leave the transaction open for the rest of the request.
             if ($committed) {
-                logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                $message = sprintf(
                     'user_settings.php: OPT-OUT CLEARED BY OWNER committed for owner %d, '
                     . 'but a post-commit step failed [%s]: %s',
                     $userId,
                     get_class($e),
                     $e->getMessage()
-                ));
+                );
+                try {
+                    logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $message);
+                } catch (\Throwable $logFailure) {
+                    // logger() writes to the database. If that fails too, the
+                    // PHP error log is the only record left.
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+                }
                 $errors[] = 'Your request was saved, but the confirmation could not be shown. Reload this page to check.';
             } else {
                 // Guard the rollback: on a dropped connection ROLLBACK throws
@@ -159,27 +166,38 @@ if (!empty($_POST)) {
                 try {
                     $repo->rollback();
                 } catch (\Throwable $rollbackFailure) {
-                    logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                    $message = sprintf(
                         'user_settings.php: OPT-OUT CLEARED BY OWNER rollback failed for owner %d '
                         . 'while handling [%s] %s (rollback error: %s)',
                         $userId,
                         get_class($e),
                         $e->getMessage(),
                         $rollbackFailure->getMessage()
-                    ));
+                    );
+                    try {
+                        logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $message);
+                    } catch (\Throwable $logFailure) {
+                        error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+                    }
                 }
                 if ($e instanceof ElanRegistryException) {
                     // CarDatabaseException from the manager: no profiles
                     // row, or a failed profile write or audit row.
-                    logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-                        "user_settings.php: OPT-OUT CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage());
+                    $category = LogCategories::LOG_CATEGORY_EMAIL_BOUNCED;
+                    $message = "user_settings.php: OPT-OUT CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage();
                 } else {
-                    logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                    $category = LogCategories::LOG_CATEGORY_SYSTEM_ERROR;
+                    $message = sprintf(
                         'user_settings.php: OPT-OUT CLEARED BY OWNER unexpected error [%s] for owner %d: %s',
                         get_class($e),
                         $userId,
                         $e->getMessage()
-                    ));
+                    );
+                }
+                try {
+                    logger($userId, $category, $message);
+                } catch (\Throwable $logFailure) {
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
                 }
                 $errors[] = 'Verification emails could not be resumed. Nothing was changed. Please try again or contact support.';
             }
@@ -797,9 +815,15 @@ try {
     $ownerClearable = $effectiveFlags->optedOut;
     $emailBlocked = $effectiveFlags->blocked;
 } catch (ElanRegistryException $e) {
-    logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-        "user_settings.php: email flag read for the paused-email notice failed for owner {$userId}. "
-        . "The notice uses the stored profile flags, which may be stale: " . $e->getMessage());
+    $message = "user_settings.php: email flag read for the paused-email notice failed for owner {$userId}. "
+        . "The notice uses the stored profile flags, which may be stale: " . $e->getMessage();
+    try {
+        logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
+    } catch (\Throwable $logFailure) {
+        // logger() writes to the database. If that fails too, the PHP error
+        // log is the only record left.
+        error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+    }
     // Use the stored flags from the profile read above. Showing a notice
     // that may be stale is safer than hiding a real one.
     $ownerClearable = (int) ($profiledetails->email_opted_out ?? 0) === 1;
@@ -839,7 +863,7 @@ if ($emailSuppressed) {
                                 </form>
                             <?php endif; ?>
                             <?php if ($emailBlocked): ?>
-                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not clear that flag.' : '' ?> The flag stops verification email and messages from other owners. Change your email address or contact an admin.</p>
+                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not clear that flag.' : '' ?> The flag stops verification email and messages from other owners. Change your email address or <a href="<?= htmlspecialchars($us_url_root . 'app/owner/contact/index.php', ENT_QUOTES, 'UTF-8') ?>">contact an admin</a>.</p>
                             <?php endif; ?>
                         </section>
                     <?php endif; ?>

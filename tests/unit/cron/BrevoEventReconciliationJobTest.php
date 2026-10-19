@@ -9,6 +9,7 @@ use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ProfileFlagValueException;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -446,6 +447,28 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertStringContainsString(CarDatabaseException::class . ' (code', $failed[0]['message']);
         $this->assertStringNotContainsString('@', $failed[0]['message'], 'The log line must not hold an address');
         $this->assertStringNotContainsString('simulated write failure', $failed[0]['message'], 'No exception message in the log');
+    }
+
+    /** A stored flag that is not 0 or 1 skips only that event (#2393). */
+    public function testProfileFlagValueFailureForOneEventSkipsOnlyThatEvent(): void
+    {
+        $this->applier->failOn('m2', new ProfileFlagValueException(
+            'CarRepository: profiles.email_blocked for user=10 holds int, expected 0 or 1. owner@example.com'
+        ));
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(messageId: 'm1'),
+            new FakeBrevoEvent(messageId: 'm2'),
+            new FakeBrevoEvent(messageId: 'm3'),
+        ])->runNowWithSummary();
+
+        $this->assertSame(['m1', 'm2', 'm3'], $this->applier->messageIds(), 'The next event must still run');
+        $this->assertSame(1, $summary->skippedCount);
+        $log = $this->logsContaining('write FAILED');
+        $this->assertCount(1, $log);
+        $this->assertStringContainsString('owner 10', $log[0]['message']);
+        $this->assertStringContainsString(ProfileFlagValueException::class, $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
     }
 
     /** @return array<string, array{\Throwable}> */

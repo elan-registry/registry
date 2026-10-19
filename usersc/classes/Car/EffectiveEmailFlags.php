@@ -82,6 +82,32 @@ final readonly class EffectiveEmailFlags
     }
 
     /**
+     * Tell whether a stored flag applies to the normalized current address
+     *
+     * A set flag applies when its normalized address is empty (fail closed)
+     * or equals `$current`. This is the PHP form of
+     * `CarRepository::FLAG_ACTIVE_BLOCKED` and `CarRepository::FLAG_ACTIVE_BOUNCED`.
+     * Change the two together.
+     *
+     * @param int         $flag    The stored flag, already checked to be 0 or 1
+     * @param string|null $address The stored `_address` of the flag
+     * @param string      $current The owner's `users.email`. The method
+     *                             normalizes it, so a raw value gives the
+     *                             same answer as a normalized one.
+     * @return bool True when the flag is 1 and applies to `$current`
+     */
+    public static function flagApplies(int $flag, ?string $address, string $current): bool
+    {
+        if ($flag !== 1) {
+            return false;
+        }
+
+        $stored = EmailAddress::normalize($address);
+
+        return $stored === '' || $stored === EmailAddress::normalize($current);
+    }
+
+    /**
      * The state of an owner with no `profiles` row: no flag and no details
      */
     public static function none(): self

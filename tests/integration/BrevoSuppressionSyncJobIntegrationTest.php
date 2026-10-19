@@ -367,6 +367,36 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertNull($event->car_id);
     }
 
+    /**
+     * #2393 gap 2: the applier writes no flag for an owner with no profiles
+     * row. The summary must count that contact as skipped, not matched.
+     */
+    public function testOwnerWithoutProfileRowCountsSkippedNotMatched(): void
+    {
+        $email = 'noprofile-' . uniqid() . '@integration-test-1923.example.com';
+        $userId = $this->createTestUser(['email' => $email], false);
+        $this->assertSame(
+            0,
+            (int) $this->db->query('SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?', [$userId])->first()->cnt,
+            'Test setup: the owner must have no profiles row'
+        );
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'unsubscribedViaEmail', null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(1, $summary->skippedCount, 'The skipped flag step counts as skipped');
+        $this->assertSame(0, $summary->matchedCount, 'A skipped flag step is not a match');
+        $this->assertSame(0, $summary->alreadyFlaggedCount);
+        $this->assertSame(
+            0,
+            (int) $this->db->query('SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?', [$userId])->first()->cnt,
+            'The sync must not create a profiles row'
+        );
+    }
+
     // --- Address check and blockedAt fallback (#2359) -----------------------
 
     /** An invalid address is skipped before any match: no row, no flag. */

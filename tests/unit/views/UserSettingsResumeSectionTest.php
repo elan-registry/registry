@@ -94,7 +94,8 @@ final class UserSettingsResumeSectionTest extends TestCase
         bool $emailSuppressed,
         ?int $pausedCarCount,
         bool $emailBlocked = false,
-        bool $ownerClearable = true
+        bool $ownerClearable = true,
+        string $usUrlRoot = '/'
     ): string
     {
         $fragment = $this->extractResumeSectionFragment();
@@ -105,8 +106,9 @@ final class UserSettingsResumeSectionTest extends TestCase
         try {
             $emailSuppressedVar = $emailSuppressed; // extracted into scope under its real name below
             ob_start();
-            (function () use ($tmpFile, $emailSuppressedVar, $pausedCarCount, $emailBlocked, $ownerClearable): void {
+            (function () use ($tmpFile, $emailSuppressedVar, $pausedCarCount, $emailBlocked, $ownerClearable, $usUrlRoot): void {
                 $emailSuppressed = $emailSuppressedVar;
+                $us_url_root = $usUrlRoot;
                 include $tmpFile;
             })();
             $output = ob_get_clean();
@@ -157,8 +159,31 @@ final class UserSettingsResumeSectionTest extends TestCase
 
         $this->assertStringContainsString('Our email provider flagged your address.', $html);
         $this->assertStringContainsString('This button does not clear that flag. The flag stops verification email and messages from other owners.', $html);
-        $this->assertStringContainsString('Change your email address or contact an admin.', $html);
+        $this->assertStringContainsString('Change your email address or <a href="/app/owner/contact/index.php">contact an admin</a>.', $html);
         $this->assertStringContainsString('name="resume_verification_emails"', $html, 'The opt-out can still be cleared');
+    }
+
+    /** The link must point at the owner contact page, and the URL root must be escaped (#2393). */
+    #[Group('regression')]
+    public function test_blockedParagraph_linksToOwnerContactPage(): void
+    {
+        $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3, emailBlocked: true, usUrlRoot: '/registry/');
+
+        $this->assertSame(1, preg_match('/<a href="([^"]*)">contact an admin<\/a>/', $html, $m), 'The block note must hold the link');
+        $this->assertStringEndsWith('app/owner/contact/index.php', $m[1]);
+        $this->assertSame('/registry/app/owner/contact/index.php', $m[1]);
+    }
+
+    #[Group('regression')]
+    public function test_blockedParagraph_hostileUrlRoot_isEscaped(): void
+    {
+        $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3, emailBlocked: true, usUrlRoot: '"><script>alert(1)</script>');
+
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringContainsString(
+            '<a href="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;app/owner/contact/index.php">contact an admin</a>',
+            $html
+        );
     }
 
     /**
@@ -179,7 +204,7 @@ final class UserSettingsResumeSectionTest extends TestCase
         $this->assertStringNotContainsString('name="resume_verification_emails"', $html);
         $this->assertStringContainsString('Our email provider flagged your address.', $html);
         $this->assertStringNotContainsString('This button', $html, 'The note must not refer to a button that is not there');
-        $this->assertStringContainsString('Change your email address or contact an admin.', $html);
+        $this->assertStringContainsString('Change your email address or <a href="/app/owner/contact/index.php">contact an admin</a>.', $html);
         // A block alone does not stop a message from an admin, so the page must not say that all registry email is paused.
         $this->assertStringContainsString('Some registry email is paused for you. This includes verification email for 2 of your cars.', $html);
         $this->assertStringNotContainsString('<p> Registry email is paused', preg_replace('/\s+/', ' ', $html) ?? '');

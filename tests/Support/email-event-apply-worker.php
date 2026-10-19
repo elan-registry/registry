@@ -68,7 +68,7 @@ try {
     }
 
     $applier = new EmailEventApplier($repo, new CarVerificationManager($repo));
-    $isNew = $applier->apply(
+    $result = $applier->apply(
         $match,
         (string) $job['address'],
         (string) $job['event'],
@@ -78,7 +78,11 @@ try {
         (string) ($job['source'] ?? 'webhook'),
         EmailEventApplier::MODE_EVENT
     );
-    echo 'RESULT:' . json_encode(['matched' => true, 'is_new' => $isNew]) . "\n";
+    echo 'RESULT:' . json_encode([
+        'matched'      => true,
+        'is_new'       => $result->eventRowWritten,
+        'flag_applied' => $result->flagApplied,
+    ]) . "\n";
 } catch (Throwable $e) {
     echo 'ERROR:' . get_class($e) . "\n";
     fwrite(STDERR, get_class($e) . " " . $e->getMessage() . "\n");

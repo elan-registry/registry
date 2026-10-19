@@ -90,7 +90,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
             $occurredAt,
             $source,
             EmailEventApplier::MODE_EVENT
-        );
+        )->eventRowWritten;
     }
 
     private function createOwnerWithTwoCars(string $emailA, string $emailB): array

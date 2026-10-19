@@ -127,13 +127,14 @@ handling and logging.
   - HTTP status code (for API responses)
 - **Autoloading**: PSR-4 autoload via composer.json
 
-**Exception Types** (22 total):
+**Exception Types** (23 total):
 
 | Exception | HTTP | Category | Purpose |
 | --- | --- | --- | --- |
 | **CarException** (abstract) | 500 | CarErrors | Base for all car exceptions |
 | CarCreationException | 500 | CarCreation | Car creation |
 | CarDatabaseException | 500 | DatabaseError | Car database operations |
+| ProfileFlagValueException | 500 | DatabaseError | Stored profile flag value not 0 or 1 (the webhook maps it to a 400 response; cron jobs skip) |
 | CarDeletionException | 500 | CarDeletion | Car deletion |
 | CarMergeException | 500 | CarMerge | Car merge operation |
 | CarNotFoundException | 404 | CarErrors | Car not found |

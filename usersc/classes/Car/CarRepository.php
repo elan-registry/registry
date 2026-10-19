@@ -10,6 +10,7 @@ use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ProfileFlagValueException;
 use ElanRegistry\LogCategories;
 use InvalidArgumentException;
 
@@ -108,6 +109,7 @@ class CarRepository
     /**
      * SQL for an `email_blocked` that applies to the owner's current address.
      * A NULL or empty address applies (fail closed). Aliases `p` and `u`.
+     * The PHP form is {@see EffectiveEmailFlags::flagApplies()}. Change the two together.
      */
     private const FLAG_ACTIVE_BLOCKED = "p.email_blocked = 1 AND (p.email_blocked_address IS NULL"
         . ' OR ' . self::NORMALIZE_SQL_OPEN . 'p.email_blocked_address' . self::NORMALIZE_SQL_CLOSE . " = ''"
@@ -117,6 +119,7 @@ class CarRepository
     /**
      * SQL for an `email_bounced` that applies to the owner's current address.
      * A NULL or empty address applies (fail closed). Aliases `p` and `u`.
+     * The PHP form is {@see EffectiveEmailFlags::flagApplies()}. Change the two together.
      */
     private const FLAG_ACTIVE_BOUNCED = "p.email_bounced = 1 AND (p.email_bounced_address IS NULL"
         . ' OR ' . self::NORMALIZE_SQL_OPEN . 'p.email_bounced_address' . self::NORMALIZE_SQL_CLOSE . " = ''"
@@ -580,36 +583,56 @@ class CarRepository
         $current = EmailAddress::normalize(self::nullableString($row->user_email));
 
         return new EffectiveEmailFlags(
-            true,
-            (int) $row->email_opted_out === 1,
-            self::nullableString($row->email_opted_out_at),
-            self::flagApplies($row->email_blocked, $row->email_blocked_address, $current),
-            self::nullableString($row->email_blocked_address),
-            self::nullableString($row->email_blocked_at),
-            self::nullableString($row->email_blocked_cause),
-            self::flagApplies($row->email_bounced, $row->email_bounced_address, $current),
-            self::nullableString($row->email_bounced_address),
-            self::nullableString($row->email_bounced_at),
-            self::nullableString($row->user_email)
+            hasProfile: true,
+            optedOut: self::flagValue($row->email_opted_out, 'email_opted_out', $userId) === 1,
+            optedOutAt: self::nullableString($row->email_opted_out_at),
+            blocked: EffectiveEmailFlags::flagApplies(
+                self::flagValue($row->email_blocked, 'email_blocked', $userId),
+                self::nullableString($row->email_blocked_address),
+                $current
+            ),
+            blockedAddress: self::nullableString($row->email_blocked_address),
+            blockedAt: self::nullableString($row->email_blocked_at),
+            blockedCause: self::nullableString($row->email_blocked_cause),
+            bounced: EffectiveEmailFlags::flagApplies(
+                self::flagValue($row->email_bounced, 'email_bounced', $userId),
+                self::nullableString($row->email_bounced_address),
+                $current
+            ),
+            bouncedAddress: self::nullableString($row->email_bounced_address),
+            bouncedAt: self::nullableString($row->email_bounced_at),
+            currentEmail: self::nullableString($row->user_email)
         );
     }
 
     /**
-     * Tell whether a stored flag applies to the normalized current address
+     * Read a stored profile flag as 0 or 1
      *
-     * A set flag applies when its normalized address is empty (fail closed)
-     * or equals `$current`. This is the PHP form of `FLAG_ACTIVE_BLOCKED`
-     * and `FLAG_ACTIVE_BOUNCED`. Change the two together.
+     * The connection sets sql_mode '' (users/classes/DB.php), so a manual
+     * edit can store a value other than 0 or 1. A cast would read it as a
+     * valid state, so refuse it.
+     *
+     * @param mixed  $raw    The column value as the driver returns it
+     * @param string $column The column name, for the exception message
+     * @param int    $userId Owner user ID, for the exception message
+     * @return int 0 or 1
+     * @throws ProfileFlagValueException If the value is not 0, 1, '0' or '1'
      */
-    private static function flagApplies(mixed $flag, mixed $address, string $current): bool
+    private static function flagValue(mixed $raw, string $column, int $userId): int
     {
-        if ((int) $flag !== 1) {
-            return false;
+        if ($raw === 0 || $raw === '0') {
+            return 0;
+        }
+        if ($raw === 1 || $raw === '1') {
+            return 1;
         }
 
-        $stored = EmailAddress::normalize(self::nullableString($address));
-
-        return $stored === '' || $stored === $current;
+        throw new ProfileFlagValueException(sprintf(
+            'CarRepository: profiles.%s for user=%d holds %s, expected 0 or 1.',
+            $column,
+            $userId,
+            get_debug_type($raw)
+        ));
     }
 
     /**
@@ -647,7 +670,7 @@ class CarRepository
     {
         $state = $this->findProfileEmailState($userId);
 
-        return $state === null ? null : (int) $state->email_opted_out;
+        return $state === null ? null : self::flagValue($state->email_opted_out, 'email_opted_out', $userId);
     }
 
     /**
@@ -671,7 +694,7 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = (int) $state->email_opted_out;
+        $old = self::flagValue($state->email_opted_out, 'email_opted_out', $userId);
         $new = $optedOut ? 1 : 0;
         if ($old === $new) {
             return $old;
@@ -723,7 +746,8 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        if ((int) $state->email_blocked === 1 && self::sameAddress($state->email_blocked_address, $normalized)) {
+        $old = self::flagValue($state->email_blocked, 'email_blocked', $userId);
+        if ($old === 1 && self::sameAddress($state->email_blocked_address, $normalized)) {
             return 1;
         }
 
@@ -734,7 +758,11 @@ class CarRepository
             'setProfileBlocked'
         );
 
-        return self::flagApplies($state->email_blocked, $state->email_blocked_address, self::currentAddress($state)) ? 1 : 0;
+        return EffectiveEmailFlags::flagApplies(
+            $old,
+            self::nullableString($state->email_blocked_address),
+            self::currentAddress($state)
+        ) ? 1 : 0;
     }
 
     /**
@@ -751,7 +779,7 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = (int) $state->email_blocked;
+        $old = self::flagValue($state->email_blocked, 'email_blocked', $userId);
         if ($old === 0) {
             return $old;
         }
@@ -807,7 +835,8 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        if ((int) $state->email_bounced === 1 && self::sameAddress($state->email_bounced_address, $normalized)) {
+        $old = self::flagValue($state->email_bounced, 'email_bounced', $userId);
+        if ($old === 1 && self::sameAddress($state->email_bounced_address, $normalized)) {
             return 1;
         }
 
@@ -818,7 +847,11 @@ class CarRepository
             'setProfileBounced'
         );
 
-        return self::flagApplies($state->email_bounced, $state->email_bounced_address, self::currentAddress($state)) ? 1 : 0;
+        return EffectiveEmailFlags::flagApplies(
+            $old,
+            self::nullableString($state->email_bounced_address),
+            self::currentAddress($state)
+        ) ? 1 : 0;
     }
 
     /**
@@ -841,7 +874,7 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = (int) $state->email_bounced;
+        $old = self::flagValue($state->email_bounced, 'email_bounced', $userId);
         if ($old === 0) {
             return $old;
         }
@@ -908,8 +941,8 @@ class CarRepository
             return null;
         }
 
-        $bounced = (int) $row->email_bounced;
-        $blocked = (int) $row->email_blocked;
+        $bounced = self::flagValue($row->email_bounced, 'email_bounced', $userId);
+        $blocked = self::flagValue($row->email_blocked, 'email_blocked', $userId);
         $current = EmailAddress::normalize(self::nullableString($row->user_email));
         $seen    = EmailAddress::normalize(self::nullableString($row->email_address_seen));
         $changed = $current !== $seen;
