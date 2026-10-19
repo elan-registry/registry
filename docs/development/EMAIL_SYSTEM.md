@@ -1124,6 +1124,11 @@ trailing spaces. Matching never uses `LIKE`, `FIND_IN_SET` or a substring.
 - The suppression import uses `EmailEventMatcher::matchUserByAddress()`. It
   matches one user by address under the same rule. See
   [Brevo Suppression List Import](#brevo-suppression-list-import-1923).
+- The nightly prune blanks the address of each car's latest `sent` row once
+  the row is older than 90 days. A later event for that message cannot match
+  by step (a). It matches by step (b) if the plugin row still exists.
+  Otherwise it matches no user, and a verification-tagged event counts as
+  unmatched.
 
 An event for our message with no matching user returns `NO_USER_MATCH`. The
 webhook returns 2xx and writes no row. It logs the first 8 hex characters of

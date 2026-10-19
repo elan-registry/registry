@@ -69,7 +69,7 @@ $policy = <<<'GUIDEHTML'
 <h2><a id="updates" href="#updates" class="" aria-hidden="true" title="Permalink"></a>Updates</h2>
 <p>If we change this policy, we'll update the effective date at the top of the page and post the new version here. Anything significant, we'll announce to users.</p>
 <hr />
-<p><em>Last updated: October 18, 2026. This update explains that the email opt-out stops all registry email to you except account mail (password reset, sign-in, and email change).</em></p>
+<p><em>Last updated: October 18, 2026. This update adds the Email delivery records section (what we record about the delivery of registry email and how long we keep it), and explains that the email opt-out stops all registry email to you except account mail (password reset, sign-in, and email change).</em></p>
 
 GUIDEHTML;
 ?>

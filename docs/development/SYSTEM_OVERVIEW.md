@@ -137,12 +137,14 @@ detail, factory and statistics pages — as public.
   variants.
 - **Mark a car sold** — the record stays in the registry; the sale becomes part
   of its history rather than removing it.
-- **See and fix a paused verification email** (`usersc/account.php`) — a
-  dismissable notice names any address with suppressed or bounced
-  verification email, and links to Account Settings to fix it.
-- **Resume suppressed verification emails** (`usersc/user_settings.php`) — an
-  owner can clear their own opt-out, without an admin. A suppression caused
-  by a Brevo spam complaint stays admin-only to clear.
+- **See and fix paused registry email** (`usersc/account.php`) — a
+  dismissable notice names an address whose registry email is paused (opted
+  out, bounced or blocked), gives the reason, and links to Account Settings
+  to fix it.
+- **Resume registry email** (`usersc/user_settings.php`) — an owner can clear
+  their own opt-out, without an admin. The opt-out covers all registry email
+  except account mail. A bounce or a block clears when the owner confirms a
+  new address, or when an admin clears it.
 - **Request an ownership transfer** (`app/api/cars/transfer-request.php`) — when
   you buy a car already in the registry, you request it rather than creating a
   duplicate. There is no "claim this car" button on the detail page: the entry
@@ -151,7 +153,10 @@ detail, factory and statistics pages — as public.
   requests. See [§4](#4-how-the-capabilities-connect) for what happens next.
 - **Contact another owner** (`app/owner/contact/owner.php`) — the first message
   is relayed through the site so neither address is exposed. The endpoint
-  verifies the recipient actually owns the referenced car before sending.
+  verifies the recipient actually owns the referenced car before sending. It
+  sends nothing to an owner who has no profile, who opted out, or whose
+  address bounced or is blocked, and it gives the sender the same response
+  as for a sent message (`SendPolicy`, see EMAIL_SYSTEM.md).
 - **Send feedback to the registrar** (`app/owner/contact/index.php`).
 
 ### 3.3. Editor and administrator
@@ -169,8 +174,9 @@ split *is* the permission boundary:
   location to the cars it owns.
 - **Account cleanup** — the page is reachable by editors, but the delete and
   restore actions are administrator-only.
-- **Verification System** — feature switch gating all verification-related
-  email sends, visible to both roles (read-only for editor); defaults off,
+- **Verification System** — feature switch that stops the automatic
+  verification send batch. The Brevo webhook and the Brevo cron jobs still
+  record delivery events while it is off. Visible to both roles (read-only for editor); defaults off,
   gated on live Brevo/cron readiness checks. Admin can toggle it; enabling
   while a prerequisite has failed is refused, disabling always succeeds. See
   [EMAIL_SYSTEM.md § Verification System Feature Switch](EMAIL_SYSTEM.md#verification-system-feature-switch).
@@ -221,8 +227,10 @@ Which owner actions count toward a car's freshness is listed in
   restoring a dump is a manual operation outside the application.
 - **GDPR deletion** — when a user is deleted, a UserSpice post-delete hook
   (`usersc/scripts/after_user_deletion.php`) transactionally reassigns their
-  cars to a system account named `noowner`, hard-deletes their profile row, and
-  expires any pending transfers. The car records — the registry's actual value —
+  cars to a system account named `noowner`, hard-deletes their profile row,
+  deletes their email delivery events (`er_email_events`) and their Brevo
+  plugin message rows (`plg_sendinblue_messages`), and expires any pending
+  transfers. The car records — the registry's actual value —
   survive; the personal data does not. See ADR-010.
 - **Schema migrations** — Phinx, applied automatically on deploy by the
   server-side post-receive hook. See ADR-009.
@@ -343,8 +351,9 @@ reader assuming an absent feature was an oversight and "restoring" it.
 - **No automatic transfer expiry.** The 30-day window is enforced by query, not
   by a sweep job — an accepted simplification.
 - **No public write API.** All AJAX endpoints are first-party, CSRF-protected
-  and session-bound. `sitemap.php` is the sole deliberate unauthenticated
-  endpoint.
+  and session-bound. Two endpoints have no user session: `sitemap.php`
+  (read-only) and the Brevo webhook (`app/api/webhooks/brevo.php`, which
+  requires a bearer token).
 - **No general-purpose email campaign tooling.** Transactional mail only.
 - **No ORM.** Queries are hand-written against UserSpice's `DB` wrapper
   (ADR-001).
@@ -374,7 +383,9 @@ Verified against code. Each of these is a real gap, not a documentation error.
 - **Audit coverage is cars-only.** There is no `users_hist` or `profiles_hist`;
   owner and profile changes rely on discretionary logging with no database-level
   guarantee.
-- **No email delivery log, queue or retry.** Failures are logged and dropped.
+- **No email queue or retry.** Send failures are logged and dropped. Brevo
+  delivery events are recorded per owner in `er_email_events` (see
+  EMAIL_SYSTEM.md).
 - **Chassis validation rules are duplicated in three places** — the
   `ChassisValidator` class, the prose on `docs/reference/chassis-validation.php`,
   and the help modal in `edit.php`. They currently agree, but the prose is

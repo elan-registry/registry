@@ -41,11 +41,10 @@ deletes them with the account. Admins see the email state of each owner.
 - The verification switch now stops only the automatic send batch, and the webhook and both Brevo cron jobs still write delivery events and flags while
   the switch is off.
   ([#2359](https://github.com/elan-registry/registry/issues/2359))
-- To stop all event writes in an incident, do these three steps, and run the reconciliation within 48 hours of step 1 after the incident.
+- To stop all event writes in an incident, follow
+  [EMAIL_SYSTEM.md § Stop Event Writes in an Incident](https://github.com/elan-registry/registry/blob/main/docs/development/EMAIL_SYSTEM.md#stop-event-writes-in-an-incident),
+  because the verification switch no longer stops them.
   ([#2359](https://github.com/elan-registry/registry/issues/2359))
-  1. Set `BREVO_WEBHOOK_TOKEN` to an empty value. The webhook then refuses every call with 401, and Brevo retries.
-  2. Set `er_cron_job_runs.enabled = 0` for `brevo_reconciliation` and `brevo_suppression_sync`. This also stops the retention prune.
-  3. Do not use Run Now, script 27 or script 28, because these paths read neither the switch nor `enabled`.
 - The nightly suppression import reads only the last 48 hours of Brevo's blocklist, so an older entry needs the full backfill (script 28), which sets
   `email_blocked` again, for example when an owner changes from a blocked address A to B and later back to A.
   ([#2359](https://github.com/elan-registry/registry/issues/2359))
@@ -70,9 +69,6 @@ deletes them with the account. Admins see the email state of each owner.
   ([#2358](https://github.com/elan-registry/registry/issues/2358))
 - The nightly prune keeps terminal events for 24 months, and `soft_bounce`, `delivered` and `sent` rows for 90 days, except each car's latest `sent` row
   for its current owner, whose address it blanks only when the row is older than 90 days.
-  ([#2358](https://github.com/elan-registry/registry/issues/2358))
-- The prune, the reconciliation and the suppression import now run with the verification switch off, and among the cron jobs only the send batch follows
-  the switch.
   ([#2358](https://github.com/elan-registry/registry/issues/2358))
 - Maintenance script 27 shows "owners matched", and the new read-only script 29 previews the event re-key.
   ([#2358](https://github.com/elan-registry/registry/issues/2358))

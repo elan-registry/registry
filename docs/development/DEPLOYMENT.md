@@ -524,7 +524,10 @@ Follow these rules for the deploy:
 1. **Back up before the push.** Export `er_email_events` through the host's
    phpMyAdmin (structure and data). The migration deletes and merges rows. The
    `down()` method restores the schema only. This backup is the only full
-   rollback.
+   rollback. Keep it until the first reconciliation run after the deploy has
+   run and you checked it. That run also runs the retention prune for the
+   first time, which deletes old `delivered`, `sent` and `soft_bounce` rows
+   (90 days) and old terminal rows (24 months).
 2. **Deploy the migration and the code together.** Use one push. The new code
    needs `er_email_events.user_id`. The old code writes no `user_id` and fails
    once the migration has run.
@@ -579,6 +582,14 @@ After the deploy, check on the target database:
   `idx_er_email_events_user_occurred` and
   `idx_er_email_events_brevo_message_id`. It does not list a unique key on
   `car_id`.
+
+Then update the Brevo webhook subscription on each host (#2359). The webhook
+now accepts only delivery events, and the registration script no longer
+subscribes to `opened`. An existing subscription keeps `opened` until you
+change it, and each open then writes one `logs` row. Remove `opened` (and
+`click`, if present) in the Brevo dashboard, or delete the webhook and create
+it again with `scripts/spike-1888/brevo-register-webhook.php`. List the
+webhooks with `--list-webhooks` to confirm.
 
 Then run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` on test
 and verify. After that, run it on production. The script sets the permissions

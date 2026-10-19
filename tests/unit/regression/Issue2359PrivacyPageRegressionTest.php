@@ -97,8 +97,8 @@ final class Issue2359PrivacyPageRegressionTest extends TestCase
             // Issue #2360: the opt-out stops all registry email except account mail.
             'the opt-out stops all registry email except the three kinds of account mail'
                 => ['/no login required\. The opt-out stops all registry email to you except account mail \(password reset, sign-in, and email change\)/i'],
-            'the last-updated sentence names the opt-out change'
-                => ['/Last updated: [A-Z][a-z]+ \d{1,2}, \d{4}\. This update explains that the email opt-out stops all registry email/i'],
+            'the last-updated sentence names the delivery records and the opt-out change'
+                => ['/Last updated: [A-Z][a-z]+ \d{1,2}, \d{4}\. This update adds the Email delivery records section .*and explains that the email opt-out stops all registry email/i'],
         ];
     }
 
