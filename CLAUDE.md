@@ -99,6 +99,8 @@ only. See `DEPLOYMENT.md` for hook details.
   files or introduces a new pattern. Edit a single-file task directly.
 - Run `/security-review` when changes touch forms, SQL queries, auth, or user
   input.
+- Resolve lint and type errors. Pre-commit hooks run PHPStan on staged files.
+- Run the test suites for the changed functionality.
 
 Semgrep (GitHub App managed scan) runs on every PR; the
 `semgrep-cloud-platform/scan` check fails on new issues. Triage steps are in
