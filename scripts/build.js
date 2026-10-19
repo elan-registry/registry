@@ -67,6 +67,37 @@ async function buildOsmStyle(base, osmTileJson) {
   return osm(versatilesStyleOptions(base, { ...osmTileJson, tiles }));
 }
 
+/**
+ * Prepares the MapLibre worker bundle for vendoring as a single .js file.
+ *
+ * Since 6.13.0 the worker is self-contained. A sibling file that it loads
+ * would not be vendored, and the map would stay blank with no console error,
+ * so the build fails instead. The check matches any quoted relative path and
+ * any import.meta.url, not only "./<name>.mjs", because a later layout can use
+ * hashed names, subdirectories or .js chunks.
+ *
+ * @param {string} workerSrc Contents of maplibre-gl-worker.mjs.
+ * @returns {string} The worker source without its sourcemap comment.
+ * @throws {Error} When the source references a relative path or import.meta.url.
+ */
+function vendorMaplibreWorker(workerSrc) {
+  const chunks = [...new Set([
+    ...[...workerSrc.matchAll(/["'`](\.{1,2}\/[^"'`\s]+)["'`]/g)].map(m => m[1]),
+    ...(workerSrc.includes('import.meta.url') ? ['import.meta.url'] : []),
+  ])].sort();
+  if (chunks.length > 0) {
+    throw new Error(
+      `maplibre-gl-worker.mjs references relative path(s) or import.meta.url [${chunks.join(', ')}]. ` +
+      'MapLibre changed its worker chunk layout. Update vendorMaplibreWorker() in ' +
+      'scripts/build.js to vendor each chunk under a .js name (see git history for ' +
+      'why .mjs breaks on some Apache servers).'
+    );
+  }
+  // The comment points at a .mjs.map file that is not vendored, which would
+  // 404 in browser devtools.
+  return workerSrc.replace(/\n?\/\/# sourceMappingURL=.*\.mjs\.map\s*$/, '\n');
+}
+
 const build = () => Promise.all([
   ...jsFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.js$/, '.min.js') })),
   ...cssFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.css$/, '.min.css') })),
@@ -96,38 +127,12 @@ const build = () => Promise.all([
   // .js (not .mjs) — some servers (e.g. Apache with no .mjs MIME
   // mapping, or serving .mjs with X-Content-Type-Options: nosniff and no
   // Content-Type) silently hang Chrome's `type: 'module'` Worker constructor
-  // forever (map never renders, no console error). MapLibre's worker bundle
-  // itself imports a second sibling chunk (maplibre-gl-shared.mjs) — that
-  // chunk must be copied under the same .js rename, and the worker's own
-  // import statement rewritten to match, or the worker's internal module
-  // import 404s.
+  // forever (map never renders, no console error).
   const workerSrc = fs.readFileSync('node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs', 'utf8');
-  // Collect the sibling chunk names referenced by relative imports (e.g.
-  // "./maplibre-gl-shared.mjs" -> "maplibre-gl-shared") from the *original*
-  // source before any rewriting, so the assertion below checks something the
-  // replace hasn't already normalized away. Checking the post-replace string
-  // with the same pattern used to produce it is a no-op — it can never fail.
-  const referencedChunks = [...workerSrc.matchAll(/\.\/([\w-]+)\.mjs/g)].map(m => m[1]).sort();
-  const expectedChunks = ['maplibre-gl-shared'];
-  if (referencedChunks.join(',') !== expectedChunks.join(',')) {
-    throw new Error(
-      `maplibre-gl-worker.mjs references sibling chunk(s) [${referencedChunks.join(', ')}], ` +
-      `expected [${expectedChunks.join(', ')}] — MapLibre likely changed its worker chunk ` +
-      'layout; update scripts/build.js to vendor the new chunk(s) under .js names (see git ' +
-      'history for why .mjs breaks on some Apache servers).'
-    );
-  }
-  const rewrittenWorkerSrc = workerSrc
-    .replace(/\.\/([\w-]+)\.mjs/g, './$1.js')
-    // Strip the trailing sourcemap comment — it points at a .mjs.map file
-    // that isn't vendored, which would otherwise 404 in browser devtools.
-    .replace(/\n?\/\/# sourceMappingURL=.*\.mjs\.map\s*$/, '\n');
-  fs.writeFileSync('usersc/js/maplibre-gl-worker.js', rewrittenWorkerSrc);
-  const sharedSrc = fs.readFileSync('node_modules/maplibre-gl/dist/maplibre-gl-shared.mjs', 'utf8');
-  fs.writeFileSync(
-    'usersc/js/maplibre-gl-shared.js',
-    sharedSrc.replace(/\n?\/\/# sourceMappingURL=.*\.mjs\.map\s*$/, '\n')
-  );
+  fs.writeFileSync('usersc/js/maplibre-gl-worker.js', vendorMaplibreWorker(workerSrc));
+  // MapLibre 6.13.0 folded maplibre-gl-shared.mjs back into the worker. Builds
+  // before that version wrote this file, and nothing loads it now.
+  fs.rmSync('usersc/js/maplibre-gl-shared.js', { force: true });
   fs.copyFileSync('node_modules/maplibre-gl/dist/maplibre-gl.css', 'usersc/css/maplibre-gl.css');
   console.log('Copied MapLibre GL JS assets.');
 
@@ -215,4 +220,4 @@ if (require.main === module) {
   build();
 }
 
-module.exports = { buildOsmStyle };
+module.exports = { buildOsmStyle, vendorMaplibreWorker };

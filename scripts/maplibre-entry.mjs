@@ -11,8 +11,15 @@
 // `document.currentScript` instead — the consuming pages load this bundle via
 // a plain `<script src="...">` tag (not `type="module"`), so
 // `document.currentScript` is reliably this script while it runs.
-import { setWorkerUrl } from 'maplibre-gl';
+//
+// The `?v=<version>` query busts a cached worker from an earlier MapLibre
+// release. Upstream added the same query to its default worker URL in 6.13.0,
+// because an old worker with a new main bundle crashes the map. This
+// setWorkerUrl() override bypasses that default, so the query goes on here.
+// `new URL()` drops the query of its base, so the query cannot come from the
+// bundle's own `?v=` either.
+import { getVersion, setWorkerUrl } from 'maplibre-gl';
 
 export * from 'maplibre-gl';
 
-setWorkerUrl(new URL('./maplibre-gl-worker.js', document.currentScript.src).toString());
+setWorkerUrl(new URL(`./maplibre-gl-worker.js?v=${getVersion()}`, document.currentScript.src).toString());

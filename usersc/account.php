@@ -385,8 +385,8 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>
 
 <?php if ($hasOwnerMap): ?>
-<link rel="stylesheet" href="<?= $_baseUrl ?>usersc/css/maplibre-gl.css">
-<script src="<?= $_baseUrl ?>usersc/js/maplibre-gl.min.js" data-cfasync="false"></script>
+<link rel="stylesheet" href="<?= $_baseUrl ?>usersc/css/maplibre-gl.css?v=<?= ASSET_VERSION ?>">
+<script src="<?= $_baseUrl ?>usersc/js/maplibre-gl.min.js?v=<?= ASSET_VERSION ?>" data-cfasync="false"></script>
 <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 (function () {
     if (typeof maplibregl === 'undefined') {

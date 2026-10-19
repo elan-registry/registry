@@ -4,6 +4,8 @@
 // Override with CAR_ID_STANDARD in .env.local. A misspelled or non-numeric
 // value falls back to 1 SILENTLY.
 const CAR_ID_STANDARD = Number(process.env.CAR_ID_STANDARD) || 1;
+// The car details map test needs non-zero lat and lon on this car. To re-verify:
+// SELECT id FROM cars WHERE lat IS NOT NULL AND lat != 0 AND lon IS NOT NULL AND lon != 0;
 const CAR_ID_WITH_HISTORY = 1091;
 const CAR_ID_WITH_SPECIAL_CHARS = 650; // depends on a one-time migration having run against this row — see car-edit-text-save.spec.js
 const CAR_ID_NONEXISTENT = 999999999;

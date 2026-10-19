@@ -26,6 +26,8 @@ deletes them with the account. Admins see the email state of each owner.
   ([#2406](https://github.com/elan-registry/registry/issues/2406))
 - When our email provider flagged an owner's address, the account settings page now links "contact an admin" to the owner contact page.
   ([#2393](https://github.com/elan-registry/registry/issues/2393))
+- The maps use MapLibre GL JS 6.14.0. After an update of the map library, your browser now loads the new version instead of a cached old copy.
+  ([#2454](https://github.com/elan-registry/registry/issues/2454))
 
 ## Admin-Facing Changes
 
@@ -97,3 +99,5 @@ deletes them with the account. Admins see the email state of each owner.
 - [#2393](https://github.com/elan-registry/registry/issues/2393) — Fix the error handling in the deliverability event path that the #2101 review found.
 - [#2406](https://github.com/elan-registry/registry/issues/2406) — Stop a failed owner resume from causing a 500 error.
 - WIP: [#2414](https://github.com/elan-registry/registry/issues/2414) — Show "an administrator blocked this address" to an owner whom a Brevo admin blocked.
+- [#2454](https://github.com/elan-registry/registry/issues/2454) — Upgrade maplibre-gl to 6.14.0, vendor its self-contained worker, and add cache-busting
+  queries to the map assets.
