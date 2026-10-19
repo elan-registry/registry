@@ -655,7 +655,7 @@ checks run in this order, and the first match wins (`VerificationTabStatus::chip
 1. The owner has no `profiles` row: "No profile". The row has no action button.
 2. `email_blocked = 1`: "Blocked". The reason text is `email_blocked_cause`
    (`spam`, `unsubscribed`, `blocklist`), or "cause unknown" when the cause
-   is NULL. The reason is styled as a badge subtitle.
+   is NULL. The reason shows as small muted text under the badge.
 3. `email_opted_out = 1`: "Opted out".
 4. Otherwise the chip shows the latest email event, as the rules above select it.
 

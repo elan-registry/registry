@@ -1725,8 +1725,10 @@ class CarRepository
         $carsFrom = 'FROM cars ' . self::PROFILE_JOIN_SQL . ' ' . self::USERS_JOIN_SQL;
         $histFrom = 'FROM cars_hist h INNER JOIN cars ON cars.id = h.car_id';
 
-        // One pass over cars gives the queue-state counts. Eligible and the
-        // cars_hist counts keep their own FROM, so they stay scalar subqueries.
+        // One pass over cars, joined to profiles and users, gives the
+        // queue-state counts. A WHERE on this outer query would change every
+        // SUM and the all count. Eligible and the cars_hist counts keep their
+        // own FROM, so they stay scalar subqueries.
         $this->db->query(
             "SELECT
                 (SELECT COUNT(*) {$eligibleFrom}) AS eligible,

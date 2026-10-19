@@ -27,7 +27,8 @@ use ElanRegistry\Owner;
  */
 
 // THE VERIFICATION SWITCH STOPS ONLY THE SEND BATCH. The stop for event writes
-// is in the Feature Switch help text in verification-status-panel.php and in
+// is in the Feature Switch help text in verification-status-panel.php (shown
+// only when the switch has no disabled reason) and in
 // docs/development/EMAIL_SYSTEM.md.
 
 // ---------------------------------------------------------------------------
@@ -99,6 +100,7 @@ $vsEligible       = [];
 $vsBatchSize      = 0;
 $vsEligibleError  = null;
 $vsSettings       = null;
+$vsEligibleLoadError = 'The list of eligible cars could not be loaded. Check the system log for details.';
 
 // Read separately from (and before) the eligible-car query below: the
 // Automatic Sending panel renders this as the value of an editable
@@ -110,6 +112,9 @@ try {
     $vsSettings  = new VerificationSettings(dbi());
     $vsBatchSize = $vsSettings->batchSize();
 } catch (\Throwable $e) {
+    // Without a batch size the preview would run with LIMIT 0 and show
+    // "no cars are due". Clear the settings so the preview shows an error.
+    $vsSettings = null;
     logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
         'Verification tab: could not read the configured batch size: ' . $e->getMessage());
 }
@@ -119,7 +124,7 @@ if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null) 
     try {
         $vsEligible = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
-        $vsEligibleError = 'The list of eligible cars could not be loaded. Check the system log for details.';
+        $vsEligibleError = $vsEligibleLoadError;
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
             'Verification tab: could not load the eligible car preview [%s]: %s',
             get_class($e),
@@ -129,7 +134,7 @@ if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null) 
 } elseif ($vsIsEligibleView) {
     // Without the send service or the settings there is no preview. Say so,
     // so that an empty list does not read as "no cars are due".
-    $vsEligibleError = 'The list of eligible cars could not be loaded. Check the system log for details.';
+    $vsEligibleError = $vsEligibleLoadError;
 }
 
 
@@ -830,9 +835,9 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             $queueNoActionTitle = 'This owner has no profile row. Fix the profile before you change email state.';
                         }
 
-                        // One action per row, from the owner's state. Suppressed comes first:
-                        // a suppressed owner who is not bounced needs Clear Suppression, not
-                        // Mark Bounced. A single soft bounce keeps the car Pending (Brevo
+                        // One action per row, from the owner's state. A blocked or opted-out
+                        // owner comes first: one who is not bounced needs Clear Suppression,
+                        // not Mark Bounced. A single soft bounce keeps the car Pending (Brevo
                         // escalates repeated soft bounces), so Mark Bounced is disabled there.
                         if ($queueSuppressed) {
                             $queueAction = ['command' => 'clear_suppression', 'label' => 'Clear Suppression',

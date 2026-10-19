@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
  * oversize car_ids[] to the configured batch size, before it filters ids.
  * The cut writes one log row and shows one admin message.
  *
- * The request runs the real page through invokeEndpoint(). Every submitted id is not
+ * The request runs the real page through invokeEndpoint(). No submitted id is
  * positive, so no car is read and no email is sent. The test needs no Brevo
  * setup.
  *

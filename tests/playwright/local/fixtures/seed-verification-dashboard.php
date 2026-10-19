@@ -25,10 +25,9 @@ use ElanRegistry\DatabaseInterface;
  *  - BOUNCED_USERNAME / BOUNCED car: profile email_bounced = 1, otherwise
  *    pending — lands in the Bounced pill.
  *  - SUPPRESSED_USERNAME / SUPPRESSED car: profile email_opted_out = 1 —
- *    lands in the Suppressed pill, chip "Opted out".
+ *    lands in the Opted out pill, chip "Opted out".
  *  - BLOCKED_USERNAME / BLOCKED car: profile email_blocked = 1 with cause
- *    blocklist — lands in the Suppressed pill, chip "Brevo complaint" (the
- *    chip says complaint for every cause until #2361).
+ *    blocklist — lands in the Blocked pill, chip "Blocked".
  *  - NO_PROFILE_USERNAME / NO_PROFILE car: pending, and the owner has no
  *    profiles row — chip "No profile", with no action button.
  *  - SOFT_BOUNCE_USERNAME / SOFT_BOUNCE car: pending (no bounce flag),
@@ -455,7 +454,7 @@ if (!$bouncedInsertedB) {
 }
 $bouncedCarIdB = $carRepository->lastId();
 
-// --- Suppressed --------------------------------------------------------------
+// --- Opted out ---------------------------------------------------------------
 [$suppressedUserId, $suppressedCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
@@ -475,7 +474,7 @@ $bouncedCarIdB = $carRepository->lastId();
     ]
 );
 
-// --- Blocked: Suppressed pill, "Brevo complaint" chip (cause blocklist) ----
+// --- Blocked: Blocked pill, "Blocked" chip (cause blocklist) ---------------
 [$blockedUserId, $blockedCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,

@@ -731,7 +731,7 @@ test.describe('Admin Verification Dashboard', () => {
         await expectPanelBeforeAutomaticSending(page);
     });
 
-    // AC (ledger, #2184): the Brevo row shows "Ready" or "Not ready" with the
+    // AC (#2184): the Brevo row shows "Ready" or "Not ready" with the
     // reason, and the log hint only when the probe threw.
     test('the Brevo row shows its badge and reason, and the log hint only when the probe threw', async ({ page }) => {
         await expectBrevoRow(page);

@@ -25,13 +25,9 @@ use ElanRegistry\LogCategories;
  * {@see self::read()} runs each probe in its own fault domain, so one failure
  * does not stop the other probes. A failed settings probe shows "Not ready"
  * on the Brevo row and "Unavailable" on the unmatched row; the cron row then
- * keeps its default "Stalled". Of the probe failures, only a failed
- * settings probe, an unreadable unmatched counter and an unreadable cron
- * failure log make {@see self::allHealthy()} false. An unreadable
- * reconciliation, suppression sync or automatic send job state does not
- * change it. An unreadable value
- * is never shown as a green zero, because a zero tells an admin to stop
- * looking.
+ * keeps its default "Stalled". {@see self::allHealthy()} lists which probe
+ * failures make the tab unhealthy. An unreadable value is never shown as a
+ * green zero, because a zero tells an admin to stop looking.
  *
  * The class does not check permissions. The tab is admin and editor only,
  * and the toggle endpoint checks its own permission.
