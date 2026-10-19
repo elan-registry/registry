@@ -1861,6 +1861,91 @@ returns a failed `SendResult` and leaves the vericode unrotated when
 
 ---
 
+### SendPolicy
+
+**Location**: `/usersc/classes/Car/SendPolicy.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: The one table of which owner flags stop which kind of mail
+(#2360). Each send path asks it before it calls `email()`. The verification
+send, owner contact and admin contact cannot drift apart. The mail table is in
+[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#send-policy-2360).
+
+**Methods**:
+
+- `__construct(CarRepository $repo)` - Reads the flags and the address matches
+- `blockingFlags(MailKind $kind): array` - The flag names that stop this kind
+  of mail. Public so a test can compare the table with the eligibility SQL
+- `forUser(MailKind $kind, int $userId): SendDecision` - Decide for one owner.
+  Reads `CarRepository::effectiveEmailFlags()`, so the address-match rule
+  applies. The result holds only the flags that block this kind
+- `forAddress(MailKind $kind, string $address): SendDecision` - Decide for an
+  address that more than one user may hold. One blocking flag on any user stops
+  the send. No user with the address gives `no_match`
+- `verificationReason(SendDecision $decision): ?string` - The first refusal
+  reason for the admin report, or `null` when allowed
+- `adminMessage(SendDecision $decision): string` - The text for `usError()`.
+  It starts with "Message not sent." and adds one sentence for each reason.
+  It escapes the bounce date. It returns an empty string when allowed
+
+**Exceptions**:
+
+- `CarDatabaseException` - From the flag reads
+
+**Used By**: `CarVerificationSendService`, `send-owner-email.php`,
+`process-admin-contact.php`
+
+---
+
+### SendDecision
+
+**Location**: `/usersc/classes/Car/SendDecision.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: The immutable result of one `SendPolicy` check (`final readonly`).
+
+**Constructor**: `new SendDecision(array $flags, ?string $bouncedAt = null, int $matchCount = 1)`.
+It throws `InvalidArgumentException` for a flag that is not a string in
+`FLAG_ORDER`, and when `$matchCount` is negative or does not agree with
+`no_match` (a count of 0 needs `no_match`, and `no_match` needs a count of 0). It removes duplicates and sorts the flags into `FLAG_ORDER`.
+
+**Properties**:
+
+- `bool $allowed` - Derived. True only when `$flags` is empty. You cannot pass it
+- `list<string> $flags` - The flags that block this kind of mail
+- `?string $bouncedAt` - The latest `email_bounced_at`. Kept only when
+  `email_bounced` is in `$flags`, else `null`
+- `int $matchCount` - The count of users checked: 1 from `forUser()`, the
+  match count from `forAddress()` (0 for `no_match`). The admin log names it
+
+**Constants**: `FLAG_NO_MATCH` (`no_match`), `FLAG_NO_PROFILE` (`no_profile`),
+`FLAG_BOUNCED` (`email_bounced`), `FLAG_OPTED_OUT` (`email_opted_out`),
+`FLAG_BLOCKED` (`email_blocked`), and `FLAG_ORDER` (the fixed order of these).
+The three profile flag names are aliases of the `DeliverabilityFlagLog` constants.
+
+**Methods**: `has(string $flag): bool` - True when the flag blocks the send.
+
+---
+
+### MailKind (enum)
+
+**Location**: `/usersc/classes/Car/MailKind.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: The kinds of non-account mail that `SendPolicy` controls. A typo
+in a caller is a fatal error and cannot let a send through.
+
+| Case | Value | Sent by |
+| --- | --- | --- |
+| `Verification` | `verification` | The admin tool and the cron job |
+| `OwnerContact` | `owner_contact` | `send-owner-email.php` |
+| `AdminContact` | `admin_contact` | `process-admin-contact.php` |
+
+---
+
 ### EmailEventMatcher
 
 **Location**: `/usersc/classes/Car/EmailEventMatcher.php`

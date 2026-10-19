@@ -63,6 +63,12 @@ abstract class IntegrationTestCase extends TestCase
     /** Whether $savedGlobalUser is awaiting restoration (disambiguates "nothing saved" from "saved null"). */
     private bool $globalUserRestorePending = false;
 
+    /** Id of the plg_sendinblue row that saveBrevoTestKey() wrote, or null. */
+    private ?int $brevoKeyRowId = null;
+
+    /** The key that the row held before saveBrevoTestKey(), or null if the test inserted the row. */
+    private ?string $brevoKeyBefore = null;
+
     /**
      * Set up test environment
      * Initializes database connection
@@ -133,6 +139,8 @@ abstract class IntegrationTestCase extends TestCase
                 fwrite(STDERR, "WARNING: tearDown() found an open transaction left by this test — rolling back to avoid poisoning subsequent tests.\n");
                 $this->db->rollBack();
             }
+
+            $this->restoreBrevoTestKey();
 
             foreach ($this->createdPermissionMatchIds as $id) {
                 try {
@@ -294,6 +302,17 @@ abstract class IntegrationTestCase extends TestCase
      * the output after it, so assertNoPhpErrorText() can see that output.
      * `status` is null when the body is not JSON or has no bool `success` value.
      *
+     * `flash` holds the UserSpice session flash messages that the endpoint set
+     * with usError(), usSuccess(), usWarning(), or usMessage(), as read from
+     * the session when the subprocess ends. This includes a refusal that
+     * redirects. UserSpice stores them in the session keys valErr, valSuc, and
+     * genMsg. `error` is valErr, `success` is valSuc, and `message` is genMsg
+     * (usWarning() and usMessage() both write genMsg). Each list is empty when
+     * the endpoint set none. The text is the sanitized text that UserSpice
+     * stored. When the HTTP marker matched, the helper removes the flash payload
+     * from `raw`. When it did not match, `raw` keeps the payload and `flash`
+     * stays empty.
+     *
      * The subprocess sets $post values after the CSRF value. Thus a 'csrf' key
      * in $post overrides $csrfMode.
      *
@@ -301,9 +320,9 @@ abstract class IntegrationTestCase extends TestCase
      * @param array<string, scalar|null|array<mixed>> $post $_POST fields; values pass through var_export(), so nested arrays of scalars and null are allowed
      * @param int|null $loggedInUserId User to log in inside the subprocess; null = logged out
      * @param string $csrfMode 'valid' (Token::generate()), 'invalid' (a well-formed token that does not match the session token), or 'omit' (no csrf key)
-     * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null}
+     * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null, flash: array{error: list<string>, success: list<string>, message: list<string>}}
      * @throws InvalidArgumentException If $csrfMode is unknown, $endpointFile is not a file in this repository, or a $post value is not a scalar, null, or an array of those
-     * @throws RuntimeException If shell_exec() cannot run the subprocess
+     * @throws RuntimeException If shell_exec() cannot run the subprocess, or the HTTP marker matched and the flash payload is missing or malformed
      */
     protected function invokeEndpoint(string $endpointFile, array $post, ?int $loggedInUserId, string $csrfMode = 'valid'): array
     {
@@ -353,7 +372,15 @@ abstract class IntegrationTestCase extends TestCase
 
         // Shutdown functions also run after exit and die(), so every path
         // through the endpoint prints the marker.
+        // The same function prints the session flash messages first, as
+        // base64 JSON, so message text cannot collide with the markers.
         $statusSnippet = 'register_shutdown_function(static function (): void { ' .
+            '$flash = ["error" => [], "success" => [], "message" => []]; ' .
+            'if (class_exists("Config") && isset($_SESSION) && is_array($_SESSION)) { ' .
+            'foreach (["error" => "valErr", "success" => "valSuc", "message" => "genMsg"] as $name => $suffix) { ' .
+            '$stored = $_SESSION[\Config::get("session/session_name") . $suffix] ?? []; ' .
+            '$flash[$name] = array_values(array_map("strval", is_array($stored) ? $stored : ($stored === "" ? [] : [$stored]))); } } ' .
+            'echo "___FLASH:" . base64_encode(json_encode($flash, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR)); ' .
             '$code = http_response_code(); echo "___HTTP:" . ($code === false ? "none" : $code); });';
 
         $script = sprintf(
@@ -413,6 +440,23 @@ abstract class IntegrationTestCase extends TestCase
             }
         }
 
+        // The flash payload sits right before the HTTP marker. Strip it only
+        // when the HTTP marker matched, so raw stays complete in the odd case.
+        $flash = ['error' => [], 'success' => [], 'message' => []];
+        if ($httpCode !== null || $raw !== $beforeExit) {
+            if (preg_match('/___FLASH:([A-Za-z0-9+\/=]*)\z/', $raw, $flashMatch, PREG_OFFSET_CAPTURE) !== 1) {
+                throw new RuntimeException("invokeEndpoint(): the flash payload is missing from the output of {$endpointFile}");
+            }
+            $flashData = json_decode((string) base64_decode($flashMatch[1][0], true), true);
+            if (!is_array($flashData)) {
+                throw new RuntimeException("invokeEndpoint(): the flash payload of {$endpointFile} does not decode to an array");
+            }
+            foreach (array_keys($flash) as $name) {
+                $flash[$name] = array_values(array_map('strval', (array) ($flashData[$name] ?? [])));
+            }
+            $raw = substr($raw, 0, $flashMatch[0][1]);
+        }
+
         $decoded = json_decode(trim($raw), true);
         $json = is_array($decoded) ? $decoded : null;
 
@@ -423,6 +467,7 @@ abstract class IntegrationTestCase extends TestCase
             'exitCode' => $exitCode,
             'raw'      => $raw,
             'json'     => $json,
+            'flash'    => $flash,
         ];
     }
 
@@ -991,6 +1036,48 @@ abstract class IntegrationTestCase extends TestCase
         $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
         $this->db->delete('cars', ['id', '=', $carId]);
         $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
+    }
+
+    /**
+     * Save a test API key in plg_sendinblue, so that a real send reaches mock-brevo.
+     *
+     * The test schema has no key, so email() fails without this. The other
+     * readiness checks use the real plugin files on this checkout (see
+     * docs/development/ENVIRONMENT.md, "Brevo Plugin Local Setup"). tearDown()
+     * restores the row. After a crash, tests/bootstrap-integration.php deletes
+     * the 'sib-test-key' row on the next run.
+     */
+    protected function saveBrevoTestKey(): void
+    {
+        $row = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
+        if (is_object($row) && isset($row->id)) {
+            $this->brevoKeyRowId = (int) $row->id;
+            $this->brevoKeyBefore = (string) $row->key;
+            $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['sib-test-key', $this->brevoKeyRowId]);
+        } else {
+            $this->db->insert('plg_sendinblue', ['key' => 'sib-test-key']);
+            $this->brevoKeyRowId = (int) $this->db->lastId();
+            $this->brevoKeyBefore = null;
+        }
+        $this->assertFalse($this->db->error(), 'Brevo key fixture write failed: ' . $this->db->errorString());
+    }
+
+    private function restoreBrevoTestKey(): void
+    {
+        if ($this->brevoKeyRowId === null) {
+            return;
+        }
+        if ($this->brevoKeyBefore === null) {
+            // By id, not by key: the row is the one this test inserted.
+            $this->db->query('DELETE FROM plg_sendinblue WHERE id = ?', [$this->brevoKeyRowId]);
+        } else {
+            $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', [$this->brevoKeyBefore, $this->brevoKeyRowId]);
+        }
+        // Report, do not assert: this runs in tearDown(), after the test result.
+        if ($this->db->error()) {
+            fwrite(STDERR, "NOTE: tearDown() could not restore plg_sendinblue: {$this->db->errorString()}\n");
+        }
+        $this->brevoKeyRowId = null;
     }
 
     /**

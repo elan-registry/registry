@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\MailKind;
+use ElanRegistry\Car\SendPolicy;
 use ElanRegistry\Input;
 use ElanRegistry\InputSanitizer;
 use ElanRegistry\LogCategories;
@@ -193,33 +196,40 @@ if ($body === '') {
 // $fromEmail comes from the database but we guard anyway).
 $fromEmailValid = filter_var($fromEmail, FILTER_VALIDATE_EMAIL);
 if (!$fromEmailValid) {
-    // $fromEmail already passed through stripHeaderInjectionChars() once above without
-    // throwing, so re-stripping it here (already CR/LF/tab-free) cannot fail — but guard
-    // anyway for consistency with the other call sites in this file.
-    try {
-        $safeFromEmailLog = InputSanitizer::stripHeaderInjectionChars($fromEmail);
-    } catch (\Throwable $e) {
-        $safeFromEmailLog = '[unsanitizable]';
-    }
-    logger($logUserId ?? 0, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "send-owner-email.php invalid fromEmail for reply-to: " . $safeFromEmailLog);
+    logger($logUserId ?? 0, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, 'send-owner-email.php invalid fromEmail for reply-to: sender ' . $fromUserId);
 }
 $replyOpts = $fromEmailValid ? ['replyTo' => $fromEmail, 'reply_name' => $fromName] : [];
 
-$result = email($toEmail, $subject, $body, $replyOpts);
+// The send-policy check comes last, after all validation and the render, so
+// that a blocked send and a real send take the same path up to email().
 try {
-    $safeFromLog = InputSanitizer::stripHeaderInjectionChars($fromEmail);
-    $safeToLog   = InputSanitizer::stripHeaderInjectionChars($toEmail);
+    $sendDecision = (new SendPolicy(new CarRepository(dbi())))->forUser(MailKind::OwnerContact, $toUserId);
+} catch (\ElanRegistry\Exceptions\CarDatabaseException $e) {
+    ApiResponse::serverError()
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: exception reading send policy for recipient ' . $toUserId . ': ' . $e->getMessage())
+        ->send();
 } catch (\Throwable $e) {
-    $safeFromLog = '[unsanitizable]';
-    $safeToLog   = '[unsanitizable]';
+    ApiResponse::serverError()
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'send-owner-email.php: ' . get_class($e) . ' reading send policy for recipient ' . $toUserId . ': ' . $e->getMessage())
+        ->send();
 }
+
+// A blocked send gets the success response, so the sender cannot learn the
+// recipient's email state (enumeration).
+if (!$sendDecision->allowed) {
+    ApiResponse::success('Your message has been sent.')
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, 'send-owner-email.php blocked: sender ' . $fromUserId . ' recipient ' . $toUserId . ' flags ' . implode(',', $sendDecision->flags))
+        ->send();
+}
+
+$result = email($toEmail, $subject, $body, $replyOpts);
 
 if ($result !== true) {
     ApiResponse::serverError()
-        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "send-owner-email.php SEND FAILED from $safeFromLog to $safeToLog")
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'send-owner-email.php SEND FAILED: sender ' . $fromUserId . ' recipient ' . $toUserId)
         ->send();
 }
 
 ApiResponse::success('Your message has been sent.')
-    ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "send-owner-email.php sent from $safeFromLog to $safeToLog")
+    ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, 'send-owner-email.php sent: sender ' . $fromUserId . ' recipient ' . $toUserId)
     ->send();

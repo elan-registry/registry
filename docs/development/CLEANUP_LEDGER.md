@@ -40,10 +40,6 @@ after an item is written.
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
 - [ ] The comment at ~L221 says "a send to it sets the bounce flag again". Name which Brevo event sets which flag (`blocked` sets `email_bounced`, `spam` and `unsubscribed` set `email_blocked`). Reword the "comes in #2359" note here and in `usersc/scripts/during_user_creation.php` (~L29), and the "#2359 adds the transaction" notes in `CarVerificationManager.php` (~L253, ~L294), so they stay true after #2359 ships (found in /finish-milestone v2.30.7)
 
-### `app/admin/includes/process-admin-contact.php`
-
-- [ ] line 190 — same `(Issue #237)` pattern (from #1978)
-
 ### `app/admin/includes/tab-car_mgmt.php`
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
@@ -230,6 +226,10 @@ after an item is written.
 ### `usersc/classes/Car/EmailNoticeBuilder.php`
 
 - [ ] An `email_blocked_cause` value that is not in `BLOCKED_CAUSES` (~L77) becomes null with no log line. The owner sees the generic text and the bad value stays hidden. Log it (found in /finish-milestone v2.30.7)
+
+### `usersc/classes/Car/SendPolicy.php`
+
+- [ ] A malformed or zero-date `email_bounced_at` makes `toDate()` (~L204) return null with no log line. The send is still refused, but the admin message has no date and the bad value stays hidden. Log it with the owner ID (the decision needs to carry it) (found in #2360)
 
 ### `usersc/classes/Car/SendResult.php`
 

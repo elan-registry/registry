@@ -72,7 +72,7 @@ final class Issue2359PrivacyPageRegressionTest extends TestCase
             'bounce and block stay until a confirmed different address or an admin clears them'
                 => ['/bounce, block, and opt-out state, with the last flagged address and its date\. A bounce or a block stays until you confirm a different email address or an administrator clears it/i'],
             'opt-out stays until the owner resumes or an admin clears it'
-                => ['/opt-out stays until you resume verification emails in Account Settings or an administrator clears it/i'],
+                => ['/opt-out stays until you use Resume registry email in Account Settings or an administrator clears it/i'],
             'state is removed on account deletion' => ['/clears it\. This state is removed when your account is deleted/i'],
             'profile keeps a copy of the last recorded address'
                 => ['/profile keeps a copy of the last email address we recorded/i'],
@@ -93,6 +93,12 @@ final class Issue2359PrivacyPageRegressionTest extends TestCase
             'Brevo processes the email' => ['/Brevo processes the email/i'],
             'a Brevo spam or unsubscribe block stays after account deletion'
                 => ['/delete your account, a spam or unsubscribe block at Brevo stays/i'],
+
+            // Issue #2360: the opt-out stops all registry email except account mail.
+            'the opt-out stops all registry email except the three kinds of account mail'
+                => ['/no login required\. The opt-out stops all registry email to you except account mail \(password reset, sign-in, and email change\)/i'],
+            'the last-updated sentence names the opt-out change'
+                => ['/Last updated: [A-Z][a-z]+ \d{1,2}, \d{4}\. This update explains that the email opt-out stops all registry email/i'],
         ];
     }
 
@@ -108,7 +114,7 @@ final class Issue2359PrivacyPageRegressionTest extends TestCase
         $this->assertStringNotContainsString('for as long as we need it', self::policy());
     }
 
-    /** Criterion 80: "Last updated" and "Effective" change, and agree. */
+    /** Criterion 80 and #2360: "Last updated" and "Effective" change, and agree. */
     public function testEffectiveAndLastUpdatedDatesChangedAndAgree(): void
     {
         $policy = self::policy();
@@ -116,7 +122,7 @@ final class Issue2359PrivacyPageRegressionTest extends TestCase
         $this->assertSame(1, preg_match('/Effective: ([A-Z][a-z]+ \d{1,2}, \d{4})/', $policy, $effective));
         $this->assertSame(1, preg_match('/Last updated: ([A-Z][a-z]+ \d{1,2}, \d{4})/', $policy, $updated));
         $this->assertSame($effective[1], $updated[1], 'The two dates describe the one revision');
-        $this->assertNotSame('September 6, 2026', $updated[1], 'The date of the previous revision must change');
+        $this->assertNotSame('October 14, 2026', $updated[1], 'The date of the previous revision must change');
     }
 
     /** The privacy wording does not mention the test site, a mail trap or the like. */

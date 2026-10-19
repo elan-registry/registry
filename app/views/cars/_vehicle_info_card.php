@@ -214,7 +214,7 @@ $_registryDate = static function (object $carData, string $column): string {
                 <span class="me-3">Bounced <?= $_helpButton('What Bounced means', 'Email to this owner bounced. Verification emails start again when the owner confirms a different, working address.') ?></span>
                 <?php } ?>
                 <?php if ($_emailSuppressed) { ?>
-                <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab. A block also ends when the owner confirms a changed email address. If the cause is only an owner opt-out, the owner can use Resume verification emails in their Account Settings. Resume does not clear a block.") ?></span>
+                <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab. A block also ends when the owner confirms a changed email address. If the cause is only an owner opt-out, the owner can use Resume registry email in their Account Settings. Resume does not clear a block.") ?></span>
                 <?php } ?>
             </dd>
             <?php } ?>

@@ -25,7 +25,7 @@ if (!securePage($php_self)) {
 
 $policy = <<<'GUIDEHTML'
 <h1><a id="privacy-policy" href="#privacy-policy" class="" aria-hidden="true" title="Permalink"></a>Privacy Policy</h1>
-<p><strong>Effective: October 14, 2026</strong></p>
+<p><strong>Effective: October 18, 2026</strong></p>
 <p>The Elan Registry is a community database for Lotus Elan cars, run by enthusiasts for enthusiasts. This page explains what information we collect, what we do with it, and what rights you have over your data.</p>
 <p>The short version: we collect what's needed to run the registry, we keep your personal details private, and you can change or delete your data at any time. If you decide to leave, we'll remove your personal information but may keep the car records themselves so the registry stays useful to the community.</p>
 <h2><a id="what-we-collect" href="#what-we-collect" class="" aria-hidden="true" title="Permalink"></a>What we collect</h2>
@@ -40,7 +40,7 @@ $policy = <<<'GUIDEHTML'
 <p>We use your information to run the registry, let users contact each other safely, power search and browsing, and keep the site secure.</p>
 <p>We use Brevo, a third-party email delivery service based in the EU, to send transactional email: password resets, contact messages, and transfer notifications. Brevo receives the recipient's email address and the content of that one message; it does not receive your other registry data. We use Brevo because there's no way to reliably deliver email without a processor like it.</p>
 <p>We have not started sending car-verification request emails yet. When we do, they will also go through Brevo. How we record the delivery status of all registry email is described in the next section.</p>
-<p>Every verification email includes a one-click link to stop receiving them, no login required. If you stopped them, you can turn verification emails back on yourself from Account Settings at any time. If your email bounced because the address itself no longer works, verification emails resume automatically as soon as you confirm a different, working email address. There's no separate switch to flip for that case.</p>
+<p>Every verification email includes a one-click link to opt out, no login required. The opt-out stops all registry email to you except account mail (password reset, sign-in, and email change). You can turn registry email back on yourself from Account Settings at any time. If your email bounced because the address itself no longer works, verification emails resume automatically as soon as you confirm a different, working email address. There's no separate switch to flip for that case.</p>
 <p>What we don't do: sell your data, show your last name or email publicly, track your exact location, or keep detailed browsing histories.</p>
 <h2><a id="email-delivery-records" href="#email-delivery-records" class="" aria-hidden="true" title="Permalink"></a>Email delivery records</h2>
 <p>The registry records the delivery status of all registry email sent to your address. The status is delivered, bounced, spam, or unsubscribed. Brevo processes the email and tells us what happened to it.</p>
@@ -50,7 +50,7 @@ $policy = <<<'GUIDEHTML'
 <li>Soft-bounce, delivery, send, and other records are kept for 90 days.</li>
 <li>For each car, we keep the record of the latest verification email. It keeps its date but has no email address. We keep it as long as the car exists. After the car is deleted, the next nightly clean-up removes the record once it is 90 days old. We also remove it when your account is deleted.</li>
 </ul>
-<p>Your profile also holds your current bounce, block, and opt-out state, with the last flagged address and its date. A bounce or a block stays until you confirm a different email address or an administrator clears it. The opt-out stays until you resume verification emails in Account Settings or an administrator clears it. This state is removed when your account is deleted.</p>
+<p>Your profile also holds your current bounce, block, and opt-out state, with the last flagged address and its date. A bounce or a block stays until you confirm a different email address or an administrator clears it. The opt-out stays until you use Resume registry email in Account Settings or an administrator clears it. This state is removed when your account is deleted.</p>
 <p>Your profile keeps a copy of the last email address we recorded for you. We use it to check whether your address changed. This copy is removed when your account is deleted.</p>
 <p>When one of these flags changes, the site log records your user ID and the name of the flag. It does not record your email address.</p>
 <p>Registry administrators and editors can see this state. Other members and the public cannot. If your email is blocked, you can clear the block by confirming a new email address.</p>
@@ -69,7 +69,7 @@ $policy = <<<'GUIDEHTML'
 <h2><a id="updates" href="#updates" class="" aria-hidden="true" title="Permalink"></a>Updates</h2>
 <p>If we change this policy, we'll update the effective date at the top of the page and post the new version here. Anything significant, we'll announce to users.</p>
 <hr />
-<p><em>Last updated: October 14, 2026. This update explains that we record the delivery status of all registry email to your address, how long we keep those records, and what we keep when your account is deleted.</em></p>
+<p><em>Last updated: October 18, 2026. This update explains that the email opt-out stops all registry email to you except account mail (password reset, sign-in, and email change).</em></p>
 
 GUIDEHTML;
 ?>

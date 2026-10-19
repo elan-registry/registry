@@ -16,6 +16,12 @@ deletes them with the account. Admins see the email state of each owner.
 - The privacy page now states that the registry records the delivery status of all its email to your address, how long it keeps these records, and what
   stays after you delete your account.
   ([#2359](https://github.com/elan-registry/registry/issues/2359))
+- Contact email now respects the recipient's profile. An owner who has no profile, whose address bounced, who opted out, or whom an admin blocked gets no
+  owner-to-owner message. The sender sees the same response as for a sent message. An admin message follows the same rules, except that an admin can still
+  write to a blocked owner.
+  ([#2360](https://github.com/elan-registry/registry/issues/2360))
+- Opting out of registry email now covers all email except account mail (password reset, sign-in, email change). Before, it covered only verification email.
+  ([#2360](https://github.com/elan-registry/registry/issues/2360))
 
 ## Admin-Facing Changes
 
@@ -59,6 +65,11 @@ deletes them with the account. Admins see the email state of each owner.
   ([#2358](https://github.com/elan-registry/registry/issues/2358))
 - Maintenance script 27 shows "owners matched", and the new read-only script 29 previews the event re-key.
   ([#2358](https://github.com/elan-registry/registry/issues/2358))
+- When an admin contact message is not sent, the admin or editor sees why. The message gives the bounce date, the opt-out, or the missing profile.
+  When the address belongs to more than one user, one blocking flag on any of them stops the message.
+  ([#2360](https://github.com/elan-registry/registry/issues/2360))
+- Contact log lines now name user IDs and flag names. They no longer hold an email address.
+  ([#2360](https://github.com/elan-registry/registry/issues/2360))
 
 ## Issues Resolved
 
@@ -69,7 +80,7 @@ deletes them with the account. Admins see the email state of each owner.
 - [#2358](https://github.com/elan-registry/registry/issues/2358) — Key email events by user and keep them through car delete, merge, and account deletion.
 - [#2359](https://github.com/elan-registry/registry/issues/2359) — Apply delivery events from all registry mail to the owner profile, matched by
   message ID.
-- WIP: [#2360](https://github.com/elan-registry/registry/issues/2360) — Apply the profile send policy to owner-to-owner and admin contact.
+- [#2360](https://github.com/elan-registry/registry/issues/2360) — Apply the profile send policy to owner-to-owner and admin contact.
 - WIP: [#2361](https://github.com/elan-registry/registry/issues/2361) — Show the email state of each owner (Bounced, Blocked, Opted out) to admins.
 - WIP: [#2364](https://github.com/elan-registry/registry/issues/2364) — Keep the Status panel in one place on the Verification tab.
 - WIP: [#2386](https://github.com/elan-registry/registry/issues/2386) — Correct the EMAIL_SYSTEM.md Status Indicators list for the webhook and

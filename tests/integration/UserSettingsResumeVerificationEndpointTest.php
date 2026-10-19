@@ -238,7 +238,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         $this->assertSame(0, $this->emailOperationHistRows($carTwoId));
 
         $this->assertStringContainsString(
-            'Verification emails have been resumed for your cars.',
+            'Registry email is resumed.',
             $result['successFlash'],
             'The success flash message must be queued via usSuccess(): ' . $result['raw']
         );
@@ -383,7 +383,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         $this->assertStringContainsString('id="resume-emails"', $page['raw'], 'An opt-out must show the control');
         $this->assertStringContainsString('name="resume_verification_emails"', $page['raw']);
         $this->assertStringContainsString(
-            'Verification emails are currently paused for 2 of your cars.',
+            'Registry email is paused for you. This includes verification email for 2 of your cars.',
             $page['raw'],
             'The count must be every owned car'
         );
@@ -392,7 +392,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
         $this->assertSame('0', (string) $this->flags($ownerId)['email_opted_out']);
-        $this->assertStringContainsString('Verification emails have been resumed for your cars.', $result['successFlash']);
+        $this->assertStringContainsString('Registry email is resumed.', $result['successFlash']);
     }
 
     /**
@@ -426,7 +426,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
         $this->assertSame($before, $this->flags($ownerId), 'A block must stay');
-        $this->assertStringNotContainsString('have been resumed', $result['successFlash']);
+        $this->assertStringNotContainsString('is resumed', $result['successFlash']);
         $this->assertSame(
             'Verification emails are paused because our email provider flagged your address. Change your email address or contact an admin.',
             $result['errorFlash']
@@ -451,7 +451,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
 
         $page = $this->invokeResumeEndpoint($ownerId, withValidCsrf: false, asGet: true);
         $this->assertStringContainsString('name="resume_verification_emails"', $page['raw']);
-        $this->assertStringContainsString('This button does not turn verification emails back on.', $page['raw']);
+        $this->assertStringContainsString('This button does not clear that flag. The flag stops verification email and messages from other owners.', $page['raw']);
 
         $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
 
@@ -534,7 +534,7 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
-        $this->assertStringContainsString('Verification emails have been resumed for your cars.', $result['successFlash']);
+        $this->assertStringContainsString('Registry email is resumed.', $result['successFlash']);
         $this->assertSame('', $result['warningFlash']);
         $this->assertSame('', $result['errorFlash']);
         $after = $this->flags($ownerId);

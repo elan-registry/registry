@@ -140,7 +140,7 @@ final class UserSettingsResumeSectionTest extends TestCase
             'The hidden CSRF field must be rendered'
         );
         $this->assertStringContainsString(
-            'Verification emails are currently paused for 3 of your cars.',
+            'Registry email is paused for you. This includes verification email for 3 of your cars.',
             $html,
             'The paused-car-count copy must be rendered when the count is known'
         );
@@ -156,7 +156,7 @@ final class UserSettingsResumeSectionTest extends TestCase
         $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3, emailBlocked: true);
 
         $this->assertStringContainsString('Our email provider flagged your address.', $html);
-        $this->assertStringContainsString('This button does not turn verification emails back on.', $html);
+        $this->assertStringContainsString('This button does not clear that flag. The flag stops verification email and messages from other owners.', $html);
         $this->assertStringContainsString('Change your email address or contact an admin.', $html);
         $this->assertStringContainsString('name="resume_verification_emails"', $html, 'The opt-out can still be cleared');
     }
@@ -180,6 +180,37 @@ final class UserSettingsResumeSectionTest extends TestCase
         $this->assertStringContainsString('Our email provider flagged your address.', $html);
         $this->assertStringNotContainsString('This button', $html, 'The note must not refer to a button that is not there');
         $this->assertStringContainsString('Change your email address or contact an admin.', $html);
+        // A block alone does not stop a message from an admin, so the page must not say that all registry email is paused.
+        $this->assertStringContainsString('Some registry email is paused for you. This includes verification email for 2 of your cars.', $html);
+        $this->assertStringNotContainsString('<p> Registry email is paused', preg_replace('/\s+/', ' ', $html) ?? '');
+        $this->assertStringContainsString('The flag stops verification email and messages from other owners.', $html);
+    }
+
+    /**
+     * The opt-out stops all registry email except account mail (#2360), so
+     * the control must say what the owner gets back when they resume.
+     */
+    public function testOptOutNoteStatesThatOnlyAccountMailStillArrives(): void
+    {
+        $html = $this->renderFragment(emailSuppressed: true, pausedCarCount: 3);
+
+        $this->assertStringContainsString(
+            'The opt-out stops all registry email except account mail (password reset, sign-in, and email change).',
+            $html
+        );
+    }
+
+    /** A block-only owner has no opt-out, so the opt-out note must not render. */
+    public function testOptOutNoteIsAbsentWhenTheOwnerIsOnlyBlocked(): void
+    {
+        $html = $this->renderFragment(
+            emailSuppressed: true,
+            pausedCarCount: 2,
+            emailBlocked: true,
+            ownerClearable: false
+        );
+
+        $this->assertStringNotContainsString('The opt-out stops', $html);
     }
 
     public function testBlockNoteIsAbsentWhenTheOwnerIsNotBlocked(): void
@@ -195,7 +226,7 @@ final class UserSettingsResumeSectionTest extends TestCase
 
         $this->assertStringContainsString('id="resume-emails"', $html, 'The section must still render without a count');
         $this->assertStringContainsString(
-            'Verification emails are currently paused for your cars.',
+            'Registry email is paused for you.',
             $html,
             'The generic copy must be used when the count could not be computed'
         );

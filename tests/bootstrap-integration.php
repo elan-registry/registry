@@ -444,6 +444,10 @@ try {
 // than inserting a new row, so after a crash this purge deletes that original
 // row instead of restoring its key — acceptable on the test schema only.
 //
+// IntegrationTestCase::saveBrevoTestKey() writes the same sentinel in the same
+// way and restores it in tearDown(). SendOwnerEmailSendPolicyTest and
+// AdminContactSendPolicyTest use it, so this purge covers a crash there too.
+//
 // The "Brevo not ready" cases in the same two files do the opposite. In
 // VerificationToggleEndpointBehaviorTest, the case sets the key of the row
 // that was there before the test, if there is one, to ''. A finally block

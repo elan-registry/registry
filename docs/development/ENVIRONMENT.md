@@ -519,7 +519,9 @@ See [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#local-development) for details.
 
 The Verification tab shows "Brevo ready" only in this state. The Brevo
 integration tests (`BrevoWebhookEndpointTest`,
-`VerificationToggleEndpointBehaviorTest`) also need it. See
+`VerificationToggleEndpointBehaviorTest`) also need it. So do the tests that
+call `IntegrationTestCase::saveBrevoTestKey()` to make a real send
+(`SendOwnerEmailSendPolicyTest`, `AdminContactSendPolicyTest`). See
 [tests/README.md](../../tests/README.md#brevooverridestub--sweep-leaked-brevo-test-stub).
 
 ### PHP Version

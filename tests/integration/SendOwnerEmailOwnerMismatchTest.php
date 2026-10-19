@@ -86,8 +86,8 @@ final class SendOwnerEmailOwnerMismatchTest extends IntegrationTestCase
      */
     private function countSendOutcomeLogs(int $senderId): int
     {
-        return $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ELAN_REGISTRY, 'send-owner-email.php sent from %', $senderId)
-            + $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'send-owner-email.php SEND FAILED from %', $senderId);
+        return $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ELAN_REGISTRY, 'send-owner-email.php sent: sender %', $senderId)
+            + $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'send-owner-email.php SEND FAILED: sender %', $senderId);
     }
 
     public function testRecipientWhoDoesNotOwnTheCarIsRefusedWith403AndLogged(): void
@@ -117,7 +117,8 @@ final class SendOwnerEmailOwnerMismatchTest extends IntegrationTestCase
     public function testRecipientWhoOwnsTheCarPassesTheOwnerCheck(): void
     {
         $senderId = $this->createSender();
-        $ownerId = $this->createTestUser();
+        // A profile row, because the send policy refuses an owner with none (#2360).
+        $ownerId = $this->createTestUser([], true);
         $carId = $this->createTestCar($ownerId);
 
         $needle = "%does not match owner of car_id={$carId}%";

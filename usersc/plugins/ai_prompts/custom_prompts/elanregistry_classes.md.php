@@ -19,6 +19,7 @@ remain unchanged — these classes extend and wrap them.
 | Decode/process the `cars.image` JSON column | `CarImageProcessor` | `usersc/classes/Car/CarImageProcessor.php` |
 | Admin-side car operations (merge, bulk actions) | `CarAdministrationService` | `usersc/classes/Car/CarAdministrationService.php` |
 | Back DataTables server-side car listings | `CarDataTablesService` | `usersc/classes/Car/CarDataTablesService.php` |
+| Decide whether a flag stops verification, owner contact, or admin contact mail | `SendPolicy` | `usersc/classes/Car/SendPolicy.php` |
 | Verify/re-verify car ownership | `CarVerificationManager` | `usersc/classes/Car/CarVerificationManager.php` |
 | Build the home-page cycling car showcase pool | `CarShowcaseService` | `usersc/classes/Car/CarShowcaseService.php` |
 | Display car images, specs, carousels (no DB writes) | `CarView` | `usersc/classes/CarView.php` |
@@ -198,6 +199,33 @@ $carId   = Input::raw('car_id');   // cast to int before use: (int)Input::raw('c
 
 Never use `\Input::get()` for values destined for the database — see `elanregistry_overrides`
 for the double-encoding explanation.
+
+---
+
+## SendPolicy
+
+Call `SendPolicy` before `email()` for verification, owner-to-owner contact, and
+admin contact mail. It returns a `SendDecision` (`allowed`, `flags`, `bouncedAt`, `matchCount`).
+Pass a `MailKind` case (`Verification`, `OwnerContact`, `AdminContact`).
+Never send these kinds of mail without the check. Account mail (join, password
+reset, email change, passwordless, reauthentication) and registrar feedback skip it.
+
+| Mail | Blocked by |
+|---|---|
+| `Verification`, `OwnerContact` | no profile, bounced, opted out, blocked |
+| `AdminContact` | no profile, bounced, opted out (not blocked) |
+
+```php
+$policy   = new SendPolicy(new CarRepository(dbi()));
+$decision = $policy->forUser(MailKind::OwnerContact, $ownerId);
+if (!$decision->allowed) {
+    // Owner contact: log user IDs and flag names only. Never log an address.
+    // Return the same response as a real send, so the sender learns nothing.
+}
+// Admin contact: show $policy->adminMessage($decision) with usError().
+```
+
+Never put an email address in a contact log line.
 
 ---
 

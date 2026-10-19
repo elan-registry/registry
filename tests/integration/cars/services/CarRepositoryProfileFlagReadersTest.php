@@ -572,8 +572,8 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
 
         $before = $this->verifyRequest('GET', $code);
         $this->assertSame(200, $before['status']);
-        $this->assertStringContainsString('Stop verification emails', $before['body'], 'Before the opt-out the page asks for it');
-        $this->assertStringNotContainsString('unsubscribed from verification emails', $before['body']);
+        $this->assertStringContainsString('Stop registry email', $before['body'], 'Before the opt-out the page asks for it');
+        $this->assertStringNotContainsString('unsubscribed from registry email', $before['body']);
         $this->assertDoesNotMatchRegularExpression('/bounc|blocked|complaint/i', $before['body'], 'The page does not reveal the delivery state');
 
         $post = $this->verifyRequest('POST', $code);
@@ -581,7 +581,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
 
         $after = $this->verifyRequest('GET', $code);
         $this->assertSame(200, $after['status']);
-        $this->assertStringContainsString('unsubscribed from verification emails', $after['body']);
+        $this->assertStringContainsString('unsubscribed from registry email', $after['body']);
         $this->assertDoesNotMatchRegularExpression('/bounc|blocked|complaint/i', $after['body']);
 
         $flags = $this->getOwnerEmailFlags($owner['owner']);
@@ -600,7 +600,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
 
         $page = $this->verifyRequest('GET', $code);
 
-        $this->assertStringContainsString('Stop verification emails', $page['body']);
+        $this->assertStringContainsString('Stop registry email', $page['body']);
         $this->assertSame('0', (string) $this->getOwnerEmailFlags($owner['owner'])['email_opted_out'], 'A GET writes nothing');
     }
 

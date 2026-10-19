@@ -136,7 +136,7 @@ if (!empty($_POST)) {
             } elseif ($effectiveFlags->bounced) {
                 usWarning('Your opt-out is removed. Verification emails stay paused because email to your address bounced. Update your email address to turn them back on.');
             } else {
-                usSuccess('Verification emails have been resumed for your cars.');
+                usSuccess('Registry email is resumed.');
             }
             Redirect::to($us_url_root . 'usersc/user_settings.php');
             exit;
@@ -828,20 +828,18 @@ if ($emailSuppressed) {
                     <?php if ($emailSuppressed): ?>
                         <section id="resume-emails" class="mb-4">
                             <p>
-                                <?php if ($pausedCarCount !== null): ?>
-                                    Verification emails are currently paused for <?= htmlspecialchars((string) $pausedCarCount, ENT_QUOTES, 'UTF-8') ?> of your cars.
-                                <?php else: ?>
-                                    Verification emails are currently paused for your cars.
-                                <?php endif; ?>
+                                <?php // The section shows for an opt-out or a block. A block alone does not stop a message from an admin, so the text says all email is paused only for an opt-out. ?>
+                                <?= $ownerClearable ? 'Registry email is paused for you.' : 'Some registry email is paused for you.' ?><?php if ($pausedCarCount !== null): ?> This includes verification email for <?= htmlspecialchars((string) $pausedCarCount, ENT_QUOTES, 'UTF-8') ?> of your cars.<?php endif; ?>
                             </p>
                             <?php if ($ownerClearable): ?>
+                                <p>You opted out. The opt-out stops all registry email except account mail (password reset, sign-in, and email change). Resume to get registry email again.</p>
                                 <form name='resumeVerificationEmails' action='user_settings.php' method='post'>
                                     <input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8') ?>" />
-                                    <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume verification emails</button>
+                                    <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume registry email</button>
                                 </form>
                             <?php endif; ?>
                             <?php if ($emailBlocked): ?>
-                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not turn verification emails back on.' : '' ?> Change your email address or contact an admin.</p>
+                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not clear that flag.' : '' ?> The flag stops verification email and messages from other owners. Change your email address or contact an admin.</p>
                             <?php endif; ?>
                         </section>
                     <?php endif; ?>
