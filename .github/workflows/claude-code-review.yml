@@ -59,7 +59,9 @@ name: Claude Code Review
 # Posting mechanism (v1 action):
 #   Claude must explicitly post via `gh pr comment` — the action does not
 #   auto-post Claude's output. Prompts must include that instruction and
-#   Bash(gh pr comment:*) must be in the allowedTools list.
+#   Bash(gh pr comment:*) must be in the allowedTools list. Line findings
+#   go in inline comments (mcp__github_inline_comment__create_inline_comment,
+#   also in allowedTools). The summary comment is still required.
 #
 #   Fallback posting: if Claude's own `gh pr comment` call never happens
 #   (observed once in production — the run completed with no error but
@@ -198,6 +200,10 @@ jobs:
           fetch-depth: 0
           ref: refs/pull/${{ steps.ctx.outputs.pr_number }}/head
 
+      - name: Record run start time
+        id: start
+        run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Run Claude Issue-Level Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
@@ -215,7 +221,7 @@ jobs:
           # evidence comes in.
           claude_args: >-
             --allowedTools
-            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(cat:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
+            "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(cat:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
             --model claude-sonnet-5
             --effort medium
           prompt: |
@@ -312,7 +318,13 @@ jobs:
             isn't done until the `gh pr comment` call below actually happens.
             Don't stop to narrate that step — call it in the same turn.
 
-            Post your review as a PR comment using:
+            For each finding on a specific line, post an inline comment with
+            `mcp__github_inline_comment__create_inline_comment` (confirmed: true).
+            Every finding that you post as an inline comment must also be in
+            the summary comment, under its severity heading, with file:line.
+            The merge gate reads only the summary comment.
+
+            Then post your review summary as a PR comment using:
 
             ```bash
             gh pr comment ${{ steps.ctx.outputs.pr_number }} --body "..."
@@ -366,7 +378,13 @@ jobs:
           PR_NUM: ${{ steps.ctx.outputs.pr_number }}
           REPO: ${{ github.repository }}
           EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+          STARTED: ${{ steps.start.outputs.time }}
         run: |
+          # Use only a review from this run. Without a start time, fail.
+          if [ -z "$STARTED" ]; then
+            echo "::error::No run start time. Cannot check for a review from this run."
+            exit 1
+          fi
           # Claude must self-post via `gh pr comment` — the action does not
           # auto-post its output. If that tool call never happens (e.g. it
           # exhausts turns wrestling with the restrictive allowedTools list
@@ -378,8 +396,8 @@ jobs:
           # https://github.com/anthropics/claude-code-action) and posts it
           # directly, outside Claude's own tool-permission sandbox, so a
           # review always lands regardless of what went wrong mid-run.
-          EXISTING=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
-            --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length' 2>/dev/null || echo 0)
+          EXISTING=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments?since=${STARTED}&per_page=100" \
+            --jq '[.[] | select(.created_at >= env.STARTED) | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length' 2>/dev/null || echo 0)
           if [ "$EXISTING" -gt 0 ]; then
             echo "Review comment already posted by Claude — no fallback needed."
             exit 0
@@ -411,14 +429,20 @@ jobs:
           PR_NUM: ${{ steps.ctx.outputs.pr_number }}
           REPO: ${{ github.repository }}
           EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+          STARTED: ${{ steps.start.outputs.time }}
         run: |
+          # Use only a review from this run. Without a start time, fail.
+          if [ -z "$STARTED" ]; then
+            echo "::error::No run start time. Cannot check for a review from this run."
+            exit 1
+          fi
           # Anchor on a "Strengths" section — present in every Claude review
           # comment — so we match the review, not a stray human comment.
           # Match both markdown-heading (### Strengths) and bold (**Strengths**)
           # forms: the prompt asks for headings, but the model doesn't always
           # follow that exactly, and this check must not false-fail on that.
-          REVIEW_BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
-            --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | last | .body // ""' \
+          REVIEW_BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments?since=${STARTED}&per_page=100" \
+            --jq '[.[] | select(.created_at >= env.STARTED) | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | last | .body // ""' \
             2>/dev/null || echo "")
           if [ -z "$REVIEW_BODY" ]; then
             # One cause of "nothing posted" is expected and self-inflicted:
@@ -548,6 +572,10 @@ jobs:
           echo "Collected ${PR_COUNT} merged PRs"
           cat merged-prs.txt
 
+      - name: Record run start time
+        id: start
+        run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Run Claude Milestone-Level Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
@@ -557,7 +585,7 @@ jobs:
           # Fable is worth it here: this runs once per milestone, not per push.
           claude_args: >-
             --allowedTools
-            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
+            "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
             --model claude-fable-5-1
           prompt: |
             REPO: ${{ github.repository }}
@@ -646,7 +674,13 @@ jobs:
             isn't done until the `gh pr comment` call below actually happens.
             Don't stop to narrate that step — call it in the same turn.
 
-            Post your review as a PR comment using:
+            For each finding on a specific line, post an inline comment with
+            `mcp__github_inline_comment__create_inline_comment` (confirmed: true).
+            Every finding that you post as an inline comment must also be in
+            the summary comment, under its severity heading, with file:line.
+            The merge gate reads only the summary comment.
+
+            Then post your review summary as a PR comment using:
 
             ```bash
             gh pr comment ${{ github.event.pull_request.number }} --body "..."
@@ -704,14 +738,20 @@ jobs:
           PR_NUM: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+          STARTED: ${{ steps.start.outputs.time }}
         run: |
+          # Use only a review from this run. Without a start time, fail.
+          if [ -z "$STARTED" ]; then
+            echo "::error::No run start time. Cannot check for a review from this run."
+            exit 1
+          fi
           # See the identical step in pr-to-milestone-review above for the
           # full rationale. Same failure mode observed in production: the
           # milestone-review run on PR #1529 completed (14 turns, no error,
           # permission_denials_count: 9) but never called `gh pr comment`,
           # and the old "Fail if..." step below read that silence as a pass.
-          EXISTING=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
-            --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length' 2>/dev/null || echo 0)
+          EXISTING=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments?since=${STARTED}&per_page=100" \
+            --jq '[.[] | select(.created_at >= env.STARTED) | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | length' 2>/dev/null || echo 0)
           if [ "$EXISTING" -gt 0 ]; then
             echo "Review comment already posted by Claude — no fallback needed."
             exit 0
@@ -743,14 +783,20 @@ jobs:
           PR_NUM: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+          STARTED: ${{ steps.start.outputs.time }}
         run: |
+          # Use only a review from this run. Without a start time, fail.
+          if [ -z "$STARTED" ]; then
+            echo "::error::No run start time. Cannot check for a review from this run."
+            exit 1
+          fi
           # Anchor on a "Strengths" section — present in every Claude milestone
           # review — so we match the review, not a stray human comment.
           # Match both markdown-heading (## Strengths) and bold (**Strengths**)
           # forms: the prompt asks for headings, but the model doesn't always
           # follow that exactly, and this check must not false-fail on that.
-          REVIEW_BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
-            --jq '[.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | last | .body // ""' \
+          REVIEW_BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments?since=${STARTED}&per_page=100" \
+            --jq '[.[] | select(.created_at >= env.STARTED) | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*"))] | last | .body // ""' \
             2>/dev/null || echo "")
           if [ -z "$REVIEW_BODY" ]; then
             # One cause of "nothing posted" is expected and self-inflicted:
