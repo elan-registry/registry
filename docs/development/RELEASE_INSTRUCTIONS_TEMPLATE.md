@@ -198,12 +198,14 @@ deploy-wide, and can pass smoke testing if your own session happens to land
 on an already-fresh PoP. Purge before smoke testing below, on every deploy
 that ran npm run build — not only when a file was added, renamed, or removed.
 
-- [ ] Cloudflare dashboard → Caching → Purge by URL/prefix — purge
-      usersc/js/* and usersc/css/* for test.elanregistry.org
-- [ ] Re-check one asset for cf-cache-status: MISS (or a fresh age) after the
-      purge:
+- [ ] Cloudflare dashboard → Caching → Purge by prefix — purge
+      usersc/js/* and usersc/css/* for test.elanregistry.org. Do not purge by URL. Pages
+      request these files with a ?v= query, and a purge by URL may not clear
+      those cache entries.
+- [ ] Re-check the worker URL that browsers request for cf-cache-status: MISS
+      (or a fresh age) after the purge (from <repo-path>):
 
-curl -sI https://test.elanregistry.org/usersc/js/maplibre-gl-worker.js | grep -i 'cf-cache-status\|age:'
+curl -sI "https://test.elanregistry.org/usersc/js/maplibre-gl-worker.js?v=$(node -p "require('maplibre-gl/package.json').version")" | grep -i 'cf-cache-status\|age:'
 
 14. Smoke test
 
@@ -280,12 +282,14 @@ Run 21-Fix-Page-Permissions.php from the Maintenance page on prod.
 
 Same reasoning as step 13 — required on every deploy that ran npm run build.
 
-- [ ] Cloudflare dashboard → Caching → Purge by URL/prefix — purge
-      usersc/js/* and usersc/css/* for elanregistry.org
-- [ ] Re-check one asset for cf-cache-status: MISS (or a fresh age) after the
-      purge:
+- [ ] Cloudflare dashboard → Caching → Purge by prefix — purge
+      usersc/js/* and usersc/css/* for elanregistry.org. Do not purge by URL. Pages
+      request these files with a ?v= query, and a purge by URL may not clear
+      those cache entries.
+- [ ] Re-check the worker URL that browsers request for cf-cache-status: MISS
+      (or a fresh age) after the purge (from <repo-path>):
 
-curl -sI https://elanregistry.org/usersc/js/maplibre-gl-worker.js | grep -i 'cf-cache-status\|age:'
+curl -sI "https://elanregistry.org/usersc/js/maplibre-gl-worker.js?v=$(node -p "require('maplibre-gl/package.json').version")" | grep -i 'cf-cache-status\|age:'
 
 24. Smoke test
 

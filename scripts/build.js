@@ -71,8 +71,8 @@ async function buildOsmStyle(base, osmTileJson) {
  * Prepares the MapLibre worker bundle for vendoring as a single .js file.
  *
  * Since 6.13.0 the worker is self-contained. A sibling file that it loads
- * would not be vendored, and the map would stay blank with no console error,
- * so the build fails instead. The check matches any quoted relative path and
+ * would not be vendored, and the map would not load, so the build fails
+ * instead. The check matches any quoted relative path and
  * any import.meta.url, not only "./<name>.mjs", because a later layout can use
  * hashed names, subdirectories or .js chunks.
  *
@@ -98,10 +98,18 @@ function vendorMaplibreWorker(workerSrc) {
   return workerSrc.replace(/\n?\/\/# sourceMappingURL=.*\.mjs\.map\s*$/, '\n');
 }
 
-const build = () => Promise.all([
-  ...jsFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.js$/, '.min.js') })),
-  ...cssFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.css$/, '.min.css') })),
-]).then(async () => {
+const build = () => Promise.resolve()
+  // Check the worker before any file is written. The build runs in the live
+  // deploy tree, so a failure after the new maplibre-gl.min.js is written
+  // would serve it with the old worker, and the CDN caches that pair.
+  .then(() => vendorMaplibreWorker(
+    fs.readFileSync('node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs', 'utf8')
+  ))
+  .then(vendoredWorker => Promise.all([
+    ...jsFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.js$/, '.min.js') })),
+    ...cssFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.css$/, '.min.css') })),
+  ]).then(() => vendoredWorker))
+  .then(async (vendoredWorker) => {
   console.log(`Built ${jsFiles.length + cssFiles.length} files.`);
 
   // usersc/js and usersc/css are gitignored build output (ADR-018) — they
@@ -128,8 +136,7 @@ const build = () => Promise.all([
   // mapping, or serving .mjs with X-Content-Type-Options: nosniff and no
   // Content-Type) silently hang Chrome's `type: 'module'` Worker constructor
   // forever (map never renders, no console error).
-  const workerSrc = fs.readFileSync('node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs', 'utf8');
-  fs.writeFileSync('usersc/js/maplibre-gl-worker.js', vendorMaplibreWorker(workerSrc));
+  fs.writeFileSync('usersc/js/maplibre-gl-worker.js', vendoredWorker);
   // MapLibre 6.13.0 folded maplibre-gl-shared.mjs back into the worker. Builds
   // before that version wrote this file, and nothing loads it now.
   fs.rmSync('usersc/js/maplibre-gl-shared.js', { force: true });

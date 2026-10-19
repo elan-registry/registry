@@ -1021,9 +1021,11 @@ After each deployment, verify:
       pre-deploy `age` on `usersc/js/*` was the tell). Purge
       `usersc/js/*`/`usersc/css/*` on every deploy that ran `npm run build`,
       not only when a path is added/removed. Cloudflare dashboard → Caching →
-      Purge by URL, one entry per old path (or a prefix purge for
-      `usersc/js/*`/`usersc/css/*`). Run `npm run test:e2e` afterwards; the
-      redirect specs hit those URLs.
+      Purge by prefix for `usersc/js/*`/`usersc/css/*`. Do not purge these by
+      URL: pages request them with a `?v=` query, and a purge by URL may not
+      clear those cache entries. For other moved files, purge by URL, one
+      entry per old path. Run `npm run test:e2e` afterwards; the redirect
+      specs hit those URLs.
 - [ ] New pages have appropriate UserSpice permission levels
 - [ ] Contact forms send to correct email addresses
 - [ ] VERSION file exists on server (created by deployment hook)

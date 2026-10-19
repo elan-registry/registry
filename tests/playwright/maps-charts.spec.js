@@ -16,6 +16,11 @@ test.describe('Maps and Charts', () => {
     // Canvas is created by MapLibre GL JS
     const canvas = page.locator('.maplibregl-canvas');
     await expect(canvas).toBeAttached({ timeout: 15000 });
+
+    // The map and canvas exist before the worker runs. statistics.js adds the
+    // markers only in map.on('load'), so a worker that loads but does not work
+    // leaves zero markers and no console error.
+    await expect(page.locator('#map .elan-marker').first()).toBeVisible({ timeout: 15000 });
   });
 
   // A map container + canvas existing (the test above) is necessary but not
