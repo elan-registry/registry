@@ -38,7 +38,6 @@ after an item is written.
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
-- [ ] The comment at ~L221 says "a send to it sets the bounce flag again". Name which Brevo event sets which flag (`blocked` sets `email_bounced`, `spam` and `unsubscribed` set `email_blocked`). Reword the "comes in #2359" note here and in `usersc/scripts/during_user_creation.php` (~L29), and the "#2359 adds the transaction" notes in `CarVerificationManager.php` (~L253, ~L294), so they stay true after #2359 ships (found in /finish-milestone v2.30.7)
 
 ### `app/admin/includes/tab-car_mgmt.php`
 
@@ -185,9 +184,18 @@ after an item is written.
 
 - [ ] Only the `DatabaseInterface` branch is tested. Add the `PDO` branch: `prepare()` returns false, `execute()` returns false, and a `PDOException` comes back as the previous exception of `OwnerDatabaseException` (found in #2358 review)
 
+### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
+
+- [ ] The source check that the webhook does not read the switch (~L101) repeats behavior tests (`BrevoWebhookEndpointTest` ~L351, `BrevoEventPathParityIntegrationTest` ~L556, ~L605, ~L621). Delete it. Keep the convention scans at ~L63 and ~L110 (found in /finish-milestone v2.30.8)
+
 ### `tests/unit/regression/Issue2359NoEmailInLogsRegressionTest.php`
 
 - [ ] The logger-argument scan does not see `->getEmail()`, `->email_address`, `['email_address']` or `\logger(` (`T_NAME_FULLY_QUALIFIED`), and no negative control proves the safe-call allowance ends at its closing `)`. Add each, with a control (found in #2359 review)
+
+### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
+
+- [ ] The source-position checks at ~L317, ~L322 and ~L353 repeat behavior tests (`SendOwnerEmailSendPolicyTest` ~L246, ~L334, `AdminContactSendPolicyTest`). Delete them, and keep the tests of the checker helper (found in /finish-milestone v2.30.8)
+- [ ] Replace the source check at ~L328 (policy check after the template render) with a behavior test: with a missing template, a blocked recipient and a clean recipient get the same error, and the log has no policy line (found in /finish-milestone v2.30.8)
 
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
@@ -196,6 +204,10 @@ after an item is written.
 ### `tests/unit/scripts/AfterUserDeletionPrivacyStepTest.php` (test coverage)
 
 - [ ] The hook catches a failure in the car cleanup and only logs "Cleanup failed", so an unrecorded fake call there fails no test. Assert no "Cleanup failed" line in one happy-path test. Also assert no `DELETE FROM profiles` in the privacy-failure test, as its docblock says (found in #2358 review)
+
+### `tests/unit/scripts/AfterUserDeletionWiringTest.php`
+
+- [ ] Add an integration case to `UserDeletionPrivacyStepTest` in which the `noowner` account is missing: the events and the profile are still deleted, and no transaction stays open. Then delete the source-order checks at ~L91, ~L120 and ~L132 (found in /finish-milestone v2.30.8)
 
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
@@ -214,10 +226,16 @@ after an item is written.
 ### `usersc/classes/Car/CarRepository.php`
 
 - [ ] `recentFlagChanges()` (~L2096) has no production caller. Delete it, or let #2357 add it with its first caller (found in /finish-milestone v2.30.7)
+- [ ] The block-cause names are four loose string sets: `BLOCKED_CAUSES`, `EmailEventApplier::SUPPRESSION_EVENT_CAUSES`, the bare `'spam'` and `'unsubscribed'` matches in `VerificationTabStatus::chip()`, and `EffectiveEmailFlags::$blockedCause` (`?string`). Add `enum BlockedCause: string` and convert to a string only at the database boundary (found in /finish-milestone v2.30.8)
+- [ ] The SQL address rule (`LOWER(REGEXP_REPLACE(...))`, used by `findUserIdsByAddress()`) and `EmailAddress::normalize()` differ for `\0`, `\f`, Unicode spaces and non-ASCII letters. Add a parity test with a fixed set of such addresses, so a change to one rule fails a test (found in /finish-milestone v2.30.8)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
+
+### `usersc/classes/Car/EmailEventMatch.php`
+
+- [ ] Make the class `final readonly`. The accessors return `?? 0` or `?? ''` after `requireMatched()`, which hides a broken invariant. Return the typed value with a PHPStan assert instead (found in /finish-milestone v2.30.8)
 
 ### `usersc/classes/Car/EmailNoticeBuilder.php`
 
@@ -225,6 +243,8 @@ after an item is written.
 
 ### `usersc/classes/Car/SendPolicy.php`
 
+- [ ] The flag list is written three times: `SendDecision::FLAG_ORDER`, the `$all` list in `blockingFlags()`, and the table docblock. Build it once, or use a `SendFlag` enum (found in /finish-milestone v2.30.8)
+- [ ] `adminMessage()` has no sentence for `email_blocked`, which is right only for `MailKind::AdminContact`. Take the `MailKind`, or rename it `adminContactMessage()` (found in /finish-milestone v2.30.8)
 - [ ] A malformed or zero-date `email_bounced_at` makes `toDate()` (~L204) return null with no log line. The send is still refused, but the admin message has no date and the bad value stays hidden. Log it with the owner ID (the decision needs to carry it) (found in #2360)
 
 ### `usersc/classes/Car/SendResult.php`
@@ -234,6 +254,10 @@ after an item is written.
 ### `usersc/classes/Cron/SuppressionSyncSummary.php`
 
 - [ ] The class docblock lists the kinds of skip but not "the flag step did not run" (no profiles row, a failed date guard, an address that is not the current one), which `BrevoSuppressionSyncJob` now counts as skipped. Add it to the list (found in #2393)
+
+### `usersc/classes/Exceptions/ProfileFlagValueException.php`
+
+- [ ] Mark the class `final`. It extends `CarDatabaseException` and nothing extends it (found in /finish-milestone v2.30.8)
 
 ### `usersc/classes/InputSanitizer.php` (est. −8)
 

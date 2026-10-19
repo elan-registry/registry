@@ -448,7 +448,7 @@ The System Status panel shows 7 rows in this order:
    timestamp if `cronReady()` is true. Badge `text-bg-warning` ("Stalled")
    with last seen timestamp or "no cron request has ever been logged" if false.
 3. **Webhook receiver** — badge `text-bg-success` ("Live"). Static row,
-   always healthy. Records bounce and suppression events from Brevo in real
+   always healthy. Records delivery events from all registry mail in real
    time; the nightly reconciliation job catches anything the webhook missed.
 4. **Unmatched recipients** — shows a number. Badge `text-bg-success` if the
    counter is 0. Badge `text-bg-warning` if above 0. Badge `text-bg-danger`
@@ -1133,8 +1133,10 @@ carries the tag `car_verification` increments
 
 #### Date Guards
 
-The applier compares the message time with dates on the user. A failed guard
-writes no row and sets no flag. It logs the user ID and the name of the guard
+In `MODE_EVENT` (the webhook and the reconciliation), the applier compares
+the message time with dates on the user. The suppression import uses
+`MODE_STATE`, which skips the `join_date` and `email_address_since` guards (see
+Import guards below). A failed guard writes no row and sets no flag. It logs the user ID and the name of the guard
 column, so a dropped event leaves a trace.
 
 - The message time must not be before `users.join_date` or
@@ -1381,12 +1383,12 @@ two cutoffs (`CarRepository::deleteEmailEventsOlderThan()`):
   terminal cutoff is not before the short cutoff, so swapped arguments fail.
 - **Second run.** A second run with the same cutoffs changes no row.
 
-**Out of scope for #1887** (see that issue's non-goals): no outbound Brevo
-API calls of any kind (webhook *registration* is #1888, blocked-contacts
-*import* is #1923, nightly *reconciliation* is #1889), and no admin UI
-rendering of the per-car event history. Admin UI rendering of the
-unmatched-recipient counter shipped in #2085 — see the Status Indicators
-list above.
+**Out of scope for #1887** (historical; see that issue's non-goals): no
+outbound Brevo API calls of any kind (webhook *registration* is #1888,
+blocked-contacts *import* is #1923, nightly *reconciliation* is #1889), and
+no admin UI rendering of the per-car event history. Later issues added the
+admin UI: the unmatched-recipient counter (#2085, see the Status Indicators
+list above) and the latest event of each car in its Status chip (#2361).
 
 ### Address-Match Rule (#2356)
 

@@ -271,8 +271,9 @@ tables. `cars.user_id`'s own FK was dropped in
   for a duplicate. The writer uses this count to tell whether an event is new.
   The column name has the table prefix, because the `INSERT ... SELECT` source
   also has an `id` column.
-- `(user_id, occurred_at)`: no current query is known to use this index.
-  #2359 decides which lookups it needs.
+- `(user_id, occurred_at)` serves the soft-bounce count
+  (`CarRepository::countSoftBouncesSinceLastDelivered()`), which reads one
+  owner's events after a start time.
 - `(brevo_message_id)` serves the message lookup.
 - `(car_id, occurred_at)` and `(email)` stay from the earlier schema.
 

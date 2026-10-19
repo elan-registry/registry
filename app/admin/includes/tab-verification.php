@@ -72,7 +72,8 @@ $vsStatus = VerificationTabStatus::read(dbi(), $currentUserId);
 //
 // DELIBERATELY DOES NOT CONSULT VerificationSettings::isEnabled(). That switch
 // stops only the automatic send batch (see the note at the top of this file
-// and the #2359 entry in docs/releases/RELEASE_NOTES_v2.30.8.md). This section is a manual admin tool gated by
+// and docs/development/EMAIL_SYSTEM.md, "Verification System Feature Switch").
+// This section is a manual admin tool gated by
 // securePage()/permissions alone, and its whole purpose is to let an
 // administrator send a batch by hand — including while the site-wide switch
 // is off, which is exactly when a manual send is most likely to be needed. An

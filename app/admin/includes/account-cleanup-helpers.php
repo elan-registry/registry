@@ -218,10 +218,11 @@ function restoreArchivedAccount(DatabaseInterface $db, int $archiveId, int $rest
         // Always insert a profile: the deliverability record lives on it, and the
         // text columns are NOT NULL with no default under strict mode (#2101).
         // The block and bounce flags are not archived. Brevo keeps its own block
-        // on the address, so a send to it sets the bounce flag again.
+        // on the address, so a send to it gets a Brevo `blocked` event, which
+        // sets email_bounced again (`spam` and `unsubscribed` set email_blocked).
         // The address is new to this account at restore time, not at join_date:
         // a bounce on mail sent before the deletion must not match it. The
-        // matching step that reads email_address_since comes in #2359.
+        // date guards of EmailEventApplier read email_address_since (#2359).
         $ok = $db->insert('profiles', [
             'user_id'             => $newUserId,
             'city'                => $row->city    ?? '',

@@ -15,7 +15,7 @@ use ElanRegistry\LogCategories;
  * **in-process**, with no subprocess boundary (see `users/cron/cron.php`): one
  * job's fatal error or infinite loop can kill every job after it in that hit's
  * `sort` order, and nothing at the dispatcher level enforces a timeout. This
- * class is the three-layer mitigation every new cron job must build on:
+ * class is the four-layer mitigation every new cron job must build on:
  *
  *   1. Crash isolation: `execute()` runs inside a `try/catch(\Throwable)` that
  *      records the failure on `er_cron_job_runs.last_failure_at`, logs, and

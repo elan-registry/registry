@@ -206,7 +206,7 @@ final readonly class VerificationTabStatus
                 'Live',
                 'badge text-bg-success',
                 'fa-check-circle',
-                'Bounce and suppression events from Brevo are recorded in real time'
+                'Delivery events from all registry mail are recorded in real time'
                     . ' (app/api/webhooks/brevo.php); the nightly reconciliation'
                     . ' job below catches anything the webhook missed.'
             ),

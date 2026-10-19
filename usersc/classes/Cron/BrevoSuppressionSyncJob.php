@@ -126,7 +126,8 @@ use ElanRegistry\LogCategories;
  *
  * If that pre-check read itself fails, the contact is still applied and
  * counted as matched (the write is the point; the bookkeeping is not), so a
- * degraded count never costs a suppression.
+ * degraded count never costs a suppression. A contact whose flag step did
+ * not run counts as skipped instead (#2393).
  *
  * @package ElanRegistry\Cron
  * @since v2.30.2
