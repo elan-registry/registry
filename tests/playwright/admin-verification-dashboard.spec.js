@@ -2,8 +2,8 @@
 //
 // Coverage for the rebuilt Verification System dashboard
 // (app/admin/index.php?tab=verification, rendered by
-// app/admin/includes/tab-verification.php) added by issue #1896: six
-// summary cards, the merged queue (pills + Window/Show, URL-state
+// app/admin/includes/tab-verification.php) added by issue #1896: seven
+// summary cards (#2361), the merged queue (pills + Window/Show, URL-state
 // round-trip), one action button per row, the precedence-aware Status chip,
 // Recent Activity, and the Status panel's collapse/expand placement.
 //
@@ -14,9 +14,13 @@
 //   - one PENDING car (live link, no response yet)
 //   The deliverability flags are on the owner profile (#2101):
 //   - one BOUNCED car (profile email_bounced = 1)
-//   - one SUPPRESSED car (profile email_opted_out = 1), chip "Opted out"
+//   - a second car of the bounced owner: the Bounced card counts owners, so
+//     the owner counts once on the card and twice in the pill (#2361)
+//   - one OPTED-OUT car (profile email_opted_out = 1), chip "Opted out"
 //   - one BLOCKED car (profile email_blocked = 1, cause blocklist), chip
-//     "Brevo complaint" (every cause shows complaint until #2361)
+//     "Blocked"
+//   - one STALE-BLOCKED car: email_blocked = 1, but for an old address. The
+//     flag does not apply, so the owner is in no Blocked count (#2356)
 //   - one NO-PROFILE car: pending, and its owner has no profiles row. Chip
 //     "No profile", and no action button
 //   - one SOFT-BOUNCE car: Pending pill, but one `soft_bounce`
@@ -66,8 +70,239 @@ const { test, expect } = require('@playwright/test');
 const { runPhpFixture } = require('./fixture-runner.js');
 const { ensureLoggedIn, login, logout } = require('./auth-helper.js');
 
+
+const TAB_URL = 'app/admin/index.php?tab=verification';
+
+// The seven summary cards, in page order. `countKey` is the key of
+// CarRepository::countVerificationSummary(). Bounced, Blocked and Opted out
+// count owners; the others count cars (#2361).
+const SUMMARY_CARDS = [
+    { key: 'eligible', label: 'Eligible', countKey: 'eligible', ownerCount: false },
+    { key: 'pending', label: 'Pending', countKey: 'pending', ownerCount: false },
+    { key: 'verified', label: 'Verified', countKey: 'verified', ownerCount: false },
+    { key: 'sold', label: 'Sold', countKey: 'sold', ownerCount: false },
+    { key: 'bounced', label: 'Bounced', countKey: 'bounced_owners', ownerCount: true },
+    { key: 'blocked', label: 'Blocked', countKey: 'blocked_owners', ownerCount: true },
+    { key: 'opted_out', label: 'Opted out', countKey: 'opted_out_owners', ownerCount: true },
+];
+
+// The eight queue pills, in page order (CarRepository::QUEUE_STATUSES).
+const QUEUE_PILLS = [
+    { status: 'all', label: 'All' },
+    { status: 'eligible', label: 'Eligible' },
+    { status: 'pending', label: 'Pending' },
+    { status: 'bounced', label: 'Bounced' },
+    { status: 'blocked', label: 'Blocked' },
+    { status: 'opted_out', label: 'Opted out' },
+    { status: 'verified', label: 'Verified' },
+    { status: 'sold', label: 'Sold' },
+];
+
+function readDbSummary(windowDays) {
+    return JSON.parse(
+        runPhpFixture('tests/playwright/local/fixtures/read-verification-summary.php', [String(windowDays)]).trim()
+    );
+}
+
+function queueRow(page, carId) {
+    return page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${carId}")`) });
+}
+
+async function numberOf(locator) {
+    return Number((await locator.textContent()).replace(/[,\s]/g, ''));
+}
+
+// Seven cards: car counts for Eligible/Pending/Verified/Sold, owner counts
+// for Bounced/Blocked/Opted out. The owner cards say "owners" and the pills
+// count cars, so the bounced owner with two cars counts once on the card and
+// twice in the pill.
+async function expectSummaryCardsAndPills(page) {
+    const db = readDbSummary(30);
+    await page.goto(TAB_URL, { waitUntil: 'networkidle' });
+
+    const cards = page.locator('#verificationSummaryCards [data-summary]');
+    await expect(cards).toHaveCount(SUMMARY_CARDS.length);
+    await expect(cards).toHaveCount(7);
+
+    for (const [index, card] of SUMMARY_CARDS.entries()) {
+        const tile = cards.nth(index);
+        await expect(tile, `card #${index + 1}`).toHaveAttribute('data-summary', card.key);
+        await expect(tile.locator('.er-stat-label').first()).toHaveText(card.label);
+        expect(await numberOf(tile.locator('.er-stat-number')), `card "${card.key}"`).toBe(db[card.countKey]);
+
+        const ownersLabel = tile.locator('.er-stat-label', { hasText: /^owners$/ });
+        await expect(ownersLabel, `"owners" sub-label of card "${card.key}"`).toHaveCount(card.ownerCount ? 1 : 0);
+    }
+
+    const pills = page.locator('a.filter-pill');
+    await expect(pills).toHaveCount(QUEUE_PILLS.length);
+    await expect(pills).toHaveCount(8);
+    for (const [index, pill] of QUEUE_PILLS.entries()) {
+        const link = pills.nth(index);
+        await expect(link, `pill #${index + 1}`).toHaveAttribute('data-status', pill.status);
+        await expect(link).toContainText(pill.label);
+        await expect(link.locator('span.ms-1'), `count of pill "${pill.status}"`).toHaveText(`(${db[pill.status].toLocaleString('en-US')})`);
+    }
+
+    // Fixture: the bounced owner has two cars. Owners count once on the
+    // card, cars count twice in the pill, so the pill leads the card by at
+    // least one. The stale-blocked and blocked owners are different owners,
+    // so the Blocked card never exceeds the Blocked pill.
+    expect(db.bounced - db.bounced_owners, 'bounced pill (cars) minus bounced card (owners)').toBeGreaterThanOrEqual(1);
+    expect(db.blocked_owners).toBeGreaterThanOrEqual(1);
+    expect(db.blocked).toBeGreaterThanOrEqual(db.blocked_owners);
+    expect(db.opted_out_owners).toBeGreaterThanOrEqual(1);
+    expect(db.opted_out).toBeGreaterThanOrEqual(db.opted_out_owners);
+}
+
+// ?status=blocked and ?status=opted_out list only their own owners' cars.
+async function expectBlockedAndOptedOutFilters(page) {
+    const db = readDbSummary(30);
+
+    await page.goto(`${TAB_URL}&status=blocked&show=100`, { waitUntil: 'networkidle' });
+    await expect(page.locator('a.filter-pill[data-status="blocked"]')).toHaveClass(/active/);
+    await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
+    const blockedRow = queueRow(page, blockedCarId);
+    await expect(blockedRow).toBeVisible();
+    const blockedChip = blockedRow.locator('td').nth(5).locator('span.badge');
+    await expect(blockedChip).toHaveAttribute('data-chip', 'blocked');
+    await expect(blockedChip).toHaveText(/^\s*Blocked\s*$/);
+    for (const other of [suppressedCarId, bouncedCarId, bouncedCarIdB, staleBlockedCarId, pendingCarId]) {
+        await expect(queueRow(page, other), `car ${other} is not in the Blocked pill`).toHaveCount(0);
+    }
+    expect(await page.locator('#verificationQueue table tbody tr').count(), 'Blocked rows equal the Blocked pill count')
+        .toBe(db.blocked);
+
+    await page.goto(`${TAB_URL}&status=opted_out&show=100`, { waitUntil: 'networkidle' });
+    await expect(page.locator('a.filter-pill[data-status="opted_out"]')).toHaveClass(/active/);
+    await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
+    const optedOutRow = queueRow(page, suppressedCarId);
+    await expect(optedOutRow).toBeVisible();
+    await expect(optedOutRow.locator('td').nth(5).locator('span.badge')).toHaveAttribute('data-chip', 'opted_out');
+    for (const other of [blockedCarId, bouncedCarId, staleBlockedCarId, pendingCarId]) {
+        await expect(queueRow(page, other), `car ${other} is not in the Opted out pill`).toHaveCount(0);
+    }
+    expect(await page.locator('#verificationQueue table tbody tr').count(), 'Opted out rows equal the Opted out pill count')
+        .toBe(db.opted_out);
+
+    // Both cars of the bounced owner are in the Bounced pill.
+    await page.goto(`${TAB_URL}&status=bounced&show=100`, { waitUntil: 'networkidle' });
+    await expect(queueRow(page, bouncedCarId)).toBeVisible();
+    await expect(queueRow(page, bouncedCarIdB)).toBeVisible();
+
+    // A block for an old address does not apply: no Blocked pill row, and the
+    // car is an ordinary Pending car with no chip problem.
+    await page.goto(`${TAB_URL}&status=pending&show=100`, { waitUntil: 'networkidle' });
+    const staleRow = queueRow(page, staleBlockedCarId);
+    await expect(staleRow).toBeVisible();
+    await expect(staleRow.locator('td').nth(5).locator('span.badge[data-chip="blocked"]')).toHaveCount(0);
+}
+
+// The panel renders in one place: after the summary cards, directly before
+// the Automatic Sending card, and before the queue and recent activity. The
+// place does not depend on health (#2364). The `open` attribute follows health.
+async function expectPanelBeforeAutomaticSending(page) {
+    await page.goto(TAB_URL, { waitUntil: 'networkidle' });
+
+    const panel = page.locator('#verificationStatusPanel');
+    await expect(panel).toHaveCount(1);
+
+    const autoSendCard = page.getByRole('heading', { name: 'Automatic Sending', level: 5 })
+        .locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " card ")][1]');
+    await expect(autoSendCard).toHaveCount(1);
+
+    const order = await page.evaluate(() => {
+        const panelEl = document.getElementById('verificationStatusPanel');
+        const cardsEl = document.getElementById('verificationSummaryCards');
+        const queueEl = document.getElementById('verificationQueue');
+        const activityEl = document.getElementById('verificationRecentActivity');
+        const headings = Array.from(document.querySelectorAll('h5'));
+        const autoHeading = headings.find((h) => h.textContent.includes('Automatic Sending'));
+        const autoEl = autoHeading ? autoHeading.closest('.card') : null;
+        // 0x04 is Node.DOCUMENT_POSITION_FOLLOWING. A literal, because this
+        // callback is linted as Node.js code without browser globals.
+        const follows = (a, b) => !!(a.compareDocumentPosition(b) & 0x04);
+        return {
+            directlyBeforeAutoSend: panelEl.nextElementSibling === autoEl,
+            afterCards: follows(cardsEl, panelEl),
+            beforeQueue: follows(panelEl, queueEl),
+            beforeActivity: follows(panelEl, activityEl),
+            panelCount: document.querySelectorAll('#verificationStatusPanel').length,
+        };
+    });
+    expect(order.panelCount, 'the panel renders once').toBe(1);
+    expect(order.directlyBeforeAutoSend, 'the panel is directly before the Automatic Sending card').toBe(true);
+    expect(order.afterCards, 'the panel is after the summary cards').toBe(true);
+    expect(order.beforeQueue, 'the panel is before the queue').toBe(true);
+    expect(order.beforeActivity, 'the panel is before Recent Activity').toBe(true);
+
+    // The panel shows exactly one health badge, and it is open when not healthy.
+    const healthy = await panel.locator('summary .badge', { hasText: 'All healthy' }).count();
+    const unhealthy = await panel.locator('summary .badge', { hasText: 'Needs attention' }).count();
+    expect(healthy + unhealthy, 'exactly one health badge').toBe(1);
+    if (healthy === 1) {
+        await expect(panel).not.toHaveAttribute('open', '');
+    } else {
+        await expect(panel).toHaveAttribute('open', '');
+    }
+}
+
+// The Brevo row of the Status panel. This local site reaches one of three
+// reachable states, and the test checks the one it finds. The fourth state
+// (the settings probe threw, with the log hint) needs a failing database
+// read, which Playwright cannot cause. VerificationTabStatusTest and
+// VerificationStatusPanelRenderTest cover it.
+async function expectBrevoRow(page) {
+    await page.goto(TAB_URL, { waitUntil: 'networkidle' });
+
+    const row = page.locator('#verificationStatusPanel [data-status-row="brevo"]');
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('xpath=preceding-sibling::dt[1]')).toHaveText('Brevo ready');
+
+    const badge = row.locator(':scope > span').first();
+    // textContent, not innerText: the panel is a closed <details> when healthy,
+    // and innerText of hidden content is empty.
+    const badgeText = (await badge.textContent()).replace(/\s+/g, ' ').trim();
+    const detail = row.locator('small');
+    const probeAlertCount = await page.locator('.alert-danger', { hasText: 'Verification status could not be read' }).count();
+    const LOG_HINT = 'Check the system log for VerificationConfigWarning.';
+
+    expect(['Ready', 'Not ready', 'Not checked (switch is off)'], 'Brevo badge text').toContain(badgeText);
+
+    if (badgeText === 'Ready') {
+        await expect(badge).toHaveClass(/text-bg-success/);
+        await expect(detail).toHaveCount(0);
+        expect(probeAlertCount, 'a ready Brevo row means the probe did not throw').toBe(0);
+    } else if (badgeText === 'Not ready') {
+        await expect(badge).toHaveClass(/text-bg-danger/);
+        await expect(detail).toHaveCount(1);
+        const reason = (await detail.textContent()).replace(/\s+/g, ' ').trim();
+        // One of the reasons of VerificationSettings::brevoNotReadyReason(),
+        // or the probe-threw fallback.
+        expect(reason).toMatch(
+            /^(The Brevo plugin is not installed\.|The Brevo settings could not be read\.|No API key is saved in the Brevo plugin\.|The Brevo plugin is not active\.|The Brevo override file \(|The Brevo plugin version could not be read|The Brevo plugin is version |The Brevo status could not be checked\.)/
+        );
+        // The log hint shows only when the probe threw.
+        if (probeAlertCount === 0) {
+            // One reason ends with a similar text of its own: the settings read failed.
+            if (!reason.startsWith('The Brevo settings could not be read.')) {
+                expect(reason).not.toContain(LOG_HINT);
+            }
+        } else {
+            expect(reason).toContain(LOG_HINT);
+        }
+    } else {
+        // Switch off and Brevo not ready: nothing to report.
+        await expect(badge).toHaveClass(/text-muted/);
+        await expect(badge).not.toHaveClass(/badge/);
+        await expect(detail).toHaveCount(0);
+    }
+}
+
 let pendingCarId;
 let bouncedCarId;
+let bouncedCarIdB;
+let staleBlockedCarId;
 let suppressedCarId;
 let blockedCarId;
 let noProfileCarId;
@@ -76,6 +311,43 @@ let precedenceCarId;
 let precedenceChassis;
 let verifiedCarId;
 let soldCarId;
+let transferCarId;
+let twinCarIdA;
+let twinCarIdB;
+
+// Seeds the fixture rows and keeps their ids in the module variables. The
+// fixture needs the database, which is reachable only in the app container.
+function seedVerificationFixture() {
+    const output = runPhpFixture('tests/playwright/local/fixtures/seed-verification-dashboard.php');
+
+    const seeded = JSON.parse(output.trim());
+    pendingCarId = seeded.pendingCarId;
+    bouncedCarId = seeded.bouncedCarId;
+    bouncedCarIdB = seeded.bouncedCarIdB;
+    staleBlockedCarId = seeded.staleBlockedCarId;
+    suppressedCarId = seeded.suppressedCarId;
+    blockedCarId = seeded.blockedCarId;
+    noProfileCarId = seeded.noProfileCarId;
+    softBounceCarId = seeded.softBounceCarId;
+    precedenceCarId = seeded.precedenceCarId;
+    precedenceChassis = seeded.precedenceChassis;
+    verifiedCarId = seeded.verifiedCarId;
+    soldCarId = seeded.soldCarId;
+    transferCarId = seeded.transferCarId;
+    twinCarIdA = seeded.twinCarIdA;
+    twinCarIdB = seeded.twinCarIdB;
+
+    for (const id of [pendingCarId, bouncedCarId, bouncedCarIdB, staleBlockedCarId, suppressedCarId, blockedCarId, noProfileCarId, softBounceCarId, precedenceCarId, verifiedCarId, soldCarId, transferCarId, twinCarIdA, twinCarIdB]) {
+        expect(id).toBeGreaterThan(0);
+    }
+    expect(precedenceChassis).toContain('<script>');
+}
+
+// Leaves the shared local dataset as it was found. The seeded rows would
+// otherwise inflate every summary count for any other suite or human.
+function cleanupVerificationFixture() {
+    runPhpFixture('tests/playwright/local/fixtures/seed-verification-dashboard.php', ['--cleanup']);
+}
 
 test.describe('Admin Verification Dashboard', () => {
     // SERIAL, NOT PARALLEL. With fullyParallel (playwright.config.js) and no
@@ -96,32 +368,11 @@ test.describe('Admin Verification Dashboard', () => {
     test.describe.configure({ mode: 'serial' });
 
     test.beforeAll(() => {
-        // The fixture needs the database, which is reachable only in the app container.
-        const output = runPhpFixture('tests/playwright/local/fixtures/seed-verification-dashboard.php');
-
-        const seeded = JSON.parse(output.trim());
-        pendingCarId = seeded.pendingCarId;
-        bouncedCarId = seeded.bouncedCarId;
-        suppressedCarId = seeded.suppressedCarId;
-        blockedCarId = seeded.blockedCarId;
-        noProfileCarId = seeded.noProfileCarId;
-        softBounceCarId = seeded.softBounceCarId;
-        precedenceCarId = seeded.precedenceCarId;
-        precedenceChassis = seeded.precedenceChassis;
-        verifiedCarId = seeded.verifiedCarId;
-        soldCarId = seeded.soldCarId;
-
-        for (const id of [pendingCarId, bouncedCarId, suppressedCarId, blockedCarId, noProfileCarId, softBounceCarId, precedenceCarId, verifiedCarId, soldCarId]) {
-            expect(id).toBeGreaterThan(0);
-        }
-        expect(precedenceChassis).toContain('<script>');
+        seedVerificationFixture();
     });
 
     test.afterAll(() => {
-        // Leaves the shared local dataset as it was found — this fixture's rows
-        // would otherwise permanently inflate every summary count for any other
-        // suite or human reading the same local dev database.
-        runPhpFixture('tests/playwright/local/fixtures/seed-verification-dashboard.php', ['--cleanup']);
+        cleanupVerificationFixture();
     });
 
     test.beforeEach(async ({ page }) => {
@@ -130,33 +381,20 @@ test.describe('Admin Verification Dashboard', () => {
 
     // --- Summary cards -----------------------------------------------------
     //
-    // AC: six summary card counts render and match CarRepository::
-    // countVerificationSummary()'s own counts for the same window. Queried
-    // directly against the real database (not derived from the page), via
-    // the same CarRepository method the page calls, run by a tiny
-    // standalone PHP one-liner through runPhpFixture() — this is an
-    // independent read of the database, not a re-run of the page's render
-    // path, so a page bug and a broken query cannot cancel out.
-    test('six summary cards render and match countVerificationSummary() for the default window', async ({ page }) => {
-        const dbCountsJson = runPhpFixture('tests/playwright/local/fixtures/read-verification-summary.php', ['30']);
-        const dbCounts = JSON.parse(dbCountsJson.trim());
-
-        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
-
-        const cards = page.locator('#verificationSummaryCards [data-summary]');
-        await expect(cards).toHaveCount(6);
-
-        for (const key of ['eligible', 'pending', 'verified', 'sold', 'bounced', 'suppressed']) {
-            const tile = page.locator(`#verificationSummaryCards [data-summary="${key}"] .er-stat-number`);
-            const text = (await tile.textContent()).replace(/[,\s]/g, '');
-            expect(text, `summary card "${key}"`).toBe(String(dbCounts[key]));
-        }
+    // AC (#2361): seven summary cards. Eligible, Pending, Verified and Sold
+    // count cars. Bounced, Blocked and Opted out count owners ("owners"
+    // sub-label), so the fixture's two-car bounced owner counts once on the
+    // card and twice in the pill. Every number is compared with an independent
+    // read of CarRepository::countVerificationSummary() through a standalone
+    // PHP script, not derived from the page.
+    test('seven summary cards and eight pills render with owner counts on the owner cards', async ({ page }) => {
+        await expectSummaryCardsAndPills(page);
     });
 
     // --- Pill + URL round trip ---------------------------------------------
 
-    // AC: clicking each of the 7 pills updates ?status= and the visible rows.
-    for (const status of ['all', 'eligible', 'pending', 'bounced', 'suppressed', 'verified', 'sold']) {
+    // AC: clicking each of the 8 pills updates ?status= and the visible rows.
+    for (const { status } of QUEUE_PILLS) {
         test(`"${status}" pill updates ?status= and marks itself active`, async ({ page }) => {
             await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
 
@@ -172,21 +410,49 @@ test.describe('Admin Verification Dashboard', () => {
         });
     }
 
-    // AC: loading an invalid status= value falls back to the default (all)
-    // without a PHP error — app/admin/index.php's allow-list check.
-    test('an invalid ?status= falls back to "all" with no PHP error', async ({ page }) => {
-        const response = await page.goto('app/admin/index.php?tab=verification&status=not-a-real-status', {
-            waitUntil: 'networkidle',
-        });
+    // AC: an unknown status= value shows the "all" view, and the page never
+    // prints it. app/admin/index.php's allow-list check replaces it with
+    // 'all', so the value reaches no SQL, no pill link, no hidden field.
+    test('an unknown ?status= shows the "all" view and is not printed', async ({ page }) => {
+        const marker = 'not-a-real-status';
+
+        await page.goto(`${TAB_URL}&status=all&show=100`, { waitUntil: 'networkidle' });
+        const allIds = await page.locator('#verificationQueue table tbody tr td:first-child').allInnerTexts();
+        expect(allIds.length, 'the "all" view has rows').toBeGreaterThan(0);
+
+        const response = await page.goto(`${TAB_URL}&status=${marker}&show=100`, { waitUntil: 'networkidle' });
         expect(response.status()).toBe(200);
         expect(await page.locator('body').textContent()).not.toContain('Fatal error');
+        // The page head echoes the request URL in its canonical and social
+        // meta tags (upstream, escaped). The tab prints no part of the value.
+        const bodyHtml = (await response.text()).split(/<body/i)[1] ?? '';
+        expect(bodyHtml.length, 'the page has a body').toBeGreaterThan(0);
+        expect(bodyHtml, 'the unknown value is not in the page body').not.toContain(marker);
 
-        expect(new URL(page.url()).searchParams.get('status')).toBe('not-a-real-status');
-        // The pill rendering must still reflect the server's fallback to
-        // 'all' — i.e. the invalid URL value was never bound into SQL or
-        // used to pick a pill, the "All" pill is the one marked active.
         await expect(page.locator('a.filter-pill[data-status="all"]')).toHaveClass(/active/);
         await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
+        await expect(page.locator('#verificationQueueControls input[name="status"]')).toHaveValue('all');
+        const unknownIds = await page.locator('#verificationQueue table tbody tr td:first-child').allInnerTexts();
+        expect(unknownIds, 'same rows as the "all" view').toEqual(allIds);
+    });
+
+    // The same, with markup in the value: it is not printed in any form.
+    test('a ?status= value with markup is not printed, escaped or not', async ({ page }) => {
+        const response = await page.goto(
+            `${TAB_URL}&status=${encodeURIComponent('<script>zz9</script>')}`,
+            { waitUntil: 'networkidle' }
+        );
+        expect(response.status()).toBe(200);
+        const source = (await response.text()).split(/<body/i)[1] ?? '';
+        expect(source.length, 'the page has a body').toBeGreaterThan(0);
+        expect(source).not.toContain('zz9');
+        await expect(page.locator('a.filter-pill[data-status="all"]')).toHaveClass(/active/);
+    });
+
+    // AC (#2361): the Blocked and Opted out pills list only their own owners'
+    // cars, and a block for an old address counts in neither.
+    test('?status=blocked and ?status=opted_out list only their own cars', async ({ page }) => {
+        await expectBlockedAndOptedOutFilters(page);
     });
 
     // --- Window / Show controls ---------------------------------------------
@@ -250,7 +516,9 @@ test.describe('Admin Verification Dashboard', () => {
 
     // AC: each queue row shows exactly one contextual action button, and the
     // disabled soft-bounce case is rendered correctly: chip shows "Soft
-    // bounce", Mark Bounced is rendered disabled.
+    // bounce", Mark Bounced is rendered disabled. The owner also has a later
+    // `delivered` row with car_id NULL (a password-reset email, #2359). It
+    // must not turn the chip to "Delivered".
     test('the soft-bounce row shows the "Soft bounce" chip and a disabled Mark Bounced button', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
 
@@ -268,7 +536,7 @@ test.describe('Admin Verification Dashboard', () => {
     });
 
     // AC (one-action-per-row, the three non-disabled branches): Bounced ->
-    // Clear Bounced, Suppressed -> Clear Suppression, an ordinary Pending
+    // Clear Bounced, Blocked and Opted out -> Clear Suppression, an ordinary Pending
     // row -> Mark Bounced (enabled). Each case loads its own pill rather
     // than the "All" view: "All" orders by cars.id ASC
     // (findVerificationQueue()) and this local dataset has ~1500
@@ -279,10 +547,12 @@ test.describe('Admin Verification Dashboard', () => {
     // pills themselves have no such flooding (confirmed empirically: single
     // digits of rows each on this dataset), so each seeded car is looked up
     // under its own matching pill instead.
-    test('Bounced, Suppressed and ordinary Pending rows each show exactly one matching action button', async ({ page }) => {
+    test('Bounced, Blocked, Opted out and ordinary Pending rows each show exactly one matching action button', async ({ page }) => {
         const cases = [
             { id: bouncedCarId, status: 'bounced', label: 'Clear Bounced' },
-            { id: suppressedCarId, status: 'suppressed', label: 'Clear Suppression' },
+            { id: bouncedCarIdB, status: 'bounced', label: 'Clear Bounced' },
+            { id: suppressedCarId, status: 'opted_out', label: 'Clear Suppression' },
+            { id: blockedCarId, status: 'blocked', label: 'Clear Suppression' },
             { id: pendingCarId, status: 'pending', label: 'Mark Bounced' },
         ];
 
@@ -307,10 +577,10 @@ test.describe('Admin Verification Dashboard', () => {
     // The owner's profile state comes before the car's email events. Each case
     // loads its own pill, for the row-flooding reason above. The no-profile
     // car is pending, so the Pending pill lists it.
-    test('profile state sets the Status chip: opted out, blocked (any cause shows Brevo complaint), no profile', async ({ page }) => {
+    test('profile state sets the Status chip: opted out, blocked, no profile', async ({ page }) => {
         const cases = [
-            { id: suppressedCarId, status: 'suppressed', chip: 'opted_out', text: /Opted out/, action: 'Clear Suppression' },
-            { id: blockedCarId, status: 'suppressed', chip: 'complaint', text: /Brevo complaint/, action: 'Clear Suppression' },
+            { id: suppressedCarId, status: 'opted_out', chip: 'opted_out', text: /Opted out/, action: 'Clear Suppression' },
+            { id: blockedCarId, status: 'blocked', chip: 'blocked', text: /^\s*Blocked\s*$/, action: 'Clear Suppression' },
             { id: noProfileCarId, status: 'pending', chip: 'no_profile', text: /No profile/, action: null },
         ];
 
@@ -361,6 +631,38 @@ test.describe('Admin Verification Dashboard', () => {
         await expect(chip).toHaveText(/Bounced/);
         await expect(chip).toHaveAttribute('data-chip', 'bounced');
         await expect(chip).not.toHaveText(/Delivered/);
+    });
+
+    // AC (#2358): events belong to the user. The transferred car's only
+    // `sent` row belongs to the previous owner, so the new owner sees "not
+    // sent": the em dash placeholder, with no badge.
+    test('a transferred car shows "not sent" and not the previous owner\'s sent row', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
+
+        const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${transferCarId}")`) });
+        await expect(row).toBeVisible();
+
+        const statusCell = row.locator('td').nth(5);
+        await expect(statusCell.locator('span.badge')).toHaveCount(0);
+        await expect(statusCell).toHaveText('\u2014');
+    });
+
+    // AC (#2358, #2359): the webhook stores the event of mail that matched no
+    // verification send with car_id NULL. A hard bounce or block of that kind
+    // stops all mail to the owner, so every car of the owner shows it once its
+    // own cycle has started. A `delivered` row with car_id NULL shows on no
+    // car (see the soft-bounce row test above).
+    test('an owner-level hard bounce (car_id NULL) shows on every car of that owner', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
+
+        for (const carId of [twinCarIdA, twinCarIdB]) {
+            const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${carId}")`) });
+            await expect(row).toBeVisible();
+
+            const chip = row.locator('td').nth(5).locator('span.badge');
+            await expect(chip).toHaveText(/Bounced/);
+            await expect(chip).toHaveAttribute('data-chip', 'bounced');
+        }
     });
 
     // --- <script>-chassis escaping ------------------------------------------
@@ -418,58 +720,21 @@ test.describe('Admin Verification Dashboard', () => {
         await expect(soldItem).toContainText('VERIFIED SOLD');
     });
 
-    // --- Status panel collapse/expand ---------------------------------------
+    // --- Status panel position ----------------------------------------------
     //
-    // AC: the Status panel is collapsed at the bottom when healthy, expanded
-    // at the top when unhealthy. This local environment's actual health
-    // state is whatever VerificationSettings currently reports — not
-    // something this suite can force without mutating shared config rows
-    // other suites depend on (the toggle-cron tests in
-    // admin-verification-send-tool.spec.js already own that mutation, under
-    // test.describe.configure({ mode: 'serial' })). This test therefore
-    // reads the live health state from the page itself (the "All healthy"
-    // badge vs. "Needs attention" badge the page already renders) and
-    // asserts the ONE placement rule that state implies, rather than trying
-    // to drive the environment into a specific state. Both the healthy and
-    // unhealthy structural placements are exercised below depending on
-    // which state this run finds — see the branch comments.
-    test('the Status panel sits at the bottom when healthy, and at the top when unhealthy', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
+    // AC (#2364): the Status panel renders directly before the Automatic
+    // Sending card, whatever the health state. The panel's `open` attribute
+    // follows health, and its place does not. This site shows one health state
+    // per run, so the test asserts the place for that state. The integration
+    // test AdminVerificationTabRenderTest renders both states.
+    test('the Status panel sits directly before Automatic Sending, whatever the health', async ({ page }) => {
+        await expectPanelBeforeAutomaticSending(page);
+    });
 
-        const panel = page.locator('#verificationStatusPanel');
-        await expect(panel).toBeAttached();
-
-        const isHealthy = await panel.locator('summary .badge', { hasText: 'All healthy' }).count() === 1;
-        const isUnhealthy = await panel.locator('summary .badge', { hasText: 'Needs attention' }).count() === 1;
-        expect(isHealthy || isUnhealthy, 'the panel must show exactly one of the two health badges').toBe(true);
-
-        const summaryCards = page.locator('#verificationSummaryCards');
-        const recentActivity = page.locator('#verificationRecentActivity');
-
-        if (isHealthy) {
-            // Healthy: the panel is collapsed (no `open` attribute) and
-            // placed AFTER Recent Activity (i.e. at the bottom of the tab).
-            await expect(panel).not.toHaveAttribute('open', '');
-            const panelPrecedesActivity = await recentActivity.evaluate((activityEl, panelEl) => {
-                // 0x02 is Node.DOCUMENT_POSITION_PRECEDING. Written as a literal,
-                // not the DOM global, because this callback is linted as plain
-                // Node.js code (no browser globals) even though it runs in the
-                // browser via page.evaluate().
-                return !!(panelEl.compareDocumentPosition(activityEl) & 0x02);
-            }, await panel.elementHandle());
-            expect(panelPrecedesActivity, 'healthy: Recent Activity must render before the Status panel').toBe(true);
-        } else {
-            // Unhealthy (or the feature switch is off): the panel is
-            // expanded (`open` attribute present) and placed BEFORE the
-            // summary cards (i.e. at the top of the tab).
-            await expect(panel).toHaveAttribute('open', '');
-            const panelPrecedesCards = await summaryCards.evaluate((cardsEl, panelEl) => {
-                // 0x02 is Node.DOCUMENT_POSITION_PRECEDING — see the sibling
-                // comment above for why this is a literal, not the DOM global.
-                return !!(cardsEl.compareDocumentPosition(panelEl) & 0x02);
-            }, await panel.elementHandle());
-            expect(panelPrecedesCards, 'unhealthy: the Status panel must render before the summary cards').toBe(true);
-        }
+    // AC (#2184): the Brevo row shows "Ready" or "Not ready" with the
+    // reason, and the log hint only when the probe threw.
+    test('the Brevo row shows its badge and reason, and the log hint only when the probe threw', async ({ page }) => {
+        await expectBrevoRow(page);
     });
 });
 
@@ -515,6 +780,20 @@ test.describe('Admin Verification Dashboard editor read-only contract', () => {
         process.env.E2E_DEV_EDITOR_USERNAME && process.env.E2E_DEV_EDITOR_PASSWORD
     );
 
+    // Serial: the seed and the cleanup run once for the whole describe block.
+    test.describe.configure({ mode: 'serial' });
+
+    test.beforeAll(() => {
+        test.skip(!hasEditorCredentials, 'E2E_DEV_EDITOR_USERNAME/E2E_DEV_EDITOR_PASSWORD are not set in .env.local');
+        seedVerificationFixture();
+    });
+
+    test.afterAll(() => {
+        if (hasEditorCredentials) {
+            cleanupVerificationFixture();
+        }
+    });
+
     test.beforeEach(async ({ page, browserName }) => {
         test.skip(
             !hasEditorCredentials,
@@ -531,6 +810,22 @@ test.describe('Admin Verification Dashboard editor read-only contract', () => {
         await ensureLoggedIn(page);
         await logout(page);
         await login(page, process.env.E2E_DEV_EDITOR_USERNAME, process.env.E2E_DEV_EDITOR_PASSWORD);
+    });
+
+    test('an editor sees seven summary cards and eight pills with owner counts', async ({ page }) => {
+        await expectSummaryCardsAndPills(page);
+    });
+
+    test('an editor sees the Blocked and Opted out filters and the "Blocked" chip', async ({ page }) => {
+        await expectBlockedAndOptedOutFilters(page);
+    });
+
+    test('an editor sees the Status panel directly before Automatic Sending', async ({ page }) => {
+        await expectPanelBeforeAutomaticSending(page);
+    });
+
+    test('an editor sees the Brevo row', async ({ page }) => {
+        await expectBrevoRow(page);
     });
 
     test('an editor session sees every mutating verification control read-only, not interactive', async ({ page }) => {

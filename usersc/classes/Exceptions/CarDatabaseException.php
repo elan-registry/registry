@@ -20,6 +20,20 @@ use ElanRegistry\LogCategories;
 class CarDatabaseException extends CarException
 {
     /**
+     * Get the SQLSTATE from the message
+     *
+     * DB::errorString() writes "ERROR #<sqlstate>: <driver text>". The driver
+     * text can hold an email address, but the SQLSTATE cannot. So a log line
+     * can name the database error without the message.
+     *
+     * @return string|null The 5-character SQLSTATE, or null when the message has none
+     */
+    public function sqlState(): ?string
+    {
+        return preg_match('/ERROR #([0-9A-Z]{5})\b/', $this->getMessage(), $matches) === 1 ? $matches[1] : null;
+    }
+
+    /**
      * @inheritDoc
      */
     protected static function getDefaultUserMessage(): string

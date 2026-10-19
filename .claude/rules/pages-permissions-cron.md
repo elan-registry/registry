@@ -16,9 +16,10 @@ paths:
   an exception: its files call `securePage()`, so it is in `$path`.
 - New admin scripts go under `app/admin/scripts/fix/` (one-time migrations)
   or `app/admin/scripts/maintenance/` (repeatable maintenance).
-- **After you add any new page or admin script, run
-  `21-Fix-Page-Permissions.php` on test, then prod,** to register the new path
-  in UserSpice's permission table.
+- **After you add any new page or admin script, open it once as an admin,
+  then run `21-Fix-Page-Permissions.php` on test, then prod.** UserSpice
+  creates the `pages` row on that first visit. The script sets permissions
+  only for pages that have a row.
 - Put all cron jobs in `users/cron/`. The `cron.php` dispatcher only looks for
   job files in this directory. Read the
   [Cron Transport section](../../docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)

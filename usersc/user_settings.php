@@ -136,7 +136,7 @@ if (!empty($_POST)) {
             } elseif ($effectiveFlags->bounced) {
                 usWarning('Your opt-out is removed. Verification emails stay paused because email to your address bounced. Update your email address to turn them back on.');
             } else {
-                usSuccess('Verification emails have been resumed for your cars.');
+                usSuccess('Registry email is resumed.');
             }
             Redirect::to($us_url_root . 'usersc/user_settings.php');
             exit;
@@ -144,13 +144,20 @@ if (!empty($_POST)) {
             // \Throwable, not only ElanRegistryException: a narrower catch
             // would leave the transaction open for the rest of the request.
             if ($committed) {
-                logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                $message = sprintf(
                     'user_settings.php: OPT-OUT CLEARED BY OWNER committed for owner %d, '
                     . 'but a post-commit step failed [%s]: %s',
                     $userId,
                     get_class($e),
                     $e->getMessage()
-                ));
+                );
+                try {
+                    logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $message);
+                } catch (\Throwable $logFailure) {
+                    // logger() writes to the database. If that fails too, the
+                    // PHP error log is the only record left.
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+                }
                 $errors[] = 'Your request was saved, but the confirmation could not be shown. Reload this page to check.';
             } else {
                 // Guard the rollback: on a dropped connection ROLLBACK throws
@@ -159,27 +166,38 @@ if (!empty($_POST)) {
                 try {
                     $repo->rollback();
                 } catch (\Throwable $rollbackFailure) {
-                    logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                    $message = sprintf(
                         'user_settings.php: OPT-OUT CLEARED BY OWNER rollback failed for owner %d '
                         . 'while handling [%s] %s (rollback error: %s)',
                         $userId,
                         get_class($e),
                         $e->getMessage(),
                         $rollbackFailure->getMessage()
-                    ));
+                    );
+                    try {
+                        logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $message);
+                    } catch (\Throwable $logFailure) {
+                        error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+                    }
                 }
                 if ($e instanceof ElanRegistryException) {
                     // CarDatabaseException from the manager: no profiles
                     // row, or a failed profile write or audit row.
-                    logger($userId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
-                        "user_settings.php: OPT-OUT CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage());
+                    $category = LogCategories::LOG_CATEGORY_EMAIL_BOUNCED;
+                    $message = "user_settings.php: OPT-OUT CLEARED BY OWNER failed for owner {$userId}: " . $e->getMessage();
                 } else {
-                    logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, sprintf(
+                    $category = LogCategories::LOG_CATEGORY_SYSTEM_ERROR;
+                    $message = sprintf(
                         'user_settings.php: OPT-OUT CLEARED BY OWNER unexpected error [%s] for owner %d: %s',
                         get_class($e),
                         $userId,
                         $e->getMessage()
-                    ));
+                    );
+                }
+                try {
+                    logger($userId, $category, $message);
+                } catch (\Throwable $logFailure) {
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
                 }
                 $errors[] = 'Verification emails could not be resumed. Nothing was changed. Please try again or contact support.';
             }
@@ -797,9 +815,15 @@ try {
     $ownerClearable = $effectiveFlags->optedOut;
     $emailBlocked = $effectiveFlags->blocked;
 } catch (ElanRegistryException $e) {
-    logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-        "user_settings.php: email flag read for the paused-email notice failed for owner {$userId}. "
-        . "The notice uses the stored profile flags, which may be stale: " . $e->getMessage());
+    $message = "user_settings.php: email flag read for the paused-email notice failed for owner {$userId}. "
+        . "The notice uses the stored profile flags, which may be stale: " . $e->getMessage();
+    try {
+        logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
+    } catch (\Throwable $logFailure) {
+        // logger() writes to the database. If that fails too, the PHP error
+        // log is the only record left.
+        error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+    }
     // Use the stored flags from the profile read above. Showing a notice
     // that may be stale is safer than hiding a real one.
     $ownerClearable = (int) ($profiledetails->email_opted_out ?? 0) === 1;
@@ -828,20 +852,18 @@ if ($emailSuppressed) {
                     <?php if ($emailSuppressed): ?>
                         <section id="resume-emails" class="mb-4">
                             <p>
-                                <?php if ($pausedCarCount !== null): ?>
-                                    Verification emails are currently paused for <?= htmlspecialchars((string) $pausedCarCount, ENT_QUOTES, 'UTF-8') ?> of your cars.
-                                <?php else: ?>
-                                    Verification emails are currently paused for your cars.
-                                <?php endif; ?>
+                                <?php // The section shows for an opt-out or a block. A block alone does not stop a message from an admin, so the text says all email is paused only for an opt-out. ?>
+                                <?= $ownerClearable ? 'Registry email is paused for you.' : 'Some registry email is paused for you.' ?><?php if ($pausedCarCount !== null): ?> This includes verification email for <?= htmlspecialchars((string) $pausedCarCount, ENT_QUOTES, 'UTF-8') ?> of your cars.<?php endif; ?>
                             </p>
                             <?php if ($ownerClearable): ?>
+                                <p>You opted out. The opt-out stops all registry email except account mail (password reset, sign-in, and email change). Resume to get registry email again.</p>
                                 <form name='resumeVerificationEmails' action='user_settings.php' method='post'>
                                     <input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8') ?>" />
-                                    <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume verification emails</button>
+                                    <button class="btn btn-primary" type="submit" name="resume_verification_emails" value="1">Resume registry email</button>
                                 </form>
                             <?php endif; ?>
                             <?php if ($emailBlocked): ?>
-                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not turn verification emails back on.' : '' ?> Change your email address or contact an admin.</p>
+                                <p class="mt-2 mb-0">Our email provider flagged your address.<?= $ownerClearable ? ' This button does not clear that flag.' : '' ?> The flag stops verification email and messages from other owners. Change your email address or <a href="<?= htmlspecialchars($us_url_root . 'app/owner/contact/index.php', ENT_QUOTES, 'UTF-8') ?>">contact an admin</a>.</p>
                             <?php endif; ?>
                         </section>
                     <?php endif; ?>

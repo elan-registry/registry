@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use ElanRegistry\AppConstants;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 
@@ -42,6 +43,7 @@ use ElanRegistry\Owner;
 final class CarVerificationSendService
 {
     private VerificationSettings $settings;
+    private SendPolicy $sendPolicy;
 
     /**
      * @param CarRepository $repo Car data access
@@ -50,14 +52,18 @@ final class CarVerificationSendService
      * @param VerificationSettings|null $settings Brevo readiness probe; null uses the shared
      *                                            connection. Last, so the production callers
      *                                            need not pass it.
+     * @param SendPolicy|null $sendPolicy Owner flag rules. Null builds one on `$repo`, so the
+     *                                    policy reads the same repository as the service.
      */
     public function __construct(
         private CarRepository $repo,
         private CarVerificationManager $verifier,
         private CarVerificationEmailComposer $composer,
         ?VerificationSettings $settings = null,
+        ?SendPolicy $sendPolicy = null,
     ) {
-        $this->settings = $settings ?? new VerificationSettings(dbi());
+        $this->settings   = $settings ?? new VerificationSettings(dbi());
+        $this->sendPolicy = $sendPolicy ?? new SendPolicy($repo);
     }
 
     /**
@@ -180,20 +186,15 @@ final class CarVerificationSendService
         // users-LEFT JOIN-profiles projection selects only city/state/country/
         // lat/lon/website from `profiles`, and widening that shared projection
         // (read by every owner-facing page) for one send-path guard is the
-        // larger change. The rules match findVerificationEligible(): no
-        // profiles row excludes the car, an opt-out excludes it whatever the
-        // address, and a block or bounce excludes it while its address
-        // matches the owner's current email (#2356). The send mails that
-        // email, so no other address needs a check.
-        $ownerId      = (int) $carData->user_id;
-        $emailFlags   = $this->repo->effectiveEmailFlags($ownerId);
-        $profileBlockReason = match (true) {
-            !$emailFlags->hasProfile => 'Owner has no profile.',
-            $emailFlags->optedOut    => 'Owner has opted out of verification emails.',
-            $emailFlags->blocked     => 'Owner email is blocked.',
-            $emailFlags->bounced     => 'Owner email bounced.',
-            default                  => null,
-        };
+        // larger change. SendPolicy holds the rules, and they match
+        // findVerificationEligible(): no profiles row excludes the car, an
+        // opt-out excludes it whatever the address, and a block or bounce
+        // excludes it while its address matches the owner's current email
+        // (#2356). The send mails that email, so no other address needs a check.
+        $ownerId            = (int) $carData->user_id;
+        $profileBlockReason = $this->sendPolicy->verificationReason(
+            $this->sendPolicy->forUser(MailKind::Verification, $ownerId)
+        );
         if ($profileBlockReason !== null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: owner %d for car %d cannot get mail: %s Send skipped.',
@@ -252,10 +253,9 @@ final class CarVerificationSendService
             $this->repo->rollback();
 
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                'CarVerificationSendService::sendOne: verification code rotation failed for car %d (%s): %s',
+                'CarVerificationSendService::sendOne: verification code rotation failed for car %d (%s).',
                 $carId,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
 
             return SendResult::failed($carId, 'The verification code could not be generated.');
@@ -273,15 +273,19 @@ final class CarVerificationSendService
             $this->restoreAfterFailedSend($carId, $previousVericode, $previousVericodeSentAt);
 
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                'CarVerificationSendService::sendOne: verification email could not be composed for car %d (%s): %s; '
-                . 'verification_attempts deliberately not incremented',
+                'CarVerificationSendService::sendOne: verification email could not be composed for car %d'
+                . ' (%s). verification_attempts deliberately not incremented.',
                 $carId,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
 
             return SendResult::failed($carId, 'The verification email could not be composed.');
         }
+
+        // Read before the send as well: the plugin resets its value at the start
+        // of each send, but a stale value from an earlier send must never pass
+        // for this send's ID.
+        $messageIdBefore = $this->lastMailerMessageId();
 
         $sendOk = email(
             $recipient,
@@ -322,12 +326,19 @@ final class CarVerificationSendService
 
         // Scope C — bookkeeping only. The email is already delivered to Brevo.
         //
-        // No real Brevo message id is available from the mailer, so the event row
-        // gets a locally-derived one. It is the hash of the new code rather than
-        // the code itself: er_email_events keys on brevo_message_id, and storing
-        // the plaintext code there would defeat the hashing that keeps cars.vericode
+        // The row keys on the real Brevo message ID so a later webhook event can
+        // find it. A value equal to the earlier read is stale, so it does not
+        // count. Without a usable ID the row gets a local one. That ID is the
+        // hash of the new code, not the code itself, because storing the
+        // plaintext code here would defeat the hashing that keeps cars.vericode
         // out of the database in the clear.
-        $brevoMessageId = 'local:' . hash('sha256', $newVericode);
+        $messageIdAfter = $this->lastMailerMessageId();
+        if ($messageIdAfter !== '' && $messageIdAfter !== $messageIdBefore) {
+            $brevoMessageId = $messageIdAfter;
+        } else {
+            $brevoMessageId = 'local:' . hash('sha256', $newVericode);
+            $this->logLocalMessageIdFallback($ownerId, $carId);
+        }
 
         $this->repo->beginTransaction();
 
@@ -359,11 +370,10 @@ final class CarVerificationSendService
 
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: email for car %d WAS SENT but the send could not be recorded '
-                . '(%s): %s. The er_email_events row and/or the verification_attempts increment are missing; the '
+                . '(%s). The er_email_events row and/or the verification_attempts increment are missing. The '
                 . 'send is still reported as successful so the owner is not emailed twice.',
                 $carId,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
 
             // Status stays "sent" (see the note above — the email really did
@@ -380,20 +390,23 @@ final class CarVerificationSendService
         }
 
         // $eventRowsWritten === 0 IS NOT A FAILURE SIGNAL ON ITS OWN.
-        // insertEmailEvent() uses INSERT ... ON DUPLICATE KEY UPDATE, and
-        // MySQL reports 0 affected rows for that statement in TWO different
-        // situations: nothing was written at all, and the duplicate-key row
-        // already held byte-identical values so the UPDATE changed nothing.
-        // The second case is a fully-recorded send. Escalating it to
-        // sentUnrecorded() would show the admin a "this car may be emailed
-        // again" warning for a send that is, in fact, completely recorded —
-        // so it is logged as an informational note below and nothing more.
+        // insertEmailEvent() reports 0 rows in THREE situations:
+        // - nothing was written at all,
+        // - the duplicate-key row already held the same values, so the
+        //   ON DUPLICATE KEY UPDATE changed nothing,
+        // - the car has no owner, or its owner is `noowner`, so the
+        //   INSERT ... SELECT found no row to write (#2358).
+        // The second case is a fully-recorded send. The checks above stop a
+        // send to a car with no live owner, so the third case needs an owner
+        // change between those checks and the insert. A sentUnrecorded()
+        // result would show the admin a "this car may be emailed again"
+        // warning for a send that is recorded, so the code logs a note only.
         if ($eventRowsWritten === 0) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: insertEmailEvent reported 0 rows for car %d. '
-                . 'Informational only: ON DUPLICATE KEY UPDATE reports 0 both when nothing was written '
-                . 'and when the existing row already held identical values, so this alone does not mean '
-                . 'the send went unrecorded.',
+                . 'Informational only: 0 rows means one of these: nothing was written, the existing row '
+                . 'already held identical values, or the car has no owner or a noowner owner. This alone '
+                . 'does not mean the send went unrecorded.',
                 $carId
             ));
         }
@@ -427,6 +440,42 @@ final class CarVerificationSendService
         }
 
         return SendResult::sent($carId);
+    }
+
+    /**
+     * Read the message ID of the last send from the sendinblue plugin
+     *
+     * @return string The ID, or an empty string when the plugin has none
+     */
+    private function lastMailerMessageId(): string
+    {
+        if (!function_exists('sendinblueLastMessageId')) {
+            return '';
+        }
+
+        $messageId = sendinblueLastMessageId();
+
+        return is_string($messageId) ? trim($messageId) : '';
+    }
+
+    /**
+     * Log that the sent row has a local ID instead of a Brevo message ID
+     *
+     * The email is already sent. A logging failure must not turn into a failed
+     * send, so this method swallows it.
+     */
+    private function logLocalMessageIdFallback(int $ownerId, int $carId): void
+    {
+        try {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+                'CarVerificationSendService::sendOne: no new Brevo message ID for owner %d, car %d. '
+                . 'The sent row has a local ID, so webhook events for this send cannot match it by message ID.',
+                $ownerId,
+                $carId
+            ));
+        } catch (\Throwable) {
+            // Nothing else can report this failure, and the send is done.
+        }
     }
 
     /**
@@ -473,11 +522,10 @@ final class CarVerificationSendService
         } catch (\Throwable $restoreError) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: CRITICAL - car %d has a rotated vericode but no email was '
-                . 'sent, and the restore of the previous vericode/vericode_sent_at ALSO failed (%s): %s. '
+                . 'sent, and the restore of the previous vericode/vericode_sent_at ALSO failed (%s). '
                 . 'Any verification link the owner already holds is now invalid. Manual repair required.',
                 $carId,
-                get_class($restoreError),
-                $restoreError->getMessage()
+                ExceptionLogSummary::of($restoreError)
             ));
         }
     }

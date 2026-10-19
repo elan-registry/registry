@@ -56,27 +56,39 @@ final class CarDeletionTest extends IntegrationTestCase
     }
 
     /**
-     * #1887: er_email_events has no FK cascade on car_id, so delete() must remove
-     * the rows in the same transaction.
+     * #2358: a car delete keeps the events with the user. The `sent` row of the car
+     * loses its car (`car_id` NULL) and keeps its `user_id`. Other rows stay as they are.
      */
     #[Group('fast')]
-    public function testDeleteCarRemovesEmailEventHistory(): void
+    public function testDeleteCarKeepsItsEmailEventsWithTheUser(): void
     {
-        $this->db->query(
-            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
-             VALUES (?, ?, ?, NULL, ?, NOW())',
-            [$this->testCarId, 'delete-test@example.com', 'delivered', 'del-test-msg-1']
-        );
-        $this->assertFalse($this->db->error(), 'Test setup: failed to seed er_email_events row');
+        $otherCarId = $this->createTestCar($this->testUserId, ['chassis' => 'DELB' . uniqid()]);
+        $insert = 'INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+                   VALUES (?, ?, ?, ?, NULL, ?, NOW())';
+        foreach ([
+            [$this->testCarId, 'sent', 'del-test-sent-1'],
+            [$otherCarId, 'sent', 'del-test-sent-2'],
+            [null, 'delivered', 'del-test-owner-level'],
+        ] as [$carId, $event, $messageId]) {
+            $this->db->query($insert, [$this->testUserId, $carId, 'delete-test@example.com', $event, $messageId]);
+            $this->assertFalse($this->db->error(), 'Test setup: failed to seed er_email_events row: ' . $this->db->errorString());
+        }
 
         $car = new Car($this->testCarId);
         $car->delete('Test deletion', $this->testUserId);
 
-        $remaining = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ?',
-            [$this->testCarId]
-        )->first();
-        $this->assertSame(0, (int) $remaining->cnt, 'er_email_events rows for a deleted car must be removed');
+        $rows = [];
+        foreach ($this->db->query(
+            'SELECT brevo_message_id, user_id, car_id FROM er_email_events WHERE user_id = ? ORDER BY brevo_message_id',
+            [$this->testUserId]
+        )->results() as $row) {
+            $rows[$row->brevo_message_id] = $row;
+        }
+        $this->assertCount(3, $rows, 'A car delete must delete no event row');
+        $this->assertNull($rows['del-test-sent-1']->car_id, 'The deleted car\'s row keeps no car');
+        $this->assertSame($this->testUserId, (int) $rows['del-test-sent-1']->user_id, 'user_id must stay');
+        $this->assertSame($otherCarId, (int) $rows['del-test-sent-2']->car_id, 'The owner\'s other car keeps its row');
+        $this->assertNull($rows['del-test-owner-level']->car_id);
     }
 
     /**

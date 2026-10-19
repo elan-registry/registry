@@ -2,13 +2,9 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
-use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\VerificationSettings;
-use ElanRegistry\Cron\BrevoEventReconciliationJob;
-use ElanRegistry\Cron\BrevoSuppressionSyncJob;
+use ElanRegistry\Car\VerificationTabStatus;
 use ElanRegistry\Cron\CronJobEnabledState;
-use ElanRegistry\Cron\CronJobFailureLogReader;
-use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
@@ -24,11 +20,16 @@ use ElanRegistry\Owner;
  * Included by app/admin/index.php, which has already run init.php, securePage(),
  * and established $currentUserId / $csrfToken.
  *
- * Layout, top to bottom: summary cards, Automatic Sending, the verification
- * queue, recent activity. The Status / Feature Switch panel is at the top and
- * open when any probe reports a problem or the switch is off. When all is
- * healthy it is at the bottom and closed.
+ * Layout, top to bottom: summary cards, the Status / Feature Switch panel,
+ * Automatic Sending, the verification queue, recent activity. The panel has
+ * the same place in every health state (#2364). VerificationTabStatus holds
+ * the status rules; this file only renders them.
  */
+
+// THE VERIFICATION SWITCH STOPS ONLY THE SEND BATCH. The stop for event writes
+// is in the Feature Switch help text in verification-status-panel.php (shown
+// only when the switch has no disabled reason) and in
+// docs/development/EMAIL_SYSTEM.md.
 
 // ---------------------------------------------------------------------------
 // Context variables supplied by the parent admin/index.php page. Guard here so
@@ -60,56 +61,19 @@ $activityWindowDays = $activityWindowDays ?? null;
 $vsIsEligibleView = $queueStatus === 'eligible';
 
 // ---------------------------------------------------------------------------
-// Readiness probes. VerificationSettings never throws from its probes, but a
-// construction or connection failure must not take the whole admin page down.
+// Status probes. VerificationTabStatus runs each probe in its own fault domain
+// and holds every status rule that the panel and Automatic Sending show.
 // ---------------------------------------------------------------------------
-$vsEnabled         = false;
-$vsBrevoReady      = false;
-// Admin-facing reason Brevo is not ready; null when ready or when the probe
-// block below threw before it could ask.
-$vsBrevoNotReadyReason = null;
-$vsCronReady       = false;
-$vsLastCronAt      = null;
-$vsUnmatchedCount  = 0;
-// True whenever unmatchedRecipientCount() could not produce a real value.
-// Defaults to true so a throw anywhere in the probe block below — which never
-// reaches that method's own never-throws handling — is reported as the fault
-// it is, rather than rendering the initial 0 as a reassuring "nothing
-// unmatched". Same convention as $autoSendCountsUnreadable further down.
-$vsUnmatchedUnreadable = true;
-$vsProbeFailed     = false;
-
-try {
-    $vsSettings       = new VerificationSettings(dbi());
-    $vsEnabled        = $vsSettings->isEnabled();
-    $vsBrevoNotReadyReason = $vsSettings->brevoNotReadyReason();
-    $vsBrevoReady     = $vsBrevoNotReadyReason === null;
-    $vsCronReady      = $vsSettings->cronReady();
-    $vsLastCronAt     = $vsSettings->lastCronRequestAt();
-
-    // null means the counter could not be read (query error, missing row, or a
-    // malformed/negative stored value) — the method has already logged the
-    // specific reason under VerificationConfigWarning. Leave the flag true so
-    // the render below shows "Unavailable" instead of a green zero.
-    $vsUnmatchedRead = $vsSettings->unmatchedRecipientCount();
-    if ($vsUnmatchedRead !== null) {
-        $vsUnmatchedCount = $vsUnmatchedRead;
-        $vsUnmatchedUnreadable = false;
-    }
-} catch (\Throwable $e) {
-    $vsProbeFailed = true;
-    logger($currentUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-        'Verification tab status probe failed: ' . $e->getMessage());
-}
+$vsStatus = VerificationTabStatus::read(dbi(), $currentUserId);
 
 // ---------------------------------------------------------------------------
 // Eligible-car preview (read-only). Its own fault domain: a failure here must
-// not blank out the status section above, so it neither sets nor reads
-// $vsProbeFailed.
+// not blank out the status panel.
 //
 // DELIBERATELY DOES NOT CONSULT VerificationSettings::isEnabled(). That switch
-// governs the AUTOMATIC, owner-facing verification mailing (the cron job and
-// the webhook paths). This section is a manual admin tool gated by
+// stops only the automatic send batch (see the note at the top of this file
+// and docs/development/EMAIL_SYSTEM.md, "Verification System Feature Switch").
+// This section is a manual admin tool gated by
 // securePage()/permissions alone, and its whole purpose is to let an
 // administrator send a batch by hand — including while the site-wide switch
 // is off, which is exactly when a manual send is most likely to be needed. An
@@ -136,28 +100,32 @@ try {
 $vsEligible       = [];
 $vsBatchSize      = 0;
 $vsEligibleError  = null;
+$vsSettings       = null;
+$vsEligibleLoadError = 'The list of eligible cars could not be loaded. Check the system log for details.';
 
-if (isset($vsSettings)) {
-    // Read separately from (and before) the eligible-car query below: the
-    // Automatic Sending panel renders this as the value of an editable
-    // field, and a preview-query failure must not prevent that render.
-    // (batchSize() itself already fails closed to 5 on an ordinary DB error,
-    // so this split doesn't change that outcome — it only avoids re-running
-    // batchSize()'s own error-log line a second time for the same read.)
-    try {
-        $vsBatchSize = $vsSettings->batchSize();
-    } catch (\Throwable $e) {
-        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-            'Verification tab: could not read the configured batch size: ' . $e->getMessage());
-    }
+// Read separately from (and before) the eligible-car query below: the
+// Automatic Sending panel renders this as the value of an editable
+// field, and a preview-query failure must not prevent that render.
+// (batchSize() itself already fails closed to 5 on an ordinary DB error,
+// so this split doesn't change that outcome — it only avoids re-running
+// batchSize()'s own error-log line a second time for the same read.)
+try {
+    $vsSettings  = new VerificationSettings(dbi());
+    $vsBatchSize = $vsSettings->batchSize();
+} catch (\Throwable $e) {
+    // Without a batch size the preview would run with LIMIT 0 and show
+    // "no cars are due". Clear the settings so the preview shows an error.
+    $vsSettings = null;
+    logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+        'Verification tab: could not read the configured batch size: ' . $e->getMessage());
 }
 
 // Only the Eligible queue view shows this preview, so other views skip the query.
-if ($vsIsEligibleView && $verificationSendSvc !== null && isset($vsSettings)) {
+if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null) {
     try {
         $vsEligible = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
-        $vsEligibleError = 'The list of eligible cars could not be loaded. Check the system log for details.';
+        $vsEligibleError = $vsEligibleLoadError;
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
             'Verification tab: could not load the eligible car preview [%s]: %s',
             get_class($e),
@@ -167,169 +135,13 @@ if ($vsIsEligibleView && $verificationSendSvc !== null && isset($vsSettings)) {
 } elseif ($vsIsEligibleView) {
     // Without the send service or the settings there is no preview. Say so,
     // so that an empty list does not read as "no cars are due".
-    $vsEligibleError = 'The list of eligible cars could not be loaded. Check the system log for details.';
+    $vsEligibleError = $vsEligibleLoadError;
 }
 
-// ---------------------------------------------------------------------------
-// Reconciliation status probe. This is a distinct fault domain from the
-// VerificationSettings probe above — kept in its own try/catch so a failure
-// here is logged and rendered independently, not folded into $vsProbeFailed.
-// ---------------------------------------------------------------------------
-$reconciliationState = CronJobEnabledState::UNREADABLE;
-$reconciliationLastRunAt = null;
-$reconciliationLastFailureAt = null;
-
-try {
-    $cronJobRunsReader = new CronJobRunsReader(dbi());
-    $reconciliationStatus = $cronJobRunsReader->status(BrevoEventReconciliationJob::JOB_NAME);
-    $reconciliationState = $reconciliationStatus['state'];
-    $reconciliationLastRunAt = $reconciliationStatus['lastRunAt'];
-    $reconciliationLastFailureAt = $reconciliationStatus['lastFailureAt'];
-} catch (\Throwable $e) {
-    logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-        'Reconciliation status probe failed: ' . $e->getMessage());
-}
-
-$reconciliationBadge = CronJobRunsReader::badgeFor(
-    $reconciliationState,
-    $reconciliationLastRunAt,
-    $reconciliationLastFailureAt
-);
-$reconciliationBadgeClass = $reconciliationBadge['badgeClass'];
-$reconciliationBadgeIcon = $reconciliationBadge['icon'];
-$reconciliationBadgeText = $reconciliationBadge['text'];
-
-// ---------------------------------------------------------------------------
-// Suppression sync status probe. Its own fault domain again, for the same
-// reason as the reconciliation probe above: this is a different job's row and
-// a failure to read it must not blank out the reconciliation section above.
-//
-// $cronJobRunsReader is reused when the reconciliation probe above managed to
-// construct it; a separate construction here would be a second connection for
-// the same never-throwing reader.
-// ---------------------------------------------------------------------------
-$suppressionSyncState = CronJobEnabledState::UNREADABLE;
-$suppressionSyncLastRunAt = null;
-$suppressionSyncLastFailureAt = null;
-
-try {
-    $suppressionSyncReader = $cronJobRunsReader ?? new CronJobRunsReader(dbi());
-    $suppressionSyncStatus = $suppressionSyncReader->status(BrevoSuppressionSyncJob::JOB_NAME);
-    $suppressionSyncState = $suppressionSyncStatus['state'];
-    $suppressionSyncLastRunAt = $suppressionSyncStatus['lastRunAt'];
-    $suppressionSyncLastFailureAt = $suppressionSyncStatus['lastFailureAt'];
-} catch (\Throwable $e) {
-    logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-        'Suppression sync status probe failed: ' . $e->getMessage());
-}
-
-$suppressionSyncBadge = CronJobRunsReader::badgeFor(
-    $suppressionSyncState,
-    $suppressionSyncLastRunAt,
-    $suppressionSyncLastFailureAt
-);
-$suppressionSyncBadgeClass = $suppressionSyncBadge['badgeClass'];
-$suppressionSyncBadgeIcon = $suppressionSyncBadge['icon'];
-$suppressionSyncBadgeText = $suppressionSyncBadge['text'];
-
-// ---------------------------------------------------------------------------
-// Automatic-sending status probe (#1885). Its own fault domain again, for the
-// same reason as the reconciliation probe above: this is a different job's row
-// and a failure to read it must not blank out either of the sections above.
-//
-// $cronJobRunsReader is reused when the reconciliation probe above managed to
-// construct it; a separate construction here would be a second connection for
-// the same never-throwing reader.
-// ---------------------------------------------------------------------------
-$autoSendState = CronJobEnabledState::UNREADABLE;
-$autoSendLastRunAt = null;
-$autoSendLastFailureAt = null;
-/** @var array{sent: int, skipped: int, failed: int}|null $autoSendCounts */
-$autoSendCounts = null;
-// True only when the counts read itself failed. A null $autoSendCounts with
-// this false is the routine "job has never run" case; with it true the counts
-// could not be confirmed and must not be rendered as reassurance. Defaults to
-// true so that a throw out of the probe below — which never reaches the
-// reader's own never-throws handling — is reported as the fault it is.
-$autoSendCountsUnreadable = true;
-
-try {
-    $autoSendReader = $cronJobRunsReader ?? new CronJobRunsReader(dbi());
-    $autoSendStatus = $autoSendReader->status(SendVerificationBatchJob::JOB_NAME);
-    $autoSendState = $autoSendStatus['state'];
-    $autoSendLastRunAt = $autoSendStatus['lastRunAt'];
-    $autoSendLastFailureAt = $autoSendStatus['lastFailureAt'];
-    $autoSendOutcome = $autoSendReader->lastOutcomeCounts(SendVerificationBatchJob::JOB_NAME);
-    $autoSendCounts = $autoSendOutcome['counts'];
-    $autoSendCountsUnreadable = $autoSendOutcome['unreadable'];
-} catch (\Throwable $e) {
-    logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-        'Automatic verification send status probe failed: ' . $e->getMessage());
-}
-
-$autoSendBadge = CronJobRunsReader::badgeFor($autoSendState, $autoSendLastRunAt, $autoSendLastFailureAt);
-$autoSendPaused = $autoSendState === CronJobEnabledState::DISABLED;
-
-// True when the most recent claimed run is the one that threw. The counts
-// below are written only at the END of a successful execute(), so in this
-// state they are the previous successful run's numbers standing next to a
-// "last ran" timestamp minutes old — the precise combination that reads as a
-// clean run that never happened. The render branches on this to say so rather
-// than silently showing stale figures.
-$autoSendLastRunFailed = $autoSendState === CronJobEnabledState::ENABLED
-    && $autoSendLastFailureAt !== null
-    && ($autoSendLastRunAt === null || $autoSendLastFailureAt >= $autoSendLastRunAt);
-
-// ---------------------------------------------------------------------------
-// Cron failure log summary. Its own fault domain once more, and its own
-// never-throwing reader: LOG_CATEGORY_CRON_JOB_FAILURE was written from five
-// places across this subsystem and read from none, so several of its own
-// messages told an operator to "check the system log" with nothing on this
-// page pointing at it. The per-job badges above report only each job's most
-// recent run; this reports the fault channel as a whole, including faults from
-// jobs whose bookkeeping row could not be read at all.
-//
-// A null count means the summary itself could not be read — rendered as an
-// explicit "unavailable", never as zero. Defaults to null so a throw here,
-// which never reaches the reader's own handling, reports the fault it is.
-// ---------------------------------------------------------------------------
-/** @var int|null $cronFailureCount */
-$cronFailureCount = null;
-/** @var list<array{loggedAt: string, message: string}> $cronFailureRecent */
-$cronFailureRecent = [];
-
-try {
-    $cronFailureSummary = (new CronJobFailureLogReader(dbi()))->recentFailures();
-    $cronFailureCount = $cronFailureSummary['count'];
-    $cronFailureRecent = $cronFailureSummary['recent'];
-} catch (\Throwable $e) {
-    logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-        'Cron failure log summary probe failed: ' . $e->getMessage());
-}
-
-// The button submits the state it wants rather than a blind flip — see the
-// verification_toggle_cron handler in index.php. Anything that is not
-// positively ENABLED (paused, missing row, unreadable) offers Resume: that is
-// the action which can recover the row's state, and it is idempotent.
-$autoSendDesiredState = $autoSendState === CronJobEnabledState::ENABLED ? 'disable' : 'enable';
 
 // Admins may toggle; editors see the same status read-only.
 $vsCanToggle = hasPerm([2], $currentUserId);
 
-// Turning ON is blocked while Brevo is not ready. Turning OFF is never
-// blocked — an admin must always be able to switch verification off mid-incident.
-$vsToggleDisabled = VerificationSettings::toggleShouldBeDisabled($vsCanToggle, $vsEnabled, $vsBrevoReady);
-// A null reason with Brevo not ready means the probe block above threw.
-$vsBrevoReasonText = $vsBrevoNotReadyReason ?? 'The Brevo status could not be checked.';
-
-$vsDisabledReason = '';
-if (!$vsCanToggle) {
-    $vsDisabledReason = 'Only administrators can change this setting.';
-} elseif ($vsToggleDisabled) {
-    $vsDisabledReason = 'Verification cannot be enabled until Brevo is ready. '
-        . $vsBrevoReasonText
-        . ' Fix this, then reload this page.';
-}
 
 if (!function_exists('vsEsc')) {
     /**
@@ -355,78 +167,15 @@ if (!function_exists('vsWindowLabel')) {
     }
 }
 
-if (!function_exists('vsStatusChip')) {
-    /**
-     * Give the Status chip for one queue row
-     *
-     * The owner's profile state comes first, because it stops all
-     * verification email to the owner (#2101): no profiles row, then a
-     * block, then an opt-out. Otherwise the chip shows the car's latest
-     * email event, as chosen by
-     * CarRepository::findLatestEmailEventPerCarWithPrecedence().
-     *
-     * Until #2361 separates the states, a block shows "Brevo complaint"
-     * with the stored cause as its reason.
-     *
-     * @param object|null $event The chip event row, or null if the car has none
-     * @param bool $hasProfile False when the owner has no profiles row
-     * @param bool $blocked True when the owner's `profiles.email_blocked` applies to the current address
-     * @param string|null $blockedCause The owner's `profiles.email_blocked_cause`, or null when unknown
-     * @param bool $optedOut True when the owner's `profiles.email_opted_out` is set
-     * @return array{kind: string, label: string, class: string, reason: string}
-     *         `kind` is '' when there is no event to show
-     */
-    function vsStatusChip(
-        ?object $event,
-        bool $hasProfile = true,
-        bool $blocked = false,
-        ?string $blockedCause = null,
-        bool $optedOut = false
-    ): array {
-        $name   = isset($event->event) ? (string) $event->event : null;
-        $reason = trim((string) ($event->reason ?? ''));
-
-        $optedOutChip = ['kind' => 'opted_out', 'label' => 'Opted out', 'class' => 'text-bg-secondary', 'reason' => ''];
-
-        if (!$hasProfile) {
-            return ['kind' => 'no_profile', 'label' => 'No profile', 'class' => 'text-bg-warning', 'reason' => ''];
-        }
-        if ($blocked) {
-            return ['kind' => 'complaint', 'label' => 'Brevo complaint', 'class' => 'text-bg-danger',
-                    'reason' => $blockedCause ?? 'cause unknown'];
-        }
-        if ($optedOut) {
-            return $optedOutChip;
-        }
-
-        if ($name === null) {
-            return ['kind' => '', 'label' => '', 'class' => '', 'reason' => ''];
-        }
-        if (in_array($name, EmailEventApplier::HARD_BOUNCE_EVENTS, true)) {
-            return ['kind' => 'bounced', 'label' => 'Bounced', 'class' => 'text-bg-danger', 'reason' => $reason];
-        }
-
-        return match ($name) {
-            'sent'         => ['kind' => 'sent', 'label' => 'Sent', 'class' => 'text-bg-secondary', 'reason' => ''],
-            // An open or a click proves the message arrived.
-            'delivered', 'unique_opened', 'opened', 'click'
-                           => ['kind' => 'delivered', 'label' => 'Delivered', 'class' => 'text-bg-success', 'reason' => ''],
-            'soft_bounce'  => ['kind' => 'soft_bounce', 'label' => 'Soft bounce', 'class' => 'text-bg-warning', 'reason' => $reason],
-            'spam'         => ['kind' => 'spam', 'label' => 'Spam complaint', 'class' => 'text-bg-danger', 'reason' => ''],
-            'unsubscribed' => $optedOutChip,
-            // Brevo can add event names. Show the stored name, not a guess.
-            default        => ['kind' => 'other', 'label' => ucfirst(str_replace('_', ' ', $name)),
-                               'class' => 'text-bg-light', 'reason' => $reason],
-        };
-    }
-}
-
 // ---------------------------------------------------------------------------
-// Dashboard summary counts. Their own fault domain: a failure here shows
-// "unavailable" on the cards and pills, and the sections below still render.
-// $vsRepo is reused by the probes below when this construction succeeds.
+// Dashboard summary counts. Their own fault domain: a failure here shows an
+// em dash on the cards and leaves the count off the pills. The sections below
+// still render.
 // ---------------------------------------------------------------------------
-/** @var array{all: int, eligible: int, pending: int, bounced: int, suppressed: int, verified: int, sold: int}|null $vsSummary */
+/**
+ * @var array{all: int, eligible: int, pending: int, bounced: int, blocked: int, opted_out: int,
+ *     verified: int, sold: int, bounced_owners: int, blocked_owners: int, opted_out_owners: int}|null $vsSummary
+ */
 $vsSummary = null;
 $vsRepo    = $verificationRepo ?? new CarRepository(dbi());
 
@@ -470,7 +219,7 @@ if ($vsIsEligibleView) {
 // Status chip events for the queue rows. Their own fault domain: a failure
 // shows "Unavailable" in the Status column, never an empty chip that reads as
 // "no events". Defaults to unreadable when there are rows, for the same
-// reason as $autoSendCountsUnreadable below.
+// reason as the unreadable auto-send counts.
 // ---------------------------------------------------------------------------
 $vsQueueCarIds = [];
 foreach ($vsQueueRows as $vsQueueRow) {
@@ -515,28 +264,6 @@ try {
     ));
 }
 
-// ---------------------------------------------------------------------------
-// Next-eligible time for automatic sending: the guard declines a run until
-// GUARD_INTERVAL_HOURS have passed since the last claimed run. The real send
-// time is the first cron heartbeat after that.
-// ---------------------------------------------------------------------------
-$autoSendNextEligibleAt = $autoSendLastRunAt?->add(
-    new \DateInterval('PT' . SendVerificationBatchJob::GUARD_INTERVAL_HOURS . 'H')
-);
-
-// ---------------------------------------------------------------------------
-// One healthy flag for the Status panel's place on the page, from the probe
-// results above. An unreadable probe is not healthy: an unreadable unmatched
-// counter keeps its initial 0, and an unreadable failure log is null.
-// ---------------------------------------------------------------------------
-$vsAllHealthy = !$vsProbeFailed
-    && $vsEnabled
-    && $vsBrevoReady
-    && $vsCronReady
-    && !$vsUnmatchedUnreadable
-    && $vsUnmatchedCount === 0
-    && $cronFailureCount === 0;
-
 // Current URL state, so that each link and form keeps the other settings.
 $vsUrlState = [
     'tab'             => 'verification',
@@ -553,7 +280,8 @@ $vsStatusLabels = [
     'eligible'   => 'Eligible',
     'pending'    => 'Pending',
     'bounced'    => 'Bounced',
-    'suppressed' => 'Suppressed',
+    'blocked'    => 'Blocked',
+    'opted_out'  => 'Opted out',
     'verified'   => 'Verified',
     'sold'       => 'Sold',
 ];
@@ -571,7 +299,7 @@ $vsNow = new \DateTimeImmutable();
     </div>
 </div>
 
-<?php if ($vsProbeFailed) { ?>
+<?php if ($vsStatus->probeFailed()) { ?>
     <div class="alert alert-danger" role="alert">
         <i class="fas fa-exclamation-circle"></i>
         Verification status could not be read. Check the system log for
@@ -579,246 +307,29 @@ $vsNow = new \DateTimeImmutable();
     </div>
 <?php } ?>
 
-<?php
-// The Status panel is rendered once into a buffer, then output at the top or
-// the bottom of the tab. See $vsAllHealthy.
-ob_start();
-?>
-<details class="card registry-card mb-4" id="verificationStatusPanel"<?= $vsAllHealthy ? '' : ' open' ?>>
-    <summary class="card-header card-header-er-l2">
-        <h5 class="d-inline mb-0 card-header-er-l2-text">
-            <i class="fas fa-heartbeat"></i> System Status &amp; Feature Switch
-        </h5>
-        <?php if ($vsAllHealthy) { ?>
-        <span class="badge text-bg-success ms-2"><i class="fas fa-check-circle"></i> All healthy</span>
-        <?php } else { ?>
-        <span class="badge text-bg-warning ms-2"><i class="fas fa-exclamation-triangle"></i> Needs attention</span>
-        <?php } ?>
-    </summary>
-    <div class="card-body">
-
-        <!-- Status -->
-        <h6 class="text-primary mb-3"><i class="fas fa-heartbeat"></i> Status</h6>
-        <dl class="row mb-4">
-
-            <dt class="col-sm-4">Brevo ready</dt>
-            <dd class="col-sm-8">
-                <?php if (!$vsEnabled && !$vsBrevoReady) { ?>
-                    <span class="text-muted">
-                        <i class="fas fa-circle"></i> Not checked (switch is off)
-                    </span>
-                <?php } elseif ($vsBrevoReady) { ?>
-                    <span class="badge text-bg-success">
-                        <i class="fas fa-check-circle"></i> Ready
-                    </span>
-                <?php } else { ?>
-                    <span class="badge text-bg-danger">
-                        <i class="fas fa-exclamation-circle"></i> Not ready
-                    </span>
-                    <small class="text-muted ms-1">
-                        <?= vsEsc($vsBrevoReasonText) ?>
-                        <?php if ($vsBrevoNotReadyReason === null) { ?>
-                            Check the system log for
-                            <strong>VerificationConfigWarning</strong>.
-                        <?php } ?>
-                    </small>
-                <?php } ?>
-            </dd>
-
-            <dt class="col-sm-4">Cron running</dt>
-            <dd class="col-sm-8">
-                <?php if ($vsCronReady) { ?>
-                    <span class="badge text-bg-success">
-                        <i class="fas fa-check-circle"></i> Running
-                    </span>
-                    <?php if ($vsLastCronAt !== null) { ?>
-                        <small class="text-muted ms-1">
-                            <i class="fas fa-clock"></i>
-                            last seen <?= htmlspecialchars($vsLastCronAt->format('M j, Y g:i A'), ENT_QUOTES, 'UTF-8') ?>
-                        </small>
-                    <?php } ?>
-                <?php } else { ?>
-                    <span class="badge text-bg-warning">
-                        <i class="fas fa-exclamation-triangle"></i> Stalled
-                    </span>
-                    <small class="text-muted ms-1">
-                        <?php if ($vsLastCronAt !== null) { ?>
-                            <i class="fas fa-clock"></i>
-                            last seen <?= htmlspecialchars($vsLastCronAt->format('M j, Y g:i A'), ENT_QUOTES, 'UTF-8') ?>
-                        <?php } else { ?>
-                            no cron request has ever been logged
-                        <?php } ?>
-                    </small>
-                <?php } ?>
-            </dd>
-
-            <dt class="col-sm-4">Webhook receiver</dt>
-            <dd class="col-sm-8">
-                <span class="badge text-bg-success">
-                    <i class="fas fa-check-circle"></i> Live
-                </span>
-                <small class="text-muted ms-1">
-                    Bounce and suppression events from Brevo are recorded in real time
-                    (<code>app/api/webhooks/brevo.php</code>); the nightly reconciliation
-                    job below catches anything the webhook missed.
-                </small>
-            </dd>
-
-            <dt class="col-sm-4">Unmatched recipients</dt>
-            <dd class="col-sm-8">
-                <?php if ($vsUnmatchedUnreadable) { ?>
-                    <!-- The counter read failed: an infrastructure or data
-                         fault, not a genuinely quiet system. Rendered as a
-                         danger badge — never the green zero a healthy read
-                         shows — since a rising count is this counter's whole
-                         signal and "unreadable" must not look like "healthy". -->
-                    <span class="badge text-bg-danger">
-                        <i class="fas fa-exclamation-circle"></i>
-                        Unavailable
-                    </span>
-                    <small class="text-muted ms-1">
-                        The unmatched-recipient counter could not be read. Check the system
-                        log for <strong>VerificationConfigWarning</strong> entries.
-                    </small>
-                <?php } else { ?>
-                <span class="badge <?= $vsUnmatchedCount > 0 ? 'text-bg-warning' : 'text-bg-success' ?>">
-                    <?= htmlspecialchars((string) $vsUnmatchedCount, ENT_QUOTES, 'UTF-8') ?>
-                </span>
-                <small class="text-muted ms-1">
-                    Brevo events and suppressed contacts whose email matched no owner's
-                    account email, across the webhook receiver, nightly reconciliation,
-                    and suppression sync. A rising count usually means an owner changed
-                    their account email after mail went to the old address.
-                </small>
-                <?php } ?>
-            </dd>
-
-            <dt class="col-sm-4">Last reconciliation run</dt>
-            <dd class="col-sm-8">
-                <span class="<?= htmlspecialchars($reconciliationBadgeClass, ENT_QUOTES, 'UTF-8') ?>">
-                    <i class="fas <?= htmlspecialchars($reconciliationBadgeIcon, ENT_QUOTES, 'UTF-8') ?>"></i>
-                    <?= htmlspecialchars($reconciliationBadgeText, ENT_QUOTES, 'UTF-8') ?>
-                </span>
-                <?php if ($reconciliationLastRunAt !== null) { ?>
-                    <small class="text-muted ms-1">
-                        <i class="fas fa-clock"></i>
-                        last ran
-                        <?= htmlspecialchars($reconciliationLastRunAt->format('M j, Y g:i A'), ENT_QUOTES, 'UTF-8') ?>
-                    </small>
-                <?php } ?>
-            </dd>
-
-            <dt class="col-sm-4">Last suppression sync run</dt>
-            <dd class="col-sm-8">
-                <span class="<?= htmlspecialchars($suppressionSyncBadgeClass, ENT_QUOTES, 'UTF-8') ?>">
-                    <i class="fas <?= htmlspecialchars($suppressionSyncBadgeIcon, ENT_QUOTES, 'UTF-8') ?>"></i>
-                    <?= htmlspecialchars($suppressionSyncBadgeText, ENT_QUOTES, 'UTF-8') ?>
-                </span>
-                <?php if ($suppressionSyncLastRunAt !== null) { ?>
-                    <small class="text-muted ms-1">
-                        <i class="fas fa-clock"></i>
-                        last ran
-                        <?= htmlspecialchars($suppressionSyncLastRunAt->format('M j, Y g:i A'), ENT_QUOTES, 'UTF-8') ?>
-                    </small>
-                <?php } ?>
-            </dd>
-
-            <dt class="col-sm-4">Cron job failures</dt>
-            <dd class="col-sm-8">
-                <?php if ($cronFailureCount === null) { ?>
-                    <!-- The summary read failed. Rendered as a danger badge,
-                         never as a zero: this is the fault channel itself, and
-                         "no failures" is the one reading that tells an admin
-                         to stop looking. -->
-                    <span class="badge text-bg-danger">
-                        <i class="fas fa-exclamation-circle"></i>
-                        Unavailable
-                    </span>
-                    <small class="text-muted ms-1">
-                        The cron failure log could not be read. Check the system log for
-                        <strong>CronJobFailure</strong> entries directly.
-                    </small>
-                <?php } else { ?>
-                    <span class="badge <?= $cronFailureCount > 0 ? 'text-bg-danger' : 'text-bg-success' ?>">
-                        <?= vsEsc((string) $cronFailureCount) ?>
-                    </span>
-                    <small class="text-muted ms-1">
-                        <strong>CronJobFailure</strong> log entries in the last
-                        <?= vsEsc((string) CronJobFailureLogReader::LOOKBACK_DAYS) ?> days, across every
-                        verification cron job. A repeating count here means an unattended job is
-                        failing every night — the per-job badges above only report each job's most
-                        recent run.
-                    </small>
-                    <?php if ($cronFailureRecent !== []) { ?>
-                    <!-- The count alone says only that something is wrong. The
-                         most recent few entries are enough to tell one broken
-                         job from all of them before going to the full log. -->
-                    <ul class="list-unstyled small mt-2 mb-0">
-                        <?php foreach ($cronFailureRecent as $cronFailureEntry) { ?>
-                        <li class="text-muted">
-                            <i class="fas fa-triangle-exclamation text-danger"></i>
-                            <span class="text-nowrap"><?= vsEsc($cronFailureEntry['loggedAt']) ?></span>
-                            &mdash; <?= vsEsc($cronFailureEntry['message']) ?>
-                        </li>
-                        <?php } ?>
-                    </ul>
-                    <?php } ?>
-                <?php } ?>
-            </dd>
-
-        </dl>
-
-        <!-- Toggle control -->
-        <h6 class="text-primary mb-3"><i class="fas fa-toggle-on"></i> Feature Switch</h6>
-
-        <div id="verificationToggleFeedback" class="mb-2" role="alert" aria-live="polite"></div>
-
-        <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox"
-                   id="verificationEnabledSwitch"
-                   <?= $vsEnabled ? 'checked' : '' ?>
-                   <?= $vsToggleDisabled ? 'disabled' : '' ?>
-                   <?= $vsDisabledReason !== '' ? 'aria-describedby="verificationToggleHelp"' : '' ?>>
-            <label class="form-check-label" for="verificationEnabledSwitch">
-                Verification system enabled
-            </label>
-        </div>
-
-        <?php if ($vsDisabledReason !== '') { ?>
-            <small id="verificationToggleHelp" class="form-text text-muted d-block mt-1">
-                <i class="fas fa-info-circle"></i>
-                <?= htmlspecialchars($vsDisabledReason, ENT_QUOTES, 'UTF-8') ?>
-            </small>
-        <?php } else { ?>
-            <small class="form-text text-muted d-block mt-1">
-                <i class="fas fa-info-circle"></i>
-                Turning this off hides all verification UI and stops reminder emails, the inbound webhook,
-                and both cron jobs (reconciliation and suppression sync) from writing bounce or suppression
-                state to car records. It can always be turned off, even while Brevo or cron are unavailable.
-            </small>
-        <?php } ?>
-
-    </div>
-</details>
-<?php
-$vsStatusPanelHtml = (string) ob_get_clean();
-
-if (!$vsAllHealthy) {
-    echo $vsStatusPanelHtml;
-}
-?>
-
-<!-- Summary cards. Verified and Sold use the queue Window; the others are current state. -->
+<!-- Summary cards. Verified and Sold count cars in the queue Window. Eligible and
+     Pending count cars now. Bounced, Blocked and Opted out count owners now, so an
+     owner with several cars counts once (#2361). -->
 <div class="row g-3 mb-4" id="verificationSummaryCards">
-    <?php foreach (['eligible', 'pending', 'verified', 'sold', 'bounced', 'suppressed'] as $vsSummaryKey) { ?>
-    <div class="col-6 col-md-4 col-xl-2">
+    <?php foreach ([
+        'eligible'  => 'eligible',
+        'pending'   => 'pending',
+        'verified'  => 'verified',
+        'sold'      => 'sold',
+        'bounced'   => 'bounced_owners',
+        'blocked'   => 'blocked_owners',
+        'opted_out' => 'opted_out_owners',
+    ] as $vsSummaryKey => $vsSummaryCountKey) { ?>
+    <div class="col-6 col-md-3 col-xl">
         <div class="er-stat-tile h-100" data-summary="<?= vsEsc($vsSummaryKey) ?>">
             <div class="er-stat-number">
-                <?= $vsSummary !== null ? vsEsc(number_format($vsSummary[$vsSummaryKey])) : '&mdash;' ?>
+                <?= $vsSummary !== null ? vsEsc(number_format($vsSummary[$vsSummaryCountKey])) : '&mdash;' ?>
             </div>
             <div class="er-stat-label"><?= vsEsc($vsStatusLabels[$vsSummaryKey]) ?></div>
             <?php if ($vsSummaryKey === 'verified' || $vsSummaryKey === 'sold') { ?>
             <div class="er-stat-label"><?= vsEsc(vsWindowLabel($queueWindowDays)) ?></div>
+            <?php } elseif ($vsSummaryKey !== $vsSummaryCountKey) { ?>
+            <div class="er-stat-label">owners</div>
             <?php } ?>
         </div>
     </div>
@@ -833,8 +344,16 @@ if (!$vsAllHealthy) {
     </div>
 <?php } ?>
 
+<?php require __DIR__ . '/verification-status-panel.php'; ?>
+
 <!-- Automatic Sending (#1885) -->
-<div class="card registry-card mb-4<?= $autoSendPaused ? ' border-warning' : '' ?>">
+<?php
+$autoSendBadge     = $vsStatus->autoSendBadge();
+$autoSendLastRunAt = $vsStatus->autoSendLastRunAt();
+$autoSendNextAt    = $vsStatus->autoSendNextEligibleAt();
+$autoSendCounts    = $vsStatus->autoSendCounts();
+?>
+<div class="card registry-card mb-4<?= $vsStatus->autoSendPaused() ? ' border-warning' : '' ?>">
     <div class="card-header card-header-er-l2">
         <h5 class="mb-0 card-header-er-l2-text">
             <i class="fas fa-robot"></i> Automatic Sending
@@ -842,7 +361,7 @@ if (!$vsAllHealthy) {
     </div>
     <div class="card-body">
 
-        <?php if ($autoSendPaused) { ?>
+        <?php if ($vsStatus->autoSendPaused()) { ?>
         <!-- The badge alone is easy to miss on a page this long; a paused batch
              sender is a state an admin must not scroll past, so the card also
              carries a warning border and this banner until it is resumed. -->
@@ -871,21 +390,21 @@ if (!$vsAllHealthy) {
                 <?php if ($autoSendLastRunAt !== null) { ?>
                     <small class="text-muted ms-1">
                         <i class="fas fa-clock"></i>
-                        last ran <?= vsEsc($autoSendLastRunAt->format('M j, Y g:i A')) ?>
+                        last ran <?= vsEsc($autoSendLastRunAt->format(VerificationTabStatus::TIME_FORMAT)) ?>
                     </small>
                 <?php } ?>
             </dd>
 
             <dt class="col-sm-4">Next eligible</dt>
             <dd class="col-sm-8">
-                <?php if ($autoSendPaused) { ?>
+                <?php if ($vsStatus->autoSendPaused()) { ?>
                     <span class="text-muted">Not scheduled while automatic sending is paused</span>
-                <?php } elseif ($autoSendState !== CronJobEnabledState::ENABLED) { ?>
+                <?php } elseif ($vsStatus->autoSendState() !== CronJobEnabledState::ENABLED) { ?>
                     <span class="text-muted">Unknown &mdash; the job status could not be read</span>
-                <?php } elseif ($autoSendNextEligibleAt === null) { ?>
+                <?php } elseif ($autoSendNextAt === null) { ?>
                     On the next cron heartbeat (no automatic run yet)
                 <?php } else { ?>
-                    After <?= vsEsc($autoSendNextEligibleAt->format('M j, Y g:i A')) ?>
+                    After <?= vsEsc($autoSendNextAt->format(VerificationTabStatus::TIME_FORMAT)) ?>
                 <?php } ?>
                 <small class="form-text text-muted d-block mt-1">
                     <i class="fas fa-info-circle"></i>
@@ -897,7 +416,7 @@ if (!$vsAllHealthy) {
 
             <dt class="col-sm-4">Last run results</dt>
             <dd class="col-sm-8">
-                <?php if ($autoSendCountsUnreadable) { ?>
+                <?php if ($vsStatus->autoSendCountsUnreadable()) { ?>
                     <!-- The counts read failed (see the system log): an
                          infrastructure fault, not a job that has never run.
                          Rendered as the same danger badge badgeFor() uses for
@@ -913,7 +432,7 @@ if (!$vsAllHealthy) {
                     <?= vsEsc((string) $autoSendCounts['sent']) ?> sent,
                     <?= vsEsc((string) $autoSendCounts['skipped']) ?> skipped,
                     <?= vsEsc((string) $autoSendCounts['failed']) ?> failed
-                    <?php if ($autoSendLastRunFailed) { ?>
+                    <?php if ($vsStatus->autoSendLastRunFailed()) { ?>
                     <!-- These three counts are written only at the end of a
                          successful execute(), so when the most recent claimed
                          run threw they are the PREVIOUS run's numbers — sitting
@@ -975,8 +494,8 @@ if (!$vsAllHealthy) {
         <form action="index.php?tab=verification" method="POST">
             <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
             <input type="hidden" name="command" value="verification_toggle_cron">
-            <input type="hidden" name="desired_state" value="<?= vsEsc($autoSendDesiredState) ?>">
-            <?php if ($autoSendDesiredState === 'disable') { ?>
+            <input type="hidden" name="desired_state" value="<?= vsEsc($vsStatus->autoSendDesiredState()) ?>">
+            <?php if ($vsStatus->autoSendDesiredState() === 'disable') { ?>
             <button type="submit" class="btn btn-outline-warning">
                 <i class="fas fa-pause"></i> Pause automatic sending
             </button>
@@ -1173,7 +692,7 @@ if (!$vsAllHealthy) {
         <p class="text-muted">Showing <strong>Pending</strong>, longest-waiting first.</p>
 <?php } else { ?>
         <p class="text-muted">
-            Showing <strong><?= vsEsc($vsStatusLabels[$queueStatus] ?? $queueStatus) ?></strong>,
+            Showing <strong><?= vsEsc($vsStatusLabels[$queueStatus] ?? $vsStatusLabels['all']) ?></strong>,
             up to <?= vsEsc((string) $queueShowLimit) ?> rows.
         </p>
 <?php } ?>
@@ -1302,7 +821,7 @@ if (!$vsAllHealthy) {
                         $queueBlockedCause = $queueBlocked && isset($queueCar->email_blocked_cause)
                             ? (string) $queueCar->email_blocked_cause : null;
 
-                        $queueChip = vsStatusChip(
+                        $queueChip = VerificationTabStatus::chip(
                             $vsChipEvents[$queueCarId] ?? null,
                             $queueHasProfile,
                             $queueBlocked,
@@ -1317,9 +836,9 @@ if (!$vsAllHealthy) {
                             $queueNoActionTitle = 'This owner has no profile row. Fix the profile before you change email state.';
                         }
 
-                        // One action per row, from the owner's state. Suppressed comes first:
-                        // a suppressed owner who is not bounced needs Clear Suppression, not
-                        // Mark Bounced. A single soft bounce keeps the car Pending (Brevo
+                        // One action per row, from the owner's state. A blocked or opted-out
+                        // owner comes first: one who is not bounced needs Clear Suppression,
+                        // not Mark Bounced. A single soft bounce keeps the car Pending (Brevo
                         // escalates repeated soft bounces), so Mark Bounced is disabled there.
                         if ($queueSuppressed) {
                             $queueAction = ['command' => 'clear_suppression', 'label' => 'Clear Suppression',
@@ -1462,7 +981,7 @@ if (!$vsAllHealthy) {
             <li class="mb-1">
                 <span class="text-nowrap text-muted">
                     <?= $vsActivityAt !== false
-                        ? vsEsc($vsActivityAt->format('M j, Y g:i A'))
+                        ? vsEsc($vsActivityAt->format(VerificationTabStatus::TIME_FORMAT))
                         : vsEsc($vsActivityRow->timestamp ?? '') ?>
                 </span>
                 &mdash; <strong><?= vsEsc($vsActivityRow->operation ?? '') ?></strong>
@@ -1474,11 +993,5 @@ if (!$vsAllHealthy) {
 
     </div>
 </div>
-
-<?php
-if ($vsAllHealthy) {
-    echo $vsStatusPanelHtml;
-}
-?>
 
 <script src="<?= $us_url_root ?>app/admin/assets/js/tab-verification.min.js?v=<?= ASSET_VERSION ?>"></script>

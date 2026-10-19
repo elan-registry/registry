@@ -25,17 +25,26 @@ use ElanRegistry\DatabaseInterface;
  *  - BOUNCED_USERNAME / BOUNCED car: profile email_bounced = 1, otherwise
  *    pending — lands in the Bounced pill.
  *  - SUPPRESSED_USERNAME / SUPPRESSED car: profile email_opted_out = 1 —
- *    lands in the Suppressed pill, chip "Opted out".
+ *    lands in the Opted out pill, chip "Opted out".
  *  - BLOCKED_USERNAME / BLOCKED car: profile email_blocked = 1 with cause
- *    blocklist — lands in the Suppressed pill, chip "Brevo complaint" (the
- *    chip says complaint for every cause until #2361).
+ *    blocklist — lands in the Blocked pill, chip "Blocked".
  *  - NO_PROFILE_USERNAME / NO_PROFILE car: pending, and the owner has no
  *    profiles row — chip "No profile", with no action button.
  *  - SOFT_BOUNCE_USERNAME / SOFT_BOUNCE car: pending (no bounce flag),
- *    with one `soft_bounce` er_email_events row after its `sent` row, so
- *    its Status chip reads "Soft bounce" and its Mark Bounced button must
+ *    with one `soft_bounce` er_email_events row after its `sent` row, and an
+ *    owner-level `delivered` row with car_id NULL AFTER that soft bounce. A
+ *    `delivered` row with no car is for mail that matched no verification
+ *    send (a password reset, say), so it must not count (#2359): its Status
+ *    chip reads "Soft bounce", not "Delivered", and its Mark Bounced button must
  *    render `disabled` (one soft bounce does not confirm a dead address —
  *    see tab-verification.php's $queueAction logic).
+ *  - TWIN_USERNAME / TWIN_A and TWIN_B cars (#2358, #2359): one owner with
+ *    two cars. Each car has its own `sent` row. One later `hard_bounce` row
+ *    has the owner's user_id and car_id NULL, as the webhook stores the
+ *    bounce of mail that matched no verification send. A hard bounce stops
+ *    all mail to the owner, so both cars must show "Bounced" for it. (A
+ *    `delivered` row with car_id NULL shows on neither car. The soft-bounce
+ *    owner above covers that.)
  *  - PRECEDENCE_USERNAME / PRECEDENCE car: `sent`, then `delivered` at
  *    T+10m, then `hard_bounce` at T+0 (same cycle, earlier timestamp) — the
  *    exact case the integration test
@@ -49,8 +58,21 @@ use ElanRegistry\DatabaseInterface;
  *    renders in the "All" and "Pending" pills with a Bounced chip, which is
  *    exactly the case the plan's §8 callout documents ("a car's filter pill
  *    and status chip can disagree").
+ *  - BOUNCED_USERNAME / BOUNCED_B car (#2361): a second car of the bounced
+ *    owner, also pending. The Bounced summary card counts owners, not cars,
+ *    so the owner counts once for these two cars. Both cars land in the
+ *    Bounced pill.
+ *  - STALE_BLOCKED_USERNAME / STALE_BLOCKED car (#2361): profile
+ *    email_blocked = 1, but email_blocked_address differs from users.email
+ *    (the owner changed address after the block). The flag does not apply
+ *    (#2356), so the owner is in no Blocked card count or Blocked pill, and
+ *    the car lands in the Pending pill with a clean chip. It is the
+ *    fail-closed counterpart of BLOCKED, whose address matches.
  *  - VERIFIED_USERNAME / VERIFIED car: one `VERIFIED` cars_hist row, for the
  *    Recent Activity list and the Verified pill/summary card.
+ *  - TRANSFER_USERNAME / TRANSFER car: its only `sent` row belongs to the
+ *    previous owner (the VERIFIED owner), so its Status chip is empty
+ *    ("not sent") for the new owner (#2358).
  *  - SOLD_USERNAME / SOLD car: one `VERIFIED SOLD` cars_hist row, for the
  *    same two sections' Sold half.
  *
@@ -114,6 +136,8 @@ const SEED_BOUNCED_USERNAME = '__playwright_seed_vd_bounced_owner__';
 const SEED_BOUNCED_EMAIL = 'playwright-seed-vd-bounced-owner@example.invalid';
 const SEED_BOUNCED_CAR_MODEL = '__PW_SEED_VD_BOUNCED__';
 
+const SEED_BOUNCED_CAR_MODEL_B = '__PW_SEED_VD_BOUNCED_B__';
+
 const SEED_SUPPRESSED_USERNAME = '__playwright_seed_vd_suppressed_owner__';
 const SEED_SUPPRESSED_EMAIL = 'playwright-seed-vd-suppressed-owner@example.invalid';
 const SEED_SUPPRESSED_CAR_MODEL = '__PW_SEED_VD_SUPPRESSED__';
@@ -121,6 +145,12 @@ const SEED_SUPPRESSED_CAR_MODEL = '__PW_SEED_VD_SUPPRESSED__';
 const SEED_BLOCKED_USERNAME = '__playwright_seed_vd_blocked_owner__';
 const SEED_BLOCKED_EMAIL = 'playwright-seed-vd-blocked-owner@example.invalid';
 const SEED_BLOCKED_CAR_MODEL = '__PW_SEED_VD_BLOCKED__';
+
+const SEED_STALE_BLOCKED_USERNAME = '__playwright_seed_vd_staleblock_owner__';
+const SEED_STALE_BLOCKED_EMAIL = 'playwright-seed-vd-staleblock-owner@example.invalid';
+/** The address that was blocked. It is not the owner's current `users.email`. */
+const SEED_STALE_BLOCKED_OLD_ADDRESS = 'playwright-seed-vd-staleblock-old@example.invalid';
+const SEED_STALE_BLOCKED_CAR_MODEL = '__PW_SEED_VD_STALEBLOCK__';
 
 const SEED_NO_PROFILE_USERNAME = '__playwright_seed_vd_noprofile_owner__';
 const SEED_NO_PROFILE_EMAIL = 'playwright-seed-vd-noprofile-owner@example.invalid';
@@ -159,10 +189,21 @@ const SEED_SOLD_USERNAME = '__playwright_seed_vd_sold_owner__';
 const SEED_SOLD_EMAIL = 'playwright-seed-vd-sold-owner@example.invalid';
 const SEED_SOLD_CAR_MODEL = '__PW_SEED_VD_SOLD__';
 
+const SEED_TWIN_USERNAME = '__playwright_seed_vd_twin_owner__';
+const SEED_TWIN_EMAIL = 'playwright-seed-vd-twin-owner@example.invalid';
+const SEED_TWIN_CAR_MODEL = '__PW_SEED_VD_TWIN_A__';
+const SEED_TWIN_CAR_MODEL_B = '__PW_SEED_VD_TWIN_B__';
+
+const SEED_TRANSFER_USERNAME = '__playwright_seed_vd_transfer_owner__';
+const SEED_TRANSFER_EMAIL = 'playwright-seed-vd-transfer-owner@example.invalid';
+const SEED_TRANSFER_CAR_MODEL = '__PW_SEED_VD_TRANSFER__';
+
 /** @var list<array{0: string, 1: string}> */
 const SEED_USERNAME_MODEL_PAIRS = [
     [SEED_PENDING_USERNAME, SEED_PENDING_CAR_MODEL],
     [SEED_BOUNCED_USERNAME, SEED_BOUNCED_CAR_MODEL],
+    [SEED_BOUNCED_USERNAME, SEED_BOUNCED_CAR_MODEL_B],
+    [SEED_STALE_BLOCKED_USERNAME, SEED_STALE_BLOCKED_CAR_MODEL],
     [SEED_SUPPRESSED_USERNAME, SEED_SUPPRESSED_CAR_MODEL],
     [SEED_BLOCKED_USERNAME, SEED_BLOCKED_CAR_MODEL],
     [SEED_NO_PROFILE_USERNAME, SEED_NO_PROFILE_CAR_MODEL],
@@ -170,6 +211,9 @@ const SEED_USERNAME_MODEL_PAIRS = [
     [SEED_PRECEDENCE_USERNAME, SEED_PRECEDENCE_CAR_MODEL],
     [SEED_VERIFIED_USERNAME, SEED_VERIFIED_CAR_MODEL],
     [SEED_SOLD_USERNAME, SEED_SOLD_CAR_MODEL],
+    [SEED_TRANSFER_USERNAME, SEED_TRANSFER_CAR_MODEL],
+    [SEED_TWIN_USERNAME, SEED_TWIN_CAR_MODEL],
+    [SEED_TWIN_USERNAME, SEED_TWIN_CAR_MODEL_B],
 ];
 
 $db = dbi();
@@ -177,17 +221,16 @@ $db = dbi();
 /**
  * Idempotent cleanup: delete every row this fixture seeds, including
  * dependent er_email_events/cars_hist rows (neither table has an FK/CASCADE
- * on cars.id — see DATABASE.md's "No Enforced Foreign Key Constraints" — so
- * each is deleted explicitly).
+ * — see DATABASE.md's "No Enforced Foreign Key Constraints" — so each is
+ * deleted explicitly).
  */
 function cleanupSeedRows(DatabaseInterface $db): void
 {
     foreach (SEED_USERNAME_MODEL_PAIRS as [$username, $carModel]) {
+        // Events belong to the user (#2358), and some rows have no car.
         $db->query(
-            'DELETE FROM er_email_events WHERE car_id IN (
-                SELECT id FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?) OR model = ?
-            )',
-            [$username, $carModel]
+            'DELETE FROM er_email_events WHERE user_id IN (SELECT id FROM users WHERE username = ?)',
+            [$username]
         );
         $db->query(
             'DELETE FROM cars_hist WHERE car_id IN (
@@ -281,27 +324,31 @@ function seedDashboardOwnerAndCar(
 
 /**
  * Insert one er_email_events row, mirroring
- * CarRepositoryEmailEventPrecedenceTest::insertRawEvent()'s raw INSERT —
- * CarRepository has no public helper that writes an arbitrary `event` (only
- * insertEmailEvent(), which upserts on a unique key keyed on
- * (car_id, email, event, brevo_message_id) — fine here since every row below
- * uses a distinct brevo_message_id per event anyway).
+ * CarRepositoryEmailEventPrecedenceTest::insertRawEvent()'s raw INSERT.
+ *
+ * A raw INSERT, because the seed sets `car_id` and `occurred_at` directly.
+ * CarRepository::insertOwnerEmailEvent() accepts any event, but it always
+ * writes `car_id` NULL.
+ *
+ * $carId is null for an owner-level row, the row that the webhook writes
+ * for every event other than `sent`.
  */
 function seedEmailEvent(
     DatabaseInterface $db,
-    int $carId,
+    int $userId,
+    ?int $carId,
     string $email,
     string $event,
     string $brevoMessageId,
     string $occurredAt
 ): void {
     $db->query(
-        'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
-         VALUES (?, ?, ?, NULL, ?, ?)',
-        [$carId, $email, $event, $brevoMessageId, $occurredAt]
+        'INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+         VALUES (?, ?, ?, ?, NULL, ?, ?)',
+        [$userId, $carId, $email, $event, $brevoMessageId, $occurredAt]
     );
     if ($db->error()) {
-        fwrite(STDERR, "ERROR: Failed to seed er_email_events row (car={$carId} event={$event}): {$db->errorString()}\n");
+        fwrite(STDERR, "ERROR: Failed to seed er_email_events row (user={$userId} car={$carId} event={$event}): {$db->errorString()}\n");
         exit(1);
     }
 }
@@ -384,7 +431,30 @@ $now = new \DateTimeImmutable();
     ]
 );
 
-// --- Suppressed --------------------------------------------------------------
+// --- Bounced owner, second car: the card counts the owner once ------------
+$bouncedInsertedB = $carRepository->insertCar([
+    'user_id'            => $bouncedUserId,
+    'year'               => 1968,
+    'series'             => 'S4',
+    'variant'            => 'SE',
+    'type'               => 'FHC',
+    'color'              => 'Red',
+    'ctime'              => date('Y-m-d H:i:s'),
+    'email'              => SEED_BOUNCED_EMAIL,
+    'model'              => SEED_BOUNCED_CAR_MODEL_B,
+    'chassis'            => 'SEEDVDBB' . bin2hex(random_bytes(3)),
+    'vericode'           => hashVericode('seed-vd-bounced-b-code'),
+    'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    'last_verified'      => null,
+    'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+]);
+if (!$bouncedInsertedB) {
+    fwrite(STDERR, "ERROR: Failed to insert the second bounced car: {$carRepository->errorString()}\n");
+    exit(1);
+}
+$bouncedCarIdB = $carRepository->lastId();
+
+// --- Opted out ---------------------------------------------------------------
 [$suppressedUserId, $suppressedCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
@@ -404,7 +474,7 @@ $now = new \DateTimeImmutable();
     ]
 );
 
-// --- Blocked: Suppressed pill, "Brevo complaint" chip (cause blocklist) ----
+// --- Blocked: Blocked pill, "Blocked" chip (cause blocklist) ---------------
 [$blockedUserId, $blockedCarId] = seedDashboardOwnerAndCar(
     $db,
     $carRepository,
@@ -422,6 +492,29 @@ $now = new \DateTimeImmutable();
         'email_blocked'         => 1,
         'email_blocked_address' => SEED_BLOCKED_EMAIL,
         'email_blocked_at'      => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'email_blocked_cause'   => 'blocklist',
+    ]
+);
+
+// --- Stale block: the flag is set, but its address is not users.email ----
+// Neither a card, a pill nor a chip may count the flag (#2361, #2356).
+[$staleBlockedUserId, $staleBlockedCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_STALE_BLOCKED_USERNAME,
+    SEED_STALE_BLOCKED_EMAIL,
+    [
+        'model'              => SEED_STALE_BLOCKED_CAR_MODEL,
+        'chassis'            => 'SEEDVDX' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-staleblock-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ],
+    [
+        'email_blocked'         => 1,
+        'email_blocked_address' => SEED_STALE_BLOCKED_OLD_ADDRESS,
+        'email_blocked_at'      => $now->modify('-30 days')->format('Y-m-d H:i:s'),
         'email_blocked_cause'   => 'blocklist',
     ]
 );
@@ -460,6 +553,7 @@ $now = new \DateTimeImmutable();
 );
 seedEmailEvent(
     $db,
+    $softBounceUserId,
     $softBounceCarId,
     SEED_SOFT_BOUNCE_EMAIL,
     'sent',
@@ -468,12 +562,72 @@ seedEmailEvent(
 );
 seedEmailEvent(
     $db,
+    $softBounceUserId,
     $softBounceCarId,
     SEED_SOFT_BOUNCE_EMAIL,
     'soft_bounce',
     'seed-vd-softbounce-bounce',
     $now->modify('-3 days +5 minutes')->format('Y-m-d H:i:s')
 );
+// An owner-level `delivered` row (car_id NULL, as the webhook stores it) dated
+// AFTER this car's `sent` row and its soft bounce. The row is for mail that
+// matched no verification send (a password reset, say), and its `delivered`
+// does not tell whether the verification email arrived. So it must not count
+// (#2359), and the chip stays "Soft bounce". If it counted, being the latest
+// row, it would turn the chip to "Delivered". The twin owner below covers a
+// terminal event with no car, which does count.
+seedEmailEvent(
+    $db,
+    $softBounceUserId,
+    null,
+    SEED_SOFT_BOUNCE_EMAIL,
+    'delivered',
+    'seed-vd-softbounce-orphan-delivered',
+    $now->modify('-3 days +20 minutes')->format('Y-m-d H:i:s')
+);
+
+// --- Twin: one owner, two cars, one owner-level `hard_bounce` row ---------
+// Each car has its own `sent` row (its cycle start). The `hard_bounce` row has
+// car_id NULL and comes after both. A terminal event with no car counts for
+// every car of the owner (#2358, #2359). A `delivered` row with no car does not.
+[$twinUserId, $twinCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_TWIN_USERNAME,
+    SEED_TWIN_EMAIL,
+    [
+        'model'              => SEED_TWIN_CAR_MODEL,
+        'chassis'            => 'SEEDVDWA' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-twin-a-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ]
+);
+$twinInserted = $carRepository->insertCar([
+    'user_id'            => $twinUserId,
+    'year'               => 1968,
+    'series'             => 'S4',
+    'variant'            => 'SE',
+    'type'               => 'FHC',
+    'color'              => 'Red',
+    'ctime'              => date('Y-m-d H:i:s'),
+    'email'              => SEED_TWIN_EMAIL,
+    'model'              => SEED_TWIN_CAR_MODEL_B,
+    'chassis'            => 'SEEDVDWB' . bin2hex(random_bytes(3)),
+    'vericode'           => hashVericode('seed-vd-twin-b-code'),
+    'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    'last_verified'      => null,
+    'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+]);
+if (!$twinInserted) {
+    fwrite(STDERR, "ERROR: Failed to insert the second twin car: {$carRepository->errorString()}\n");
+    exit(1);
+}
+$twinCarIdB = $carRepository->lastId();
+seedEmailEvent($db, $twinUserId, $twinCarId, SEED_TWIN_EMAIL, 'sent', 'seed-vd-twin-a-sent', $now->modify('-3 days')->format('Y-m-d H:i:s'));
+seedEmailEvent($db, $twinUserId, $twinCarIdB, SEED_TWIN_EMAIL, 'sent', 'seed-vd-twin-b-sent', $now->modify('-3 days')->format('Y-m-d H:i:s'));
+seedEmailEvent($db, $twinUserId, null, SEED_TWIN_EMAIL, 'hard_bounce', 'seed-vd-twin-bounce', $now->modify('-3 days +10 minutes')->format('Y-m-d H:i:s'));
 
 // --- Precedence: delivered at T+10m, hard_bounce at T+0, same cycle -------
 // Reproduces CarRepositoryEmailEventPrecedenceTest
@@ -495,6 +649,7 @@ seedEmailEvent(
 );
 seedEmailEvent(
     $db,
+    $precedenceUserId,
     $precedenceCarId,
     SEED_PRECEDENCE_EMAIL,
     'sent',
@@ -503,6 +658,7 @@ seedEmailEvent(
 );
 seedEmailEvent(
     $db,
+    $precedenceUserId,
     $precedenceCarId,
     SEED_PRECEDENCE_EMAIL,
     'hard_bounce',
@@ -511,6 +667,7 @@ seedEmailEvent(
 );
 seedEmailEvent(
     $db,
+    $precedenceUserId,
     $precedenceCarId,
     SEED_PRECEDENCE_EMAIL,
     'delivered',
@@ -559,11 +716,41 @@ if ($soldCar === null) {
 }
 seedHistoryRow($carRepository, $soldCar, 'VERIFIED SOLD', $now->modify('-1 day')->format('Y-m-d H:i:s'));
 
+// --- Transferred: the `sent` row belongs to the previous owner ----------
+// The Verified owner stands in as previous owner. A transfer changes no event
+// row, so the new owner must see "not sent" (an empty Status chip).
+[$transferUserId, $transferCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_TRANSFER_USERNAME,
+    SEED_TRANSFER_EMAIL,
+    [
+        'model'              => SEED_TRANSFER_CAR_MODEL,
+        'chassis'            => 'SEEDVDT' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-transfer-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ]
+);
+seedEmailEvent(
+    $db,
+    $verifiedUserId,
+    $transferCarId,
+    SEED_VERIFIED_EMAIL,
+    'sent',
+    'seed-vd-transfer-sent',
+    $now->modify('-3 days')->format('Y-m-d H:i:s')
+);
+
 echo json_encode([
     'pendingCarId'       => $pendingCarId,
     'pendingUserId'      => $pendingUserId,
     'bouncedCarId'       => $bouncedCarId,
     'bouncedUserId'      => $bouncedUserId,
+    'bouncedCarIdB'      => $bouncedCarIdB,
+    'staleBlockedCarId'  => $staleBlockedCarId,
+    'staleBlockedUserId' => $staleBlockedUserId,
     'suppressedCarId'    => $suppressedCarId,
     'suppressedUserId'   => $suppressedUserId,
     'blockedCarId'       => $blockedCarId,
@@ -579,4 +766,9 @@ echo json_encode([
     'verifiedUserId'     => $verifiedUserId,
     'soldCarId'          => $soldCarId,
     'soldUserId'         => $soldUserId,
+    'transferCarId'      => $transferCarId,
+    'transferUserId'     => $transferUserId,
+    'twinCarIdA'         => $twinCarId,
+    'twinCarIdB'         => $twinCarIdB,
+    'twinUserId'         => $twinUserId,
 ]) . "\n";

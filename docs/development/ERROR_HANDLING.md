@@ -127,13 +127,14 @@ handling and logging.
   - HTTP status code (for API responses)
 - **Autoloading**: PSR-4 autoload via composer.json
 
-**Exception Types** (22 total):
+**Exception Types** (23 total):
 
 | Exception | HTTP | Category | Purpose |
 | --- | --- | --- | --- |
 | **CarException** (abstract) | 500 | CarErrors | Base for all car exceptions |
 | CarCreationException | 500 | CarCreation | Car creation |
 | CarDatabaseException | 500 | DatabaseError | Car database operations |
+| ProfileFlagValueException | 500 | DatabaseError | Stored profile flag value not 0 or 1 (the webhook maps it to a 400 response; cron jobs skip) |
 | CarDeletionException | 500 | CarDeletion | Car deletion |
 | CarMergeException | 500 | CarMerge | Car merge operation |
 | CarNotFoundException | 404 | CarErrors | Car not found |
@@ -393,6 +394,12 @@ logger($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created');
 // Include context for troubleshooting
 logger($userId, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'Car update failed: ' . $e->getMessage());
 ```
+
+**No address in a log line**: an exception message can hold an email address
+(`CarRepository` puts the address in some messages). In code that handles
+owner addresses, log `ExceptionLogSummary::of($e)` instead of the message. It
+gives `<Class> (code <code>[, SQLSTATE <x>]) at <file>:<line>`. The SQLSTATE
+comes from `CarDatabaseException::sqlState()` (#2359).
 
 ### Exceptions
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationClient;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 
@@ -41,6 +42,7 @@ $reconciliationRepo = new CarRepository(dbi());
 (new BrevoEventReconciliationJob(
     dbi(),
     $reconciliationRepo,
+    new EmailEventMatcher($reconciliationRepo),
     new EmailEventApplier($reconciliationRepo, new CarVerificationManager($reconciliationRepo)),
     new BrevoEventReconciliationClient(dbi())
 ))->run();

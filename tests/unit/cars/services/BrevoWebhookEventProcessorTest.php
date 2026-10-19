@@ -3,99 +3,110 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\BrevoWebhookEventProcessor;
-use ElanRegistry\Car\CarRepository;
-use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatch;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Car\ProcessingResult;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ProfileFlagValueException;
+use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\SpyEmailEventApplier;
 
 /**
  * Unit tests for BrevoWebhookEventProcessor.
  *
- * Mocks CarRepository and CarVerificationManager entirely — this class owns
- * only parsing/matching/dispatch logic, no HTTP or real DB concerns (see its
- * class docblock). Follows the mocking conventions established by
- * CarVerificationManagerTest.php (createMock, ->expects()->method()->with()).
+ * The matcher is a mock and the applier is SpyEmailEventApplier, so these
+ * tests cover only the processor: parsing, the event and address checks,
+ * the dispatch on the match result, the time fallback, the plugin call and
+ * the log lines. EmailEventApplierTest covers the escalation rules, and
+ * EmailEventMatcherTest covers the matching rule.
  *
- * EmailEventApplier is injected as a REAL collaborator built over those same
- * two mocks, not as a mock of its own: the escalation mapping it owns is the
- * externally-observable contract of this endpoint, and these tests assert it
- * end-to-end through process(). EmailEventApplierTest covers the same mapping
- * directly, at the unit it now lives in.
- *
- * NOTE on the "retried identical local 'sent' row" dedup scenario from the
- * plan's Test Plan: insertEmailEvent() is mocked at this tier, so there is
- * nothing for a unit test to assert about MySQL's ON DUPLICATE KEY UPDATE
- * behavior — that is real-database behavior, covered instead at the
- * integration tier by BrevoWebhookEndpointTest's duplicate-delivery test.
+ * The plugin function tests run in a separate process, because a global
+ * function cannot be removed once defined.
  */
 #[Group('fast')]
 final class BrevoWebhookEventProcessorTest extends TestCase
 {
-    /** @var CarRepository&\PHPUnit\Framework\MockObject\MockObject */
-    private CarRepository $mockRepo;
+    private const ADDRESS = 'owner@example.com';
 
-    /** @var CarVerificationManager&\PHPUnit\Framework\MockObject\MockObject */
-    private CarVerificationManager $mockManager;
+    /** @var EmailEventMatcher&\PHPUnit\Framework\MockObject\MockObject */
+    private EmailEventMatcher $matcher;
+
+    private SpyEmailEventApplier $applier;
 
     private BrevoWebhookEventProcessor $processor;
 
     protected function setUp(): void
     {
-        $this->mockRepo = $this->createMock(CarRepository::class);
-        $this->mockManager = $this->createMock(CarVerificationManager::class);
-        $this->processor = new BrevoWebhookEventProcessor(
-            $this->mockRepo,
-            new EmailEventApplier($this->mockRepo, $this->mockManager)
-        );
+        $GLOBALS['mockLogEntries'] = [];
+        $this->matcher = $this->createMock(EmailEventMatcher::class);
+        $this->applier = new SpyEmailEventApplier();
+        $this->processor = new BrevoWebhookEventProcessor($this->matcher, $this->applier);
     }
 
+    /** @param array<string, mixed> $overrides */
     private function basePayload(array $overrides = []): array
     {
         return array_merge([
-            'email' => 'owner@example.com',
+            'email' => self::ADDRESS,
             'event' => 'delivered',
             'message-id' => 'brevo-msg-1',
-            'tags' => ['car_verification'],
         ], $overrides);
+    }
+
+    private function matchUser(int $userId = 42): void
+    {
+        $this->matcher->expects($this->once())
+            ->method('matchByMessageId')
+            ->willReturn(EmailEventMatch::matched($userId, null, '2026-10-01 00:00:00'));
+    }
+
+    private function expectNoMatch(): void
+    {
+        $this->matcher->expects($this->never())->method('matchByMessageId');
+    }
+
+    /** @return list<string> */
+    private function logMessages(): array
+    {
+        return array_map(static fn (array $entry): string => (string) $entry['message'], $GLOBALS['mockLogEntries'] ?? []);
+    }
+
+    private function assertNoLogHolds(string $needle): void
+    {
+        foreach ($this->logMessages() as $message) {
+            $this->assertStringNotContainsStringIgnoringCase($needle, $message);
+        }
     }
 
     // --- Malformed payloads --------------------------------------------
 
     public function testListBodyIsMalformed(): void
     {
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->expectNoMatch();
 
-        $result = $this->processor->process([1, 2, 3]);
-
-        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertSame(ProcessingResult::MALFORMED, $this->processor->process([1, 2, 3]));
+        $this->assertSame([], $this->applier->calls);
     }
 
     public function testEmptyArrayIsMalformed(): void
     {
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->expectNoMatch();
 
-        $result = $this->processor->process([]);
-
-        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertSame(ProcessingResult::MALFORMED, $this->processor->process([]));
     }
 
     public function testNonArrayPayloadIsMalformed(): void
     {
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->expectNoMatch();
 
-        $result = $this->processor->process('not an array');
-
-        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertSame(ProcessingResult::MALFORMED, $this->processor->process('not an array'));
     }
 
     /**
@@ -104,474 +115,345 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     public static function missingOrEmptyRequiredFieldProvider(): array
     {
         return [
-            'missing email' => [
-                ['event' => 'delivered', 'message-id' => 'm1', 'tags' => ['car_verification']],
-            ],
-            'empty string email' => [
-                ['email' => '', 'event' => 'delivered', 'message-id' => 'm1', 'tags' => ['car_verification']],
-            ],
-            'missing event' => [
-                ['email' => 'a@example.com', 'message-id' => 'm1', 'tags' => ['car_verification']],
-            ],
-            'empty string event' => [
-                ['email' => 'a@example.com', 'event' => '', 'message-id' => 'm1', 'tags' => ['car_verification']],
-            ],
-            'missing message-id' => [
-                ['email' => 'a@example.com', 'event' => 'delivered', 'tags' => ['car_verification']],
-            ],
-            'empty string message-id' => [
-                ['email' => 'a@example.com', 'event' => 'delivered', 'message-id' => '', 'tags' => ['car_verification']],
-            ],
-            'non-string email' => [
-                ['email' => 123, 'event' => 'delivered', 'message-id' => 'm1', 'tags' => ['car_verification']],
-            ],
-            'non-string event' => [
-                ['email' => 'a@example.com', 'event' => 42, 'message-id' => 'm1', 'tags' => ['car_verification']],
-            ],
-            'non-string message-id' => [
-                ['email' => 'a@example.com', 'event' => 'delivered', 'message-id' => 42, 'tags' => ['car_verification']],
-            ],
+            'missing email' => [['event' => 'delivered', 'message-id' => 'm1']],
+            'empty string email' => [['email' => '', 'event' => 'delivered', 'message-id' => 'm1']],
+            'missing event' => [['email' => 'a@example.com', 'message-id' => 'm1']],
+            'empty string event' => [['email' => 'a@example.com', 'event' => '', 'message-id' => 'm1']],
+            'missing message-id' => [['email' => 'a@example.com', 'event' => 'delivered']],
+            'empty string message-id' => [['email' => 'a@example.com', 'event' => 'delivered', 'message-id' => '']],
+            'non-string email' => [['email' => 123, 'event' => 'delivered', 'message-id' => 'm1']],
+            'non-string event' => [['email' => 'a@example.com', 'event' => 42, 'message-id' => 'm1']],
+            'non-string message-id' => [['email' => 'a@example.com', 'event' => 'delivered', 'message-id' => 42]],
         ];
     }
 
+    /** @param array<string, mixed> $payload */
     #[DataProvider('missingOrEmptyRequiredFieldProvider')]
     public function testMissingOrEmptyRequiredFieldIsMalformed(array $payload): void
     {
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->expectNoMatch();
 
-        $result = $this->processor->process($payload);
-
-        $this->assertSame(ProcessingResult::MALFORMED, $result);
-    }
-
-    // --- Tag filtering ----------------------------------------------------
-
-    public function testUntaggedPayloadReturnsNoTagMatch(): void
-    {
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload(['tags' => ['unrelated_tag']]));
-
-        $this->assertSame(ProcessingResult::NO_TAG_MATCH, $result);
-    }
-
-    public function testMissingTagsKeyReturnsNoTagMatch(): void
-    {
-        $payload = $this->basePayload();
-        unset($payload['tags']);
-
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($payload);
-
-        $this->assertSame(ProcessingResult::NO_TAG_MATCH, $result);
-    }
-
-    public function testOversizedEventNameReturnsMalformedNotWriteFailure(): void
-    {
-        // er_email_events.event is varchar(32) under STRICT_TRANS_TABLES — an
-        // unbounded value would throw a CarDatabaseException from
-        // insertEmailEvent(), mapping to WRITE_FAILURE/5xx and putting Brevo
-        // into a permanent retry loop on this one poisoned payload. Rejecting
-        // it here as MALFORMED (4xx, no retry) before any DB call is the fix.
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload(['event' => str_repeat('x', 33)]));
-
-        $this->assertSame(ProcessingResult::MALFORMED, $result);
-    }
-
-    public function testEventNameAtExactColumnWidthIsAccepted(): void
-    {
-        $car = (object) ['id' => 1, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload(['event' => str_repeat('x', 32)]));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertSame(ProcessingResult::MALFORMED, $this->processor->process($payload));
+        $this->assertSame([], $this->applier->calls);
     }
 
     public function testOversizedMessageIdReturnsMalformedNotWriteFailure(): void
     {
-        // er_email_events.brevo_message_id is varchar(255) — same failure
-        // mode and same fix as the oversized event name above.
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        // er_email_events.brevo_message_id is varchar(255). A longer value
+        // would throw in the insert, map to a retryable 5xx and loop forever.
+        $this->expectNoMatch();
 
         $result = $this->processor->process($this->basePayload(['message-id' => str_repeat('x', 256)]));
 
         $this->assertSame(ProcessingResult::MALFORMED, $result);
     }
 
-    public function testNonArrayTagsReturnsMalformed(): void
-    {
-        // A non-list `tags` means Brevo's payload contract changed, not that
-        // this event is untagged — MALFORMED (a 4xx an operator will notice)
-        // rather than NO_TAG_MATCH (a routine, unremarkable 200) is the
-        // correct outcome here, since the latter would silently discard
-        // every subsequent event under a contract change with no visible signal.
-        $this->mockRepo->expects($this->never())->method('findByEmail');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload(['tags' => 'car_verification']));
-
-        $this->assertSame(ProcessingResult::MALFORMED, $result);
-    }
-
-    // --- Car matching -------------------------------------------------
-
-    public function testTaggedPayloadWithNoCarMatchReturnsNoCarMatch(): void
-    {
-        $this->mockRepo->expects($this->once())
-            ->method('findByEmail')
-            ->with('owner@example.com')
-            ->willReturn([]);
-        $this->mockRepo->expects($this->never())->method('insertEmailEvent');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload());
-
-        $this->assertSame(ProcessingResult::NO_CAR_MATCH, $result);
-    }
-
-    public function testFindByEmailThrowingCarDatabaseExceptionReturnsWriteFailure(): void
-    {
-        $this->mockRepo->expects($this->once())
-            ->method('findByEmail')
-            ->willThrowException(new CarDatabaseException('connection lost'));
-        $this->mockRepo->expects($this->never())->method('insertEmailEvent');
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload());
-
-        $this->assertSame(ProcessingResult::WRITE_FAILURE, $result);
-    }
-
-    // --- Hard-bounce-class events ---------------------------------------
+    // --- Address validation (R5-SR6) ----------------------------------------
 
     /**
      * @return array<string, array{string}>
      */
-    public static function hardBounceClassEventProvider(): array
+    public static function badAddressProvider(): array
     {
+        $longLocal = str_repeat('a', 64);
+
         return [
-            'hard_bounce' => ['hard_bounce'],
-            'blocked' => ['blocked'],
-            'invalid' => ['invalid'],
-            // Never actually observed live (#1871 spike) — both spellings
-            // are accepted since EMAIL_SYSTEM.md's own docs and this
-            // project's issue text disagree on which one Brevo really sends.
-            'invalid_email' => ['invalid_email'],
+            'more than 155 bytes' => [$longLocal . '@' . str_repeat('b', 60) . '.' . str_repeat('c', 30) . '.example.com'],
+            'no at sign' => ['not-an-address'],
+            'two addresses' => ['a@example.com,b@example.com'],
+            'form feed only' => ["\f"],
         ];
     }
 
-    #[DataProvider('hardBounceClassEventProvider')]
-    public function testHardBounceClassEventCallsSetBouncedWithCarIdEmailAndWebhookSource(string $event): void
+    #[DataProvider('badAddressProvider')]
+    public function testBadAddressIsMalformedBeforeAnyMatch(string $address): void
     {
-        $car = (object) ['id' => 42, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
-            ->with(42, 'owner@example.com', $event, null, 'brevo-msg-1', $this->isString());
+        $this->expectNoMatch();
 
-        $this->mockManager->expects($this->once())
-            ->method('setBounced')
-            ->with(42, 'owner@example.com', $this->isString(), 'webhook')
-            ->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $result = $this->processor->process($this->basePayload(['email' => $address, 'event' => 'hard_bounce']));
+
+        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertSame([], $this->applier->calls);
+    }
+
+    public function testAddressWithOuterWhitespaceIsTrimmedAndAccepted(): void
+    {
+        $this->matcher->expects($this->once())
+            ->method('matchByMessageId')
+            ->with('brevo-msg-1', self::ADDRESS)
+            ->willReturn(EmailEventMatch::matched(42, null, '2026-10-01 00:00:00'));
+
+        $result = $this->processor->process($this->basePayload(['email' => '  ' . self::ADDRESS . "\t"]));
+
+        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertSame(self::ADDRESS, $this->applier->calls[0]['email']);
+    }
+
+    // --- Event filter -------------------------------------------------------
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function deliveryEventProvider(): array
+    {
+        return [
+            'delivered' => ['delivered'],
+            'soft_bounce' => ['soft_bounce'],
+            'hard_bounce' => ['hard_bounce'],
+            'blocked' => ['blocked'],
+            'invalid' => ['invalid'],
+            'invalid_email' => ['invalid_email'],
+            'spam' => ['spam'],
+            'unsubscribed' => ['unsubscribed'],
+        ];
+    }
+
+    #[DataProvider('deliveryEventProvider')]
+    public function testDeliveryEventIsAppliedInEventModeWithWebhookSource(string $event): void
+    {
+        $this->matchUser(42);
 
         $result = $this->processor->process($this->basePayload(['event' => $event]));
 
         $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-    }
-
-    // --- Spam --------------------------------------------------------
-
-    public function testSpamCallsSetSuppressedWithCauseSpamNotSetBounced(): void
-    {
-        $car = (object) ['id' => 7, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
-            ->with(7, 'owner@example.com', 'spam', null, 'brevo-msg-1', $this->isString());
-
-        $this->mockManager->expects($this->once())
-            ->method('setSuppressed')
-            ->with(7, 'owner@example.com', 'spam', $this->isString(), 'webhook')
-            ->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setBounced');
-
-        // No 'reason' field required for spam, per spike.
-        $payload = $this->basePayload(['event' => 'spam']);
-        unset($payload['reason']);
-
-        $result = $this->processor->process($payload);
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-    }
-
-    // --- Soft bounce escalation -----------------------------------------
-
-    public function testSoftBounceBelowThresholdDoesNotEscalate(): void
-    {
-        $car = (object) ['id' => 3, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
-        $this->mockRepo->expects($this->once())
-            ->method('countSoftBouncesSinceLastDelivered')
-            ->with('owner@example.com')
-            ->willReturn(2);
-
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload(['event' => 'soft_bounce']));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-    }
-
-    public function testSoftBounceAtThresholdEscalatesToSetBounced(): void
-    {
-        $car = (object) ['id' => 3, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
-        $this->mockRepo->expects($this->once())
-            ->method('countSoftBouncesSinceLastDelivered')
-            ->willReturn(3);
-
-        $this->mockManager->expects($this->once())
-            ->method('setBounced')
-            ->with(3, 'owner@example.com', $this->isString(), 'webhook')
-            ->willReturn(true);
-
-        $result = $this->processor->process($this->basePayload(['event' => 'soft_bounce']));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-    }
-
-    public function testSoftBounceAboveThresholdEscalatesToSetBounced(): void
-    {
-        $car = (object) ['id' => 3, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
-        $this->mockRepo->expects($this->once())
-            ->method('countSoftBouncesSinceLastDelivered')
-            ->willReturn(5);
-
-        $this->mockManager->expects($this->once())->method('setBounced')->willReturn(true);
-
-        $result = $this->processor->process($this->basePayload(['event' => 'soft_bounce']));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-    }
-
-    // --- Inert events: delivered / unique_opened -------------------------
-
-    public function testDeliveredRecordsEventRowOnlyNoException(): void
-    {
-        $car = (object) ['id' => 9, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
-        $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
-
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload(['event' => 'delivered']));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertCount(1, $this->applier->calls);
+        $call = $this->applier->calls[0];
+        $this->assertSame(42, $call['userId']);
+        $this->assertSame(self::ADDRESS, $call['email']);
+        $this->assertSame($event, $call['event']);
+        $this->assertSame('brevo-msg-1', $call['messageId']);
+        $this->assertSame('webhook', $call['source']);
+        $this->assertSame(EmailEventApplier::MODE_EVENT, $call['mode']);
     }
 
     /**
-     * unique_opened must never touch flags or the escalation count, even
-     * "after prior soft bounces" — since this is a unit test with a mocked
-     * repo, that scenario collapses to: the processor itself never calls
-     * countSoftBouncesSinceLastDelivered/setBounced/setSuppressed for this
-     * event type. The "since last delivered" windowing logic that would
-     * otherwise matter here is countSoftBouncesSinceLastDelivered()'s own
-     * job, tested at the repository/integration tier, not re-tested here.
+     * @return array<string, array{string}>
      */
-    public function testUniqueOpenedNeverTouchesFlagsOrEscalationCount(): void
+    public static function nonDeliveryEventProvider(): array
     {
-        $car = (object) ['id' => 11, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
-        $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
-
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
-
-        $result = $this->processor->process($this->basePayload(['event' => 'unique_opened']));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        return [
+            'opened' => ['opened'],
+            'unique_opened' => ['unique_opened'],
+            'click' => ['click'],
+            'request' => ['request'],
+            'oversized' => [str_repeat('x', 33)],
+        ];
     }
 
-    // --- Multiple cars sharing one email ---------------------------------
-
-    public function testMultipleCarsShareEmailEachProcessedIndependentlyWithSameMessageId(): void
+    /** The webhook subscribes only to delivery events, so another name signals a Brevo change. */
+    #[DataProvider('nonDeliveryEventProvider')]
+    public function testNonDeliveryEventIsIgnoredWithNoMatchNoRowAndLogsTheNameOnly(string $event): void
     {
-        $carA = (object) ['id' => 100, 'email' => 'shared@example.com'];
-        $carB = (object) ['id' => 101, 'email' => 'shared@example.com'];
+        $this->expectNoMatch();
 
-        $this->mockRepo->expects($this->once())
-            ->method('findByEmail')
-            ->with('shared@example.com')
-            ->willReturn([$carA, $carB]);
+        $result = $this->processor->process($this->basePayload(['event' => $event]));
 
-        $insertCalls = [];
-        $this->mockRepo->expects($this->exactly(2))
-            ->method('insertEmailEvent')
-            ->willReturnCallback(function (int $carId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt) use (&$insertCalls) {
-                $insertCalls[] = [$carId, $messageId];
-                return 1;
-            });
-
-        // One inbound event dispatches identically to every matched car, so
-        // both cars escalate via setBounced — asserting the call count and
-        // the id passed on each invocation proves each car's transition is
-        // applied independently (not, e.g., only the first or last car).
-        $bouncedCarIds = [];
-        $this->mockManager->expects($this->exactly(2))
-            ->method('setBounced')
-            ->willReturnCallback(function (int $carId, string $email) use (&$bouncedCarIds) {
-                $bouncedCarIds[] = $carId;
-                $this->assertSame('shared@example.com', $email);
-                return true;
-            });
-
-        $result = $this->processor->process([
-            'email' => 'shared@example.com',
-            'event' => 'hard_bounce',
-            'message-id' => 'shared-msg-1',
-            'tags' => ['car_verification'],
-        ]);
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-        $this->assertCount(2, $insertCalls);
-        $this->assertSame([100, 'shared-msg-1'], $insertCalls[0]);
-        $this->assertSame([101, 'shared-msg-1'], $insertCalls[1]);
-        $this->assertSame([100, 101], $bouncedCarIds);
+        $this->assertSame(ProcessingResult::IGNORED, $result);
+        $this->assertSame([], $this->applier->calls);
+        $messages = $this->logMessages();
+        $this->assertCount(1, $messages);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $GLOBALS['mockLogEntries'][0]['category']);
+        $this->assertSame(0, $GLOBALS['mockLogEntries'][0]['user_id']);
+        $this->assertStringContainsString('"' . substr($event, 0, 32) . '"', $messages[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
     }
+
+    public function testIgnoredEventLogCapsTheNameLength(): void
+    {
+        $this->expectNoMatch();
+
+        $this->processor->process($this->basePayload(['event' => str_repeat('y', 500)]));
+
+        $messages = $this->logMessages();
+        $this->assertCount(1, $messages);
+        $this->assertStringContainsString('"' . str_repeat('y', 32) . '"', $messages[0]);
+        $this->assertStringNotContainsString(str_repeat('y', 33), $messages[0]);
+    }
+
+    // --- No tag filter (#2359) ----------------------------------------------
 
     /**
-     * Two matched cars for the same email, each receiving DIFFERENT mocked
-     * call outcomes on the manager — proves dispatch is genuinely per-car,
-     * not a single shared decision. Car 1's countSoftBouncesSinceLastDelivered
-     * (keyed on the shared email, so identical for both cars) determines
-     * escalation for the whole event, but this test's real assertion is that
-     * insertEmailEvent is called once per matched car id with the same
-     * message id, matching the "multiple cars sharing one email" scenario in
-     * the plan.
+     * @return array<string, array{array<string, mixed>}>
      */
-    public function testMultipleCarsWithDifferentTransitionsDispatchIndependently(): void
+    public static function anyTagsProvider(): array
     {
-        $carHardBounce = (object) ['id' => 200, 'email' => 'shared2@example.com'];
-        $carSpam = (object) ['id' => 201, 'email' => 'shared2@example.com'];
-
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$carHardBounce, $carSpam]);
-
-        $insertedCarIds = [];
-        $this->mockRepo->expects($this->exactly(2))
-            ->method('insertEmailEvent')
-            ->willReturnCallback(function (int $carId) use (&$insertedCarIds) {
-                $insertedCarIds[] = $carId;
-                return 1;
-            });
-
-        $this->mockManager->expects($this->exactly(2))
-            ->method('setBounced')
-            ->willReturn(true);
-
-        $result = $this->processor->process([
-            'email' => 'shared2@example.com',
-            'event' => 'hard_bounce',
-            'message-id' => 'shared2-msg-1',
-            'tags' => ['car_verification'],
-        ]);
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
-        $this->assertSame([200, 201], $insertedCarIds);
+        return [
+            'no tags key' => [[]],
+            'other tag' => [['tags' => ['password_reset']]],
+            'verification tag' => [['tags' => ['car_verification']]],
+            'tags not a list' => [['tags' => 'car_verification']],
+        ];
     }
 
-    // --- Mid-loop write failure -------------------------------------------
-
-    public function testMidLoopWriteFailureReturnsWriteFailureAndStopsProcessingRemainingCars(): void
+    /** @param array<string, mixed> $tags */
+    #[DataProvider('anyTagsProvider')]
+    public function testNoTagIsNeededToRecordAnEvent(array $tags): void
     {
-        $carOne = (object) ['id' => 1, 'email' => 'shared3@example.com'];
-        $carTwo = (object) ['id' => 2, 'email' => 'shared3@example.com'];
-        $carThree = (object) ['id' => 3, 'email' => 'shared3@example.com'];
+        $this->matchUser(42);
 
-        $this->mockRepo->expects($this->once())
-            ->method('findByEmail')
-            ->willReturn([$carOne, $carTwo, $carThree]);
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce'] + $tags));
 
-        // First car succeeds, second car's insertEmailEvent throws, third car
-        // must never be reached at all.
-        $callCount = 0;
-        $this->mockRepo->expects($this->exactly(2))
-            ->method('insertEmailEvent')
-            ->willReturnCallback(function (int $carId) use (&$callCount) {
-                $callCount++;
-                if ($carId === 2) {
-                    throw new CarDatabaseException('write failed for car 2');
-                }
-                return 1;
-            });
+        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertCount(1, $this->applier->calls);
+    }
 
-        $this->mockManager->expects($this->once())
-            ->method('setBounced')
-            ->with(1, 'shared3@example.com', $this->isString(), 'webhook')
-            ->willReturn(true);
+    #[AllowMockObjectsWithoutExpectations]
+    public function testHasVerificationTag(): void
+    {
+        $this->assertTrue(BrevoWebhookEventProcessor::hasVerificationTag(['tags' => ['x', 'car_verification']]));
+        $this->assertFalse(BrevoWebhookEventProcessor::hasVerificationTag(['tags' => ['password_reset']]));
+        $this->assertFalse(BrevoWebhookEventProcessor::hasVerificationTag(['tags' => 'car_verification']));
+        $this->assertFalse(BrevoWebhookEventProcessor::hasVerificationTag([]));
+        $this->assertFalse(BrevoWebhookEventProcessor::hasVerificationTag(null));
+    }
 
-        $result = $this->processor->process([
-            'email' => 'shared3@example.com',
-            'event' => 'hard_bounce',
-            'message-id' => 'shared3-msg-1',
-            'tags' => ['car_verification'],
-        ]);
+    #[AllowMockObjectsWithoutExpectations]
+    public function testHasVerificationTagLogsNothingForAListOrAMissingTags(): void
+    {
+        BrevoWebhookEventProcessor::hasVerificationTag(['tags' => ['password_reset']]);
+        BrevoWebhookEventProcessor::hasVerificationTag(['email' => self::ADDRESS]);
+
+        $this->assertSame([], $this->logMessages());
+    }
+
+    /** A `tags` value that is not a list is a payload contract change, so it must leave a trace. */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testHasVerificationTagLogsTheTypeOfATagsValueThatIsNotAList(): void
+    {
+        $result = BrevoWebhookEventProcessor::hasVerificationTag(
+            ['email' => self::ADDRESS, 'tags' => 'car_verification']
+        );
+
+        $this->assertFalse($result);
+        $messages = $this->logMessages();
+        $this->assertCount(1, $messages);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $GLOBALS['mockLogEntries'][0]['category']);
+        $this->assertStringContainsString('"tags" was string', $messages[0]);
+        $this->assertStringNotContainsString('car_verification', $messages[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    // --- Match results --------------------------------------------------------
+
+    public function testMessageNotOursIsIgnoredWithNoRowAndNoLog(): void
+    {
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::notOurs());
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce']));
+
+        $this->assertSame(ProcessingResult::IGNORED, $result);
+        $this->assertSame([], $this->applier->calls);
+        $this->assertSame([], $this->logMessages());
+    }
+
+    public function testNoUserReturnsNoUserMatchAndLogsTheHashPrefixOnly(): void
+    {
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUser());
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'email' => 'Owner@Example.com']));
+
+        $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
+        $this->assertSame([], $this->applier->calls);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString(substr(hash('sha256', self::ADDRESS), 0, 8), $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testMatcherFailureIsWriteFailureAndLogsNoAddress(): void
+    {
+        $this->matcher->expects($this->once())
+            ->method('matchByMessageId')
+            ->willThrowException(new CarDatabaseException('lookup failed for ' . self::ADDRESS));
+
+        $result = $this->processor->process($this->basePayload());
 
         $this->assertSame(ProcessingResult::WRITE_FAILURE, $result);
-        $this->assertSame(2, $callCount, 'Third car must never be processed after the second car throws');
+        $this->assertSame([], $this->applier->calls);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString(CarDatabaseException::class, $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
     }
 
-    public function testMidLoopFailureInManagerCallReturnsWriteFailure(): void
+    public function testApplierFailureIsWriteFailureAndLogsTheUserIdButNoAddress(): void
     {
-        $carOne = (object) ['id' => 1, 'email' => 'shared4@example.com'];
-        $carTwo = (object) ['id' => 2, 'email' => 'shared4@example.com'];
+        $this->matchUser(77);
+        $this->applier->failWith(new CarDatabaseException('insert failed for ' . self::ADDRESS));
 
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$carOne, $carTwo]);
-        $this->mockRepo->expects($this->exactly(2))->method('insertEmailEvent')->willReturn(1);
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
 
-        $this->mockManager->expects($this->exactly(2))
-            ->method('setBounced')
-            ->willReturnCallback(function (int $carId) {
-                if ($carId === 2) {
-                    throw new CarDatabaseException('setBounced failed for car 2');
-                }
-                return true;
-            });
+        $this->assertSame(ProcessingResult::WRITE_FAILURE, $result);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('user 77', $this->logMessages()[0]);
+        $this->assertStringContainsString(CarDatabaseException::class, $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
 
-        $result = $this->processor->process([
-            'email' => 'shared4@example.com',
-            'event' => 'hard_bounce',
-            'message-id' => 'shared4-msg-1',
-            'tags' => ['car_verification'],
-        ]);
+    /** @return array<string, array{\Throwable}> */
+    public static function dataFaultProvider(): array
+    {
+        return [
+            'unparseable message time' => [new CarValidationException('bad time for ' . self::ADDRESS)],
+            'empty time or bad id'     => [new \InvalidArgumentException('bad match for ' . self::ADDRESS)],
+        ];
+    }
+
+    /** A data fault fails on every retry, so a 5xx would make Brevo resend it forever. */
+    public function testMatcherDataFaultIsMalformedAndLogsTheHashButNoAddress(): void
+    {
+        $fault = new \InvalidArgumentException('bad match for ' . self::ADDRESS);
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willThrowException($fault);
+
+        $result = $this->processor->process($this->basePayload());
+
+        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertSame([], $this->applier->calls);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString(get_class($fault), $this->logMessages()[0]);
+        $this->assertStringContainsString(substr(hash('sha256', self::ADDRESS), 0, 8), $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+        $this->assertNoLogHolds('bad ');
+    }
+
+    #[DataProvider('dataFaultProvider')]
+    public function testApplierDataFaultIsMalformedAndLogsTheUserIdButNoAddress(\Throwable $fault): void
+    {
+        $this->matchUser(77);
+        $this->applier->failWith($fault);
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('user 77', $this->logMessages()[0]);
+        $this->assertStringContainsString(get_class($fault), $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+        $this->assertNoLogHolds('bad ');
+    }
+
+    /** A stored flag that is not 0 or 1 fails on every retry, so a 5xx would make Brevo resend it forever. */
+    public function testProfileFlagValueFailureIsMalformedAndLogsTheUserIdButNoAddress(): void
+    {
+        $this->matchUser(77);
+        $this->applier->failWith(new ProfileFlagValueException(
+            'CarRepository: profiles.email_blocked for user=77 holds int, expected 0 or 1. ' . self::ADDRESS
+        ));
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('user 77', $this->logMessages()[0]);
+        $this->assertStringContainsString(ProfileFlagValueException::class, $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    /** Pins the catch order: the subclass is caught before CarDatabaseException. */
+    public function testPlainCarDatabaseExceptionStillGivesWriteFailureNotMalformed(): void
+    {
+        $this->matchUser(77);
+        $this->applier->failWith(new CarDatabaseException('insert failed'));
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
 
         $this->assertSame(ProcessingResult::WRITE_FAILURE, $result);
     }
@@ -580,88 +462,172 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
     public function testReasonFieldPassedThroughWhenPresentAndString(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
-            ->with(5, 'owner@example.com', 'hard_bounce', 'Mailbox full', 'brevo-msg-1', $this->isString());
+        $this->matchUser();
 
-        $this->mockManager->expects($this->once())->method('setBounced')->willReturn(true);
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'reason' => 'Mailbox full']));
 
-        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'reason' => 'Mailbox full']));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertSame('Mailbox full', $this->applier->calls[0]['reason']);
     }
 
     public function testNonStringReasonBecomesNull(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-        $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
-            ->with(5, 'owner@example.com', 'delivered', null, 'brevo-msg-1', $this->isString());
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->matchUser();
 
-        $result = $this->processor->process($this->basePayload(['event' => 'delivered', 'reason' => ['not', 'a', 'string']]));
+        $this->processor->process($this->basePayload(['reason' => ['not', 'a', 'string']]));
 
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertNull($this->applier->calls[0]['reason']);
     }
 
     // --- occurred_at resolution -------------------------------------------
 
     public function testOccurredAtResolvesFromTsEvent(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-
+        $this->matchUser();
         $ts = 1_700_000_000;
-        $expected = date('Y-m-d H:i:s', $ts);
 
-        $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
-            ->with(5, 'owner@example.com', 'delivered', null, 'brevo-msg-1', $expected);
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->processor->process($this->basePayload(['ts_event' => $ts]));
 
-        $result = $this->processor->process($this->basePayload(['event' => 'delivered', 'ts_event' => $ts]));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertSame(date('Y-m-d H:i:s', $ts), $this->applier->calls[0]['occurredAt']);
+        $this->assertSame([], $this->logMessages());
     }
 
     public function testOccurredAtFallsBackToTsWhenTsEventAbsent(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
-
+        $this->matchUser();
         $ts = 1_700_000_100;
-        $expected = date('Y-m-d H:i:s', $ts);
 
-        $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
-            ->with(5, 'owner@example.com', 'delivered', null, 'brevo-msg-1', $expected);
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->processor->process($this->basePayload(['ts' => (string) $ts]));
 
-        $result = $this->processor->process($this->basePayload(['event' => 'delivered', 'ts' => (string) $ts]));
-
-        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertSame(date('Y-m-d H:i:s', $ts), $this->applier->calls[0]['occurredAt']);
     }
 
-    public function testOccurredAtFallsBackToNowWhenAbsent(): void
+    public function testMissingTimeUsesReceiptTimeAndLogsTheUserIdOnly(): void
     {
-        $car = (object) ['id' => 5, 'email' => 'owner@example.com'];
-        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
+        $this->matchUser(42);
+        $before = time();
 
-        $this->mockRepo->expects($this->once())
-            ->method('insertEmailEvent')
-            ->with(5, 'owner@example.com', 'delivered', null, 'brevo-msg-1', $this->isString());
-        $this->mockManager->expects($this->never())->method('setBounced');
-        $this->mockManager->expects($this->never())->method('setSuppressed');
+        $this->processor->process($this->basePayload());
 
-        $result = $this->processor->process($this->basePayload(['event' => 'delivered']));
+        $occurredAt = strtotime($this->applier->calls[0]['occurredAt']);
+        $this->assertGreaterThanOrEqual($before, $occurredAt);
+        $this->assertLessThanOrEqual(time(), $occurredAt);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('user 42', $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testTsEventMoreThanFiveMinutesAfterReceiptIsTreatedAsMissing(): void
+    {
+        $this->matchUser(42);
+        $before = time();
+
+        $this->processor->process($this->basePayload(['ts_event' => $before + 3600]));
+
+        $occurredAt = strtotime($this->applier->calls[0]['occurredAt']);
+        $this->assertLessThanOrEqual(time(), $occurredAt, 'A far-future ts_event must not become occurred_at');
+        $this->assertGreaterThanOrEqual($before, $occurredAt);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('more than 5 minutes after receipt', $this->logMessages()[0]);
+        $this->assertStringContainsString('user 42', $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testTsEventWithinFiveMinutesAfterReceiptIsKept(): void
+    {
+        $this->matchUser();
+        $ts = time() + 120;
+
+        $this->processor->process($this->basePayload(['ts_event' => $ts]));
+
+        $this->assertSame(date('Y-m-d H:i:s', $ts), $this->applier->calls[0]['occurredAt']);
+    }
+
+    // --- sendinblueRecordEvent() (#2355) -------------------------------------
+
+    public function testWithoutThePluginFunctionNothingIsLoggedAboutIt(): void
+    {
+        $this->assertFalse(function_exists('sendinblueRecordEvent'), 'Test setup: the main process must not define the stub');
+        $this->matchUser();
+
+        $result = $this->processor->process($this->basePayload(['ts_event' => 1_700_000_000]));
 
         $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertSame([], $this->logMessages());
+    }
+
+    #[RunInSeparateProcess]
+    public function testPluginFunctionGetsTheMessageIdEventIntegerTimeAndReason(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-record-event.php';
+        $GLOBALS['mockRecordEventCalls'] = [];
+        $GLOBALS['mockRecordEventMode'] = 'ok';
+        $this->matchUser();
+
+        $result = $this->processor->process($this->basePayload([
+            'event' => 'hard_bounce',
+            'reason' => 'Mailbox full',
+            'ts_event' => 1_700_000_000,
+        ]));
+
+        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertSame([['brevo-msg-1', 'hard_bounce', 1_700_000_000, 'Mailbox full']], $GLOBALS['mockRecordEventCalls']);
+        $this->assertSame([], $this->logMessages());
+    }
+
+    #[RunInSeparateProcess]
+    public function testPluginFunctionIsCalledForAnEventWithNoUser(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-record-event.php';
+        $GLOBALS['mockRecordEventCalls'] = [];
+        $GLOBALS['mockRecordEventMode'] = 'ok';
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUser());
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
+        $this->assertSame([['brevo-msg-1', 'hard_bounce', 1_700_000_000, '']], $GLOBALS['mockRecordEventCalls']);
+    }
+
+    #[RunInSeparateProcess]
+    public function testPluginFunctionIsNotCalledForAMessageNotOurs(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-record-event.php';
+        $GLOBALS['mockRecordEventCalls'] = [];
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::notOurs());
+
+        $this->assertSame(ProcessingResult::IGNORED, $this->processor->process($this->basePayload()));
+        $this->assertSame([], $GLOBALS['mockRecordEventCalls']);
+    }
+
+    #[RunInSeparateProcess]
+    public function testPluginFunctionFalseIsLoggedAndTheEventStillCounts(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-record-event.php';
+        $GLOBALS['mockRecordEventCalls'] = [];
+        $GLOBALS['mockRecordEventMode'] = 'false';
+        $this->matchUser();
+
+        $result = $this->processor->process($this->basePayload(['ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('returned false', $this->logMessages()[0]);
+    }
+
+    #[RunInSeparateProcess]
+    public function testPluginFunctionThrowIsLoggedByClassAndCodeOnlyAndTheEventStillCounts(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-record-event.php';
+        $GLOBALS['mockRecordEventCalls'] = [];
+        $GLOBALS['mockRecordEventMode'] = 'throw';
+        $this->matchUser();
+
+        $result = $this->processor->process($this->basePayload(['ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('RuntimeException', $this->logMessages()[0]);
+        $this->assertStringContainsString('code 42', $this->logMessages()[0]);
+        $this->assertNoLogHolds('leak@example.com');
     }
 }

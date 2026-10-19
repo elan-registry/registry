@@ -115,6 +115,12 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
      * the profile writers, their lock reads, and the readers that apply
      * the address-match rule.
      *
+     * `lockProfileAndFindAddresses` is on the list (#2358). It reads the
+     * stored address columns, so account deletion can find every address
+     * that the plugin message log may hold for the user. It reads no flag
+     * value and decides nothing about a flag, so it cannot bypass the match
+     * rule. testAddressLockReadsTheAddressColumnsAndNoFlagValue keeps it so.
+     *
      * @var list<string>
      */
     private const ALLOWED_REPOSITORY_METHODS = [
@@ -128,6 +134,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         'setProfileBounced',
         'clearProfileBounced',
         'writeProfileBounceClear',
+        'lockProfileAndFindAddresses',
     ];
 
     /**
@@ -137,7 +144,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
      */
     private const REQUIRED_MATCH_CALLERS = [
         'usersc/user_settings.php' => 'effectiveEmailFlags(',
-        'usersc/classes/Car/CarVerificationSendService.php' => 'effectiveEmailFlags(',
+        'usersc/classes/Car/SendPolicy.php' => 'effectiveEmailFlags(',
         'usersc/classes/Cron/BrevoSuppressionSyncJob.php' => 'effectiveEmailFlags(',
         'usersc/classes/Car/EmailNoticeBuilder.php' => 'effectiveEmailFlags(',
         'usersc/plugins/hooker/hooks/user_form_hook.php' => 'effectiveEmailFlags(',
@@ -179,6 +186,18 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
             => 'It asserts that user_settings.php and the hook do not call them.',
         'tests/unit/cars/services/EmailFlagActiveSqlTest.php'
             => 'It asserts that the car-address predicate and guard stay removed.',
+    ];
+
+    /**
+     * Runtime files that normalize an address for a compare or a write.
+     *
+     * @var list<string>
+     */
+    private const RUNTIME_ADDRESS_MATCHERS = [
+        'usersc/classes/Owner.php',
+        'usersc/classes/Car/CarRepository.php',
+        'usersc/scripts/during_user_creation.php',
+        'app/admin/includes/account-cleanup-helpers.php',
     ];
 
     private const HOOK = 'usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php';
@@ -480,6 +499,25 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         );
     }
 
+    /**
+     * The privacy step reads the address columns only. A read of a flag value
+     * (`email_blocked`, `email_bounced`) there would be a second reading of
+     * the flags outside the match rule.
+     */
+    public function testAddressLockReadsTheAddressColumnsAndNoFlagValue(): void
+    {
+        $body = self::methodBody($this->codeOnly('usersc/classes/Car/CarRepository.php'), 'lockProfileAndFindAddresses');
+
+        $this->assertNotSame('', $body, 'The scan must find the method.');
+        $this->assertStringContainsString('email_bounced_address', $body);
+        $this->assertStringContainsString('email_blocked_address', $body);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\bemail_(?:blocked|bounced)\b(?!_address)/',
+            $body,
+            'lockProfileAndFindAddresses must not read a stored flag value.'
+        );
+    }
+
     /** The class-level hits are the four predicate constants and nothing else. */
     public function testRepositoryClassLevelFlagColumnsAreThePredicateConstants(): void
     {
@@ -510,6 +548,25 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         }
     }
 
+    /**
+     * Runtime code uses the runtime matching rule. The #2101 migration keeps
+     * its frozen copy, so a later change to the runtime rule cannot change a
+     * migration result (#2358).
+     */
+    public function testRuntimeAddressComparesUseTheRuntimeRule(): void
+    {
+        foreach (self::RUNTIME_ADDRESS_MATCHERS as $relative) {
+            $this->assertFileExists($this->root . '/' . $relative);
+            $code = $this->codeOnly($relative);
+            $this->assertStringContainsString('EmailAddress::normalize(', $code, $relative);
+            $this->assertStringNotContainsString(
+                'DeliverabilityMigrationQueries::normalizeAddress(',
+                $code,
+                "{$relative} must call EmailAddress::normalize(), not the frozen migration copy."
+            );
+        }
+    }
+
     public function testEligibilityAndQueueUseThePredicateMethod(): void
     {
         $repo = $this->codeOnly('usersc/classes/Car/CarRepository.php');
@@ -533,8 +590,8 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
 
     /**
      * cars.email is only a copy of the owner's email. The verification send
-     * mails users.email, and the Brevo event match finds cars by users.email.
-     * Neither may read the car copy.
+     * mails users.email, and the Brevo event match finds the user by
+     * users.email (#2359). Neither may read the car copy.
      */
     public function testSendAndEventMatchUseTheAccountEmailOnly(): void
     {
@@ -549,11 +606,11 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
             'The sent event row records the address that the send mailed.'
         );
 
-        $finder = self::methodBody($this->codeOnly('usersc/classes/Car/CarRepository.php'), 'findByEmail');
-        $this->assertStringContainsString('INNER JOIN users u ON u.id = cars.user_id', $finder);
+        $finder = self::methodBody($this->codeOnly('usersc/classes/Car/CarRepository.php'), 'findUserIdsByAddress');
+        $this->assertStringContainsString('FROM users u', $finder);
         $this->assertStringContainsString('self::CURRENT_ADDRESS_SQL', $finder);
         $this->assertStringNotContainsString('cars.email', $finder, 'The event match must not use the car copy.');
-        $this->assertStringNotContainsString('WHERE email = ?', $finder);
+        $this->assertDoesNotMatchRegularExpression('/\bcars\b/', $finder, 'The event match must not read the cars table.');
 
         $eligible = self::methodBody($this->codeOnly('usersc/classes/Car/CarRepository.php'), 'verificationEligibleFromSql');
         $this->assertStringContainsString('$address = self::CURRENT_ADDRESS_SQL;', $eligible);
@@ -773,7 +830,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
             ['clearFlagsForConfirmedEmailChange', 'clearBouncedForEmailChange'],
             self::clearMethodCalls('$m->clearFlagsForConfirmedEmailChange($a, $b); $m->clearBouncedForEmailChange($a, $b, $e);')
         );
-        $this->assertSame([], self::clearMethodCalls('$m->setBounced(1);'));
+        $this->assertSame([], self::clearMethodCalls('$m->setBouncedFromEvent(1);'));
     }
 
     // ------------------------------------------------------------------

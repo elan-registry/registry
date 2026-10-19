@@ -370,6 +370,11 @@ final class CarVerificationEmailComposerTest extends TestCase
         );
         $this->assertStringNotContainsString('er-no-track', $html);
         $this->assertStringContainsString('Stop sending me these', $html);
+        // The footer must state the opt-out scope that the confirm page applies.
+        $this->assertStringContainsString(
+            'stop all registry email except account mail (password reset, sign-in, and email change).',
+            $html
+        );
     }
 
     // ------------------------------------------------------------------

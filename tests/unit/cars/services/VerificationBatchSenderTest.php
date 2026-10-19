@@ -24,9 +24,8 @@ require_once __DIR__ . '/../../../Support/VerificationSettingsFakeDatabase.php';
  *
  * Covers two behaviors of the `verification_send_batch` POST handler in
  * app/admin/index.php that were previously untested because that file
- * cannot be require()'d directly in a unit test (see
- * tests/unit/admin/VerificationEligibilitySkipReasonTest.php's docblock for
- * why):
+ * cannot be require()'d directly in a unit test (it needs the full
+ * UserSpice bootstrap):
  *
  * 1. BATCH-LOOP FAILURE CONTAINMENT. The loop has four independent
  *    try/catch guards specifically designed so one car's failure never
@@ -395,6 +394,39 @@ final class VerificationBatchSenderTest extends TestCase
         $this->assertCount(0, $GLOBALS['mockSentEmails']);
     }
 
+    // --- Brevo not ready: the whole batch fails closed (#2184, #2330) ----
+
+    #[AllowMockObjectsWithoutExpectations]
+    public function testBatchWhileBrevoIsNotReadySendsNothingFailsEveryCarAndKeepsEveryVericode(): void
+    {
+        $this->brevoSiteRoot?->writePluginVersion('1.6.2');
+        $car1 = $this->makeEligibleCar(1);
+        $car2 = $this->makeEligibleCar(2);
+        $car3 = $this->makeEligibleCar(3);
+        $cars = [1 => $car1, 2 => $car2, 3 => $car3];
+
+        $this->mockRepo->method('findById')->willReturnCallback(fn (int $id) => $cars[$id]);
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('updateCar');
+        $this->mockRepo->expects($this->never())->method('insertEmailEvent');
+        $this->mockRepo->expects($this->never())->method('incrementVerificationAttempts');
+
+        $result = $this->sender->processBatch([1, 2, 3]);
+
+        $this->assertSame([], $result['sent']);
+        $this->assertSame([], $result['unrecorded']);
+        $this->assertSame([], $result['skipped']);
+        $this->assertCount(3, $result['failed'], 'Every car must land in failed');
+        foreach ([1, 2, 3] as $index => $id) {
+            $this->assertSame($cars[$id], $result['failed'][$index]['car']);
+            $this->assertStringStartsWith('No email was sent. ', $result['failed'][$index]['reason']);
+            $this->assertStringContainsString('1.6.2', $result['failed'][$index]['reason'], 'The reason must name the installed version');
+            $this->assertSame('oldhashedvalue', $cars[$id]->vericode, "The vericode of car {$id} must not be rotated");
+            $this->assertSame('2025-01-01 00:00:00', $cars[$id]->vericode_sent_at, "vericode_sent_at of car {$id} must not change");
+        }
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No email may be sent while Brevo is not ready');
+    }
+
     #[AllowMockObjectsWithoutExpectations]
     public function testEmptyBatchReturnsAllEmptyBuckets(): void
     {
@@ -406,6 +438,116 @@ final class VerificationBatchSenderTest extends TestCase
             ['sent' => [], 'unrecorded' => [], 'skipped' => [], 'failed' => []],
             $result
         );
+    }
+
+    // --- capToBatchSize() (#2330) ----------------------------------------
+
+    /** @return array<string, array{0: int, 1: int}> [id count, batch size], not truncated */
+    public static function notTruncatedProvider(): array
+    {
+        return [
+            'equal to the batch size' => [5, 5],
+            'under the batch size'    => [3, 5],
+            'empty'                   => [0, 5],
+            'size 1, one id'          => [1, 1],
+        ];
+    }
+
+    #[AllowMockObjectsWithoutExpectations]
+    #[\PHPUnit\Framework\Attributes\DataProvider('notTruncatedProvider')]
+    public function testCapToBatchSizeKeepsEveryIdAndReturnsNullMessagesWhenNotOver(int $count, int $size): void
+    {
+        $ids = $count > 0 ? range(101, 100 + $count) : [];
+
+        $cap = VerificationBatchSender::capToBatchSize($ids, $size);
+
+        $this->assertSame($ids, $cap['ids']);
+        $this->assertNull($cap['logMessage']);
+        $this->assertNull($cap['adminMessage']);
+    }
+
+    /** @return array<string, array{0: list<int>, 1: int, 2: list<int>, 3: string, 4: string}> */
+    public static function truncatedProvider(): array
+    {
+        return [
+            'one over' => [
+                [10, 20, 30, 40, 50, 60],
+                5,
+                [10, 20, 30, 40, 50],
+                'Verification send: car_ids[] carried 6 ids, exceeding the configured batch size of 5; truncated to the first 5.',
+                'Only the first 5 cars were sent — the request exceeded the configured batch size.',
+            ],
+            'many over' => [
+                range(1, 200),
+                5,
+                [1, 2, 3, 4, 5],
+                'Verification send: car_ids[] carried 200 ids, exceeding the configured batch size of 5; truncated to the first 5.',
+                'Only the first 5 cars were sent — the request exceeded the configured batch size.',
+            ],
+            'size 1' => [
+                [7, 8],
+                1,
+                [7],
+                'Verification send: car_ids[] carried 2 ids, exceeding the configured batch size of 1; truncated to the first 1.',
+                'Only the first 1 cars were sent — the request exceeded the configured batch size.',
+            ],
+            // A size below 1 is clamped to 1. Unclamped, array_slice() keeps
+            // nothing for 0 and cuts from the end for -1.
+            'size 0 clamps to 1' => [
+                [7, 8, 9],
+                0,
+                [7],
+                'Verification send: car_ids[] carried 3 ids, exceeding the configured batch size of 1; truncated to the first 1.',
+                'Only the first 1 cars were sent — the request exceeded the configured batch size.',
+            ],
+            'size -1 clamps to 1' => [
+                [7, 8, 9],
+                -1,
+                [7],
+                'Verification send: car_ids[] carried 3 ids, exceeding the configured batch size of 1; truncated to the first 1.',
+                'Only the first 1 cars were sent — the request exceeded the configured batch size.',
+            ],
+        ];
+    }
+
+    /**
+     * @param list<int> $ids
+     * @param list<int> $expectedIds
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    #[\PHPUnit\Framework\Attributes\DataProvider('truncatedProvider')]
+    public function testCapToBatchSizeTruncatesToTheFirstNIdsAndNamesBothNumbers(
+        array $ids,
+        int $size,
+        array $expectedIds,
+        string $expectedLog,
+        string $expectedAdmin
+    ): void {
+        $cap = VerificationBatchSender::capToBatchSize($ids, $size);
+
+        $this->assertSame($expectedIds, $cap['ids']);
+        $this->assertSame($expectedLog, $cap['logMessage']);
+        $this->assertSame($expectedAdmin, $cap['adminMessage']);
+    }
+
+    /**
+     * The PHPDoc documents no failure mode: the input is array<mixed> and the
+     * result is a list. Values keep their type and order, and keys are dropped.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testCapToBatchSizeKeepsMixedTypeValuesAndReturnsAListFromAnAssociativeArray(): void
+    {
+        $ids = ['b' => '12', 'a' => 7, 'z' => 'abc', 9 => null, 3 => ['x']];
+
+        $cap = VerificationBatchSender::capToBatchSize($ids, 4);
+
+        $this->assertSame(['12', 7, 'abc', null], $cap['ids']);
+        $this->assertTrue(array_is_list($cap['ids']));
+        $this->assertStringContainsString('carried 5 ids', (string) $cap['logMessage']);
+
+        $untouched = VerificationBatchSender::capToBatchSize(['k' => 'v', 'j' => 2], 5);
+        $this->assertSame(['v', 2], $untouched['ids']);
+        $this->assertNull($untouched['logMessage']);
     }
 }
 

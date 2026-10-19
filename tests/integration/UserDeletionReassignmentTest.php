@@ -274,15 +274,19 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         $this->assertSame($countBefore + 1, $this->countMatchingLogs($logtype, $lognote), $failureMessage);
     }
 
-    private function emailEventRowCount(int $carId): int
+    private function emailEventRowCount(int $userId): int
     {
-        $row = $this->db->query('SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ?', [$carId])->first();
+        $row = $this->db->query('SELECT COUNT(*) AS cnt FROM er_email_events WHERE user_id = ?', [$userId])->first();
         return (int) $row->cnt;
     }
 
-    private function insertEmailEventFixture(int $carId, string $event, string $brevoMessageId): void
+    /**
+     * @param int|null $carId Null writes an owner-level row, as the webhook does
+     */
+    private function insertEmailEventFixture(int $userId, ?int $carId, string $event, string $brevoMessageId): void
     {
         $inserted = $this->db->insert('er_email_events', [
+            'user_id'          => $userId,
             'car_id'           => $carId,
             'email'            => 'fixture-' . uniqid() . '@example.com',
             'event'            => $event,
@@ -293,7 +297,7 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         $this->assertTrue((bool) $inserted, 'Test fixture: er_email_events insert must succeed: ' . $this->db->errorString());
     }
 
-    /** #1887: er_email_events cleared in the reassignment transaction (noowner-exists branch). */
+    /** #1887, #2358: the privacy step deletes the user's events, also a row with car_id NULL (noowner-exists branch). */
     public function test_afterUserDeletionHook_clearsEmailEventsViaNoOwnerBranch(): void
     {
         $noOwnerRow = $this->db->query("SELECT id FROM users WHERE username = ?", ['noowner'])->first();
@@ -303,10 +307,10 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         $userId = $this->createTestUser();
         $carId = $this->createTestCar($userId);
 
-        $this->insertEmailEventFixture($carId, 'hard_bounce', 'msg-' . uniqid());
-        $this->insertEmailEventFixture($carId, 'delivered', 'msg-' . uniqid());
+        $this->insertEmailEventFixture($userId, $carId, 'sent', 'local:' . uniqid());
+        $this->insertEmailEventFixture($userId, null, 'hard_bounce', 'msg-' . uniqid());
 
-        $this->assertSame(2, $this->emailEventRowCount($carId), 'Pre-condition: two er_email_events rows exist for the car');
+        $this->assertSame(2, $this->emailEventRowCount($userId), 'Pre-condition: two er_email_events rows exist for the user');
 
         $this->db->delete('users', ['id', '=', $userId]);
 
@@ -316,8 +320,8 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
 
         $this->assertSame(
             0,
-            $this->emailEventRowCount($carId),
-            'er_email_events rows for the departing owner\'s car must be deleted by the noowner-exists branch'
+            $this->emailEventRowCount($userId),
+            'er_email_events rows of the departing user must be deleted by the noowner-exists branch'
         );
 
         $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
@@ -337,9 +341,9 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
         $userId = $this->createTestUser();
         $carId = $this->createTestCar($userId);
 
-        $this->insertEmailEventFixture($carId, 'spam', 'msg-' . uniqid());
+        $this->insertEmailEventFixture($userId, null, 'spam', 'msg-' . uniqid());
 
-        $this->assertSame(1, $this->emailEventRowCount($carId), 'Pre-condition: one er_email_events row exists for the car');
+        $this->assertSame(1, $this->emailEventRowCount($userId), 'Pre-condition: one er_email_events row exists for the user');
 
         $renamed = $this->db->query('UPDATE users SET username = ? WHERE id = ?', ['noowner_hidden_for_test', $noOwnerId]);
         $this->assertFalse($this->db->error(), 'Test setup: failed to hide noowner account: ' . $this->db->errorString());
@@ -353,7 +357,7 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
 
             $this->assertSame(
                 0,
-                $this->emailEventRowCount($carId),
+                $this->emailEventRowCount($userId),
                 'er_email_events rows must be deleted by the fallback branch too — this is the bug the plan fixes'
             );
 
@@ -365,17 +369,24 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
     }
 
     /**
-     * Renames car_transfer_requests.admin_notes (the hook's first write) to force a
-     * DB error; the finally block restores the column.
+     * #2358: the privacy step has its own transaction and commits first. A failure in the
+     * car transaction rolls back the car reassignment only. The events and the profile are
+     * already deleted, because they must not outlive the account.
+     *
+     * Renames car_transfer_requests.admin_notes (the car transaction's first write) to force
+     * a DB error. The finally block restores the column.
      */
-    public function test_afterUserDeletionHook_rollsBackEmailEventsOnMidTransactionFailure(): void
+    public function test_afterUserDeletionHook_deletesEventsEvenWhenTheCarTransactionRollsBack(): void
     {
         $userId = $this->createTestUser();
         $carId = $this->createTestCar($userId);
         $originalUserId = $userId;
+        $this->createdProfileUserIds[] = $userId;
+        $this->db->insert('profiles', ['user_id' => $userId, 'bio' => '', 'city' => '', 'state' => '', 'country' => '']);
 
-        $this->insertEmailEventFixture($carId, 'hard_bounce', 'msg-' . uniqid());
-        $this->assertSame(1, $this->emailEventRowCount($carId), 'Pre-condition: one er_email_events row exists for the car');
+        $this->insertEmailEventFixture($userId, $carId, 'sent', 'local:' . uniqid());
+        $this->insertEmailEventFixture($userId, null, 'hard_bounce', 'msg-' . uniqid());
+        $this->assertSame(2, $this->emailEventRowCount($userId), 'Pre-condition: two er_email_events rows exist for the user');
 
         $this->db->query('ALTER TABLE car_transfer_requests RENAME COLUMN admin_notes TO admin_notes_renamed_for_test');
         $this->assertFalse($this->db->error(), 'Test setup: failed to force a DB error: ' . $this->db->errorString());
@@ -388,16 +399,22 @@ final class UserDeletionReassignmentTest extends TransferIntegrationTestCase
             require TESTING_ROOT . '/usersc/scripts/after_user_deletion.php';
 
             $this->assertSame(
-                1,
-                $this->emailEventRowCount($carId),
-                'er_email_events rows must survive a rolled-back transaction (all-or-nothing guarantee)'
+                0,
+                $this->emailEventRowCount($userId),
+                'The privacy step committed before the car transaction failed, so the events are deleted'
             );
+            $this->assertSame(
+                0,
+                (int) $this->db->query('SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?', [$userId])->first()->cnt,
+                'The profile is deleted by the privacy step too'
+            );
+            $this->assertFalse($this->db->inTransaction(), 'The hook must leave no transaction open');
 
             $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
             $this->assertSame(
                 $originalUserId,
                 (int) $after->user_id,
-                'Car must NOT be reassigned when the transaction rolls back'
+                'Car must NOT be reassigned when the car transaction rolls back'
             );
         } finally {
             $this->db->query('ALTER TABLE car_transfer_requests RENAME COLUMN admin_notes_renamed_for_test TO admin_notes');

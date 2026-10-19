@@ -1,4 +1,4 @@
-// Coverage for the "Resume verification emails" control (#resume-emails) on
+// Coverage for the "Resume registry email" control (#resume-emails) on
 // usersc/user_settings.php (issue #1895).
 //
 // Seeds three loginable owners through `seed-resume-emails.php`. The flags are
@@ -38,7 +38,7 @@ test.afterAll(() => {
     }
 });
 
-test.describe('Resume verification emails control (#1895)', () => {
+test.describe('Resume registry email control (#1895)', () => {
     test('suppressed owner resumes emails and the control is gone after the redirect', async ({ page }) => {
         await login(page, seeded.suppressed.username, seeded.suppressed.password);
         expect(await isLoggedIn(page)).toBe(true);
@@ -46,11 +46,11 @@ test.describe('Resume verification emails control (#1895)', () => {
         await page.goto(SETTINGS_URL, { waitUntil: 'domcontentloaded' });
         const control = page.locator('#resume-emails');
         await expect(control).toBeVisible();
-        await expect(control).toContainText('Verification emails are currently paused for 1 of your cars.');
+        await expect(control).toContainText('Registry email is paused for you. This includes verification email for 1 of your cars.');
         // No provider block, so no provider note.
         await expect(control).not.toContainText('Our email provider flagged your address.');
 
-        const resumeButton = control.getByRole('button', { name: 'Resume verification emails' });
+        const resumeButton = control.getByRole('button', { name: 'Resume registry email' });
         await Promise.all([
             page.waitForURL(url => url.pathname.endsWith('/usersc/user_settings.php'), { waitUntil: 'domcontentloaded' }),
             resumeButton.click(),
@@ -59,7 +59,7 @@ test.describe('Resume verification emails control (#1895)', () => {
         // The usSuccess() flash renders as a success toast. It closes after 6
         // seconds, so check it before anything else.
         await expect(page.locator('.us-toast:has(.us-bar-success) .toast-body'))
-            .toContainText('Verification emails have been resumed for your cars.');
+            .toContainText('Registry email is resumed.');
 
         // Non-vacuous: the settings page rendered, without the control.
         await expect(page.locator('h1:has-text("Update your user settings")')).toBeVisible();
@@ -88,7 +88,7 @@ test.describe('Resume verification emails control (#1895)', () => {
 
         await Promise.all([
             page.waitForURL(url => url.pathname.endsWith('/usersc/user_settings.php'), { waitUntil: 'domcontentloaded' }),
-            control.getByRole('button', { name: 'Resume verification emails' }).click(),
+            control.getByRole('button', { name: 'Resume registry email' }).click(),
         ]);
 
         // usWarning() queues a UserSpice generic message, which renders as the dark toast.
@@ -97,11 +97,11 @@ test.describe('Resume verification emails control (#1895)', () => {
         await expect(toast).toContainText(
             'Verification emails stay paused because our email provider flagged your address. Change your email address or contact an admin.'
         );
-        await expect(toast).not.toContainText('have been resumed');
+        await expect(toast).not.toContainText('is resumed');
         await expect(page.locator('.us-toast:has(.us-bar-success)')).toHaveCount(0);
 
         // The block stays, so the control stays, now without the Resume button.
         await expect(page.locator('#resume-emails')).toBeVisible();
-        await expect(page.locator('#resume-emails').getByRole('button', { name: 'Resume verification emails' })).toHaveCount(0);
+        await expect(page.locator('#resume-emails').getByRole('button', { name: 'Resume registry email' })).toHaveCount(0);
     });
 });

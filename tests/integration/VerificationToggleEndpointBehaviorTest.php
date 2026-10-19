@@ -18,44 +18,25 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('integration')]
 final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 {
-    /** @var list<string> */
-    private const DB_ENV_VARS = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS'];
-
-    /** @var int[] user_permission_matches row IDs created during this test, cleaned up in tearDown() */
-    private array $createdPermissionMatchIds = [];
+    private const DENIED_NOTE = 'verification-toggle.php: non-admin toggle attempt';
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
-        $this->createdPermissionMatchIds = [];
     }
 
     protected function tearDown(): void
     {
-        foreach (self::DB_ENV_VARS as $var) {
-            putenv($var);
-        }
-
         if ($this->databaseConnected) {
-            foreach ($this->createdPermissionMatchIds as $id) {
-                $this->db->query('DELETE FROM user_permission_matches WHERE id = ?', [$id]);
-            }
             // Restore the safe default so no later test sees "enabled".
             $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
+            if ($this->db->error()) {
+                fwrite(STDERR, "NOTE: tearDown() failed to reset er_verification_settings.enabled: {$this->db->errorString()}\n");
+            }
         }
 
         parent::tearDown();
-    }
-
-    private function exposeTestDatabaseToSubprocess(): void
-    {
-        foreach (self::DB_ENV_VARS as $var) {
-            $value = $_ENV[$var] ?? getenv($var);
-            if ($value !== false && $value !== '') {
-                putenv("$var=$value");
-            }
-        }
     }
 
     private function setSwitchEnabled(bool $enabled): void
@@ -70,90 +51,24 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
     private function currentSwitchState(): bool
     {
         $row = $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1')->first();
+        $this->assertFalse($this->db->error(), 'Failed to read er_verification_settings.enabled: ' . $this->db->errorString());
+        // first() returns [] when no row matches. A cast would read that as "disabled".
+        $this->assertNotEmpty($row, 'er_verification_settings must have the row with id = 1');
         return (bool) $row->enabled;
     }
 
-    /** Grants permission_id to $userId via a real user_permission_matches row. */
-    private function grantPermission(int $userId, int $permissionId): void
-    {
-        $this->db->insert('user_permission_matches', [
-            'user_id' => $userId,
-            'permission_id' => $permissionId,
-        ]);
-        $this->assertFalse($this->db->error(), 'Failed to grant permission for test setup: ' . $this->db->errorString());
-        $this->createdPermissionMatchIds[] = (int) $this->db->lastId();
-    }
-
     /**
-     * @param int|null $loggedInUserId When non-null, the subprocess logs this user in
-     *                                 (via the same reflection-based technique as
-     *                                 IntegrationTestCase::loginAsTestUser()) before the
-     *                                 endpoint runs. When null, no user is logged in.
      * @param string|null $enabledValue Raw POST 'enabled' value, or null to omit it entirely.
-     * @return array{status: bool, message: string, exitCode: int, raw: string}
+     * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null}
      */
     private function invokeToggleEndpoint(?int $loggedInUserId, ?string $enabledValue, bool $withValidCsrf = true): array
     {
-        $endpointFile = dirname(__DIR__, 2) . '/app/api/admin/verification-toggle.php';
-        $projectRoot = dirname(__DIR__, 2);
-
-        $this->exposeTestDatabaseToSubprocess();
-
-        $loginSnippet = $loggedInUserId === null
-            ? ''
-            : sprintf(
-                '$loggedInUser = new User(); $loggedInUser->find(%d); ' .
-                '$reflection = new ReflectionClass($loggedInUser); ' .
-                '$prop = $reflection->getProperty("_isLoggedIn"); $prop->setValue($loggedInUser, true); ' .
-                'global $user; $user = $loggedInUser; $GLOBALS["user"] = $loggedInUser;',
-                $loggedInUserId
-            );
-
-        $enabledSnippet = $enabledValue === null
-            ? ''
-            : sprintf('$_POST["enabled"] = %s;', var_export($enabledValue, true));
-
-        $csrfSnippet = $withValidCsrf
-            ? '$_POST["csrf"] = \Token::generate();'
-            : '$_POST["csrf"] = "deliberately-invalid-token";';
-
-        $script = sprintf(
-            'require %s; ' .
-            '\Dotenv\Dotenv::createMutable(%s, ".env.test.local")->load(); ' .
-            '$_SERVER["DOCUMENT_ROOT"] = %s; ' .
-            '$_SERVER["PHP_SELF"] = "/app/api/admin/verification-toggle.php"; ' .
-            '$_SERVER["REQUEST_METHOD"] = "POST"; ' .
-            'chdir(%s); ' .
-            'require_once %s; ' .
-            '%s ' .
-            '%s ' .
-            '%s ' .
-            'require %s;',
-            var_export($projectRoot . '/vendor/autoload.php', true),
-            var_export($projectRoot, true),
-            var_export($projectRoot, true),
-            var_export(dirname($endpointFile), true),
-            var_export($projectRoot . '/users/init.php', true),
-            $csrfSnippet,
-            $loginSnippet,
-            $enabledSnippet,
-            var_export($endpointFile, true)
+        return $this->invokeEndpoint(
+            'app/api/admin/verification-toggle.php',
+            $enabledValue === null ? [] : ['enabled' => $enabledValue],
+            $loggedInUserId,
+            $withValidCsrf ? 'valid' : 'invalid'
         );
-
-        $raw = shell_exec('php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"');
-        $raw = $raw !== null ? $raw : '';
-
-        [$body, $exitMarker] = array_pad(explode('___EXIT:', $raw), 2, '0');
-        $body = trim($body);
-
-        $decoded = json_decode($body, true);
-
-        return [
-            'status'   => is_array($decoded) ? (bool) ($decoded['success'] ?? false) : false,
-            'message'  => is_array($decoded) ? (string) ($decoded['message'] ?? '') : '',
-            'exitCode' => (int) trim($exitMarker),
-            'raw'      => $body,
-        ];
     }
 
     // =========================================================================
@@ -163,16 +78,23 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
     public function testEditorCannotToggleAndSettingStaysUnchanged(): void
     {
         $editorUserId = $this->createTestUser();
-        $this->grantPermission($editorUserId, 3); // 3 = Editor per CLAUDE.md's role hierarchy
+        $this->grantTestPermission($editorUserId, 3); // 3 = Editor per CLAUDE.md's role hierarchy
 
         $this->setSwitchEnabled(false);
+        $deniedBefore = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::DENIED_NOTE . '%', $editorUserId);
 
         $result = $this->invokeToggleEndpoint($editorUserId, '1');
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertSame(403, $result['httpCode'], $result['raw']);
         $this->assertFalse($result['status'], 'Editor must not be able to toggle verification: ' . $result['raw']);
         $this->assertStringContainsString('Admin access required', $result['message']);
         $this->assertFalse($this->currentSwitchState(), 'Setting must remain unchanged after a rejected editor request');
+        $this->assertSame(
+            $deniedBefore + 1,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::DENIED_NOTE . '%', $editorUserId),
+            'Exactly one access-denied log row must record the editor attempt'
+        );
     }
 
     public function testLoggedOutUserCannotToggle(): void
@@ -182,6 +104,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         $result = $this->invokeToggleEndpoint(null, '1');
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertSame(403, $result['httpCode'], $result['raw']);
         $this->assertFalse($result['status']);
         $this->assertStringContainsString('Admin access required', $result['message']);
         $this->assertFalse($this->currentSwitchState());
@@ -194,13 +117,14 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
     public function testAdminEnablingWhileBrevoNotReadyGetsValidationErrorNamingBrevo(): void
     {
         $adminUserId = $this->createTestUser();
-        $this->grantPermission($adminUserId, 2); // 2 = Admin
+        $this->grantTestPermission($adminUserId, 2); // 2 = Admin
 
         $this->setSwitchEnabled(false);
 
         // An empty API key makes Brevo not ready on every checkout, also one
         // with ready plugin files. The finally block restores the key.
         $existingKeyRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
+        $this->assertFalse($this->db->error(), 'Failed to read the Brevo key row: ' . $this->db->errorString());
         $hasKeyRow = is_object($existingKeyRow) && isset($existingKeyRow->id);
         if ($hasKeyRow) {
             $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['', $existingKeyRow->id]);
@@ -216,6 +140,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
             $result = $this->invokeToggleEndpoint($adminUserId, '1');
 
             $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+            $this->assertSame(422, $result['httpCode'], $result['raw']);
             $this->assertFalse($result['status'], 'Enabling must be refused when Brevo is not ready: ' . $result['raw']);
             $this->assertStringContainsString('Brevo', $result['message'], 'The validation error must name Brevo as the failed prerequisite');
             $this->assertFalse($this->currentSwitchState(), 'Setting must remain unchanged after a rejected enable attempt');
@@ -238,7 +163,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
     public function testAdminCanDisableEvenWhileBrevoIsBroken(): void
     {
         $adminUserId = $this->createTestUser();
-        $this->grantPermission($adminUserId, 2);
+        $this->grantTestPermission($adminUserId, 2);
 
         // Force the switch on directly, bypassing the gate.
         $this->setSwitchEnabled(true);
@@ -246,6 +171,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         $result = $this->invokeToggleEndpoint($adminUserId, '0');
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertSame(200, $result['httpCode'], $result['raw']);
         $this->assertTrue(
             $result['status'],
             'Disabling verification must always succeed, even while Brevo is broken (non-invertible gate): ' . $result['raw']
@@ -260,6 +186,7 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         // "Brevo plugin local setup"). The finally block restores the key row.
         $keyInsertedByThisTest = false;
         $existingKeyRow = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
+        $this->assertFalse($this->db->error(), 'Failed to read the Brevo key row: ' . $this->db->errorString());
 
         try {
             if (is_object($existingKeyRow) && isset($existingKeyRow->id)) {
@@ -280,19 +207,27 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
             }
 
             $adminUserId = $this->createTestUser();
-            $this->grantPermission($adminUserId, 2);
+            $this->grantTestPermission($adminUserId, 2);
             $this->setSwitchEnabled(false);
 
             $result = $this->invokeToggleEndpoint($adminUserId, '1');
 
             $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+            $this->assertSame(200, $result['httpCode'], $result['raw']);
             $this->assertTrue($result['status'], 'Enabling must succeed when Brevo is fully ready: ' . $result['raw']);
             $this->assertTrue($this->currentSwitchState(), 'Switch must actually be on after a successful enable');
         } finally {
+            // Report, do not assert: an assert in finally would hide the test's own failure.
             if ($keyInsertedByThisTest) {
                 $this->db->query('DELETE FROM plg_sendinblue WHERE `key` = ?', ['sib-test-key']);
+                if ($this->db->error()) {
+                    fwrite(STDERR, 'Deleting the Brevo test key failed: ' . $this->db->errorString() . PHP_EOL);
+                }
             } elseif (is_object($existingKeyRow) && isset($existingKeyRow->id)) {
                 $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', [$existingKeyRow->key, $existingKeyRow->id]);
+                if ($this->db->error()) {
+                    fwrite(STDERR, 'Restoring the Brevo key failed: ' . $this->db->errorString() . PHP_EOL);
+                }
             }
         }
     }
@@ -317,12 +252,13 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
     public function testWrongTypedEnabledValueGetsValidationErrorNeverFatal(?string $badValue): void
     {
         $adminUserId = $this->createTestUser();
-        $this->grantPermission($adminUserId, 2);
+        $this->grantTestPermission($adminUserId, 2);
         $this->setSwitchEnabled(false);
 
         $result = $this->invokeToggleEndpoint($adminUserId, $badValue);
 
         $this->assertSame(0, $result['exitCode'], 'A malformed enabled value must never fatal the endpoint: ' . $result['raw']);
+        $this->assertSame(422, $result['httpCode'], $result['raw']);
         $this->assertFalse($result['status'], 'A malformed enabled value must be rejected: ' . $result['raw']);
         $this->assertStringContainsString('Invalid value', $result['message']);
         $this->assertStringNotContainsStringIgnoringCase('fatal error', $result['raw']);
@@ -336,48 +272,17 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
         // returns null for array values, so this must land in the same
         // validation-error branch as any other malformed value.
         $adminUserId = $this->createTestUser();
-        $this->grantPermission($adminUserId, 2);
+        $this->grantTestPermission($adminUserId, 2);
         $this->setSwitchEnabled(false);
 
-        $endpointFile = dirname(__DIR__, 2) . '/app/api/admin/verification-toggle.php';
-        $projectRoot = dirname(__DIR__, 2);
-        $this->exposeTestDatabaseToSubprocess();
+        $result = $this->invokeEndpoint('app/api/admin/verification-toggle.php', ['enabled' => ['1']], $adminUserId);
 
-        $script = sprintf(
-            'require %s; ' .
-            '\Dotenv\Dotenv::createMutable(%s, ".env.test.local")->load(); ' .
-            '$_SERVER["DOCUMENT_ROOT"] = %s; ' .
-            '$_SERVER["PHP_SELF"] = "/app/api/admin/verification-toggle.php"; ' .
-            '$_SERVER["REQUEST_METHOD"] = "POST"; ' .
-            'chdir(%s); ' .
-            'require_once %s; ' .
-            '$_POST["csrf"] = \Token::generate(); ' .
-            '$loggedInUser = new User(); $loggedInUser->find(%d); ' .
-            '$reflection = new ReflectionClass($loggedInUser); ' .
-            '$prop = $reflection->getProperty("_isLoggedIn"); $prop->setValue($loggedInUser, true); ' .
-            'global $user; $user = $loggedInUser; $GLOBALS["user"] = $loggedInUser; ' .
-            '$_POST["enabled"] = ["1"]; ' .
-            'require %s;',
-            var_export($projectRoot . '/vendor/autoload.php', true),
-            var_export($projectRoot, true),
-            var_export($projectRoot, true),
-            var_export(dirname($endpointFile), true),
-            var_export($projectRoot . '/users/init.php', true),
-            $adminUserId,
-            var_export($endpointFile, true)
-        );
-
-        $raw = shell_exec('php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"');
-        $raw = $raw !== null ? $raw : '';
-        [$body, $exitMarker] = array_pad(explode('___EXIT:', $raw), 2, '0');
-        $body = trim($body);
-        $decoded = json_decode($body, true);
-
-        $this->assertSame(0, (int) trim($exitMarker), 'A malformed array enabled value must never fatal the endpoint: ' . $body);
-        $this->assertIsArray($decoded, 'Response must be valid JSON: ' . $body);
-        $this->assertFalse((bool) ($decoded['success'] ?? true), 'An array-shaped enabled value must be rejected: ' . $body);
-        $this->assertStringNotContainsStringIgnoringCase('fatal error', $body);
-        $this->assertStringNotContainsStringIgnoringCase('TypeError', $body);
+        $this->assertSame(0, $result['exitCode'], 'A malformed array enabled value must never fatal the endpoint: ' . $result['raw']);
+        $this->assertSame(422, $result['httpCode'], $result['raw']);
+        $this->assertIsArray($result['json'], 'Response must be valid JSON: ' . $result['raw']);
+        $this->assertFalse($result['status'], 'An array-shaped enabled value must be rejected: ' . $result['raw']);
+        $this->assertStringNotContainsStringIgnoringCase('fatal error', $result['raw']);
+        $this->assertStringNotContainsStringIgnoringCase('TypeError', $result['raw']);
         $this->assertFalse($this->currentSwitchState());
     }
 
@@ -387,13 +292,15 @@ final class VerificationToggleEndpointBehaviorTest extends IntegrationTestCase
 
     public function testInvalidCsrfTokenRejectedBeforeAdminCheck(): void
     {
-        $adminUserId = $this->createTestUser();
-        $this->grantPermission($adminUserId, 2);
+        // A non-admin fails both checks. The 400 proves that the CSRF check runs first.
+        $userId = $this->createTestUser();
+        $this->grantTestPermission($userId, 1); // 1 = User
         $this->setSwitchEnabled(false);
 
-        $result = $this->invokeToggleEndpoint($adminUserId, '1', withValidCsrf: false);
+        $result = $this->invokeToggleEndpoint($userId, '1', withValidCsrf: false);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertSame(400, $result['httpCode'], $result['raw']);
         $this->assertFalse($result['status']);
         $this->assertStringContainsString('Invalid request token', $result['message']);
         $this->assertFalse($this->currentSwitchState());

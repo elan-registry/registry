@@ -16,11 +16,13 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\AbstractCronJobFakeDatabase;
 use Tests\Support\BrevoSiteRoot;
+use Tests\Support\SwitchableVerificationSettingsFakeDatabase;
 use Tests\Support\VerificationSettingsFakeDatabase;
 
 require_once __DIR__ . '/../../Support/FakeDatabase.php';
 require_once __DIR__ . '/../../Support/AbstractCronJobFakeDatabase.php';
 require_once __DIR__ . '/../../Support/VerificationSettingsFakeDatabase.php';
+require_once __DIR__ . '/../../Support/SwitchableVerificationSettingsFakeDatabase.php';
 
 /**
  * Unit tests for SendVerificationBatchJob (#1885).
@@ -92,10 +94,14 @@ final class SendVerificationBatchJobTest extends TestCase
         return $this->brevoSiteRoot->readySettings();
     }
 
-    private function makeSettings(int $batchSize = 5): VerificationSettings
+    /**
+     * The send batch reads the verification switch itself (#2358), so the
+     * fake must report it. The switch is on unless a test turns it off.
+     */
+    private function makeSettings(int $batchSize = 5, bool $enabled = true): VerificationSettings
     {
         return new VerificationSettings(new VerificationSettingsFakeDatabase(
-            firstRowValue: (object) ['batch_size' => $batchSize],
+            firstRowValue: (object) ['batch_size' => $batchSize, 'enabled' => $enabled ? 1 : 0],
         ));
     }
 
@@ -131,10 +137,10 @@ final class SendVerificationBatchJobTest extends TestCase
         VerificationSettings $settings,
         CarVerificationSendService $sendSvc,
         VerificationBatchSender $sender,
-        bool $verificationEnabled = true,
+        ?AbstractCronJobFakeDatabase $db = null,
     ): SendVerificationBatchJob {
         return new SendVerificationBatchJob(
-            new AbstractCronJobFakeDatabase(verificationEnabled: $verificationEnabled),
+            $db ?? new AbstractCronJobFakeDatabase(),
             $settings,
             $sendSvc,
             $sender,
@@ -628,7 +634,7 @@ final class SendVerificationBatchJobTest extends TestCase
 
     // --- Site-wide verification switch --------------------------------------
 
-    public function testRunNowDoesNothingWhenVerificationSwitchIsOff(): void
+    public function testRunNowSendsNothingWhenVerificationSwitchIsOff(): void
     {
         $repo = $this->createMock(CarRepository::class);
         $repo->expects($this->never())->method('findVerificationEligible');
@@ -636,8 +642,54 @@ final class SendVerificationBatchJobTest extends TestCase
 
         $sendSvc = $this->makeSendSvc($repo);
         $sender = $this->makeSender($repo, $sendSvc);
+        $db = new AbstractCronJobFakeDatabase();
 
-        $this->makeJob($this->makeSettings(batchSize: 5), $sendSvc, $sender, verificationEnabled: false)->runNow();
+        $this->makeJob($this->makeSettings(batchSize: 5, enabled: false), $sendSvc, $sender, $db)->runNow();
+
+        $this->assertSame([], $db->sqlLog(), 'A refused manual run must issue no query');
+    }
+
+    /**
+     * The claim stamps last_run_at. A claim while the switch is off would
+     * make the first run after the switch goes on look not due.
+     */
+    public function testRunSendsNothingAndIssuesNoClaimWhenVerificationSwitchIsOff(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->never())->method('findVerificationEligible');
+        $repo->expects($this->never())->method('findById');
+
+        $sendSvc = $this->makeSendSvc($repo);
+        $sender = $this->makeSender($repo, $sendSvc);
+        $db = new AbstractCronJobFakeDatabase();
+
+        $this->makeJob($this->makeSettings(batchSize: 5, enabled: false), $sendSvc, $sender, $db)->run();
+
+        $this->assertSame([], $db->sqlLog(), 'A refused run must issue no enabled read and no claim');
+    }
+
+    public function testFirstRunAfterTheSwitchGoesOnClaimsAndSends(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        // Called once, by the second run only.
+        $repo->expects($this->once())->method('findVerificationEligible')->willReturn([]);
+
+        $sendSvc = $this->makeSendSvc($repo);
+        $sender = $this->makeSender($repo, $sendSvc);
+        $db = new AbstractCronJobFakeDatabase();
+        // The switch is read through this fake, so the test can flip it
+        // between two runs of the same job.
+        $settingsDb = new SwitchableVerificationSettingsFakeDatabase();
+        $job = new SendVerificationBatchJob($db, new VerificationSettings($settingsDb), $sendSvc, $sender);
+
+        $job->run();
+        $this->assertSame([], $db->sqlLog(), 'The run while the switch is off must not claim');
+
+        $settingsDb->on = true;
+        $job->run();
+
+        $claims = array_filter($db->sqlLog(), static fn (string $sql): bool => stripos($sql, 'last_run_at = NOW()') !== false);
+        $this->assertCount(1, $claims, 'The first run after the switch goes on must claim');
     }
 
     // --- Helpers -------------------------------------------------------------

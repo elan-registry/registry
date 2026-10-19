@@ -184,6 +184,97 @@ bookkeeping for three call sites. If a fourth appears, extract a separate
 helper for that narrower need rather than re-duplicating the idiom or
 overloading these two.
 
+### Calling an Endpoint in Integration Tests
+
+`loginAsTestUser()` sets the session in the PHPUnit process. But an
+endpoint stops the process that runs it, and that would end PHPUnit:
+
+- `ApiResponse::send()` calls `exit`.
+- When `securePage()` refuses a request, `Redirect::to()` calls `exit`. For
+  a page that is not in the `pages` table and a user who is not an admin,
+  `securePage()` calls `die()`.
+
+To test an endpoint end to end, use `invokeEndpoint()` from
+`IntegrationTestCase`:
+
+```php
+protected function invokeEndpoint(
+    string $endpointFile,
+    array $post,
+    ?int $loggedInUserId,
+    string $csrfMode = 'valid'
+): array
+```
+
+`invokeEndpoint()` starts a `php -r` subprocess. The subprocess uses the test
+database (`.env.test.local`) and loads the real UserSpice bootstrap. So
+`Token::check()`, `hasPerm()`, and `securePage()` run unchanged. It then
+posts `$post` to the endpoint and captures the output. The subprocess runs
+with `-d display_errors=stderr -d error_reporting=-1`, so PHP error text
+always gets into `raw`, whatever `php.ini` sets.
+
+Parameters:
+
+- `$endpointFile` — repo-relative path, for example
+  `app/api/admin/verification-toggle.php`. An absolute path inside the
+  repository also works. The helper resolves the path with `realpath()` before it
+  checks it, so a `..` segment cannot point outside the repository. Any other
+  path throws `InvalidArgumentException`.
+- `$post` — `$_POST` fields. A value can be a scalar, `null`, or an array of
+  those (nested arrays too). Any other type, for example an object, throws
+  `InvalidArgumentException`.
+- `$loggedInUserId` — the user to log in inside the subprocess. `null` means
+  logged out. The subprocess uses the same login idiom as `loginAsTestUser()`.
+  If no `users` row has this ID, the subprocess stops with exit code 97. The
+  PHPUnit session does not change.
+- `$csrfMode` — how the subprocess sets `$_POST['csrf']`:
+
+  | Mode | Effect |
+  | --- | --- |
+  | `'valid'` (default) | Sets a token from `Token::generate()` |
+  | `'invalid'` | Generates a session token, then sends a well-formed token that does not match it |
+  | `'omit'` | Sets no `csrf` key |
+
+  Any other value throws `InvalidArgumentException`. The subprocess sets the
+  `$post` values after the CSRF value, so a `csrf` key in `$post` overrides
+  `$csrfMode`.
+
+Return value:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `status` | `bool\|null` | `success` from the JSON body. `null` if the body is not JSON, or if `success` is missing or not a bool |
+| `message` | `string` | `message` from the JSON body. Empty if there is none |
+| `httpCode` | `int\|null` | HTTP status code. `null` if the endpoint set no code, if the subprocess stopped before the endpoint ran (marker missing), or if other output follows the marker |
+| `exitCode` | `int` | Exit code of the subprocess. `-1` if the exit marker is missing |
+| `raw` | `string` | Exact stdout and stderr bytes of the subprocess, so PHP error text is included. It is not trimmed, so you can compare two responses byte for byte. If output follows the status marker, `raw` keeps the marker and that output |
+| `json` | `array<mixed>\|null` | Decoded body. `null` if the trimmed body is not a JSON object or array |
+
+Example, from `tests/integration/VerificationToggleEndpointBehaviorTest.php`:
+
+```php
+private function invokeToggleEndpoint(?int $loggedInUserId, ?string $enabledValue, bool $withValidCsrf = true): array
+{
+    return $this->invokeEndpoint(
+        'app/api/admin/verification-toggle.php',
+        $enabledValue === null ? [] : ['enabled' => $enabledValue],
+        $loggedInUserId,
+        $withValidCsrf ? 'valid' : 'invalid'
+    );
+}
+```
+
+Related helpers in `IntegrationTestCase`:
+
+- `grantTestPermission($userId, $permissionId)` — adds a real
+  `user_permission_matches` row. `tearDown()` deletes it.
+- `trackNewRateLimitRows($action)` — call it before the request. `tearDown()`
+  deletes the `us_rate_limits` rows that the request wrote for `$action`.
+- `assertNoPhpErrorText($raw)` — fails the test if `raw` holds PHP error
+  text, such as `Warning:` or `Fatal error`.
+- `countMatchingLogs($logtype, $lognote, ?int $userId)` — counts `logs` rows.
+  Pass `$userId` to count only the rows of one user.
+
 ## UserSpice `DB` Class Conventions
 
 UserSpice ships no test suite and no testing conventions of its own — the

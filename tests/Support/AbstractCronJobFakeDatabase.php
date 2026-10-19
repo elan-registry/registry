@@ -12,8 +12,11 @@ namespace Tests\Support;
  * outcome: the site-wide verification switch, the job's own `enabled` read,
  * the CronJobGuard claim, the skip-log throttle stamp, the failure stamp, and
  * VerificationSettings::incrementUnmatchedRecipientCounter() (#2085). Both
- * reads use a column named `enabled`, but they have separate flags, so a test
- * can set "verification on, this job paused" and the reverse.
+ * reads use a column named `enabled`, but they have separate flags.
+ *
+ * Since #2358 the base class does not read the switch. Only a job that
+ * overrides refusesWhileSwitchOff() reads it. A test sets the switch off to
+ * show that a job without the override still runs.
  *
  * `last_skip_logged_at` is real state on a simulated clock
  * ({@see self::advanceMinutes()}). The bug this fake catches (#1889) was a
@@ -76,8 +79,8 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
      *                        computed against. Must match the job under test's
      *                        own guardIntervalHours().
      * @param bool $verificationEnabled Value reported for the site-wide
-     *                        verification switch (`er_verification_settings.enabled`),
-     *                        read before the job's own `enabled` check.
+     *                        verification switch (`er_verification_settings.enabled`)
+     *                        when a query reads it. The base class does not.
      * @param bool $unmatchedCounterUpdateSucceeds When false, the unmatched-recipient
      *                        counter UPDATE (VerificationSettings::incrementUnmatchedRecipientCounter())
      *                        reports both error() and count() as failure —

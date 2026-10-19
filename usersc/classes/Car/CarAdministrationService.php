@@ -126,11 +126,10 @@ class CarAdministrationService
         try {
             $repo->beginTransaction();
 
-            // #1887: er_email_events has no FK on car_id, so a deleted car's
-            // Brevo event history would otherwise survive the delete
-            // permanently (no cascade to clean it up later). Delete it in
-            // the same transaction as the car row.
-            $repo->deleteEmailEventsForCarIds([$carId]);
+            // #2358: the events belong to the owner, and a terminal event must
+            // still apply to the owner after the car is gone. The table has no
+            // FK, so clear car_id in the same transaction as the car row.
+            $repo->detachEmailEventsFromCar($carId);
 
             if (!$repo->deleteCar($carId)) {
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Database update failed: query returned false');
@@ -406,11 +405,9 @@ class CarAdministrationService
                 throw new CarDatabaseException('Car merge failed - could not transfer history records.');
             }
 
-            // #1887: er_email_events has no FK/cascade, so reassign the
-            // source car's Brevo event history onto the surviving car —
-            // deleting it here (as delete() does) would be wrong for a merge,
-            // since the target owner should keep the merged bounce/suppression
-            // signal rather than lose it.
+            // #1887, #2358: er_email_events has no FK, so move the source
+            // car's events to the surviving car. The move changes car_id only.
+            // The rows stay with the owner who received the mail.
             try {
                 $repo->transferEmailEvents($oldCarId, $newCarId);
             } catch (CarDatabaseException $e) {

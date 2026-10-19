@@ -411,9 +411,9 @@ final class SendinblueRecordEventTest extends IntegrationTestCase
 
     private function recordEvent(mixed ...$args): mixed
     {
-        // PHPStan cannot see a function that only the patch defines. It does not
-        // scan usersc/plugins/, so only a stub in stubs/ would let the ignore go.
-        return sendinblueRecordEvent(...$args); // @phpstan-ignore function.notFound
+        // The patch defines the function at run time. PHPStan sees it through
+        // the unit-test stub in tests/unit/cars/services/fixtures/.
+        return sendinblueRecordEvent(...$args);
     }
 
     /**

@@ -49,7 +49,8 @@ merge. This has now happened three times (#1741, #1742, #1743) and is
 currently blocking two more open Dependabot PRs: **#1739** (`maplibre-gl`
 6.4.1 → 6.5.0) and **#1740** (`@versatiles/style`). Confirmed live on #1739:
 `Vendored Asset Drift Check` fails with a one-line diff (a license-URL
-version string inside `usersc/js/maplibre-gl-shared.js`) that a human must
+version string inside `usersc/js/maplibre-gl-shared.js`, a file that
+`scripts/build.js` deletes since MapLibre 6.13) that a human must
 manually regenerate and push.
 
 ### Verifying the premise: is Node/npm actually usable on the deploy host?

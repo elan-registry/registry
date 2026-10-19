@@ -9,13 +9,14 @@ require_once __DIR__ . '/../Support/FakeBrevoSuppressionSyncClient.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoBlockedContact;
 use Tests\Support\FakeBrevoSuppressionSyncClient;
 
 /**
- * #1923: BrevoSuppressionSyncJob against real SQL; only the Brevo client is fake.
+ * #1923, #2358, #2359: BrevoSuppressionSyncJob against real SQL; only the Brevo client is fake.
  * Control flow is in tests/unit/cron/BrevoSuppressionSyncJobTest.php. This file
  * proves the cross-layer agreements a mocked repository cannot falsify.
  */
@@ -29,9 +30,6 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
     private CarRepository $repo;
     private EmailEventApplier $applier;
-    /** @var list<int> Car ids created by this test, for er_email_events cleanup. */
-    private array $suppressionCarIds = [];
-
     /** Original er_verification_settings.enabled value, restored in tearDown(). */
     private bool $originalVerificationEnabled = false;
 
@@ -43,7 +41,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        // The verification switch ships off and would short-circuit the job.
+        // The verification switch ships off. Since #2358 the job ignores it, so the tests run with it off.
         $this->db->query('SELECT enabled, unmatched_recipient_count FROM er_verification_settings WHERE id = 1');
         $verificationRow = $this->db->first();
         $this->originalVerificationEnabled = is_object($verificationRow) ? (bool) $verificationRow->enabled : false;
@@ -51,22 +49,16 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->originalUnmatchedCount = is_object($verificationRow)
             ? (int) $verificationRow->unmatched_recipient_count
             : 0;
-        $this->db->query('UPDATE er_verification_settings SET enabled = 1 WHERE id = 1');
+        $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
 
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
-
-        $this->suppressionCarIds = [];
     }
 
     protected function tearDown(): void
     {
-        // Base cleanup does not cover er_email_events; delete them before the cars.
+        // The base class deletes the er_email_events rows of the test users.
         if ($this->databaseConnected) {
-            foreach ($this->suppressionCarIds as $carId) {
-                $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$carId]);
-            }
-
             $this->db->query(
                 'UPDATE er_verification_settings SET enabled = ?, unmatched_recipient_count = ? WHERE id = 1',
                 [$this->originalVerificationEnabled ? 1 : 0, $this->originalUnmatchedCount]
@@ -91,7 +83,6 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         // matches users.email (#2356).
         $ownerId = $this->createTestUser(['email' => $email], true);
         $carId = $this->createTestCar($ownerId, ['email' => $email]);
-        $this->suppressionCarIds[] = $carId;
 
         return [$carId, $email];
     }
@@ -105,6 +96,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         return new BrevoSuppressionSyncJob(
             $this->db,
             $this->repo,
+            new EmailEventMatcher($this->repo),
             $this->applier,
             new FakeBrevoSuppressionSyncClient($pages),
             new \DateTimeImmutable(self::NOW)
@@ -140,12 +132,13 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     }
 
     /**
-     * @return list<object> The car's er_email_events rows, oldest id first
+     * @return list<object> The er_email_events rows of the car's owner, oldest id first
      */
     private function eventRows(int $carId): array
     {
         return $this->db->query(
-            'SELECT event, email, brevo_message_id FROM er_email_events WHERE car_id = ? ORDER BY id',
+            'SELECT event, email, brevo_message_id, car_id FROM er_email_events
+              WHERE user_id = (SELECT user_id FROM cars WHERE id = ?) ORDER BY id',
             [$carId]
         )->results();
     }
@@ -153,14 +146,14 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     private function countEventRows(int $carId): int
     {
         $row = $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ?',
+            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE user_id = (SELECT user_id FROM cars WHERE id = ?)',
             [$carId]
         )->first();
 
         return (int) $row->cnt;
     }
 
-    /** The dashboard's running total of suppression contacts matching no car. */
+    /** The dashboard's running total of verification-tagged events with no user. */
     private function unmatchedRecipientCount(): int
     {
         $row = $this->db->query(
@@ -205,6 +198,30 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertCount(1, $events, 'Exactly one event row must be written for the contact');
         $this->assertSame('blocked', $events[0]->event, "hardBounce must be recorded as 'blocked'");
         $this->assertSame($email, $events[0]->email);
+        $this->assertNull($events[0]->car_id, 'An import event belongs to the owner, not to a car');
+    }
+
+    // --- Owner-level write (#2358) -------------------------------------------
+
+    /** An owner with three cars gets one row for one contact, with car_id NULL. */
+    public function testAContactForAnOwnerWithThreeCarsWritesOneRowWithCarIdNull(): void
+    {
+        [$carId, $email] = $this->createSuppressionCar();
+        $ownerId = (int) $this->ownerFlagsForCar($carId)->user_id;
+        $this->createTestCar($ownerId, ['email' => $email]);
+        $this->createTestCar($ownerId, ['email' => $email]);
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'hardBounce', 'mailbox unavailable', self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $events = $this->eventRows($carId);
+        $this->assertCount(1, $events, 'One contact is one row, not one row for each car');
+        $this->assertNull($events[0]->car_id);
+        $this->assertSame(1, $summary->matchedCount);
+        $this->assertCount(1, $this->flagChanges($carId), 'The flag is written once for the owner');
     }
 
     // --- 2. Backfill path, end to end across several pages ------------------
@@ -245,7 +262,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
     /**
      * The deterministic synthetic message id must collide with er_email_events'
-     * UNIQUE (car_id, brevo_message_id, event), and the pre-check must read the
+     * UNIQUE (user_id, brevo_message_id, event), and the pre-check must read the
      * previous run's write.
      */
     public function testRerunningTheBackfillDedupsEventsAndReportsAlreadyFlagged(): void
@@ -280,11 +297,12 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertCount(1, $this->flagChanges($carId), 'The second run changes nothing, so it logs nothing');
     }
 
-    // --- 4. Contact matching no car ----------------------------------------
+    // --- 4. Contact matching no user ---------------------------------------
 
     /**
-     * Most suppressed addresses were never registry cars. The counter tells an
-     * operator how much of Brevo's list the registry does not recognize.
+     * Most suppressed addresses were never registry users. The dashboard
+     * counter counts verification-tagged events only (#2359), and a
+     * blocklist entry has no tag, so the counter does not change.
      */
     public function testUnmatchedContactIsTalliedAndWritesNoEventRow(): void
     {
@@ -300,7 +318,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             ]),
         ])->runFullBackfill();
 
-        $this->assertSame(1, $summary->unmatchedCount, 'The address with no car must be counted unmatched');
+        $this->assertSame(1, $summary->unmatchedCount, 'The address with no user must be counted unmatched');
         $this->assertSame(1, $summary->matchedCount, 'The matched contact is unaffected by its neighbour');
 
         $stranded = $this->db->query(
@@ -312,15 +330,118 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->email_bounced);
 
         $this->assertSame(
-            $countBefore + 1,
+            $countBefore,
             $this->unmatchedRecipientCount(),
-            'The one unmatched contact must increment the dashboard unmatched-recipient counter by exactly one'
+            'An untagged blocklist entry must not change the dashboard unmatched-recipient counter'
         );
+    }
+
+    // --- User who owns no car (#2359) ----------------------------------------
+
+    /** The flags belong to the owner's profile, so a user with no car gets the flag. */
+    public function testUserWithNoCarGetsTheBlockFlag(): void
+    {
+        $email = 'carless-' . uniqid() . '@integration-test-1923.example.com';
+        $userId = $this->createTestUser(['email' => $email], true);
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'unsubscribedViaEmail', null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(1, $summary->matchedCount);
+        $profile = $this->db->query(
+            'SELECT email_blocked, email_blocked_address, email_blocked_cause FROM profiles WHERE user_id = ?',
+            [$userId]
+        )->first();
+        $this->assertSame(1, (int) $profile->email_blocked);
+        $this->assertSame($email, $profile->email_blocked_address);
+        $this->assertSame('unsubscribed', $profile->email_blocked_cause);
+
+        $event = $this->db->query(
+            'SELECT event, car_id FROM er_email_events WHERE user_id = ?',
+            [$userId]
+        )->first();
+        $this->assertSame('unsubscribed', $event->event);
+        $this->assertNull($event->car_id);
+    }
+
+    /**
+     * #2393 gap 2: the applier writes no flag for an owner with no profiles
+     * row. The summary must count that contact as skipped, not matched.
+     */
+    public function testOwnerWithoutProfileRowCountsSkippedNotMatched(): void
+    {
+        $email = 'noprofile-' . uniqid() . '@integration-test-1923.example.com';
+        $userId = $this->createTestUser(['email' => $email], false);
         $this->assertSame(
             0,
-            $summary->counterFailureCount,
-            'No counter increment may have failed'
+            (int) $this->db->query('SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?', [$userId])->first()->cnt,
+            'Test setup: the owner must have no profiles row'
         );
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'unsubscribedViaEmail', null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(1, $summary->skippedCount, 'The skipped flag step counts as skipped');
+        $this->assertSame(0, $summary->matchedCount, 'A skipped flag step is not a match');
+        $this->assertSame(0, $summary->alreadyFlaggedCount);
+        $this->assertSame(
+            0,
+            (int) $this->db->query('SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?', [$userId])->first()->cnt,
+            'The sync must not create a profiles row'
+        );
+    }
+
+    // --- Address check and blockedAt fallback (#2359) -----------------------
+
+    /** An invalid address is skipped before any match: no row, no flag. */
+    public function testInvalidAddressesAreSkippedAndCounted(): void
+    {
+        [$carId, $email] = $this->createSuppressionCar();
+        // 156 bytes: valid under FILTER_VALIDATE_EMAIL, so only the length rule rejects it.
+        $tooLong = str_repeat('a', 64) . '@' . str_repeat('b', 63) . '.' . str_repeat('c', 23) . '.com';
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($tooLong, 'hardBounce', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason('not-an-address', 'hardBounce', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, 'hardBounce', null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(2, $summary->invalidAddressCount);
+        $this->assertSame(1, $summary->matchedCount);
+        $this->assertSame(3, $summary->contactsExamined);
+        $this->assertSame(1, $this->countEventRows($carId));
+        $stray = $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE email IN (?, ?)',
+            [$tooLong, 'not-an-address']
+        )->first();
+        $this->assertSame(0, (int) $stray->cnt, 'An invalid address writes no event row');
+    }
+
+    /** A wrong-typed `blockedAt` takes the run time as the event time. */
+    public function testWrongTypedBlockedAtTakesTheRunTime(): void
+    {
+        [$carId, $email] = $this->createSuppressionCar();
+
+        $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'contactFlaggedAsSpam', null, 1757332800),
+            ]),
+        ])->runFullBackfill();
+
+        $row = $this->db->query(
+            'SELECT occurred_at FROM er_email_events WHERE user_id = (SELECT user_id FROM cars WHERE id = ?)',
+            [$carId]
+        )->first();
+        $this->assertSame(self::NOW, $row->occurred_at);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->email_blocked);
     }
 
     // --- Owner whose users.email moved after a block (#2356) ----------------
@@ -337,7 +458,6 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $new = 'new-' . uniqid() . '@integration-test-1923.example.com';
         $ownerId = $this->createTestUser(['email' => $old], true);
         $carId = $this->createTestCar($ownerId, ['email' => $old]);
-        $this->suppressionCarIds[] = $carId;
         $this->setOwnerBlocked($ownerId, $old);
         $this->setUserEmailRaw($ownerId, $new);
         $this->assertFalse($this->repo->effectiveEmailFlags($ownerId)->blocked, 'Test setup: the old block must not apply');
@@ -426,9 +546,9 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $flags = $this->ownerFlagsForCar($carId);
         $this->assertSame(1, (int) $flags->email_blocked, 'adminBlocked must block');
-        $this->assertSame('unsubscribed', $flags->email_blocked_cause);
+        $this->assertSame('blocklist', $flags->email_blocked_cause, 'adminBlocked sets the blocklist cause (#2359)');
         $this->assertSame(0, (int) $flags->email_bounced, 'adminBlocked must NOT be treated as a dead mailbox');
-        $this->assertSame('unsubscribed', $this->eventRows($carId)[0]->event);
+        $this->assertSame('unsubscribed', $this->eventRows($carId)[0]->event, 'The event row stays unsubscribed');
     }
 
     public function testUnrecognizedReasonCodeChangesNothing(): void

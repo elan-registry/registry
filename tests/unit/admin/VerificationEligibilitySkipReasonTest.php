@@ -9,53 +9,29 @@ use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Behavioral tests for {@see VerificationEligibility::skipReason()} (#1884),
- * plus one remaining source-inspection guard for app/admin/index.php's
- * `verification_send_batch` server-side batch-size cap.
+ * Behavioral tests for {@see VerificationEligibility::skipReason()} (#1884).
  *
- * TWO STYLES HERE, DELIBERATELY. skipReason() now lives in a real,
- * requireable class (it was extracted out of app/admin/index.php's former
- * eligibilitySkipReason() function specifically so it could be tested this
- * way), so every branch below is exercised by constructing a car-data object
- * and asserting on the real return value — not by grepping source text. A
- * source-text assertion (e.g. asserting the literal string ">= 2" appears
- * somewhere in the file) passes straight through an actual logic inversion
- * — `<= 2` instead of `>= 2`, or a flipped `&&`/`||` — while failing on a
- * harmless rename or reformat. Calling the real method and checking its
- * return value catches the inversion and ignores the reformat.
- *
- * The batch-size cap still lives inline in app/admin/index.php, which cannot
- * be require()'d in a unit test — it needs the full UserSpice framework
- * bootstrap (securePage(), $abs_us_root, etc.), the same constraint
- * tests/unit/admin/AdminContactSanitizationTest.php documents for
- * process-admin-contact.php. That one remains a source-inspection guard: it
- * cannot prove the cap runs, only that it is present, so a regression
- * removing it is still caught.
+ * Each branch is exercised by constructing a car-data object and asserting on
+ * the real return value, not by grepping source text. A source-text assertion
+ * passes straight through a logic inversion (`<= 2` instead of `>= 2`, a
+ * flipped `&&`/`||`) and fails on a harmless rename. Calling the real method
+ * catches the inversion and ignores the reformat.
  *
  * The attempt cap: findVerificationEligible()'s SQL and skipReason()'s PHP
- * mirror must both enforce "at most 2 sends per rolling 12-month window"
- * (CarRepositoryTest::testFindVerificationEligibleQueryContainsExpectedConditions()
- * covers the SQL side of the same rule) — without it, a stale car re-enters
- * every batch with no limit, which is exactly the defect this cap exists to
- * close.
+ * mirror must both enforce "at most 2 sends per rolling 12-month window".
+ * CarVerificationEligibilityTest (integration) runs the SQL side against a
+ * live database.
  *
  * The 60-day cooldown is the cap's other half and is mirrored the same way: a
  * send writes only vericode_sent_at, so without it the staleness rule alone
  * re-admits the identical batch on consecutive nights and both allowed yearly
  * sends land ~24 hours apart.
+ *
+ * The batch-size cap of `verification_send_batch` is tested in
+ * VerificationBatchSenderTest (capToBatchSize()).
  */
 final class VerificationEligibilitySkipReasonTest extends TestCase
 {
-    private const INDEX_FILE = 'app/admin/index.php';
-
-    private function readIndexSource(): string
-    {
-        $filePath = dirname(__DIR__, 3) . '/' . self::INDEX_FILE;
-        $this->assertFileExists($filePath, 'app/admin/index.php must exist (#1884)');
-
-        return (string) file_get_contents($filePath);
-    }
-
     /**
      * Build a car-data row that passes every branch (i.e. IS eligible),
      * letting each test override only the field(s) it means to exercise.
@@ -319,75 +295,5 @@ final class VerificationEligibilitySkipReasonTest extends TestCase
             'verification_attempts'       => 2,
             'verification_attempts_since' => null,
         ];
-    }
-
-    public function testVerificationSendBatchCapsSubmittedIdsToConfiguredBatchSize(): void
-    {
-        $source = $this->readIndexSource();
-
-        // The GET-time preview only renders batchSize() cars, but the POST
-        // handler reads car_ids[] straight from the request. Without a
-        // server-side cap, a hand-crafted POST carrying hundreds of ids turns
-        // into hundreds of blocking synchronous Brevo calls in one request.
-        $this->assertStringContainsString(
-            '$vsSendBatchSize = (new VerificationSettings(dbi()))->batchSize();',
-            $source,
-            "The verification_send_batch handler must read the configured batch size rather "
-                . 'than trusting the size of the submitted car_ids[] array'
-        );
-
-        $this->assertStringContainsString(
-            '$submittedIds = array_slice($submittedIds, 0, $vsSendBatchSize);',
-            $source,
-            'An oversized car_ids[] must be truncated to the configured batch size before the '
-                . 'per-car send loop runs'
-        );
-
-        // The truncation must be visible, not silent: a batch that quietly
-        // drops half its cars with no log line and no admin-facing message is
-        // indistinguishable from one that sent them all.
-        $capBlockStart = strpos($source, 'count($submittedIds) > $vsSendBatchSize');
-        $this->assertIsInt($capBlockStart, 'The cap must be applied with an explicit size comparison');
-        $capBlock = substr($source, $capBlockStart, 900);
-
-        $this->assertStringContainsString(
-            'LogCategories::LOG_CATEGORY_CAR_VERIFICATION',
-            $capBlock,
-            'Truncation must be logged under the car-verification category'
-        );
-        $this->assertStringContainsString(
-            '$errors[]',
-            $capBlock,
-            'Truncation must also surface to the admin, not just the system log'
-        );
-    }
-
-    public function testFindVerificationEligibleSourceAlsoEnforcesTheSameCap(): void
-    {
-        $repoFile = dirname(__DIR__, 3) . '/usersc/classes/Car/CarRepository.php';
-        $this->assertFileExists($repoFile);
-        $source = (string) file_get_contents($repoFile);
-
-        // Pinning the SQL fragment here too (in addition to
-        // CarRepositoryTest's mock-based assertion) keeps this test's own
-        // "both sides agree" claim self-contained and independently
-        // verifiable without cross-referencing another test file.
-        $this->assertStringContainsString(
-            'cars.verification_attempts < 2',
-            $source,
-            'findVerificationEligible() must enforce the same 2-send cap VerificationEligibility::skipReason() checks'
-        );
-
-        // The FRD's 60-day cooldown was specified but never transcribed into
-        // the shipped SQL, and the omission was invisible to every existing
-        // test: staleness alone still matched, so the query kept returning
-        // rows. Pinned here alongside the cap because the two clauses are one
-        // rule — the cooldown spreads sends out, the cap bounds them.
-        $this->assertStringContainsString(
-            'cars.vericode_sent_at < NOW() - INTERVAL 60 DAY',
-            $source,
-            'findVerificationEligible() must enforce the same 60-day re-send cooldown '
-                . 'VerificationEligibility::skipReason() checks'
-        );
     }
 }

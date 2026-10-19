@@ -43,9 +43,10 @@ use ElanRegistry\Exceptions\CarValidationException;
  * that same category and for the same reason: they are properties of the
  * OWNER, not of the car row this class is handed, and need a `profiles` join
  * no single `cars` row can supply. They too are enforced downstream in
- * {@see CarVerificationSendService::sendOne()}, which reads
- * {@see CarRepository::effectiveEmailFlags()} directly and returns a
- * failure result, landing in the report's Failed section rather than Skipped.
+ * {@see CarVerificationSendService::sendOne()}, which asks
+ * {@see SendPolicy::forUser()} with MailKind::Verification and returns a
+ * failure result with {@see SendPolicy::verificationReason()}, landing in the
+ * report's Failed section rather than Skipped.
  *
  * The SQL's empty `users.email` clause is in the same category. The send
  * mails the owner's `users.email`, not `cars.email`, and the car row has no

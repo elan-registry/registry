@@ -23,8 +23,11 @@ if (count(get_included_files()) == 1) { die(); }
  *                               profile is the system of record (#2101), so the
  *                               Email on file row reads its flags from here,
  *                               not from $carData. A block or bounce for an old
- *                               address does not apply (#2356). Null shows no
- *                               row. Default null.
+ *                               address does not apply (#2356). The row shows
+ *                               "Opted out", "Bounced" and "Blocked" for each
+ *                               flag that applies, each with its date and its
+ *                               own tooltip (#2361). Null shows no row.
+ *                               Default null.
  *
  * The card computes the Verified row itself from CarBadges::verifiedStatus().
  * A sold car has no Verified row.
@@ -53,13 +56,13 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
 
 $_isSold          = \ElanRegistry\Car\CarBadges::isSold($carData->solddate ?? null);
 $_verifiedStatus  = \ElanRegistry\Car\CarBadges::verifiedStatus($carData);
-$_emailBounced    = $ownerEmailState instanceof \ElanRegistry\Car\EffectiveEmailFlags && $ownerEmailState->bounced;
-// Suppressed covers a block and an opt-out until #2361 shows them separately.
-$_emailSuppressed = $ownerEmailState instanceof \ElanRegistry\Car\EffectiveEmailFlags
-    && ($ownerEmailState->blocked || $ownerEmailState->optedOut);
-// The row names a delivery problem with the owner's address, so only admins
+$_hasEmailState   = $ownerEmailState instanceof \ElanRegistry\Car\EffectiveEmailFlags;
+$_emailOptedOut   = $_hasEmailState && $ownerEmailState->optedOut;
+$_emailBounced    = $_hasEmailState && $ownerEmailState->bounced;
+$_emailBlocked    = $_hasEmailState && $ownerEmailState->blocked;
+// The row names why the registry does not mail this owner, so only admins
 // and editors get it. The car's own owner does not.
-$_showEmailRow    = $viewerIsRegistryAdmin === true && ($_emailBounced || $_emailSuppressed);
+$_showEmailRow    = $viewerIsRegistryAdmin === true && ($_emailOptedOut || $_emailBounced || $_emailBlocked);
 // An unsold car always has a Verified row, so the section is never empty for it.
 $_showOwnershipSection = $purchaseDate || $soldDate || !$_isSold || $_showEmailRow;
 
@@ -77,30 +80,32 @@ $_helpButton = static function (string $ariaLabel, string $tooltip): string {
         . '<i class="fas fa-circle-question" aria-hidden="true"></i></button>';
 };
 
+$_carLabel = 'car ' . (is_scalar($carData->id ?? null) ? (string) $carData->id : 'unknown');
+
 /**
- * Get a registry date (ctime or mtime) for display.
+ * Get a date for display.
  *
  * DB.php sets sql_mode = '', so MySQL can return a zero date. DateTime turns
  * '0000-00-00' into Nov 30, -0001, so the card shows a zero date as missing.
- * A value that DateTime cannot parse is a data defect, so it goes to the log.
+ * A NULL or empty value also shows no date. A value that DateTime cannot
+ * parse is a data defect, so it goes to the log.
  *
- * @param object $carData Car row
- * @param string $column  'ctime' or 'mtime'
- * @return string The date as 'M j, Y', or '' when the value is missing or bad
+ * @param string|null $value   The date column value
+ * @param string      $format  DateTime format for the output
+ * @param string      $context Start of the log entry, for example "car 5 has ctime"
+ * @return string The formatted date, or '' when the value is missing or bad
  */
-$_registryDate = static function (object $carData, string $column): string {
-    $value = $carData->{$column} ?? null;
-    if (empty($value) || str_starts_with((string) $value, '0000-00-00')) {
+$_formatDate = static function (?string $value, string $format, string $context): string {
+    if (empty($value) || str_starts_with($value, '0000-00-00')) {
         return '';
     }
     try {
-        return (new DateTime((string) $value))->format('M j, Y');
+        return (new DateTime($value))->format($format);
     } catch (\Exception $e) {
         logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_CAR_ERRORS, sprintf(
-            "_vehicle_info_card.php: car %s has %s '%s', which is not a valid date. Date not shown: %s",
-            is_scalar($carData->id ?? null) ? (string) $carData->id : 'unknown',
-            $column,
-            (string) $value,
+            "_vehicle_info_card.php: %s '%s', which is not a valid date. Date not shown: %s",
+            $context,
+            $value,
             $e->getMessage()
         ));
         return '';
@@ -207,14 +212,17 @@ $_registryDate = static function (object $carData, string $column): string {
 
             <?php if ($_showEmailRow) { ?>
             <dt class="col-sm-4 text-muted">
-                Email on file <?= $_helpButton('What Email on file means', "Only admins and editors see this row. It shows why the registry does not send verification emails to this owner's address.") ?>
+                Email on file <?= $_helpButton('What Email on file means', "Only admins and editors see this row. It shows why the registry does not send verification email or messages from other owners to this owner.") ?>
             </dt>
             <dd class="col-sm-8">
-                <?php if ($_emailBounced) { ?>
-                <span class="me-3">Bounced <?= $_helpButton('What Bounced means', 'Email to this owner bounced. Verification emails start again when the owner confirms a different, working address.') ?></span>
+                <?php if ($_emailOptedOut) { $_date = $_formatDate($ownerEmailState->optedOutAt, 'F j, Y', $_carLabel . ' owner email flag email_opted_out_at has'); ?>
+                <span class="me-3">Opted out<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Opted out means', 'The owner stopped all registry email except account email. The owner can lift the opt-out with Resume registry email in Account Settings, or an admin can lift it.') ?></span>
                 <?php } ?>
-                <?php if ($_emailSuppressed) { ?>
-                <span class="me-3">Suppressed <?= $_helpButton('What Suppressed means', "This owner's address is on the email suppression list, so no verification emails are sent. An admin can use Clear Suppression on the Verification System tab. A block also ends when the owner confirms a changed email address. If the cause is only an owner opt-out, the owner can use Resume verification emails in their Account Settings. Resume does not clear a block.") ?></span>
+                <?php if ($_emailBounced) { $_date = $_formatDate($ownerEmailState->bouncedAt, 'F j, Y', $_carLabel . ' owner email flag email_bounced_at has'); ?>
+                <span class="me-3">Bounced<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Bounced means', "Email to this owner's address bounced. The registry does not send verification email, messages from other owners, or messages from an admin to this owner. The owner can lift the bounce by confirming a different email address, or an admin can lift it.") ?></span>
+                <?php } ?>
+                <?php if ($_emailBlocked) { $_date = $_formatDate($ownerEmailState->blockedAt, 'F j, Y', $_carLabel . ' owner email flag email_blocked_at has'); ?>
+                <span class="me-3">Blocked<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Blocked means', "This owner's address is blocked. The registry does not send verification email or messages from other owners to this owner. A message from an admin is still sent. The owner can lift the block by confirming a different email address, or an admin can lift it.") ?></span>
                 <?php } ?>
             </dd>
             <?php } ?>
@@ -238,14 +246,14 @@ $_registryDate = static function (object $carData, string $column): string {
                 <i class="fas fa-plus-circle text-success d-block mb-1" aria-hidden="true"></i>
                 <small class="text-muted d-block">Added to Registry</small>
                 <strong>
-                    <?= $_registryDate($carData, 'ctime') ?>
+                    <?= $_formatDate(isset($carData->ctime) ? (string) $carData->ctime : null, 'M j, Y', $_carLabel . ' has ctime') ?>
                 </strong>
             </div>
             <div class="col-6">
                 <i class="fas fa-edit text-info d-block mb-1" aria-hidden="true"></i>
                 <small class="text-muted d-block">Last Updated</small>
                 <strong>
-                    <?= $_registryDate($carData, 'mtime') ?>
+                    <?= $_formatDate(isset($carData->mtime) ? (string) $carData->mtime : null, 'M j, Y', $_carLabel . ' has mtime') ?>
                 </strong>
             </div>
         </div>

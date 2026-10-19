@@ -222,15 +222,18 @@ page, and the public vericode landing page.
 The card also has an Email on file row. It reads the owner's profile, not
 the car row (#2101). The caller passes the flags that apply now in
 `$ownerEmailState` (an `EffectiveEmailFlags` object from
-`CarRepository::effectiveEmailFlags()`, #2356). The row shows "Bounced" when
-`bounced` is true. It shows "Suppressed" when `blocked` or `optedOut` is true.
-A block or bounce stored for an old address does not apply, so the row does
-not show it. A null `$ownerEmailState` shows no row. The row
-shows only when the caller sets `$viewerIsRegistryAdmin` to `true` (strict).
-Only `app/owner/cars/details.php` sets it, from `isRegistryAdmin()`. That page
-loads `$ownerEmailState` for registry admins only. If the lookup fails, the
-page logs the error and the row stays hidden. The car's own owner does not see
-the row. The row never prints the email address.
+`CarRepository::effectiveEmailFlags()`, #2356). The row shows each state that
+is set: "Opted out", "Bounced", and "Blocked", each on its own span. Each state
+shows its date in `F j, Y` format (e.g., "October 19, 2026") when the
+corresponding `_at` column is not null; no date is shown when `_at` is null. Each
+state has its own tooltip explaining what it means and how to lift it. A block or
+bounce stored for an old address does not apply, so the row does not show it. A
+null `$ownerEmailState` shows no row. The row shows only when the caller sets
+`$viewerIsRegistryAdmin` to `true` (strict). Only `app/owner/cars/details.php`
+sets it, from `isRegistryAdmin()`. That page loads `$ownerEmailState` for
+registry admins only. If the lookup fails, the page logs the error and the row
+stays hidden. The car's own owner does not see the row. The row never prints the
+email address.
 
 Inside the dark green hero (`.card-header-er-primary-text`), a stamp has a
 white edge. The sold red against the hero green is only 1.2:1, so the red
@@ -322,6 +325,17 @@ The `$_helpButton` helper is defined in
 - The icon is `<i class="fas fa-circle-question" aria-hidden="true"></i>`
 - All label and tooltip text is escaped with `htmlspecialchars($text, ENT_QUOTES, 'UTF-8')`
 - The footer script that starts Bootstrap tooltips on the page initializes the tooltip
+
+### Verification System Tab
+
+The admin Verification tab uses `.er-stat-tile` summary cards and a row of
+filter pills. Seven cards show, in this order: Eligible, Pending, Verified,
+Sold, Bounced, Blocked and Opted out. The first four count cars. Bounced,
+Blocked and Opted out count owners, and each has an "owners" sub-label. An
+owner with several cars counts once on a card (#2361). The pills come from
+`CarRepository::QUEUE_STATUSES`. Each pill shows its car count. There is no
+"Suppressed" card or pill. `docs/development/EMAIL_SYSTEM.md` owns the full
+dashboard layout and the status chip rules.
 
 ### Alerts
 

@@ -287,7 +287,7 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
             "A {$flag} flag that matches only the stale cars.email must not exclude the car"
         );
         $this->assertNull(
-            $this->queueRow($flag === 'bounced' ? 'bounced' : 'suppressed', $carId),
+            $this->queueRow($flag, $carId),
             'The car does not show under the pill of a flag that does not apply'
         );
 
@@ -301,7 +301,7 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
             "A {$flag} flag on users.email must exclude the car, whatever cars.email holds"
         );
         $this->assertNotNull(
-            $this->queueRow($flag === 'bounced' ? 'bounced' : 'suppressed', $carId),
+            $this->queueRow($flag, $carId),
             'The car shows under the pill of its flag'
         );
     }
@@ -314,7 +314,8 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
     #[DataProvider('addressBoundFlagProvider')]
     public function testOnlyAFlagOnUsersEmailMovesALiveLinkCarOutOfPending(string $flag): void
     {
-        $pill = $flag === 'bounced' ? 'bounced' : 'suppressed';
+        // The flag names its pill: `blocked` and `bounced`.
+        $pill = $flag;
         $before = $this->repo->countVerificationSummary(null);
 
         $ownerId = $this->createTestUser(['email' => self::OWNER_EMAIL], true);
@@ -429,8 +430,8 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
     /**
      * Queue rows (the `all` queue): the `_active` columns follow the match,
      * the opt-out column does not. The owner and the car both move to the
-     * new address. The suppressed and bounced pills use the
-     * same predicate.
+     * new address. The blocked and bounced pills use the
+     * same predicate. The opted out pill does not follow the address.
      */
     public function testQueueActiveColumnsFollowTheAddressMatch(): void
     {
@@ -444,7 +445,8 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
         $this->assertNotNull($row, 'Test setup: the car is in the all queue');
         $this->assertSame([1, 1, 1], [(int) $row->email_blocked_active, (int) $row->email_bounced_active, (int) $row->email_opted_out]);
         $this->assertNotNull($this->queueRow('bounced', $carId), 'The bounced pill holds the car while the bounce applies');
-        $this->assertNotNull($this->queueRow('suppressed', $carId), 'The suppressed pill holds the car while the block applies');
+        $this->assertNotNull($this->queueRow('blocked', $carId), 'The blocked pill holds the car while the block applies');
+        $this->assertNotNull($this->queueRow('opted_out', $carId), 'The opted out pill holds the car while the opt-out applies');
 
         $moved = 'moved-' . uniqid() . '@example.com';
         $this->setUserEmailRaw($ownerId, $moved);
@@ -458,13 +460,15 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
             'The flags for the old address are inactive. The opt-out stays.'
         );
         $this->assertNull($this->queueRow('bounced', $carId), 'The bounced pill drops the car when the address no longer matches');
-        $this->assertNotNull($this->queueRow('suppressed', $carId), 'The opt-out keeps the car in the suppressed pill');
+        $this->assertNull($this->queueRow('blocked', $carId), 'A block for the old address leaves the blocked pill');
+        $this->assertNotNull($this->queueRow('opted_out', $carId), 'The opt-out keeps the car in the opted out pill');
 
         $this->setOwnerOptedOut($ownerId, false);
         $this->assertNull(
-            $this->queueRow('suppressed', $carId),
-            'Without the opt-out, a block for the old address leaves the suppressed pill'
+            $this->queueRow('opted_out', $carId),
+            'Without the opt-out, the car leaves the opted out pill'
         );
+        $this->assertNull($this->queueRow('blocked', $carId), 'The block for the old address still does not apply');
         $this->assertNotNull($this->queueRow('eligible', $carId), 'The car is eligible again');
     }
 

@@ -444,6 +444,25 @@ try {
 // than inserting a new row, so after a crash this purge deletes that original
 // row instead of restoring its key — acceptable on the test schema only.
 //
+// IntegrationTestCase::saveBrevoTestKey() writes the same sentinel in the same
+// way and restores it in tearDown(). SendOwnerEmailSendPolicyTest and
+// AdminContactSendPolicyTest use it, so this purge covers a crash there too.
+//
+// The "Brevo not ready" cases in the same two files do the opposite. In
+// VerificationToggleEndpointBehaviorTest, the case sets the key of the row
+// that was there before the test, if there is one, to ''. A finally block
+// restores the original key. In BrevoWebhookEndpointTest, the case sets the
+// key of its setUp() fixture row to ''. A finally block puts 'sib-test-key'
+// back. Then tearDown() restores the original key if setUp() updated a row
+// that was there before the test, or deletes the row if setUp() inserted it.
+// A fatal error or a killed run during one of those cases leaves a row with
+// plg_sendinblue.key = ''. If that row was there before the test, its
+// original key is lost. If setUp() inserted it, the schema keeps an extra
+// row with an empty key. This sweep does not detect or repair either state,
+// because it deletes only 'sib-test-key' rows. Later runs still pass. To
+// recover a lost key, save the API key in the plugin again
+// (docs/development/ENVIRONMENT.md, "Brevo Plugin Local Setup", step 5).
+//
 // Must stay after the connected-database identity check above: this deletes
 // rows, and running it against elanregi_spice would clobber the real Brevo
 // API key.
@@ -613,7 +632,19 @@ try {
             );
         }
 
-        fwrite(STDERR, "NOTE: Reference data verified (car_models: {$carModelsCount} records, settings, noowner, cars.vericode schema)\n");
+        // er_email_events.user_id comes from migration 20261013000000 (#2358).
+        // `composer migrate` updates only the dev database, so a test schema
+        // without the column is stale and every email-event test would fail.
+        $eventUserIdColumn = $db->query("SHOW COLUMNS FROM er_email_events LIKE 'user_id'")->first();
+        if (!$eventUserIdColumn) {
+            abortBootstrap(
+                "ERROR: er_email_events.user_id is missing. The test schema is older than migration 20261013000000 (#2358).",
+                "Run: docker compose exec -u www-data app scripts/provision-schema.sh",
+                "Aborting."
+            );
+        }
+
+        fwrite(STDERR, "NOTE: Reference data verified (car_models: {$carModelsCount} records, settings, noowner, cars.vericode schema, er_email_events.user_id)\n");
     }
 } catch (Throwable $e) {
     abortMissingSeed("ERROR: Failed to verify reference data: {$e->getMessage()}");

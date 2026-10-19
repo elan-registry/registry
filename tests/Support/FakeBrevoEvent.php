@@ -15,11 +15,19 @@ namespace Tests\Support;
  * types the generated model declares (all `string`, nullable in practice
  * because the SDK leaves unset container keys as null).
  *
+ * Every field takes any value, so a test can script the variants the job
+ * must survive: a message ID that this environment did or did not send, a
+ * `tag` that is `car_verification`, another tag, null or a non-string, and a
+ * `reason` that is null, empty, very long or a non-string. `event` uses the
+ * statistics API's names (`hardBounces`, `delivered`, ...), not the
+ * webhook's names (#2359).
+ *
  * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
  * @package Tests\Support
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1889
+ * @see https://github.com/elan-registry/registry/issues/2359
  */
 class FakeBrevoEvent
 {

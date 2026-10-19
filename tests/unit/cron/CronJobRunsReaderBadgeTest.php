@@ -14,9 +14,8 @@ use PHPUnit\Framework\TestCase;
  * reconciliation status row (#2054).
  *
  * Extracted from an inline `match` block in tab-verification.php so this
- * display logic is independently testable; the regression test at
- * tests/unit/regression/Issue2054RegressionTest.php only asserts on the
- * file's text contents, not this mapping's actual behavior.
+ * display logic is testable on its own. VerificationTabStatusTest covers the
+ * rows that use it.
  */
 #[Group('fast')]
 final class CronJobRunsReaderBadgeTest extends TestCase

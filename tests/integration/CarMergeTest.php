@@ -174,20 +174,30 @@ final class CarMergeTest extends IntegrationTestCase
     }
 
     /**
-     * #1887: er_email_events has no FK on car_id; the target owner must keep the bounce/suppression history.
+     * #1887, #2358: a merge moves `car_id` of the source car's rows to the surviving car and
+     * changes no other column. The owner-level rows (`car_id` NULL) stay as they are.
      */
     #[Group('fast')]
-    public function testMergeTransfersEmailEventHistoryToSurvivingCar(): void
+    public function testMergeMovesCarIdOnlyOnTheEmailEvents(): void
     {
         $oldCarId = $this->testMergeCarId;
         $survivingCarId = $this->testCarId;
 
         $this->db->query(
-            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
-             VALUES (?, ?, ?, NULL, ?, NOW())',
-            [$oldCarId, 'merge-test@example.com', 'hard_bounce', 'merge-test-msg-1']
+            'INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?), (?, NULL, ?, ?, NULL, ?, ?)',
+            [
+                $this->testUserId, $oldCarId, 'merge-test@example.com', 'sent', 'a reason', 'local:merge-test-msg-1', '2026-02-03 04:05:06',
+                $this->testUserId, 'merge-test@example.com', 'delivered', 'merge-test-owner-level', '2026-02-03 05:06:07',
+            ]
         );
-        $this->assertFalse($this->db->error(), 'Test setup: failed to seed er_email_events row on source car');
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed er_email_events rows: ' . $this->db->errorString());
+        $columns = 'id, user_id, email, event, reason, brevo_message_id, occurred_at';
+        $before = $this->db->query(
+            "SELECT {$columns} FROM er_email_events WHERE user_id = ? ORDER BY id",
+            [$this->testUserId]
+        )->results();
+        $this->assertCount(2, $before);
 
         $car = new Car($survivingCarId);
         $result = $car->merge($oldCarId, 'Test merge email event transfer', $this->testUserId);
@@ -196,13 +206,18 @@ final class CarMergeTest extends IntegrationTestCase
         $onOldCar = $this->db->query('SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ?', [$oldCarId])->first();
         $this->assertSame(0, (int) $onOldCar->cnt, 'No er_email_events rows must remain on the merged-away source car id');
 
-        $onSurvivingCar = $this->db->query(
-            'SELECT * FROM er_email_events WHERE car_id = ? AND brevo_message_id = ?',
-            [$survivingCarId, 'merge-test-msg-1']
-        )->first();
-        $this->assertIsObject($onSurvivingCar, 'The source car\'s event row must be reassigned to the surviving car, not lost');
-        $this->assertSame('hard_bounce', $onSurvivingCar->event);
-        $this->assertSame('merge-test@example.com', $onSurvivingCar->email);
+        $after = $this->db->query(
+            "SELECT {$columns}, car_id FROM er_email_events WHERE user_id = ? ORDER BY id",
+            [$this->testUserId]
+        )->results();
+        $this->assertCount(2, $after, 'A merge must delete no event row');
+        $this->assertSame($survivingCarId, (int) $after[0]->car_id, 'The source car\'s row must move to the surviving car, not get lost');
+        $this->assertNull($after[1]->car_id, 'An owner-level row stays without a car');
+        foreach ($before as $index => $row) {
+            foreach (get_object_vars($row) as $column => $value) {
+                $this->assertSame($value, $after[$index]->$column, "Column {$column} must not change in a merge");
+            }
+        }
     }
 
     #[Group('fast')]

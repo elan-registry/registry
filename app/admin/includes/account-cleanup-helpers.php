@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Car\EmailAddress;
 use ElanRegistry\DatabaseInterface;
-use ElanRegistry\Migration\DeliverabilityMigrationQueries;
 
 /**
  * Return unverified (email_verified=0) accounts with no car associations older than $days.
@@ -218,10 +218,11 @@ function restoreArchivedAccount(DatabaseInterface $db, int $archiveId, int $rest
         // Always insert a profile: the deliverability record lives on it, and the
         // text columns are NOT NULL with no default under strict mode (#2101).
         // The block and bounce flags are not archived. Brevo keeps its own block
-        // on the address, so a send to it sets the bounce flag again.
+        // on the address, so a send to it gets a Brevo `blocked` event, which
+        // sets email_bounced again (`spam` and `unsubscribed` set email_blocked).
         // The address is new to this account at restore time, not at join_date:
         // a bounce on mail sent before the deletion must not match it. The
-        // matching step that reads email_address_since comes in #2359.
+        // date guards of EmailEventApplier read email_address_since (#2359).
         $ok = $db->insert('profiles', [
             'user_id'             => $newUserId,
             'city'                => $row->city    ?? '',
@@ -232,7 +233,7 @@ function restoreArchivedAccount(DatabaseInterface $db, int $archiveId, int $rest
             'email_opted_out'     => (int) $row->email_opted_out,
             'email_opted_out_at'  => $row->email_opted_out_at,
             'email_address_since' => date('Y-m-d H:i:s'),
-            'email_address_seen'  => DeliverabilityMigrationQueries::normalizeAddress($row->email),
+            'email_address_seen'  => EmailAddress::normalize($row->email),
         ]);
         if (!$ok) {
             throw new RuntimeException(

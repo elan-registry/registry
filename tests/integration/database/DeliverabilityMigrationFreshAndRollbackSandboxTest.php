@@ -23,7 +23,8 @@ use Symfony\Component\Console\Output\BufferedOutput;
 #[Group('migration')]
 final class DeliverabilityMigrationFreshAndRollbackSandboxTest extends DeliverabilityMigrationSandboxTestCase
 {
-    private const ARCHIVE_VERSION = 20261012000001;
+    /** The newest migration. Move it when a later migration lands (#2358: 20261013000000). */
+    private const FINAL_VERSION = 20261013000000;
 
     /** An older migration, before the first migration that adds the removed columns. */
     private const VERSION_OLD = 20260825120000;
@@ -37,8 +38,8 @@ final class DeliverabilityMigrationFreshAndRollbackSandboxTest extends Deliverab
     {
         $this->assertFinalSchema();
         $this->assertSame(
-            2,
-            $this->scalar('SELECT COUNT(*) FROM phinxlog WHERE version IN (20261012000000, 20261012000001)')
+            3,
+            $this->scalar('SELECT COUNT(*) FROM phinxlog WHERE version IN (20261012000000, 20261012000001, 20261013000000)')
         );
     }
 
@@ -56,6 +57,7 @@ final class DeliverabilityMigrationFreshAndRollbackSandboxTest extends Deliverab
         $this->assertNotNull($this->columnInfo('profiles', 'email_suppressed'));
         $this->assertNull($this->columnInfo('profiles', 'email_opted_out'));
         $this->assertNull($this->columnInfo('profiles', 'email_blocked'));
+        $this->assertNull($this->columnInfo('er_email_events', 'user_id'), 'The #2358 rollback must remove user_id');
         $this->assertFalse($this->hasIndex('profiles', 'uniq_profiles_user_id'));
         $this->assertNull($this->columnInfo('deleted_accounts_archive', 'email_opted_out'));
         $triggerBodies = $this->carsTriggerBodies();
@@ -86,7 +88,7 @@ final class DeliverabilityMigrationFreshAndRollbackSandboxTest extends Deliverab
 
     private function assertFinalSchema(): void
     {
-        $this->assertSame(self::ARCHIVE_VERSION, $this->scalar('SELECT MAX(version) FROM phinxlog'));
+        $this->assertSame(self::FINAL_VERSION, $this->scalar('SELECT MAX(version) FROM phinxlog'));
         foreach (['cars', 'cars_hist'] as $table) {
             foreach (['email_bounced', 'email_bounced_address', 'email_suppressed'] as $column) {
                 $this->assertNull($this->columnInfo($table, $column), "{$table}.{$column} must not exist");
@@ -101,6 +103,8 @@ final class DeliverabilityMigrationFreshAndRollbackSandboxTest extends Deliverab
             $this->assertNotNull($this->columnInfo('profiles', $column), "profiles.{$column} must exist");
         }
         $this->assertTrue($this->hasIndex('profiles', 'uniq_profiles_user_id'));
+        $this->assertNotNull($this->columnInfo('er_email_events', 'user_id'), '#2358: er_email_events is keyed by user');
+        $this->assertTrue($this->hasIndex('er_email_events', 'uniq_er_email_events_user_message_event'));
         $this->assertNotNull($this->columnInfo('deleted_accounts_archive', 'email_opted_out'));
         $this->assertNotNull($this->columnInfo('deleted_accounts_archive', 'email_opted_out_at'));
         $this->assertSame(['cars_delete', 'cars_insert', 'cars_update'], array_keys($this->carsTriggerBodies()));

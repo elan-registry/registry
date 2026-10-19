@@ -198,7 +198,8 @@ final class CarVerificationEmailComposer
                 $content,
                 ['footer_text' => 'You received this email because this car is registered to you'
                     . ' in the Lotus Elan Registry. Use the "Stop sending me these" link above to'
-                    . ' opt out of future verification requests.']
+                    . ' stop all registry email except account mail (password reset, sign-in,'
+                    . ' and email change).']
             ),
         ];
     }

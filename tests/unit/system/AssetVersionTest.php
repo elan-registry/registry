@@ -318,6 +318,39 @@ class AssetVersionTest extends TestCase
     }
 
     /**
+     * @return array<string, array{0: string}>
+     */
+    public static function templateFilesWithMaplibreTags(): array
+    {
+        $root = dirname(__DIR__, 3);
+        return [
+            'cars/details.php'       => [$root . '/app/owner/cars/details.php'],
+            'reports/statistics.php' => [$root . '/app/owner/reports/statistics.php'],
+            'account.php'            => [$root . '/usersc/account.php'],
+        ];
+    }
+
+    /**
+     * The test above passes when any one tag in a file has the query. The
+     * MapLibre bundle and CSS each need their own query: without it, a
+     * returning browser keeps a bundle from an earlier MapLibre release, and
+     * that bundle loads the new worker, which it does not match.
+     */
+    #[DataProvider('templateFilesWithMaplibreTags')]
+    public function test_templateFile_maplibreTagsCarryAssetVersion(string $path): void
+    {
+        $content = (string) file_get_contents($path);
+        foreach (['usersc/js/maplibre-gl.min.js', 'usersc/css/maplibre-gl.css'] as $asset) {
+            $this->assertGreaterThan(0, substr_count($content, $asset), basename($path) . " must load $asset");
+            $this->assertSame(
+                substr_count($content, $asset),
+                substr_count($content, $asset . '?v=<?= ASSET_VERSION ?>'),
+                basename($path) . " must append ?v=<?= ASSET_VERSION ?> to each $asset reference"
+            );
+        }
+    }
+
+    /**
      * Drives resolve() through the file_get_contents() === false branch for
      * real, using a stream wrapper whose stream_open() always refuses —
      * file_exists() (backed by url_stat()) reports the path exists, but

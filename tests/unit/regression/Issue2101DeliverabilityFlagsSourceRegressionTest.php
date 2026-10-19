@@ -195,6 +195,24 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
         );
     }
 
+    /**
+     * The profile inserts store the seen address with the runtime rule. The
+     * frozen copy in DeliverabilityMigrationQueries is for the #2101
+     * migration only (#2358).
+     */
+    public function testProfileInsertsStoreTheSeenAddressWithTheRuntimeRule(): void
+    {
+        foreach (['usersc/scripts/during_user_creation.php', 'app/admin/includes/account-cleanup-helpers.php'] as $relative) {
+            $code = $this->codeOnly($relative);
+            $this->assertMatchesRegularExpression(
+                "/'email_address_seen'\\s*=>\\s*EmailAddress::normalize\\(/",
+                $code,
+                $relative
+            );
+            $this->assertStringNotContainsString('DeliverabilityMigrationQueries::normalizeAddress(', $code, $relative);
+        }
+    }
+
     public function testNegativeControlProfileInsertMatcherSeesBothStyles(): void
     {
         $bad = "\$db->insert('profiles', ['user_id' => 5, 'bio' => 'x']);";

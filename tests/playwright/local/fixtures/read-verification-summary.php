@@ -9,14 +9,17 @@ use ElanRegistry\Car\CarRepository;
  * Prints CarRepository::countVerificationSummary()'s result as JSON, for
  * one window (in days, or `0` for all time — same encoding as
  * app/admin/index.php's `?window=` allow-list). This is the exact
- * production method tab-verification.php calls to render the six summary
+ * production method tab-verification.php calls to render the summary
  * cards, so the Playwright spec compares each card against an independent
  * read of the same method, not against a hand-computed or re-derived
  * number.
  *
  * Usage: php read-verification-summary.php <windowDays|0>
  * Prints: {"all": n, "eligible": n, "pending": n, "bounced": n,
- *          "suppressed": n, "verified": n, "sold": n}
+ *          "blocked": n, "opted_out": n, "verified": n, "sold": n,
+ *          "bounced_owners": n, "blocked_owners": n, "opted_out_owners": n}
+ * The first eight keys count cars (the pills). The `*_owners` keys count
+ * distinct owners (the Bounced, Blocked and Opted out cards).
  */
 
 $projectRoot = dirname(__DIR__, 4);

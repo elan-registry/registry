@@ -217,7 +217,8 @@ accumulate silently on disk, and nothing else is positioned to catch them.
 List them directly:
 
 ```bash
-ls docs/plans/issues/issue-*.md docs/plans/issue-*.md 2>/dev/null
+find docs/plans -maxdepth 2 \( -path 'docs/plans/issue-*.md' \
+  -o -path 'docs/plans/issues/issue-*.md' \)
 ```
 
 **If any files are found:** present them to the user and ask whether to

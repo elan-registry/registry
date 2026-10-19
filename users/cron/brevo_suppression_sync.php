@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoSuppressionSyncClient;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 
@@ -51,6 +52,7 @@ $suppressionRepo = new CarRepository(dbi());
 (new BrevoSuppressionSyncJob(
     dbi(),
     $suppressionRepo,
+    new EmailEventMatcher($suppressionRepo),
     new EmailEventApplier($suppressionRepo, new CarVerificationManager($suppressionRepo)),
     new BrevoSuppressionSyncClient(dbi())
 ))->run();

@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../IntegrationTestCase.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\EmailNoticeBuilder;
+use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\PhpBuiltinServer;
@@ -173,7 +174,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $eligible = $this->allVerificationEligibleCarIds();
         $this->assertNotContains($owner['car'], $eligible, 'A block with no known cause still excludes the car');
         $this->assertContains($control['car'], $eligible, 'Control car stays eligible');
-        $this->assertArrayHasKey($owner['car'], $this->queueRows('suppressed', [$owner['car']]), 'The block is shown in the Suppressed queue');
+        $this->assertArrayHasKey($owner['car'], $this->queueRows('blocked', [$owner['car']]), 'The block is shown in the Blocked queue');
     }
 
     // ---- admin verification queue and counts ---------------------------------------------------
@@ -202,37 +203,49 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $this->assertSame('spam', $rows[$owners['blocked']['car']]->email_blocked_cause);
     }
 
-    public function testSuppressedAndBouncedQueuesFollowTheProfileFlags(): void
+    public function testBlockedOptedOutAndBouncedQueuesFollowTheProfileFlags(): void
     {
         $owners = $this->createOwnerPerFlag();
         $carIds = array_column($owners, 'car');
 
-        $suppressed = array_keys($this->queueRows('suppressed', $carIds));
-        $bounced = array_keys($this->queueRows('bounced', $carIds));
-
-        sort($suppressed);
-        $expectedSuppressed = [$owners['opted']['car'], $owners['blocked']['car']];
-        sort($expectedSuppressed);
-        $this->assertSame($expectedSuppressed, $suppressed, 'Suppressed = opted out or blocked');
-        $this->assertSame([$owners['bounced']['car']], $bounced, 'Bounced = bounced');
+        $this->assertSame([$owners['blocked']['car']], array_keys($this->queueRows('blocked', $carIds)), 'Blocked = blocked');
+        $this->assertSame([$owners['opted']['car']], array_keys($this->queueRows('opted_out', $carIds)), 'Opted out = opted out');
+        $this->assertSame([$owners['bounced']['car']], array_keys($this->queueRows('bounced', $carIds)), 'Bounced = bounced');
     }
 
-    public function testSummaryCountsSuppressedAsOptedOutOrBlockedAndMatchesTheQueues(): void
+    public function testSummaryCountsBlockedAndOptedOutSeparatelyAndMatchesTheQueues(): void
     {
         $owners = $this->createOwnerPerFlag();
 
         $summary = $this->repo->countVerificationSummary(null);
-        $suppressedQueue = $this->repo->findVerificationQueue('suppressed', null, PHP_INT_MAX);
-        $bouncedQueue = $this->repo->findVerificationQueue('bounced', null, PHP_INT_MAX);
+        $this->assertArrayNotHasKey('suppressed', $summary, 'The combined Suppressed count is gone');
 
-        $this->assertSame($summary['suppressed'], count($suppressedQueue), 'The Suppressed card and pill agree');
-        $this->assertSame($summary['bounced'], count($bouncedQueue), 'The Bounced card and pill agree');
-        $suppressedIds = array_map(static fn (object $r): int => (int) $r->id, $suppressedQueue);
-        $this->assertContains($owners['opted']['car'], $suppressedIds);
-        $this->assertContains($owners['blocked']['car'], $suppressedIds);
-        $this->assertNotContains($owners['bounced']['car'], $suppressedIds, 'A bounce alone is not Suppressed');
-        $this->assertNotContains($owners['none']['car'], $suppressedIds);
-        $this->assertGreaterThanOrEqual(2, $summary['suppressed']);
+        foreach (['blocked', 'opted_out', 'bounced'] as $status) {
+            $queue = $this->repo->findVerificationQueue($status, null, PHP_INT_MAX);
+            $this->assertNotEmpty($queue, "Test setup: the {$status} queue holds the fixture car");
+            $this->assertSame($summary[$status], count($queue), "The {$status} pill count and queue agree");
+            $ownerIds = array_unique(array_map(static fn (object $r): int => (int) $r->user_id, $queue));
+            $this->assertSame($summary[$status . '_owners'], count($ownerIds), "The {$status} card counts the owners of the queue rows");
+        }
+
+        $blockedIds = array_map(static fn (object $r): int => (int) $r->id, $this->repo->findVerificationQueue('blocked', null, PHP_INT_MAX));
+        $optedIds = array_map(static fn (object $r): int => (int) $r->id, $this->repo->findVerificationQueue('opted_out', null, PHP_INT_MAX));
+        $this->assertContains($owners['blocked']['car'], $blockedIds);
+        $this->assertNotContains($owners['opted']['car'], $blockedIds, 'An opt-out alone is not Blocked');
+        $this->assertNotContains($owners['bounced']['car'], $blockedIds, 'A bounce alone is not Blocked');
+        $this->assertNotContains($owners['none']['car'], $blockedIds);
+        $this->assertContains($owners['opted']['car'], $optedIds);
+        $this->assertNotContains($owners['blocked']['car'], $optedIds, 'A block alone is not Opted out');
+        $this->assertNotContains($owners['bounced']['car'], $optedIds, 'A bounce alone is not Opted out');
+        $this->assertNotContains($owners['none']['car'], $optedIds);
+        $this->assertGreaterThanOrEqual(1, $summary['blocked_owners']);
+        $this->assertGreaterThanOrEqual(1, $summary['opted_out_owners']);
+    }
+
+    public function testQueueRejectsTheRemovedSuppressedStatus(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->repo->findVerificationQueue('suppressed', null, 10);
     }
 
     // ---- admin user form -----------------------------------------------------------------------
@@ -353,12 +366,16 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
             $text[$name] = $this->emailOnFileText($this->renderVehicleInfoCard($owner['car'], $state, true));
         }
 
-        $this->assertStringContainsString('Suppressed', $text['opted']);
+        $this->assertStringContainsString('Opted out', $text['opted']);
+        $this->assertStringNotContainsString('Blocked', $text['opted']);
         $this->assertStringNotContainsString('Bounced', $text['opted']);
-        $this->assertStringContainsString('Suppressed', $text['blocked']);
+        $this->assertStringContainsString('Blocked', $text['blocked']);
+        $this->assertStringNotContainsString('Opted out', $text['blocked']);
         $this->assertStringNotContainsString('Bounced', $text['blocked']);
         $this->assertStringContainsString('Bounced', $text['bounced']);
-        $this->assertStringNotContainsString('Suppressed', $text['bounced']);
+        $this->assertStringNotContainsString('Opted out', $text['bounced']);
+        $this->assertStringNotContainsString('Blocked', $text['bounced']);
+        $this->assertStringNotContainsString('Suppressed', implode(' ', $text), 'The combined label is gone');
         $this->assertSame('', $text['none'], 'No flag, no Email on file row');
     }
 
@@ -572,8 +589,8 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
 
         $before = $this->verifyRequest('GET', $code);
         $this->assertSame(200, $before['status']);
-        $this->assertStringContainsString('Stop verification emails', $before['body'], 'Before the opt-out the page asks for it');
-        $this->assertStringNotContainsString('unsubscribed from verification emails', $before['body']);
+        $this->assertStringContainsString('Stop registry email', $before['body'], 'Before the opt-out the page asks for it');
+        $this->assertStringNotContainsString('unsubscribed from registry email', $before['body']);
         $this->assertDoesNotMatchRegularExpression('/bounc|blocked|complaint/i', $before['body'], 'The page does not reveal the delivery state');
 
         $post = $this->verifyRequest('POST', $code);
@@ -581,7 +598,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
 
         $after = $this->verifyRequest('GET', $code);
         $this->assertSame(200, $after['status']);
-        $this->assertStringContainsString('unsubscribed from verification emails', $after['body']);
+        $this->assertStringContainsString('unsubscribed from registry email', $after['body']);
         $this->assertDoesNotMatchRegularExpression('/bounc|blocked|complaint/i', $after['body']);
 
         $flags = $this->getOwnerEmailFlags($owner['owner']);
@@ -600,7 +617,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
 
         $page = $this->verifyRequest('GET', $code);
 
-        $this->assertStringContainsString('Stop verification emails', $page['body']);
+        $this->assertStringContainsString('Stop registry email', $page['body']);
         $this->assertSame('0', (string) $this->getOwnerEmailFlags($owner['owner'])['email_opted_out'], 'A GET writes nothing');
     }
 

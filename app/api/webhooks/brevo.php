@@ -6,18 +6,21 @@ use ElanRegistry\Car\BrevoWebhookEventProcessor;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Car\ProcessingResult;
 use ElanRegistry\Car\VerificationSettings;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
  * Brevo webhook receiver
  *
- * Receives Brevo's delivery-status events (bounces, blocks, spam complaints,
- * deliveries, opens) for transactional verification emails and records them
- * against the matching car(s), escalating to a bounced/suppressed flag per
- * the rules in EmailEventApplier (which BrevoWebhookEventProcessor delegates
- * to, and which the #1889 reconciliation job shares).
+ * Receives Brevo's delivery-status events (deliveries, bounces, blocks,
+ * spam complaints, unsubscribes) for all registry mail (#2359). The event is
+ * matched to its user by message ID, recorded against that user, and
+ * escalated to a bounced/suppressed flag per the rules in EmailEventApplier
+ * (which BrevoWebhookEventProcessor delegates to, and which the #1889
+ * reconciliation job shares).
  *
  * NO `securePage()` AND NOT IN `$path`. Brevo is an external caller with no
  * UserSpice session, so this endpoint must stay reachable unauthenticated by
@@ -32,6 +35,9 @@ use ElanRegistry\LogCategories;
  * `$_ENV` isn't clobbered) — `getenv()` would therefore always return false
  * here, even with a correctly configured `.env`. Fails CLOSED: an empty/
  * missing value rejects every request rather than accepting everything.
+ * The verification switch stops only the send batch, not this endpoint. To
+ * stop it in an incident, see docs/development/EMAIL_SYSTEM.md, "Stop Event
+ * Writes in an Incident".
  * Never logs the token itself, only a short hashed prefix, so a leaked log
  * line cannot leak the credential.
  *
@@ -43,15 +49,26 @@ use ElanRegistry\LogCategories;
  *   invariant: a rate-limiter failure can only become a throughput bypass,
  *   never an auth bypass.
  *
+ * Gates, in order: method, auth, rate limit, Brevo prerequisites.
+ *
  * HTTP status contract:
- *   | Situation                                    | Response |
- *   |-----------------------------------------------|----------|
- *   | Parsed and durably written                    | 2xx      |
- *   | No recognized tag                             | 2xx, logged |
- *   | Recipient matches no car                      | 2xx, logged, unmatched counter incremented |
- *   | Malformed/unparseable payload (incl. list body)| 4xx, logged |
- *   | Auth token missing/empty/wrong                | 401, logged subject to brevo_webhook_auth_failure rate limit (hashed prefix only) |
- *   | DB write failure                              | 5xx — the only retryable case |
+ *   | Situation                                         | Response |
+ *   |---------------------------------------------------|----------|
+ *   | Matched to one user, transaction committed        | 200      |
+ *   | Not a delivery event (for example opened, click)  | 200, logged (event name only) |
+ *   | Message not sent by this environment              | 200, no log |
+ *   | Our message, no single user holds the address     | 200, logged (address hash prefix only). A car_verification-tagged event increments the unmatched counter |
+ *   | Brevo prerequisites not met                       | 200, logged |
+ *   | Malformed payload (incl. list body, bad address)  | 400, logged |
+ *   | Stored data that cannot be parsed (for example a zero message time) | 400, logged (no message) |
+ *   | Auth token missing/empty/wrong                    | 401, logged subject to brevo_webhook_auth_failure rate limit (hashed prefix only) |
+ *   | Method is not POST                                | 405, no log |
+ *   | Rate limit exceeded                               | 429      |
+ *   | DB read or write failure                          | 500, logged |
+ *   | Any other unhandled failure                       | 500, logged (no message) |
+ *
+ * No log line holds an email address, and no catch block logs an exception
+ * message: CarRepository puts the address in its exception messages.
  *
  * Never acknowledges (2xx) before the er_email_events write commits — Brevo
  * does not retry a 2xx, so acking early on a write that then fails would
@@ -138,9 +155,8 @@ if ($expectedToken === '' || $providedToken === '' || !hash_equals($expectedToke
         $shouldLog = true;
         try {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo webhook: auth-failure rate limit failed (%s), failing open (will log): %s',
-                get_class($e),
-                $e->getMessage()
+                'Brevo webhook: auth-failure rate limit failed (%s), failing open (will log).',
+                ExceptionLogSummary::of($e)
             ));
         } catch (\Throwable) {
             // Logging itself is down. The 401 below still must fire —
@@ -198,9 +214,8 @@ try {
         // rate_limits.php — that class of bug now surfaces via the outer
         // catch below instead of silently running unthrottled forever.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-            'Brevo webhook: rate limit check failed (%s), failing open: %s',
-            get_class($e),
-            $e->getMessage()
+            'Brevo webhook: rate limit check failed (%s), failing open.',
+            ExceptionLogSummary::of($e)
         ));
         $rateLimitAllowed = true;
     }
@@ -210,14 +225,11 @@ try {
     }
     recordRateLimit('brevo_webhook', true);
 
-    // --- 3. Verification-system gates (preserved from the pre-#1887 stub) -
+    // --- 3. Brevo prerequisites ---------------------------------------------
+    // The verification switch stops only the send batch. Events from all
+    // registry mail still count while it is off, because the switch does
+    // not stop other mail (for example join or password-reset mail).
     $settings = new VerificationSettings(dbi());
-
-    if (!$settings->isEnabled()) {
-        // Verification is switched off site-wide: accept and drop, silently —
-        // this is an expected, common state, not worth a log line per hit.
-        respondAndExit(200);
-    }
 
     // brevoReady() is brevoNotReadyReason() === null. One call gives the gate
     // and the reason for the log from the same check.
@@ -247,7 +259,7 @@ try {
     $repo = new CarRepository(dbi());
     $verificationManager = new CarVerificationManager($repo);
     $applier = new EmailEventApplier($repo, $verificationManager);
-    $processor = new BrevoWebhookEventProcessor($repo, $applier);
+    $processor = new BrevoWebhookEventProcessor(new EmailEventMatcher($repo), $applier);
 
     $result = $processor->process($decoded);
 
@@ -256,35 +268,28 @@ try {
             respondAndExit(200);
             // no break — respondAndExit() never returns
 
-        case ProcessingResult::NO_TAG_MATCH:
-            respondAndExit(
-                200,
-                LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK,
-                'Brevo webhook: event carries no recognized verification-system tag — dropped.'
-            );
+        case ProcessingResult::IGNORED:
+            respondAndExit(200);
             // no break — respondAndExit() never returns
 
-        case ProcessingResult::NO_CAR_MATCH:
-            // incrementUnmatchedRecipientCounter() never throws (see its own
-            // docblock) and already logs its own failure — but its return
-            // value still needs to be honored here, otherwise this log line
-            // would unconditionally claim "incremented" even on the one path
-            // where the method just logged that it could not.
-            $counterIncremented = $settings->incrementUnmatchedRecipientCounter();
-            respondAndExit(
-                200,
-                LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK,
-                $counterIncremented
-                    ? 'Brevo webhook: event recipient matched no car — dropped, unmatched counter incremented.'
-                    : 'Brevo webhook: event recipient matched no car — dropped, unmatched counter increment failed (see prior log line).'
-            );
+        case ProcessingResult::NO_USER_MATCH:
+            // The counter measures verification recipients that no owner
+            // holds, so other mail does not count. The processor already
+            // logged the event.
+            if (BrevoWebhookEventProcessor::hasVerificationTag($decoded)) {
+                // incrementUnmatchedRecipientCounter() never throws and logs
+                // its own failure.
+                $settings->incrementUnmatchedRecipientCounter();
+            }
+            respondAndExit(200);
             // no break — respondAndExit() never returns
 
         case ProcessingResult::MALFORMED:
             respondAndExit(
                 400,
                 LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK,
-                'Brevo webhook: payload is malformed (not a JSON object, or missing a required field).'
+                'Brevo webhook: payload is malformed (not a JSON object, a missing required field, a bad address,'
+                . ' a message ID over 255 bytes, or a stored value that the match or apply step cannot parse).'
             );
             // no break — respondAndExit() never returns
 
@@ -313,9 +318,8 @@ try {
         500,
         LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK,
         sprintf(
-            'Brevo webhook: unhandled %s while processing event: %s',
-            get_class($e),
-            $e->getMessage()
+            'Brevo webhook: unhandled %s while processing event.',
+            ExceptionLogSummary::of($e)
         )
     );
 }

@@ -50,6 +50,44 @@ final class VerificationBatchSender
     }
 
     /**
+     * Truncate submitted ids to the configured batch size
+     *
+     * Static and pure so the cap is testable without a database. The caller
+     * logs and reports the messages, and runs this before it filters ids, so
+     * a hand-crafted POST cannot start more blocking Brevo calls than the
+     * configured batch size allows.
+     *
+     * @param array<mixed> $ids Submitted ids, unfiltered
+     * @param int $batchSize Configured batch size. A value below 1 is treated as 1.
+     * @return array{ids: list<mixed>, logMessage: ?string, adminMessage: ?string}
+     *         The messages are null when no truncation happened
+     */
+    public static function capToBatchSize(array $ids, int $batchSize): array
+    {
+        // A zero or negative length makes array_slice() keep nothing or cut from the end.
+        $batchSize = max(1, $batchSize);
+
+        if (count($ids) <= $batchSize) {
+            return ['ids' => array_values($ids), 'logMessage' => null, 'adminMessage' => null];
+        }
+
+        return [
+            'ids' => array_values(array_slice($ids, 0, $batchSize)),
+            'logMessage' => sprintf(
+                'Verification send: car_ids[] carried %d ids, exceeding the configured batch size '
+                . 'of %d; truncated to the first %d.',
+                count($ids),
+                $batchSize,
+                $batchSize
+            ),
+            'adminMessage' => sprintf(
+                'Only the first %d cars were sent — the request exceeded the configured batch size.',
+                $batchSize
+            ),
+        ];
+    }
+
+    /**
      * Process one batch of submitted car ids and bucket the outcome of each
      *
      * Mirrors the original inline loop exactly, including its four

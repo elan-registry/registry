@@ -175,6 +175,22 @@ Launch `software-developer` agents per Step 4's grouping. Provide each agent:
 - This instruction: "If the item needs a change the plan does not list (a
   file outside the plan, a different approach, a dropped requirement), do
   not make it. Stop and report it." Then apply the deviation rule below.
+- For an item that writes user-facing text about a rule (which mail an
+  owner gets, who sees what, what a flag stops): the rule itself, as a
+  table from the code or the plan, and this instruction: "Check each
+  sentence against the table. Write only what the table makes true for
+  every user who sees the sentence." In #2360, "Registry email is paused
+  for you" also showed to a block-only owner, who still gets admin
+  contact. Only a third review round found it.
+
+**One writer per file.** Two agents that run at the same time must not
+edit the same file. This includes the temporary edits that prove a test
+can fail (Step 6). Before you launch an agent, list the files it may edit.
+If another running agent may edit one of them, wait for that agent or give
+both items to one agent. When you launch a test agent while another agent
+runs, write in its prompt: "Other agents are running. Do not stash or
+overwrite a file to prove a test." In #2360, a test agent emptied `SendPolicy.php`
+during a proof while another agent was editing it.
 
 **Model override by tier** (infer tier from the plan file's scope — number of
 checklist items and files touched, same Small/Medium/Large bands
@@ -268,6 +284,24 @@ defect. Both are cheap to catch here instead of two workflow stages later:
   without the fix, and only `/review-pr` found it. Do not mark a test item
   `[x]` until the plan file records the result for each test, in the form
   `fails without the change` or `passes without the change — <reason>`.
+- **Prove a test can fail on a copy, not on the real file.** The agent
+  file gives the test agent's steps. When a test can read its input from a
+  path (for example, a source test that takes its directory from an
+  environment variable), the test agent points it at a copy of the old
+  file. When the test must run the real file and another agent runs at the
+  same time, the test agent does not prove it. It reports the test as not
+  proved.
+- **A test the agent could not prove.** Keep its item `[ ]`. When no
+  running agent may edit the file ("One writer per file", Step 5), run the
+  proof yourself:
+  1. Copy the current file to your scratchpad.
+  2. Write the old version over it:
+     `git show <merge-base>:<file> > <file>`. For a file that the change
+     adds, move it to the scratchpad.
+  3. Run the test. Record `fails without the change` or
+     `passes without the change — <reason>` in the plan file.
+  4. Restore the file with `cp` from the scratchpad copy. Check it with
+     `diff` against that copy. Then mark the item `[x]`.
 
 Mark the corresponding checklist items `[x]` as each completes.
 
