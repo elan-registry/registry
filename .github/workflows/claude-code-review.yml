@@ -59,7 +59,9 @@ name: Claude Code Review
 # Posting mechanism (v1 action):
 #   Claude must explicitly post via `gh pr comment` — the action does not
 #   auto-post Claude's output. Prompts must include that instruction and
-#   Bash(gh pr comment:*) must be in the allowedTools list.
+#   Bash(gh pr comment:*) must be in the allowedTools list. Line findings
+#   go in inline comments (mcp__github_inline_comment__create_inline_comment,
+#   also in allowedTools). The summary comment is still required.
 #
 #   Fallback posting: if Claude's own `gh pr comment` call never happens
 #   (observed once in production — the run completed with no error but
@@ -219,7 +221,7 @@ jobs:
           # evidence comes in.
           claude_args: >-
             --allowedTools
-            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(cat:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
+            "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(cat:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
             --model claude-sonnet-5
             --effort medium
           prompt: |
@@ -316,7 +318,13 @@ jobs:
             isn't done until the `gh pr comment` call below actually happens.
             Don't stop to narrate that step — call it in the same turn.
 
-            Post your review as a PR comment using:
+            For each finding on a specific line, post an inline comment with
+            `mcp__github_inline_comment__create_inline_comment` (confirmed: true).
+            Every finding that you post as an inline comment must also be in
+            the summary comment, under its severity heading, with file:line.
+            The merge gate reads only the summary comment.
+
+            Then post your review summary as a PR comment using:
 
             ```bash
             gh pr comment ${{ steps.ctx.outputs.pr_number }} --body "..."
@@ -577,7 +585,7 @@ jobs:
           # Fable is worth it here: this runs once per milestone, not per push.
           claude_args: >-
             --allowedTools
-            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
+            "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(npm run lint),Read,Grep,Glob"
             --model claude-fable-5-1
           prompt: |
             REPO: ${{ github.repository }}
@@ -666,7 +674,13 @@ jobs:
             isn't done until the `gh pr comment` call below actually happens.
             Don't stop to narrate that step — call it in the same turn.
 
-            Post your review as a PR comment using:
+            For each finding on a specific line, post an inline comment with
+            `mcp__github_inline_comment__create_inline_comment` (confirmed: true).
+            Every finding that you post as an inline comment must also be in
+            the summary comment, under its severity heading, with file:line.
+            The merge gate reads only the summary comment.
+
+            Then post your review summary as a PR comment using:
 
             ```bash
             gh pr comment ${{ github.event.pull_request.number }} --body "..."
