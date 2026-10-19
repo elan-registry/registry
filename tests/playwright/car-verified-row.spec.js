@@ -12,8 +12,14 @@
 // fixture in the app container. It uses the host `php` only when the docker
 // command is not installed.
 //
+// Two more cars show the Email on file states of #2361. They are under
+// `stateCars` in the fixture output, with their owners under `stateOwners`,
+// so the count of five cars stays the same: a blocked car, and a car whose owner
+// has all three flags with every `_at` column NULL.
+//
 // The admin tests log in with E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD
-// from .env.local. They skip, with a reason, when these are not set.
+// from .env.local. The editor tests use E2E_DEV_EDITOR_USERNAME and
+// E2E_DEV_EDITOR_PASSWORD. Each group skips, with a reason, when its pair is not set.
 
 const { test, expect } = require('@playwright/test');
 const { login, isLoggedIn } = require('./auth-helper.js');
@@ -25,6 +31,14 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
 
 const ADMIN_USERNAME = process.env.E2E_DEV_ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.E2E_DEV_ADMIN_PASSWORD;
+const EDITOR_USERNAME = process.env.E2E_DEV_EDITOR_USERNAME;
+const EDITOR_PASSWORD = process.env.E2E_DEV_EDITOR_PASSWORD;
+
+// Flag dates that the fixture writes. They are literals, so the expected text
+// does not come from the code under test.
+const OPTED_OUT_DATE = 'April 1, 2026';
+const BOUNCED_DATE = 'April 2, 2026';
+const BLOCKED_DATE = 'April 3, 2026';
 
 /**
  * Run the fixture and return its stdout.
@@ -54,6 +68,8 @@ test.beforeAll(() => {
     seeded = JSON.parse(runFixture().trim().split('\n').pop());
     expect(seeded.userId).toBeGreaterThan(0);
     expect(Object.keys(seeded.cars)).toHaveLength(5);
+    expect(Object.keys(seeded.stateCars).sort()).toEqual(['blocked', 'nullDates']);
+    expect(Object.keys(seeded.stateOwners).sort()).toEqual(['blocked', 'nullDates']);
 });
 
 test.afterAll(() => {
@@ -142,26 +158,10 @@ test.describe('Verified row: anonymous visitor on the details page', () => {
         await expect(tooltip).toHaveText("The owner confirmed, added, or updated this car's record in the last 12 months.");
     });
 
-    test('suppressed car and bounced car show no Email on file row', async ({ page }) => {
-        for (const key of ['suppressed', 'bounced']) {
-            await page.goto(detailsUrl(seeded.cars[key]), { waitUntil: 'networkidle' });
-            // Non-vacuous: the card rendered its Verified row for the same car.
-            await expect(verifiedLabel(page)).toHaveCount(1);
-            await expect(emailLabel(page)).toHaveCount(0);
-            expect(await page.content()).not.toContain(seeded.bouncedAddress);
-        }
-    });
-});
-
-test.describe('Email on file row: owner who is not an admin', () => {
-    test('own suppressed car and own bounced car show no Email on file row', async ({ page }) => {
-        for (const key of ['suppressed', 'bounced']) {
-            // Each flagged car has its own owner. All three owners share one password.
-            // Clear the session so the second login starts clean.
-            await page.context().clearCookies();
-            await login(page, seeded.flaggedOwners[key], seeded.password);
-            expect(await isLoggedIn(page)).toBe(true);
-            await page.goto(detailsUrl(seeded.cars[key]), { waitUntil: 'networkidle' });
+    test('opted out, bounced, blocked, and all-flags cars show no Email on file row', async ({ page }) => {
+        const carIds = [seeded.cars.suppressed, seeded.cars.bounced, seeded.stateCars.blocked, seeded.stateCars.nullDates];
+        for (const carId of carIds) {
+            await page.goto(detailsUrl(carId), { waitUntil: 'networkidle' });
             // Non-vacuous: the card rendered its Verified row for the same car.
             await expect(verifiedLabel(page)).toHaveCount(1);
             await expect(emailLabel(page)).toHaveCount(0);
@@ -172,46 +172,151 @@ test.describe('Email on file row: owner who is not an admin', () => {
     });
 });
 
-test.describe('Email on file row: admin', () => {
-    test.skip(
-        !ADMIN_USERNAME || !ADMIN_PASSWORD,
-        'E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD are not set in .env.local'
-    );
-
-    test('suppressed car shows "Suppressed", and its tooltip names Clear Suppression', async ({ page }) => {
-        await login(page, ADMIN_USERNAME, ADMIN_PASSWORD);
-        await page.goto(detailsUrl(seeded.cars.suppressed), { waitUntil: 'networkidle' });
-        const label = emailLabel(page);
-        await expect(label).toHaveCount(1);
-        const value = valueOf(label);
-        await expect(value).toContainText('Suppressed');
-        await expect(value).not.toContainText('Bounced');
-
-        await page.getByRole('button', { name: 'What Suppressed means' }).focus();
-        const tooltip = page.getByRole('tooltip');
-        await expect(tooltip).toContainText('Clear Suppression on the Verification System tab');
-        await expect(tooltip).toContainText('Resume registry email');
-    });
-
-    test('bounced car shows "Bounced" and never prints the bounced address', async ({ page }) => {
-        await login(page, ADMIN_USERNAME, ADMIN_PASSWORD);
-        await page.goto(detailsUrl(seeded.cars.bounced), { waitUntil: 'networkidle' });
-        const label = emailLabel(page);
-        await expect(label).toHaveCount(1);
-        const value = valueOf(label);
-        await expect(value).toContainText('Bounced');
-        await expect(value).not.toContainText('Suppressed');
-        expect(await page.content()).not.toContain(seeded.bouncedAddress);
-    });
-
-    test('car with no delivery problem shows no Email on file row', async ({ page }) => {
-        await login(page, ADMIN_USERNAME, ADMIN_PASSWORD);
-        await page.goto(detailsUrl(seeded.cars.confirmed), { waitUntil: 'networkidle' });
-        // Non-vacuous: the Verified row is there, and the two tests above show the same admin session gets the row on the flagged cars.
-        await expect(verifiedLabel(page)).toHaveCount(1);
-        await expect(emailLabel(page)).toHaveCount(0);
+test.describe('Email on file row: owner who is not an admin', () => {
+    test('own opted out, bounced, blocked, and all-flags cars show no Email on file row', async ({ page }) => {
+        const cases = [
+            [seeded.flaggedOwners.suppressed, seeded.cars.suppressed],
+            [seeded.flaggedOwners.bounced, seeded.cars.bounced],
+            [seeded.stateOwners.blocked, seeded.stateCars.blocked],
+            [seeded.stateOwners.nullDates, seeded.stateCars.nullDates],
+        ];
+        for (const [ownerName, carId] of cases) {
+            // Each flagged car has its own owner. All owners share one password.
+            // Clear the session so the next login starts clean.
+            await page.context().clearCookies();
+            await login(page, ownerName, seeded.password);
+            expect(await isLoggedIn(page)).toBe(true);
+            await page.goto(detailsUrl(carId), { waitUntil: 'networkidle' });
+            // Non-vacuous: the card rendered its Verified row for the same car.
+            await expect(verifiedLabel(page)).toHaveCount(1);
+            await expect(emailLabel(page)).toHaveCount(0);
+            const html = await page.content();
+            expect(html).not.toContain('Email on file');
+            expect(html).not.toContain(seeded.bouncedAddress);
+        }
     });
 });
+
+/**
+ * Open a help button of the Email on file row and return its tooltip.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} name Accessible name of the help button
+ */
+async function openTooltip(page, name) {
+    await page.getByRole('button', { name }).focus();
+    const tooltip = page.getByRole('tooltip');
+    await expect(tooltip).toBeVisible();
+    return tooltip;
+}
+
+/**
+ * The span of one state in the Email on file value cell.
+ * @param {import('@playwright/test').Locator} value
+ * @param {string} state "Opted out", "Bounced" or "Blocked"
+ */
+const stateSpan = (value, state) => value.locator('span.me-3', { hasText: new RegExp(`^\\s*${state}\\b`) });
+
+/**
+ * Register the Email on file state tests for one privileged role. The tests
+ * are the same for an admin and an editor, because the row gate is isRegistryAdmin().
+ * @param {string} role Describe title suffix
+ * @param {() => string|undefined} getUsername
+ * @param {() => string|undefined} getPassword
+ */
+function emailOnFileStateTests(role, getUsername, getPassword) {
+    test.describe(`Email on file row: ${role}`, () => {
+        test.skip(
+            !getUsername() || !getPassword(),
+            `The ${role} credentials (E2E_DEV_${role.toUpperCase()}_USERNAME and E2E_DEV_${role.toUpperCase()}_PASSWORD) are not set in .env.local`
+        );
+
+        test.beforeEach(async ({ page }) => {
+            await login(page, getUsername(), getPassword());
+        });
+
+        test('opted out car shows "Opted out" with its date, and its tooltip names Resume', async ({ page }) => {
+            await page.goto(detailsUrl(seeded.cars.suppressed), { waitUntil: 'networkidle' });
+            const label = emailLabel(page);
+            await expect(label).toHaveCount(1);
+            const value = valueOf(label);
+            await expect(value.locator('span.me-3')).toHaveCount(1);
+            await expect(stateSpan(value, 'Opted out')).toHaveText(`Opted out ${OPTED_OUT_DATE}`);
+            await expect(value).not.toContainText('Suppressed');
+
+            const tooltip = await openTooltip(page, 'What Opted out means');
+            await expect(tooltip).toContainText('stopped all registry email except account email');
+            await expect(tooltip).toContainText('Resume registry email');
+            await expect(tooltip).not.toContainText('Clear Suppression');
+        });
+
+        test('bounced car shows "Bounced" with its date, never prints the address, and its tooltip names the owner and admin mail', async ({ page }) => {
+            await page.goto(detailsUrl(seeded.cars.bounced), { waitUntil: 'networkidle' });
+            const label = emailLabel(page);
+            await expect(label).toHaveCount(1);
+            const value = valueOf(label);
+            await expect(value.locator('span.me-3')).toHaveCount(1);
+            await expect(stateSpan(value, 'Bounced')).toHaveText(`Bounced ${BOUNCED_DATE}`);
+            await expect(value).not.toContainText('Suppressed');
+            expect(await page.content()).not.toContain(seeded.bouncedAddress);
+
+            const tooltip = await openTooltip(page, 'What Bounced means');
+            await expect(tooltip).toContainText('messages from an admin');
+            await expect(tooltip).toContainText('confirming a different email address');
+            await expect(tooltip).not.toContainText('Resume registry email');
+        });
+
+        test('blocked car shows "Blocked" with its date, and its tooltip says an admin message is still sent', async ({ page }) => {
+            await page.goto(detailsUrl(seeded.stateCars.blocked), { waitUntil: 'networkidle' });
+            const label = emailLabel(page);
+            await expect(label).toHaveCount(1);
+            const value = valueOf(label);
+            await expect(value.locator('span.me-3')).toHaveCount(1);
+            await expect(stateSpan(value, 'Blocked')).toHaveText(`Blocked ${BLOCKED_DATE}`);
+            await expect(value).not.toContainText('Suppressed');
+
+            const tooltip = await openTooltip(page, 'What Blocked means');
+            await expect(tooltip).toContainText('A message from an admin is still sent');
+            await expect(tooltip).toContainText('confirming a different email address');
+            await expect(tooltip).not.toContainText('Resume registry email');
+            await expect(tooltip).not.toContainText('Clear Suppression');
+        });
+
+        test('owner with all three flags and no dates shows the three states in order, each with no date', async ({ page }) => {
+            await page.goto(detailsUrl(seeded.stateCars.nullDates), { waitUntil: 'networkidle' });
+            const label = emailLabel(page);
+            await expect(label).toHaveCount(1);
+            const value = valueOf(label);
+            const spans = value.locator('span.me-3');
+            await expect(spans).toHaveCount(3);
+            // toHaveText on a locator list compares each span in document order.
+            // The exact strings show that no date follows the state name.
+            await expect(spans).toHaveText(['Opted out', 'Bounced', 'Blocked']);
+            await expect(value).not.toContainText(/\d{4}/);
+        });
+
+        test('each state has its own tooltip text', async ({ page }) => {
+            await page.goto(detailsUrl(seeded.stateCars.nullDates), { waitUntil: 'networkidle' });
+            const texts = [];
+            for (const name of ['What Opted out means', 'What Bounced means', 'What Blocked means']) {
+                const button = page.getByRole('button', { name });
+                await expect(button).toHaveCount(1);
+                texts.push(await button.getAttribute('data-bs-title'));
+            }
+            expect(texts.every(text => text && text.length > 0)).toBe(true);
+            expect(new Set(texts).size).toBe(3);
+        });
+
+        test('car with no delivery problem shows no Email on file row', async ({ page }) => {
+            await page.goto(detailsUrl(seeded.cars.confirmed), { waitUntil: 'networkidle' });
+            // Non-vacuous: the Verified row is there, and the tests above show the same session gets the row on the flagged cars.
+            await expect(verifiedLabel(page)).toHaveCount(1);
+            await expect(emailLabel(page)).toHaveCount(0);
+        });
+    });
+}
+
+emailOnFileStateTests('admin', () => ADMIN_USERNAME, () => ADMIN_PASSWORD);
+emailOnFileStateTests('editor', () => EDITOR_USERNAME, () => EDITOR_PASSWORD);
 
 test.describe('Verified row: account page', () => {
     test('every car of the owner shows a Verified row, and no car shows an Email on file row', async ({ page }) => {

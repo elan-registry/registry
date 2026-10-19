@@ -42,7 +42,9 @@ class CarRepository
      *
      * Public so the dashboard can check a `?status=` value against the same list.
      */
-    public const QUEUE_STATUSES = ['all', 'eligible', 'pending', 'bounced', 'suppressed', 'verified', 'sold'];
+    public const QUEUE_STATUSES = [
+        'all', 'eligible', 'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold',
+    ];
 
     /**
      * Dashboard window choices: URL value => `$windowDays` argument (null = all time).
@@ -1620,16 +1622,31 @@ class CarRepository
     }
 
     /**
-     * Build the WHERE condition for a Suppressed car: a block applies to the owner's current address, or the owner opted out
+     * Build the WHERE condition for a Blocked car: a block applies to the owner's current address
      *
-     * Until #2361 separates them, one pill holds both flags. Needs the `cars`
-     * alias, {@see self::PROFILE_JOIN_SQL} and {@see self::USERS_JOIN_SQL}.
+     * Uses {@see emailFlagActiveSql()}, so a block on an old address does not
+     * count, and a block with no stored address counts (fail closed). Needs
+     * the `cars` alias, {@see self::PROFILE_JOIN_SQL} and {@see self::USERS_JOIN_SQL}.
      *
      * @return string SQL boolean expression
      */
-    private static function verificationSuppressedWhereSql(): string
+    private static function verificationBlockedWhereSql(): string
     {
-        return '((' . self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BLOCKED) . ') OR p.email_opted_out = 1)';
+        return '(' . self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BLOCKED) . ')';
+    }
+
+    /**
+     * Build the WHERE condition for an Opted out car: the owner opted out
+     *
+     * An opt-out is not tied to an address, so it applies after an address
+     * change ({@see emailFlagActiveSql()}). Needs the `cars` alias and
+     * {@see self::PROFILE_JOIN_SQL}.
+     *
+     * @return string SQL boolean expression
+     */
+    private static function verificationOptedOutWhereSql(): string
+    {
+        return '(p.email_opted_out = 1)';
     }
 
     /**
@@ -1664,24 +1681,32 @@ class CarRepository
     }
 
     /**
-     * Count the cars in each verification dashboard state
+     * Count the cars in each verification dashboard state, and the owners for the flag cards
      *
-     * Definitions (the queue pills use the same ones, see findVerificationQueue()):
+     * Car counts (the queue pills use the same definitions, see findVerificationQueue()):
      * - `eligible`: the predicate of findVerificationEligible(), counted.
      * - `pending`: see verificationPendingWhereSql(). Current state.
      * - `bounced`: a bounce applies to the owner's current address. Current state.
-     * - `suppressed`: a block applies to the owner's current address, or the owner opted out. Current state.
+     * - `blocked`: a block applies to the owner's current address. Current state.
+     * - `opted_out`: the owner opted out, whatever the address. Current state.
      * - `verified`: distinct existing cars with a `cars_hist` `VERIFIED` row in the window.
      * - `sold`: distinct existing cars with a `cars_hist` `VERIFIED SOLD` row in the window.
-     * - `all`: distinct cars in eligible, pending, bounced or suppressed, plus
-     *   the cars of a live owner with no profiles row (see
+     * - `all`: distinct cars in eligible, pending, bounced, blocked or opted
+     *   out, plus the cars of a live owner with no profiles row (see
      *   verificationNoProfileWhereSql()). Verified and Sold are history, not
      *   a queue state, so they are not in `all`.
      *
-     * Bounced and Suppressed can overlap, so `all` can be less than the sum.
+     * Owner counts (the summary cards): `bounced_owners`, `blocked_owners` and
+     * `opted_out_owners` count the distinct `cars.user_id` values of the cars
+     * in `bounced`, `blocked` and `opted_out`. An owner with three such cars
+     * counts once. An owner with no cars does not count.
+     *
+     * A flag on an old address does not count ({@see emailFlagActiveSql()}).
+     * Bounced, Blocked and Opted out can overlap, so `all` can be less than the sum.
      *
      * @param int|null $windowDays Window for `verified` and `sold`, in days back from now. Null = all time.
-     * @return array{all: int, eligible: int, pending: int, bounced: int, suppressed: int, verified: int, sold: int}
+     * @return array{all: int, eligible: int, pending: int, bounced: int, blocked: int, opted_out: int,
+     *         verified: int, sold: int, bounced_owners: int, blocked_owners: int, opted_out_owners: int}
      * @throws CarValidationException If $windowDays is zero or negative
      * @throws CarDatabaseException If the query fails
      */
@@ -1692,27 +1717,35 @@ class CarRepository
         $eligibleFrom = self::verificationEligibleFromSql();
         $pending      = self::verificationPendingWhereSql();
         $bounced      = self::verificationBouncedWhereSql();
-        $suppressed   = self::verificationSuppressedWhereSql();
+        $blocked      = self::verificationBlockedWhereSql();
+        $optedOut     = self::verificationOptedOutWhereSql();
         $noProfile    = self::verificationNoProfileWhereSql();
         [$window, $windowParams] = self::windowSql('h.timestamp', $windowDays);
 
         $carsFrom = 'FROM cars ' . self::PROFILE_JOIN_SQL . ' ' . self::USERS_JOIN_SQL;
         $histFrom = 'FROM cars_hist h INNER JOIN cars ON cars.id = h.car_id';
 
+        // One pass over cars gives the queue-state counts. Eligible and the
+        // cars_hist counts keep their own FROM, so they stay scalar subqueries.
         $this->db->query(
             "SELECT
                 (SELECT COUNT(*) {$eligibleFrom}) AS eligible,
-                (SELECT COUNT(*) {$carsFrom} WHERE {$pending}) AS pending,
-                (SELECT COUNT(*) {$carsFrom} WHERE {$bounced}) AS bounced,
-                (SELECT COUNT(*) {$carsFrom} WHERE {$suppressed}) AS suppressed,
+                SUM(CASE WHEN {$pending} THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN {$bounced} THEN 1 ELSE 0 END) AS bounced,
+                SUM(CASE WHEN {$blocked} THEN 1 ELSE 0 END) AS blocked,
+                SUM(CASE WHEN {$optedOut} THEN 1 ELSE 0 END) AS opted_out,
+                COUNT(DISTINCT CASE WHEN {$bounced} THEN cars.user_id END) AS bounced_owners,
+                COUNT(DISTINCT CASE WHEN {$blocked} THEN cars.user_id END) AS blocked_owners,
+                COUNT(DISTINCT CASE WHEN {$optedOut} THEN cars.user_id END) AS opted_out_owners,
                 (SELECT COUNT(DISTINCT h.car_id) {$histFrom} WHERE h.operation = ?{$window}) AS verified,
                 (SELECT COUNT(DISTINCT h.car_id) {$histFrom} WHERE h.operation = ?{$window}) AS sold,
-                (SELECT COUNT(*) {$carsFrom}
-                  WHERE cars.id IN (SELECT cars.id {$eligibleFrom})
+                SUM(CASE WHEN cars.id IN (SELECT cars.id {$eligibleFrom})
                      OR {$pending}
                      OR {$bounced}
-                     OR {$suppressed}
-                     OR {$noProfile}) AS all_count",
+                     OR {$blocked}
+                     OR {$optedOut}
+                     OR {$noProfile} THEN 1 ELSE 0 END) AS all_count
+             {$carsFrom}",
             array_merge(
                 [self::OPERATION_VERIFIED],
                 $windowParams,
@@ -1730,19 +1763,24 @@ class CarRepository
 
         $row = $this->db->first();
         if (!is_object($row) || !isset($row->eligible)) {
-            // Scalar subqueries always give one row. No row means the query
-            // did not run as written, so do not show zero counts.
+            // An aggregate with no GROUP BY always gives one row. No row means
+            // the query did not run as written, so do not show zero counts.
             throw new CarDatabaseException('CarRepository::countVerificationSummary returned no count row');
         }
 
+        // SUM() over no cars is NULL; the int cast makes it 0.
         return [
-            'all'        => (int) $row->all_count,
-            'eligible'   => (int) $row->eligible,
-            'pending'    => (int) $row->pending,
-            'bounced'    => (int) $row->bounced,
-            'suppressed' => (int) $row->suppressed,
-            'verified'   => (int) $row->verified,
-            'sold'       => (int) $row->sold,
+            'all'              => (int) $row->all_count,
+            'eligible'         => (int) $row->eligible,
+            'pending'          => (int) $row->pending,
+            'bounced'          => (int) $row->bounced,
+            'blocked'          => (int) $row->blocked,
+            'opted_out'        => (int) $row->opted_out,
+            'verified'         => (int) $row->verified,
+            'sold'             => (int) $row->sold,
+            'bounced_owners'   => (int) $row->bounced_owners,
+            'blocked_owners'   => (int) $row->blocked_owners,
+            'opted_out_owners' => (int) $row->opted_out_owners,
         ];
     }
 
@@ -1754,7 +1792,7 @@ class CarRepository
      * - `pending`: longest-waiting first (`vericode_sent_at` ASC).
      * - `eligible`: oldest-verified first, the same as findVerificationEligible().
      * - `verified` / `sold`: most recent history row first.
-     * - `all` / `bounced` / `suppressed`: car id ASC.
+     * - `all` / `bounced` / `blocked` / `opted_out`: car id ASC.
      *
      * `$windowDays` applies only to `verified` and `sold`. The other statuses
      * are current state. For `verified` / `sold`, each car shows once, with the
@@ -1806,7 +1844,8 @@ class CarRepository
         $carsFrom   = 'FROM cars ' . self::PROFILE_JOIN_SQL . ' ' . self::USERS_JOIN_SQL;
         $pending    = self::verificationPendingWhereSql();
         $bounced    = self::verificationBouncedWhereSql();
-        $suppressed = self::verificationSuppressedWhereSql();
+        $blocked    = self::verificationBlockedWhereSql();
+        $optedOut   = self::verificationOptedOutWhereSql();
         $noProfile  = self::verificationNoProfileWhereSql();
         $params     = [];
 
@@ -1823,8 +1862,12 @@ class CarRepository
                 $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$bounced}"
                     . ' ORDER BY cars.id ASC';
                 break;
-            case 'suppressed':
-                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$suppressed}"
+            case 'blocked':
+                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$blocked}"
+                    . ' ORDER BY cars.id ASC';
+                break;
+            case 'opted_out':
+                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$optedOut}"
                     . ' ORDER BY cars.id ASC';
                 break;
             case 'verified':
@@ -1849,7 +1892,8 @@ class CarRepository
                          WHERE cars.id IN (SELECT cars.id " . self::verificationEligibleFromSql() . ")
                             OR {$pending}
                             OR {$bounced}
-                            OR {$suppressed}
+                            OR {$blocked}
+                            OR {$optedOut}
                             OR {$noProfile}
                          ORDER BY cars.id ASC";
                 break;

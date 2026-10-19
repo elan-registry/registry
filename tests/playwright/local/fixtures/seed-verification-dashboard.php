@@ -59,6 +59,16 @@ use ElanRegistry\DatabaseInterface;
  *    renders in the "All" and "Pending" pills with a Bounced chip, which is
  *    exactly the case the plan's §8 callout documents ("a car's filter pill
  *    and status chip can disagree").
+ *  - BOUNCED_USERNAME / BOUNCED_B car (#2361): a second car of the bounced
+ *    owner, also pending. The Bounced summary card counts owners, not cars,
+ *    so the owner counts once for these two cars. Both cars land in the
+ *    Bounced pill.
+ *  - STALE_BLOCKED_USERNAME / STALE_BLOCKED car (#2361): profile
+ *    email_blocked = 1, but email_blocked_address differs from users.email
+ *    (the owner changed address after the block). The flag does not apply
+ *    (#2356), so the owner is in no Blocked card count or Blocked pill, and
+ *    the car lands in the Pending pill with a clean chip. It is the
+ *    fail-closed counterpart of BLOCKED, whose address matches.
  *  - VERIFIED_USERNAME / VERIFIED car: one `VERIFIED` cars_hist row, for the
  *    Recent Activity list and the Verified pill/summary card.
  *  - TRANSFER_USERNAME / TRANSFER car: its only `sent` row belongs to the
@@ -127,6 +137,8 @@ const SEED_BOUNCED_USERNAME = '__playwright_seed_vd_bounced_owner__';
 const SEED_BOUNCED_EMAIL = 'playwright-seed-vd-bounced-owner@example.invalid';
 const SEED_BOUNCED_CAR_MODEL = '__PW_SEED_VD_BOUNCED__';
 
+const SEED_BOUNCED_CAR_MODEL_B = '__PW_SEED_VD_BOUNCED_B__';
+
 const SEED_SUPPRESSED_USERNAME = '__playwright_seed_vd_suppressed_owner__';
 const SEED_SUPPRESSED_EMAIL = 'playwright-seed-vd-suppressed-owner@example.invalid';
 const SEED_SUPPRESSED_CAR_MODEL = '__PW_SEED_VD_SUPPRESSED__';
@@ -134,6 +146,12 @@ const SEED_SUPPRESSED_CAR_MODEL = '__PW_SEED_VD_SUPPRESSED__';
 const SEED_BLOCKED_USERNAME = '__playwright_seed_vd_blocked_owner__';
 const SEED_BLOCKED_EMAIL = 'playwright-seed-vd-blocked-owner@example.invalid';
 const SEED_BLOCKED_CAR_MODEL = '__PW_SEED_VD_BLOCKED__';
+
+const SEED_STALE_BLOCKED_USERNAME = '__playwright_seed_vd_staleblock_owner__';
+const SEED_STALE_BLOCKED_EMAIL = 'playwright-seed-vd-staleblock-owner@example.invalid';
+/** The address that was blocked. It is not the owner's current `users.email`. */
+const SEED_STALE_BLOCKED_OLD_ADDRESS = 'playwright-seed-vd-staleblock-old@example.invalid';
+const SEED_STALE_BLOCKED_CAR_MODEL = '__PW_SEED_VD_STALEBLOCK__';
 
 const SEED_NO_PROFILE_USERNAME = '__playwright_seed_vd_noprofile_owner__';
 const SEED_NO_PROFILE_EMAIL = 'playwright-seed-vd-noprofile-owner@example.invalid';
@@ -185,6 +203,8 @@ const SEED_TRANSFER_CAR_MODEL = '__PW_SEED_VD_TRANSFER__';
 const SEED_USERNAME_MODEL_PAIRS = [
     [SEED_PENDING_USERNAME, SEED_PENDING_CAR_MODEL],
     [SEED_BOUNCED_USERNAME, SEED_BOUNCED_CAR_MODEL],
+    [SEED_BOUNCED_USERNAME, SEED_BOUNCED_CAR_MODEL_B],
+    [SEED_STALE_BLOCKED_USERNAME, SEED_STALE_BLOCKED_CAR_MODEL],
     [SEED_SUPPRESSED_USERNAME, SEED_SUPPRESSED_CAR_MODEL],
     [SEED_BLOCKED_USERNAME, SEED_BLOCKED_CAR_MODEL],
     [SEED_NO_PROFILE_USERNAME, SEED_NO_PROFILE_CAR_MODEL],
@@ -412,6 +432,29 @@ $now = new \DateTimeImmutable();
     ]
 );
 
+// --- Bounced owner, second car: the card counts the owner once ------------
+$bouncedInsertedB = $carRepository->insertCar([
+    'user_id'            => $bouncedUserId,
+    'year'               => 1968,
+    'series'             => 'S4',
+    'variant'            => 'SE',
+    'type'               => 'FHC',
+    'color'              => 'Red',
+    'ctime'              => date('Y-m-d H:i:s'),
+    'email'              => SEED_BOUNCED_EMAIL,
+    'model'              => SEED_BOUNCED_CAR_MODEL_B,
+    'chassis'            => 'SEEDVDBB' . bin2hex(random_bytes(3)),
+    'vericode'           => hashVericode('seed-vd-bounced-b-code'),
+    'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    'last_verified'      => null,
+    'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+]);
+if (!$bouncedInsertedB) {
+    fwrite(STDERR, "ERROR: Failed to insert the second bounced car: {$carRepository->errorString()}\n");
+    exit(1);
+}
+$bouncedCarIdB = $carRepository->lastId();
+
 // --- Suppressed --------------------------------------------------------------
 [$suppressedUserId, $suppressedCarId] = seedDashboardOwnerAndCar(
     $db,
@@ -450,6 +493,29 @@ $now = new \DateTimeImmutable();
         'email_blocked'         => 1,
         'email_blocked_address' => SEED_BLOCKED_EMAIL,
         'email_blocked_at'      => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'email_blocked_cause'   => 'blocklist',
+    ]
+);
+
+// --- Stale block: the flag is set, but its address is not users.email ----
+// Neither a card, a pill nor a chip may count the flag (#2361, #2356).
+[$staleBlockedUserId, $staleBlockedCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_STALE_BLOCKED_USERNAME,
+    SEED_STALE_BLOCKED_EMAIL,
+    [
+        'model'              => SEED_STALE_BLOCKED_CAR_MODEL,
+        'chassis'            => 'SEEDVDX' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-staleblock-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ],
+    [
+        'email_blocked'         => 1,
+        'email_blocked_address' => SEED_STALE_BLOCKED_OLD_ADDRESS,
+        'email_blocked_at'      => $now->modify('-30 days')->format('Y-m-d H:i:s'),
         'email_blocked_cause'   => 'blocklist',
     ]
 );
@@ -683,6 +749,9 @@ echo json_encode([
     'pendingUserId'      => $pendingUserId,
     'bouncedCarId'       => $bouncedCarId,
     'bouncedUserId'      => $bouncedUserId,
+    'bouncedCarIdB'      => $bouncedCarIdB,
+    'staleBlockedCarId'  => $staleBlockedCarId,
+    'staleBlockedUserId' => $staleBlockedUserId,
     'suppressedCarId'    => $suppressedCarId,
     'suppressedUserId'   => $suppressedUserId,
     'blockedCarId'       => $blockedCarId,

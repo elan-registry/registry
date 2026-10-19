@@ -429,25 +429,46 @@ The verification system status appears on the Admin dashboard
 (`app/admin/index.php?tab=verification`), visible to both admin and editor
 roles (read-only for editor, toggle control for admin only). The status panel
 and the feature switch are one collapsible panel, "System Status & Feature
-Switch". It is collapsed at the bottom of the tab when the system is healthy,
-and expanded at the top when it is not. See
+Switch". It always sits directly above Automatic Sending. It is open when the
+system is not healthy and collapsed when it is. See
 [Dashboard Layout](#dashboard-layout-1896).
 
 **Status Indicators:**
 
-- `brevoReady()` (row "Brevo ready") — badge `text-bg-success` ("Ready") if
-  true. If false while the switch is on: badge `text-bg-danger` ("Not ready")
-  with the text of `brevoNotReadyReason()`. If the probe itself threw, the text
-  is "The Brevo status could not be checked." plus a hint to check the system
-  log for `VerificationConfigWarning`. Muted text if the switch is off
-- `cronReady()` — badge `text-bg-warning` if false; muted if true
-- Last webhook received — muted "Not yet implemented (#1887)" (placeholder for the real webhook implementation)
-- Last reconciliation run — muted "Not yet implemented (#1889)"
-- Unmatched recipients — badge `text-bg-warning` if the counter is above 0,
-  `text-bg-success` if 0, `text-bg-danger` "Unavailable" if the read itself
-  failed; counts verification-tagged Brevo events (webhook and reconciliation)
-  of our mail whose recipient no single user holds (#2085, #2356, #2359). The
-  suppression import does not count.
+The System Status panel shows 7 rows in this order:
+
+1. **Brevo ready** — badge `text-bg-success` ("Ready") if true. If the
+   settings probe threw: badge `text-bg-danger` ("Not ready") with "The Brevo
+   status could not be checked." plus a hint to check the system log for
+   `VerificationConfigWarning`, whatever the switch state. Otherwise, if the
+   switch is off, the row shows muted text "Not checked (switch is off)". If
+   the switch is on: badge `text-bg-danger` ("Not ready") with the text of
+   `brevoNotReadyReason()`.
+2. **Cron running** — badge `text-bg-success` ("Running") with a "last seen"
+   timestamp if `cronReady()` is true. Badge `text-bg-warning` ("Stalled")
+   with last seen timestamp or "no cron request has ever been logged" if false.
+3. **Webhook receiver** — badge `text-bg-success` ("Live"). Static row,
+   always healthy. Records bounce and suppression events from Brevo in real
+   time; the nightly reconciliation job catches anything the webhook missed.
+4. **Unmatched recipients** — shows a number. Badge `text-bg-success` if the
+   counter is 0. Badge `text-bg-warning` if above 0. Badge `text-bg-danger`
+   ("Unavailable") if the read itself failed. Counts verification-tagged Brevo
+   events of our mail (webhook and reconciliation) whose recipient no single
+   user holds (#2085, #2356, #2359). The suppression import does not count.
+5. **Last reconciliation run** — shows the badge from `CronJobRunsReader`
+   for the job's state, its last run time, and whether the most recent run
+   failed. The job backfills
+   missed events and prunes old event records.
+6. **Last suppression sync run** — shows the badge from `CronJobRunsReader`
+   for the job's state, its last run time, and whether the most recent run
+   failed. The job imports
+   suppressed contacts from Brevo.
+7. **Cron job failures** — shows a count. Badge `text-bg-success` if 0.
+   Badge `text-bg-danger` if above 0. Badge `text-bg-danger` ("Unavailable")
+   if the read failed. Shows the
+   `CronJobFailure` log entries in the last 7 days across every verification
+   cron job. A repeating count here means an unattended job is failing every
+   night.
 
 **Toggle Control:**
 
@@ -480,20 +501,28 @@ for operational reasons, or to test sending before enabling automation.
 `app/admin/includes/tab-verification.php` renders the tab as a dashboard. The
 parts appear in this order, from top to bottom:
 
-1. **Summary cards.** Six cards: Eligible, Pending, Verified, Sold, Bounced,
-   and Suppressed. `CarRepository::countVerificationSummary()` supplies the
-   counts. Verified and Sold follow the queue Window control. The other four
-   cards show the current state.
-2. **Automatic Sending panel.** Shows the job state, the last-run counts,
+1. **Summary cards.** Seven cards: Eligible, Pending, Verified, Sold (count
+   distinct cars), plus Bounced, Blocked, and Opted out (count distinct
+   owners). `CarRepository::countVerificationSummary()` supplies the counts.
+   Verified and Sold follow the queue Window control. The other five cards
+   show the current state.
+2. **System Status & Feature Switch panel.** The probes and the feature
+   switch are described in [Admin UI](#admin-ui). The panel is a collapsible
+   `<details>` element. It always renders directly above the Automatic Sending
+   section, regardless of health. It is open when the system is not healthy
+   (any state other than: switch on, Brevo ready, cron ready, unmatched-recipient
+   count is 0, cron failure count is 0, and no probe failed). Otherwise it is
+   collapsed.
+3. **Automatic Sending panel.** Shows the job state, the last-run counts,
    the batch size, **Send Batch Now**, and Pause/Resume. A "Next eligible"
    line shows `last_run_at` plus `SendVerificationBatchJob::GUARD_INTERVAL_HOURS`
    (20 hours). The line shows the earliest time the job can run. The real
    send time is the first cron heartbeat after that time. **Send Batch Now**
    is a link to the Eligible queue view. It does not send. The send happens
    only when the admin presses **Send batch** in that view.
-3. **Verification Queue.** One table with seven filter pills and the Window
+4. **Verification Queue.** One table with eight filter pills and the Window
    and Show controls. See [Verification Queue](#verification-queue).
-4. **Recent Activity.** The latest 20 `cars_hist` rows with operation
+5. **Recent Activity.** The latest 20 `cars_hist` rows with operation
    `VERIFIED` or `VERIFIED SOLD`, newest first
    (`CarRepository::findRecentVerificationActivity()`). It has its own
    Window control, in the `activity_window` URL parameter. This query reads
@@ -503,14 +532,6 @@ parts appear in this order, from top to bottom:
    The Verified and Sold summary cards count differently: their query joins
    to `cars`, so a deleted car's history row does not count there. The two
    can disagree by the number of deleted cars with verification history.
-5. **System Status & Feature Switch panel.** The probes and the feature
-   switch are described in [Admin UI](#admin-ui). The panel is a collapsible
-   `<details>` element. Its place depends on system health:
-   - **Healthy** (switch on, Brevo ready, cron ready, unmatched-recipient
-     count is 0, cron failure count is 0, and no probe failed): the panel
-     is collapsed at the bottom of the tab.
-   - **Not healthy** (any other state, including a probe that could not be
-     read): the panel is expanded at the top of the tab.
 
 Each part has its own fault domain. If one query fails, that part shows an
 error or "unavailable" and the other parts still render.
@@ -519,23 +540,24 @@ error or "unavailable" and the other parts still render.
 
 The queue replaces the earlier separate tables. One table shows all views.
 
-**Filter pills:** `All`, `Eligible`, `Pending`, `Bounced`, `Suppressed`,
-`Verified`, `Sold`. Each pill is a plain GET link and shows its count. The
-allowed values are in `CarRepository::QUEUE_STATUSES`.
+**Filter pills:** `All`, `Eligible`, `Pending`, `Bounced`, `Blocked`,
+`Opted out`, `Verified`, `Sold`. Each pill is a plain GET link and shows its
+count. The allowed values are in `CarRepository::QUEUE_STATUSES`. An unknown
+`?status=` value shows all rows.
 
 **What `All` counts.** `All` is the distinct count of cars that are
-Eligible, Pending, Bounced, or Suppressed. It also counts the unsold cars of a
-live owner (not `noowner`) who has no `profiles` row, so the admin can see
-them as "No profile". It excludes Verified and Sold: those two are history,
-not a current queue state. Bounced and Suppressed can overlap on one car, so
-`All` can be less than the sum of the four pills.
+Eligible, Pending, Bounced, Blocked, or Opted out. It also counts the unsold
+cars of a live owner (not `noowner`) who has no `profiles` row, so the admin
+can see them as "No profile". It excludes Verified and Sold: those two are
+history, not a current queue state. Multiple status flags on one owner may
+apply to the same car, so `All` can be less than the sum of the pills.
 
 **Where the pills read their state.** The owner's `profiles` row is the
 system of record (#2101). Bounced counts cars whose owner has
-`email_bounced = 1`. Suppressed counts cars whose owner has `email_blocked = 1`
-or `email_opted_out = 1`. Until #2361 separates them, one pill holds both. An
-owner with no `profiles` row gets no verification email, so the car is never
-Eligible.
+`email_bounced = 1` for the owner's current address. Blocked counts cars whose
+owner has `email_blocked = 1` for the owner's current address.
+Opted out counts cars whose owner has `email_opted_out = 1`. An owner with no
+`profiles` row gets no verification email, so the car is never Eligible.
 The rule lives once, in `CarRepository::countVerificationSummary()`.
 
 **Table columns:** Car, Chassis, Owner, Sent, Days, Status, Actions.
@@ -547,7 +569,7 @@ never reaches SQL.
 
 | Parameter | Allowed values | Default |
 | --- | --- | --- |
-| `status` | `all`, `eligible`, `pending`, `bounced`, `suppressed`, `verified`, `sold` | `all` |
+| `status` | `all`, `eligible`, `pending`, `bounced`, `blocked`, `opted_out`, `verified`, `sold` | `all` |
 | `window` | `7`, `30`, `90`, `365` (days), `0` (all time) | `30` |
 | `show` | `10`, `25`, `50`, `100` (rows) | `25` |
 
@@ -577,22 +599,24 @@ Rules for the controls:
   `email_opted_out`). A car whose owner has a flag shows under its own pill
   instead. A car whose owner has no `profiles` row can still be Pending.
 
-**Status chip.** The Status column shows the car's latest email event in
-its current send cycle. `CarRepository::findLatestEmailEventPerCarWithPrecedence()`
-selects the event. The chips are: Sent, Delivered, Soft bounce (with the
-reason), Bounced, Brevo complaint, and Opted out. "Bounced" covers
-`EmailEventApplier::HARD_BOUNCE_EVENTS` (`hard_bounce`, `blocked`, `invalid`,
-`invalid_email`). "Delivered" covers four Brevo event names: `delivered`,
-`unique_opened`, `opened`, and `click` — an open or a click proves the
-message arrived, so each renders the same chip as a plain delivery. The
-reason text is Brevo free text. The page escapes it with
+**Status chip.** The Status column shows the owner's profile state first, then
+the car's latest email event. `VerificationTabStatus::chip()` builds the chip,
+and `CarRepository::findLatestEmailEventPerCarWithPrecedence()` selects the
+event. Possible chips are: No profile, Blocked, Opted out, Sent, Delivered,
+Soft bounce (with reason), Bounced, Spam complaint, and Unknown event names.
+"Bounced" covers `EmailEventApplier::HARD_BOUNCE_EVENTS` (`hard_bounce`,
+`blocked`, `invalid`, `invalid_email`). "Delivered" covers four Brevo event
+names: `delivered`, `unique_opened`, `opened`, and `click` — an open or a
+click proves the message arrived, so each renders the same chip as a plain
+delivery. "Spam complaint" renders for the `spam` event. The reason text on
+soft-bounce and other chips is Brevo free text. The page escapes it with
 `htmlspecialchars()` at render time.
 
 A Brevo event name this system does not otherwise recognize renders its own
 chip: the literal event name, with underscores turned to spaces and the
 first letter capitalized (for example `deferred` renders as "Deferred"),
 styled as a plain, low-emphasis chip. This keeps a new or unlisted Brevo
-event visible instead of showing nothing. The logic is in `vsStatusChip()`'s
+event visible instead of showing nothing. The logic is in `VerificationTabStatus::chip()`'s
 `default` case. `invalid_email` is excluded from this example because it is
 one of the hard-bounce events above, and so always renders "Bounced"
 instead of reaching this `default` case.
@@ -626,15 +650,14 @@ list did not include it.
 
 **Profile states in the chip.** The owner's profile state comes before the
 latest event, because it stops all verification email to the owner. The
-checks run in this order, and the first match wins (`vsStatusChip()`):
+checks run in this order, and the first match wins (`VerificationTabStatus::chip()`):
 
 1. The owner has no `profiles` row: "No profile". The row has no action button.
-2. `email_blocked = 1`: "Brevo complaint". The reason text is
-   `email_blocked_cause` (`spam`, `unsubscribed`, `blocklist`), or
-   "cause unknown" when the cause is NULL. Until #2361 separates the states,
-   every cause shows this label.
+2. `email_blocked = 1`: "Blocked". The reason text is `email_blocked_cause`
+   (`spam`, `unsubscribed`, `blocklist`), or "cause unknown" when the cause
+   is NULL. The reason is styled as a badge subtitle.
 3. `email_opted_out = 1`: "Opted out".
-4. Otherwise the chip shows the latest event, as the rules above select it.
+4. Otherwise the chip shows the latest email event, as the rules above select it.
 
 The tab does not read suppression events or `cars_hist` to find the cause.
 The cause is the stored `email_blocked_cause`. `blocked` means that the block
@@ -684,7 +707,7 @@ button, in this order:
 
 | Car state | Button | POST `command` |
 | --- | --- | --- |
-| Suppressed (owner has `email_blocked` or `email_opted_out`) | Clear Suppression | `clear_suppression` |
+| Blocked or Opted out (owner has `email_blocked` or `email_opted_out`) | Clear Suppression | `clear_suppression` |
 | Not suppressed, bounced | Clear Bounced | `clear_bounced` |
 | Not suppressed, not bounced | Mark Bounced | `mark_bounced` |
 
@@ -1404,8 +1427,8 @@ Two methods in `CarRepository` apply this owner-level rule:
 
 **One address.** A verification send mails `users.email`. `cars.email` is
 only a copy, and no deliverability check reads it. The verification
-eligibility query, the queue pills (Pending, Bounced, Suppressed) and the
-queue columns `email_blocked_active` and `email_bounced_active` use
+eligibility query, the queue pills (Pending, Bounced, Blocked, Opted out)
+and the queue columns `email_blocked_active` and `email_bounced_active` use
 `emailFlagActiveSql()`. A car that the batch skips because of a flag shows
 under the pill of that flag, not as Pending. `CarVerificationSendService::sendOne()`
 checks `effectiveEmailFlags()` before it mails.

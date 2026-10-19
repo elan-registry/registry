@@ -3,117 +3,59 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\VerificationTabStatus;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit tests for vsStatusChip(), the Status-column chip logic defined inside
- * app/admin/includes/tab-verification.php (#1896, #2101).
- *
- * vsStatusChip() is a plain function guarded by function_exists(), not a
- * class method. This loads the exact function source (same source-slice +
- * temp-file extraction AdminVerificationQueueUrlStateTest uses) and calls the
- * real function.
+ * Unit tests for VerificationTabStatus::chip(), the Status-column chip logic
+ * of the admin Verification tab (#1896, #2101, #2361, #2330).
  *
  * Since #2101 the owner's profile flags decide the chip: no profile, then
  * blocked, then opted out, then the latest event. The chip no longer reads
- * suppression events or EmailNoticeBuilder.
+ * suppression events or EmailNoticeBuilder. Since #2361 a block reads
+ * "Blocked", not "Brevo complaint".
  */
 final class AdminVerificationStatusChipTest extends TestCase
 {
-    /**
-     * Extract and load vsStatusChip() from app/admin/includes/tab-verification.php.
-     */
-    private static function loadVsStatusChip(): void
-    {
-        if (function_exists('vsStatusChip')) {
-            return;
-        }
-
-        $scriptPath = __DIR__ . '/../../../../app/admin/includes/tab-verification.php';
-        $source = file_get_contents($scriptPath);
-        if ($source === false) {
-            throw new RuntimeException('Could not read ' . $scriptPath);
-        }
-
-        $startMarker = "if (!function_exists('vsStatusChip'))";
-        $endMarker = '// Dashboard summary counts.';
-
-        $startPos = strpos($source, $startMarker);
-        $endPos = strpos($source, $endMarker);
-
-        if ($startPos === false || $endPos === false || $endPos <= $startPos) {
-            throw new RuntimeException(
-                'Could not locate vsStatusChip() in ' . $scriptPath
-                . ' — the file may have been restructured; update loadVsStatusChip() to match.'
-            );
-        }
-
-        $slice = substr($source, $startPos, $endPos - $startPos);
-
-        $tempFile = tempnam(sys_get_temp_dir(), 'vsStatusChip_');
-        if ($tempFile === false) {
-            throw new RuntimeException('Could not create temp file for vsStatusChip() extraction');
-        }
-
-        $preamble = "<?php\ndeclare(strict_types=1);\n"
-            . "use ElanRegistry\\Car\\EmailEventApplier;\n";
-        $written = file_put_contents($tempFile, $preamble . $slice);
-        if ($written === false) {
-            unlink($tempFile);
-            throw new RuntimeException('Could not write extracted vsStatusChip() source to temp file');
-        }
-
-        try {
-            require $tempFile;
-        } finally {
-            unlink($tempFile);
-        }
-    }
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        self::loadVsStatusChip();
-    }
-
     private static function event(string $eventName, string $occurredAt): object
     {
         return (object) ['event' => $eventName, 'occurred_at' => $occurredAt];
     }
 
-    public function testOwnerBlockedShowsBrevoComplaintWithStoredCause(): void
+    public function testOwnerBlockedShowsBlockedWithStoredCause(): void
     {
-        $chip = vsStatusChip(null, true, true, 'spam', false);
+        $chip = VerificationTabStatus::chip(null, true, true, 'spam', false);
 
-        $this->assertSame('complaint', $chip['kind']);
-        $this->assertSame('Brevo complaint', $chip['label']);
+        $this->assertSame('blocked', $chip['kind']);
+        $this->assertSame('Blocked', $chip['label']);
+        $this->assertSame('text-bg-danger', $chip['class']);
         $this->assertSame('spam', $chip['reason']);
     }
 
     /**
-     * Every email_blocked cause keeps the "Brevo complaint" label until
-     * #2361 separates the states. The cause only fills the reason text.
+     * Every email_blocked cause shows "Blocked" (#2361). The cause only
+     * fills the reason text, and an "unsubscribed" cause is not "Opted out".
      */
-    public function testBlockedWithUnsubscribedCauseStillShowsBrevoComplaintNotOptedOut(): void
+    public function testBlockedWithUnsubscribedCauseShowsBlockedNotOptedOut(): void
     {
-        $chip = vsStatusChip(null, true, true, 'unsubscribed', false);
+        $chip = VerificationTabStatus::chip(null, true, true, 'unsubscribed', false);
 
-        $this->assertSame('complaint', $chip['kind']);
-        $this->assertSame('Brevo complaint', $chip['label']);
+        $this->assertSame('blocked', $chip['kind']);
+        $this->assertSame('Blocked', $chip['label']);
         $this->assertSame('unsubscribed', $chip['reason']);
     }
 
     public function testBlockedWithNoKnownCauseShowsCauseUnknown(): void
     {
-        $chip = vsStatusChip(null, true, true, null, false);
+        $chip = VerificationTabStatus::chip(null, true, true, null, false);
 
-        $this->assertSame('complaint', $chip['kind']);
+        $this->assertSame('blocked', $chip['kind']);
         $this->assertSame('cause unknown', $chip['reason']);
     }
 
     public function testOwnerOptedOutShowsOptedOut(): void
     {
-        $chip = vsStatusChip(null, true, false, null, true);
+        $chip = VerificationTabStatus::chip(null, true, false, null, true);
 
         $this->assertSame('opted_out', $chip['kind']);
         $this->assertSame('Opted out', $chip['label']);
@@ -121,21 +63,21 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testBlockedWinsOverOptedOut(): void
     {
-        $chip = vsStatusChip(null, true, true, 'spam', true);
+        $chip = VerificationTabStatus::chip(null, true, true, 'spam', true);
 
-        $this->assertSame('complaint', $chip['kind']);
+        $this->assertSame('blocked', $chip['kind']);
     }
 
     public function testOwnerFlagWinsOverALatestDeliveredEvent(): void
     {
-        $chip = vsStatusChip(self::event('delivered', '2026-09-01 10:00:00'), true, false, null, true);
+        $chip = VerificationTabStatus::chip(self::event('delivered', '2026-09-01 10:00:00'), true, false, null, true);
 
         $this->assertSame('opted_out', $chip['kind']);
     }
 
     public function testNoProfileShowsNoProfileChipWithoutAReason(): void
     {
-        $chip = vsStatusChip(null, false, true, 'spam', true);
+        $chip = VerificationTabStatus::chip(null, false, true, 'spam', true);
 
         $this->assertSame('no_profile', $chip['kind']);
         $this->assertSame('No profile', $chip['label']);
@@ -146,7 +88,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         // A live 'spam' event on an owner with no block flag yet takes the
         // match() path and keeps its own, more specific label.
-        $chip = vsStatusChip(self::event('spam', '2026-09-01 10:00:00'));
+        $chip = VerificationTabStatus::chip(self::event('spam', '2026-09-01 10:00:00'));
 
         $this->assertSame('spam', $chip['kind']);
         $this->assertSame('Spam complaint', $chip['label']);
@@ -156,7 +98,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'hard_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => 'mailbox full'];
 
-        $chip = vsStatusChip($event);
+        $chip = VerificationTabStatus::chip($event);
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('Bounced', $chip['label']);
@@ -178,7 +120,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
         $event = (object) ['event' => 'invalid_email', 'occurred_at' => '2026-09-01 10:00:00'];
 
-        $chip = vsStatusChip($event);
+        $chip = VerificationTabStatus::chip($event);
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('Bounced', $chip['label']);
@@ -188,7 +130,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'deferred', 'occurred_at' => '2026-09-01 10:00:00'];
 
-        $chip = vsStatusChip($event);
+        $chip = VerificationTabStatus::chip($event);
 
         $this->assertSame('other', $chip['kind']);
         $this->assertSame('Deferred', $chip['label']);
@@ -196,9 +138,36 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testNoEventAndAndNoFlagShowsEmptyChip(): void
     {
-        $chip = vsStatusChip(null);
+        $chip = VerificationTabStatus::chip(null);
 
         $this->assertSame('', $chip['kind']);
         $this->assertSame('', $chip['label']);
+    }
+
+    public function testUnsubscribedEventShowsOptedOut(): void
+    {
+        $chip = VerificationTabStatus::chip(self::event('unsubscribed', '2026-09-01 10:00:00'));
+
+        $this->assertSame('opted_out', $chip['kind']);
+        $this->assertSame('Opted out', $chip['label']);
+    }
+
+    public function testSoftBounceEventKeepsItsReason(): void
+    {
+        $event = (object) ['event' => 'soft_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => ' mailbox full '];
+
+        $chip = VerificationTabStatus::chip($event);
+
+        $this->assertSame('soft_bounce', $chip['kind']);
+        $this->assertSame('Soft bounce', $chip['label']);
+        $this->assertSame('mailbox full', $chip['reason']);
+    }
+
+    public function testOpenedEventShowsDelivered(): void
+    {
+        $chip = VerificationTabStatus::chip(self::event('opened', '2026-09-01 10:00:00'));
+
+        $this->assertSame('delivered', $chip['kind']);
+        $this->assertSame('text-bg-success', $chip['class']);
     }
 }

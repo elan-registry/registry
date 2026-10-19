@@ -43,6 +43,21 @@ use ElanRegistry\Car\CarRepository;
  *  - suppressed: fresh. Its owner is a third user, with a profile that has
  *                email_opted_out = 1. It also has a vericode.
  *
+ * Two more cars show the Email on file states of #2361. Each has its own
+ * owner, and both are listed apart from the five above, under "stateCars" in
+ * the output, so a spec that counts the five cars is not affected:
+ *
+ *  - blocked:    fresh. Its owner has email_blocked = 1, a blocked address that
+ *                equals the owner's users.email, a date and a cause. The row
+ *                says "Blocked" with the date.
+ *  - nullDates:  fresh. Its owner has email_opted_out = 1, email_bounced = 1
+ *                and email_blocked = 1, and every `_at` column is NULL. The
+ *                bounced address is NULL too (fail closed, so the flag
+ *                applies). The row shows "Opted out", "Bounced" and "Blocked",
+ *                each with no date.
+ *
+ * The "suppressed" car above is the opted-out case, with a date.
+ *
  * The delivery flags are on the owner profile (#2101), not on the car, so the
  * flagged cars need their own owners. The main owner and the two flagged
  * owners share one password. The main owner has a profile with no flags and
@@ -58,7 +73,9 @@ use ElanRegistry\Car\CarRepository;
  * {"userId", "username", "password", "cars": {"sold": id, "fresh": id, "new": id, "soldnew": id}, "fillerCount": 8}
  * With --verified-row: {"userId", "username", "password", "cars": {confirmed, current, stale, bounced, suppressed},
  * "dates": {"confirmed": "Y-m-d", "current": "Y-m-d"}, "vericodes": {"confirmed": code, "suppressed": code},
- * "bouncedAddress": address, "flaggedOwners": {"bounced": username, "suppressed": username}}
+ * "bouncedAddress": address, "flaggedOwners": {"bounced": username, "suppressed": username},
+ * "stateCars": {"blocked": id, "nullDates": id},
+ * "stateOwners": {"blocked": username, "nullDates": username}}
  * The owner has a random password that exists only in this output, so the
  * spec can log in as the owner with login() from auth-helper.js.
  *
@@ -135,18 +152,31 @@ const FILLER_COUNT = 8;
 const SEED_BOUNCED_ADDRESS = 'pw-verified-row-bounced@example.invalid';
 const SEED_BOUNCED_OWNER = '__playwright_seed_vrf_bounced_owner__';
 const SEED_SUPPRESSED_OWNER = '__playwright_seed_vrf_suppressed_owner__';
+const SEED_BLOCKED_OWNER = '__playwright_seed_vrf_blocked_owner__';
+const SEED_BLOCKED_EMAIL = 'playwright-seed-vrf-blocked@example.invalid';
+const SEED_NULL_DATES_OWNER = '__playwright_seed_vrf_nulldates_owner__';
+const SEED_NULL_DATES_EMAIL = 'playwright-seed-vrf-nulldates@example.invalid';
+/** @var list<string> Every flagged owner this fixture creates, for cleanup */
+const SEED_FLAGGED_OWNERS = [
+    SEED_BOUNCED_OWNER,
+    SEED_SUPPRESSED_OWNER,
+    SEED_BLOCKED_OWNER,
+    SEED_NULL_DATES_OWNER,
+];
 
 $db = dbi();
 
 // Delete all earlier marker rows, so a re-run is idempotent and --cleanup works.
+// Only the Verified row mode owns the flagged owners. The default mode must
+// not delete them, or it breaks a parallel Verified row run.
+$ownerNames = $verifiedRowMode ? array_merge([SEED_USERNAME], SEED_FLAGGED_OWNERS) : [SEED_USERNAME];
+$ownerMarks = implode(', ', array_fill(0, count($ownerNames), '?'));
 $cleanupQueries = [
-    ['DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username IN (?, ?, ?))', [SEED_USERNAME, SEED_BOUNCED_OWNER, SEED_SUPPRESSED_OWNER]],
-    ['DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username IN (?, ?, ?))', [SEED_USERNAME, SEED_BOUNCED_OWNER, SEED_SUPPRESSED_OWNER]],
-    ['DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_USERNAME]],
+    ["DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username IN ({$ownerMarks}))", $ownerNames],
+    ["DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username IN ({$ownerMarks}))", $ownerNames],
     ['DELETE FROM cars WHERE model = ?', [SEED_CAR_MODEL]],
-    ['DELETE FROM user_permission_matches WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_USERNAME]],
-    ['DELETE FROM user_permission_matches WHERE user_id IN (SELECT id FROM users WHERE username IN (?, ?))', [SEED_BOUNCED_OWNER, SEED_SUPPRESSED_OWNER]],
-    ['DELETE FROM users WHERE username IN (?, ?, ?)', [SEED_USERNAME, SEED_BOUNCED_OWNER, SEED_SUPPRESSED_OWNER]],
+    ["DELETE FROM user_permission_matches WHERE user_id IN (SELECT id FROM users WHERE username IN ({$ownerMarks}))", $ownerNames],
+    ["DELETE FROM users WHERE username IN ({$ownerMarks})", $ownerNames],
 ];
 foreach ($cleanupQueries as [$cleanupSql, $cleanupParams]) {
     $db->query($cleanupSql, $cleanupParams);
@@ -260,6 +290,16 @@ if ($verifiedRowMode) {
         'suppressed' => $createFlaggedOwner(SEED_SUPPRESSED_OWNER, 'playwright-seed-vrf-suppressed@example.invalid', [
             'email_opted_out' => 1, 'email_opted_out_at' => '2026-04-01 10:00:00',
         ]),
+        'blocked' => $createFlaggedOwner(SEED_BLOCKED_OWNER, SEED_BLOCKED_EMAIL, [
+            'email_blocked' => 1, 'email_blocked_address' => SEED_BLOCKED_EMAIL,
+            'email_blocked_at' => '2026-04-03 10:00:00', 'email_blocked_cause' => 'blocklist',
+        ]),
+        // Every `_at` column stays NULL, so the row shows no date. The NULL
+        // bounced address fails closed, so the flag still applies.
+        'nullDates' => $createFlaggedOwner(SEED_NULL_DATES_OWNER, SEED_NULL_DATES_EMAIL, [
+            'email_opted_out' => 1, 'email_bounced' => 1, 'email_blocked' => 1,
+            'email_blocked_address' => SEED_NULL_DATES_EMAIL, 'email_blocked_cause' => 'blocklist',
+        ]),
     ];
 
     /** @var array<string, array<string, mixed>> $specs */
@@ -290,6 +330,18 @@ if ($verifiedRowMode) {
             'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
             'owner_last_updated' => $now,
             'user_id' => $flaggedOwnerIds['suppressed'],
+        ],
+        'blocked' => [
+            'year' => 1975, 'chassis' => SEED_CHASSIS_PREFIX . 'K',
+            'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
+            'owner_last_updated' => $now,
+            'user_id' => $flaggedOwnerIds['blocked'],
+        ],
+        'nullDates' => [
+            'year' => 1976, 'chassis' => SEED_CHASSIS_PREFIX . 'D',
+            'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
+            'owner_last_updated' => $now,
+            'user_id' => $flaggedOwnerIds['nullDates'],
         ],
     ];
 } else {
@@ -372,7 +424,9 @@ if ($verifiedRowMode) {
         'userId'         => $userId,
         'username'       => SEED_USERNAME,
         'password'       => $password,
-        'cars'           => $carIds,
+        'cars'           => array_intersect_key($carIds, array_flip(['confirmed', 'current', 'stale', 'bounced', 'suppressed'])),
+        'stateCars'      => array_intersect_key($carIds, array_flip(['blocked', 'nullDates'])),
+        'stateOwners'    => ['blocked' => SEED_BLOCKED_OWNER, 'nullDates' => SEED_NULL_DATES_OWNER],
         'dates'          => [
             'confirmed' => substr($thirtyDaysAgo, 0, 10),
             'current'   => substr($fortyFiveDaysAgo, 0, 10),

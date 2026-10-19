@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Car\VerificationTabStatus;
+use ElanRegistry\Cron\CronJobEnabledState;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -43,18 +45,46 @@ final class Issue2184VerificationTagRegressionTest extends TestCase
     }
 
     /**
-     * The verification tab must show the actual reason, escaped, so an admin
+     * The status panel must show the actual reason, escaped, so an admin
      * with a pre-1.8.0 plugin is not told to check a key and file that are fine.
      */
-    public function testVerificationTabRendersTheEscapedBrevoNotReadyReason(): void
+    public function testStatusPanelRendersTheEscapedBrevoNotReadyReason(): void
     {
-        $tabFile = dirname(__DIR__, 3) . '/app/admin/includes/tab-verification.php';
-        $this->assertFileExists($tabFile);
-        $content = file_get_contents($tabFile);
-        $this->assertIsString($content);
+        $reason = 'The Brevo plugin is version <1.7.0>. Version 1.8.0 or later is required, '
+            . 'because older versions drop the verification tag.';
+        $job = [
+            'state'         => CronJobEnabledState::ENABLED,
+            'lastRunAt'     => new DateTimeImmutable('2026-10-18 02:00:00'),
+            'lastFailureAt' => null,
+        ];
+        $vsStatus = new VerificationTabStatus(
+            false, true, $reason, true, null, 0, $job, $job, $job, null, ['count' => 0, 'recent' => []]
+        );
+        $vsCanToggle = true;
 
-        $this->assertStringContainsString('$vsSettings->brevoNotReadyReason()', $content);
-        $this->assertStringContainsString('$vsBrevoReasonText = $vsBrevoNotReadyReason ??', $content);
-        $this->assertStringContainsString('vsEsc($vsBrevoReasonText)', $content);
+        // Lets a reviewer prove the test can fail: point it at a copy of an older partial.
+        $override = getenv('VERIFICATION_STATUS_PANEL_PATH');
+        $partial  = is_string($override) && $override !== ''
+            ? $override
+            : dirname(__DIR__, 3) . '/app/admin/includes/verification-status-panel.php';
+
+        ob_start();
+        try {
+            include $partial;
+        } finally {
+            $html = (string) ob_get_clean();
+        }
+
+        $doc = new DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>');
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        $brevoRow = (new DOMXPath($doc))->query('//dd[@data-status-row="brevo"]')?->item(0);
+
+        $this->assertNotNull($brevoRow, 'The panel must render a Brevo row');
+        $this->assertStringContainsString($reason, (string) $brevoRow->textContent);
+        $this->assertStringContainsString('&lt;1.7.0&gt;', $html);
+        $this->assertStringNotContainsString('<1.7.0>', $html);
     }
 }
