@@ -153,8 +153,8 @@ detail, factory and statistics pages — as public.
   requests. See [§4](#4-how-the-capabilities-connect) for what happens next.
 - **Contact another owner** (`app/owner/contact/owner.php`) — the first message
   is relayed through the site so neither address is exposed. The endpoint
-  verifies the recipient actually owns the referenced car before sending. It
-  sends nothing to an owner who has no profile, who opted out, or whose
+  (`app/api/contact/send-owner-email.php`) verifies the recipient actually
+  owns the referenced car before sending. It sends nothing to an owner who has no profile, who opted out, or whose
   address bounced or is blocked, and it gives the sender the same response
   as for a sent message (`SendPolicy`, see EMAIL_SYSTEM.md).
 - **Send feedback to the registrar** (`app/owner/contact/index.php`).

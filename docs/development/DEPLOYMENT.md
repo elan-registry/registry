@@ -586,10 +586,16 @@ After the deploy, check on the target database:
 Then update the Brevo webhook subscription on each host (#2359). The webhook
 now accepts only delivery events, and the registration script no longer
 subscribes to `opened`. An existing subscription keeps `opened` until you
-change it, and each open then writes one `logs` row. Remove `opened` (and
-`click`, if present) in the Brevo dashboard, or delete the webhook and create
-it again with `scripts/spike-1888/brevo-register-webhook.php`. List the
-webhooks with `--list-webhooks` to confirm.
+change it, and each open then writes one `logs` row. Remove `opened`,
+`uniqueOpened` and `click`, if present.
+
+- **Production:** edit the subscription in the Brevo dashboard. Do not delete
+  the webhook: `scripts/spike-1888/brevo-register-webhook.php --create`
+  accepts only a `https://test.` URL, so it cannot create it again.
+- **Test:** edit it in the dashboard, or delete it and create it again with
+  the script's `--create`.
+
+List the webhooks with `--list-webhooks` to confirm.
 
 Then run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` on test
 and verify. After that, run it on production. The script sets the permissions
