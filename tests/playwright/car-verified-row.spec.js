@@ -190,7 +190,7 @@ test.describe('Email on file row: admin', () => {
         await page.getByRole('button', { name: 'What Suppressed means' }).focus();
         const tooltip = page.getByRole('tooltip');
         await expect(tooltip).toContainText('Clear Suppression on the Verification System tab');
-        await expect(tooltip).toContainText('Resume verification emails');
+        await expect(tooltip).toContainText('Resume registry email');
     });
 
     test('bounced car shows "Bounced" and never prints the bounced address', async ({ page }) => {

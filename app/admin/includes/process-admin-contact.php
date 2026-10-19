@@ -2,6 +2,9 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\MailKind;
+use ElanRegistry\Car\SendPolicy;
 use ElanRegistry\Exceptions\AdminContactException;
 use ElanRegistry\Input;
 use ElanRegistry\InputSanitizer;
@@ -72,7 +75,7 @@ if (Input::existsPost()) {
 
                 // Get owner data - handle special 'Multiple' case for duplicate emails
                 if ($ownerId === 'Multiple') {
-                    $targetEmail = Input::get('target_email');
+                    $targetEmail = Input::raw('target_email');
                     if (empty($targetEmail)) {
                         throw new AdminContactException('Target email not provided for multiple users');
                     }
@@ -158,19 +161,37 @@ if (Input::existsPost()) {
                         ['template' => 'app/views/email/_admin_to_owner.php']);
                     $errors[] = 'Email could not be sent. Please try again or contact the administrator.';
                 } else {
-                    $result = email($toEmail, $subject, $body);
-
-                    if ($result !== true) {
-                        // email() returns PHPMailer::send()'s bool result — never a string —
-                        // so a failed send is always $result === false. There is no delivery
-                        // message to sanitize/log here.
-                        $errors[] = 'Failed to send email. Please try again.';
-                        logger($adminUserId, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin contact SEND FAILED to {$toEmail}");
+                    // Check the policy last, directly before email(), so no earlier step can skip it.
+                    $policy = new SendPolicy(new CarRepository(dbi()));
+                    if ($ownerId === 'Multiple') {
+                        $decision = $policy->forAddress(MailKind::AdminContact, $toEmail);
+                        $ownerLabel = 'Multiple (' . $decision->matchCount . ' users)';
                     } else {
-                        $successes[] = $ownerId === 'Multiple'
-                            ? 'Administrator message sent successfully to duplicate accounts at ' . $toEmail
-                            : 'Administrator message sent successfully to ' . htmlspecialchars($toName, ENT_QUOTES, 'UTF-8');
-                        logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$fromEmail}, Owner: {$toEmail}, Car: {$carId}, Issue: {$qualityIssue}");
+                        $ownerLabel = (string) (int) $ownerId;
+                        $decision = $policy->forUser(MailKind::AdminContact, (int) $ownerId);
+                    }
+
+                    if (!$decision->allowed) {
+                        $errors[] = $policy->adminMessage($decision);
+                        logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                            "Admin contact blocked - Admin: {$adminUserId}, Owner: {$ownerLabel}, Flags: " . implode(', ', $decision->flags));
+                    } else {
+                        $result = email($toEmail, $subject, $body);
+
+                        if ($result !== true) {
+                            // email() returns PHPMailer::send()'s bool result — never a string —
+                            // so a failed send is always $result === false. There is no delivery
+                            // message to sanitize/log here.
+                            $errors[] = 'Failed to send email. Please try again.';
+                            logger($adminUserId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                                "Admin contact SEND FAILED - Admin: {$adminUserId}, Owner: {$ownerLabel}");
+                        } else {
+                            $successes[] = $ownerId === 'Multiple'
+                                ? 'Administrator message sent successfully to duplicate accounts at ' . htmlspecialchars($toEmail, ENT_QUOTES, 'UTF-8')
+                                : 'Administrator message sent successfully to ' . htmlspecialchars($toName, ENT_QUOTES, 'UTF-8');
+                            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                                "Admin contact sent - Admin: {$adminUserId}, Owner: {$ownerLabel}, Car: {$carId}, Issue: {$qualityIssue}");
+                        }
                     }
                 }
 
@@ -187,7 +208,7 @@ if (Input::existsPost()) {
         $errors[] = 'Invalid action specified';
     }
 
-    // Convert error/success arrays to UserSpice session messages (Issue #237)
+    // Convert error/success arrays to UserSpice session messages
     foreach ($errors as $error) {
         usError($error);
     }

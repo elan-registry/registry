@@ -5,7 +5,8 @@ if (count(get_included_files()) == 1) { die(); }
  * _verify_optout_confirm.php
  *
  * Both states of `app/verify/verify_car.php?vericode=...&action=optout` —
- * the one-click opt-out from verification emails (#1883):
+ * the one-click opt-out link in verification emails (#1883). The opt-out
+ * stops all registry email except account mail (#2360):
  *
  *   before opt-out — the confirmation card, with the POST form that performs
  *                    the opt-out. Nothing has changed yet.
@@ -70,8 +71,8 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
             <i class="fas <?= $optOutAlreadyOptedOut ? 'fa-circle-check' : 'fa-envelope-circle-check' ?> me-2"
                aria-hidden="true"></i>
             <?= $optOutAlreadyOptedOut
-                ? 'You&rsquo;re unsubscribed from verification emails'
-                : 'Stop verification emails' ?>
+                ? 'You&rsquo;re unsubscribed from registry email'
+                : 'Stop registry email' ?>
         </h2>
     </div>
 
@@ -80,43 +81,35 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
     <div class="card-body">
         <?php if ($optOutAlreadyOptedOut): ?>
             <p>
-                We won&rsquo;t send you any more verification emails &mdash; not for
-                this car, and not for
-                <?= ($carCount === null || $carCount === 1)
-                    ? 'any other car you register'
-                    : 'any of your ' . $carCount . ' registered cars' ?>.
-                Your cars stay in the registry exactly as they are; only the
+                We stopped all registry email to you except account mail
+                (password reset, sign-in, and email change).
+                Your cars stay in the registry exactly as they are. Only the
                 emails stop.
             </p>
 
             <p class="text-muted small border-top pt-3 mb-0">
-                Changed your mind, or unsubscribed by mistake? Turn them back on in your
+                Changed your mind, or unsubscribed by mistake? Turn email back on in your
                 <a href="<?= $resumeSettingsAttr ?>">Account Settings</a>.
                 If you cannot sign in, email the registrar at
                 <a href="mailto:registrar@elanregistry.org">registrar@elanregistry.org</a>.
             </p>
         <?php else: ?>
             <p>
-                Verification emails are how we check the registry entries are still
-                right &mdash; we send them at most twice a year. If you&rsquo;d
-                rather not get them, we&rsquo;ll stop.
+                Verification emails are how we check that the registry entries are
+                still right. We send them at most twice a year.
             </p>
 
             <div class="alert alert-primary">
                 <i class="fas fa-circle-info me-2" aria-hidden="true"></i>
+                This stops all registry email to you except account mail
+                (password reset, sign-in, and email change).
                 <?php if ($carCount === null): ?>
-                    You won&rsquo;t receive verification emails for
-                    <strong>any of your registered cars</strong>.
-                    Nothing else changes: your cars and their history stay in
-                    the registry, and we&rsquo;ll still email you about your
-                    account when you ask us to.
+                    <strong>Your registered cars</strong> and their history stay in
+                    the registry.
                 <?php else: ?>
-                    You won&rsquo;t receive verification emails for any of your
-                    <strong><?= $carCount ?> registered <?= $carNoun ?></strong>.
-                    Nothing else changes: your <?= $carNoun ?> and
-                    <?= $carCount === 1 ? 'its' : 'their' ?> history stay in the
-                    registry, and we&rsquo;ll still email you about your account when
-                    you ask us to.
+                    Your <strong><?= $carCount ?> registered <?= $carNoun ?></strong>
+                    and <?= $carCount === 1 ? 'its' : 'their' ?> history stay in the
+                    registry.
                 <?php endif; ?>
             </div>
 
@@ -127,18 +120,18 @@ $carNoun  = $carCount === 1 ? 'car' : 'cars';
                 <div class="d-flex flex-column flex-sm-row gap-2 mt-4">
                     <button type="submit" class="btn btn-primary btn-lg">
                         <i class="fas fa-envelope-circle-check me-1" aria-hidden="true"></i>
-                        Yes, stop sending me these
+                        Yes, stop registry email
                     </button>
                     <a class="btn btn-secondary btn-lg"
                        href="<?= $verifySelfAttr ?>?vericode=<?= $verifyCodeAttr ?>">
-                        Cancel &mdash; keep sending them
+                        Cancel &mdash; keep getting email
                     </a>
                 </div>
             </form>
 
             <p class="text-muted small mt-4 mb-0">
                 Nothing changes until you press the button above. If you unsubscribe
-                and later change your mind, turn them back on in your
+                and later change your mind, turn email back on in your
                 <a href="<?= $resumeSettingsAttr ?>">Account Settings</a>.
                 If you cannot sign in, email the registrar at
                 <a href="mailto:registrar@elanregistry.org">registrar@elanregistry.org</a>.

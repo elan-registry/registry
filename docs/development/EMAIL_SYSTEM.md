@@ -803,12 +803,13 @@ has:
 `email_change`. The row never holds an email address. `record()` writes nothing
 when `old` equals `new`. Clearing the UserSpice logs removes this trail.
 
-### Resume Verification Emails (Owner Self-Service)
+### Resume Registry Email (Owner Self-Service)
 
 The Account Settings page shows a section (anchor id `resume-emails`) when
 the owner's profile has `email_opted_out = 1` or `email_blocked = 1`. Both flags
 pause verification email for every car the owner has, including a car added
-after the flag was set.
+after the flag was set. The opt-out also stops all other registry email except
+account mail. See [Send Policy](#send-policy-2360).
 
 - `email_opted_out`: the owner chose to stop email. The Resume button clears it.
 - `email_blocked`: Brevo flagged the address (spam complaint, unsubscribe or
@@ -817,9 +818,9 @@ after the flag was set.
   says "Change your email address or contact an admin." With only
   `email_blocked` set, the button is not shown.
 
-The section displays "Verification emails are currently paused for {N} of your
-cars." N is the count of the owner's cars. If the count query fails, the section
-stays and shows generic text. The `findVerificationEligible()` query excludes a
+The section displays "Registry email is paused for you. This includes
+verification email for {N} of your cars." N is the count of the owner's cars. If the count query fails, the section
+stays and shows only "Registry email is paused for you." The `findVerificationEligible()` query excludes a
 car when any of the three flags is 1, or when the owner has no `profiles` row.
 
 The button POSTs with CSRF. The handler clears `profiles.email_opted_out` and
@@ -905,6 +906,41 @@ never shows the word "Brevo".
 Dismissing the notice stores a key in `sessionStorage`. The key includes
 `contentHash`. The notice stays hidden for that browser tab until the state
 changes or the session ends.
+
+### Send Policy (#2360)
+
+**Class:** `SendPolicy` (`usersc/classes/Car/SendPolicy.php`)
+
+`SendPolicy` is the one table that says which owner flags stop which mail.
+The verification send, the owner-to-owner contact endpoint, and the admin
+contact endpoint all ask it before they call `email()`. The endpoint
+files are `app/api/contact/send-owner-email.php` and
+`app/admin/includes/process-admin-contact.php`.
+
+| Mail | Blocked by | Who is told |
+| --- | --- | --- |
+| Verification email | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | The admin batch report shows the reason for each refused car |
+| Owner-to-owner contact | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The sender gets the same response as for a real send, to stop address enumeration. A log line names the user IDs and the flag names |
+| Admin contact | No profile, `email_bounced`, `email_opted_out`. Not `email_blocked` | The admin or editor sees a message. It gives the bounce date, the opt-out, or the missing profile |
+| Account mail (join, password reset, email change, passwordless, reauthentication) | Never blocked | Not applicable |
+| Registrar feedback | Never blocked | Not applicable |
+
+- An admin can write to an owner whose only flag is `email_blocked`. An
+  admin block stops registry mail. It does not stop a direct message from
+  an admin.
+- A bounce stops all three kinds, because the address does not accept mail.
+- Opt-out now covers all non-account mail. Before #2360, it covered only
+  verification email.
+- Flags follow the [Address-Match Rule](#address-match-rule-2356).
+  `email_opted_out` applies whatever the address. `email_blocked` and
+  `email_bounced` apply while their stored address matches the current
+  `users.email`. A NULL stored address counts as a match.
+- When an admin names an address that more than one user holds, one blocking
+  flag on any of those users stops the message.
+- When an admin names an address that no user holds now, the message is not
+  sent. The admin sees "No owner has this address now."
+- Contact logs hold user IDs and flag names. They never hold an email
+  address.
 
 ### The Shared Send Service
 
@@ -1611,9 +1647,10 @@ counts "owners matched". Script 28 counts contacts.
 ## Composing and Sending Verification Emails (#1882, #1883)
 
 The periodic verification email that requests owners confirm their car records are current is built by `CarVerificationEmailComposer`
-and includes a one-click opt-out link that lets owners suppress all future verification mail via a single vericode-authenticated
-action. `CarVerificationSendService` uses the composer. `app/admin/index.php` and `users/cron/send_verification_batch.php` both build
-that service, so the composer is wired to the send path.
+and includes a one-click opt-out link. The link stops all registry email to the owner except account mail (password reset,
+sign-in, email change). One vericode-authenticated action sets it. `CarVerificationSendService` uses the composer.
+`app/admin/index.php` and `users/cron/send_verification_batch.php` both build that service, so the composer is wired to the
+send path.
 
 ### Verification Email Composer
 
@@ -1666,7 +1703,7 @@ or paths. An empty value or an empty list is the normal no-photo state and logs 
 
 - `verifyUrl(string $vericode): string` — Absolute URL to confirm ownership
 - `soldUrl(string $vericode): string` — Absolute URL to report the car sold
-- `optOutUrl(string $vericode): string` — Absolute URL to opt out of all future verification emails (see below)
+- `optOutUrl(string $vericode): string` — Absolute URL to opt out of all registry email except account mail (see below)
 - `editUrl(int $carId): string` — Absolute URL to the full car edit form
 
 ### One-Click Owner Opt-Out

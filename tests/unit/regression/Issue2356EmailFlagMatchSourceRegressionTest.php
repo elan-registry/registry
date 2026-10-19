@@ -144,7 +144,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
      */
     private const REQUIRED_MATCH_CALLERS = [
         'usersc/user_settings.php' => 'effectiveEmailFlags(',
-        'usersc/classes/Car/CarVerificationSendService.php' => 'effectiveEmailFlags(',
+        'usersc/classes/Car/SendPolicy.php' => 'effectiveEmailFlags(',
         'usersc/classes/Cron/BrevoSuppressionSyncJob.php' => 'effectiveEmailFlags(',
         'usersc/classes/Car/EmailNoticeBuilder.php' => 'effectiveEmailFlags(',
         'usersc/plugins/hooker/hooks/user_form_hook.php' => 'effectiveEmailFlags(',

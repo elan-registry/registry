@@ -112,7 +112,7 @@ For the full workflow, see
 | `lat`, `lon` | `float` | Geographic coordinates |
 | `bio` | `text` | User biography |
 | `website` | `varchar(100)` | Personal website |
-| `email_opted_out` | `TINYINT(1) NOT NULL DEFAULT 0` | The owner asked to stop verification email (#1883). Renamed from `email_suppressed` in #2101. Set by the opt-out link in the verification email. Cleared by Resume (owner) and by Clear Suppression (admin). |
+| `email_opted_out` | `TINYINT(1) NOT NULL DEFAULT 0` | The owner asked to stop all registry email except account mail (password reset, sign-in, email change) (#1883, #2360). Renamed from `email_suppressed` in #2101. Set by the opt-out link in the verification email. Cleared by Resume (owner) and by Clear Suppression (admin). |
 | `email_opted_out_at` | `datetime NULL` | When the owner opted out. NULL when the flag is 0. Can also be NULL for a flag that the #2101 migration copied, when no `EMAIL SUPPRESSED` history row dates it. |
 | `email_blocked` | `TINYINT(1) NOT NULL DEFAULT 0` | Brevo will not deliver to `email_blocked_address` (spam complaint, unsubscribe, or blocklist) (#2101). Set by delivery events and the suppression import. An admin clears it, and a confirmed change to another address clears it. |
 | `email_blocked_address` | `varchar(155) NULL` | The address that is blocked. Stored normalized (lower case). Never empty while `email_blocked = 1`. |

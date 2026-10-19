@@ -43,6 +43,7 @@ use ElanRegistry\Owner;
 final class CarVerificationSendService
 {
     private VerificationSettings $settings;
+    private SendPolicy $sendPolicy;
 
     /**
      * @param CarRepository $repo Car data access
@@ -51,14 +52,18 @@ final class CarVerificationSendService
      * @param VerificationSettings|null $settings Brevo readiness probe; null uses the shared
      *                                            connection. Last, so the production callers
      *                                            need not pass it.
+     * @param SendPolicy|null $sendPolicy Owner flag rules; null builds one on `$repo`.
+     *                                    Optional, so the callers do not change.
      */
     public function __construct(
         private CarRepository $repo,
         private CarVerificationManager $verifier,
         private CarVerificationEmailComposer $composer,
         ?VerificationSettings $settings = null,
+        ?SendPolicy $sendPolicy = null,
     ) {
-        $this->settings = $settings ?? new VerificationSettings(dbi());
+        $this->settings   = $settings ?? new VerificationSettings(dbi());
+        $this->sendPolicy = $sendPolicy ?? new SendPolicy($repo);
     }
 
     /**
@@ -181,20 +186,15 @@ final class CarVerificationSendService
         // users-LEFT JOIN-profiles projection selects only city/state/country/
         // lat/lon/website from `profiles`, and widening that shared projection
         // (read by every owner-facing page) for one send-path guard is the
-        // larger change. The rules match findVerificationEligible(): no
-        // profiles row excludes the car, an opt-out excludes it whatever the
-        // address, and a block or bounce excludes it while its address
-        // matches the owner's current email (#2356). The send mails that
-        // email, so no other address needs a check.
-        $ownerId      = (int) $carData->user_id;
-        $emailFlags   = $this->repo->effectiveEmailFlags($ownerId);
-        $profileBlockReason = match (true) {
-            !$emailFlags->hasProfile => 'Owner has no profile.',
-            $emailFlags->optedOut    => 'Owner has opted out of verification emails.',
-            $emailFlags->blocked     => 'Owner email is blocked.',
-            $emailFlags->bounced     => 'Owner email bounced.',
-            default                  => null,
-        };
+        // larger change. SendPolicy holds the rules, and they match
+        // findVerificationEligible(): no profiles row excludes the car, an
+        // opt-out excludes it whatever the address, and a block or bounce
+        // excludes it while its address matches the owner's current email
+        // (#2356). The send mails that email, so no other address needs a check.
+        $ownerId            = (int) $carData->user_id;
+        $profileBlockReason = $this->sendPolicy->verificationReason(
+            $this->sendPolicy->forUser(MailKind::Verification, $ownerId)
+        );
         if ($profileBlockReason !== null) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: owner %d for car %d cannot get mail: %s Send skipped.',

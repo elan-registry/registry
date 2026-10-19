@@ -294,6 +294,17 @@ abstract class IntegrationTestCase extends TestCase
      * the output after it, so assertNoPhpErrorText() can see that output.
      * `status` is null when the body is not JSON or has no bool `success` value.
      *
+     * `flash` holds the UserSpice session flash messages that the endpoint set
+     * with usError(), usSuccess(), usWarning(), or usMessage(), as read from
+     * the session when the subprocess ends. This includes a refusal that
+     * redirects. UserSpice stores them in the session keys valErr, valSuc, and
+     * genMsg. `error` is valErr, `success` is valSuc, and `message` is genMsg
+     * (usWarning() and usMessage() both write genMsg). Each list is empty when
+     * the endpoint set none. The text is the sanitized text that UserSpice
+     * stored. When the HTTP marker matched, the helper removes the flash payload
+     * from `raw`. When it did not match, `raw` keeps the payload and `flash`
+     * stays empty.
+     *
      * The subprocess sets $post values after the CSRF value. Thus a 'csrf' key
      * in $post overrides $csrfMode.
      *
@@ -301,9 +312,9 @@ abstract class IntegrationTestCase extends TestCase
      * @param array<string, scalar|null|array<mixed>> $post $_POST fields; values pass through var_export(), so nested arrays of scalars and null are allowed
      * @param int|null $loggedInUserId User to log in inside the subprocess; null = logged out
      * @param string $csrfMode 'valid' (Token::generate()), 'invalid' (a well-formed token that does not match the session token), or 'omit' (no csrf key)
-     * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null}
+     * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null, flash: array{error: list<string>, success: list<string>, message: list<string>}}
      * @throws InvalidArgumentException If $csrfMode is unknown, $endpointFile is not a file in this repository, or a $post value is not a scalar, null, or an array of those
-     * @throws RuntimeException If shell_exec() cannot run the subprocess
+     * @throws RuntimeException If shell_exec() cannot run the subprocess, or the HTTP marker matched and the flash payload is missing or malformed
      */
     protected function invokeEndpoint(string $endpointFile, array $post, ?int $loggedInUserId, string $csrfMode = 'valid'): array
     {
@@ -353,7 +364,15 @@ abstract class IntegrationTestCase extends TestCase
 
         // Shutdown functions also run after exit and die(), so every path
         // through the endpoint prints the marker.
+        // The same function prints the session flash messages first, as
+        // base64 JSON, so message text cannot collide with the markers.
         $statusSnippet = 'register_shutdown_function(static function (): void { ' .
+            '$flash = ["error" => [], "success" => [], "message" => []]; ' .
+            'if (class_exists("Config") && isset($_SESSION) && is_array($_SESSION)) { ' .
+            'foreach (["error" => "valErr", "success" => "valSuc", "message" => "genMsg"] as $name => $suffix) { ' .
+            '$stored = $_SESSION[\Config::get("session/session_name") . $suffix] ?? []; ' .
+            '$flash[$name] = array_values(array_map("strval", is_array($stored) ? $stored : ($stored === "" ? [] : [$stored]))); } } ' .
+            'echo "___FLASH:" . base64_encode(json_encode($flash, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR)); ' .
             '$code = http_response_code(); echo "___HTTP:" . ($code === false ? "none" : $code); });';
 
         $script = sprintf(
@@ -413,6 +432,23 @@ abstract class IntegrationTestCase extends TestCase
             }
         }
 
+        // The flash payload sits right before the HTTP marker. Strip it only
+        // when the HTTP marker matched, so raw stays complete in the odd case.
+        $flash = ['error' => [], 'success' => [], 'message' => []];
+        if ($httpCode !== null || $raw !== $beforeExit) {
+            if (preg_match('/___FLASH:([A-Za-z0-9+\/=]*)\z/', $raw, $flashMatch, PREG_OFFSET_CAPTURE) !== 1) {
+                throw new RuntimeException("invokeEndpoint(): the flash payload is missing from the output of {$endpointFile}");
+            }
+            $flashData = json_decode((string) base64_decode($flashMatch[1][0], true), true);
+            if (!is_array($flashData)) {
+                throw new RuntimeException("invokeEndpoint(): the flash payload of {$endpointFile} does not decode to an array");
+            }
+            foreach (array_keys($flash) as $name) {
+                $flash[$name] = array_values(array_map('strval', (array) ($flashData[$name] ?? [])));
+            }
+            $raw = substr($raw, 0, $flashMatch[0][1]);
+        }
+
         $decoded = json_decode(trim($raw), true);
         $json = is_array($decoded) ? $decoded : null;
 
@@ -423,6 +459,7 @@ abstract class IntegrationTestCase extends TestCase
             'exitCode' => $exitCode,
             'raw'      => $raw,
             'json'     => $json,
+            'flash'    => $flash,
         ];
     }
 

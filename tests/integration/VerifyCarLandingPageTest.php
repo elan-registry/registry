@@ -21,7 +21,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     // Composer URL <-> landing-page contract: one marker per confirm view.
     private const MARKER_VERIFY = 'Yes, this is still accurate';
     private const MARKER_SOLD = 'When was the car sold?';
-    private const MARKER_OPTOUT = 'Stop verification emails';
+    private const MARKER_OPTOUT = 'Stop registry email';
     private const CONFIRM_MARKERS = [self::MARKER_VERIFY, self::MARKER_SOLD, self::MARKER_OPTOUT];
     private const MARKER_LANDING = 'registry entry still correct?';
 
@@ -1139,11 +1139,36 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
             'Revisiting after the opt-out must render the already-unsubscribed success state'
         );
         $this->assertStringContainsString(
+            'We stopped all registry email to you except account mail',
+            $result['body'],
+            'The success card must say the opt-out covers all registry email (#2360)'
+        );
+        $this->assertStringContainsString('(password reset, sign-in, and email change)', $result['body']);
+        $this->assertStringContainsString(
             'usersc/user_settings.php#resume-emails">Account Settings</a>',
             $result['body'],
             'The success card must point the owner to Resume in Account Settings first'
         );
         $this->assertStringContainsString('mailto:registrar@elanregistry.org', $result['body'], 'The email address stays as the fallback');
+    }
+
+    /**
+     * The opt-out stops all registry email except account mail (#2360), so
+     * the confirm card must say so before the owner presses the button.
+     */
+    public function testGetActionOptoutConfirmCardSaysAllRegistryEmailStopsExceptAccountMail(): void
+    {
+        $code = $this->issueVericode();
+
+        $result = $this->get('vericode=' . $code . '&action=optout');
+
+        $this->assertSame(200, $result['status']);
+        $body = (string) preg_replace('/\s+/', ' ', $result['body']);
+        $this->assertStringContainsString(
+            'This stops all registry email to you except account mail (password reset, sign-in, and email change).',
+            $body
+        );
+        $this->assertStringNotContainsString('Nothing else changes', $body, 'The old copy said only verification emails stop');
     }
 
     /**
