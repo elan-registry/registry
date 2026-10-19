@@ -219,8 +219,10 @@ final class BrevoWebhookEventProcessor
                 EmailEventApplier::MODE_EVENT
             );
         } catch (ProfileFlagValueException $e) {
-            // A stored flag that is not 0 or 1 fails on every retry, so a
-            // 5xx would make Brevo resend the event forever.
+            // Defensive. The applier calls only the profile writers, which
+            // repair a bad stored flag and do not throw this. If a later
+            // change adds a decision read, a bad value fails on every retry,
+            // so a 5xx would make Brevo resend the event forever.
             $this->logDataFault('apply', $event, $e, "user {$match->userId()}", $match->userId());
             return ProcessingResult::MALFORMED;
         } catch (CarDatabaseException $e) {

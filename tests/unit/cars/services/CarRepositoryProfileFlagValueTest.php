@@ -30,6 +30,22 @@ final class CarRepositoryProfileFlagValueTest extends TestCase
      */
     private function repoReturning(array $row): CarRepository
     {
+        $db = $this->createStub(DatabaseInterface::class);
+        $db->method('query')->willReturn($db);
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->method('first')->willReturn(self::profileRow($row));
+
+        return new CarRepository($db);
+    }
+
+    /**
+     * One profiles row joined with users, with clean defaults
+     *
+     * @param array<string, mixed> $row Values that replace the defaults
+     */
+    private static function profileRow(array $row): object
+    {
         $row += [
             'id' => 5,
             'user_id' => self::USER_ID,
@@ -47,13 +63,7 @@ final class CarRepositoryProfileFlagValueTest extends TestCase
             'user_email' => self::ADDRESS,
         ];
 
-        $db = $this->createStub(DatabaseInterface::class);
-        $db->method('query')->willReturn($db);
-        $db->method('error')->willReturn(false);
-        $db->method('count')->willReturn(1);
-        $db->method('first')->willReturn((object) $row);
-
-        return new CarRepository($db);
+        return (object) $row;
     }
 
     // ---- values the reader accepts -----------------------------------
@@ -194,41 +204,6 @@ final class CarRepositoryProfileFlagValueTest extends TestCase
                 ['email_opted_out' => 2],
                 'email_opted_out',
             ],
-            'setProfileOptedOut' => [
-                static fn (CarRepository $r) => $r->setProfileOptedOut(self::USER_ID, true),
-                ['email_opted_out' => 2],
-                'email_opted_out',
-            ],
-            'setProfileBlocked' => [
-                static fn (CarRepository $r) => $r->setProfileBlocked(self::USER_ID, self::ADDRESS, null, $at),
-                ['email_blocked' => 2],
-                'email_blocked',
-            ],
-            'clearProfileBlocked' => [
-                static fn (CarRepository $r) => $r->clearProfileBlocked(self::USER_ID),
-                ['email_blocked' => 2],
-                'email_blocked',
-            ],
-            'setProfileBounced' => [
-                static fn (CarRepository $r) => $r->setProfileBounced(self::USER_ID, self::ADDRESS, $at),
-                ['email_bounced' => 2],
-                'email_bounced',
-            ],
-            'clearProfileBounced' => [
-                static fn (CarRepository $r) => $r->clearProfileBounced(self::USER_ID),
-                ['email_bounced' => 2],
-                'email_bounced',
-            ],
-            'clearFlagsForConfirmedEmailChange (bounced)' => [
-                static fn (CarRepository $r) => $r->clearFlagsForConfirmedEmailChange(self::USER_ID),
-                ['email_bounced' => 2],
-                'email_bounced',
-            ],
-            'clearFlagsForConfirmedEmailChange (blocked)' => [
-                static fn (CarRepository $r) => $r->clearFlagsForConfirmedEmailChange(self::USER_ID),
-                ['email_blocked' => 2],
-                'email_blocked',
-            ],
         ];
     }
 
@@ -249,6 +224,168 @@ final class CarRepositoryProfileFlagValueTest extends TestCase
             $this->assertStringContainsString((string) self::USER_ID, $e->getMessage());
             $this->assertStringNotContainsString(self::ADDRESS, $e->getMessage());
         }
+    }
+
+    // ---- writers repair a bad value ----------------------------------
+
+    /**
+     * A stub database that returns one profiles row and records each query
+     *
+     * @param array<string, mixed> $row
+     * @param list<string>         $queries Receives each SQL string, in order
+     */
+    private function repoRecording(array $row, array &$queries): CarRepository
+    {
+        $db = $this->createStub(DatabaseInterface::class);
+        $db->method('query')->willReturnCallback(function (string $sql) use (&$queries, $db) {
+            $queries[] = $sql;
+            return $db;
+        });
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->method('first')->willReturn(self::profileRow($row));
+
+        return new CarRepository($db);
+    }
+
+    /**
+     * The stored row of each case holds the same address as the call, so the
+     * set cases also prove that a bad value skips the "repeat for the same
+     * address" early return.
+     *
+     * @return array<string, array{callable(CarRepository): mixed, array<string, mixed>, string, string, int}>
+     *         The writer, the stored row, the bad column, the SET text the
+     *         repair writes, and the old value the writer returns
+     */
+    public static function writerProvider(): array
+    {
+        $at = '2026-10-01 12:00:00';
+        $changed = static fn (string $key) => static fn (CarRepository $r) => $r->clearFlagsForConfirmedEmailChange(self::USER_ID)[$key] ?? null;
+
+        return [
+            'setProfileOptedOut (set)' => [
+                static fn (CarRepository $r) => $r->setProfileOptedOut(self::USER_ID, true),
+                ['email_opted_out' => 2],
+                'email_opted_out',
+                'email_opted_out = ?',
+                0,
+            ],
+            'setProfileOptedOut (clear)' => [
+                static fn (CarRepository $r) => $r->setProfileOptedOut(self::USER_ID, false),
+                ['email_opted_out' => 2],
+                'email_opted_out',
+                'email_opted_out = ?',
+                1,
+            ],
+            'setProfileBlocked' => [
+                static fn (CarRepository $r) => $r->setProfileBlocked(self::USER_ID, self::ADDRESS, null, $at),
+                ['email_blocked' => 2],
+                'email_blocked',
+                'email_blocked = 1',
+                0,
+            ],
+            'clearProfileBlocked' => [
+                static fn (CarRepository $r) => $r->clearProfileBlocked(self::USER_ID),
+                ['email_blocked' => 2],
+                'email_blocked',
+                'email_blocked = 0',
+                1,
+            ],
+            'setProfileBounced' => [
+                static fn (CarRepository $r) => $r->setProfileBounced(self::USER_ID, self::ADDRESS, $at),
+                ['email_bounced' => 2],
+                'email_bounced',
+                'email_bounced = 1',
+                0,
+            ],
+            'clearProfileBounced' => [
+                static fn (CarRepository $r) => $r->clearProfileBounced(self::USER_ID),
+                ['email_bounced' => 2],
+                'email_bounced',
+                'email_bounced = 0',
+                1,
+            ],
+            'clearFlagsForConfirmedEmailChange (bounced)' => [
+                $changed('bounced'),
+                ['email_bounced' => 2, 'email_address_seen' => 'old@example.com'],
+                'email_bounced',
+                'email_bounced = 0',
+                1,
+            ],
+            'clearFlagsForConfirmedEmailChange (blocked)' => [
+                $changed('blocked'),
+                ['email_blocked' => 2, 'email_address_seen' => 'old@example.com'],
+                'email_blocked',
+                'email_blocked = 0',
+                1,
+            ],
+        ];
+    }
+
+    /**
+     * An admin set or clear, an owner opt-out, a delivery event or an email
+     * change is the in-app repair for a bad stored flag, so the writer
+     * writes and logs the repair (#2393 refuses the value only for
+     * decisions). It returns the opposite of the value it writes, so the
+     * caller writes a flag-change row.
+     *
+     * @param callable(CarRepository): mixed $call
+     * @param array<string, mixed>           $row
+     */
+    #[DataProvider('writerProvider')]
+    public function test_writer_storedTwo_writesAValidValueAndLogsTheRepair(
+        callable $call,
+        array $row,
+        string $column,
+        string $setSql,
+        int $expectedOld
+    ): void {
+        global $mockLogEntries;
+        $mockLogEntries = [];
+        $queries = [];
+
+        $old = $call($this->repoRecording($row, $queries));
+
+        $this->assertSame($expectedOld, $old, 'The writer returns the opposite of the value it writes');
+        $writes = array_values(array_filter(
+            $queries,
+            static fn (string $sql) => str_starts_with($sql, 'UPDATE profiles SET') && str_contains($sql, $setSql)
+        ));
+        $this->assertNotEmpty($writes, "The writer must write {$setSql} over a stored 2");
+
+        $repairLogs = self::repairLogs($column);
+        $this->assertCount(1, $repairLogs, 'The repair is logged once');
+        $this->assertSame(self::USER_ID, $repairLogs[0]['user_id'], 'The repair row belongs to the owner');
+        $this->assertStringNotContainsString(self::ADDRESS, $repairLogs[0]['message']);
+    }
+
+    public function test_clearFlagsForConfirmedEmailChange_storedTwo_sameAddress_writesAndLogsNothing(): void
+    {
+        global $mockLogEntries;
+        $mockLogEntries = [];
+        $queries = [];
+
+        $result = $this->repoRecording(['email_bounced' => 2], $queries)
+            ->clearFlagsForConfirmedEmailChange(self::USER_ID);
+
+        $this->assertSame(1, $result['bounced'] ?? null, 'A bad value reads as set');
+        $this->assertFalse($result['changed'] ?? null);
+        $this->assertSame([], array_filter($queries, static fn (string $sql) => str_starts_with($sql, 'UPDATE')));
+        $this->assertSame([], self::repairLogs('email_bounced'), 'No write, so no repair line');
+    }
+
+    /**
+     * @return list<array{user_id: mixed, category: mixed, message: string, metadata: mixed}>
+     */
+    private static function repairLogs(string $column): array
+    {
+        global $mockLogEntries;
+
+        return array_values(array_filter(
+            $mockLogEntries ?? [],
+            static fn (array $e) => str_contains($e['message'], "profiles.{$column}")
+                && str_contains($e['message'], 'The write replaces it.')
+        ));
     }
 
     public function test_effectiveEmailFlags_noProfileRow_stillReturnsNone(): void

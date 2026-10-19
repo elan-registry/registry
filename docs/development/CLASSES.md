@@ -139,7 +139,9 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 - `CarDatabaseException` - Database operation failures (500). `sqlState()` returns the SQLSTATE from the `ERROR #<sqlstate>:` message prefix, or null
 - `ProfileFlagValueException` - Stored profile flag value not 0 or 1 (500). Subclass
   of `CarDatabaseException`. The webhook catches it separately and returns `MALFORMED`
-  (a 400 response) to stop Brevo retries (#2393).
+  (a 400 response) to stop Brevo retries (#2393). Only the decision readers throw it.
+  The profile writers repair the value, and the webhook apply path calls only the
+  writers, so that catch is defensive.
 - `ExceptionLogSummary::of(\Throwable)` (not an exception) - a log-safe summary: class, code, SQLSTATE and `file:line`, never the message (#2359)
 - `CarPermissionException` - Permission/auth denied (403) *(no production code throws this post-v2.28.0; retained for hierarchy completeness)*
 - `CarCreationException` - Car creation failures (500)
@@ -665,6 +667,11 @@ to provide a focused, testable data access layer wrapping the `cars`,
     `email_bounce_cleared_at`.
   - The address is stored normalized (lower case). The setters throw `CarValidationException` for an
     empty address, an unknown cause or an invalid time, and `CarDatabaseException` on a query failure.
+  - For a stored flag value other than 0 or 1, the writer always writes, so an admin set or clear, an
+    owner opt-out, a delivery event or an email change repairs it. It returns the opposite of the
+    value it writes (0 for a set, 1 for a clear), so the caller writes a flag-change row. It logs the
+    repair under `LOG_CATEGORY_DATABASE_ERROR` with the owner's user ID. The decision readers
+    (`effectiveEmailFlags()`, `findProfileOptedOut()`) still throw `ProfileFlagValueException` (#2393).
 - `BLOCKED_CAUSE_SPAM`, `BLOCKED_CAUSE_UNSUBSCRIBED`, `BLOCKED_CAUSE_BLOCKLIST` and `BLOCKED_CAUSES` -
   Public constants for `profiles.email_blocked_cause`.
 - `latestFlagClearAt(int $ownerId, string $flag, string $source): ?string` - Time of the latest

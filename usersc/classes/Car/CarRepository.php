@@ -638,6 +638,50 @@ class CarRepository
     }
 
     /**
+     * Read a stored profile flag for a writer that replaces it
+     *
+     * {@see flagValue()} refuses a bad value so that no send or event
+     * decision uses it. A writer must not refuse it: an admin set or clear,
+     * an owner opt-out, a delivery event or an email change is the in-app way
+     * to repair it. So the writer writes even when the value seems unchanged.
+     *
+     * A bad value reads as `$badAs`. Pass the opposite of the value that the
+     * writer writes, so the caller's DeliverabilityFlagLog::record() sees a
+     * change and writes the flag-change row.
+     *
+     * @param mixed  $raw    The column value as the driver returns it
+     * @param string $column The column name, for the exception message
+     * @param int    $userId Owner user ID, for the exception message
+     * @param int    $badAs  The value that a bad stored value reads as (0 or 1)
+     * @return array{0: int, 1: bool} The flag (0 or 1), and false when the
+     *                                stored value was bad
+     */
+    private static function writerFlagValue(mixed $raw, string $column, int $userId, int $badAs): array
+    {
+        try {
+            return [self::flagValue($raw, $column, $userId), true];
+        } catch (ProfileFlagValueException) {
+            return [$badAs, false];
+        }
+    }
+
+    /**
+     * Log that a writer replaces a bad stored flag value
+     *
+     * The caller's transaction holds this row. A rollback removes it together
+     * with the repair, and the next attempt logs it again.
+     */
+    private static function logFlagRepair(mixed $raw, string $column, int $userId): void
+    {
+        logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, sprintf(
+            'CarRepository: profiles.%s for user=%d holds %s, expected 0 or 1. The write replaces it.',
+            $column,
+            $userId,
+            get_debug_type($raw)
+        ));
+    }
+
+    /**
      * Get the normalized `users.email` from a {@see findProfileEmailState()} row
      */
     private static function currentAddress(object $state): string
@@ -696,10 +740,13 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = self::flagValue($state->email_opted_out, 'email_opted_out', $userId);
         $new = $optedOut ? 1 : 0;
-        if ($old === $new) {
+        [$old, $valid] = self::writerFlagValue($state->email_opted_out, 'email_opted_out', $userId, 1 - $new);
+        if ($valid && $old === $new) {
             return $old;
+        }
+        if (!$valid) {
+            self::logFlagRepair($state->email_opted_out, 'email_opted_out', $userId);
         }
 
         $this->writeProfile(
@@ -748,9 +795,12 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = self::flagValue($state->email_blocked, 'email_blocked', $userId);
-        if ($old === 1 && self::sameAddress($state->email_blocked_address, $normalized)) {
+        [$old, $valid] = self::writerFlagValue($state->email_blocked, 'email_blocked', $userId, 0);
+        if ($valid && $old === 1 && self::sameAddress($state->email_blocked_address, $normalized)) {
             return 1;
+        }
+        if (!$valid) {
+            self::logFlagRepair($state->email_blocked, 'email_blocked', $userId);
         }
 
         $this->writeProfile(
@@ -781,9 +831,12 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = self::flagValue($state->email_blocked, 'email_blocked', $userId);
-        if ($old === 0) {
+        [$old, $valid] = self::writerFlagValue($state->email_blocked, 'email_blocked', $userId, 1);
+        if ($valid && $old === 0) {
             return $old;
+        }
+        if (!$valid) {
+            self::logFlagRepair($state->email_blocked, 'email_blocked', $userId);
         }
 
         $this->writeProfileBlockClear($userId, 'clearProfileBlocked');
@@ -837,9 +890,12 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = self::flagValue($state->email_bounced, 'email_bounced', $userId);
-        if ($old === 1 && self::sameAddress($state->email_bounced_address, $normalized)) {
+        [$old, $valid] = self::writerFlagValue($state->email_bounced, 'email_bounced', $userId, 0);
+        if ($valid && $old === 1 && self::sameAddress($state->email_bounced_address, $normalized)) {
             return 1;
+        }
+        if (!$valid) {
+            self::logFlagRepair($state->email_bounced, 'email_bounced', $userId);
         }
 
         $this->writeProfile(
@@ -876,9 +932,12 @@ class CarRepository
         if ($state === null) {
             return null;
         }
-        $old = self::flagValue($state->email_bounced, 'email_bounced', $userId);
-        if ($old === 0) {
+        [$old, $valid] = self::writerFlagValue($state->email_bounced, 'email_bounced', $userId, 1);
+        if ($valid && $old === 0) {
             return $old;
+        }
+        if (!$valid) {
+            self::logFlagRepair($state->email_bounced, 'email_bounced', $userId);
         }
 
         $this->writeProfileBounceClear($userId, 'clearProfileBounced');
@@ -943,17 +1002,25 @@ class CarRepository
             return null;
         }
 
-        $bounced = self::flagValue($row->email_bounced, 'email_bounced', $userId);
-        $blocked = self::flagValue($row->email_blocked, 'email_blocked', $userId);
+        // A bad value reads as set, so an address change clears it. With no
+        // change it stays, and the decision readers keep refusing it.
+        [$bounced, $bouncedValid] = self::writerFlagValue($row->email_bounced, 'email_bounced', $userId, 1);
+        [$blocked, $blockedValid] = self::writerFlagValue($row->email_blocked, 'email_blocked', $userId, 1);
         $current = EmailAddress::normalize(self::nullableString($row->user_email));
         $seen    = EmailAddress::normalize(self::nullableString($row->email_address_seen));
         $changed = $current !== $seen;
 
         if ($changed) {
             if ($bounced === 1) {
+                if (!$bouncedValid) {
+                    self::logFlagRepair($row->email_bounced, 'email_bounced', $userId);
+                }
                 $this->writeProfileBounceClear($userId, 'clearFlagsForConfirmedEmailChange');
             }
             if ($blocked === 1) {
+                if (!$blockedValid) {
+                    self::logFlagRepair($row->email_blocked, 'email_blocked', $userId);
+                }
                 $this->writeProfileBlockClear($userId, 'clearFlagsForConfirmedEmailChange');
             }
             $this->writeProfile(
