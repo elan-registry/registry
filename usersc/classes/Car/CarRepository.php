@@ -728,6 +728,9 @@ class CarRepository
      * whatever the state of `email_blocked` and `email_bounced`: it is the
      * owner's own request and must outlive a later clear of those flags.
      *
+     * A stored value other than 0 or 1 is always written over, and the
+     * return value is the opposite of the value written ({@see writerFlagValue()}).
+     *
      * @param int  $userId    Owner user ID
      * @param bool $optedOut  True to set the opt-out, false to clear it
      * @return int|null The old flag value (0 or 1), or null when the owner has
@@ -767,6 +770,9 @@ class CarRepository
      * the flag is 0, or when it is set for an address that differs from
      * `$address` under the matching rule. A repeat block of the same address
      * keeps the first time and cause.
+     *
+     * A stored value other than 0 or 1 is always written over, and the
+     * return value is the opposite of the value written ({@see writerFlagValue()}).
      *
      * @param int         $userId    Owner user ID
      * @param string      $address   The blocked address. Stored normalized.
@@ -820,6 +826,9 @@ class CarRepository
     /**
      * Clear an owner's block (`email_blocked` with its address, time and cause)
      *
+     * A stored value other than 0 or 1 is always written over, and the
+     * return value is the opposite of the value written ({@see writerFlagValue()}).
+     *
      * @param int $userId Owner user ID
      * @return int|null The old flag value (0 or 1), or null when the owner has
      *                  no profiles row (nothing is written)
@@ -869,6 +878,9 @@ class CarRepository
      * every new bounce gets a new
      * `email_bounced_at` (#2320). A repeat bounce of the same address keeps
      * the first time.
+     *
+     * A stored value other than 0 or 1 is always written over, and the
+     * return value is the opposite of the value written ({@see writerFlagValue()}).
      *
      * @param int    $userId    Owner user ID
      * @param string $address   The address that bounced. Stored normalized.
@@ -921,6 +933,9 @@ class CarRepository
      * `email_bounce_cleared_at`, so soft bounces before the clear do not count
      * toward a new escalation ({@see countSoftBouncesSinceLastDelivered()}).
      *
+     * A stored value other than 0 or 1 is always written over, and the
+     * return value is the opposite of the value written ({@see writerFlagValue()}).
+     *
      * @param int $userId Owner user ID
      * @return int|null The old flag value (0 or 1), or null when the owner has
      *                  no profiles row (nothing is written)
@@ -967,6 +982,9 @@ class CarRepository
      *
      * `email_opted_out` stays. The caller writes the flag-change log rows and
      * logs the no-address anomaly.
+     *
+     * A stored value other than 0 or 1 is always written over, and the
+     * return value is the opposite of the value written ({@see writerFlagValue()}).
      *
      * @param int $userId Owner user ID
      * @return array{bounced: int, blocked: int, bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool}|null
@@ -1034,8 +1052,8 @@ class CarRepository
         return [
             'bounced'             => $bounced,
             'blocked'             => $blocked,
-            'bouncedHadNoAddress' => $bounced === 1 && self::isEmptyAddress($row->email_bounced_address),
-            'blockedHadNoAddress' => $blocked === 1 && self::isEmptyAddress($row->email_blocked_address),
+            'bouncedHadNoAddress' => $bouncedValid && $bounced === 1 && self::isEmptyAddress($row->email_bounced_address),
+            'blockedHadNoAddress' => $blockedValid && $blocked === 1 && self::isEmptyAddress($row->email_blocked_address),
             'changed'             => $changed,
         ];
     }

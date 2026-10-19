@@ -8,6 +8,7 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ProfileFlagValueException;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -356,6 +357,7 @@ final class CarRepositoryProfileFlagValueTest extends TestCase
         $repairLogs = self::repairLogs($column);
         $this->assertCount(1, $repairLogs, 'The repair is logged once');
         $this->assertSame(self::USER_ID, $repairLogs[0]['user_id'], 'The repair row belongs to the owner');
+        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $repairLogs[0]['category']);
         $this->assertStringNotContainsString(self::ADDRESS, $repairLogs[0]['message']);
     }
 
