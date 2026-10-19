@@ -143,15 +143,39 @@ Wait. Recurse into Step 1 with the answer.
 
 #### MODE=name
 
-Grep the helpers folder for a function declaration:
+Grep the helpers folder for a function declaration. Also grep the project file
+`usersc/includes/custom_functions.php`, if it exists.
+
+`users/helpers/helpers.php` loads `custom_functions.php` before the core helper
+files. Most core helpers have an `if (!function_exists(...))` guard, but not all
+of them. In UserSpice 6.1.7, about 70 of 240 top-level helpers have no guard. Examples:
+all of `backup_util.php` and `rate_limit_helpers.php`, and `randomString` and
+`safeCurl` in `us_helpers.php`. A project function can replace a core helper
+only if the core helper has a guard. If it has no guard, a function with the
+same name causes the fatal error "Cannot redeclare".
 
 ```bash
 grep -nE "function[[:space:]]+&?[[:space:]]*${ARG}[[:space:]]*\\(" "$INSTALL_ROOT/users/helpers/"*.php
+CUSTOM_FILE="$INSTALL_ROOT/usersc/includes/custom_functions.php"
+[ -f "$CUSTOM_FILE" ] && \
+    grep -nE "function[[:space:]]+&?[[:space:]]*${ARG}[[:space:]]*\\(" "$CUSTOM_FILE"
 ```
 
-If exactly one hit, inspect at least five surrounding lines for the full signature. Format the result in Step 3.
+For each hit, inspect at least five surrounding lines for the full signature.
+For a core hit, also check if the declaration is inside an
+`if (!function_exists('<name>'))` block. That block is the guard.
+Then use the first rule that applies:
 
-If multiple hits (rare — same name in different files), return all and let the user disambiguate.
+1. **Hits in `custom_functions.php` and in the core helpers.** If the core helper
+   has a guard, say that the project overrides it. Show the project signature
+   first and the core signature after it, as background. If the core helper has
+   no guard, say that the two declarations cause a "Cannot redeclare" fatal
+   error. Show both signatures.
+2. **More than one core hit** (rare — the same name in different files). Return
+   all hits and let the user select one.
+3. **One hit.** Return it.
+
+Format the result in Step 3.
 
 If no hits, fall through to MODE=topic with `ARG` as the query — maybe the user remembered the name wrong.
 
@@ -186,10 +210,11 @@ Return up to 3 best-fit matches. If none of the topic-map entries are a clear ma
 ```bash
 grep -rniF -- "$KEYWORD" \
     "$INSTALL_ROOT/users/helpers/" \
-    "$INSTALL_ROOT/users/classes/" 2>/dev/null | head -20
+    "$INSTALL_ROOT/users/classes/" \
+    "$INSTALL_ROOT/usersc/includes/custom_functions.php" 2>/dev/null | head -20
 ```
 
-Show up to 5 candidate matches with their signatures and let the user pick.
+Show up to 5 candidate matches with their signatures and let the user pick. A hit in `custom_functions.php` is a project override. List it first and say so.
 
 ### Step 3 — Format the result
 

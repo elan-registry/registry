@@ -98,7 +98,8 @@ use `ElanRegistry\Input::raw()` for values bound for the database. Never use
    1. Does this need to exist? If no, skip it and say so in one line.
    2. Does the codebase already have it? Reuse the helper, class, or pattern.
    3. Does UserSpice (`users/helpers/`, `users/classes/`) or the PHP standard
-      library have it? Use it.
+      library have it? Use it. Check with the `userspice-helper-lookup` skill
+      before you write a new helper.
    4. Does the platform have it? Use a MySQL constraint or trigger, a native
       HTML input, or CSS before custom code or a new dependency.
    5. Does an installed dependency have it? Use it. Do not add a dependency

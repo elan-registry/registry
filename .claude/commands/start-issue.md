@@ -509,6 +509,7 @@ and your answers. I'll ask clarifying questions as I refine the approach."
    check if the solution duplicates existing UserSpice functionality:
 
    - Read `usersc/plugins/ai_prompts/prompts/00_start_here.md.php` and the ElanRegistry overrides in `custom_prompts/` for relevant framework functions
+   - For each new helper or function the plan would add, run the `userspice-helper-lookup` skill (`/userspice-helper-lookup <helper name or task>`)
    - Ask: "Does UserSpice provide this functionality already?"
    - If yes: Leverage UserSpice instead of custom implementation
    - If no: Verify the custom approach doesn't conflict with UserSpice patterns
