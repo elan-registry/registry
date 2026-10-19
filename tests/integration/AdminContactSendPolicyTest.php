@@ -15,9 +15,10 @@ use PHPUnit\Framework\Attributes\Group;
  * in its own `php -r` subprocess, and the admin sees the result as a session
  * flash message, which invokeEndpoint() returns in `flash`.
  *
- * A request that passes the policy reaches email(). Whether email() succeeds
- * depends on the Brevo setup of the checkout, so the tests accept a "sent"
- * row or a "SEND FAILED" row as proof that the request reached email().
+ * A request that passes the policy reaches email(). The test schema has no
+ * Brevo API key, so email() fails there unless a test calls saveBrevoTestKey().
+ * The tests accept a "sent" row or a "SEND FAILED" row as proof that the
+ * request reached email(). One test saves the key and checks the "sent" path.
  */
 #[Group('integration')]
 final class AdminContactSendPolicyTest extends IntegrationTestCase
@@ -29,15 +30,11 @@ final class AdminContactSendPolicyTest extends IntegrationTestCase
     /** @var int[] Users whose logs rows tearDown() deletes */
     private array $loggedUserIds = [];
 
-    /** @var int[] Every user this test created, for er_email_events cleanup */
-    private array $eventUserIds = [];
-
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
         $this->loggedUserIds = [];
-        $this->eventUserIds = [];
     }
 
     protected function tearDown(): void
@@ -49,7 +46,6 @@ final class AdminContactSendPolicyTest extends IntegrationTestCase
                     fwrite(STDERR, "NOTE: tearDown() cleanup failed for logs of user ID {$userId}: {$this->db->errorString()}\n");
                 }
             }
-            $this->deleteEmailEventsForUserIds($this->eventUserIds);
         }
 
         parent::tearDown();
@@ -62,7 +58,6 @@ final class AdminContactSendPolicyTest extends IntegrationTestCase
         $userId = $this->createTestUser(['permissions' => 1]);
         $this->grantTestPermission($userId, $permissionId);
         $this->loggedUserIds[] = $userId;
-        $this->eventUserIds[] = $userId;
 
         return $userId;
     }
@@ -76,7 +71,6 @@ final class AdminContactSendPolicyTest extends IntegrationTestCase
     {
         $email = 'owner_' . uniqid() . '@example.com';
         $id = $this->createTestUser(['email' => $email], $withProfile);
-        $this->eventUserIds[] = $id;
 
         return ['id' => $id, 'email' => $email];
     }
@@ -122,8 +116,12 @@ final class AdminContactSendPolicyTest extends IntegrationTestCase
 
     /**
      * Assert the request was refused: one error flash, no success flash, one
-     * blocked row with the expected flags, no sent or SEND FAILED row, and no
-     * "@" in any contact log line.
+     * blocked row with the expected flags, no sent or SEND FAILED row, no
+     * "sendinblue" row, and no "@" in any contact log line.
+     *
+     * The "sendinblue" row is the proof that email() did not run: the test
+     * schema has no API key, so each email() call fails, and sendinblueFail()
+     * logs it for the signed-in admin.
      *
      * @param array{flash: array{error: list<string>, success: list<string>, message: list<string>}} $result
      */
@@ -137,6 +135,7 @@ final class AdminContactSendPolicyTest extends IntegrationTestCase
         );
         $this->assertSame([], $this->adminContactLogs($adminId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Admin contact sent'));
         $this->assertSame([], $this->adminContactLogs($adminId, LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'Admin contact SEND FAILED'));
+        $this->assertSame([], $this->adminContactLogs($adminId, 'sendinblue', ''), 'A blocked send must not call email()');
         $this->assertNoAddressInContactLogs($adminId);
     }
 
@@ -287,6 +286,30 @@ final class AdminContactSendPolicyTest extends IntegrationTestCase
 
         $this->assertReachedEmail($adminId, 'Multiple (1 users)');
         $this->assertSame([], array_filter($result['flash']['error'], static fn(string $e): bool => str_starts_with($e, self::REFUSED)));
+    }
+
+    public function testMultipleSendReachesTheSentPathAndLogsNoAddress(): void
+    {
+        $this->saveBrevoTestKey();
+        $adminId = $this->createCaller(2);
+        // FILTER_VALIDATE_EMAIL accepts ' and & in the local part.
+        $email = "o'neil&co_" . uniqid() . '@example.com';
+        $this->createTestUser(['email' => $email], true);
+
+        $result = $this->contact($adminId, 'Multiple', 'Multiple', ['target_email' => $email]);
+
+        $this->assertSame([], $result['flash']['error'], $result['raw']);
+        // sessionValMessages() runs sanitizeHTML(), which decodes entities before it
+        // stores the text, so the session holds the plain address (see #2439).
+        $this->assertSame(
+            ['Administrator message sent successfully to duplicate accounts at ' . $email],
+            $result['flash']['success']
+        );
+        $this->assertSame(
+            ["Admin contact sent - Admin: {$adminId}, Owner: Multiple (1 users), Car: Multiple, Issue: policy test"],
+            $this->adminContactLogs($adminId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Admin contact sent')
+        );
+        $this->assertNoAddressInContactLogs($adminId);
     }
 
     public function testMultipleWithACleanAndAnOptedOutUserIsRefused(): void

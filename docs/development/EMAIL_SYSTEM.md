@@ -819,8 +819,11 @@ account mail. See [Send Policy](#send-policy-2360).
   `email_blocked` set, the button is not shown.
 
 The section displays "Registry email is paused for you. This includes
-verification email for {N} of your cars." N is the count of the owner's cars. If the count query fails, the section
-stays and shows only "Registry email is paused for you." The `findVerificationEligible()` query excludes a
+verification email for {N} of your cars." N is the count of the owner's cars.
+When the owner did not opt out (`email_blocked` only), the first sentence is
+"Some registry email is paused for you." instead, because a block alone does
+not stop a message from an admin. If the count query fails, the section stays
+and shows only the first sentence. The `findVerificationEligible()` query excludes a
 car when any of the three flags is 1, or when the owner has no `profiles` row.
 
 The button POSTs with CSRF. The handler clears `profiles.email_opted_out` and

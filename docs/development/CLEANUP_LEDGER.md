@@ -227,6 +227,10 @@ after an item is written.
 
 - [ ] An `email_blocked_cause` value that is not in `BLOCKED_CAUSES` (~L77) becomes null with no log line. The owner sees the generic text and the bad value stays hidden. Log it (found in /finish-milestone v2.30.7)
 
+### `usersc/classes/Car/SendPolicy.php`
+
+- [ ] A malformed or zero-date `email_bounced_at` makes `toDate()` (~L204) return null with no log line. The send is still refused, but the admin message has no date and the bad value stays hidden. Log it with the owner ID (the decision needs to carry it) (found in #2360)
+
 ### `usersc/classes/Car/SendResult.php`
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)

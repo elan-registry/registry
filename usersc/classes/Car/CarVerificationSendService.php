@@ -52,8 +52,8 @@ final class CarVerificationSendService
      * @param VerificationSettings|null $settings Brevo readiness probe; null uses the shared
      *                                            connection. Last, so the production callers
      *                                            need not pass it.
-     * @param SendPolicy|null $sendPolicy Owner flag rules; null builds one on `$repo`.
-     *                                    Optional, so the callers do not change.
+     * @param SendPolicy|null $sendPolicy Owner flag rules. Null builds one on `$repo`, so the
+     *                                    policy reads the same repository as the service.
      */
     public function __construct(
         private CarRepository $repo,

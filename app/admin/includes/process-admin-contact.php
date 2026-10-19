@@ -179,9 +179,9 @@ if (Input::existsPost()) {
                         $result = email($toEmail, $subject, $body);
 
                         if ($result !== true) {
-                            // email() returns PHPMailer::send()'s bool result — never a string —
-                            // so a failed send is always $result === false. There is no delivery
-                            // message to sanitize/log here.
+                            // email() is the sendinblue plugin override. It returns true or false,
+                            // never a string, and the plugin logs its own failure reason. There is
+                            // no delivery message to sanitize or log here.
                             $errors[] = 'Failed to send email. Please try again.';
                             logger($adminUserId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
                                 "Admin contact SEND FAILED - Admin: {$adminUserId}, Owner: {$ownerLabel}");

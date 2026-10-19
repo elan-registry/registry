@@ -4,9 +4,9 @@ if (count(get_included_files()) == 1) { die(); }
 /**
  * _verify_optout_confirm.php
  *
- * Both states of `app/verify/verify_car.php?vericode=...&action=optout` —
- * the one-click opt-out link in verification emails (#1883). The opt-out
- * stops all registry email except account mail (#2360):
+ * The one-click opt-out link in verification emails (#1883). The opt-out
+ * stops all registry email except account mail (#2360). This partial renders
+ * both states of `app/verify/verify_car.php?vericode=...&action=optout`:
  *
  *   before opt-out — the confirmation card, with the POST form that performs
  *                    the opt-out. Nothing has changed yet.

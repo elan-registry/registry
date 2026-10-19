@@ -16,9 +16,10 @@ use PHPUnit\Framework\Attributes\Group;
  * rate-limit row like any send, and never calls email().
  *
  * Proof of "no email() call": the endpoint writes a "sent" or "SEND FAILED"
- * log row after every email() call, and the sendinblue plugin writes a plg_sendinblue_messages row for
- * each message that Brevo accepts. A blocked send has none of them. The clean
- * control proves that the same request without a flag does reach email().
+ * log row after every email() call. Without an API key, the sendinblue plugin
+ * also writes a "sendinblue" log row for the signed-in sender on each failed
+ * send. A blocked send has none of them. The clean control proves that the
+ * same request without a flag does reach email().
  *
  * Each request runs in its own `php -r` subprocess because ApiResponse::send()
  * calls exit.
@@ -34,12 +35,6 @@ final class SendOwnerEmailSendPolicyTest extends IntegrationTestCase
 
     /** @var string[] Recipient addresses whose plg_sendinblue_messages rows tearDown() deletes */
     private array $recipientAddresses = [];
-
-    /** Id of the plg_sendinblue row that saveBrevoTestKey() wrote, or null. */
-    private ?int $brevoKeyRowId = null;
-
-    /** The key that the row held before saveBrevoTestKey(), or null if the test inserted the row. */
-    private ?string $brevoKeyBefore = null;
 
     protected function setUp(): void
     {
@@ -67,49 +62,9 @@ final class SendOwnerEmailSendPolicyTest extends IntegrationTestCase
                     }
                 }
             }
-            $this->restoreBrevoKey();
         }
 
         parent::tearDown();
-    }
-
-    /**
-     * Save a test API key in plg_sendinblue, so that a real send reaches mock-brevo.
-     *
-     * The other readiness checks use the real plugin files on this checkout
-     * (see docs/development/ENVIRONMENT.md, "Brevo Plugin Local Setup").
-     */
-    private function saveBrevoTestKey(): void
-    {
-        $row = $this->db->query('SELECT id, `key` FROM plg_sendinblue LIMIT 1')->first();
-        if (is_object($row) && isset($row->id)) {
-            $this->brevoKeyRowId = (int) $row->id;
-            $this->brevoKeyBefore = (string) $row->key;
-            $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', ['sib-test-key', $this->brevoKeyRowId]);
-        } else {
-            $this->db->insert('plg_sendinblue', ['key' => 'sib-test-key']);
-            $this->brevoKeyRowId = (int) $this->db->lastId();
-            $this->brevoKeyBefore = null;
-        }
-        $this->assertFalse($this->db->error(), 'Brevo key fixture write failed: ' . $this->db->errorString());
-    }
-
-    private function restoreBrevoKey(): void
-    {
-        if ($this->brevoKeyRowId === null) {
-            return;
-        }
-        if ($this->brevoKeyBefore === null) {
-            // By id, not by key: the row is the one this test inserted.
-            $this->db->query('DELETE FROM plg_sendinblue WHERE id = ?', [$this->brevoKeyRowId]);
-        } else {
-            $this->db->query('UPDATE plg_sendinblue SET `key` = ? WHERE id = ?', [$this->brevoKeyBefore, $this->brevoKeyRowId]);
-        }
-        // Report, do not assert: this runs in tearDown(), after the test result.
-        if ($this->db->error()) {
-            fwrite(STDERR, "NOTE: tearDown() could not restore plg_sendinblue: {$this->db->errorString()}\n");
-        }
-        $this->brevoKeyRowId = null;
     }
 
     private function sendinblueTableExists(): bool
@@ -211,6 +166,15 @@ final class SendOwnerEmailSendPolicyTest extends IntegrationTestCase
     {
         $this->assertSame(0, $this->countOutcomeLogs($senderId), 'A blocked send must not reach email() (no sent or SEND FAILED row)');
         $this->assertSame(0, $this->countSendinblueMessages($recipient['email']), 'A blocked send must leave no plg_sendinblue_messages row');
+        $this->assertSame(0, $this->countSendinblueLogs($senderId), 'A blocked send must leave no sendinblue log row');
+    }
+
+    /** Count of "sendinblue" log rows for a user: sendinblueFail() writes one for the signed-in user on each failed send. */
+    private function countSendinblueLogs(int $userId): int
+    {
+        $row = $this->db->query('SELECT COUNT(*) AS cnt FROM logs WHERE logtype = ? AND user_id = ?', ['sendinblue', $userId])->first();
+
+        return (int) $row->cnt;
     }
 
     /**

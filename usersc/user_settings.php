@@ -828,7 +828,7 @@ if ($emailSuppressed) {
                     <?php if ($emailSuppressed): ?>
                         <section id="resume-emails" class="mb-4">
                             <p>
-                                <?php // A block alone does not stop a message from an admin, so only the opt-out pauses all registry email. ?>
+                                <?php // The section shows for an opt-out or a block. A block alone does not stop a message from an admin, so the text says all email is paused only for an opt-out. ?>
                                 <?= $ownerClearable ? 'Registry email is paused for you.' : 'Some registry email is paused for you.' ?><?php if ($pausedCarCount !== null): ?> This includes verification email for <?= htmlspecialchars((string) $pausedCarCount, ENT_QUOTES, 'UTF-8') ?> of your cars.<?php endif; ?>
                             </p>
                             <?php if ($ownerClearable): ?>
