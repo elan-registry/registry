@@ -213,8 +213,7 @@ final class MoveDeliverabilityFlagsToProfiles extends AbstractMigration
 
             $this->execute('COMMIT');
         } catch (\Throwable $e) {
-            $this->execute('ROLLBACK');
-            throw $e;
+            $this->rollbackAndRethrow($e);
         }
 
         $this->say(sprintf('Phase 1: email_opted_out_at backfilled for %d profile(s).', count($optedOutAt)));
@@ -299,8 +298,7 @@ final class MoveDeliverabilityFlagsToProfiles extends AbstractMigration
 
             $this->execute('COMMIT');
         } catch (\Throwable $e) {
-            $this->execute('ROLLBACK');
-            throw $e;
+            $this->rollbackAndRethrow($e);
         }
 
         $this->say('Phase 2: bounce copied for user ID(s): ' . self::idList(array_column($bounceCopies, 'user_id')));
@@ -387,9 +385,30 @@ final class MoveDeliverabilityFlagsToProfiles extends AbstractMigration
             );
             $this->execute('COMMIT');
         } catch (\Throwable $e) {
-            $this->execute('ROLLBACK');
-            throw $e;
+            $this->rollbackAndRethrow($e);
         }
+    }
+
+    /**
+     * Roll back the open transaction, then rethrow the first failure.
+     *
+     * A failed ROLLBACK must not hide the first failure, so its error goes
+     * into the message of a RuntimeException that keeps $e as previous.
+     */
+    private function rollbackAndRethrow(\Throwable $e): never
+    {
+        try {
+            $this->execute('ROLLBACK');
+        } catch (\Throwable $rollbackFailure) {
+            throw new \RuntimeException(
+                'Rollback failed while handling: ' . $e->getMessage()
+                . ' (rollback error: ' . $rollbackFailure->getMessage() . ')',
+                0,
+                $e
+            );
+        }
+
+        throw $e;
     }
 
     /**

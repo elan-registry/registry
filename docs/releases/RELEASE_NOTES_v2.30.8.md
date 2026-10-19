@@ -22,6 +22,10 @@ deletes them with the account. Admins see the email state of each owner.
   ([#2360](https://github.com/elan-registry/registry/issues/2360))
 - Opting out of registry email now covers all email except account mail (password reset, sign-in, email change). Before, it covered only verification email.
   ([#2360](https://github.com/elan-registry/registry/issues/2360))
+- Resuming delivery when an email was paused now shows the correct status even when logging fails. Before, a logging failure caused an unexpected server error.
+  ([#2406](https://github.com/elan-registry/registry/issues/2406))
+- When our email provider flagged an owner's address, the account settings page now links "contact an admin" to the owner contact page.
+  ([#2393](https://github.com/elan-registry/registry/issues/2393))
 
 ## Admin-Facing Changes
 
@@ -70,6 +74,11 @@ deletes them with the account. Admins see the email state of each owner.
   ([#2360](https://github.com/elan-registry/registry/issues/2360))
 - Contact log lines now name user IDs and flag names. They no longer hold an email address.
   ([#2360](https://github.com/elan-registry/registry/issues/2360))
+- A stored profile email flag with a value other than 0 or 1 no longer makes Brevo
+  resend the event. The webhook now returns 400 to tell Brevo not to retry.
+  The suppression sync job counts an owner whose flag step did not run (no profile row, an old address,
+  or an event before a guard date) as skipped, not matched.
+  ([#2393](https://github.com/elan-registry/registry/issues/2393))
 
 ## Issues Resolved
 

@@ -722,4 +722,31 @@ final class CarVerificationManagerTest extends TestCase
             $this->assertStringNotContainsString('deadlock', $e->getUserMessage());
         }
     }
+
+    /**
+     * A throw from rollback() must not replace the real failure (#2393).
+     */
+    public function test_clearFlagsForConfirmedEmailChange_rollbackThrows_originalExceptionPropagates(): void
+    {
+        $this->mockRepo->method('clearFlagsForConfirmedEmailChange')
+            ->willThrowException(new CarDatabaseException('original'));
+        $this->mockRepo->expects($this->once())->method('rollback')
+            ->willThrowException(new \RuntimeException('rb'));
+        $this->mockRepo->expects($this->never())->method('commit');
+
+        try {
+            $this->manager->clearFlagsForConfirmedEmailChange(9, 42);
+            $this->fail('Expected CarDatabaseException');
+        } catch (CarDatabaseException $e) {
+            $this->assertSame('original', $e->getMessage());
+        }
+
+        global $mockLogEntries;
+        $this->assertCount(1, $mockLogEntries, 'The rollback failure must leave one log row');
+        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $mockLogEntries[0]['category']);
+        $this->assertSame(42, $mockLogEntries[0]['user_id']);
+        $this->assertStringContainsString('rollback failed', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('rb', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('userId=42', $mockLogEntries[0]['message']);
+    }
 }

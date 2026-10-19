@@ -484,6 +484,33 @@ function verifyHistoryFields(object $carData, string $operation, string $comment
     ];
 }
 
+/**
+ * Roll back the page's transaction, and log a rollback failure instead of throwing it.
+ *
+ * Call it only from a catch block for the original failure. A throw from
+ * rollback() would hide that failure and skip the caller's log line and its
+ * renderActionFailed() page.
+ *
+ * @param CarRepository $repo    Repository that holds the open transaction
+ * @param string        $context Short name of the action, for the log line. Never an email address.
+ */
+function rollbackQuietly(CarRepository $repo, string $context): void
+{
+    try {
+        $repo->rollback();
+    } catch (\Throwable $rollbackFailure) {
+        $message = "verify_car.php: rollback failed after {$context}: "
+            . get_class($rollbackFailure) . ': ' . $rollbackFailure->getMessage();
+        try {
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
+        } catch (\Throwable $logFailure) {
+            // logger() writes to the database. If that fails too, the PHP
+            // error log is the only record left.
+            error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+        }
+    }
+}
+
 // --- 7. Dispatch ---------------------------------------------------------
 $action   = Input::raw('action') ?? '';
 $isPost   = $method === 'POST';
@@ -545,7 +572,7 @@ if ($isPost && $action === 'verify') {
         // Covers CarDatabaseException (from markVerified() or the audit
         // insert above) and OwnerDatabaseException from the history
         // snapshot's owner lookup — both descend from ElanRegistryException.
-        $repo->rollback();
+        rollbackQuietly($repo, "markVerified for car {$carId}");
         logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
             "verify_car.php: markVerified failed for car {$carId}: " . $e->getMessage());
         // The vericode already authenticated by this point, so there is no
@@ -598,7 +625,7 @@ if ($isPost && $action === 'sold') {
         // Covers CarValidationException/CarDatabaseException from markSold()
         // (or the audit insert above) and OwnerDatabaseException from the
         // history snapshot's owner lookup.
-        $repo->rollback();
+        rollbackQuietly($repo, "markSold for car {$carId}");
         logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD,
             "verify_car.php: markSold failed for car {$carId}: " . $e->getMessage());
         // Post-authentication write failure — see renderActionFailed()'s docblock.
@@ -632,7 +659,7 @@ if ($isPost && $action === 'optout') {
         // transaction, so every failure must roll it back, write a log line,
         // and show the owner that the opt-out did not take effect. This
         // includes CarDatabaseException for an owner with no profiles row.
-        $repo->rollback();
+        rollbackQuietly($repo, "setSuppressedForOwner for owner {$ownerId}");
         logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "verify_car.php: setSuppressedForOwner failed for owner {$ownerId}: "
             . get_class($e) . ': ' . $e->getMessage());

@@ -137,6 +137,9 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 - `CarNotFoundException` - Car ID not found (404)
 - `CarValidationException` - Invalid car data (422)
 - `CarDatabaseException` - Database operation failures (500). `sqlState()` returns the SQLSTATE from the `ERROR #<sqlstate>:` message prefix, or null
+- `ProfileFlagValueException` - Stored profile flag value not 0 or 1 (500). Subclass
+  of `CarDatabaseException`. The webhook catches it separately and returns `MALFORMED`
+  (a 400 response) to stop Brevo retries (#2393).
 - `ExceptionLogSummary::of(\Throwable)` (not an exception) - a log-safe summary: class, code, SQLSTATE and `file:line`, never the message (#2359)
 - `CarPermissionException` - Permission/auth denied (403) *(no production code throws this post-v2.28.0; retained for hierarchy completeness)*
 - `CarCreationException` - Car creation failures (500)
@@ -151,6 +154,7 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 | Car ID not found in database | CarNotFoundException | User tries to edit car that was deleted |
 | Validation of user input fails | CarValidationException | Invalid chassis format, missing required field |
 | Database query/operation fails | CarDatabaseException | INSERT fails, UPDATE fails, deadlock |
+| Stored profile flag is not 0 or 1 | ProfileFlagValueException | Webhook receive, Brevo sync, event reconciliation read a corrupt flag |
 | User lacks permission | CarPermissionException | Non-owner trying to edit someone else's car *(unthrown post-v2.28.0 — auth gates moved to callers; class retained for hierarchy)* |
 | Car creation fails | CarCreationException | Cannot create car due to validation or database issue |
 | Car deletion fails | CarDeletionException | Cannot delete car, foreign key constraint |
@@ -2170,7 +2174,7 @@ public function apply(
     string $source,
     string $mode,
     ?string $blockedCause = null
-): bool
+): EmailEventApplyResult
 ```
 
 - `$match` must be a matched result. `$source` is one of
@@ -2181,7 +2185,10 @@ public function apply(
   only for a suppression event in `MODE_STATE`, and must be one of
   `CarRepository::BLOCKED_CAUSES`. The import passes `blocklist` for Brevo's
   `adminBlocked`, while the event row stays `unsubscribed`.
-- Returns true when the call wrote a new event row.
+- Returns an `EmailEventApplyResult` with `eventRowWritten` (true when a new
+  event row was written) and `flagApplied` (true when the flag step ran for
+  the current address; false for a skipped step such as no profile row, address
+  mismatch, or date guard failure).
 - Throws `InvalidArgumentException` for an unmatched result, an unknown source
   or mode, or a cause that is not allowed (nothing is written).
   Throws `CarValidationException` for an invalid datetime (nothing is written).
@@ -2200,6 +2207,32 @@ public function apply(
 - [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#event-recording-and-the-car-chip) - The transaction steps and the chip rule
 - [DATABASE.md](DATABASE.md) - `er_email_events`, `profiles` deliverability columns
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_EMAIL_WEBHOOK`
+
+---
+
+### EmailEventApplyResult
+
+**Location**: `/usersc/classes/Car/EmailEventApplyResult.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Readonly value object that describes what one `EmailEventApplier::apply()`
+call did (#2393). Distinguishes between events that were recorded but did not
+apply a flag (for example, no profile row, address mismatch, or a date guard
+that failed) and events that both recorded and applied.
+
+**Properties**:
+
+- `eventRowWritten: bool` - True when the call wrote a new `er_email_events` row
+- `flagApplied: bool` - True only when the call ran the flag step for the
+  owner's current address. False when a step was skipped (no users row, no
+  profiles row, address mismatch, `MODE_EVENT` duplicate, or date guard failed).
+  In `MODE_STATE` a duplicate event row can still apply the flag.
+
+**Used By**: `BrevoSuppressionSyncJob` — to count skipped contacts separately
+from matched contacts in the summary.
+
+**See Also**: [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Suppression sync job summary
 
 ---
 

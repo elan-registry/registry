@@ -708,7 +708,10 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
         $owner = $this->ownerWhoReturnedToAFromB($returnPath);
 
         $backfill = $this->importJob($owner['email'], 'hardBounce', time() - 20 * 86400)->runNowWithSummary();
-        $this->assertSame(1, $backfill->matchedCount + $backfill->alreadyFlaggedCount, 'The backfill must read the entry');
+        // The entry is older than the confirmed change that cleared the bounce.
+        // The applier's date guard skips it, so the summary counts it as skipped (#2393).
+        $this->assertSame(1, $backfill->skippedCount, 'The backfill must read the entry and skip it');
+        $this->assertSame(0, $backfill->matchedCount + $backfill->alreadyFlaggedCount);
         $this->assertSame('0', $this->snapshot($owner['userId'])['email_bounced'], 'An entry older than the clear does not restore the bounce');
 
         $messageId = 'next-send-' . uniqid();

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventApplyResult;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\SpyEmailEventApplier;
@@ -35,5 +36,16 @@ final class SpyEmailEventApplierContractTest extends TestCase
             $notOverridden,
             'SpyEmailEventApplier must override each public method of EmailEventApplier'
         );
+    }
+
+    public function testSpyApplyReturnTypeMatchesTheApplier(): void
+    {
+        $applierType = (new ReflectionMethod(EmailEventApplier::class, 'apply'))->getReturnType();
+        $spyType = (new ReflectionMethod(SpyEmailEventApplier::class, 'apply'))->getReturnType();
+
+        $this->assertNotNull($applierType);
+        $this->assertNotNull($spyType);
+        $this->assertSame((string) $applierType, (string) $spyType);
+        $this->assertSame(EmailEventApplyResult::class, (string) $spyType);
     }
 }

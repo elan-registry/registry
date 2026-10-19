@@ -219,10 +219,6 @@ after an item is written.
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
 
-### `usersc/classes/Car/EffectiveEmailFlags.php`
-
-- [ ] The constructor takes eleven positional parameters, nine of them bool or `?string`, and `CarRepository` (~L573-584) matches them by position. Add a `fromRow()` factory or use named arguments (found in /finish-milestone v2.30.7)
-
 ### `usersc/classes/Car/EmailNoticeBuilder.php`
 
 - [ ] An `email_blocked_cause` value that is not in `BLOCKED_CAUSES` (~L77) becomes null with no log line. The owner sees the generic text and the bad value stays hidden. Log it (found in /finish-milestone v2.30.7)
@@ -234,6 +230,10 @@ after an item is written.
 ### `usersc/classes/Car/SendResult.php`
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
+
+### `usersc/classes/Cron/SuppressionSyncSummary.php`
+
+- [ ] The class docblock lists the kinds of skip but not "the flag step did not run" (no profiles row, a failed date guard, an address that is not the current one), which `BrevoSuppressionSyncJob` now counts as skipped. Add it to the list (found in #2393)
 
 ### `usersc/classes/InputSanitizer.php` (est. −8)
 
@@ -251,8 +251,11 @@ after an item is written.
 
 ### `usersc/classes/Car/CarRepository.php` + `usersc/classes/Owner.php`
 
-- [ ] The "flag applies" rule exists as SQL (`FLAG_ACTIVE_BLOCKED`, `FLAG_ACTIVE_BOUNCED`) and as PHP (`CarRepository::flagApplies()`, ~L603), tied only by a "Change the two together" comment. Put the PHP form next to `EffectiveEmailFlags` and add a parity test that runs both forms on a fixed set of addresses (found in /finish-milestone v2.30.7)
-- [ ] The "address changed" compare exists in `Owner::update()` (~L328) and in `clearFlagsForConfirmedEmailChange()` (`CarRepository.php` ~L911-913). Use one named method in both (found in /finish-milestone v2.30.7)
+- [ ] The "address changed" compare exists in `Owner::update()` and in `CarRepository::clearFlagsForConfirmedEmailChange()`. Use one named method in both (found in /finish-milestone v2.30.7)
+
+### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/CarVerificationManager.php` + `usersc/classes/Car/EmailEventApplier.php`
+
+- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 8 sites, the rollback guards included. Add one helper in `usersc/classes/` (for example `SafeLog::write($userId, $category, $message)`) and use it at each site (found in #2393)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 

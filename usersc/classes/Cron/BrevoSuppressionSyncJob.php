@@ -771,7 +771,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $wasFlagged = $this->isAlreadyInTargetState($userId, $event);
 
             try {
-                $this->applier->apply(
+                $result = $this->applier->apply(
                     EmailEventMatch::matched($userId, null, $occurredAt),
                     $email,
                     $event,
@@ -808,6 +808,13 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                     $event,
                     ExceptionLogSummary::of($e)
                 ));
+                continue;
+            }
+
+            if (!$result->flagApplied) {
+                // The applier logged the reason. The owner got no flag
+                // decision, so neither matched nor already flagged is true.
+                $skipped++;
                 continue;
             }
 

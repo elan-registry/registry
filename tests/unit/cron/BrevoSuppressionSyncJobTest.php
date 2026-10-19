@@ -9,6 +9,7 @@ use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ProfileFlagValueException;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -900,6 +901,27 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(0, $summary->alreadyFlaggedCount);
     }
 
+    /**
+     * The applier writes the event row but runs no flag step for an owner
+     * with no profiles row. The summary must not count that owner as matched (#2393).
+     */
+    public function testOwnerWithoutProfileRowCountsSkippedNotMatched(): void
+    {
+        $this->matchEveryEmailTo(1);
+        $this->mockRepo->method('effectiveEmailFlags')->willReturn(EffectiveEmailFlags::none());
+        $this->applier->willReturn(true, flagApplied: false);
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
+        ])->runNowWithSummary();
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertSame(1, $summary->skippedCount);
+        $this->assertSame(0, $summary->matchedCount);
+        $this->assertSame(0, $summary->alreadyFlaggedCount);
+        $this->assertSame([], $summary->reasonCodeCounts);
+    }
+
     /** The flag-change audit row records who found the event. */
     public function testEveryApplyCallCarriesTheImportSource(): void
     {
@@ -1001,6 +1023,39 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(0, $summary->alreadyFlaggedCount);
         $this->assertSame(1, $summary->skippedCount, 'A failed write must not count as matched');
         $this->assertSame(['hardBounce' => 2], $summary->reasonCodeCounts);
+    }
+
+    /** A stored flag that is not 0 or 1 skips only that contact (#2393). */
+    public function testProfileFlagValueFailureForOneContactSkipsOnlyThatContact(): void
+    {
+        $this->matchEveryEmailTo(1);
+        $this->applier->failOn(
+            $this->syntheticId('b@example.com', 'hardBounce'),
+            new ProfileFlagValueException(
+                'CarRepository: profiles.email_bounced for user=1 holds int, expected 0 or 1. b@example.com'
+            )
+        );
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce'),
+            FakeBrevoBlockedContact::withReason('b@example.com', 'hardBounce'),
+            FakeBrevoBlockedContact::withReason('c@example.com', 'hardBounce'),
+        ])->runFullBackfill();
+
+        $this->assertSame(
+            ['a@example.com', 'b@example.com', 'c@example.com'],
+            array_column($this->applier->calls, 'email'),
+            'The next contact must still run'
+        );
+        $this->assertSame(2, $summary->matchedCount);
+        $this->assertSame(1, $summary->skippedCount);
+
+        $log = $this->logsContaining('write FAILED');
+        $this->assertCount(1, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+        $this->assertStringContainsString('owner 1', $log[0]['message']);
+        $this->assertStringContainsString(ProfileFlagValueException::class, $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
     }
 
     /** @return array<string, array{\Throwable}> */

@@ -1175,7 +1175,7 @@ retry a 2xx.
 | Our message, no single user holds the address | 2xx, logged (address hash prefix only). A `car_verification`-tagged event increments `er_verification_settings.unmatched_recipient_count` |
 | Brevo prerequisites not met | 2xx, logged |
 | Malformed or unparseable payload (including a top-level JSON list and a bad address) | 400, logged |
-| Stored data that cannot be parsed (for example a zero message time). It fails the same way on every retry | 400, logged (no message) |
+| Stored data that cannot be parsed (for example a zero message time, or a profile flag value not 0 or 1). It fails the same way on every retry. The event row is rolled back, so the log line is the only record of the event | 400, logged (no message) |
 | Auth token missing, empty or wrong (an empty `BREVO_WEBHOOK_TOKEN` refuses every call) | 401, logged (hashed prefix only) |
 | Method is not POST | 405, no log |
 | Rate limit exceeded | 429 |
@@ -1618,9 +1618,13 @@ unsubscribe from test mail, at an address that a production user holds, flags
 that user in production. This is by design: Brevo already blocks the address
 for the whole account, so production mail to it would not arrive.
 
-**Bad data.** A value that cannot be parsed fails the same way on every run.
-The job counts the contact in `skippedCount`, logs the `ExceptionLogSummary`,
-and continues with the next contact.
+**Bad data.** A value that cannot be parsed, or a stored profile flag value not 0 or 1,
+fails the same way on every run. The job counts the contact in `skippedCount`, logs the
+`ExceptionLogSummary`, and continues with the next contact.
+
+**Skipped contacts:** A contact whose flag step was not run counts as skipped in
+the summary, not matched. This includes an owner with no `profiles` row, a date
+guard that failed, and an address that is not the current `users.email`.
 
 **Import guards.** `MODE_STATE` skips the `join_date` and
 `email_address_since` guards. The bounce guard and the Clear Block bound

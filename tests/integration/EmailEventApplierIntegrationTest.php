@@ -216,7 +216,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
             $source,
             $mode,
             $blockedCause
-        );
+        )->eventRowWritten;
     }
 
     /** @return list<object> */
@@ -414,7 +414,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
 
         $match = $this->matcher->matchByMessageId($messageId, $address);
         $this->assertTrue($match->isMatched(), 'Test setup: step (a) must match');
-        $isNew = $this->applier->apply($match, $address, 'hard_bounce', null, $messageId, '2026-10-14 09:00:00', 'webhook', EmailEventApplier::MODE_EVENT);
+        $isNew = $this->applier->apply($match, $address, 'hard_bounce', null, $messageId, '2026-10-14 09:00:00', 'webhook', EmailEventApplier::MODE_EVENT)->eventRowWritten;
 
         $this->assertFalse($isNew);
         $this->assertSame([], $this->eventRows($userId));
@@ -452,7 +452,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
 
         $match = $this->matcher->matchByMessageId($earlier, $address);
         $this->assertSame($userX, $match->userId(), 'Test setup: the current holder is the candidate');
-        $isNew = $this->applier->apply($match, $address, 'hard_bounce', null, $earlier, '2026-10-12 00:00:00', 'webhook', EmailEventApplier::MODE_EVENT);
+        $isNew = $this->applier->apply($match, $address, 'hard_bounce', null, $earlier, '2026-10-12 00:00:00', 'webhook', EmailEventApplier::MODE_EVENT)->eventRowWritten;
 
         $this->assertFalse($isNew);
         $this->assertSame([], $this->eventRows($userX), 'No row for X');
@@ -697,7 +697,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->seedPluginRow($messageId, $address, '2026-10-14 09:00:00');
 
         $match = $this->matcher->matchByMessageId($messageId, $address);
-        $this->assertTrue($this->applier->apply($match, $address, 'hard_bounce', null, $messageId, '2026-10-14 09:00:30', 'webhook', EmailEventApplier::MODE_EVENT));
+        $this->assertTrue($this->applier->apply($match, $address, 'hard_bounce', null, $messageId, '2026-10-14 09:00:30', 'webhook', EmailEventApplier::MODE_EVENT)->eventRowWritten);
 
         $rows = $this->eventRows($userId, 'hard_bounce');
         $this->assertCount(1, $rows);

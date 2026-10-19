@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
+use ElanRegistry\Car\EmailEventApplyResult;
 use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
@@ -74,7 +75,7 @@ final class EmailEventApplierTest extends TestCase
         ?int $carId = null,
         string $address = self::ADDRESS,
         ?string $blockedCause = null,
-    ): bool {
+    ): EmailEventApplyResult {
         return $this->applier->apply(
             EmailEventMatch::matched($userId, $carId, self::MESSAGE_TIME),
             $address,
@@ -124,7 +125,9 @@ final class EmailEventApplierTest extends TestCase
             ->willReturn(true);
         $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
-        $this->assertTrue($this->apply($event, carId: 7));
+        $result = $this->apply($event, carId: 7);
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
         $this->assertNoLogEntries();
     }
 
@@ -211,7 +214,9 @@ final class EmailEventApplierTest extends TestCase
         $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
         $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
 
-        $this->assertTrue($this->apply($event, 9));
+        $result = $this->apply($event, 9);
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
         $this->assertNoLogEntries();
     }
 
@@ -235,7 +240,9 @@ final class EmailEventApplierTest extends TestCase
         $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent');
         $this->mockManager->expects($this->once())->method('setBouncedFromEvent');
 
-        $this->assertTrue($this->apply('hard_bounce', 23));
+        $result = $this->apply('hard_bounce', 23);
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
 
         global $mockLogEntries;
         $this->assertCount(1, $mockLogEntries);
@@ -256,7 +263,9 @@ final class EmailEventApplierTest extends TestCase
         $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
         $this->mockRepo->expects($this->once())->method('commit');
 
-        $this->assertFalse($this->apply('hard_bounce', 61));
+        $result = $this->apply('hard_bounce', 61);
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
 
         $this->assertDroppedEventLogged(61, 'no users row');
     }
@@ -289,7 +298,9 @@ final class EmailEventApplierTest extends TestCase
         $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
         $this->mockRepo->expects($this->once())->method('commit');
 
-        $this->assertFalse($this->apply($event, 62));
+        $result = $this->apply($event, 62);
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
 
         $this->assertDroppedEventLogged(62, "the message is before {$guard}");
     }
@@ -310,7 +321,9 @@ final class EmailEventApplierTest extends TestCase
         $this->givenState(['email_bounce_cleared_at' => '2026-01-01 00:00:01']);
         $this->mockManager->expects($this->once())->method('setSuppressedFromEvent');
 
-        $this->assertTrue($this->apply('spam'));
+        $result = $this->apply('spam');
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
     }
 
     public function testAMessageAtTheGuardTimeExactlyPasses(): void
@@ -327,7 +340,9 @@ final class EmailEventApplierTest extends TestCase
         $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent');
         $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
 
-        $this->assertTrue($this->apply('hard_bounce', 77));
+        $result = $this->apply('hard_bounce', 77);
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
 
         global $mockLogEntries;
         $this->assertCount(1, $mockLogEntries);
@@ -343,7 +358,9 @@ final class EmailEventApplierTest extends TestCase
         $this->givenState(inserted: 0);
         $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
 
-        $this->assertFalse($this->apply('hard_bounce'));
+        $result = $this->apply('hard_bounce');
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
     }
 
     public function testStateModeDuplicateStillSetsTheFlag(): void
@@ -353,7 +370,9 @@ final class EmailEventApplierTest extends TestCase
             ->method('setSuppressedFromEvent')
             ->with(42, self::ADDRESS, 'spam', self::EVENT_TIME, 'import');
 
-        $this->assertFalse($this->apply('spam', mode: EmailEventApplier::MODE_STATE, source: 'import'));
+        $result = $this->apply('spam', mode: EmailEventApplier::MODE_STATE, source: 'import');
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied, 'A state-mode duplicate still applies the flag');
     }
 
     public function testAnEventForAnOldAddressRecordsTheRowAndSetsNoFlag(): void
@@ -362,7 +381,30 @@ final class EmailEventApplierTest extends TestCase
         $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent');
         $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
 
-        $this->assertTrue($this->apply('hard_bounce'));
+        $result = $this->apply('hard_bounce');
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+
+        // The suppression sync counts this skip, so the skip needs its own log line.
+        global $mockLogEntries;
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(42, $mockLogEntries[0]['user_id']);
+        $this->assertStringContainsString('not the current one', $mockLogEntries[0]['message']);
+        $this->assertStringNotContainsString(self::ADDRESS, $mockLogEntries[0]['message']);
+        $this->assertStringNotContainsString('new@example.com', $mockLogEntries[0]['message']);
+    }
+
+    public function testAReplayedEventForAnOldAddressWritesNoSkipLine(): void
+    {
+        $this->givenState(['email' => 'new@example.com'], inserted: 0);
+        $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
+
+        $result = $this->apply('hard_bounce');
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+
+        global $mockLogEntries;
+        $this->assertSame([], $mockLogEntries, 'Reconciliation replays events each cycle; a replay writes no line');
     }
 
     public function testTheCurrentAddressCompareIgnoresCaseAndOuterWhiteSpace(): void
@@ -383,7 +425,9 @@ final class EmailEventApplierTest extends TestCase
             ->method('setSuppressedFromEvent')
             ->with(42, self::ADDRESS, 'spam', self::EVENT_TIME, 'import');
 
-        $this->assertTrue($this->apply('spam', mode: EmailEventApplier::MODE_STATE, source: 'import'));
+        $result = $this->apply('spam', mode: EmailEventApplier::MODE_STATE, source: 'import');
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
     }
 
     public function testStateModeHardBounceWithBlockedAtBeforeClearBouncedSetsNothing(): void
@@ -392,7 +436,9 @@ final class EmailEventApplierTest extends TestCase
         $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
         $this->mockManager->expects($this->never())->method('setBouncedFromEvent');
 
-        $this->assertFalse($this->apply('hard_bounce', mode: EmailEventApplier::MODE_STATE, source: 'import'));
+        $result = $this->apply('hard_bounce', mode: EmailEventApplier::MODE_STATE, source: 'import');
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
         $this->assertDroppedEventLogged(42, 'the event is before email_bounce_cleared_at');
     }
 
@@ -465,7 +511,9 @@ final class EmailEventApplierTest extends TestCase
             ->willReturn($clearedAt);
         $this->mockManager->expects($sets ? $this->once() : $this->never())->method('setSuppressedFromEvent');
 
-        $this->assertTrue($this->apply('spam'), 'The event row is recorded either way');
+        $result = $this->apply('spam');
+        $this->assertTrue($result->eventRowWritten, 'The event row is recorded either way');
+        $this->assertTrue($result->flagApplied, 'The flag step runs either way');
     }
 
     public function testNoClearBlockRowSetsNoBound(): void
@@ -518,6 +566,27 @@ final class EmailEventApplierTest extends TestCase
         $this->expectException(CarDatabaseException::class);
 
         $this->apply('hard_bounce');
+    }
+
+    /** The callers choose their response from the type of the first failure, so a failed rollback must not replace it. */
+    public function testAFailedRollbackDoesNotHideTheFirstFailure(): void
+    {
+        $this->givenState();
+        $this->mockManager->method('setBouncedFromEvent')->willThrowException(new CarDatabaseException('write failed'));
+        $this->mockRepo->method('rollback')->willThrowException(new \PDOException('rollback failed'));
+
+        try {
+            $this->apply('hard_bounce');
+            $this->fail('apply() must rethrow the first failure');
+        } catch (CarDatabaseException $e) {
+            $this->assertSame('write failed', $e->getMessage());
+        }
+
+        global $mockLogEntries;
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(42, $mockLogEntries[0]['user_id']);
+        $this->assertStringContainsString('rollback failed for userId=42', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('PDOException', $mockLogEntries[0]['message']);
     }
 
     public function testSourceIsPassedToTheOwnerFlagWriters(): void

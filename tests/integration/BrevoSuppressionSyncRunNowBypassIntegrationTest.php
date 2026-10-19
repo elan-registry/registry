@@ -74,7 +74,8 @@ final class BrevoSuppressionSyncRunNowBypassIntegrationTest extends IntegrationT
 
         // Contacts match the owner's users.email, so the owner holds the address.
         $this->carEmail = 'suppression-bypass-' . uniqid() . '@example.com';
-        $this->userId = $this->createTestUser(['email' => $this->carEmail]);
+        // A real owner always has a profiles row. Without one the flag step is skipped (#2393).
+        $this->userId = $this->createTestUser(['email' => $this->carEmail], true);
         $this->createTestCar($this->userId, ['email' => $this->carEmail]);
     }
 

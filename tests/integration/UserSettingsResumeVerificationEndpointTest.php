@@ -29,15 +29,21 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
     /** @var list<string> Temp files created by invokeResumeEndpoint(), cleaned up in tearDown(). */
     private array $createdTempFiles = [];
 
+    /** Name of the BEFORE UPDATE trigger that a test created on profiles, or null. Dropped in tearDown(). */
+    private ?string $failureTriggerName = null;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
         $this->createdTempFiles = [];
+        $this->failureTriggerName = null;
     }
 
     protected function tearDown(): void
     {
+        // A leaked trigger would fail profile writes of every later test.
+        $this->dropFailureTrigger();
         foreach (self::DB_ENV_VARS as $var) {
             putenv($var);
         }
@@ -116,6 +122,8 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
      * @param bool $omitCsrfKey Leave out the 'csrf' key entirely; overrides $withValidCsrf
      * @param bool $asGet Plain GET page load; the POST options are ignored
      * @param bool $withResumeField False sends the ordinary profile-update POST
+     * @param string|null $prependFile PHP file that the subprocess requires before UserSpice loads
+     *        (it can define logger() or usSuccess(), which UserSpice defines only when absent)
      * @return array{exitCode: int, raw: string, successFlash: string, errorFlash: string, warningFlash: string}
      */
     private function invokeResumeEndpoint(
@@ -124,7 +132,8 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         array $extraPost = [],
         bool $omitCsrfKey = false,
         bool $asGet = false,
-        bool $withResumeField = true
+        bool $withResumeField = true,
+        ?string $prependFile = null
     ): array {
         $endpointFile = dirname(__DIR__, 2) . '/usersc/user_settings.php';
         $projectRoot = dirname(__DIR__, 2);
@@ -190,6 +199,10 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             var_export($endpointFile, true)
         );
 
+        if ($prependFile !== null) {
+            $script = 'require ' . var_export($prependFile, true) . '; ' . $script;
+        }
+
         $raw = shell_exec('php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"');
         $raw = $raw !== null ? $raw : '';
 
@@ -205,6 +218,82 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
             'errorFlash' => self::flashText(is_array($decoded) ? ($decoded['error'] ?? null) : null),
             'warningFlash' => self::flashText(is_array($decoded) ? ($decoded['warning'] ?? null) : null),
         ];
+    }
+
+    /**
+     * Create a BEFORE UPDATE trigger on profiles that fails the resume write for one owner.
+     *
+     * The trigger SIGNALs when the update sets `email_opted_out` to 0 on the
+     * owner's row. It is scoped to the owner so a parallel test run is not
+     * affected. Pair every call with dropFailureTrigger() in a finally block.
+     */
+    private function createResumeFailureTrigger(int $ownerId): void
+    {
+        $this->failureTriggerName = 'trg_2406_resume_fail_' . $ownerId;
+        $this->db->query('DROP TRIGGER IF EXISTS ' . $this->failureTriggerName);
+        $this->db->query(
+            'CREATE TRIGGER ' . $this->failureTriggerName . ' BEFORE UPDATE ON profiles FOR EACH ROW '
+            . 'BEGIN IF NEW.user_id = ' . $ownerId . ' AND NEW.email_opted_out = 0 THEN '
+            . "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'simulated resume write failure (#2406)'; "
+            . 'END IF; END'
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: failed to create the trigger: ' . $this->db->errorString());
+    }
+
+    private function dropFailureTrigger(): void
+    {
+        if ($this->failureTriggerName !== null && $this->databaseConnected) {
+            $this->db->query('DROP TRIGGER IF EXISTS ' . $this->failureTriggerName);
+            $this->failureTriggerName = null;
+        }
+    }
+
+    /**
+     * Write a PHP file that makes logger() throw for the Resume log lines.
+     *
+     * users/helpers/us_helpers.php defines logger() only when it does not
+     * exist, so a file that the subprocess requires first wins. Only log
+     * lines that hold "user_settings.php: OPT-OUT CLEARED BY OWNER" throw.
+     * Any other log line goes to the `logs` table, as UserSpice does. Each throw is recorded in the marker file, so
+     * a test can prove that the throwing path ran.
+     *
+     * @param bool $failUsSuccess Also make usSuccess() throw for the Resume success message,
+     *                            which is a failed step after commit()
+     * @return array{file: string, marker: string}
+     */
+    private function writeFailingLoggerPrepend(bool $failUsSuccess = false): array
+    {
+        $marker = tempnam(sys_get_temp_dir(), 'resume-marker-');
+        $file = tempnam(sys_get_temp_dir(), 'resume-prepend-');
+        $this->createdTempFiles[] = $marker;
+        $this->createdTempFiles[] = $file;
+
+        $code = "<?php\n"
+            . 'function logger($user_id = "", $logtype = "", $lognote = "", $metadata = null) {' . "\n"
+            . '    if (is_string($lognote) && str_contains($lognote, "user_settings.php: OPT-OUT CLEARED BY OWNER")) {' . "\n"
+            . '        file_put_contents(' . var_export($marker, true) . ', "logger\n", FILE_APPEND);' . "\n"
+            . '        throw new \\RuntimeException("simulated logger failure");' . "\n"
+            . '    }' . "\n"
+            . '    global $db;' . "\n"
+            . '    if (!isset($db)) { return 0; }' . "\n"
+            . '    if (is_array($lognote) || is_object($lognote)) { $lognote = json_encode($lognote); }' . "\n"
+            . '    if (is_array($metadata) || is_object($metadata)) { $metadata = json_encode($metadata); }' . "\n"
+            . '    $db->insert("logs", ["user_id" => $user_id === "" ? 0 : $user_id, "logdate" => date("Y-m-d H:i:s"),' . "\n"
+            . '        "logtype" => $logtype, "lognote" => $lognote, "ip" => ipCheck(), "metadata" => $metadata]);' . "\n"
+            . '    return $db->lastId();' . "\n"
+            . "}\n";
+        if ($failUsSuccess) {
+            $code .= 'function usSuccess($msg) {' . "\n"
+                . '    if ($msg === "Registry email is resumed.") {' . "\n"
+                . '        file_put_contents(' . var_export($marker, true) . ', "usSuccess\n", FILE_APPEND);' . "\n"
+                . '        throw new \\RuntimeException("simulated post-commit failure");' . "\n"
+                . '    }' . "\n"
+                . '    sessionValMessages("", $msg);' . "\n"
+                . "}\n";
+        }
+        file_put_contents($file, $code);
+
+        return ['file' => $file, 'marker' => $marker];
     }
 
     /** A session flash value (a string or a list of strings) as one string. */
@@ -629,5 +718,82 @@ final class UserSettingsResumeVerificationEndpointTest extends IntegrationTestCa
         );
 
         $this->assertSame($before, $this->flags($ownerId), 'The profile-update path must not set any owner flag');
+    }
+
+    /**
+     * #2406: the resume write fails, the catch block runs, and logger() also
+     * throws. Each logger() call in the block is guarded, so the owner sees
+     * the "could not be resumed" message and not a fatal error.
+     */
+    #[Group('regression')]
+    public function testResumeFailureStillShowsCouldNotBeResumedWhenLoggerAlsoFails(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->setOwnerOptedOut($ownerId, true, '2026-01-02 03:04:05');
+        $before = $this->flags($ownerId);
+        $prepend = $this->writeFailingLoggerPrepend();
+
+        try {
+            $this->createResumeFailureTrigger($ownerId);
+
+            $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true, prependFile: $prepend['file']);
+        } finally {
+            $this->dropFailureTrigger();
+        }
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertStringNotContainsStringIgnoringCase('fatal error', $result['raw']);
+        // The failure path falls through and renders the page, which consumes
+        // the flash. The message is in the page output, not in the flash.
+        $this->assertStringContainsString(
+            'userSpiceMessage("Verification emails could not be resumed.',
+            $result['raw'],
+            'The owner must see the failure message'
+        );
+        $this->assertSame('', $result['successFlash']);
+        $this->assertSame($before, $this->flags($ownerId), 'The failed write must leave the profile unchanged');
+        $this->assertStringContainsString(
+            'logger',
+            (string) file_get_contents($prepend['marker']),
+            'Test sanity: the failing logger() must have been called'
+        );
+        $this->assertStringContainsString(
+            'logger failed: simulated logger failure',
+            $result['raw'],
+            'The guard must write the fallback line to the PHP error log'
+        );
+    }
+
+    /**
+     * #2406: the write is committed, a later step fails, and logger() also
+     * throws. The owner must still learn that the request was saved.
+     */
+    #[Group('regression')]
+    public function testPostCommitFailureStillShowsRequestSavedWhenLoggerAlsoFails(): void
+    {
+        $ownerId = $this->createEndpointTestUser();
+        $this->setOwnerOptedOut($ownerId, true, '2026-01-02 03:04:05');
+        $prepend = $this->writeFailingLoggerPrepend(failUsSuccess: true);
+
+        $result = $this->invokeResumeEndpoint($ownerId, withValidCsrf: true, prependFile: $prepend['file']);
+
+        $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
+        $this->assertStringNotContainsStringIgnoringCase('fatal error', $result['raw']);
+        $this->assertStringContainsString(
+            'userSpiceMessage("Your request was saved, but the confirmation could not be shown.',
+            $result['raw'],
+            'The owner must be told the change is saved'
+        );
+        $this->assertSame(
+            '0',
+            (string) $this->flags($ownerId)['email_opted_out'],
+            'The committed write must stay'
+        );
+        $this->assertSame(
+            "usSuccess\nlogger\n",
+            (string) file_get_contents($prepend['marker']),
+            'Test sanity: the post-commit step failed first, then logger() failed'
+        );
+        $this->assertStringContainsString('logger failed: simulated logger failure', $result['raw']);
     }
 }

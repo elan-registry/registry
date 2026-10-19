@@ -503,7 +503,21 @@ class CarVerificationManager
             }
             $this->repo->commit();
         } catch (\Throwable $e) {
-            $this->repo->rollback();
+            try {
+                $this->repo->rollback();
+            } catch (\Throwable $rollbackFailure) {
+                // A throw from rollback() would replace $e, the real cause.
+                $message = 'CarVerificationManager::clearFlagsForConfirmedEmailChange() rollback failed for userId='
+                    . $userId . ' [' . get_class($rollbackFailure) . ']: ' . $rollbackFailure->getMessage()
+                    . ' (original failure: ' . get_class($e) . ')';
+                try {
+                    logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
+                } catch (\Throwable $logFailure) {
+                    // logger() writes to the database. If that fails too, the
+                    // PHP error log is the only record left.
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+                }
+            }
             throw $e;
         }
 
