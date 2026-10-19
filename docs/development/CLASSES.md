@@ -854,7 +854,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
   (`CarBadges::verifiedTooltip()`) use it. `freshnessSql()` writes the same
   window as `INTERVAL 1 YEAR`; a unit test pins the two together.
 - `QUEUE_STATUSES` - Public constant, `['all', 'eligible', 'pending',
-  'bounced', 'suppressed', 'verified', 'sold']`. The statuses
+  'bounced', 'blocked', 'opted_out', 'verified', 'sold']`. The statuses
   `findVerificationQueue()` accepts. Public so the admin dashboard can check
   a `?status=` URL value against the same list (#1896).
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification state for
@@ -888,19 +888,22 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `cars.*` only, with no profile fields.
 - `countVerificationSummary(?int $windowDays): array` - Count cars in each
   verification dashboard state: `all`, `eligible`, `pending`, `bounced`,
-  `suppressed`, `verified`, `sold`. Backs the admin dashboard's summary cards
-  and filter-pill counts (#1896). `eligible`, `pending`, `bounced`, and
-  `suppressed` are current state; `verified` and `sold` count distinct
+  `blocked`, `opted_out`, `verified`, `sold`, and count owners for the three
+  owner cards: `bounced_owners`, `blocked_owners`, `opted_out_owners`. Backs
+  the admin dashboard's summary cards and filter-pill counts (#1896, #2361).
+  The pills show the car counts. The Bounced, Blocked and Opted out cards show
+  the owner counts (`COUNT(DISTINCT cars.user_id)`), so an owner with several
+  cars counts once. `eligible`, `pending`, `bounced`, `blocked` and
+  `opted_out` are current state; `verified` and `sold` count distinct
   existing cars with a matching `cars_hist` row in the `$windowDays` window
   (`null` for all time). `all` counts distinct cars that are eligible,
-  pending, bounced, or suppressed — it excludes verified and sold, since
-  those are history, not a queue state. Bounced and suppressed can overlap,
-  so `all` can be less than the sum of the four. `all` also counts the unsold cars of a live owner
-  (not `noowner`) who has no `profiles` row, so the queue shows them as "No profile". `bounced` counts
-  cars whose owner's `email_bounced` applies to the owner's current address
-  (`emailFlagActiveSql()`). `pending` leaves out those cars. `suppressed` counts cars whose
-  owner's `email_blocked` applies in the same way, or whose owner has `email_opted_out = 1`,
-  until #2361 separates them. Throws
+  pending, bounced, blocked or opted out — it excludes verified and sold, since
+  those are history, not a queue state. One owner can have more than one flag,
+  so `all` can be less than the sum of the pills. `all` also counts the unsold cars of a live owner
+  (not `noowner`) who has no `profiles` row, so the queue shows them as "No profile". `bounced` and
+  `blocked` count cars whose owner's flag applies to the owner's current address
+  (`emailFlagActiveSql()`). `opted_out` counts cars whose owner has `email_opted_out = 1`; an
+  opt-out is not tied to an address. `pending` leaves out the bounced, blocked and opted-out cars. Throws
   `CarValidationException` if `$windowDays` is zero or negative, and
   `CarDatabaseException` on a query failure.
 - `findVerificationQueue(string $status, ?int $windowDays, int $limit): array` -
@@ -909,7 +912,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
   in `countVerificationSummary()`. `$windowDays` applies only to `verified`
   and `sold`. Row order depends on status: `pending` is longest-waiting
   first, `eligible` is oldest-verified first, `verified`/`sold` is most
-  recent history row first, and `all`/`bounced`/`suppressed` is car id
+  recent history row first, and `all`/`bounced`/`blocked`/`opted_out` is car id
   ascending. Each row carries the owner's state from `profiles`: `has_profile`,
   `email_opted_out`, `email_blocked_active`, `email_blocked_cause` and `email_bounced_active`. The
   `_active` columns are 1 only while the flag applies to the owner's current address
@@ -1607,6 +1610,12 @@ unit test (needs the full UserSpice bootstrap).
 
 **Methods**:
 
+- `capToBatchSize(array $ids, int $batchSize): array` - Static; truncate
+  submitted ids to the configured batch size. A batch size below 1 is
+  treated as 1. Returns `['ids' => list<mixed>, 'logMessage' => ?string,
+  'adminMessage' => ?string]`. Messages
+  are `null` when no truncation happened. Called before filtering to prevent
+  hand-crafted POSTs from starting more blocking Brevo calls than allowed.
 - `processBatch(array $carIds): array` - Given positive car ids, re-reads
   each via `CarRepository::findById()`, re-checks eligibility via
   `VerificationEligibility::skipReason()`, sends via
@@ -1634,6 +1643,112 @@ unit test (needs the full UserSpice bootstrap).
   orchestration this class calls per car
 - [SendResult](#sendresult) - The value object whose `isUnrecorded()` drives
   the bucket routing this class exists to cover
+
+---
+
+### VerificationTabStatus
+
+**Location**: `/usersc/classes/Car/VerificationTabStatus.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Status rules for the admin Verification tab. Holds the probe
+results that the tab shows in its "System Status & Feature Switch" panel and
+its Automatic Sending card. Provides the panel rows, the single all-healthy flag, the
+auto-send job state, outcome counts, and the Status chip for the verification
+queue. Each probe runs in its own try/catch, so one failure does not stop the
+other probes.
+
+**Key Features**:
+
+- Static `read()` factory runs all status probes with per-probe try/catch
+  guards: VerificationSettings, CronJobRunsReader (for three jobs), cron failure
+  log reader
+- `rows()` gives the panel rows in render order with badges, icons, detail text,
+  and recent failure entries
+- `allHealthy()` is `false` when the settings probe failed, the switch is off,
+  Brevo is not ready, cron is not running, the unmatched-recipient count is not
+  0 (or unreadable), or the cron failure count is not 0 (or unreadable)
+- `autoSendState()`, `autoSendLastRunAt()`, `autoSendBadge()`, `autoSendPaused()`,
+  `autoSendLastRunFailed()`, `autoSendCounts()`, `autoSendCountsUnreadable()`,
+  `autoSendNextEligibleAt()`, `autoSendDesiredState()` give the automatic send job
+  state and the card and Pause/Resume button state
+- Static `chip()` method generates the Status chip for a car row: profile state
+  (no profile / blocked / opted out) takes precedence over the car's latest email
+  event
+
+**Constants**:
+
+- `TIME_FORMAT` - Date and time format for every time the tab shows (`M j, Y g:i A`)
+
+**Methods**:
+
+- `read(DatabaseInterface $db, int $userId): self` - Static factory; run all
+  status probes, each in its own try/catch. Logs a settings probe failure under
+  `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` and a cron job probe failure under
+  `LOG_CATEGORY_CRON_JOB_FAILURE`
+- `probeFailed(): bool` - True when the VerificationSettings probe threw
+- `brevoReady(): bool` - True when Brevo is ready to send tagged mail: the
+  settings probe did not fail and it gave no not-ready reason
+- `rows(): array` - Give the panel rows in render order. Each row is an associative
+  array with `key`, `label`, `badgeText`, `badgeClass`, `icon`, `detail`,
+  `detailIcon`, and `recent` (list of recent failure entries)
+- `allHealthy(): bool` - True when the settings probe worked, the switch is on,
+  Brevo is ready, cron runs, the unmatched count is 0, and the cron failure
+  count is 0. An unreadable counter or failure log is not healthy.
+  Reconciliation, suppression sync and automatic send job states do not count
+- `featureSwitch(bool $canToggle): array` - Give the feature switch state for the
+  panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' => string]`
+- `autoSendState(): CronJobEnabledState` - The automatic send job's enabled state
+- `autoSendLastRunAt(): ?DateTimeImmutable` - When the automatic send job last
+  claimed a run, or `null` if never
+- `autoSendBadge(): array` - Give the automatic send job's badge. Returns
+  `['badgeClass' => string, 'icon' => string, 'text' => string]`
+- `autoSendPaused(): bool` - True when an admin paused the automatic send job
+- `autoSendLastRunFailed(): bool` - True when the most recent claimed run is the
+  one that threw
+- `autoSendCounts(): ?array` - Give the last run's outcome counts
+  `['sent' => int, 'skipped' => int, 'failed' => int]`, or `null` when the job
+  never ran or counts are unreadable
+- `autoSendCountsUnreadable(): bool` - True when the counts read failed (distinct
+  from `null` counts, which is routine when the job never ran)
+- `autoSendNextEligibleAt(): ?DateTimeImmutable` - Give the earliest time the
+  guard allows the next automatic run, or `null` when the job never ran
+- `autoSendDesiredState(): string` - Give the state the Pause/Resume button asks
+  for. Returns `'disable'` when the job is enabled, `'enable'` when not
+- `chip(?object $event, bool $hasProfile, bool $blocked, ?string $blockedCause,
+  bool $optedOut): array` - Static method. Give the Status chip for a car row.
+  Profile state (no profile / blocked / opted out) takes precedence; otherwise
+  the chip shows the car's latest email event. Returns
+  `['kind' => string, 'label' => string, 'class' => string, 'reason' => string]`.
+  `kind` is empty when there is no event to show
+
+**Constructor Parameters**:
+
+- `bool $probeFailed` - True when VerificationSettings probe threw
+- `bool $enabled` - Site-wide switch state
+- `?string $brevoNotReadyReason` - Reason Brevo is not ready, or `null`
+- `bool $cronReady` - Cron status
+- `?DateTimeImmutable $lastCronAt` - Last cron request timestamp, or `null`
+- `?int $unmatchedCount` - Unmatched-recipient count, or `null` when unreadable
+- `array $reconciliation` - Reconciliation job status from `CronJobRunsReader::status()`
+- `array $suppressionSync` - Suppression sync job status
+- `array $autoSend` - Automatic send job status
+- `?array $autoSendOutcome` - Outcome counts or `null` when probe threw
+- `?array $failureLog` - Recent failures or `null` when probe threw
+
+**Used By**:
+
+- Admin Verification tab (`app/admin/includes/tab-verification.php`,
+  `app/admin/includes/verification-status-panel.php`) — renders the System Status &
+  Feature Switch panel, the Automatic Sending card state, and the Status chip on queue
+  rows (#2330, #2364)
+
+**See Also**:
+
+- [VerificationSettings](#verificationsettings) - Feature switch and readiness probes
+- [CronJobRunsReader](#cronjobrunsreader) - Job run status and badge
+- [EmailEventApplier](#emaileventapplier) - Hard bounce event detection for the chip
 
 ---
 

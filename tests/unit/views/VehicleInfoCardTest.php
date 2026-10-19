@@ -43,6 +43,11 @@ final class VehicleInfoCardTest extends TestCase
     private static function render(string $file, array $vars): string
     {
         extract($vars, EXTR_SKIP);
+        // Lets a reviewer prove a test can fail: point the card at a copy of an older partial.
+        $override = getenv('VEHICLE_INFO_CARD_PATH');
+        if ($file === self::CARD && is_string($override) && $override !== '') {
+            $file = $override;
+        }
         // A PHP warning or deprecation inside the view is a defect, not noise:
         // PHPUnit would only list it as a warning and the test would still pass.
         set_error_handler(static function (int $severity, string $message, string $errFile, int $line): never {
@@ -419,19 +424,22 @@ final class VehicleInfoCardTest extends TestCase
             'email_blocked_address' => null,
             'email_bounced' => 0,
             'email_bounced_address' => null,
+            'email_opted_out_at' => null,
+            'email_blocked_at' => null,
+            'email_bounced_at' => null,
         ], $overrides);
 
         return new EffectiveEmailFlags(
             true,
             (int) $o['email_opted_out'] === 1,
-            null,
+            $o['email_opted_out_at'],
             (int) $o['email_blocked'] === 1,
             $o['email_blocked_address'],
-            null,
+            $o['email_blocked_at'],
             null,
             (int) $o['email_bounced'] === 1,
             $o['email_bounced_address'],
-            null,
+            $o['email_bounced_at'],
             null
         );
     }
@@ -477,7 +485,8 @@ final class VehicleInfoCardTest extends TestCase
 
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
         $this->assertStringNotContainsString('Bounced', $html);
-        $this->assertStringNotContainsString('Suppressed', $html);
+        $this->assertStringNotContainsString('Blocked', $html);
+        $this->assertStringNotContainsString('Opted out', $html);
     }
 
     /**
@@ -496,35 +505,181 @@ final class VehicleInfoCardTest extends TestCase
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
     }
 
-    /** @return array<string, array{array<string, mixed>, bool, bool}> */
+    /**
+     * An owner who is not an admin and a guest both get $viewerIsRegistryAdmin
+     * false or unset. Every state is set, so only the viewer check hides the row.
+     */
+    public function test_emailRow_ownerAndGuest_seeNoStateNamesDatesOrTooltips(): void
+    {
+        $state = self::ownerState([
+            'email_opted_out' => 1, 'email_opted_out_at' => '2025-03-05 10:00:00',
+            'email_bounced' => 1, 'email_bounced_at' => '2024-01-09 10:00:00',
+            'email_blocked' => 1, 'email_blocked_at' => '2023-12-31 10:00:00',
+        ]);
+        $car = self::carData(['user_id' => 42]);
+
+        foreach (['owner' => ['viewerIsRegistryAdmin' => false], 'guest' => []] as $who => $vars) {
+            $html = self::render(self::CARD, array_merge(['carData' => $car, 'ownerEmailState' => $state], $vars));
+            $xp = self::dom($html);
+
+            $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'), $who);
+            $this->assertSame(0, $this->nodeCount($xp, '//button[contains(@aria-label,"Opted out") or contains(@aria-label,"Bounced") or contains(@aria-label,"Blocked") or contains(@aria-label,"Email on file")]'), $who);
+            foreach (['Opted out', 'Bounced', 'Blocked', 'March 5, 2025', 'January 9, 2024', 'December 31, 2023'] as $needle) {
+                $this->assertStringNotContainsString($needle, $html, "{$who}: {$needle}");
+            }
+        }
+    }
+
+    /** @return array<string, array{array<string, mixed>, list<string>}> */
     public static function adminFlagProvider(): array
     {
         return [
-            'bounced only'    => [['email_bounced' => 1], true, false],
-            'blocked only'    => [['email_blocked' => 1], false, true],
-            'opted out only'  => [['email_opted_out' => 1], false, true],
-            'bounced and blocked' => [['email_bounced' => 1, 'email_blocked' => 1], true, true],
-            'string flags'    => [['email_bounced' => '1', 'email_opted_out' => '1'], true, true],
+            'bounced only'        => [['email_bounced' => 1], ['Bounced']],
+            'blocked only'        => [['email_blocked' => 1], ['Blocked']],
+            'opted out only'      => [['email_opted_out' => 1], ['Opted out']],
+            'bounced and blocked' => [['email_bounced' => 1, 'email_blocked' => 1], ['Bounced', 'Blocked']],
+            'all three'           => [['email_opted_out' => 1, 'email_bounced' => 1, 'email_blocked' => 1], ['Opted out', 'Bounced', 'Blocked']],
+            'string flags'        => [['email_bounced' => '1', 'email_opted_out' => '1'], ['Opted out', 'Bounced']],
         ];
     }
 
-    /** @param array<string, mixed> $flags */
+    /**
+     * @param array<string, mixed> $flags
+     * @param list<string>         $expected The state names in display order
+     */
     #[DataProvider('adminFlagProvider')]
-    public function test_emailRow_admin_showsOnlyTheFlagsSetOnTheOwnerProfile(array $flags, bool $bounced, bool $suppressed): void
+    public function test_emailRow_admin_showsOnlyTheFlagsSetOnTheOwnerProfile(array $flags, array $expected): void
     {
         $xp = self::card(
             self::carData(),
             ['viewerIsRegistryAdmin' => true, 'ownerEmailState' => self::ownerState($flags)]
         );
 
-        $dd = $this->firstElement($xp, self::EMAIL_DD);
-        $this->assertSame($bounced ? 1 : 0, substr_count($dd->textContent, 'Bounced'));
-        $this->assertSame($suppressed ? 1 : 0, substr_count($dd->textContent, 'Suppressed'));
+        $this->assertSame($expected, $this->stateNames($xp));
         $this->assertSame(
-            ($bounced ? 1 : 0) + ($suppressed ? 1 : 0),
+            count($expected),
             $this->nodeCount($xp, self::EMAIL_DD . '//button[@aria-label]')
         );
+        $this->assertSame(0, $this->nodeCount($xp, '//*[contains(.,"Suppressed")]'));
         $this->assertSame(1, $this->nodeCount($xp, '//dl[contains(@class,"row")]/dt[contains(@class,"col-sm-4") and starts-with(normalize-space(.),"Email on file")]'));
+    }
+
+    /**
+     * The state names in the Email on file value, in document order. Each
+     * name is the first word group of its span, before any date.
+     *
+     * @return list<string>
+     */
+    private function stateNames(DOMXPath $xp): array
+    {
+        $names = [];
+        $spans = $xp->query(self::EMAIL_DD . '/span');
+        $this->assertNotFalse($spans);
+        foreach ($spans as $span) {
+            $text = trim(preg_replace('/\s+/', ' ', $span->textContent) ?? '');
+            $this->assertSame(1, preg_match('/^(Opted out|Bounced|Blocked)\b/', $text, $m), "Unexpected span text: {$text}");
+            $names[] = $m[1];
+        }
+
+        return $names;
+    }
+
+    /** @return array<string, array{string, string, string}> */
+    public static function stateDateProvider(): array
+    {
+        return [
+            'opted out' => ['email_opted_out', 'Opted out', 'March 5, 2025'],
+            'bounced'   => ['email_bounced', 'Bounced', 'January 9, 2024'],
+            'blocked'   => ['email_blocked', 'Blocked', 'December 31, 2023'],
+        ];
+    }
+
+    #[DataProvider('stateDateProvider')]
+    public function test_emailRow_state_showsItsOwnDateInLongFormat(string $column, string $name, string $expectedDate): void
+    {
+        $dates = [
+            'email_opted_out' => '2025-03-05 10:11:12',
+            'email_bounced'   => '2024-01-09 00:00:00',
+            'email_blocked'   => '2023-12-31 23:59:59',
+        ];
+        $xp = self::card(self::carData(), [
+            'viewerIsRegistryAdmin' => true,
+            'ownerEmailState' => self::ownerState([
+                $column => 1,
+                $column . '_at' => $dates[$column],
+            ]),
+        ]);
+
+        $span = $this->firstElement($xp, self::EMAIL_DD . '/span');
+        $this->assertSame("{$name} {$expectedDate}", trim(preg_replace('/\s+/', ' ', $span->textContent) ?? ''));
+        $this->assertSame([], self::logEntries());
+    }
+
+    public function test_emailRow_allThreeStates_eachShowsItsOwnDate(): void
+    {
+        $xp = self::card(self::carData(), [
+            'viewerIsRegistryAdmin' => true,
+            'ownerEmailState' => self::ownerState([
+                'email_opted_out' => 1, 'email_opted_out_at' => '2025-03-05 10:00:00',
+                'email_bounced' => 1, 'email_bounced_at' => '2024-01-09 10:00:00',
+                'email_blocked' => 1, 'email_blocked_at' => '2023-12-31 10:00:00',
+            ]),
+        ]);
+
+        $texts = [];
+        $spans = $xp->query(self::EMAIL_DD . '/span');
+        $this->assertNotFalse($spans);
+        foreach ($spans as $span) {
+            $texts[] = trim(preg_replace('/\s+/', ' ', $span->textContent) ?? '');
+        }
+        $this->assertSame(
+            ['Opted out March 5, 2025', 'Bounced January 9, 2024', 'Blocked December 31, 2023'],
+            $texts
+        );
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function emptyDateProvider(): array
+    {
+        $out = [];
+        foreach (['email_opted_out' => 'Opted out', 'email_bounced' => 'Bounced', 'email_blocked' => 'Blocked'] as $col => $name) {
+            $out["{$name} NULL"]      = [$col, $name, null];
+            $out["{$name} empty"]     = [$col, $name, ''];
+            $out["{$name} zero date"] = [$col, $name, '0000-00-00 00:00:00'];
+        }
+
+        return $out;
+    }
+
+    #[DataProvider('emptyDateProvider')]
+    public function test_emailRow_stateWithNoDate_showsNameOnlyAndDoesNotLog(string $column, string $name, ?string $at): void
+    {
+        $xp = self::card(self::carData(), [
+            'viewerIsRegistryAdmin' => true,
+            'ownerEmailState' => self::ownerState([$column => 1, $column . '_at' => $at]),
+        ]);
+
+        $span = $this->firstElement($xp, self::EMAIL_DD . '/span');
+        $this->assertSame($name, trim(preg_replace('/\s+/', ' ', $span->textContent) ?? ''));
+        $this->assertDoesNotMatchRegularExpression('/\d/', $span->textContent);
+        $this->assertSame([], self::logEntries());
+    }
+
+    /** A date that DateTime cannot parse shows no date, logs once, and puts no markup in the output. */
+    public function test_emailRow_stateWithUnparsableDate_showsNoDateAndLogsOnce(): void
+    {
+        $html = self::render(self::CARD, [
+            'carData' => self::carData(),
+            'viewerIsRegistryAdmin' => true,
+            'ownerEmailState' => self::ownerState(['email_bounced' => 1, 'email_bounced_at' => '<script>x</script>"\'']),
+        ]);
+        $xp = self::dom($html);
+
+        $this->assertSame(['Bounced'], $this->stateNames($xp));
+        $this->assertSame(0, $this->nodeCount($xp, '//script'));
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertCount(1, self::logEntries());
+        $this->assertStringContainsString('email_bounced_at', (string) self::logEntries()[0]['message']);
     }
 
     public function test_emailRow_adminNoFlagOnTheProfile_hasNoRow(): void
@@ -578,38 +733,95 @@ final class VehicleInfoCardTest extends TestCase
         $this->assertSame(0, $this->nodeCount($xp, '//dt[contains(.,"Email on file")]'));
     }
 
-    public function test_emailRow_tooltips_areDistinctAndSuppressedNamesClearSuppression(): void
+    private function tooltip(DOMXPath $xp, string $ariaLabel): string
     {
-        $vars = self::flaggedVars(true, true);
-        $xp = self::card($vars['carData'], array_merge($vars, ['viewerIsRegistryAdmin' => true]));
+        return $this->firstElement($xp, '//button[@aria-label="' . $ariaLabel . '"]')->getAttribute('data-bs-title');
+    }
 
-        $bounced = $this->firstElement($xp, '//button[@aria-label="What Bounced means"]')->getAttribute('data-bs-title');
-        $suppressed = $this->firstElement($xp, '//button[@aria-label="What Suppressed means"]')->getAttribute('data-bs-title');
-        $label = $this->firstElement($xp, '//button[@aria-label="What Email on file means"]')->getAttribute('data-bs-title');
+    private static function allThreeVars(): array
+    {
+        return [
+            'carData' => self::carData(),
+            'viewerIsRegistryAdmin' => true,
+            'ownerEmailState' => self::ownerState([
+                'email_opted_out' => 1, 'email_bounced' => 1, 'email_blocked' => 1,
+            ]),
+        ];
+    }
 
-        $this->assertNotSame('', $bounced);
-        $this->assertNotSame($bounced, $suppressed);
-        $this->assertNotSame($label, $bounced);
-        $this->assertNotSame($label, $suppressed);
+    public function test_emailRow_tooltips_areDistinctAndNamedForTheirState(): void
+    {
+        $vars = self::allThreeVars();
+        $xp = self::card($vars['carData'], $vars);
+
+        $optedOut = $this->tooltip($xp, 'What Opted out means');
+        $bounced = $this->tooltip($xp, 'What Bounced means');
+        $blocked = $this->tooltip($xp, 'What Blocked means');
+        $label = $this->tooltip($xp, 'What Email on file means');
+
+        $this->assertCount(4, array_unique([$optedOut, $bounced, $blocked, $label]));
         $this->assertSame(
-            "Only admins and editors see this row. It shows why the registry does not send verification emails to this owner's address.",
-            $label
+            'The owner stopped all registry email except account email. The owner can lift the opt-out with '
+            . 'Resume registry email in Account Settings, or an admin can lift it.',
+            $optedOut
         );
         $this->assertSame(
-            "This owner's address is on the email suppression list, so no verification emails are sent. "
-            . 'An admin can use Clear Suppression on the Verification System tab. '
-            . 'A block also ends when the owner confirms a changed email address. '
-            . 'If the cause is only an owner opt-out, the owner can use Resume registry email in their '
-            . 'Account Settings. Resume does not clear a block.',
-            $suppressed
-        );
-        $this->assertStringContainsString('Clear Suppression', $suppressed);
-        $this->assertStringContainsString('Resume registry email', $suppressed);
-        $this->assertStringNotContainsString('Resume', $bounced);
-        $this->assertSame(
-            'Email to this owner bounced. Verification emails start again when the owner confirms a different, working address.',
+            "Email to this owner's address bounced. The registry does not send verification email, messages from other owners, "
+            . 'or messages from an admin to this owner. The owner can lift the bounce by confirming a different email address, '
+            . 'or an admin can lift it.',
             $bounced
         );
+        $this->assertSame(
+            "This owner's address is blocked. The registry does not send verification email or messages from other owners to this owner. "
+            . 'A message from an admin is still sent. The owner can lift the block by confirming a different email address, '
+            . 'or an admin can lift it.',
+            $blocked
+        );
+        $this->assertSame(
+            'Only admins and editors see this row. It shows why the registry does not send verification email '
+            . 'or messages from other owners to this owner.',
+            $label
+        );
+    }
+
+    public function test_emailRow_noTooltipNamesClear(): void
+    {
+        $vars = self::allThreeVars();
+        $xp = self::card($vars['carData'], $vars);
+
+        $buttons = $xp->query(
+            '//dt[starts-with(normalize-space(.),"Email on file")]//button | ' . self::EMAIL_DD . '//button'
+        );
+        $this->assertNotFalse($buttons);
+        $this->assertSame(4, $buttons->length);
+        foreach ($buttons as $button) {
+            $this->assertInstanceOf(DOMElement::class, $button);
+            $this->assertStringNotContainsString('Clear', $button->getAttribute('data-bs-title'));
+            $this->assertStringNotContainsString('Suppress', $button->getAttribute('data-bs-title'));
+        }
+    }
+
+    /** The apostrophe in a tooltip must leave the attribute as an entity, so it cannot end the attribute early. */
+    public function test_emailRow_tooltipsAreAttributeEscapedInRawHtml(): void
+    {
+        $vars = self::allThreeVars();
+        $html = self::render(self::CARD, $vars);
+
+        $this->assertSame(
+            1,
+            preg_match_all('/data-bs-title="([^"]*)"/', $html, $m, PREG_SET_ORDER) > 0 ? 1 : 0
+        );
+        $emailTitles = array_filter(
+            array_column($m, 1),
+            static fn (string $t): bool => str_contains($t, 'owner') && str_contains($t, 'registry')
+        );
+        $this->assertNotEmpty($emailTitles);
+        foreach ($emailTitles as $title) {
+            $this->assertStringNotContainsString("'", $title);
+        }
+        $this->assertStringContainsString("Email to this owner&#039;s address bounced.", $html);
+        $this->assertStringContainsString("This owner&#039;s address is blocked.", $html);
+        $this->assertStringNotContainsString("owner's address", $html);
     }
 
     public function test_emailRow_soldCarAsAdmin_withFlag_showsRowAndNoVerifiedRow(): void

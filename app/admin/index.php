@@ -577,19 +577,15 @@ if (ElanInput::existsPost()) {
                     // to 5 on any read problem.
                     $vsSendBatchSize = (new VerificationSettings(dbi()))->batchSize();
 
-                    if (count($submittedIds) > $vsSendBatchSize) {
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                            'Verification send: car_ids[] carried %d ids, exceeding the configured batch size '
-                            . 'of %d; truncated to the first %d.',
-                            count($submittedIds),
-                            $vsSendBatchSize,
-                            $vsSendBatchSize
-                        ));
-                        $errors[] = sprintf(
-                            'Only the first %d cars were sent — the request exceeded the configured batch size.',
-                            $vsSendBatchSize
-                        );
-                        $submittedIds = array_slice($submittedIds, 0, $vsSendBatchSize);
+                    $vsCap = VerificationBatchSender::capToBatchSize($submittedIds, $vsSendBatchSize);
+                    $submittedIds = $vsCap['ids'];
+
+                    if ($vsCap['logMessage'] !== null) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $vsCap['logMessage']);
+                    }
+
+                    if ($vsCap['adminMessage'] !== null) {
+                        $errors[] = $vsCap['adminMessage'];
                     }
 
                     // Non-positive ids are filtered here, before the batch

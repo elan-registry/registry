@@ -81,20 +81,33 @@ deletes them with the account. Admins see the email state of each owner.
   The suppression sync job counts an owner whose flag step did not run (no profile row, an old address,
   or an event before a guard date) as skipped, not matched.
   ([#2393](https://github.com/elan-registry/registry/issues/2393))
+- The Verification tab shows Bounced, Blocked and Opted out as three summary cards. Each card counts owners, so an owner with several cars counts
+  once. The filter pills Blocked (`?status=blocked`) and Opted out (`?status=opted_out`) replace Suppressed. An old `?status=suppressed` link shows all
+  rows.
+  ([#2361](https://github.com/elan-registry/registry/issues/2361))
+- The Status chip of a car shows "Blocked" for a blocked owner. Before, it showed "Brevo complaint".
+  ([#2361](https://github.com/elan-registry/registry/issues/2361))
+- The Email on file row on the car details page shows "Opted out", "Bounced" and "Blocked" as separate states, each with its date and its own tooltip.
+  Only admins and editors see the row.
+  ([#2361](https://github.com/elan-registry/registry/issues/2361))
+- The System Status & Feature Switch panel is always directly above Automatic Sending. It opens when a status needs attention.
+  ([#2364](https://github.com/elan-registry/registry/issues/2364))
+- When the Brevo status check fails, the Brevo row shows "Not ready" and the reason "The Brevo status could not be checked."
+  ([#2330](https://github.com/elan-registry/registry/issues/2330))
 
 ## Issues Resolved
 
 - [#2165](https://github.com/elan-registry/registry/issues/2165) — Add `IntegrationTestCase::invokeEndpoint()` and HTTP-level tests for the owner-contact
   IDOR check and the admin AJAX CSRF check (the `save.php` ownership and `statistics.php` validation tests move to
   [#2362](https://github.com/elan-registry/registry/issues/2362)).
-- WIP: [#2330](https://github.com/elan-registry/registry/issues/2330) — Move the Verification tab status and batch cap into classes, with new tests.
+- [#2330](https://github.com/elan-registry/registry/issues/2330) — Move the Verification tab status and batch cap into classes, with new tests.
 - [#2358](https://github.com/elan-registry/registry/issues/2358) — Key email events by user and keep them through car delete, merge, and account deletion.
 - [#2359](https://github.com/elan-registry/registry/issues/2359) — Apply delivery events from all registry mail to the owner profile, matched by
   message ID.
 - [#2360](https://github.com/elan-registry/registry/issues/2360) — Apply the profile send policy to owner-to-owner and admin contact.
-- WIP: [#2361](https://github.com/elan-registry/registry/issues/2361) — Show the email state of each owner (Bounced, Blocked, Opted out) to admins.
-- WIP: [#2364](https://github.com/elan-registry/registry/issues/2364) — Keep the Status panel in one place on the Verification tab.
-- WIP: [#2386](https://github.com/elan-registry/registry/issues/2386) — Correct the EMAIL_SYSTEM.md Status Indicators list for the webhook and
+- [#2361](https://github.com/elan-registry/registry/issues/2361) — Show the email state of each owner (Bounced, Blocked, Opted out) to admins and editors.
+- [#2364](https://github.com/elan-registry/registry/issues/2364) — Keep the Status panel in one place on the Verification tab.
+- [#2386](https://github.com/elan-registry/registry/issues/2386) — Correct the EMAIL_SYSTEM.md Status Indicators list for the webhook and
   reconciliation rows.
 - [#2393](https://github.com/elan-registry/registry/issues/2393) — Fix the error handling in the deliverability event path that the #2101 review found.
 - [#2406](https://github.com/elan-registry/registry/issues/2406) — Stop a failed owner resume from causing a 500 error.

@@ -1934,14 +1934,15 @@ final class CarRepositoryTest extends TestCase
             'all' => ['all'],
             'pending' => ['pending'],
             'bounced' => ['bounced'],
-            'suppressed' => ['suppressed'],
+            'blocked' => ['blocked'],
+            'opted_out' => ['opted_out'],
         ];
     }
 
     /**
      * Every flag-based queue view reads the flags through the predicate, and
      * joins `users` as `u` for it. A stored flag for an old address must not
-     * put a car in the Bounced or Suppressed view.
+     * put a car in the Bounced or Blocked view.
      */
     #[DataProvider('queueStatusProvider')]
     public function testFindVerificationQueueReadsFlagsThroughThePredicate(string $status): void
@@ -1994,16 +1995,34 @@ final class CarRepositoryTest extends TestCase
         );
         $db->method('error')->willReturn(false);
         $db->method('first')->willReturn((object) [
-            'eligible' => 0, 'pending' => 0, 'bounced' => 0, 'suppressed' => 0, 'all_count' => 0,
+            'eligible' => 0, 'pending' => 0, 'bounced' => 0, 'blocked' => 0, 'opted_out' => 0, 'all_count' => 0,
             'verified' => 0, 'sold' => 0,
+            'bounced_owners' => 0, 'blocked_owners' => 0, 'opted_out_owners' => 0,
         ]);
 
-        (new CarRepository($db))->countVerificationSummary(null);
+        $summary = (new CarRepository($db))->countVerificationSummary(null);
 
         $this->assertNotNull($capturedSql);
         $this->assertStringContainsString('LEFT JOIN users u ON u.id = cars.user_id', $capturedSql);
         $this->assertStringContainsString(CarRepository::emailFlagActiveSql('email_bounced'), $capturedSql);
         $this->assertStringContainsString(CarRepository::emailFlagActiveSql('email_blocked'), $capturedSql);
+        $this->assertSame(
+            [
+                'all', 'eligible', 'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold',
+                'bounced_owners', 'blocked_owners', 'opted_out_owners',
+            ],
+            array_keys($summary),
+            'The summary holds one car count per pill and one owner count per flag card'
+        );
+    }
+
+    public function testFindVerificationQueueRejectsTheRemovedSuppressedStatus(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->never())->method('query');
+
+        $this->expectException(CarValidationException::class);
+        (new CarRepository($db))->findVerificationQueue('suppressed', null, 10);
     }
 
     // countSoftBouncesSinceLastDelivered()
