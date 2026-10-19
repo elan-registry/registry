@@ -320,6 +320,9 @@ jobs:
 
             For each finding on a specific line, post an inline comment with
             `mcp__github_inline_comment__create_inline_comment` (confirmed: true).
+            Every finding that you post as an inline comment must also be in
+            the summary comment, under its severity heading, with file:line.
+            The merge gate reads only the summary comment.
 
             Then post your review summary as a PR comment using:
 
@@ -673,6 +676,9 @@ jobs:
 
             For each finding on a specific line, post an inline comment with
             `mcp__github_inline_comment__create_inline_comment` (confirmed: true).
+            Every finding that you post as an inline comment must also be in
+            the summary comment, under its severity heading, with file:line.
+            The merge gate reads only the summary comment.
 
             Then post your review summary as a PR comment using:
 
