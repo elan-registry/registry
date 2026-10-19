@@ -142,6 +142,10 @@ after an item is written.
 
 - [ ] The class does not delete the `logs` rows that its endpoint calls write (`AccessDenied`, `user_id = 0`, and `VerificationConfigChanged` rows), so they build up on every run. Use the `logIdFloor` and per-user `DELETE` pattern from `AdminAjaxGuardBehaviorTest` (found in #2165)
 
+### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php`
+
+- [ ] `testRepositorySqlHasNoMaxOverTheProfileFlagColumns` (~L151) and `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L392) read source text with `file_get_contents()`. Replace them with behavior tests (found in #2330)
+
 ### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 
 - [ ] The class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move it onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copy (found in #2167)
