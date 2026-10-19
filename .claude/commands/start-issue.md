@@ -577,7 +577,32 @@ and your answers. I'll ask clarifying questions as I refine the approach."
    post-implementation, inside `/execute-plan`, when there is actual code to
    review — never against a plan.
 
-7. **Incorporate agent feedback into the plan** (Step 7.4): Merge feedback
+7. **Find every file the change reaches** (Step 7.3.5): do this before you
+   write the Implementation Checklist. A file that the plan misses stops
+   `/execute-plan` at its deviation rule. In #2360, missed files caused two
+   deviation questions and a third review round.
+
+   - **A changed meaning.** When the issue changes what a term, a flag or a
+     control does (for example, "the opt-out stops verification email"
+     becomes "the opt-out stops all registry email"), grep the old wording
+     in `app/`, `usersc/`, `docs/` and `tests/`, including
+     `tests/playwright/`. Put each hit in the Implementation Checklist, or
+     in `## Not doing` with a reason. Include headings, button labels, flash
+     messages, email text, docblocks and the tests that pin them.
+   - **A refactored class or file.** For each class or file that the plan
+     changes, grep `tests/` for its file name and class name. Source
+     regression tests often list the files that must call a method or may
+     name a column. Put each test that names the file in the Implementation
+     Checklist.
+   - **Two changes in one issue.** If the plan holds two changes that could
+     ship apart (for example, a new policy class and a change of scope in
+     user-facing text), ask the user with one AskUserQuestion whether to
+     split the issue. Name the files each part touches.
+   - **Record the sweep.** Add one line below the plan header:
+     `**Sweep:** <each term and file name you searched>`. The plan gate
+     checks this line.
+
+8. **Incorporate agent feedback into the plan** (Step 7.4): Merge feedback
    into a single comprehensive plan. Include sections only for agents that
    were consulted:
    - **Acceptance criteria** (always — from the issue, or written at the
@@ -650,6 +675,7 @@ line are always required.
 **Milestone:** `<milestone-branch>` (e.g. `milestone/v2.17.0`; hotfix mode: none (hotfix))
 **Combine group:** combined with #A, #B | declined — #<NUMBER> alone (only when Step 2 found a combine comment)
 **Risk flag:** yes|no
+**Sweep:** <terms and file names searched in Step 7.3.5>
 **Status:** Draft — pending approval
 
 ## Acceptance criteria
@@ -797,6 +823,14 @@ criteria that the plan must meet:
   The rule covers every file that the Implementation Checklist names.
 - A `## Deviation` section has each of its items in the Implementation
   Checklist ("Merge a deviation").
+- The plan has a `**Sweep:**` line (Step 7.3.5). Each grep hit is in the
+  Implementation Checklist or in `## Not doing`.
+- Each acceptance criterion has a test that runs in the local Docker
+  environment. The test is in the Test Plan, or in the Implementation
+  Checklist for a plan with no Test Plan. A test may skip when an outside
+  service (for example Brevo) is not set up, but only when another test
+  checks the same criterion with no skip. In #2360, a skip-only byte
+  compare became a blocking review finding.
 
 After writing the file, present it for approval:
 
