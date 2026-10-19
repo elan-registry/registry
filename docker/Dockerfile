@@ -9,7 +9,7 @@
 # PHP 8.4 matches confirmed production (8.4.25) and the composer.json platform
 # pin (8.4.0). It is also a hard floor for the test suite: PHPUnit 12 requires
 # PHP >= 8.3, so an 8.2 container could not run `composer test:full` at all.
-FROM php:8.4-apache
+FROM php:8.5-apache
 
 ARG DEBIAN_FRONTEND=noninteractive
 
