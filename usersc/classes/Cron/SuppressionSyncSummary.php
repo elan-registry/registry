@@ -22,7 +22,10 @@ namespace ElanRegistry\Cron;
  * — unlike an earlier version of this docblock claimed — they are NOT
  * exhaustive: a contact with a malformed payload field, an invalid address,
  * an unrecognized reason code, an over-length synthetic value, a failed user
- * lookup, or a failed write for the matching owner reaches none of the three.
+ * lookup, a failed write for the matching owner, or a skip in the event step
+ * (a date guard, no usable date after a clear, no profiles row, or an address
+ * that is not the current one) reaches none of the three. EMAIL_SYSTEM.md
+ * "Skipped contacts" holds the full list.
  * Each such skip is logged individually by the job. {@see $skippedCount} and
  * {@see $invalidAddressCount} are the only places their *total* is visible
  * without reading the log. A reader adding all three buckets therefore gets

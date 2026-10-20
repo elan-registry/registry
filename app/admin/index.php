@@ -1066,6 +1066,17 @@ if (ElanInput::existsPost()) {
                         ));
                     }
                     break;
+
+                // A form from a page loaded before a deploy can post a command
+                // that no longer exists (for example `clear_suppression`).
+                // Without this arm the page reloads with no message.
+                default:
+                    logger($currentUserId, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, sprintf(
+                        'Registry Management: unknown command "%s" refused',
+                        substr((string) preg_replace('/[^a-z0-9_]/i', '', (string) $command), 0, 40)
+                    ));
+                    $errors[] = 'That action is no longer available. Reload the page and try again.';
+                    break;
             }
         }
     }

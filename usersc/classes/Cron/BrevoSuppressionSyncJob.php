@@ -394,9 +394,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * page — separately from the three flag-decision buckets (matched /
      * unmatched / already-flagged), because those three are NOT exhaustive:
      * a contact with a malformed field, an invalid address, an unrecognized
-     * reason code, or a failed write for the matching owner reaches none of
-     * them (see
-     * SuppressionSyncSummary's docblock). An earlier version of this method
+     * reason code, a failed write for the matching owner, or a skip in the
+     * event step reaches none of them (see SuppressionSyncSummary's docblock
+     * and EMAIL_SYSTEM.md "Skipped contacts"). An earlier version of this method
      * summed the three buckets and compared THAT against PAGE_SIZE — so a
      * full page containing even one such contact undercounted, looked like a
      * partial page, and silently stopped the walk with the rest of Brevo's
@@ -512,8 +512,10 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo suppression sync: %d contact(s) across this run were examined but'
                 . ' reached no flag-decision bucket (malformed payload, unrecognized reason'
-                . ' code, oversized value, failed lookup, or a failed write for the matching'
-                . ' owner) — see the per-contact lines above for each reason.',
+                . ' code, oversized value, failed lookup, a failed write for the matching'
+                . ' owner, a date guard, no usable date after a clear, no profiles row, or an'
+                . ' address that is not the current one) — see the per-contact lines above'
+                . ' for each reason.',
                 $skipped
             ));
         }

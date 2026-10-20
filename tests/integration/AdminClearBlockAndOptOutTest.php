@@ -491,6 +491,30 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
         $this->assertSame([$this->ownerEmail], $this->mockBlockedEmails(), 'A refused request makes no Brevo call');
     }
 
+    /** A form from a page loaded before the deploy still posts the removed command. */
+    public function test_removedClearSuppressionCommand_isRefusedWithAMessageAndALogLine(): void
+    {
+        $this->seedBlocked($this->ownerEmail);
+        $this->setOwnerOptedOut($this->ownerId, true, '2026-01-02 03:04:06');
+        $this->mockSeedBlock($this->ownerEmail);
+        $before = $this->getOwnerEmailFlags($this->ownerId);
+
+        $result = $this->requestCommand('clear_suppression');
+
+        $this->assertSame(['That action is no longer available. Reload the page and try again.'], $result['errors']);
+        $this->assertSame([], $result['successes']);
+        $this->assertSame($before, $this->getOwnerEmailFlags($this->ownerId), 'A removed command must not change the profile');
+        $this->assertSame([], $this->flagChangeRows(), 'A removed command writes no flag-change row');
+        $this->assertSame([$this->ownerEmail], $this->mockBlockedEmails(), 'A removed command makes no Brevo call');
+
+        $note = $this->db->query(
+            'SELECT lognote FROM logs WHERE id > ? AND logtype = ? AND user_id = ? ORDER BY id DESC',
+            [$this->logIdFloor, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, $this->adminId]
+        )->first();
+        $this->assertNotNull($note, 'The refused command must be logged');
+        $this->assertSame('Registry Management: unknown command "clear_suppression" refused', (string) $note->lognote);
+    }
+
     // --- Clear Block: the address rule ------------------------------------
 
     public function test_clearBlock_matchingAddress_removesBrevoBlockAndClearsTheRegistryFlag(): void

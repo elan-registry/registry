@@ -226,6 +226,7 @@ after an item is written.
 
 - [ ] `recentFlagChanges()` (~L2260) has no production caller. Delete it, or let #2357 add it with its first caller (found in /finish-milestone v2.30.7)
 - [ ] The block-cause names are four loose string sets: `BLOCKED_CAUSES`, `EmailEventApplier::SUPPRESSION_EVENT_CAUSES`, the bare `'spam'` and `'unsubscribed'` matches in `VerificationTabStatus::chip()`, and `EffectiveEmailFlags::$blockedCause` (`?string`). Add `enum BlockedCause: string` and convert to a string only at the database boundary (found in /finish-milestone v2.30.8)
+- [ ] `clearProfileBlocked()` (~L837) has no production caller since `clearSuppressedForOwner()` was removed. About 6 test files and the `Issue2356EmailFlagMatchSourceRegressionTest` allow-list still use it. Delete it, move its tests to `clearProfileBlockedIfAddress()`, and update `CLASSES.md` (found in #2426)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
@@ -249,9 +250,9 @@ after an item is written.
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
 
-### `usersc/classes/Cron/SuppressionSyncSummary.php`
+### `usersc/classes/Email/BrevoApiFactory.php`
 
-- [ ] The class docblock lists the kinds of skip but not "the flag step did not run" (no profiles row, a failed date guard, an address that is not the current one), which `BrevoSuppressionSyncJob` now counts as skipped. Add it to the list (found in #2393)
+- [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockResult`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory (found in #2426)
 
 ### `usersc/classes/Exceptions/ProfileFlagValueException.php`
 

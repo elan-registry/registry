@@ -901,9 +901,10 @@ All four actions are POST-only, check the CSRF token first, and need the
 error, the result is converted to a UserSpice session flash message
 (`usError()`/`usSuccess()`) and the page renders normally (standard
 POST-then-render pattern, no redirect). On success, the flash message names the
-owner. The command `clear_suppression` no longer exists. The command switch has no
-default arm, so a cached old form that posts it changes nothing and shows no
-message.
+owner. The command `clear_suppression` no longer exists. A cached old form
+that posts it, or any other unknown command, changes nothing. The admin sees
+"That action is no longer available. Reload the page and try again.", and an
+`ElanRegistry` log row names the command.
 
 #### Flag-change audit rows
 
