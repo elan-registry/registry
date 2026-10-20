@@ -2940,8 +2940,10 @@ class CarRepository
      * {@see AppConstants::OWNER_CONTACT_EMAIL_TAG} in its comma-separated
      * `tags`. A cycle with no plugin row, or with null tags, still counts.
      * So an owner contact cycle counts again after its plugin row is deleted.
-     * When the plugin table or its `tags` column does not exist, the query
-     * has no such filter ({@see sendinblueTagsColumnExists()}).
+     * A purge of plugin rows (#2384) must keep a row while its message ID is
+     * still in `er_email_events`. When the plugin table or its `tags` column
+     * does not exist, the query has no such filter
+     * ({@see sendinblueTagsColumnExists()}).
      *
      * @param int $userId Owner user ID
      * @param string $email Address to count soft bounces for. Normalized here

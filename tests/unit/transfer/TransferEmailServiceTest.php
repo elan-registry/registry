@@ -316,7 +316,7 @@ final class TransferEmailServiceTest extends TestCase
      * same database double, and an opted-out current owner gets no notice.
      * The send still returns true: a skip is not a failure.
      *
-     * Fails without the #2460 change: TransferNotice is not yet a policy kind
+     * Fails without the #2463 change: TransferNotice is not yet a policy kind
      * and the default policy does not gate the send, so the mailer is called.
      */
     public function testSendRequestWithDefaultPolicySkipsOptedOutOwner(): void

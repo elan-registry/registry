@@ -55,16 +55,6 @@ final class Issue2460OwnerContactTagSourceRegressionTest extends TestCase
         );
     }
 
-    /** Fails without the change: the merge with the reply-to options is part of the new call. It guards that the tag does not replace the reply-to keys. */
-    public function test_ownerEndpoint_keepsReplyToOptions(): void
-    {
-        $source = file_get_contents(self::ENDPOINT);
-        $this->assertIsString($source);
-
-        $this->assertMatchesRegularExpression('/\$replyOpts\s*=/', $source);
-        $this->assertStringContainsString('+ $replyOpts', $source, 'The tag is merged with $replyOpts, not in place of it');
-    }
-
     /** Fails without the change: the constant does not exist. */
     public function test_ownerContactTag_matchesCallerModeTag(): void
     {

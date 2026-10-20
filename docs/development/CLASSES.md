@@ -3267,7 +3267,7 @@ $emailService = new TransferEmailService(
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `$db` | `DB` | Database singleton from UserSpice |
+| `$db` | `DatabaseInterface` | Database instance |
 | `$mailer` | `callable` | Email sender function — signature: `(string $to, string $subject, string $body): bool` |
 | `$sendPolicy` | `?SendPolicy` | Optional. Decides which owners can get a transfer notice. `null` builds a `SendPolicy` over a `CarRepository` on `$db` |
 

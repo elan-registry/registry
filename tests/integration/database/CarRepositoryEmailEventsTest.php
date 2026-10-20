@@ -811,12 +811,18 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     /**
      * A plugin table without a `tags` column gets the original query. The
      * test changes the table definition (DDL commits, so no transaction
-     * wraps it) and restores the column in `finally`.
+     * wraps it) and restores the column in `finally`. It runs only on a
+     * table that this class created, because the drop loses the tag data
+     * of a real plugin table.
      *
      * Passes without the #2460 change: the original query is the fallback.
      */
     public function testPluginTableWithoutTagsColumnFallsBackToOldCount(): void
     {
+        if (!self::$madePluginTable) {
+            $this->markTestSkipped('plg_sendinblue_messages was not created by this test class; the DDL would drop real tag data.');
+        }
+
         $this->seedSoftBouncesWithTags([null, null]);
 
         $this->db->query('ALTER TABLE plg_sendinblue_messages DROP COLUMN tags');

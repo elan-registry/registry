@@ -2095,27 +2095,12 @@ final class CarRepositoryTest extends TestCase
         $this->assertStringContainsString('NOT EXISTS', $count['sql']);
         $this->assertStringContainsString('plg_sendinblue_messages', $count['sql']);
         $this->assertStringContainsString('FIND_IN_SET', $count['sql']);
-        $this->assertStringContainsString('COLLATE utf8mb4_bin', $count['sql']);
+        $this->assertStringContainsString('m.message_id COLLATE utf8mb4_bin = er_email_events.brevo_message_id COLLATE utf8mb4_bin', $count['sql']);
         $this->assertSame(
             [17, 'owner@example.com', 17, 'owner@example.com', 17, 17, 'send-owner-email'],
             $count['params'],
             'The owner-contact tag is the last bound parameter'
         );
-    }
-
-    /** Passes without the #2460 change: it guards the original query for a site without the plugin table. */
-    public function testCountSoftBounces_pluginTableMissing_usesOriginalQuery(): void
-    {
-        $calls = [];
-        $repo = new CarRepository($this->makeSoftBounceDb(0, 2, $calls));
-
-        $this->assertSame(2, $repo->countSoftBouncesSinceLastDelivered(17, 'owner@example.com'));
-
-        $count = end($calls);
-        $this->assertIsArray($count);
-        $this->assertStringNotContainsString('plg_sendinblue_messages', $count['sql']);
-        $this->assertStringNotContainsString('FIND_IN_SET', $count['sql']);
-        $this->assertCount(6, $count['params']);
     }
 
     /**
@@ -2133,7 +2118,12 @@ final class CarRepositoryTest extends TestCase
         $probe = $calls[0];
         $this->assertStringContainsString('information_schema.columns', $probe['sql']);
         $this->assertSame(['plg_sendinblue_messages', 'tags'], $probe['params'], 'The probe asks for the tags column, not only the table');
-        $this->assertStringNotContainsString('FIND_IN_SET', end($calls)['sql']);
+
+        $count = end($calls);
+        $this->assertIsArray($count);
+        $this->assertStringNotContainsString('plg_sendinblue_messages', $count['sql']);
+        $this->assertStringNotContainsString('FIND_IN_SET', $count['sql']);
+        $this->assertCount(6, $count['params']);
     }
 
     /**
