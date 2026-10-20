@@ -18,8 +18,9 @@
 // ... does not exist". There is no reproducible way to install the plugin in
 // CI, so the symbols have to come from inside the repo.
 //
-// These stubs supply exactly the surface BrevoEventReconciliationClient
-// touches, and nothing more — this is not a reimplementation of the SDK and
+// These stubs supply exactly the surface that the Brevo callers
+// (BrevoEventReconciliationClient, BrevoSuppressionSyncClient,
+// BrevoBlocklistClient) touch, and nothing more — this is not a reimplementation of the SDK and
 // must not grow into one. Signatures and PHPDoc return types are copied from
 // the generated SDK (getbrevo/brevo-php) so the caller is analysed identically
 // whether or not the plugin is installed. If the caller starts using a new SDK
@@ -107,6 +108,14 @@ namespace Brevo\Client {
         {
         }
     }
+
+    /**
+     * Mirrors the SDK's lib/ApiException.php. BrevoBlocklistClient reads
+     * only its code (the HTTP status).
+     */
+    class ApiException extends \Exception
+    {
+    }
 }
 
 namespace Brevo\Client\Api {
@@ -164,6 +173,19 @@ namespace Brevo\Client\Api {
             $senders = null,
             $sort = 'desc'
         ) {
+        }
+
+        /**
+         * Used by BrevoBlocklistClient (#2357). The SDK encodes $email
+         * for the path, so the caller passes the raw address.
+         *
+         * @param string $email
+         * @throws \Brevo\Client\ApiException on non-2xx response
+         * @throws \InvalidArgumentException
+         * @return void
+         */
+        public function smtpBlockedContactsEmailDelete($email)
+        {
         }
     }
 }

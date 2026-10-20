@@ -6,8 +6,11 @@ namespace ElanRegistry\Car;
 
 use DateTime;
 use ElanRegistry\AppConstants;
+use ElanRegistry\Email\BrevoBlocklistClient;
+use ElanRegistry\Email\BrevoUnblockResult;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -550,57 +553,181 @@ class CarVerificationManager
     }
 
     /**
-     * Clear an owner's block and opt-out (admin Clear Suppression)
+     * Clear an owner's block, in the registry and at Brevo (admin Clear Block, #2357)
      *
-     * Until #2357 gives the admin separate Clear Block and Clear Opt-out
-     * actions, this one action clears both `email_blocked` (with its
-     * address, time and cause) and `email_opted_out` (with its time) on the
-     * owner's one profile row. It writes one audit row per flag that changed,
-     * with source `admin`. Nothing is written to a car. The bounce stays.
+     * The owner asked for the change. The caller checks that and the admin
+     * permission. Steps:
+     *
+     * 1. Read the stored block with no lock
+     *    ({@see CarRepository::findBlockClearTarget()}). When it is 0, return
+     *    {@see ClearBlockOutcome::notBlocked()}. No Brevo call, no write.
+     * 2. The target address is `email_blocked_address`, or `users.email`
+     *    when that is NULL or empty.
+     * 3. No Brevo call when the target is empty, when it is not the owner's
+     *    `users.email` under {@see EmailAddress::normalize()}, or when another
+     *    user has it as `users.email`. Only the registry flag clears.
+     * 4. Otherwise, record the clear time, then call Brevo. A failed call
+     *    logs the owner ID, the reason and the HTTP status, and writes nothing.
+     * 5. Lock the profile and clear the flag only when `email_blocked_address`
+     *    did not change during the call. Write the audit row with
+     *    `cleared_at` and `owner_requested`.
+     *
+     * Brevo is called before the lock, so a slow Brevo answer holds no row
+     * lock. No log line holds an address.
+     *
+     * Runs its own transaction. Inside an outer transaction, the repository
+     * joins it.
+     *
+     * @param int                  $ownerId      Owner user ID
+     * @param int                  $actingUserId The admin who took the action
+     * @param BrevoBlocklistClient $client       Client that removes the Brevo block
+     * @return ClearBlockOutcome What the action did
+     * @throws CarDatabaseException If the owner has no profiles row, a query
+     *                              fails, or the audit row insert fails.
+     *                              The flag stays set.
+     */
+    public function clearBlockedForOwner(int $ownerId, int $actingUserId, BrevoBlocklistClient $client): ClearBlockOutcome
+    {
+        $userMessage = 'The block could not be cleared. Please try again or contact support.';
+
+        $state = $this->repo->findBlockClearTarget($ownerId);
+        if ($state === null) {
+            throw new CarDatabaseException(
+                "CarVerificationManager::clearBlockedForOwner: owner {$ownerId} has no profiles row; nothing was written",
+                0,
+                null,
+                $userMessage
+            );
+        }
+        if (!$state['blocked']) {
+            return ClearBlockOutcome::notBlocked();
+        }
+
+        $blockedAddress = $state['blockedAddress'];
+        $userEmail = $state['userEmail'];
+        // Trimmed: stray spaces in users.email would reach the Brevo path as %20.
+        $target = trim(trim((string) $blockedAddress) === '' ? $userEmail : $blockedAddress);
+
+        $clearedAt = null;
+        if ($target === '') {
+            $kind = ClearBlockOutcome::CLEARED_NO_ADDRESS;
+        } elseif (EmailAddress::normalize($target) !== EmailAddress::normalize($userEmail)) {
+            $kind = ClearBlockOutcome::CLEARED_ADDRESS_MOVED;
+        } elseif (array_diff($this->repo->findUserIdsByAddress($target), [$ownerId]) !== []) {
+            $kind = ClearBlockOutcome::CLEARED_SHARED_ADDRESS;
+        } else {
+            $kind = ClearBlockOutcome::CLEARED;
+            // Recorded before the call: an import entry dated after this
+            // time is a new block, and the import sets the flag again.
+            $clearedAt = date(AppConstants::DATETIME_FORMAT);
+            $unblock = $client->unblock($target);
+            if (!$unblock->isSuccess()) {
+                logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                    'Verification: Clear Block Brevo unblock failed for owner %d (reason %s, HTTP %s)',
+                    $ownerId,
+                    (string) $unblock->reason(),
+                    $unblock->httpStatus() === null ? 'none' : (string) $unblock->httpStatus()
+                ));
+                // A retry cannot fix a missing key or SDK, so the admin gets other text.
+                $notSetUp = in_array(
+                    $unblock->reason(),
+                    [BrevoUnblockResult::REASON_NO_API_KEY, BrevoUnblockResult::REASON_NO_SDK],
+                    true
+                );
+                return $notSetUp ? ClearBlockOutcome::brevoNotSetUp() : ClearBlockOutcome::brevoFailed();
+            }
+        }
+
+        $this->repo->beginTransaction();
+        try {
+            $clearedAt ??= date(AppConstants::DATETIME_FORMAT);
+            $result = $this->repo->clearProfileBlockedIfAddress($ownerId, $blockedAddress);
+            $old = $this->requireProfile($result['old'] ?? null, $ownerId, 'clearBlockedForOwner', $userMessage);
+
+            if (!$result['addressMatched']) {
+                $this->repo->rollback();
+                return ClearBlockOutcome::addressChanged();
+            }
+
+            $changed = $this->flagLog->record(
+                $actingUserId,
+                $ownerId,
+                DeliverabilityFlagLog::FLAG_BLOCKED,
+                $old,
+                0,
+                DeliverabilityFlagLog::SOURCE_ADMIN,
+                clearedAt: $clearedAt,
+                ownerRequested: true
+            );
+            $this->repo->commit();
+        } catch (\Throwable $e) {
+            try {
+                $this->repo->rollback();
+            } catch (\Throwable $rollbackFailure) {
+                // A throw from rollback() would replace $e, the real cause.
+                // The summary, not the message: no Clear Block log row holds an exception message.
+                $message = 'CarVerificationManager::clearBlockedForOwner() rollback failed for owner '
+                    . $ownerId . ': ' . ExceptionLogSummary::of($rollbackFailure)
+                    . ' (original failure: ' . get_class($e) . ')';
+                try {
+                    logger($actingUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
+                } catch (\Throwable $logFailure) {
+                    // logger() writes to the database. If that fails too, the
+                    // PHP error log is the only record left.
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+                }
+            }
+            throw $e;
+        }
+
+        if (!$changed) {
+            // The flag was cleared by another request during the Brevo call.
+            return ClearBlockOutcome::notBlocked();
+        }
+
+        return match ($kind) {
+            ClearBlockOutcome::CLEARED_NO_ADDRESS => ClearBlockOutcome::clearedNoAddress($result['stillBounced'], $result['stillOptedOut']),
+            ClearBlockOutcome::CLEARED_ADDRESS_MOVED => ClearBlockOutcome::clearedAddressMoved($result['stillBounced'], $result['stillOptedOut']),
+            ClearBlockOutcome::CLEARED_SHARED_ADDRESS => ClearBlockOutcome::clearedSharedAddress($result['stillBounced'], $result['stillOptedOut']),
+            default => ClearBlockOutcome::cleared($result['stillBounced'], $result['stillOptedOut']),
+        };
+    }
+
+    /**
+     * Clear an owner's opt-out (admin Clear Opt-out, #2357)
+     *
+     * The owner asked for the change. The caller checks that and the admin
+     * permission. Clears only `profiles.email_opted_out` and
+     * `email_opted_out_at`, under a row lock. The block and the bounce stay,
+     * and no Brevo call is made. Writes one audit row with source `admin` and
+     * `owner_requested` when the flag changes.
      *
      * Runs no transaction of its own. The caller opens one.
      *
-     * @param int $ownerId Owner user ID
+     * @param int $ownerId      Owner user ID
      * @param int $actingUserId The admin who took the action
-     * @return bool True when at least one flag changed from 1 to 0
+     * @return bool True when the flag changed from 1 to 0
      * @throws CarDatabaseException If the owner has no profiles row (nothing
      *                              is written), or a query fails
      */
-    public function clearSuppressedForOwner(int $ownerId, int $actingUserId): bool
+    public function clearOptedOutForOwner(int $ownerId, int $actingUserId): bool
     {
-        $userMessage = 'The opt-out could not be cleared. Please try again or contact support.';
-
-        $oldBlocked = $this->requireProfile(
-            $this->repo->clearProfileBlocked($ownerId),
-            $ownerId,
-            'clearSuppressedForOwner',
-            $userMessage
-        );
-        $oldOptedOut = $this->requireProfile(
+        $old = $this->requireProfile(
             $this->repo->setProfileOptedOut($ownerId, false),
             $ownerId,
-            'clearSuppressedForOwner',
-            $userMessage
+            'clearOptedOutForOwner',
+            'The opt-out could not be cleared. Please try again or contact support.'
         );
 
-        $blockedChanged = $this->flagLog->record(
-            $actingUserId,
-            $ownerId,
-            DeliverabilityFlagLog::FLAG_BLOCKED,
-            $oldBlocked,
-            0,
-            DeliverabilityFlagLog::SOURCE_ADMIN
-        );
-        $optedOutChanged = $this->flagLog->record(
+        return $this->flagLog->record(
             $actingUserId,
             $ownerId,
             DeliverabilityFlagLog::FLAG_OPTED_OUT,
-            $oldOptedOut,
+            $old,
             0,
-            DeliverabilityFlagLog::SOURCE_ADMIN
+            DeliverabilityFlagLog::SOURCE_ADMIN,
+            ownerRequested: true
         );
-
-        return $blockedChanged || $optedOutChanged;
     }
 
     /**

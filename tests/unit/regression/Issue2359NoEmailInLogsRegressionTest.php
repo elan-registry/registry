@@ -68,7 +68,11 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
      *
      * The two Brevo API clients, VerificationBatchSender and
      * CarVerificationSendService are here because their `catch` blocks log an
-     * exception that can hold an address.
+     * exception that can hold an address. BrevoApiFactory and
+     * BrevoBlocklistClient (#2357) are here because their `catch` blocks see
+     * an SDK exception whose message holds the request URL with the address.
+     * BrevoSuppressionSyncClient has one `catch` since its SDK load moved to
+     * BrevoApiFactory.
      *
      * @var array<string, int>
      */
@@ -82,10 +86,32 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         'app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php' => 1,
         'usersc/classes/Car/EmailEventApplier.php' => 2,
         'usersc/classes/Car/EmailEventMatcher.php' => 0,
-        'usersc/classes/Cron/BrevoSuppressionSyncClient.php' => 2,
+        'usersc/classes/Cron/BrevoSuppressionSyncClient.php' => 1,
+        'usersc/classes/Email/BrevoApiFactory.php' => 1,
+        'usersc/classes/Email/BrevoBlocklistClient.php' => 1,
         'usersc/classes/Cron/BrevoEventReconciliationClient.php' => 2,
         'usersc/classes/Car/VerificationBatchSender.php' => 3,
         'usersc/classes/Car/CarVerificationSendService.php' => 5,
+    ];
+
+    /**
+     * Parts of a file that the scans check, when the rest of the file is out
+     * of scope. The value holds the file, the first line of the part, a marker
+     * after its end, and the least number of `catch` blocks in it.
+     *
+     * The admin Clear Block and Clear Opt-out handler (#2357) is one part of
+     * app/admin/index.php. The other cases of that file log exception
+     * messages, and #2357 does not change them.
+     *
+     * @var array<string, array{path: string, start: string, end: string, catches: int}>
+     */
+    private const SCANNED_SECTIONS = [
+        'app/admin/index.php (clear_block, clear_opt_out)' => [
+            'path' => 'app/admin/index.php',
+            'start' => 'case "clear_block":',
+            'end' => '// Convert error/success arrays to UserSpice session messages',
+            'catches' => 2,
+        ],
     ];
 
     /** Property and method names whose value is an address. Lower case. */
@@ -356,6 +382,47 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         }
 
         return $cases;
+    }
+
+    /**
+     * @return array<string, array{string, int}> label => [part source, least `catch` blocks]
+     */
+    public static function scannedSectionProvider(): array
+    {
+        $cases = [];
+        foreach (self::SCANNED_SECTIONS as $label => $section) {
+            $source = file_get_contents(self::ROOT . '/' . $section['path']);
+            if (!is_string($source)) {
+                throw new \RuntimeException("{$section['path']} must be readable");
+            }
+            $start = strpos($source, $section['start']);
+            $end = $start === false ? false : strpos($source, $section['end'], $start);
+            if ($start === false || $end === false) {
+                throw new \RuntimeException("{$label}: the start or end marker is missing");
+            }
+            $cases[$label] = ['<?php ' . substr($source, $start, $end - $start), $section['catches']];
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('scannedSectionProvider')]
+    public function testSectionCatchBlocksAndLoggerCallsHoldNoAddress(string $source, int $minimumCatches): void
+    {
+        $scan = self::scanCatchBlocks($source);
+
+        $this->assertGreaterThanOrEqual($minimumCatches, $scan['catches'], 'The scan must find the catch blocks of the section');
+        $this->assertSame([], $scan['offending'], 'A catch block calls ->getMessage() in the section');
+        $this->assertSame([], self::exceptionMessageCalls($source), 'An exception variable calls ->getMessage() in the section');
+
+        $hits = self::addressesInLoggerCalls($source);
+
+        $this->assertSame(
+            [],
+            $hits,
+            'A logger() call in the section has an address in its arguments: '
+            . implode(', ', array_map(static fn (array $h): string => "{$h['found']} (line {$h['line']})", $hits))
+        );
     }
 
     #[DataProvider('scannedFileProvider')]

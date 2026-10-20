@@ -246,7 +246,7 @@ function emailOnFileStateTests(role, getUsername, getPassword) {
             const tooltip = await openTooltip(page, 'What Opted out means');
             await expect(tooltip).toContainText('stopped all registry email except account email');
             await expect(tooltip).toContainText('Resume registry email');
-            await expect(tooltip).not.toContainText('Clear Suppression');
+            await expect(tooltip).not.toContainText('Clear Opt-out');
         });
 
         test('bounced car shows "Bounced" with its date, never prints the address, and its tooltip names the owner and admin mail', async ({ page }) => {
@@ -278,7 +278,7 @@ function emailOnFileStateTests(role, getUsername, getPassword) {
             await expect(tooltip).toContainText('A message from an admin is still sent');
             await expect(tooltip).toContainText('confirming a different email address');
             await expect(tooltip).not.toContainText('Resume registry email');
-            await expect(tooltip).not.toContainText('Clear Suppression');
+            await expect(tooltip).not.toContainText('Clear Block');
         });
 
         test('owner with all three flags and no dates shows the three states in order, each with no date', async ({ page }) => {

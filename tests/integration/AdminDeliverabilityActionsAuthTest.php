@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * #2101: Mark Bounced, Clear Bounced and Clear Suppression in
+ * #2101, #2357: Mark Bounced, Clear Bounced, Clear Block and Clear Opt-out in
  * app/admin/index.php stay POST-only, CSRF-checked and admin-only.
  *
  * Each request runs the real page in its own `php -r` subprocess, as
@@ -47,6 +47,8 @@ final class AdminDeliverabilityActionsAuthTest extends IntegrationTestCase
         $this->requireDatabase();
         $this->permissionMatchIds = [];
         $this->loggedUserIds = [];
+        // Clear Block reads the Brevo API key. tearDown() of the base class restores the row.
+        $this->saveBrevoTestKey();
 
         // securePage() treats `users.permissions = 0` as a banned account.
         $this->adminId = $this->createTestUser(['permissions' => 1]);
@@ -97,8 +99,9 @@ final class AdminDeliverabilityActionsAuthTest extends IntegrationTestCase
     {
         if ($command === 'clear_bounced') {
             $this->setOwnerBounced($this->ownerId, $this->ownerEmail, '2026-01-02 03:04:05');
-        } elseif ($command === 'clear_suppression') {
+        } elseif ($command === 'clear_block') {
             $this->setOwnerBlocked($this->ownerId, $this->ownerEmail, '2026-01-02 03:04:05', 'spam');
+        } elseif ($command === 'clear_opt_out') {
             $this->setOwnerOptedOut($this->ownerId, true, '2026-01-02 03:04:06');
         }
     }
@@ -124,7 +127,7 @@ final class AdminDeliverabilityActionsAuthTest extends IntegrationTestCase
         }
 
         $fields = sprintf(
-            '$fields = ["command" => %s, "car_id" => %s, "csrf" => %s]; ',
+            '$fields = ["command" => %s, "car_id" => %s, "csrf" => %s, "owner_requested" => "1"]; ',
             var_export($command, true),
             var_export((string) $this->carId, true),
             $validCsrf ? '\Token::generate()' : var_export(str_repeat('0', 64), true)
@@ -135,7 +138,10 @@ final class AdminDeliverabilityActionsAuthTest extends IntegrationTestCase
             'require %s; ' .
             '\Dotenv\Dotenv::createMutable(%s, ".env.test.local")->load(); ' .
             '$_SERVER["DOCUMENT_ROOT"] = %s; ' .
-            '$_SERVER["PHP_SELF"] = "/app/admin/index.php"; ' .
+            // Under CLI, Server::get('PHP_SELF') ignores $_SERVER['PHP_SELF'] and
+            // derives the web path from SCRIPT_FILENAME. Set SCRIPT_FILENAME so
+            // securePage($php_self) checks the real admin page.
+            '$_SERVER["SCRIPT_FILENAME"] = %s; ' .
             '$_SERVER["REQUEST_METHOD"] = %s; ' .
             'chdir(%s); ' .
             'require_once %s; ' .
@@ -148,6 +154,7 @@ final class AdminDeliverabilityActionsAuthTest extends IntegrationTestCase
             var_export($projectRoot . '/vendor/autoload.php', true),
             var_export($projectRoot, true),
             var_export($projectRoot, true),
+            var_export($page, true),
             var_export($method, true),
             var_export(dirname($page), true),
             var_export($projectRoot . '/users/init.php', true),
@@ -157,7 +164,12 @@ final class AdminDeliverabilityActionsAuthTest extends IntegrationTestCase
             var_export($page, true)
         );
 
-        $raw = (string) shell_exec('php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"');
+        // Clear Block calls Brevo. In development mode with this host, the admin control
+        // reaches mock-brevo (a 404 for an address it does not block still clears the flag).
+        $raw = (string) shell_exec(
+            'env US_ENVIRONMENT=development BREVO_API_HOST=' . escapeshellarg('http://mock-brevo:8080/v3')
+            . ' php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"'
+        );
         [$output, $exitMarker] = array_pad(explode('___EXIT:', $raw), 2, '0');
 
         return ['output' => $output, 'exitCode' => (int) trim($exitMarker)];
@@ -192,7 +204,8 @@ final class AdminDeliverabilityActionsAuthTest extends IntegrationTestCase
         return [
             'Mark Bounced'      => ['mark_bounced'],
             'Clear Bounced'     => ['clear_bounced'],
-            'Clear Suppression' => ['clear_suppression'],
+            'Clear Block'       => ['clear_block'],
+            'Clear Opt-out'     => ['clear_opt_out'],
         ];
     }
 
@@ -206,7 +219,7 @@ final class AdminDeliverabilityActionsAuthTest extends IntegrationTestCase
 
         $this->assertSame(0, $result['exitCode'], 'The page must run to the end: ' . substr($result['output'], 0, 500));
         $this->assertNotSame($before, $this->getOwnerEmailFlags($this->ownerId), 'Control: an admin POST must change the profile');
-        $this->assertSame(1, $this->flagChangeLogCount() - ($command === 'clear_suppression' ? 1 : 0), 'The change writes a flag-change log row');
+        $this->assertSame(1, $this->flagChangeLogCount(), 'The change writes a flag-change log row');
         $this->assertSame(0, $this->refusalLogCount($this->adminId, $command), 'An admin is not refused');
     }
 

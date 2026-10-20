@@ -8,13 +8,16 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Regression test for Issue #2245: pin the `BrevoDevOverride::hostOverride()`
- * call in each cron Brevo client.
+ * call in each place that builds a Brevo SDK client.
  *
- * Both {@see \ElanRegistry\Cron\BrevoEventReconciliationClient} and
- * {@see \ElanRegistry\Cron\BrevoSuppressionSyncClient} must call
+ * {@see \ElanRegistry\Cron\BrevoEventReconciliationClient} and
+ * {@see \ElanRegistry\Email\BrevoApiFactory} must call
  * `BrevoDevOverride::hostOverride()` while they build the SDK
  * `Configuration`, apply the returned host with `setHost()`, and do this
- * before the SDK API client is constructed. Without that call, a local cron
+ * before the SDK API client is constructed. Since #2357,
+ * {@see \ElanRegistry\Cron\BrevoSuppressionSyncClient} and
+ * {@see \ElanRegistry\Email\BrevoBlocklistClient} build their client
+ * through the factory, so their `createApi()` must call it. Without that call, a local cron
  * run under `US_ENVIRONMENT=development` would build a `Configuration` that
  * always points at the real Brevo API, and mock-brevo would never see the
  * request (see `docs/development/EMAIL_SYSTEM.md`, "What routes to
@@ -75,11 +78,54 @@ final class Issue2245RegressionTest extends TestCase
                 'usersc/classes/Cron/BrevoEventReconciliationClient.php',
                 'fetchEvents',
             ],
-            'BrevoSuppressionSyncClient' => [
-                'usersc/classes/Cron/BrevoSuppressionSyncClient.php',
+            'BrevoApiFactory' => [
+                'usersc/classes/Email/BrevoApiFactory.php',
                 'createApi',
             ],
         ];
+    }
+
+    /**
+     * @return array<string, array{string}> class name => [source path
+     *         relative to repo root]
+     */
+    public static function factoryClientProvider(): array
+    {
+        return [
+            'BrevoSuppressionSyncClient' => ['usersc/classes/Cron/BrevoSuppressionSyncClient.php'],
+            'BrevoBlocklistClient' => ['usersc/classes/Email/BrevoBlocklistClient.php'],
+        ];
+    }
+
+    /**
+     * A client that builds its SDK client through {@see \ElanRegistry\Email\BrevoApiFactory}
+     * gets the host override from the factory. Its `createApi()` must call
+     * the factory, and must not build the SDK client itself, which would skip
+     * the override (#2357).
+     */
+    #[DataProvider('factoryClientProvider')]
+    public function testFactoryClientBuildsItsSdkClientThroughTheFactory(string $relativePath): void
+    {
+        $filePath = dirname(__DIR__, 3) . '/' . $relativePath;
+        $this->assertFileExists($filePath, "Client source file must exist: {$relativePath}");
+
+        $methodBody = $this->uncommentedMethodBody($filePath, 'createApi');
+
+        $this->assertMatchesRegularExpression(
+            '/\$factory\s*=\s*new\s+BrevoApiFactory\(/',
+            $methodBody,
+            "REGRESSION (#2245): {$relativePath} createApi() must create a BrevoApiFactory."
+        );
+        $this->assertMatchesRegularExpression(
+            '/return\s+\$factory->createApi\(\$apiKey\)/',
+            $methodBody,
+            "REGRESSION (#2245): {$relativePath} createApi() must return the factory's client, which applies the host override."
+        );
+        $this->assertStringNotContainsString(
+            self::SDK_API_CLASS_NEEDLE,
+            $methodBody,
+            "REGRESSION (#2245): {$relativePath} createApi() must not build the SDK client itself."
+        );
     }
 
     #[DataProvider('clientProvider')]
@@ -379,7 +425,9 @@ final class Issue2245RegressionTest extends TestCase
         $failures = [];
 
         $configurationNeedle = '\Brevo\Client\Configuration::getDefaultConfiguration()';
-        $overrideNeedle = '\ElanRegistry\Email\BrevoDevOverride::hostOverride()';
+        // BrevoApiFactory is in the ElanRegistry\Email namespace, so it calls
+        // the class by its short name. Both names resolve to the same class.
+        $overridePattern = '/(?<![\w\\\\])(?:\\\\ElanRegistry\\\\Email\\\\)?BrevoDevOverride::hostOverride\(\)/';
 
         $configurationPos = strpos($methodBody, $configurationNeedle);
         if ($configurationPos === false) {
@@ -393,7 +441,9 @@ final class Issue2245RegressionTest extends TestCase
             return $failures;
         }
 
-        $overridePos = strpos($methodBody, $overrideNeedle);
+        $overridePos = preg_match($overridePattern, $methodBody, $overrideMatch, PREG_OFFSET_CAPTURE) === 1
+            ? $overrideMatch[0][1]
+            : false;
         if ($overridePos === false) {
             $failures[] = "REGRESSION (#2245): {$label} must call BrevoDevOverride::hostOverride() while it "
                 . 'builds the SDK Configuration. Without this call, a local cron run under '

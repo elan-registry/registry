@@ -366,8 +366,8 @@ reader assuming an absent feature was an oversight and "restoring" it.
   owner-facing page, no navigation linked to it). The rebuild shipped the
   data model in v2.30.0 (#1155), the send pipeline in v2.30.3, and the admin
   dashboard (#1156, extended by #1896 with the queue, activity feed, status
-  chips and owner-level Mark Bounced / Clear Bounced / Clear Suppression
-  actions). See [§3.3 "Car verification"](#33-editor-and-administrator) and
+  chips and owner-level Mark Bounced / Clear Bounced actions, and since #2357
+  Clear Block / Clear Opt-out). See [§3.3 "Car verification"](#33-editor-and-administrator) and
   [§4 "Verification is what keeps the data true"](#4-how-the-capabilities-connect)
   for why the feature switch still defaults off.
 

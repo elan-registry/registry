@@ -536,7 +536,7 @@ test.describe('Admin Verification Dashboard', () => {
     });
 
     // AC (one-action-per-row, the three non-disabled branches): Bounced ->
-    // Clear Bounced, Blocked and Opted out -> Clear Suppression, an ordinary Pending
+    // Clear Bounced, Blocked -> Clear Block, Opted out -> Clear Opt-out, an ordinary Pending
     // row -> Mark Bounced (enabled). Each case loads its own pill rather
     // than the "All" view: "All" orders by cars.id ASC
     // (findVerificationQueue()) and this local dataset has ~1500
@@ -551,8 +551,8 @@ test.describe('Admin Verification Dashboard', () => {
         const cases = [
             { id: bouncedCarId, status: 'bounced', label: 'Clear Bounced' },
             { id: bouncedCarIdB, status: 'bounced', label: 'Clear Bounced' },
-            { id: suppressedCarId, status: 'opted_out', label: 'Clear Suppression' },
-            { id: blockedCarId, status: 'blocked', label: 'Clear Suppression' },
+            { id: suppressedCarId, status: 'opted_out', label: 'Clear Opt-out' },
+            { id: blockedCarId, status: 'blocked', label: 'Clear Block' },
             { id: pendingCarId, status: 'pending', label: 'Mark Bounced' },
         ];
 
@@ -569,6 +569,13 @@ test.describe('Admin Verification Dashboard', () => {
             if (label === 'Mark Bounced') {
                 await expect(actionButtons.first()).toBeEnabled();
             }
+
+            // Clear Block and Clear Opt-out open the confirm modal. They do not submit.
+            const ownerRequestCommand = { 'Clear Block': 'clear_block', 'Clear Opt-out': 'clear_opt_out' }[label];
+            if (ownerRequestCommand) {
+                await expect(actionButtons.first()).toHaveAttribute('type', 'button');
+                await expect(actionButtons.first()).toHaveAttribute('data-owner-request-command', ownerRequestCommand);
+            }
         }
     });
 
@@ -579,8 +586,8 @@ test.describe('Admin Verification Dashboard', () => {
     // car is pending, so the Pending pill lists it.
     test('profile state sets the Status chip: opted out, blocked, no profile', async ({ page }) => {
         const cases = [
-            { id: suppressedCarId, status: 'opted_out', chip: 'opted_out', text: /Opted out/, action: 'Clear Suppression' },
-            { id: blockedCarId, status: 'blocked', chip: 'blocked', text: /^\s*Blocked\s*$/, action: 'Clear Suppression' },
+            { id: suppressedCarId, status: 'opted_out', chip: 'opted_out', text: /Opted out/, action: 'Clear Opt-out' },
+            { id: blockedCarId, status: 'blocked', chip: 'blocked', text: /^\s*Blocked\s*$/, action: 'Clear Block' },
             { id: noProfileCarId, status: 'pending', chip: 'no_profile', text: /No profile/, action: null },
         ];
 

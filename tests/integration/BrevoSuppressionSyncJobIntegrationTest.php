@@ -8,9 +8,11 @@ require_once __DIR__ . '/../Support/FakeBrevoSuppressionSyncClient.php';
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
+use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoBlockedContact;
 use Tests\Support\FakeBrevoSuppressionSyncClient;
@@ -36,6 +38,9 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     /** Original er_verification_settings.unmatched_recipient_count, restored in tearDown(). */
     private int $originalUnmatchedCount = 0;
 
+    /** Highest logs.id before the test, so tearDown() removes only this test's log rows. */
+    private int $logIdFloor = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -50,6 +55,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             ? (int) $verificationRow->unmatched_recipient_count
             : 0;
         $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
+        $this->logIdFloor = (int) $this->db->query('SELECT COALESCE(MAX(id), 0) AS m FROM logs')->first()->m;
 
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
@@ -59,6 +65,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     {
         // The base class deletes the er_email_events rows of the test users.
         if ($this->databaseConnected) {
+            $this->deleteOwnLogs();
             $this->db->query(
                 'UPDATE er_verification_settings SET enabled = ?, unmatched_recipient_count = ? WHERE id = 1',
                 [$this->originalVerificationEnabled ? 1 : 0, $this->originalUnmatchedCount]
@@ -66,6 +73,23 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         }
 
         parent::tearDown();
+    }
+
+    /**
+     * Remove the flag audit rows and log lines about this test's users. The base class removes no logs.
+     * It matches by user ID and note text, so it never removes a row of a parallel run.
+     */
+    private function deleteOwnLogs(): void
+    {
+        $property = new ReflectionProperty(IntegrationTestCase::class, 'createdUserIds');
+        /** @var list<int> $userIds */
+        $userIds = $property->getValue($this);
+        foreach ($userIds as $userId) {
+            $this->db->query(
+                'DELETE FROM logs WHERE id > ? AND (user_id = ? OR lognote LIKE ? OR lognote LIKE ?)',
+                [$this->logIdFloor, $userId, "Owner {$userId} %", "%owner {$userId} %"]
+            );
+        }
     }
 
     // --- Fixtures ----------------------------------------------------------
@@ -442,6 +466,293 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         )->first();
         $this->assertSame(self::NOW, $row->occurred_at);
         $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->email_blocked);
+    }
+
+    // --- Import with no usable blockedAt after an admin clear (#2426) ---------
+
+    /** An admin clear that happened before the run time (self::NOW). */
+    private const CLEARED_AT = '2026-09-09 01:00:00';
+
+    /** An admin clear that happened after the run time, as when the page was fetched before it. */
+    private const CLEARED_AFTER_RUN = '2026-09-09 04:00:00';
+
+    /**
+     * Seed the Clear Block row the way DeliverabilityFlagLog::record() writes it for source admin.
+     * CarVerificationManager's Clear Block action writes the same row.
+     */
+    private function seedClearBlock(int $carId, string $clearedAt): void
+    {
+        $this->assertTrue(
+            (new DeliverabilityFlagLog())->record(
+                0,
+                (int) $this->ownerFlagsForCar($carId)->user_id,
+                DeliverabilityFlagLog::FLAG_BLOCKED,
+                1,
+                0,
+                DeliverabilityFlagLog::SOURCE_ADMIN,
+                clearedAt: $clearedAt
+            ),
+            'Test setup: the Clear Block row must be written'
+        );
+    }
+
+    /** Set the Clear Bounced time on the owner's profile, as the Clear Bounced action leaves it. */
+    private function seedClearBounced(int $carId, string $clearedAt): void
+    {
+        $this->db->query(
+            'UPDATE profiles SET email_bounce_cleared_at = ? WHERE user_id = ?',
+            [$clearedAt, (int) $this->ownerFlagsForCar($carId)->user_id]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: Clear Bounced: ' . $this->db->errorString());
+    }
+
+    /** @return list<string> The "no usable event date" log lines about the car's owner */
+    private function noUsableDateLines(int $carId): array
+    {
+        $rows = $this->db->query(
+            'SELECT lognote FROM logs WHERE id > ? AND user_id = ? AND lognote LIKE ? ORDER BY id',
+            [$this->logIdFloor, (int) $this->ownerFlagsForCar($carId)->user_id, '%no usable event date%']
+        )->results();
+
+        return array_map(static fn (object $row): string => (string) $row->lognote, $rows);
+    }
+
+    /** Assert that the one skip line names the owner and the event and holds no address. */
+    private function assertOneSkipLine(int $carId, string $event): void
+    {
+        $ownerId = (int) $this->ownerFlagsForCar($carId)->user_id;
+        $lines = $this->noUsableDateLines($carId);
+        $this->assertCount(1, $lines, 'The skip writes one log line');
+        $this->assertSame(
+            "Brevo: event \"{$event}\" for owner {$ownerId} not recorded: no usable event date and an admin clear is on record.",
+            $lines[0]
+        );
+        $this->assertStringNotContainsString('@', $lines[0], 'The log line holds no address');
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function noUsableBlockedAtProvider(): array
+    {
+        return [
+            'null' => [null],
+            'a string that is not a date' => ['garbage'],
+            'an empty string' => [''],
+            'an int' => [1757332800],
+            'an array' => [['2026-09-08T12:00:00.000Z']],
+            'one year after the run time' => ['2027-09-09T03:00:00.000Z'],
+        ];
+    }
+
+    /**
+     * A spam entry after Clear Block and a hard bounce after Clear Bounced. The run time is later than
+     * both clears, so only the fallback marker keeps the flags clear.
+     */
+    #[DataProvider('noUsableBlockedAtProvider')]
+    public function testNoUsableBlockedAtAfterClearsKeepsFlagsClear(mixed $blockedAt): void
+    {
+        [$spamCarId, $spamEmail] = $this->createSuppressionCar();
+        [$bounceCarId, $bounceEmail] = $this->createSuppressionCar();
+        $this->seedClearBlock($spamCarId, self::CLEARED_AT);
+        $this->seedClearBounced($bounceCarId, self::CLEARED_AT);
+        $spamChangesBefore = $this->flagChanges($spamCarId);
+        $this->assertCount(1, $spamChangesBefore, 'Test setup: only the Clear Block row exists');
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, $blockedAt),
+                FakeBrevoBlockedContact::withReason($bounceEmail, 'hardBounce', null, $blockedAt),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(0, $summary->matchedCount);
+        $this->assertSame(2, $summary->skippedCount, 'Both entries are skipped');
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($spamCarId)->email_blocked, 'Clear Block holds');
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($bounceCarId)->email_bounced, 'Clear Bounced holds');
+        $this->assertSame(0, $this->countEventRows($spamCarId), 'No event row for the spam entry');
+        $this->assertSame(0, $this->countEventRows($bounceCarId), 'No event row for the hard bounce');
+        $this->assertSame($spamChangesBefore, $this->flagChanges($spamCarId), 'No flag-change row is added');
+        $this->assertSame([], $this->flagChanges($bounceCarId));
+        $this->assertOneSkipLine($spamCarId, 'spam');
+        $this->assertOneSkipLine($bounceCarId, 'blocked');
+    }
+
+    /** now + 301 s is no usable date. now + 299 s is clock skew that the job uses as given. */
+    public function testBlockedAtMoreThanFiveMinutesAheadIsNoUsableDate(): void
+    {
+        [$farCarId, $farEmail] = $this->createSuppressionCar();
+        [$nearCarId, $nearEmail] = $this->createSuppressionCar();
+        $this->seedClearBlock($farCarId, self::CLEARED_AT);
+        $this->seedClearBlock($nearCarId, self::CLEARED_AT);
+        $nowTimestamp = (new \DateTimeImmutable(self::NOW))->getTimestamp();
+
+        $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason(
+                    $farEmail,
+                    'contactFlaggedAsSpam',
+                    null,
+                    gmdate('Y-m-d\TH:i:s\Z', $nowTimestamp + 301)
+                ),
+                FakeBrevoBlockedContact::withReason(
+                    $nearEmail,
+                    'contactFlaggedAsSpam',
+                    null,
+                    gmdate('Y-m-d\TH:i:s\Z', $nowTimestamp + 299)
+                ),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($farCarId)->email_blocked, '301 s ahead: no usable date, Clear Block holds');
+        $this->assertSame(0, $this->countEventRows($farCarId));
+        $this->assertOneSkipLine($farCarId, 'spam');
+
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($nearCarId)->email_blocked, '299 s ahead: used as given, after the clear');
+        $events = $this->db->query(
+            'SELECT occurred_at FROM er_email_events WHERE user_id = (SELECT user_id FROM cars WHERE id = ?)',
+            [$nearCarId]
+        )->results();
+        $this->assertCount(1, $events);
+        $this->assertSame('2026-09-09 03:04:59', $events[0]->occurred_at, 'The date is the given one, not the run time');
+        $this->assertSame([], $this->noUsableDateLines($nearCarId));
+    }
+
+    /** With no clear on record, an entry with no usable date still sets the flag at the run time. */
+    #[DataProvider('noClearProvider')]
+    public function testNoUsableBlockedAtWithNoClearStillSetsTheFlag(mixed $blockedAt): void
+    {
+        [$spamCarId, $spamEmail] = $this->createSuppressionCar();
+        [$bounceCarId, $bounceEmail] = $this->createSuppressionCar();
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, $blockedAt),
+                FakeBrevoBlockedContact::withReason($bounceEmail, 'hardBounce', null, $blockedAt),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(2, $summary->matchedCount);
+        $spam = $this->ownerFlagsForCar($spamCarId);
+        $this->assertSame(1, (int) $spam->email_blocked);
+        $this->assertSame('spam', $spam->email_blocked_cause);
+        $bounce = $this->ownerFlagsForCar($bounceCarId);
+        $this->assertSame(1, (int) $bounce->email_bounced);
+        foreach ([$spamCarId, $bounceCarId] as $carId) {
+            $events = $this->eventRows($carId);
+            $this->assertCount(1, $events);
+            $this->assertSame([], $this->noUsableDateLines($carId), 'The skip line is for a clear on record only');
+        }
+        $times = $this->db->query(
+            'SELECT email_blocked_at, email_bounced_at FROM profiles WHERE user_id IN (?, ?) ORDER BY user_id',
+            [(int) $spam->user_id, (int) $bounce->user_id]
+        )->results();
+        $this->assertSame(self::NOW, $times[0]->email_blocked_at, 'The run time is the flag time');
+        $this->assertSame(self::NOW, $times[1]->email_bounced_at, 'The run time is the flag time');
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function noClearProvider(): array
+    {
+        return [
+            'null' => [null],
+            'a string that is not a date' => ['garbage'],
+            'one year after the run time' => ['2027-09-09T03:00:00.000Z'],
+        ];
+    }
+
+    /** Clear Bounced does not guard a spam entry, and Clear Block does not guard a hard bounce. */
+    public function testBounceClearDoesNotGuardSpamAndBlockClearDoesNotGuardHardBounce(): void
+    {
+        [$spamCarId, $spamEmail] = $this->createSuppressionCar();
+        [$bounceCarId, $bounceEmail] = $this->createSuppressionCar();
+        $this->seedClearBounced($spamCarId, self::CLEARED_AT);
+        $this->seedClearBlock($bounceCarId, self::CLEARED_AT);
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, null),
+                FakeBrevoBlockedContact::withReason($bounceEmail, 'hardBounce', null, null),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(2, $summary->matchedCount);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($spamCarId)->email_blocked, 'Clear Bounced does not guard spam');
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($bounceCarId)->email_bounced, 'Clear Block does not guard a hard bounce');
+        $this->assertSame([], $this->noUsableDateLines($spamCarId));
+        $this->assertSame([], $this->noUsableDateLines($bounceCarId));
+    }
+
+    /** adminBlocked and the unsubscribe codes set the block flag, so Clear Block guards them. */
+    public function testAdminBlockedAndUnsubscribedFollowTheBlockClearRule(): void
+    {
+        [$adminClearCar, $adminClearEmail] = $this->createSuppressionCar();
+        [$unsubClearCar, $unsubClearEmail] = $this->createSuppressionCar();
+        [$adminOpenCar, $adminOpenEmail] = $this->createSuppressionCar();
+        [$unsubOpenCar, $unsubOpenEmail] = $this->createSuppressionCar();
+        [$adminBounceClearCar, $adminBounceClearEmail] = $this->createSuppressionCar();
+        $this->seedClearBlock($adminClearCar, self::CLEARED_AT);
+        $this->seedClearBlock($unsubClearCar, self::CLEARED_AT);
+        $this->seedClearBounced($adminBounceClearCar, self::CLEARED_AT);
+
+        $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($adminClearEmail, 'adminBlocked', null, null),
+                FakeBrevoBlockedContact::withReason($unsubClearEmail, 'unsubscribedViaEmail', null, 'garbage'),
+                FakeBrevoBlockedContact::withReason($adminOpenEmail, 'adminBlocked', null, null),
+                FakeBrevoBlockedContact::withReason($unsubOpenEmail, 'unsubscribedViaApi', null, null),
+                FakeBrevoBlockedContact::withReason($adminBounceClearEmail, 'adminBlocked', null, null),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($adminClearCar)->email_blocked, 'Clear Block guards adminBlocked');
+        $this->assertSame(0, $this->countEventRows($adminClearCar));
+        $this->assertOneSkipLine($adminClearCar, 'unsubscribed');
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($unsubClearCar)->email_blocked, 'Clear Block guards unsubscribed');
+        $this->assertSame(0, $this->countEventRows($unsubClearCar));
+        $this->assertOneSkipLine($unsubClearCar, 'unsubscribed');
+
+        $adminOpen = $this->ownerFlagsForCar($adminOpenCar);
+        $this->assertSame(1, (int) $adminOpen->email_blocked, 'With no clear, adminBlocked still blocks');
+        $this->assertSame('blocklist', $adminOpen->email_blocked_cause);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($unsubOpenCar)->email_blocked);
+        $this->assertSame(
+            1,
+            (int) $this->ownerFlagsForCar($adminBounceClearCar)->email_blocked,
+            'Clear Bounced does not guard adminBlocked'
+        );
+    }
+
+    /**
+     * The page is fetched (run time 03:00), then an admin clears (04:00), then the entries are applied.
+     * An entry that was on the list before the clear must not undo it.
+     */
+    #[DataProvider('pageFetchedBeforeClearProvider')]
+    public function testImportPageFetchedBeforeClearBlockDoesNotSetFlag(mixed $blockedAt): void
+    {
+        [$spamCarId, $spamEmail] = $this->createSuppressionCar();
+        [$bounceCarId, $bounceEmail] = $this->createSuppressionCar();
+        $this->seedClearBlock($spamCarId, self::CLEARED_AFTER_RUN);
+        $this->seedClearBounced($bounceCarId, self::CLEARED_AFTER_RUN);
+
+        $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, $blockedAt),
+                FakeBrevoBlockedContact::withReason($bounceEmail, 'hardBounce', null, $blockedAt),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($spamCarId)->email_blocked);
+        $this->assertSame(0, (int) $this->ownerFlagsForCar($bounceCarId)->email_bounced);
+        // A spam entry with a date keeps its event row: the Clear Block bound stops the flag only.
+        $this->assertSame(0, $this->countEventRows($bounceCarId), 'A hard bounce before Clear Bounced records nothing');
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function pageFetchedBeforeClearProvider(): array
+    {
+        return [
+            'a date before the clear' => [self::BLOCKED_AT_UTC],
+            'no date' => [null],
+        ];
     }
 
     // --- Owner whose users.email moved after a block (#2356) ----------------

@@ -92,8 +92,9 @@ use ElanRegistry\LogCategories;
  * chip and the prune do not change. Only the cause on the profile is
  * `blocklist`.
  *
- * `blockedAt` is the event time. A missing, wrong-typed or unparseable value
- * takes the run time.
+ * `blockedAt` is the event time. A missing, wrong-typed, unparseable or
+ * non-positive value, or one more than MAX_FUTURE_SECONDS after the run time,
+ * takes the run time and is marked as no usable date (#2426).
  *
  * ADDRESS CHECK AND PRIVACY
  * -------------------------
@@ -247,16 +248,15 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     private const MAX_MESSAGE_ID_LENGTH = 255;
 
     /**
-     * Latest Unix timestamp {@see self::resolveOccurredAt()} will accept
-     * (9999-12-31 23:59:59 UTC).
+     * Latest `blockedAt` the job trusts, in seconds after the run time (#2426).
      *
-     * Same value as {@see \ElanRegistry\Car\BrevoWebhookEventProcessor}'s
-     * constant of the same name. Brevo's read API is external input, and an
-     * absurd date string ("+100000 years") parses without error into an out-of-range
-     * DATETIME. With `sql_mode = ''` MySQL stores that as a zero date, which
-     * breaks the date guards for that contact.
+     * Same value as {@see BrevoEventReconciliationJob}'s constant of the same
+     * name. A later date is clock skew or a bad payload. It would also pass
+     * every admin-clear guard in {@see EmailEventApplier}, so the import would
+     * set a cleared flag again. An absurd string ("+100000 years") also parses
+     * without error, and with `sql_mode = ''` MySQL stores it as a zero date.
      */
-    private const MAX_PLAUSIBLE_TIMESTAMP = 253402300799;
+    private const MAX_FUTURE_SECONDS = 300;
 
     /** Reason-code bucket for codes {@see self::mapReasonCodeToEvent()} does not map. */
     private const UNRECOGNIZED_REASON_BUCKET = 'unrecognized';
@@ -394,9 +394,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * page — separately from the three flag-decision buckets (matched /
      * unmatched / already-flagged), because those three are NOT exhaustive:
      * a contact with a malformed field, an invalid address, an unrecognized
-     * reason code, or a failed write for the matching owner reaches none of
-     * them (see
-     * SuppressionSyncSummary's docblock). An earlier version of this method
+     * reason code, a failed write for the matching owner, or a skip in the
+     * event step reaches none of them (see SuppressionSyncSummary's docblock
+     * and EMAIL_SYSTEM.md "Skipped contacts"). An earlier version of this method
      * summed the three buckets and compared THAT against PAGE_SIZE — so a
      * full page containing even one such contact undercounted, looked like a
      * partial page, and silently stopped the walk with the rest of Brevo's
@@ -512,8 +512,10 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo suppression sync: %d contact(s) across this run were examined but'
                 . ' reached no flag-decision bucket (malformed payload, unrecognized reason'
-                . ' code, oversized value, failed lookup, or a failed write for the matching'
-                . ' owner) — see the per-contact lines above for each reason.',
+                . ' code, oversized value, failed lookup, a failed write for the matching'
+                . ' owner, a date guard, no usable date after a clear, no profiles row, or an'
+                . ' address that is not the current one) — see the per-contact lines above'
+                . ' for each reason.',
                 $skipped
             ));
         }
@@ -768,7 +770,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                 continue;
             }
 
-            $occurredAt = $this->resolveOccurredAt($rawBlockedAt, $userId, $code);
+            ['occurredAt' => $occurredAt, 'usable' => $dateIsUsable]
+                = $this->resolveOccurredAt($rawBlockedAt, $userId, $code);
             $wasFlagged = $this->isAlreadyInTargetState($userId, $event);
 
             try {
@@ -781,7 +784,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
                     $occurredAt,
                     DeliverabilityFlagLog::SOURCE_IMPORT,
                     EmailEventApplier::MODE_STATE,
-                    $code === self::REASON_CODE_ADMIN_BLOCKED ? CarRepository::BLOCKED_CAUSE_BLOCKLIST : null
+                    $code === self::REASON_CODE_ADMIN_BLOCKED ? CarRepository::BLOCKED_CAUSE_BLOCKLIST : null,
+                    !$dateIsUsable
                 );
             } catch (CarDatabaseException $e) {
                 // Log and continue rather than aborting the page: there is
@@ -946,16 +950,22 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * same clock or rows from the three paths sort against each other hours
      * apart.
      *
-     * A parsed value is trusted only when its Unix timestamp is positive and at
-     * or below {@see self::MAX_PLAUSIBLE_TIMESTAMP} — an unbounded parse
-     * accepts strings like "+100000 years", producing an out-of-range DATETIME
-     * that MySQL stores as a zero date.
+     * A parsed value is trusted only when its Unix timestamp is positive and not
+     * more than {@see self::MAX_FUTURE_SECONDS} after the run time. A value
+     * outside that range takes the same logged fallback as an unparseable one.
+     *
+     * `usable` is false for the fallback. The run time is not Brevo's date, so
+     * {@see EmailEventApplier::apply()} must not compare it with an admin
+     * clear: a run time is always later, and the import would set the cleared
+     * flag again (#2426).
      *
      * @param mixed  $rawBlockedAt The SDK's `blockedAt` field, untyped at the boundary
      * @param int    $userId       Matched user, for the fallback log line
      * @param string $code         Brevo's raw reason code, for the fallback log line
+     * @return array{occurredAt: string, usable: bool} The time in
+     *         AppConstants::DATETIME_FORMAT, and false when it is the run-time fallback
      */
-    private function resolveOccurredAt(mixed $rawBlockedAt, int $userId, string $code): string
+    private function resolveOccurredAt(mixed $rawBlockedAt, int $userId, string $code): array
     {
         // Carries the specific reason the fallback below fires — not just the
         // debug type, which for the interesting cases (unparseable string,
@@ -967,10 +977,16 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             try {
                 $parsed = new \DateTimeImmutable($rawBlockedAt);
                 $seconds = $parsed->getTimestamp();
-                if ($seconds > 0 && $seconds <= self::MAX_PLAUSIBLE_TIMESTAMP) {
-                    return date(AppConstants::DATETIME_FORMAT, $seconds);
+                if ($seconds > 0 && $seconds <= $this->now->getTimestamp() + self::MAX_FUTURE_SECONDS) {
+                    return ['occurredAt' => date(AppConstants::DATETIME_FORMAT, $seconds), 'usable' => true];
                 }
-                $detail = sprintf('implausible timestamp %d parsed from "%s"', $seconds, $rawBlockedAt);
+                $detail = $seconds > 0
+                    ? sprintf(
+                        '"%s" is more than %d minutes after the run time',
+                        $rawBlockedAt,
+                        intdiv(self::MAX_FUTURE_SECONDS, 60)
+                    )
+                    : sprintf('implausible timestamp %d parsed from "%s"', $seconds, $rawBlockedAt);
             } catch (\Exception $e) {
                 $detail = sprintf('unparseable "%s" (%s)', $rawBlockedAt, get_class($e));
             }
@@ -978,7 +994,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
         // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: a data-hygiene warning about
         // Brevo's payload, not a job fault — the run continues and the
-        // suppression is still applied. Matches the category both
+        // suppression is still applied unless an admin clear is on record
+        // (#2426). Matches the category both
         // BrevoWebhookEventProcessor and BrevoEventReconciliationJob use for
         // the identical condition, so all three paths' date problems land in
         // one searchable place.
@@ -990,6 +1007,6 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $detail
         ));
 
-        return $this->now->format(AppConstants::DATETIME_FORMAT);
+        return ['occurredAt' => $this->now->format(AppConstants::DATETIME_FORMAT), 'usable' => false];
     }
 }

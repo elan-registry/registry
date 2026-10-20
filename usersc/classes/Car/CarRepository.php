@@ -854,6 +854,96 @@ class CarRepository
     }
 
     /**
+     * Read what admin Clear Block needs before its Brevo call (#2357)
+     *
+     * Clear Block clears the stored block, not the effective flag, so it
+     * needs the stored flag and the stored address with no address match.
+     * The read takes no lock: Brevo is called after it, and
+     * {@see clearProfileBlockedIfAddress()} reads the row again under the
+     * lock before it writes.
+     *
+     * @param int $ownerId Owner user ID
+     * @return array{blocked: bool, blockedAddress: ?string, userEmail: string}|null
+     *         `blocked` is false only for a stored 0. `userEmail` is ''
+     *         when the users row is missing. Null when the owner has no
+     *         profiles row.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findBlockClearTarget(int $ownerId): ?array
+    {
+        $state = $this->findProfileEmailState($ownerId);
+        if ($state === null) {
+            return null;
+        }
+
+        return [
+            // Any value other than 0 counts as set, so Clear Block repairs it.
+            'blocked'        => (string) $state->email_blocked !== '0',
+            'blockedAddress' => self::nullableString($state->email_blocked_address),
+            'userEmail'      => (string) ($state->user_email ?? ''),
+        ];
+    }
+
+    /**
+     * Clear an owner's block only when its stored address did not change (#2357)
+     *
+     * Admin Clear Block calls Brevo before it takes the lock. Call this
+     * method inside the caller's transaction after that call. It locks the
+     * profile row and the users row ({@see findProfileEmailState()} with
+     * SELECT ... FOR UPDATE OF p, u), then compares the stored
+     * `email_blocked_address` with `$expectedBlockedAddress`. The compare is
+     * exact and null-safe: no normalization, and NULL matches only NULL.
+     * When the address changed, it writes nothing, so the caller can roll
+     * back. When the address matches, it clears `email_blocked` with its
+     * address, date and cause, as {@see clearProfileBlocked()} does.
+     *
+     * When the address matches, a stored value other than 0 or 1 is written
+     * over, and `old` is
+     * 1 for it ({@see writerFlagValue()}).
+     *
+     * @param int         $ownerId                Owner user ID
+     * @param string|null $expectedBlockedAddress The `email_blocked_address` that the caller read before the Brevo call
+     * @return array{old: int, addressMatched: bool, stillBounced: bool, stillOptedOut: bool}|null
+     *         `old` is the flag value before the call (0 or 1). The flag was
+     *         cleared only when `addressMatched` is true and `old` is 1.
+     *         `stillBounced` is true when `email_bounced` applies to the
+     *         owner's current address, read under the lock. `stillOptedOut`
+     *         is true when `email_opted_out` is 1, read under the lock. Null when the
+     *         owner has no profiles row (nothing is written).
+     * @throws CarDatabaseException If a query fails
+     */
+    public function clearProfileBlockedIfAddress(int $ownerId, ?string $expectedBlockedAddress): ?array
+    {
+        $state = $this->findProfileEmailState($ownerId, true);
+        if ($state === null) {
+            return null;
+        }
+        [$old, $valid] = self::writerFlagValue($state->email_blocked, 'email_blocked', $ownerId, 1);
+        // A bad bounce value reads as not bounced, as the email_bounced_active SQL does.
+        [$bounced] = self::writerFlagValue($state->email_bounced, 'email_bounced', $ownerId, 0);
+        $result = [
+            'old'            => $old,
+            'addressMatched' => self::nullableString($state->email_blocked_address) === $expectedBlockedAddress,
+            'stillBounced'   => EffectiveEmailFlags::flagApplies(
+                $bounced,
+                self::nullableString($state->email_bounced_address),
+                self::currentAddress($state)
+            ),
+            'stillOptedOut'  => (string) $state->email_opted_out === '1',
+        ];
+        if (!$result['addressMatched'] || ($valid && $old === 0)) {
+            return $result;
+        }
+        if (!$valid) {
+            self::logFlagRepair($state->email_blocked, 'email_blocked', $ownerId);
+        }
+
+        $this->writeProfileBlockClear($ownerId, 'clearProfileBlockedIfAddress');
+
+        return $result;
+    }
+
+    /**
      * Write the block clear on a profile row that the caller has locked
      *
      * @throws CarDatabaseException If the query fails
@@ -2203,13 +2293,16 @@ class CarRepository
      * The time is the metadata `cleared_at` when the row has a valid one
      * (#2357), else `logdate`.
      *
-     * `logdate` FALLBACK: {@see DeliverabilityFlagLog::record()} does not
-     * write `cleared_at` today, so every row uses `logdate`. `logger()` sets
-     * `logdate` when it inserts the row, inside the clear's transaction. So
-     * the value is a little earlier than the commit of the clear, and it is
-     * the server's wall time. {@see EmailEventApplier::apply()} compares an
-     * event time with this value as wall time, to find whether a spam or
-     * unsubscribe event came after an admin Clear Block (#2359).
+     * {@see DeliverabilityFlagLog::record()} writes `cleared_at` only when
+     * its caller passes `clearedAt:`. Admin Clear Block passes the time that
+     * it records before its Brevo call, or at the start of its transaction
+     * when it makes no Brevo call. A row with `cleared_at` uses that time.
+     * Other rows use `logdate`: `logger()` sets it when it inserts the row,
+     * inside the clear's transaction. So the value is a little earlier than
+     * the commit of the clear, and it is the server's wall time.
+     * {@see EmailEventApplier::apply()} compares an event time with this
+     * value as wall time, to find whether a spam or unsubscribe event came
+     * after an admin Clear Block (#2359).
      *
      * `logs.metadata` is a BLOB, so the query converts it to utf8mb4 before
      * it reads JSON (a plain JSON_EXTRACT raises error 3144). The `logtype`

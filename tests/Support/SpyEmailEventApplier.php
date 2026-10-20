@@ -46,7 +46,8 @@ class SpyEmailEventApplier extends EmailEventApplier
      * address that the caller passed.
      *
      * @var list<array{match: EmailEventMatch, userId: int, email: string, event: string, reason: ?string,
-     *                 messageId: string, occurredAt: string, source: string, mode: string, blockedCause: ?string}>
+     *                 messageId: string, occurredAt: string, source: string, mode: string, blockedCause: ?string,
+     *                 occurredAtIsFallback: bool}>
      */
     public array $calls = [];
 
@@ -129,7 +130,8 @@ class SpyEmailEventApplier extends EmailEventApplier
         string $occurredAt,
         string $source,
         string $mode,
-        ?string $blockedCause = null
+        ?string $blockedCause = null,
+        bool $occurredAtIsFallback = false
     ): EmailEventApplyResult {
         $userId = $match->isMatched() ? $match->userId() : 0;
         $this->calls[] = [
@@ -143,6 +145,7 @@ class SpyEmailEventApplier extends EmailEventApplier
             'source'       => $source,
             'mode'         => $mode,
             'blockedCause' => $blockedCause,
+            'occurredAtIsFallback' => $occurredAtIsFallback,
         ];
 
         if ($this->failWith !== null) {

@@ -112,7 +112,7 @@ For the full workflow, see
 | `lat`, `lon` | `float` | Geographic coordinates |
 | `bio` | `text` | User biography |
 | `website` | `varchar(100)` | Personal website |
-| `email_opted_out` | `TINYINT(1) NOT NULL DEFAULT 0` | The owner asked to stop all registry email except account mail (password reset, sign-in, email change) (#1883, #2360). Renamed from `email_suppressed` in #2101. Set by the opt-out link in the verification email. Cleared by Resume (owner) and by Clear Suppression (admin). |
+| `email_opted_out` | `TINYINT(1) NOT NULL DEFAULT 0` | The owner asked to stop all registry email except account mail (password reset, sign-in, email change) (#1883, #2360). Renamed from `email_suppressed` in #2101. Set by the opt-out link in the verification email. Cleared by Resume (owner) and by Clear Opt-out (admin). |
 | `email_opted_out_at` | `datetime NULL` | When the owner opted out. NULL when the flag is 0. Can also be NULL for a flag that the #2101 migration copied, when no `EMAIL SUPPRESSED` history row dates it. |
 | `email_blocked` | `TINYINT(1) NOT NULL DEFAULT 0` | Brevo will not deliver to `email_blocked_address` (spam complaint, unsubscribe, or blocklist) (#2101). Set by delivery events and the suppression import. An admin clears it, and a confirmed change to another address clears it. |
 | `email_blocked_address` | `varchar(155) NULL` | The address that is blocked. Stored normalized (lower case). Never empty while `email_blocked = 1`. |
@@ -138,8 +138,11 @@ never blocked by a flag.
 
 Each flag change writes one `logs` row with `logtype` `EmailBounced`
 (`LogCategories::LOG_CATEGORY_EMAIL_BOUNCED`). The
-`logs.metadata` JSON holds `owner_id`, `flag`, `old`, `new` and `source`. The
-row holds no email address. `profiles` has no history table, so these `logs`
+`logs.metadata` JSON holds `owner_id`, `flag`, `old`, `new` and `source`. It
+holds two more keys only when the caller sets them: `cleared_at` (string, `Y-m-d H:i:s`) and
+`owner_requested` (integer 1). Admin Clear Block and Clear Opt-out set
+`owner_requested`. Clear Block also sets `cleared_at`. The readers ignore
+unknown keys. The row holds no email address. `profiles` has no history table, so these `logs`
 rows are the audit trail. See `DeliverabilityFlagLog` in
 [CLASSES.md](CLASSES.md). The migration is in
 `database/migrations/20261012000000_move_deliverability_flags_to_profiles.php`.

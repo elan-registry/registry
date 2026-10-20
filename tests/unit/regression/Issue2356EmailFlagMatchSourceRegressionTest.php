@@ -121,6 +121,13 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
      * value and decides nothing about a flag, so it cannot bypass the match
      * rule. testAddressLockReadsTheAddressColumnsAndNoFlagValue keeps it so.
      *
+     * `findBlockClearTarget` and `clearProfileBlockedIfAddress` are on the
+     * list (#2357). Admin Clear Block clears the stored block, not the
+     * effective flag, so it must read the stored flag and the stored address.
+     * The first method is its unlocked read before the Brevo call. The
+     * second is its locked write after the call, which clears the flag only
+     * when the stored address did not change.
+     *
      * @var list<string>
      */
     private const ALLOWED_REPOSITORY_METHODS = [
@@ -135,6 +142,8 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         'clearProfileBounced',
         'writeProfileBounceClear',
         'lockProfileAndFindAddresses',
+        'findBlockClearTarget',
+        'clearProfileBlockedIfAddress',
     ];
 
     /**
