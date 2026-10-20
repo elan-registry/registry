@@ -25,6 +25,7 @@ use Tests\Support\FakeBrevoBlockedContact;
 use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
 use Tests\Support\FakeBrevoSuppressionSyncClient;
+use Tests\Support\SendinblueMessagesTable;
 
 /**
  * #2359: the webhook, the reconciliation job and the suppression import give
@@ -57,24 +58,6 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
 
     /** The date of a flag that an earlier event set. */
     private const OLD_FLAG_AT = '2026-09-01 00:00:00';
-
-    /** The plugin's message table. The test schema may not have it. */
-    private const PLUGIN_TABLE_SQL = 'CREATE TABLE IF NOT EXISTS plg_sendinblue_messages (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        message_id VARCHAR(191) NOT NULL,
-        recipient_email VARCHAR(255) NOT NULL,
-        sender_email VARCHAR(255) NOT NULL,
-        kind VARCHAR(32) NOT NULL,
-        tags VARCHAR(255) NULL,
-        status VARCHAR(32) NOT NULL,
-        accepted_at DATETIME NOT NULL,
-        delivered_at DATETIME NULL,
-        last_event_at DATETIME NULL,
-        last_checked_at DATETIME NULL,
-        last_reason VARCHAR(255) NULL,
-        UNIQUE KEY message_id (message_id),
-        KEY recipient_accepted (recipient_email(128), accepted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci';
 
     private static bool $madePluginTable = false;
 
@@ -165,16 +148,9 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
 
     private function makePluginTable(): void
     {
-        $exists = (int) $this->db->query(
-            "SELECT COUNT(*) AS cnt FROM information_schema.TABLES
-              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'plg_sendinblue_messages'"
-        )->first()->cnt > 0;
-        if ($exists) {
-            return;
+        if (SendinblueMessagesTable::createIfMissing($this->db)) {
+            self::$madePluginTable = true;
         }
-        $this->db->query(self::PLUGIN_TABLE_SQL);
-        $this->assertFalse($this->db->error(), 'Test setup: plugin table: ' . $this->db->errorString());
-        self::$madePluginTable = true;
     }
 
     /** Record a message that only the plugin knows (step (b) of the matcher): no `sent` row. */
@@ -231,9 +207,17 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
      * the switch passes `$viaRunNow`, so the call goes through that check,
      * and reads the result from the database.
      *
+     * @param string $tag The event's tag. The job counts an unmatched event only with the verification tag.
      * @return int The number of events that the job applied, or 0 for `runNow()` (it returns no summary)
      */
-    private function driveReconciliation(string $email, string $messageId, string $apiType, int $ts, bool $viaRunNow = false): int
+    private function driveReconciliation(
+        string $email,
+        string $messageId,
+        string $apiType,
+        int $ts,
+        bool $viaRunNow = false,
+        string $tag = 'password_reset'
+    ): int
     {
         $job = new BrevoEventReconciliationJob(
             $this->db,
@@ -245,7 +229,7 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
                     email: $email,
                     event: $apiType,
                     messageId: $messageId,
-                    tag: 'password_reset',
+                    tag: $tag,
                     date: $this->iso($ts),
                     reason: 'parity reason'
                 ),
@@ -469,6 +453,108 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
         $snapshot = $this->snapshot($owner['userId']);
         $this->assertSame('1', $snapshot['email_blocked']);
         $this->assertSame('spam', $snapshot['email_blocked_cause']);
+    }
+
+    // ------------------------------------------------------------------
+    // #2420: no new `logs` row holds the event address
+    // ------------------------------------------------------------------
+
+    /**
+     * Path, whether a user holds the address, import reason code (the import path only)
+     *
+     * @return array<string, array{string, bool, string}>
+     */
+    public static function logAddressProvider(): array
+    {
+        return [
+            'webhook, matched owner' => [self::WEBHOOK, true, 'hardBounce'],
+            'reconciliation, matched owner' => [self::RECONCILIATION, true, 'hardBounce'],
+            'import, matched owner' => [self::IMPORT, true, 'hardBounce'],
+            'webhook, no user has the address' => [self::WEBHOOK, false, 'hardBounce'],
+            'reconciliation, no user has the address' => [self::RECONCILIATION, false, 'hardBounce'],
+            'import, no user has the address' => [self::IMPORT, false, 'hardBounce'],
+            'import, unrecognized reason code' => [self::IMPORT, true, 'someFutureBrevoCode'],
+        ];
+    }
+
+    /**
+     * The `logs` table has no retention limit, and account deletion does not
+     * purge it, so an address in a log line outlives the account.
+     */
+    #[DataProvider('logAddressProvider')]
+    public function testNoNewLogRowHoldsTheEventAddress(string $path, bool $userHasAddress, string $importCode): void
+    {
+        $owner = $userHasAddress ? $this->makeOwner('logaddr') : null;
+        $email = $owner['email'] ?? 'logaddr-nobody-' . uniqid() . '@example.com';
+        $messageId = 'logaddr-msg-' . uniqid();
+        if ($path !== self::IMPORT) {
+            if ($owner !== null) {
+                $this->seedSentRow($owner['carId'], $email, $messageId, $this->eventTs - 3600);
+            } else {
+                // A plugin row makes the message ours, so the event reaches the no-user step.
+                $this->seedPluginRow($messageId, $email, $this->eventTs - 3600);
+            }
+        }
+        $lastLogId = (int) $this->db->query('SELECT COALESCE(MAX(id), 0) AS id FROM logs')->first()->id;
+
+        switch ($path) {
+            case self::WEBHOOK:
+                $this->assertSame(
+                    $owner !== null ? ProcessingResult::MATCHED_AND_RECORDED : ProcessingResult::NO_USER_MATCH,
+                    $this->driveWebhook($email, $messageId, 'hard_bounce', $this->eventTs)
+                );
+                break;
+            case self::RECONCILIATION:
+                // runNow(), so that execute() writes its summary line. The
+                // verification tag makes the job count an unmatched event,
+                // so the summary line shows that the job saw it.
+                $this->driveReconciliation(
+                    $email,
+                    $messageId,
+                    'hardBounces',
+                    $this->eventTs,
+                    viaRunNow: true,
+                    tag: AppConstants::VERIFICATION_EMAIL_TAG
+                );
+                break;
+            default:
+                $this->importJob($email, $importCode, $this->eventTs)->runNow();
+        }
+
+        if ($owner !== null) {
+            // Proof that the path got to the owner (or, for the unrecognized code, stopped before it).
+            $this->assertSame(
+                $importCode === 'hardBounce' ? '1' : '0',
+                $this->snapshot($owner['userId'])['email_bounced'],
+                "The {$path} path did not give the expected flag"
+            );
+        }
+
+        $rows = $this->db->query('SELECT id, lognote, metadata FROM logs WHERE id > ?', [$lastLogId])->results();
+        // With no new row, the address check below passes for no reason.
+        $this->assertNotEmpty($rows, "The {$path} path must write at least one log row");
+        if ($owner === null && $path !== self::WEBHOOK) {
+            $notes = array_map(static fn (object $row): string => (string) $row->lognote, $rows);
+            $this->assertNotEmpty(preg_grep('/ 0 matched, 1 unmatched,/', $notes), "The {$path} path must count the event as unmatched");
+        }
+        if (($owner === null && $path === self::WEBHOOK) || ($path === self::IMPORT && $importCode !== 'hardBounce')) {
+            // The webhook no-user line and the import unrecognized-code line name the address by its hash.
+            $notes = array_map(static fn (object $row): string => (string) $row->lognote, $rows);
+            $hash = EmailEventMatcher::addressLogHash($email);
+            $this->assertNotEmpty(
+                preg_grep('/' . preg_quote($hash, '/') . '/', $notes),
+                "The {$path} path must name the address by its hash {$hash}"
+            );
+        }
+        $localPart = strstr($email, '@', true);
+        $this->assertIsString($localPart);
+        foreach ($rows as $row) {
+            foreach (['lognote', 'metadata'] as $column) {
+                $value = (string) ($row->{$column} ?? '');
+                $this->assertStringNotContainsStringIgnoringCase($email, $value, "logs row {$row->id} {$column} holds the address");
+                $this->assertStringNotContainsStringIgnoringCase($localPart, $value, "logs row {$row->id} {$column} holds the local part");
+            }
+        }
     }
 
     // ------------------------------------------------------------------

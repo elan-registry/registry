@@ -93,15 +93,15 @@ after an item is written.
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
 - [ ] `BrevoSiteRoot::PLUGIN_FILES` keeps `override.RENAME.php` only for the #2374 regression test (`VerificationSettingsTest.php` ~L656). Add a comment that says so (found in /finish-milestone v2.30.7)
 
+### `tests/Support/SendinblueMessagesTable.php` (test-only)
+
+- [ ] The six integration classes that use it drop `plg_sendinblue_messages` in `tearDownAfterClass()` and do not check `->error()`. A failed drop leaves a test-made table, and a later class then gets `false` from `createIfMissing()` and treats it as a plugin table it must not drop. Add a static `drop()` that throws on a DB error, and use it in the six classes (found in #2420)
+
 ### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
 
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 - [ ] The subprocess sets `$_SERVER["PHP_SELF"]` (~L138), which `Server::get('PHP_SELF')` ignores under CLI. So `$php_self` is `/`, and `securePage()` never checks the real `app/admin/index.php` page. The class doc claim "an editor passes securePage()" is not tested. `invokeEndpoint()` already sets `SCRIPT_FILENAME`. This class does not. Fix: set `$_SERVER["SCRIPT_FILENAME"]` to `$page` instead. The 12 tests in this class still pass with that change. This fix does not need the migration item above. (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
-
-### `tests/integration/BrevoEventPathParityIntegrationTest.php`
-
-- [ ] The `plg_sendinblue_messages` `CREATE TABLE` text is copied in about eight integration test classes and can drift from the plugin schema. Move it to one shared test helper (found in #2359 review)
 
 ### `tests/integration/BrevoWebhookEndpointTest.php`
 
@@ -184,13 +184,13 @@ after an item is written.
 
 - [ ] Only the `DatabaseInterface` branch is tested. Add the `PDO` branch: `prepare()` returns false, `execute()` returns false, and a `PDOException` comes back as the previous exception of `OwnerDatabaseException` (found in #2358 review)
 
+### `tests/unit/cron/BrevoEventReconciliationClientTest.php` (test coverage)
+
+- [ ] No test reaches the poll catch of `BrevoEventReconciliationClient::fetchEvents()` with an address in the exception message. Add a protected `createApi()` seam, as in `BrevoSuppressionSyncClient`, and a test that shows no log row holds the address (found in #2420)
+
 ### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
 
 - [ ] The source check that the webhook does not read the switch (~L101) repeats behavior tests (`BrevoWebhookEndpointTest` ~L351, `BrevoEventPathParityIntegrationTest` ~L556, ~L605, ~L621). Delete it. Keep the convention scans at ~L63 and ~L110 (found in /finish-milestone v2.30.8)
-
-### `tests/unit/regression/Issue2359NoEmailInLogsRegressionTest.php`
-
-- [ ] The logger-argument scan does not see `->getEmail()`, `->email_address`, `['email_address']` or `\logger(` (`T_NAME_FULLY_QUALIFIED`), and no negative control proves the safe-call allowance ends at its closing `)`. Add each, with a control (found in #2359 review)
 
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 

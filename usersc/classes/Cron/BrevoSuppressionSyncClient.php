@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Cron;
 
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -57,8 +58,14 @@ use ElanRegistry\LogCategories;
  * {@see \ElanRegistry\Car\CarVerificationManager}: this class is an injected
  * collaborator of the suppression sync job, and the job's unit tests must
  * substitute it (its only real behavior is an outbound HTTP call against an
- * SDK that isn't even on the unit suite's autoloader). Subclassing outside of
- * test doubles is not intended.
+ * SDK that isn't even on the unit suite's autoloader). The protected
+ * `createApi()` seam lets a unit test replace the SDK API object, so the
+ * test can reach the poll catch without a network call or the SDK (#2425).
+ * Subclassing outside of test doubles is not intended.
+ *
+ * No log line holds an exception message. A Brevo API error body can echo a
+ * recipient address, so both catches log `ExceptionLogSummary::of()` only
+ * (#2425).
  *
  * Routes through {@see \ElanRegistry\Email\BrevoDevOverride} — in local dev
  * (`US_ENVIRONMENT=development` with `BREVO_API_HOST` set), this polls
@@ -136,24 +143,11 @@ class BrevoSuppressionSyncClient
             return null;
         }
 
-        if (!$this->loadSdk()) {
-            return null;
-        }
-
         try {
-            $credentials = \Brevo\Client\Configuration::getDefaultConfiguration()
-                ->setApiKey('api-key', $apiKey);
-            if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {
-                $credentials->setHost($hostOverride);
+            $apiInstance = $this->createApi($apiKey);
+            if ($apiInstance === null) {
+                return null;
             }
-
-            $apiInstance = new \Brevo\Client\Api\TransactionalEmailsApi(
-                new \GuzzleHttp\Client([
-                    'timeout' => self::TIMEOUT_SECONDS,
-                    'connect_timeout' => self::CONNECT_TIMEOUT_SECONDS,
-                ]),
-                $credentials
-            );
 
             // Positional arguments, per the generated SDK signature:
             //   getTransacBlockedContacts($startDate, $endDate, $limit, $offset,
@@ -184,18 +178,54 @@ class BrevoSuppressionSyncClient
             // also raises \InvalidArgumentException on malformed arguments and
             // \RuntimeException during response deserialization — none of which
             // should be allowed to abort a cron run.
+            // No message: a Brevo API error body can echo a recipient
+            // address. An address is personal data, and the logs table must
+            // not hold it.
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo suppression sync poll FAILED (%s to %s, limit %d, offset %d): %s: %s. '
+                'Brevo suppression sync poll FAILED (%s to %s, limit %d, offset %d): %s. '
                 . 'No suppressions imported this cycle.',
                 $startDate?->format('Y-m-d') ?? 'no start date',
                 $endDate?->format('Y-m-d') ?? 'no end date',
                 $limit,
                 $offset,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return null;
         }
+    }
+
+    /**
+     * Build the Brevo transactional email API client.
+     *
+     * The seam covers the SDK load too: CI has no SDK, so a seam placed
+     * after loadSdk() could not reach the poll catch there. The return type
+     * is `?object`, not the SDK class, because a test double of another
+     * class would fail a native SDK return type when the SDK is absent.
+     *
+     * @param string $apiKey The Brevo API key
+     * @return \Brevo\Client\Api\TransactionalEmailsApi|null The client, or
+     *         null if the SDK did not load (loadSdk() has logged why). An
+     *         override that returns null must log why too.
+     */
+    protected function createApi(string $apiKey): ?object
+    {
+        if (!$this->loadSdk()) {
+            return null;
+        }
+
+        $credentials = \Brevo\Client\Configuration::getDefaultConfiguration()
+            ->setApiKey('api-key', $apiKey);
+        if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {
+            $credentials->setHost($hostOverride);
+        }
+
+        return new \Brevo\Client\Api\TransactionalEmailsApi(
+            new \GuzzleHttp\Client([
+                'timeout' => self::TIMEOUT_SECONDS,
+                'connect_timeout' => self::CONNECT_TIMEOUT_SECONDS,
+            ]),
+            $credentials
+        );
     }
 
     /**
@@ -297,12 +327,13 @@ class BrevoSuppressionSyncClient
             // never-throws contract and surfacing in AbstractCronJob::run()'s
             // catch-all as a generic job failure, with nothing pointing at the
             // SDK. Caught and identified here instead.
+            // No message: the summary is enough to find the bad file, and
+            // all log lines in this class follow one rule.
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo suppression sync: SDK autoloader at %s failed to load (%s: %s) —'
+                'Brevo suppression sync: SDK autoloader at %s failed to load (%s) —'
                 . ' the vendored Brevo SDK looks corrupt. Skipping poll.',
                 $autoload,
-                get_class($e),
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return false;
         }

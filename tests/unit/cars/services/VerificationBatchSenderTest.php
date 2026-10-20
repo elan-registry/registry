@@ -11,6 +11,8 @@ use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\EmailTemplate;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -57,6 +59,11 @@ require_once __DIR__ . '/../../../Support/VerificationSettingsFakeDatabase.php';
 #[Group('fast')]
 final class VerificationBatchSenderTest extends TestCase
 {
+    /** Mixed case, so the address checks must ignore case. */
+    private const LEAK_ADDRESS = 'Leak-Test-2420@Example.org';
+
+    private const LEAK_LOCAL_PART = 'Leak-Test-2420';
+
     /** @var CarRepository&\PHPUnit\Framework\MockObject\MockObject */
     private CarRepository $mockRepo;
 
@@ -112,13 +119,14 @@ final class VerificationBatchSenderTest extends TestCase
         );
 
         $GLOBALS['mockSentEmails'] = [];
+        $GLOBALS['mockLogEntries'] = [];
         unset($GLOBALS['mockEmailSendResult']);
         $GLOBALS['hookTestDb'] = $this->makeOwnerFoundDb();
     }
 
     protected function tearDown(): void
     {
-        unset($GLOBALS['mockSentEmails'], $GLOBALS['mockEmailSendResult'], $GLOBALS['hookTestDb']);
+        unset($GLOBALS['mockSentEmails'], $GLOBALS['mockEmailSendResult'], $GLOBALS['hookTestDb'], $GLOBALS['mockLogEntries']);
         $this->brevoSiteRoot?->remove();
         parent::tearDown();
     }
@@ -438,6 +446,97 @@ final class VerificationBatchSenderTest extends TestCase
             ['sent' => [], 'unrecorded' => [], 'skipped' => [], 'failed' => []],
             $result
         );
+    }
+
+    // --- No address in the catch-site log lines (#2420) ------------------
+
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFindByIdThrowLogsTheClassAndNotTheAddressInTheMessage(): void
+    {
+        $this->mockRepo->method('findById')->willThrowException(
+            new CarDatabaseException('No row for owner ' . self::LEAK_ADDRESS)
+        );
+
+        $this->sender->processBatch([1]);
+
+        $this->assertLogLineNamesClassWithoutAddress(
+            'Verification send: findById threw for car 1',
+            CarDatabaseException::class
+        );
+    }
+
+    #[AllowMockObjectsWithoutExpectations]
+    public function testEligibilityThrowLogsTheClassAndNotTheAddressInTheMessage(): void
+    {
+        // skipReason() echoes a malformed verification_attempts_since value
+        // into its CarValidationException message.
+        $car = $this->makeEligibleCar(1);
+        $car->verification_attempts_since = self::LEAK_ADDRESS;
+        $this->mockRepo->method('findById')->willReturn($car);
+
+        $this->sender->processBatch([1]);
+
+        $this->assertLogLineNamesClassWithoutAddress(
+            'Verification send: eligibility re-check failed for car 1',
+            CarValidationException::class
+        );
+    }
+
+    #[AllowMockObjectsWithoutExpectations]
+    public function testSendOneThrowLogsTheClassAndNotTheAddressInTheMessage(): void
+    {
+        // effectiveEmailFlags() runs inside sendOne() outside its own catches,
+        // so this throw reaches the batch sender. setUp() stubs it to succeed,
+        // so this test needs a repo of its own.
+        $repo = $this->createMock(CarRepository::class);
+        $repo->method('findById')->willReturn($this->makeEligibleCar(1));
+        $repo->method('effectiveEmailFlags')->willThrowException(
+            new RuntimeException('Flags read failed for ' . self::LEAK_ADDRESS)
+        );
+        $sendSvc = new CarVerificationSendService(
+            $repo,
+            $this->mockVerifier,
+            new CarVerificationEmailComposer(new EmailTemplate()),
+            $this->brevoSiteRoot?->readySettings()
+        );
+
+        $result = (new VerificationBatchSender($repo, $sendSvc, 1))->processBatch([1]);
+
+        $this->assertCount(1, $result['failed']);
+        $this->assertLogLineNamesClassWithoutAddress(
+            'Verification send: sendOne threw for car 1',
+            RuntimeException::class
+        );
+    }
+
+    /**
+     * Assert that the expected catch-site line exists and names the class,
+     * and that no log entry holds the address or its local part
+     *
+     * @param string $prefix Start of the expected log line
+     * @param class-string $exceptionClass Class the line must name
+     */
+    private function assertLogLineNamesClassWithoutAddress(string $prefix, string $exceptionClass): void
+    {
+        /** @var list<array{user_id: mixed, category: mixed, message: mixed, metadata: mixed}> $entries */
+        $entries = $GLOBALS['mockLogEntries'] ?? [];
+
+        // A check of zero entries proves nothing, so the line must exist first.
+        $matches = array_values(array_filter(
+            $entries,
+            fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_CAR_VERIFICATION
+                && str_starts_with((string) $entry['message'], $prefix)
+        ));
+        $this->assertCount(1, $matches, "Expected one log line that starts with '{$prefix}'");
+
+        foreach ($entries as $entry) {
+            $text = (string) $entry['message'] . ' ' . var_export($entry['metadata'], true);
+            foreach ([self::LEAK_ADDRESS, self::LEAK_LOCAL_PART] as $needle) {
+                $this->assertStringNotContainsStringIgnoringCase($needle, $text);
+            }
+        }
+
+        $this->assertStringContainsString($exceptionClass . ' (code ', (string) $matches[0]['message']);
     }
 
     // --- capToBatchSize() (#2330) ----------------------------------------

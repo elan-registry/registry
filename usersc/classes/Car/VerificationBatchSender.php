@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -124,11 +125,12 @@ final class VerificationBatchSender
             try {
                 $carData = $this->repo->findById($carId);
             } catch (\Throwable $e) {
+                // The summary, not the message: CarRepository copies driver error
+                // text into its messages, and that text can echo an address.
                 logger($this->currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                    'Verification send: findById threw for car %d [%s]: %s',
+                    'Verification send: findById threw for car %d: %s',
                     $carId,
-                    get_class($e),
-                    $e->getMessage()
+                    ExceptionLogSummary::of($e)
                 ));
                 $failed[] = [
                     'car'    => (object) ['id' => $carId, 'chassis' => '', 'email' => ''],
@@ -154,7 +156,7 @@ final class VerificationBatchSender
                 $skipReason = VerificationEligibility::skipReason($carData);
             } catch (ElanRegistryException $e) {
                 logger($this->currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-                    "Verification send: eligibility re-check failed for car {$carId}: " . $e->getMessage());
+                    "Verification send: eligibility re-check failed for car {$carId}: " . ExceptionLogSummary::of($e));
                 // Distinct from every other skip reason below: this one is a
                 // data-integrity fault (e.g. a corrupt verification_attempts_since
                 // value), not a routine ineligibility state like "Marked sold." The
@@ -179,11 +181,11 @@ final class VerificationBatchSender
             try {
                 $sendResult = $this->sendSvc->sendOne($carData);
             } catch (\Throwable $e) {
+                // The summary, not the message: a send error can echo the recipient address.
                 logger($this->currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                    'Verification send: sendOne threw for car %d [%s]: %s',
+                    'Verification send: sendOne threw for car %d: %s',
                     $carId,
-                    get_class($e),
-                    $e->getMessage()
+                    ExceptionLogSummary::of($e)
                 ));
                 $sendResult = SendResult::failed($carId, 'An unexpected error occurred during send.');
             }

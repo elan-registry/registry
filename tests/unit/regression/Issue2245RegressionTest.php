@@ -77,7 +77,7 @@ final class Issue2245RegressionTest extends TestCase
             ],
             'BrevoSuppressionSyncClient' => [
                 'usersc/classes/Cron/BrevoSuppressionSyncClient.php',
-                'fetchBlockedContacts',
+                'createApi',
             ],
         ];
     }
