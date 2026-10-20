@@ -11,11 +11,10 @@ use RuntimeException;
  * SendinblueMessagesTable - the sendinblue plugin's message table, for integration tests
  *
  * The test schema may not have `plg_sendinblue_messages`, because the plugin
- * makes it when it installs. This class holds its column list once, so the
- * test copies cannot drift from the plugin schema.
- *
- * The columns are the table after plugin migrate.php updates 00006-00008
- * (sendinblue 1.8.0). Update 00008 added `tags` after `kind`.
+ * makes it when it installs. This class holds its column list once, so a
+ * plugin schema change needs one edit here. Nothing compares the list with
+ * the plugin, which is git-ignored, so keep it in step with
+ * `usersc/plugins/sendinblue/migrate.php` by hand.
  *
  * The caller owns the drop. A class that gets `true` from
  * {@see createIfMissing()} drops the table in `tearDownAfterClass()`, so no

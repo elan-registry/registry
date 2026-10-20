@@ -66,8 +66,9 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
      * `catch` blocks that the file has, so a rewrite that removes the blocks
      * (and so the scan) fails here instead of passing with nothing scanned.
      *
-     * The two Brevo API clients and VerificationBatchSender are here because
-     * their `catch` blocks log an exception that can hold an address.
+     * The two Brevo API clients, VerificationBatchSender and
+     * CarVerificationSendService are here because their `catch` blocks log an
+     * exception that can hold an address.
      *
      * @var array<string, int>
      */
@@ -84,10 +85,11 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         'usersc/classes/Cron/BrevoSuppressionSyncClient.php' => 2,
         'usersc/classes/Cron/BrevoEventReconciliationClient.php' => 2,
         'usersc/classes/Car/VerificationBatchSender.php' => 3,
+        'usersc/classes/Car/CarVerificationSendService.php' => 5,
     ];
 
     /** Property and method names whose value is an address. Lower case. */
-    private const ADDRESS_MEMBERS = ['email', 'email_address', 'getemail'];
+    private const ADDRESS_MEMBERS = ['email', 'email_address', 'getemail', 'recipient_email'];
 
     /** Array keys whose value is an address. Lower case. */
     private const ADDRESS_KEYS = ['email', 'email_address', 'recipient_email'];
@@ -431,6 +433,7 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
             'getEmail() call' => ["logger(0, 'x', 'to ' . \$owner->getEmail());", '->getEmail'],
             'email_address property' => ["logger(0, 'x', 'to ' . \$row->email_address);", '->email_address'],
             'email_address key' => ["logger(0, 'x', 'to ' . \$row['email_address']);", "['email_address']"],
+            'recipient_email property' => ["logger(0, 'x', 'to ' . \$row->recipient_email);", '->recipient_email'],
             'fully qualified logger' => ["\\logger(0, 'x', 'to ' . \$email);", '$email'],
             // The allowance of a safe call must end at its own ")", also when
             // the call holds a nested call. If it does not end, the address after it is not seen.

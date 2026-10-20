@@ -1217,8 +1217,8 @@ The webhook then returns 500, and Brevo can send the event again.
 
 No log line or exception message of the webhook holds an email address. Lines
 name the user ID or the address hash prefix. No `catch` block logs
-`getMessage()`, because `CarRepository` puts the address in its exception
-messages.
+`getMessage()`, because `CarRepository` copies driver error text into its
+exception messages, and that text can echo an address.
 
 The same rule applies to these files (the two Brevo cron clients and the
 verification batch sender):
@@ -1235,16 +1235,18 @@ the recipient address.
 `<Class> (code <code>[, SQLSTATE <x>]) at <file>:<line>`. It gives the
 exception class, the code, the file name (no directory) and the line of the
 throw. For a `CarDatabaseException`, it also gives the SQLSTATE. It never
-includes the message. Most of these exceptions have code 0, so the SQLSTATE and
-the throw place tell one failure from another.
+includes the message. Most repository exceptions have code 0, so the SQLSTATE
+and the throw place tell one failure from another. A Brevo `ApiException` gives
+the HTTP status as its code.
 
 `usersc/classes/Car/CarVerificationSendService.php` also follows the rule. When
 `email()` fails, its log line does not copy the `sendinblueLastError()` text.
 That text can be a raw Brevo `ApiException` message. The line gives
 `Mailer error: HTTP <status>` when the text starts with the SDK's `[NNN]`
 prefix, `reported (text not logged)` for other text, and `none reported` when
-the plugin reports nothing. A code that is not three digits, such as `[0]`
-from a connection failure, also gives `reported (text not logged)`. The
+the plugin reports nothing. A code that is not three digits, such as `[0]`,
+also gives `reported (text not logged)`. So does a connection failure: the SDK
+does not wrap a Guzzle `ConnectException`, so its text starts `cURL error`. The
 plugin's own `sendinblue` log row still holds the text. That row is upstream
 UserSpice code.
 

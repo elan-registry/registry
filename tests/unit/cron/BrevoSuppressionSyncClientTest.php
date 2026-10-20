@@ -92,7 +92,8 @@ final class BrevoSuppressionSyncClientTest extends TestCase
 
     /**
      * A Brevo error body can echo a recipient address. The poll catch must
-     * log the exception class and code only, never the message (#2425).
+     * log the ExceptionLogSummary (class, code, throw place), never the
+     * message (#2425). The test checks the class and the code.
      */
     public function testPollFailureLogsClassAndCodeButNoAddress(): void
     {

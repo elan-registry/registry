@@ -207,9 +207,17 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
      * the switch passes `$viaRunNow`, so the call goes through that check,
      * and reads the result from the database.
      *
+     * @param string $tag The event's tag. The job counts an unmatched event only with the verification tag.
      * @return int The number of events that the job applied, or 0 for `runNow()` (it returns no summary)
      */
-    private function driveReconciliation(string $email, string $messageId, string $apiType, int $ts, bool $viaRunNow = false): int
+    private function driveReconciliation(
+        string $email,
+        string $messageId,
+        string $apiType,
+        int $ts,
+        bool $viaRunNow = false,
+        string $tag = 'password_reset'
+    ): int
     {
         $job = new BrevoEventReconciliationJob(
             $this->db,
@@ -221,7 +229,7 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
                     email: $email,
                     event: $apiType,
                     messageId: $messageId,
-                    tag: 'password_reset',
+                    tag: $tag,
                     date: $this->iso($ts),
                     reason: 'parity reason'
                 ),
@@ -497,8 +505,17 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
                 );
                 break;
             case self::RECONCILIATION:
-                // runNow(), so that execute() writes its summary line.
-                $this->driveReconciliation($email, $messageId, 'hardBounces', $this->eventTs, viaRunNow: true);
+                // runNow(), so that execute() writes its summary line. The
+                // verification tag makes the job count an unmatched event,
+                // so the summary line shows that the job saw it.
+                $this->driveReconciliation(
+                    $email,
+                    $messageId,
+                    'hardBounces',
+                    $this->eventTs,
+                    viaRunNow: true,
+                    tag: AppConstants::VERIFICATION_EMAIL_TAG
+                );
                 break;
             default:
                 $this->importJob($email, $importCode, $this->eventTs)->runNow();
@@ -516,15 +533,9 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
         $rows = $this->db->query('SELECT id, lognote, metadata FROM logs WHERE id > ?', [$lastLogId])->results();
         // With no new row, the address check below passes for no reason.
         $this->assertNotEmpty($rows, "The {$path} path must write at least one log row");
-        if ($owner === null && $path === self::RECONCILIATION) {
-            // The job does not count or log an unmatched event without the verification tag.
-            $this->assertTrue(
-                (new EmailEventMatcher($this->repo))->matchByMessageId($messageId, $email)->isNoUser(),
-                'Setup: the event must reach the no-user step of the job'
-            );
-        } elseif ($owner === null && $path === self::IMPORT) {
+        if ($owner === null && $path !== self::WEBHOOK) {
             $notes = array_map(static fn (object $row): string => (string) $row->lognote, $rows);
-            $this->assertNotEmpty(preg_grep('/ 0 matched, 1 unmatched,/', $notes), 'The import must count the entry as unmatched');
+            $this->assertNotEmpty(preg_grep('/ 0 matched, 1 unmatched,/', $notes), "The {$path} path must count the event as unmatched");
         }
         if (($owner === null && $path === self::WEBHOOK) || ($path === self::IMPORT && $importCode !== 'hardBounce')) {
             // The webhook no-user line and the import unrecognized-code line name the address by its hash.

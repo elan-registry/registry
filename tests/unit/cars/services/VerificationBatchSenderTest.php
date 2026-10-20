@@ -59,6 +59,11 @@ require_once __DIR__ . '/../../../Support/VerificationSettingsFakeDatabase.php';
 #[Group('fast')]
 final class VerificationBatchSenderTest extends TestCase
 {
+    /** Mixed case, so the address checks must ignore case. */
+    private const LEAK_ADDRESS = 'Leak-Test-2420@Example.org';
+
+    private const LEAK_LOCAL_PART = 'Leak-Test-2420';
+
     /** @var CarRepository&\PHPUnit\Framework\MockObject\MockObject */
     private CarRepository $mockRepo;
 
@@ -71,9 +76,6 @@ final class VerificationBatchSenderTest extends TestCase
 
     /** Temp site root that holds the sendinblue plugin files, or null when none was made. */
     private ?BrevoSiteRoot $brevoSiteRoot = null;
-
-    /** Mixed case, so the address checks must ignore case. */
-    private const LEAK_ADDRESS = 'Leak-Test-2420@Example.org';
 
     protected function setUp(): void
     {
@@ -527,11 +529,10 @@ final class VerificationBatchSenderTest extends TestCase
         ));
         $this->assertCount(1, $matches, "Expected one log line that starts with '{$prefix}'");
 
-        $localPart = strstr(self::LEAK_ADDRESS, '@', true);
         foreach ($entries as $entry) {
             $text = (string) $entry['message'] . ' ' . var_export($entry['metadata'], true);
-            foreach ([self::LEAK_ADDRESS, $localPart] as $needle) {
-                $this->assertStringNotContainsStringIgnoringCase((string) $needle, $text);
+            foreach ([self::LEAK_ADDRESS, self::LEAK_LOCAL_PART] as $needle) {
+                $this->assertStringNotContainsStringIgnoringCase($needle, $text);
             }
         }
 

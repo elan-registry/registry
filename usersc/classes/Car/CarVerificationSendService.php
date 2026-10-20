@@ -464,9 +464,10 @@ final class CarVerificationSendService
      * Summarize the plugin's last error for a log line, without its text
      *
      * The Brevo SDK starts an ApiException message with the HTTP status in
-     * square brackets. Only the status goes in the log, not the text. A code
-     * that is not three digits, such as [0] from a connection failure, gives
-     * "reported (text not logged)".
+     * square brackets. Only the status goes in the log, not the text. Other
+     * text gives "reported (text not logged)": a code that is not three
+     * digits, such as [0], or a Guzzle ConnectException ("cURL error 28: ..."),
+     * which the SDK does not wrap in an ApiException.
      *
      * @param mixed $mailerError The value of sendinblueLastError(), or null
      * @return string "HTTP NNN", "reported (text not logged)" or "none reported"

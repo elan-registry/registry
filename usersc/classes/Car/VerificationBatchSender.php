@@ -125,7 +125,8 @@ final class VerificationBatchSender
             try {
                 $carData = $this->repo->findById($carId);
             } catch (\Throwable $e) {
-                // The summary, not the message: CarRepository puts the owner address in its messages.
+                // The summary, not the message: CarRepository copies driver error
+                // text into its messages, and that text can echo an address.
                 logger($this->currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
                     'Verification send: findById threw for car %d: %s',
                     $carId,

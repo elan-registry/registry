@@ -93,6 +93,10 @@ after an item is written.
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
 - [ ] `BrevoSiteRoot::PLUGIN_FILES` keeps `override.RENAME.php` only for the #2374 regression test (`VerificationSettingsTest.php` ~L656). Add a comment that says so (found in /finish-milestone v2.30.7)
 
+### `tests/Support/SendinblueMessagesTable.php` (test-only)
+
+- [ ] The six integration classes that use it drop `plg_sendinblue_messages` in `tearDownAfterClass()` and do not check `->error()`. A failed drop leaves a test-made table, and a later class then gets `false` from `createIfMissing()` and treats it as a plugin table it must not drop. Add a static `drop()` that throws on a DB error, and use it in the six classes (found in #2420)
+
 ### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
 
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
@@ -182,7 +186,7 @@ after an item is written.
 
 ### `tests/unit/cron/BrevoEventReconciliationClientTest.php` (test coverage)
 
-- [ ] No test reaches the poll catch of `BrevoEventReconciliationClient::fetchEvents()` with an address in the exception message. Add the protected `createApi()` seam that #2425 adds to `BrevoSuppressionSyncClient`, and a test that shows no log row holds the address (found in #2420)
+- [ ] No test reaches the poll catch of `BrevoEventReconciliationClient::fetchEvents()` with an address in the exception message. Add a protected `createApi()` seam, as in `BrevoSuppressionSyncClient`, and a test that shows no log row holds the address (found in #2420)
 
 ### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
 
