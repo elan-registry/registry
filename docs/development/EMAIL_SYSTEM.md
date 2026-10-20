@@ -1220,6 +1220,34 @@ name the user ID or the address hash prefix. No `catch` block logs
 `getMessage()`, because `CarRepository` puts the address in its exception
 messages.
 
+The same rule applies to these files (the two Brevo cron clients and the
+verification batch sender):
+
+- `usersc/classes/Cron/BrevoEventReconciliationClient.php`
+- `usersc/classes/Cron/BrevoSuppressionSyncClient.php`
+- `usersc/classes/Car/VerificationBatchSender.php`
+
+Their `catch` blocks log `ExceptionLogSummary::of($e)`. They never log
+`$e->getMessage()`. A Brevo error body or a `CarRepository` message can hold
+the recipient address.
+
+`ExceptionLogSummary::of()` returns one string in this form:
+`<Class> (code <code>[, SQLSTATE <x>]) at <file>:<line>`. It gives the
+exception class, the code, the file name (no directory) and the line of the
+throw. For a `CarDatabaseException`, it also gives the SQLSTATE. It never
+includes the message. Most of these exceptions have code 0, so the SQLSTATE and
+the throw place tell one failure from another.
+
+`usersc/classes/Car/CarVerificationSendService.php` also follows the rule. When
+`email()` fails, its log line does not copy the `sendinblueLastError()` text.
+That text can be a raw Brevo `ApiException` message. The line gives
+`Mailer error: HTTP <status>` when the text starts with the SDK's `[NNN]`
+prefix, `reported (text not logged)` for other text, and `none reported` when
+the plugin reports nothing. A code that is not three digits, such as `[0]`
+from a connection failure, also gives `reported (text not logged)`. The
+plugin's own `sendinblue` log row still holds the text. That row is upstream
+UserSpice code.
+
 No response body on any status. Brevo parses no body, only the HTTP status.
 The webhook never acknowledges (2xx) before the `er_email_events` write
 commits. Brevo does not retry a 2xx, so an early acknowledgement of a write

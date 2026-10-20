@@ -13,6 +13,7 @@ use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\SendinblueMessagesTable;
 
 /**
  * Real-database tests for EmailEventApplier (#2359): the one locked
@@ -36,23 +37,6 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('car-verification')]
 final class EmailEventApplierIntegrationTest extends IntegrationTestCase
 {
-    private const PLUGIN_TABLE_SQL = 'CREATE TABLE IF NOT EXISTS plg_sendinblue_messages (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        message_id VARCHAR(191) NOT NULL,
-        recipient_email VARCHAR(255) NOT NULL,
-        sender_email VARCHAR(255) NOT NULL,
-        kind VARCHAR(32) NOT NULL,
-        tags VARCHAR(255) NULL,
-        status VARCHAR(32) NOT NULL,
-        accepted_at DATETIME NOT NULL,
-        delivered_at DATETIME NULL,
-        last_event_at DATETIME NULL,
-        last_checked_at DATETIME NULL,
-        last_reason VARCHAR(255) NULL,
-        UNIQUE KEY message_id (message_id),
-        KEY recipient_accepted (recipient_email(128), accepted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci';
-
     /** A time that every fixture guard is before. */
     private const LONG_AGO = '2020-01-01 00:00:00';
 
@@ -125,16 +109,9 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
 
     private function makePluginTable(): void
     {
-        $exists = (int) $this->db->query(
-            "SELECT COUNT(*) AS cnt FROM information_schema.TABLES
-              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'plg_sendinblue_messages'"
-        )->first()->cnt > 0;
-        if ($exists) {
-            return;
+        if (SendinblueMessagesTable::createIfMissing($this->db)) {
+            self::$madePluginTable = true;
         }
-        $this->db->query(self::PLUGIN_TABLE_SQL);
-        $this->assertFalse($this->db->error(), 'Test setup: plugin table: ' . $this->db->errorString());
-        self::$madePluginTable = true;
     }
 
     // --- Fixtures --------------------------------------------------------

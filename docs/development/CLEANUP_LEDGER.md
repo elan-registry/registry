@@ -99,10 +99,6 @@ after an item is written.
 - [ ] The subprocess sets `$_SERVER["PHP_SELF"]` (~L138), which `Server::get('PHP_SELF')` ignores under CLI. So `$php_self` is `/`, and `securePage()` never checks the real `app/admin/index.php` page. The class doc claim "an editor passes securePage()" is not tested. `invokeEndpoint()` already sets `SCRIPT_FILENAME`. This class does not. Fix: set `$_SERVER["SCRIPT_FILENAME"]` to `$page` instead. The 12 tests in this class still pass with that change. This fix does not need the migration item above. (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
 
-### `tests/integration/BrevoEventPathParityIntegrationTest.php`
-
-- [ ] The `plg_sendinblue_messages` `CREATE TABLE` text is copied in about eight integration test classes and can drift from the plugin schema. Move it to one shared test helper (found in #2359 review)
-
 ### `tests/integration/BrevoWebhookEndpointTest.php`
 
 - [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L1012, renames `er_email_events.reason`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
@@ -184,13 +180,13 @@ after an item is written.
 
 - [ ] Only the `DatabaseInterface` branch is tested. Add the `PDO` branch: `prepare()` returns false, `execute()` returns false, and a `PDOException` comes back as the previous exception of `OwnerDatabaseException` (found in #2358 review)
 
+### `tests/unit/cron/BrevoEventReconciliationClientTest.php` (test coverage)
+
+- [ ] No test reaches the poll catch of `BrevoEventReconciliationClient::fetchEvents()` with an address in the exception message. Add the protected `createApi()` seam that #2425 adds to `BrevoSuppressionSyncClient`, and a test that shows no log row holds the address (found in #2420)
+
 ### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
 
 - [ ] The source check that the webhook does not read the switch (~L101) repeats behavior tests (`BrevoWebhookEndpointTest` ~L351, `BrevoEventPathParityIntegrationTest` ~L556, ~L605, ~L621). Delete it. Keep the convention scans at ~L63 and ~L110 (found in /finish-milestone v2.30.8)
-
-### `tests/unit/regression/Issue2359NoEmailInLogsRegressionTest.php`
-
-- [ ] The logger-argument scan does not see `->getEmail()`, `->email_address`, `['email_address']` or `\logger(` (`T_NAME_FULLY_QUALIFIED`), and no negative control proves the safe-call allowance ends at its closing `)`. Add each, with a control (found in #2359 review)
 
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 

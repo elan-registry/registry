@@ -307,14 +307,16 @@ final class CarVerificationSendService
             $this->restoreAfterFailedSend($carId, $previousVericode, $previousVericodeSentAt);
 
             // The plugin logs its own reason in a separate row with no car id.
-            // Copy it here so one row names both the car and the cause.
+            // This row names the car and only a summary of the cause: the
+            // plugin text can be a raw Brevo ApiException message, and a
+            // Brevo error body can echo the recipient address.
             $mailerError = function_exists('sendinblueLastError') ? sendinblueLastError() : null;
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: email() returned %s (expected true) for car %d; '
                 . 'treating as failure, verification_attempts deliberately not incremented. Mailer error: %s',
                 var_export($sendOk, true),
                 $carId,
-                is_scalar($mailerError) && (string) $mailerError !== '' ? (string) $mailerError : 'none reported'
+                self::mailerErrorSummary($mailerError)
             ));
 
             return SendResult::failed($carId, 'The email could not be sent.');
@@ -456,6 +458,31 @@ final class CarVerificationSendService
         $messageId = sendinblueLastMessageId();
 
         return is_string($messageId) ? trim($messageId) : '';
+    }
+
+    /**
+     * Summarize the plugin's last error for a log line, without its text
+     *
+     * The Brevo SDK starts an ApiException message with the HTTP status in
+     * square brackets. Only the status goes in the log, not the text. A code
+     * that is not three digits, such as [0] from a connection failure, gives
+     * "reported (text not logged)".
+     *
+     * @param mixed $mailerError The value of sendinblueLastError(), or null
+     * @return string "HTTP NNN", "reported (text not logged)" or "none reported"
+     */
+    private static function mailerErrorSummary(mixed $mailerError): string
+    {
+        $text = is_scalar($mailerError) ? (string) $mailerError : '';
+        if ($text === '') {
+            return 'none reported';
+        }
+
+        if (preg_match('/^\[(\d{3})\]/', $text, $matches) === 1) {
+            return 'HTTP ' . $matches[1];
+        }
+
+        return 'reported (text not logged)';
     }
 
     /**
