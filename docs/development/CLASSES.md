@@ -752,8 +752,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   the address, since the latest of: the owner's most recent `delivered` event for
   the address, `profiles.email_bounce_cleared_at` and `profiles.email_address_since`.
   The address compare uses `COLLATE utf8mb4_bin`, so a former holder of the
-  address or an accent variant does not count. The soft-bounce escalation
-  threshold is checked against this query (#1887, #2101, #2358)
+  address or an accent variant does not count. A send cycle whose
+  `plg_sendinblue_messages` row has the owner contact tag
+  (`AppConstants::OWNER_CONTACT_EMAIL_TAG`) in `tags` does not count. The
+  filter applies only when the plugin table has a `tags` column. The
+  soft-bounce escalation threshold is checked against this query (#1887,
+  #2101, #2358, #2460)
 - `deleteEmailEventsForUser(int $userId): int` - Delete all `er_email_events`
   rows with this `user_id`, including rows with `car_id` NULL. The account-deletion
   privacy step uses it. A `$userId` less than 1 issues no query and returns 0 (#2358)
@@ -2139,6 +2143,7 @@ in a caller is a fatal error and cannot let a send through.
 | `Verification` | `verification` | The admin tool and the cron job |
 | `OwnerContact` | `owner_contact` | `send-owner-email.php` |
 | `AdminContact` | `admin_contact` | `process-admin-contact.php` |
+| `TransferNotice` | `transfer_notice` | `TransferEmailService` |
 
 ---
 
@@ -3252,9 +3257,9 @@ via injectable mailer and database connections.
 use ElanRegistry\Transfer\TransferEmailService;
 
 $emailService = new TransferEmailService(
-    $db,                                      // DB singleton
-    'email',                                  // Callable mailer name
-    $abs_us_root . $us_url_root              // Base path for template includes
+    $db,        // Database instance
+    'email',    // Callable mailer name
+    null        // Optional SendPolicy. null builds one over a CarRepository on $db
 );
 ```
 
@@ -3264,7 +3269,20 @@ $emailService = new TransferEmailService(
 | --- | --- | --- |
 | `$db` | `DB` | Database singleton from UserSpice |
 | `$mailer` | `callable` | Email sender function — signature: `(string $to, string $subject, string $body): bool` |
-| `$basePath` | `string` | Absolute path for template includes (`$abs_us_root . $us_url_root`) |
+| `$sendPolicy` | `?SendPolicy` | Optional. Decides which owners can get a transfer notice. `null` builds a `SendPolicy` over a `CarRepository` on `$db` |
+
+**Send policy behavior** (`MailKind::TransferNotice`):
+
+- `sendRequest()` checks the current owner. `sendResponse()` checks the
+  requester and the previous owner. `sendAdminAlert()` does not check,
+  because it goes to admin addresses.
+- `SendPolicy` blocks a notice for an owner with no profile, or with
+  `email_bounced`, `email_opted_out` or `email_blocked`.
+- On a skip, the service logs one line in the `EMAIL_ERROR` category. The
+  line names the user ID and the flag names, and never an email address.
+- A skipped send returns `true`, so the caller does not log the skip as a
+  failure. `sendResponse()` returns `true` when at least one notice was
+  delivered or skipped.
 
 **Public Methods**:
 
@@ -3272,18 +3290,14 @@ $emailService = new TransferEmailService(
 - `sendAdminAlert(int $transferRequestId): bool` — Alert admin(s) to review a pending transfer request
 - `sendResponse(int $transferRequestId, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool`
   — Send approval or denial to requester and notify the previous/current owner
-  (always sent; uses `$previousOwnerId` for approvals, car's current `user_id` for denials)
+  (uses `$previousOwnerId` for approvals, car's current `user_id` for denials)
 
 **Common Usage**:
 
 ```php
 use ElanRegistry\Transfer\TransferEmailService;
 
-$emailService = new TransferEmailService(
-    dbi(),
-    'email',
-    $abs_us_root . $us_url_root
-);
+$emailService = new TransferEmailService(dbi(), 'email');
 
 // When transfer request is created
 $emailService->sendRequest($transferRequestId);
@@ -3322,7 +3336,7 @@ $mockDb = new class {
     }
 };
 $mockMailer = fn($to, $subject, $body) => true;
-$service = new TransferEmailService($mockDb, $mockMailer, '/fake/path/');
+$service = new TransferEmailService($mockDb, $mockMailer);
 $this->assertFalse($service->sendRequest(999));
 ```
 

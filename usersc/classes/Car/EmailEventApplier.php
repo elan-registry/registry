@@ -42,6 +42,10 @@ use ElanRegistry\LogCategories;
  *   address change (`profiles.email_address_since`), the owner is
  *   escalated to bounced via the same path as a hard bounce, with
  *   `email_bounced_at` = the time of the soft bounce that escalated.
+ * - A `soft_bounce` of owner contact mail is recorded but does not count
+ *   toward escalation (#2460). The count skips a send cycle whose plugin row
+ *   has {@see AppConstants::OWNER_CONTACT_EMAIL_TAG}. Hard
+ *   bounces, blocks and spam of owner contact mail still set their flags.
  * - `delivered` only records an event row. It resets the soft-bounce
  *   escalation window, because the count query starts after the most recent
  *   `delivered` row. So there is no separate "clear escalation" write.

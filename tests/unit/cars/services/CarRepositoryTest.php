@@ -2028,29 +2028,177 @@ final class CarRepositoryTest extends TestCase
     // countSoftBouncesSinceLastDelivered()
 
     /**
+     * Build a database mock for the soft-bounce count. The probe query
+     * (information_schema) answers with $probeCount. The count query answers
+     * with $softBounces. Every statement and its bound parameters go to
+     * $calls, so a test reads the SQL that ran.
+     *
+     * @param list<array{sql: string, params: array<int, mixed>}> $calls
+     */
+    private function makeSoftBounceDb(int $probeCount, int $softBounces, array &$calls): object
+    {
+        $db = $this->createStub(DatabaseInterface::class);
+        $lastIsProbe = false;
+        $db->method('query')->willReturnCallback(
+            function (string $sql, array $params = []) use (&$calls, &$lastIsProbe, $db): DatabaseInterface {
+                $calls[] = ['sql' => $sql, 'params' => $params];
+                $lastIsProbe = str_contains($sql, 'information_schema');
+
+                return $db;
+            }
+        );
+        $db->method('error')->willReturn(false);
+        $db->method('first')->willReturnCallback(
+            static function () use (&$lastIsProbe, $probeCount, $softBounces): object {
+                return (object) ['cnt' => (string) ($lastIsProbe ? $probeCount : $softBounces)];
+            }
+        );
+
+        return $db;
+    }
+
+    /**
      * Soft bounces before the owner's Clear Bounced, or before the owner took
      * the address, must not count. Events belong to the user, so the count
      * binds the user ID, not a car ID (#2358).
+     *
+     * Passes without the #2460 change for the base SQL: this test guards the
+     * user and address binds, which the owner-contact filter does not change.
      */
     public function testCountSoftBouncesSinceLastDeliveredBindsTheUserAndTheNormalizedAddress(): void
     {
-        $db = $this->makeDbMock();
-        $db->expects($this->once())
-            ->method('query')
-            ->with(
-                $this->callback(static fn (string $sql): bool => str_contains($sql, 'p.email_bounce_cleared_at')
-                    && str_contains($sql, 'p.email_address_since')
-                    && str_contains($sql, 'WHERE user_id = ?')
-                    && str_contains($sql, 'COLLATE utf8mb4_bin')),
-                [17, 'owner@example.com', 17, 'owner@example.com', 17, 17]
-            )
-            ->willReturnSelf();
-        $db->method('error')->willReturn(false);
-        $db->method('first')->willReturn((object) ['cnt' => '2']);
+        $calls = [];
+        $db = $this->makeSoftBounceDb(0, 2, $calls);
 
         $repo = new CarRepository($db);
 
         $this->assertSame(2, $repo->countSoftBouncesSinceLastDelivered(17, '  Owner@Example.COM '));
+        $count = end($calls);
+        $this->assertIsArray($count);
+        $this->assertStringContainsString('p.email_bounce_cleared_at', $count['sql']);
+        $this->assertStringContainsString('p.email_address_since', $count['sql']);
+        $this->assertStringContainsString('WHERE user_id = ?', $count['sql']);
+        $this->assertStringContainsString('COLLATE utf8mb4_bin', $count['sql']);
+        $this->assertSame([17, 'owner@example.com', 17, 'owner@example.com', 17, 17], $count['params']);
+    }
+
+    /** Fails without the #2460 change: the filter does not exist. */
+    public function testCountSoftBounces_pluginTagsColumnPresent_sqlHasNotExistsFindInSet(): void
+    {
+        $calls = [];
+        $repo = new CarRepository($this->makeSoftBounceDb(1, 1, $calls));
+
+        $this->assertSame(1, $repo->countSoftBouncesSinceLastDelivered(17, 'owner@example.com'));
+
+        $this->assertCount(2, $calls, 'One probe and one count');
+        $count = $calls[1];
+        $this->assertStringContainsString('NOT EXISTS', $count['sql']);
+        $this->assertStringContainsString('plg_sendinblue_messages', $count['sql']);
+        $this->assertStringContainsString('FIND_IN_SET', $count['sql']);
+        $this->assertStringContainsString('COLLATE utf8mb4_bin', $count['sql']);
+        $this->assertSame(
+            [17, 'owner@example.com', 17, 'owner@example.com', 17, 17, 'send-owner-email'],
+            $count['params'],
+            'The owner-contact tag is the last bound parameter'
+        );
+    }
+
+    /** Passes without the #2460 change: it guards the original query for a site without the plugin table. */
+    public function testCountSoftBounces_pluginTableMissing_usesOriginalQuery(): void
+    {
+        $calls = [];
+        $repo = new CarRepository($this->makeSoftBounceDb(0, 2, $calls));
+
+        $this->assertSame(2, $repo->countSoftBouncesSinceLastDelivered(17, 'owner@example.com'));
+
+        $count = end($calls);
+        $this->assertIsArray($count);
+        $this->assertStringNotContainsString('plg_sendinblue_messages', $count['sql']);
+        $this->assertStringNotContainsString('FIND_IN_SET', $count['sql']);
+        $this->assertCount(6, $count['params']);
+    }
+
+    /**
+     * Fails without the #2460 change: no probe runs. With the change, the
+     * probe asks for the table and the column, so a missing column and a
+     * missing table both answer 0 and the count has no filter.
+     */
+    public function testCountSoftBounces_tagsColumnMissing_usesOriginalQuery(): void
+    {
+        $calls = [];
+        $repo = new CarRepository($this->makeSoftBounceDb(0, 3, $calls));
+
+        $this->assertSame(3, $repo->countSoftBouncesSinceLastDelivered(17, 'owner@example.com'));
+
+        $probe = $calls[0];
+        $this->assertStringContainsString('information_schema.columns', $probe['sql']);
+        $this->assertSame(['plg_sendinblue_messages', 'tags'], $probe['params'], 'The probe asks for the tags column, not only the table');
+        $this->assertStringNotContainsString('FIND_IN_SET', end($calls)['sql']);
+    }
+
+    /**
+     * Fails without the #2460 change: no probe runs. The probe answer
+     * is cached for the repository instance, so a batch of events pays for
+     * one information_schema read.
+     */
+    public function testCountSoftBounces_probeRunsOncePerRepositoryInstance(): void
+    {
+        $calls = [];
+        $repo = new CarRepository($this->makeSoftBounceDb(1, 0, $calls));
+
+        $repo->countSoftBouncesSinceLastDelivered(17, 'owner@example.com');
+        $repo->countSoftBouncesSinceLastDelivered(17, 'owner@example.com');
+
+        $probes = array_filter($calls, static fn (array $c): bool => str_contains($c['sql'], 'information_schema'));
+        $this->assertCount(1, $probes);
+        $this->assertCount(3, $calls, 'One probe and two counts');
+    }
+
+    /**
+     * The tags-column probe must not guess. A probe that fails, or that
+     * returns no COUNT row, throws, and the count query never runs: a guess of
+     * "no column" would let owner-contact soft bounces mark the owner bounced.
+     *
+     * Fails without the #2460 change: no probe exists, so the count query runs
+     * and returns without a throw.
+     *
+     * @return array<string, array{bool, bool}> [probe error(), probe first() is [], as real DB::first() on no row]
+     */
+    public static function probeFailureProvider(): array
+    {
+        return [
+            'probe query error'    => [true, false],
+            'probe has no COUNT row' => [false, true],
+        ];
+    }
+
+    #[DataProvider('probeFailureProvider')]
+    public function testCountSoftBounces_probeFails_throwsAndSkipsCountQuery(bool $probeError, bool $probeRowMissing): void
+    {
+        $calls = [];
+        $db = $this->createStub(DatabaseInterface::class);
+        $db->method('query')->willReturnCallback(
+            function (string $sql, array $params = []) use (&$calls, $db): DatabaseInterface {
+                $calls[] = ['sql' => $sql, 'params' => $params];
+
+                return $db;
+            }
+        );
+        $db->method('error')->willReturn($probeError);
+        $db->method('errorString')->willReturn('probe failed');
+        $db->method('first')->willReturn($probeRowMissing ? [] : (object) ['cnt' => '1']);
+
+        $repo = new CarRepository($db);
+
+        try {
+            $repo->countSoftBouncesSinceLastDelivered(17, 'owner@example.com');
+            $this->fail('Expected CarDatabaseException');
+        } catch (CarDatabaseException $e) {
+            $this->assertStringContainsString('sendinblueTagsColumnExists', $e->getMessage());
+        }
+
+        $this->assertCount(1, $calls, 'Only the probe ran');
+        $this->assertStringContainsString('information_schema.columns', $calls[0]['sql']);
     }
 
     // findVerificationStateByOwner() / findLatestEmailEventsByCarIds() (#1924)

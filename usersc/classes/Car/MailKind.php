@@ -24,4 +24,7 @@ enum MailKind: string
 
     /** A message from an admin to an owner (process-admin-contact.php) */
     case AdminContact = 'admin_contact';
+
+    /** A car transfer notice to an owner (TransferEmailService) */
+    case TransferNotice = 'transfer_notice';
 }

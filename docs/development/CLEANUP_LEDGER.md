@@ -39,6 +39,11 @@ after an item is written.
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
 
+### `app/admin/includes/process-transfer-approve.php` `app/admin/includes/process-transfer-deny.php` `app/api/cars/transfer-request.php`
+
+- [ ] The outer `catch (\Throwable ...)` around `TransferEmailService` logs `getMessage()`, which can hold an email address. Log `ExceptionLogSummary::of($e)` instead (found in #2463)
+- [ ] In approve and deny, the success line says "At least one transfer ... notification sent" when `sendResponse()` returned true because the policy skipped both parties. Reword it to "sent or skipped by policy", or return sent/skipped counts from the service (found in #2463)
+
 ### `app/admin/includes/tab-car_mgmt.php`
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
@@ -54,6 +59,10 @@ after an item is written.
 ### `app/api/cars/save.php`
 
 - [ ] The `updateImages` and `removeImages` auth checks (about lines 233 and 244) compare `$user->data()->id != ...->user_id` with loose `!=`. Use a strict `(int)` comparison, as `removeImage()` does (found while working on #1929)
+
+### `app/api/contact/send-owner-email.php`
+
+- [ ] Six `logger()` calls (~L113, 135, 151, 186, 210, 214) log `$e->getMessage()`. `CarRepository` copies driver text into its messages. Log `ExceptionLogSummary::of($e)` instead (found in #2460)
 
 ### `app/assets/js/car-edit.js`
 

@@ -150,6 +150,9 @@ class CarRepository
 
     private bool $transactionOwner = false;
 
+    /** Cached result of {@see sendinblueTagsColumnExists()}. Null until the first read. */
+    private ?bool $sendinblueTagsColumnExists = null;
+
     public function __construct(private DatabaseInterface $db) {}
 
     /**
@@ -2931,6 +2934,15 @@ class CarRepository
      * The address compare uses `COLLATE utf8mb4_bin`, because the column
      * collation would match an accent or case variant of the address.
      *
+     * A soft bounce of owner contact mail does not count (#2460). The sender
+     * picks the recipient, so a full mailbox must not mark the owner bounced.
+     * The query skips a send cycle whose `plg_sendinblue_messages` row has
+     * {@see AppConstants::OWNER_CONTACT_EMAIL_TAG} in its comma-separated
+     * `tags`. A cycle with no plugin row, or with null tags, still counts.
+     * So an owner contact cycle counts again after its plugin row is deleted.
+     * When the plugin table or its `tags` column does not exist, the query
+     * has no such filter ({@see sendinblueTagsColumnExists()}).
+     *
      * @param int $userId Owner user ID
      * @param string $email Address to count soft bounces for. Normalized here
      *                      ({@see EmailAddress::normalize()}).
@@ -2940,6 +2952,25 @@ class CarRepository
     public function countSoftBouncesSinceLastDelivered(int $userId, string $email): int
     {
         $address = EmailAddress::normalize($email);
+
+        $ownerContactFilter = '';
+        $filterParams = [];
+        if ($this->sendinblueTagsColumnExists()) {
+            // The collations can differ: er_email_events uses
+            // utf8mb4_unicode_ci, and the plugin table takes the server
+            // default (utf8mb4_0900_ai_ci on MySQL 8). Without an explicit
+            // COLLATE, MySQL refuses the compare (error 1267). The subquery
+            // cannot use the message_id index, but it runs only for one
+            // owner's soft-bounce rows.
+            $ownerContactFilter = "
+                AND NOT EXISTS (
+                    SELECT 1
+                      FROM plg_sendinblue_messages m
+                     WHERE m.message_id COLLATE utf8mb4_bin = er_email_events.brevo_message_id COLLATE utf8mb4_bin
+                       AND FIND_IN_SET(?, m.tags)
+                )";
+            $filterParams = [AppConstants::OWNER_CONTACT_EMAIL_TAG];
+        }
 
         $this->db->query(
             "SELECT COUNT(DISTINCT brevo_message_id) AS cnt
@@ -2964,8 +2995,8 @@ class CarRepository
                         (SELECT p.email_address_since FROM profiles p WHERE p.user_id = ?),
                         '1970-01-01 00:00:00'
                     )
-                )",
-            [$userId, $address, $userId, $address, $userId, $userId]
+                )" . $ownerContactFilter,
+            [$userId, $address, $userId, $address, $userId, $userId, ...$filterParams]
         );
 
         if ($this->db->error()) {
@@ -3392,27 +3423,70 @@ class CarRepository
      */
     public function sendinblueMessagesTableExists(): bool
     {
-        $this->db->query(
+        // A missing COUNT row must throw: returning false would make the
+        // account-deletion privacy step skip the plugin rows and keep
+        // personal data.
+        return $this->informationSchemaCountIsPositive(
             'SELECT COUNT(*) AS cnt
                FROM information_schema.tables
               WHERE table_schema = DATABASE()
                 AND table_name = ?',
-            ['plg_sendinblue_messages']
+            ['plg_sendinblue_messages'],
+            'sendinblueMessagesTableExists'
         );
+    }
+
+    /**
+     * Tell whether the sendinblue plugin's message log has a `tags` column
+     *
+     * The table and the column come from the plugin, so a site can lack
+     * either. One `information_schema` read checks both the table
+     * and the column. The result is cached for the life of this instance,
+     * because the soft-bounce count runs once for each event in a batch.
+     *
+     * @return bool True when `plg_sendinblue_messages.tags` exists in the current schema
+     * @throws CarDatabaseException If the query fails or returns no COUNT row
+     */
+    private function sendinblueTagsColumnExists(): bool
+    {
+        if ($this->sendinblueTagsColumnExists !== null) {
+            return $this->sendinblueTagsColumnExists;
+        }
+
+        // A missing COUNT row must throw: returning false would let owner
+        // contact soft bounces mark the owner bounced.
+        return $this->sendinblueTagsColumnExists = $this->informationSchemaCountIsPositive(
+            'SELECT COUNT(*) AS cnt
+               FROM information_schema.columns
+              WHERE table_schema = DATABASE()
+                AND table_name = ?
+                AND column_name = ?',
+            ['plg_sendinblue_messages', 'tags'],
+            'sendinblueTagsColumnExists'
+        );
+    }
+
+    /**
+     * Run an information_schema COUNT(*) probe and tell whether the count is above zero
+     *
+     * A COUNT() query always returns one row. A missing row means the query
+     * did not run as written, so the probe throws and does not guess.
+     *
+     * @param string $sql SELECT COUNT(*) AS cnt query against information_schema
+     * @param list<string> $params Bound values
+     * @param string $caller Method name for the exception message
+     * @return bool True when cnt > 0
+     * @throws CarDatabaseException If the query fails or returns no COUNT row
+     */
+    private function informationSchemaCountIsPositive(string $sql, array $params, string $caller): bool
+    {
+        $this->db->query($sql, $params);
         if ($this->db->error()) {
-            throw new CarDatabaseException(
-                'CarRepository::sendinblueMessagesTableExists failed: ' . $this->db->errorString()
-            );
+            throw new CarDatabaseException("CarRepository::{$caller} failed: " . $this->db->errorString());
         }
         $row = $this->db->first();
         if (!is_object($row) || !isset($row->cnt)) {
-            // A COUNT() query always returns one row. A missing row means the
-            // query did not run as written. Returning false would make the
-            // account-deletion privacy step skip the plugin rows and keep
-            // personal data.
-            throw new CarDatabaseException(
-                'CarRepository::sendinblueMessagesTableExists returned no COUNT row'
-            );
+            throw new CarDatabaseException("CarRepository::{$caller} returned no COUNT row");
         }
 
         return (int) $row->cnt > 0;

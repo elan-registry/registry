@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Transfer;
 
+use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\MailKind;
+use ElanRegistry\Car\SendPolicy;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\EmailTemplate;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 use Throwable;
@@ -18,21 +22,57 @@ use Throwable;
  * sendResponse() also sends a parallel previous-owner notification internally.
  * All dependencies are injectable to allow unit testing without a live database
  * or email server.
+ *
+ * Each send to an owner asks {@see SendPolicy} first (MailKind::TransferNotice),
+ * so an opted-out, bounced, blocked or profile-less owner gets no notice. The
+ * admin alert goes to admin addresses, so the policy does not apply to it.
+ * Log lines name user IDs and never an email address.
  */
 class TransferEmailService
 {
+    private SendPolicy $sendPolicy;
+
     /**
      * @param DatabaseInterface $db Database instance
      * @param mixed $mailer Email sender callable — signature: (string $to, string $subject, string $body): bool
+     * @param SendPolicy|null $sendPolicy Decides which owners can get a transfer notice;
+     *                                    null builds one over a CarRepository on $db
      * @throws \InvalidArgumentException if $mailer is not callable
      */
     public function __construct(
         private DatabaseInterface $db,
         private mixed $mailer,
+        ?SendPolicy $sendPolicy = null,
     ) {
         if (!is_callable($this->mailer)) {
             throw new \InvalidArgumentException('TransferEmailService: $mailer must be callable');
         }
+        $this->sendPolicy = $sendPolicy ?? new SendPolicy(new CarRepository($this->db));
+    }
+
+    /**
+     * Ask the send policy whether one owner can get a transfer notice
+     *
+     * A skip is logged here, so that the send method can return true and the
+     * caller does not log the skip as a failure.
+     *
+     * @param int $userId Owner user ID
+     * @param string $context Caller label used in the log message (e.g. "Transfer request notification")
+     * @return bool True when the notice can go
+     * @throws \ElanRegistry\Exceptions\CarDatabaseException If the flag read fails
+     */
+    private function policyAllows(int $userId, string $context): bool
+    {
+        $decision = $this->sendPolicy->forUser(MailKind::TransferNotice, $userId);
+        if ($decision->allowed) {
+            return true;
+        }
+
+        // Same category as the verification send's policy skip
+        // (CarVerificationSendService::sendOne): the mail did not go.
+        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+            "$context skipped for user $userId: flags " . implode(',', $decision->flags));
+        return false;
     }
 
     /**
@@ -81,7 +121,7 @@ class TransferEmailService
      * Send transfer request notification to current owner.
      *
      * @param int $transferRequestId Transfer request ID
-     * @return bool True if the email was delivered
+     * @return bool True if the email was delivered, or the send policy skipped it
      */
     public function sendRequest(int $transferRequestId): bool
     {
@@ -104,6 +144,11 @@ class TransferEmailService
                 return false;
             }
 
+            $currentOwnerId = dbInt($carData, 'user_id');
+            if (!$this->policyAllows($currentOwnerId, 'Transfer request notification')) {
+                return true;
+            }
+
             $transferRequest = (object)[
                 'id'                  => $transferData->id ?? 0,
                 'submitted_comments'  => $transferData->submitted_comments ?? '',
@@ -117,18 +162,18 @@ class TransferEmailService
             $result = ($this->mailer)($currentOwner->email, $subject, $emailBody);
 
             if ($result) {
-                logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request notification sent to current owner: {$currentOwner->email}");
+                logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request notification sent to current owner: user $currentOwnerId");
                 return true;
             }
 
-            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request notification to current owner: {$currentOwner->email}");
+            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request notification to current owner: user $currentOwnerId");
             return false;
 
         } catch (Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                "Transfer request notification error for request #%d [%s] in %s:%d: %s",
+                "Transfer request notification error for request #%d: %s",
                 $transferRequestId,
-                get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return false;
         }
@@ -182,12 +227,14 @@ class TransferEmailService
 
             $totalCount = count($adminEmails);
             $successCount = 0;
+            $position = 0;
             foreach ($adminEmails as $adminEmail) {
+                $position++;
                 if (($this->mailer)($adminEmail, $subject, $emailBody)) {
                     $successCount++;
                 } else {
                     logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
-                        "Transfer request #$transferRequestId admin alert failed to send to: {$adminEmail}");
+                        "Transfer request #$transferRequestId admin alert failed to send to: admin #$position of $totalCount");
                 }
             }
 
@@ -204,9 +251,9 @@ class TransferEmailService
 
         } catch (Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                "Transfer admin alert error for request #%d [%s] in %s:%d: %s",
+                "Transfer admin alert error for request #%d: %s",
                 $transferRequestId,
-                get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return false;
         }
@@ -216,11 +263,14 @@ class TransferEmailService
      * Send transfer response notification (approved/denied) to the requester,
      * and also notify the previous owner.
      *
+     * The send policy can skip either notice. A skipped notice counts as
+     * delivered for the return value.
+     *
      * @param int $transferRequestId Transfer request ID
      * @param bool $isApproved Whether the request was approved
      * @param string $adminNotes Admin notes from the administrator; empty string if none
      * @param int|null $previousOwnerId Previous owner ID (for approved transfers)
-     * @return bool True if at least one notification was delivered
+     * @return bool True if at least one notification was delivered or skipped by the send policy
      */
     public function sendResponse(int $transferRequestId, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool
     {
@@ -249,12 +299,17 @@ class TransferEmailService
 
             $status = $isApproved ? 'APPROVED' : 'DENIED';
             $subject = EMAIL_SUBJECT_PREFIX . " Transfer Request $status - {$carData->year} {$carData->series} {$carData->variant} (Chassis: {$carData->chassis})";
-            $requesterNotificationSent = (bool) ($this->mailer)($requester->email, $subject, $emailBody);
-
-            if ($requesterNotificationSent) {
-                logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer response notification ($status) sent to requester: {$requester->email}");
+            $requesterId = dbInt($transferData, 'requested_by_user_id');
+            if (!$this->policyAllows($requesterId, 'Transfer response notification')) {
+                $requesterNotificationSent = true;
             } else {
-                logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer response notification to requester: {$requester->email}");
+                $requesterNotificationSent = (bool) ($this->mailer)($requester->email, $subject, $emailBody);
+
+                if ($requesterNotificationSent) {
+                    logger($requesterId, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer response notification ($status) sent to requester: user $requesterId");
+                } else {
+                    logger($requesterId, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer response notification to requester: user $requesterId");
+                }
             }
 
             $previousOwnerNotificationSent = $this->sendPreviousOwnerNotification($ctx, $requester, $isApproved, $adminNotes, $previousOwnerId);
@@ -263,9 +318,9 @@ class TransferEmailService
 
         } catch (Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                "Transfer response notification error for request #%d [%s] in %s:%d: %s",
+                "Transfer response notification error for request #%d: %s",
                 $transferRequestId,
-                get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return false;
         }
@@ -282,7 +337,7 @@ class TransferEmailService
      * @param bool $isApproved Whether the request was approved
      * @param string $adminNotes Admin notes from the administrator; empty string if none
      * @param int|null $previousOwnerId Previous owner ID (for approved transfers)
-     * @return bool True if the email was delivered
+     * @return bool True if the email was delivered, or the send policy skipped it
      */
     private function sendPreviousOwnerNotification(array $ctx, object $requester, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool
     {
@@ -307,6 +362,10 @@ class TransferEmailService
                 return false;
             }
 
+            if (!$this->policyAllows($lookupId, 'Transfer previous owner notification')) {
+                return true;
+            }
+
             $transferRequest = (object)[
                 'id'             => $transferData->id,
                 'request_date'   => $transferData->request_date ?? '',
@@ -320,19 +379,19 @@ class TransferEmailService
             $result = ($this->mailer)($previousOwner->email, $subject, $emailBody);
 
             if ($result) {
-                logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer decision notification ($status) sent to previous owner: {$previousOwner->email}");
+                logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer decision notification ($status) sent to previous owner: user $lookupId");
                 return true;
             }
 
-            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer decision notification to previous owner: {$previousOwner->email}");
+            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer decision notification to previous owner: user $lookupId");
             return false;
 
         } catch (Throwable $e) {
             $ctxTransferId = $ctx['transferData']->id ?? 'unknown';
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                "Transfer previous owner notification error for request #%s [%s] in %s:%d: %s",
+                "Transfer previous owner notification error for request #%s: %s",
                 $ctxTransferId,
-                get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return false;
         }

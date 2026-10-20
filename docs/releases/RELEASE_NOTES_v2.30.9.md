@@ -12,7 +12,9 @@ stop, and the mail plugin's message log has a retention limit.
 
 Changes visible to public registry visitors (car listings, owner pages, search, etc.). One sentence each.
 
-- One-sentence description of what changed and its benefit to users. ([#NNN](https://github.com/elan-registry/registry/issues/NNN))
+- An owner who opted out of registry email no longer gets car transfer notices. A bounce or a block on the owner's
+  address also stops them. The transfer request itself still completes.
+  ([#2463](https://github.com/elan-registry/registry/issues/2463))
 
 ## Admin-Facing Changes
 
@@ -36,6 +38,12 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - Clearing the UserSpice logs (admin Logs page) removes the Clear Block times. The import guard for
   `email_blocked` then has no lower bound. The guard for `email_bounced` stays, because it reads a profile column.
   ([#2357](https://github.com/elan-registry/registry/issues/2357), [#2426](https://github.com/elan-registry/registry/issues/2426))
+- Soft bounces on owner-to-owner contact mail no longer set `email_bounced` on the recipient. The registry still
+  records each bounce event. Hard bounces, blocks and spam complaints on that mail still set their flags.
+  ([#2460](https://github.com/elan-registry/registry/issues/2460))
+- The log lines that the transfer email service writes no longer hold an email address. A failed admin alert
+  names the admin's position in the list, not the address.
+  ([#2463](https://github.com/elan-registry/registry/issues/2463))
 
 ## Issues Resolved
 
@@ -44,8 +52,8 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - [#2425](https://github.com/elan-registry/registry/issues/2425) — Stop BrevoSuppressionSyncClient from logging the Brevo error message.
 - [#2426](https://github.com/elan-registry/registry/issues/2426) — Stop a suppression import with no usable blockedAt from undoing an admin clear.
 - [#2357](https://github.com/elan-registry/registry/issues/2357) — Replace Clear Suppression with Clear Block and Clear Opt-out.
-- WIP: [#2460](https://github.com/elan-registry/registry/issues/2460) — Stop soft bounces on owner-to-owner contact mail from setting email_bounced.
-- WIP: [#2463](https://github.com/elan-registry/registry/issues/2463) — Make the transfer notification mail obey the email opt-out.
+- [#2460](https://github.com/elan-registry/registry/issues/2460) — Stop soft bounces on owner-to-owner contact mail from setting email_bounced.
+- [#2463](https://github.com/elan-registry/registry/issues/2463) — Make the transfer notification mail obey the email opt-out.
 - WIP: [#2384](https://github.com/elan-registry/registry/issues/2384) — Purge plg_sendinblue_messages rows older than 90 days.
 - WIP: [#1875](https://github.com/elan-registry/registry/issues/1875) — Monitor the verification cron jobs with healthchecks.io.
 - WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — Register the production Brevo webhook and turn on the verification switch.
