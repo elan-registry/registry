@@ -634,13 +634,22 @@ gh api "repos/elan-registry/registry/issues?milestone=${MILESTONE_NUM}&state=ope
   --jq '.[] | select(.pull_request == null) | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"'
 ```
 
-The next open issue is the lowest-numbered open issue in the milestone
-without the `status:blocked` label:
+The next issue follows the approved order. `/start-milestone` Step 6 writes
+the `WIP:` entries of the release notes "Issues Resolved" section in that
+order. The next issue is the first `WIP:` entry whose issue is open, in the
+milestone, and without the `status:blocked` label. If no entry matches (for
+example, the only unblocked issue was added after `/start-milestone` ran),
+the next issue is the lowest-numbered open issue without the label:
 
 ```bash
-gh api "repos/elan-registry/registry/issues?milestone=${MILESTONE_NUM}&state=open&per_page=100" --paginate \
+NOTES_FILE="docs/releases/RELEASE_NOTES_${MILESTONE_TITLE}.md"
+UNBLOCKED=$(gh api "repos/elan-registry/registry/issues?milestone=${MILESTONE_NUM}&state=open&per_page=100" --paginate \
   --jq '.[] | select(.pull_request == null) | select([.labels[].name] | index("status:blocked") | not) | .number' \
-  | sort -n | head -1
+  | sort -n)
+NEXT=$(grep -oE '^- WIP: \[#[0-9]+\]' "$NOTES_FILE" | grep -oE '[0-9]+' \
+  | grep -Fx -f <(printf '%s\n' "$UNBLOCKED") | head -1)
+[ -n "$NEXT" ] || NEXT=$(printf '%s\n' "$UNBLOCKED" | head -1)
+echo "$NEXT"
 ```
 
 No output, and the list above is not empty → every open issue is blocked.
@@ -666,7 +675,8 @@ End with the next command as plain text, not a question. Tell the user to
 run `/clear` first and then type the command:
 
 - `/start-issue <next-issue>` when an unblocked open issue exists. Say
-  "next open issue".
+  "next issue in the approved order", or "next open issue" when the
+  lowest-numbered fallback picked it.
 - `/finish-milestone <version>` when no open issues remain.
 - When every open issue is blocked, name both paths. When the blocker of
   issue `<N>` is gone, remove its label with

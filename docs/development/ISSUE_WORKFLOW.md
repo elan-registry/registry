@@ -273,17 +273,20 @@ needs these marks.
 
 ### Issue order and blockers
 
-No file stores the approved issue order. `/start-milestone` Step 5 recommends
-an order for that session, and you approve it. It then writes down only the
-facts that later sessions need, on GitHub:
+`/start-milestone` Step 5 recommends an issue order, and you approve it. Step 6
+stores that order in the release notes: the `WIP:` entries of the "Issues
+Resolved" section go in the approved order. Step 5 also writes down these
+facts on GitHub:
 
 - **A combine group.** The comment `Combine into one PR with #A, #B`.
   `/start-issue` reads it and asks whether to start the combined scope.
 - **An order conflict.** The `status:blocked` label and a comment
   `Blocked by #X (planned in <version>).` on the issue that must wait.
 
-`/finish-issue` Step 9 picks the next issue: the lowest-numbered open issue in
-the milestone without `status:blocked`. It reminds you to remove
+`/finish-issue` Step 9 picks the next issue: the first `WIP:` entry whose issue
+is open and does not have `status:blocked`. If no entry matches, it picks the
+lowest-numbered open issue without the label. To change the order, move the
+entries in the release notes and commit the change. `/finish-issue` reminds you to remove
 `status:blocked` from an issue whose blocker closed. It never removes the label
 itself, because the issue can have other blockers.
 
