@@ -81,3 +81,54 @@
         });
     });
 })();
+
+/**
+ * Verification System tab — Clear Block and Clear Opt-out confirm step (#2357).
+ *
+ * The row button opens the confirm modal. Confirm adds the hidden `command`
+ * and `owner_requested=1` inputs to the row's owner-action form and submits
+ * it. The server refuses a POST without `owner_requested=1`, so with no
+ * script the action fails closed.
+ */
+(function () {
+    'use strict';
+
+    var modalEl   = document.getElementById('ownerRequestConfirmModal');
+    var confirmEl = document.getElementById('ownerRequestConfirmButton');
+
+    if (!modalEl || !confirmEl) return;
+
+    var pending = null;
+
+    function addHidden(form, name, value) {
+        var input = document.createElement('input');
+        input.type  = 'hidden';
+        input.name  = name;
+        input.value = value;
+        form.appendChild(input);
+    }
+
+    document.querySelectorAll('[data-owner-request-command]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var form = document.getElementById(button.getAttribute('form'));
+            if (!form) return;
+
+            pending = { form: form, command: button.getAttribute('data-owner-request-command') };
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        });
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        if (!confirmEl.disabled) pending = null;
+    });
+
+    confirmEl.addEventListener('click', function () {
+        if (!pending) return;
+
+        // Disabled so a double click cannot submit the form twice.
+        confirmEl.disabled = true;
+        addHidden(pending.form, 'command', pending.command);
+        addHidden(pending.form, 'owner_requested', '1');
+        pending.form.submit();
+    });
+})();

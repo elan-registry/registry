@@ -171,6 +171,13 @@ class EmailEventApplier
      *    event uses `$occurredAt` (Brevo's `blockedAt`) for the
      *    `email_bounce_cleared_at` guard. A NULL column sets no bound. A
      *    failed guard records nothing, and logs the user ID and the guard.
+     *    With `$occurredAtIsFallback` (#2426), `$occurredAt` is the import's
+     *    run time, not Brevo's date. Then a clear on record for the flag that
+     *    the event sets records nothing, and logs the user ID: a hard bounce
+     *    checks `email_bounce_cleared_at` (set by admin Clear Bounced and by
+     *    a confirmed email change that clears a bounce), and `spam` or
+     *    `unsubscribed` checks {@see CarRepository::latestFlagClearAt()} for
+     *    an admin Clear Block. With no clear on record, the run time applies.
      * 4. Insert the event row. A duplicate changes nothing and is not new.
      * 5. No `profiles` row: keep the row, log the user ID, set no flag.
      * 6. The flag changes only when the event address is the current
@@ -199,6 +206,9 @@ class EmailEventApplier
      *                                  {@see self::MODE_STATE}. The import uses
      *                                  it for Brevo's `adminBlocked` (`blocklist`),
      *                                  which it records as `unsubscribed`.
+     * @param bool $occurredAtIsFallback True when `$occurredAt` is a fallback
+     *                                   time, not a date from Brevo. Only for
+     *                                   {@see self::MODE_STATE}.
      * @return EmailEventApplyResult Whether the call wrote a new event row,
      *                               and whether it ran the flag step for the
      *                               current address (false for no users row,
@@ -206,8 +216,10 @@ class EmailEventApplier
      *                               address that is not the current one, or a
      *                               duplicate in MODE_EVENT)
      * @throws \InvalidArgumentException If the match is not a matched result,
-     *                                   the source or mode is not permitted, or
-     *                                   `$blockedCause` is not permitted here (nothing is written)
+     *                                   the source or mode is not permitted,
+     *                                   `$blockedCause` is not permitted here, or
+     *                                   `$occurredAtIsFallback` is set in
+     *                                   {@see self::MODE_EVENT} (nothing is written)
      * @throws CarValidationException If `$occurredAt` or the message time is
      *                                not a valid datetime (nothing is written)
      * @throws CarDatabaseException If a read or a write fails (all writes are rolled back)
@@ -221,11 +233,17 @@ class EmailEventApplier
         string $occurredAt,
         string $source,
         string $mode,
-        ?string $blockedCause = null
+        ?string $blockedCause = null,
+        bool $occurredAtIsFallback = false
     ): EmailEventApplyResult {
         DeliverabilityFlagLog::assertValidSource($source);
         if ($mode !== self::MODE_EVENT && $mode !== self::MODE_STATE) {
             throw new \InvalidArgumentException("EmailEventApplier::apply: unknown mode '{$mode}'");
+        }
+        if ($occurredAtIsFallback && $mode !== self::MODE_STATE) {
+            throw new \InvalidArgumentException(
+                'EmailEventApplier::apply: a fallback event time is permitted only in state mode'
+            );
         }
         if ($blockedCause !== null) {
             if ($mode !== self::MODE_STATE || !isset(self::SUPPRESSION_EVENT_CAUSES[$event])) {
@@ -258,7 +276,8 @@ class EmailEventApplier
                 $mode === self::MODE_STATE ? null : $messageTime,
                 $source,
                 $mode,
-                $blockedCause
+                $blockedCause,
+                $occurredAtIsFallback
             );
             $this->repo->commit();
         } catch (\Throwable $e) {
@@ -302,7 +321,8 @@ class EmailEventApplier
         ?string $messageTime,
         string $source,
         string $mode,
-        ?string $blockedCause
+        ?string $blockedCause,
+        bool $occurredAtIsFallback
     ): EmailEventApplyResult {
         $userId = $match->userId();
         $state = $this->repo->lockEventGuardState($userId);
@@ -322,6 +342,16 @@ class EmailEventApplier
                     $messageTime === null => "the event is before {$failedGuard}",
                     default => "the message is before {$failedGuard}",
                 }
+            ));
+            return new EmailEventApplyResult(false, false);
+        }
+
+        // $state is not null here: a null state fails the guard above.
+        if ($occurredAtIsFallback && $this->clearIsOnRecord($userId, $state, $event)) {
+            logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo: event "%s" for owner %d not recorded: no usable event date and an admin clear is on record.',
+                $event,
+                $userId
             ));
             return new EmailEventApplyResult(false, false);
         }
@@ -364,6 +394,36 @@ class EmailEventApplier
         $this->applyFlag($userId, $address, $event, $eventTime, $source, $blockedCause);
 
         return new EmailEventApplyResult($isNew, true);
+    }
+
+    /**
+     * Whether a clear is on record for the flag that an event sets (#2426)
+     *
+     * A hard bounce checks `email_bounce_cleared_at`, which admin Clear
+     * Bounced and a confirmed email change that clears a bounce set. `spam` and `unsubscribed`
+     * check for an admin Clear Block row.
+     *
+     * Called under the profile lock, so a clear that committed before the
+     * lock is visible here.
+     *
+     * @param array{email: string, join_date: ?string, email_address_since: ?string,
+     *              email_bounce_cleared_at: ?string, has_profile: bool} $state
+     * @throws CarDatabaseException If the read fails
+     */
+    private function clearIsOnRecord(int $userId, array $state, string $event): bool
+    {
+        if (in_array($event, self::HARD_BOUNCE_EVENTS, true)) {
+            return $state['email_bounce_cleared_at'] !== null;
+        }
+        if (isset(self::SUPPRESSION_EVENT_CAUSES[$event])) {
+            return $this->repo->latestFlagClearAt(
+                $userId,
+                DeliverabilityFlagLog::FLAG_BLOCKED,
+                DeliverabilityFlagLog::SOURCE_ADMIN
+            ) !== null;
+        }
+
+        return false;
     }
 
     /**

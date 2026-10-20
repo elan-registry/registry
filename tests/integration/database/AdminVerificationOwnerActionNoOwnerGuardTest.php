@@ -15,10 +15,10 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Integration (real MySQL) test for the `noowner` guard in the
- * mark_bounced/clear_bounced/clear_suppression POST handler of
- * app/admin/index.php (#1896 Blocking fix).
+ * mark_bounced/clear_bounced/clear_block/clear_opt_out POST handlers of
+ * app/admin/index.php (#1896 Blocking fix, #2357).
  *
- * Before the fix, these three commands acted on the whole owner
+ * Before the fix, these commands acted on the whole owner
  * (CarVerificationManager::*ForOwner()) with no check that the owner was a
  * real, individual account. A row for a car owned by the `noowner` system
  * account (the GDPR-erasure reassignment target, which can hold many
@@ -30,9 +30,11 @@ use PHPUnit\Framework\Attributes\Group;
  * `$errors`/`$successes`, and other page-level state. This test extracts
  * the relevant inner block (same source-slice + temp-file pattern
  * AdminVerificationQueueUrlStateTest uses for the simpler URL-state block)
- * — everything from the owner lookup through the three catch clauses,
+ * — everything from the owner lookup through the catch clauses,
  * skipping only the outer admin-permission check, which is unrelated to
- * this guard and covered elsewhere. If the source is restructured so the
+ * this guard and covered elsewhere. mark_bounced and clear_bounced share one
+ * `case`. clear_block and clear_opt_out share the next one, whose slice
+ * starts at the `owner_requested` check. If the source is restructured so the
  * markers move, extraction throws with a message naming the file to update.
  */
 #[Group('integration')]
@@ -125,8 +127,16 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
             throw new RuntimeException('Could not read ' . $scriptPath);
         }
 
-        $startMarker = '$verifyCarId = (int) ElanInput::get(\'car_id\');';
-        $endMarker = "                    break;\n            }\n        }\n    }";
+        // mark_bounced and clear_bounced share one `case`, clear_block and clear_opt_out the
+        // next one. Each slice must stop before the other `case`, or its early `break;`
+        // would end the wrapper `switch` before the slice reaches the command under test.
+        $isOwnerRequested = in_array($command, ['clear_block', 'clear_opt_out'], true);
+        $startMarker = $isOwnerRequested
+            ? "if (ElanInput::get('owner_requested') !== '1') {"
+            : '$verifyCarId = (int) ElanInput::get(\'car_id\');';
+        $endMarker = $isOwnerRequested
+            ? "                    break;\n            }\n        }\n    }"
+            : '// Owner-requested deliverability actions (#2357).';
 
         $startPos = strpos($source, $startMarker);
         $endPos = strpos($source, $endMarker, $startPos === false ? 0 : $startPos);
@@ -150,6 +160,9 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
             . "use ElanRegistry\\Exceptions\\CarDatabaseException;\n"
             . "use ElanRegistry\\Exceptions\\CarValidationException;\n"
             . "use ElanRegistry\\Exceptions\\ElanRegistryException;\n"
+            . "use ElanRegistry\\Exceptions\\ExceptionLogSummary;\n"
+            . "use ElanRegistry\\Car\\ClearBlockOutcome;\n"
+            . "use ElanRegistry\\Email\\BrevoBlocklistClient;\n"
             . "use ElanRegistry\\Input as ElanInput;\n"
             . "use ElanRegistry\\LogCategories;\n"
             . "use ElanRegistry\\Owner;\n"
@@ -174,6 +187,8 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
         // request does — set that instead of a local $verifyCarId, which
         // the slice would just overwrite.
         $_POST['car_id'] = (string) $carId;
+        // The slice of clear_block and clear_opt_out starts at the owner_requested check.
+        $_POST['owner_requested'] = '1';
         $currentUserId   = $this->actingUserId;
         $verificationRepo = $this->repo;
         $verificationManager = $this->manager;
@@ -182,7 +197,7 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
             return require $tempFile;
         } finally {
             unlink($tempFile);
-            unset($_POST['car_id']);
+            unset($_POST['car_id'], $_POST['owner_requested']);
         }
     }
 
@@ -192,7 +207,8 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
         return [
             'mark_bounced' => ['mark_bounced'],
             'clear_bounced' => ['clear_bounced'],
-            'clear_suppression' => ['clear_suppression'],
+            'clear_block' => ['clear_block'],
+            'clear_opt_out' => ['clear_opt_out'],
         ];
     }
 
@@ -255,8 +271,9 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
             $this->clearOwnerEmailFlags($noOwnerId);
             if ($command === 'clear_bounced') {
                 $this->setOwnerBounced($noOwnerId, 'noowner@invalid');
-            } elseif ($command === 'clear_suppression') {
+            } elseif ($command === 'clear_block') {
                 $this->setOwnerBlocked($noOwnerId, 'noowner@invalid');
+            } elseif ($command === 'clear_opt_out') {
                 $this->setOwnerOptedOut($noOwnerId);
             }
             $seeded = $this->getOwnerEmailFlags($noOwnerId);
@@ -267,6 +284,11 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
             $result = $this->runOwnerActionHandler($command, $targetCarId);
 
             $this->assertNotEmpty($result['errors'], "'{$command}' on a noowner-owned car must be rejected");
+            $this->assertNotContains(
+                'Confirm that the owner asked for this change.',
+                $result['errors'],
+                'The rejection must come from the noowner guard, not from the owner_requested check'
+            );
             $this->assertEmpty($result['successes'], "'{$command}' on a noowner-owned car must not report success");
             $this->assertSame(
                 $seeded,
@@ -376,7 +398,7 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
     }
 
     #[Group('fast')]
-    public function testClearSuppressionOnARealOwnerClearsBlockAndOptOutAndTouchesNoCar(): void
+    public function testClearOptOutOnARealOwnerClearsOnlyTheOptOutAndTouchesNoCar(): void
     {
         $userId = $this->createTestUser([], true);
         $this->setOwnerBlocked($userId, 'owner-supp@example.com', null, 'spam');
@@ -385,16 +407,18 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
         $carId = $this->createTestCar($userId, ['email' => 'owner-supp@example.com']);
         $carBefore = (array) $this->repo->findById($carId);
 
-        $result = $this->runOwnerActionHandler('clear_suppression', $carId);
+        $result = $this->runOwnerActionHandler('clear_opt_out', $carId);
 
-        $this->assertEmpty($result['errors'], 'clear_suppression must succeed: ' . implode('; ', $result['errors']));
+        $this->assertEmpty($result['errors'], 'clear_opt_out must succeed: ' . implode('; ', $result['errors']));
         $flags = $this->getOwnerEmailFlags($userId);
-        $this->assertSame('0', (string) $flags['email_blocked']);
-        $this->assertNull($flags['email_blocked_address']);
-        $this->assertNull($flags['email_blocked_cause']);
         $this->assertSame('0', (string) $flags['email_opted_out']);
-        $this->assertSame('1', (string) $flags['email_bounced'], 'Clear Suppression must leave the bounce');
+        $this->assertNull($flags['email_opted_out_at']);
+        $this->assertSame('1', (string) $flags['email_blocked'], 'Clear Opt-out must leave the block');
+        $this->assertSame('owner-supp@example.com', $flags['email_blocked_address']);
+        $this->assertSame('1', (string) $flags['email_bounced'], 'Clear Opt-out must leave the bounce');
         $this->assertSame($carBefore, (array) $this->repo->findById($carId), 'The car row must not change');
-        $this->assertCount(2, $this->flagLogRows($userId), 'One row for the block and one for the opt-out');
+        $logRows = $this->flagLogRows($userId);
+        $this->assertCount(1, $logRows, 'One row for the opt-out');
+        $this->assertSame('email_opted_out', $logRows[0]['flag']);
     }
 }

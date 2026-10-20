@@ -702,29 +702,39 @@ button react at once: the car leaves the Bounced pill, and its row offers
 event history.
 
 **Contextual action per row.** Each row has one action button. It replaces
-the three buttons per row in the earlier tool. The car's state selects the
+the three buttons per row in the earlier tool. The owner's state selects the
 button, in this order:
 
-| Car state | Button | POST `command` |
+| Owner state | Button | POST `command` |
 | --- | --- | --- |
-| Blocked or Opted out (owner has `email_blocked` or `email_opted_out`) | Clear Suppression | `clear_suppression` |
-| Not suppressed, bounced | Clear Bounced | `clear_bounced` |
-| Not suppressed, not bounced | Mark Bounced | `mark_bounced` |
+| Blocked (`email_blocked` applies to the owner's current address) | Clear Block | `clear_block` |
+| Opted out (`email_opted_out` is set) | Clear Opt-out | `clear_opt_out` |
+| Bounced (`email_bounced` applies to the owner's current address) | Clear Bounced | `clear_bounced` |
+| None of these | Mark Bounced | `mark_bounced` |
 
-A suppressed car shows Clear Suppression, even if it is also bounced. Clear
-Bounced then becomes available after the suppression is cleared. When the
+An owner with several flags shows the first action that applies. After the
+admin clears one flag, the row shows the next action. For example, after Clear
+Block on a blocked and bounced owner, the row shows Clear Bounced. When the
 chip reads Soft bounce, the Mark Bounced button is disabled. One soft bounce
 does not confirm a dead address.
 
-The handlers and their owner-level effects are unchanged. See
-[Mark Bounced / Clear Bounced / Clear Suppression](#mark-bounced--clear-bounced--clear-suppression-owner-level-actions).
+Clear Block and Clear Opt-out undo a choice or a complaint of the owner, so
+they need a confirm step. Their buttons open a modal with the text "Confirm
+that the owner asked for this change." The Confirm button adds `command` and
+`owner_requested=1` to the row's form and submits it
+(`app/admin/assets/js/tab-verification.js`). Mark Bounced and Clear Bounced
+submit at once.
+
+The handlers and their owner-level effects are described in
+[Mark Bounced / Clear Bounced / Clear Block / Clear Opt-out](#mark-bounced--clear-bounced--clear-block--clear-opt-out-owner-level-actions).
+
 Each button submits a sibling form through the `form=` attribute, because the
 Eligible view wraps its table in the batch form and nested forms are not
 valid HTML. Editors see a dash in the Actions column (read-only). A row
 whose owner could not be loaded, has no `profiles` row, or is the `noowner`
-system account (the GDPR-erasure reassignment target), also shows a dash: the three actions all
-act on the whole owner, and `noowner` can hold many unrelated cars. The
-server independently rejects any of the three commands posted for a
+system account (the GDPR-erasure reassignment target), also shows a dash: the
+four actions all act on the whole owner, and `noowner` can hold many unrelated
+cars. The server independently rejects any of the four commands posted for a
 `noowner`-owned car.
 
 ### Preview & Send Flow
@@ -756,17 +766,19 @@ standard UserSpice token-error page and no writes occur. For each submitted car 
    tool's manual, low-frequency, single-operator trust model. No silent
    totals (AC13): every car gets a per-row outcome line.
 
-### Mark Bounced / Clear Bounced / Clear Suppression (Owner-level Actions)
+### Mark Bounced / Clear Bounced / Clear Block / Clear Opt-out (Owner-level Actions)
 
 **Critical semantics:** These actions are owner-level, not car-level. Each
 one writes the owner's one `profiles` row. Nothing is written to `cars`, and no
-action fans out to cars (#2101). The queue shows one of the three buttons for
+action fans out to cars (#2101). The queue shows one of the four buttons for
 each car row. See [Verification Queue](#verification-queue).
 
-Each action runs in one transaction. It locks the `profiles` row and the
-`users` row (`SELECT ... FOR UPDATE OF p, u`) before it writes. An owner
-with no `profiles` row gets an error and nothing is written. Each flag change writes one `logs` row
-(see [Flag-change audit rows](#flag-change-audit-rows)).
+Mark Bounced, Clear Bounced and Clear Opt-out each run in one transaction that
+the handler opens. Each one locks the `profiles` row and the `users` row
+(`SELECT ... FOR UPDATE OF p, u`) before it writes. Clear Block runs its own
+transaction (see below). An owner with no `profiles` row gets an error and
+nothing is written. Each flag change writes one `logs` row (see
+[Flag-change audit rows](#flag-change-audit-rows)).
 
 **Mark Bounced** (`mark_bounced` POST):
 
@@ -792,20 +804,106 @@ with no `profiles` row gets an error and nothing is written. Each flag change wr
 - Idempotent: calling it twice on the same owner has no effect the second time
 - Writes one `logs` row with source `admin`
 
-**Clear Suppression** (`clear_suppression` POST):
+**Confirm step.** Clear Block and Clear Opt-out undo a choice or a complaint
+of the owner. The admin confirms that the owner asked for the change. The
+confirm modal posts `owner_requested=1`. The handler checks the field after
+the permission check. A POST without `owner_requested=1` changes nothing,
+makes no Brevo call, and shows "Confirm that the owner asked for this change."
+So a missing modal fails closed. Each log row of these two actions records
+`owner_requested` and the acting admin ID.
 
-- Distinct from Clear Bounced. Until #2357 adds separate actions, it clears
-  both `email_blocked` (with its address, time and cause) and
-  `email_opted_out` (with its time) on the owner's profile, via
-  `CarVerificationManager::clearSuppressedForOwner()`. The bounce stays.
-- Writes one `logs` row for each flag that changed, with source `admin`
+**Clear Block** (`clear_block` POST):
 
-These three actions are POST-only, check the CSRF token first, and need the
+- Removes the block at Brevo and in the registry, via
+  `CarVerificationManager::clearBlockedForOwner()`. Without the Brevo call,
+  Brevo keeps the address on its blocklist. Brevo then still drops the mail,
+  and the next full suppression backfill sets `email_blocked` again.
+- Clears `email_blocked`, `email_blocked_address`, `email_blocked_at` and
+  `email_blocked_cause`. It does not change `email_opted_out` or
+  `email_bounced`.
+- The method runs these steps:
+  1. Read the profile with no lock. When `email_blocked` is 0, make no Brevo
+     call and write nothing. The admin sees "no block to clear."
+  2. Pick the address to unblock: `email_blocked_address`, or the owner's
+     `users.email` when that is NULL or empty.
+  3. Apply the [address rules](#clear-block-address-rules). Only an address
+     that passes all of them goes to Brevo.
+  4. Record the clear time, then call Brevo (`DELETE`, see below). When the
+     call fails, write nothing. The flag stays set. A case with no Brevo call
+     records the clear time at the start of step 5.
+  5. Begin a transaction. Lock the `profiles` row and the `users` row. Clear
+     the flag only when `email_blocked_address` is the same value as in step
+     1. Brevo is called before the lock, so a slow Brevo answer holds no row
+     lock.
+  6. Write the audit row with `cleared_at` (the time from step 4) and
+     `owner_requested`. Commit. When the `logs` insert fails, roll back. The
+     flag stays set.
+- When the stored address changed during the Brevo call, the method rolls back
+  and writes nothing. Brevo may already have removed the block for the old
+  address. The admin sees "The block changed during this action. The registry
+  flag did not change. Try again."
+- When another request cleared the flag during the Brevo call, the method
+  commits with no audit row. The admin sees "no block to clear."
+- After a clear, when `email_bounced` still applies to the owner's current
+  address and `email_opted_out` is 0 (both read under the lock), the admin
+  also sees "This owner is also marked bounced. Use Clear Bounced if the
+  owner's mailbox works." The row then shows Clear Bounced. When the owner is
+  also opted out, the row shows Clear Opt-out next, so the message does not
+  show.
+
+#### Clear Block address rules
+
+| Case | Brevo call | Registry flag | Admin sees |
+| --- | --- | --- | --- |
+| Address to unblock is empty (no `email_blocked_address` and no `users.email`) | No | Cleared | "... cleared of the block in the registry. No address is on record, so Brevo was not called." |
+| Address is not the owner's current `users.email` under `EmailAddress::normalize()` | No | Cleared | "... cleared of the block in the registry. The blocked address is no longer this owner's address. The Brevo block stays." |
+| Another user has the address as `users.email` (`CarRepository::findUserIdsByAddress()`) | No | Cleared | "... cleared of the block in the registry. Another account uses this address. The Brevo block stays." |
+| Address is the owner's current `users.email` and no other user has it | Yes | Cleared on 2xx or 404 | "... cleared of the block. Brevo no longer blocks this address." |
+| Same as above, and the Brevo call fails (not 404) | Yes | Not changed | "Brevo did not remove the block. Try again later." |
+| Same as above, and Brevo is not set up (no API key, or the SDK did not load). A failed query on the key also gives the text of the row above, with no call made | No | Not changed | "Brevo is not set up on this site, so the block was not removed. The registry flag did not change." |
+
+The owner label replaces the "..." in the table. The rules
+keep the action from removing a Brevo block that belongs to another person.
+A different user may now hold the old address.
+
+**The Brevo call.** `BrevoBlocklistClient::unblock()` sends
+`DELETE /v3/smtp/blockedContacts/{email}` through the Brevo SDK method
+`smtpBlockedContactsEmailDelete()`.
+
+- A 2xx answer means Brevo removed the address. A 404 (`document_not_found`)
+  means that the address was not blocked. Both count as success.
+- Pass the raw address to the SDK. The SDK encodes the path value once. An
+  address that the code encodes first reaches Brevo encoded twice. Brevo
+  looks up the wrong address and answers 404, so the registry flag clears and
+  the Brevo block stays.
+- The call logs nothing and keeps no exception message. The SDK puts the
+  request URL, with the address, in its messages, and a Brevo error body can
+  repeat the address. On failure, the manager logs the owner ID, the reason
+  and the HTTP status only: `Verification: Clear Block Brevo unblock failed
+  for owner %d (reason %s, HTTP %s)`.
+- In local development, `BrevoDevOverride` points the call at mock-brevo
+  (`BREVO_API_HOST`).
+
+**Clear Opt-out** (`clear_opt_out` POST):
+
+- Clears `profiles.email_opted_out` and `email_opted_out_at` via
+  `CarVerificationManager::clearOptedOutForOwner()`. It changes nothing else
+  and makes no Brevo call. The block and the bounce stay.
+- The flash message says "cleared of the opt-out" when the flag changed and
+  "no opt-out to clear" when it did not.
+- Writes one `logs` row with source `admin` and `owner_requested`.
+
+No `logs` row that Clear Block or Clear Opt-out writes holds an email address
+or an exception message. A `catch` block logs the `ExceptionLogSummary` only.
+
+All four actions are POST-only, check the CSRF token first, and need the
 `admin` role. An editor's attempt is refused and logged. On both success and
 error, the result is converted to a UserSpice session flash message
 (`usError()`/`usSuccess()`) and the page renders normally (standard
 POST-then-render pattern, no redirect). On success, the flash message names the
-owner.
+owner. The command `clear_suppression` no longer exists. The command switch has no
+default arm, so a cached old form that posts it changes nothing and shows no
+message.
 
 #### Flag-change audit rows
 
@@ -820,11 +918,22 @@ has:
 - `user_id`: the acting user, or 0 for a delivery event, a cron job or an import
 - `logs.metadata` JSON: `owner_id` (integer), `flag` (`email_opted_out`,
   `email_blocked` or `email_bounced`), `old`, `new` and `source`
+- Two optional `logs.metadata` keys, present only when the caller sets them:
+  `cleared_at` (string, `Y-m-d H:i:s`) and `owner_requested` (integer 1).
+  Clear Block and Clear Opt-out set `owner_requested`. Clear Block also sets
+  `cleared_at`. It is the time that Clear Block recorded before its Brevo
+  call, or at the start of its transaction when it made no Brevo call. The readers use `cleared_at` in place of `logdate`
+  (`CarRepository::latestFlagClearAt()`). The reason is that the row is written
+  after the Brevo call, and an import entry dated between the two times is a
+  new block.
 - `lognote`: the same values as text
 
 `source` is one of `owner`, `admin`, `webhook`, `reconciliation`, `import` or
 `email_change`. The row never holds an email address. `record()` writes nothing
-when `old` equals `new`. Clearing the UserSpice logs removes this trail.
+when `old` equals `new`. Clearing the UserSpice logs (admin Logs page) removes
+this trail. It also removes the Clear Block times, so the
+[suppression import](#brevo-suppression-list-import-1923) then has no lower
+bound for `email_blocked`.
 
 ### Resume Registry Email (Owner Self-Service)
 
@@ -1275,7 +1384,10 @@ call it once for each matched event.
    `email_bounce_cleared_at`. Every reader and writer that locks both rows
    locks `profiles` first.
 2. A user with no `users` row, or the `noowner` account, gets no row.
-3. The date guards run (see [Date Guards](#date-guards)).
+3. The date guards run (see [Date Guards](#date-guards)). With the
+   `$occurredAtIsFallback` argument (suppression import only), an admin clear
+   on record for the flag also stops the event (see
+   [Import guards](#brevo-suppression-list-import-1923)).
 4. It inserts the event row. A duplicate changes nothing and is not new.
 5. A user with no `profiles` row keeps the event row, gets a log line with
    the user ID, and gets no flag.
@@ -1296,7 +1408,10 @@ Two modes set the flag rule:
   differs from the event address under the matching rule. The join and
   address guards do not apply, because the import matched the user by the
   current address. The bounce guard and the Clear Block bound compare Brevo's
-  `blockedAt`.
+  `blockedAt`. When `blockedAt` is not usable, the job passes the run time with
+  the `$occurredAtIsFallback` argument. Then an admin clear on record stops the
+  event. `$occurredAtIsFallback` is valid only with `MODE_STATE`. With
+  `MODE_EVENT`, `apply()` throws an `InvalidArgumentException`.
 
 The optional `$blockedCause` argument sets the `email_blocked_cause` that the
 profile stores. It is allowed only for a suppression event in `MODE_STATE`.
@@ -1635,8 +1750,15 @@ passes `reconciliation`. The job runs with the verification switch off.
 fails `FILTER_VALIDATE_EMAIL`, before any match. The summary counts it in
 `invalidAddressCount`. The log line holds the address hash prefix only.
 
-**Time.** `blockedAt` is the event time. A missing, wrong-typed or unparseable
-value takes the run time.
+**Time.** `blockedAt` is the event time. The job uses it only when it is a
+non-empty string that parses to a positive time, and that time is not more than
+5 minutes after the run time (`MAX_FUTURE_SECONDS = 300`). The webhook and the
+reconciliation job use the same 5-minute cap. Any other value is "no usable
+date": a missing value, a value that is not a string, an empty string, a string
+that does not parse, a non-positive time, or a time more than 5 minutes after
+the run time. For no usable date, the job logs a warning with the user ID, not
+the address, and uses the run time as the event time. It also tells
+`apply()` that the time is a fallback. See Import guards.
 
 **Window.** The nightly run asks Brevo for the last 48 hours only. It does not
 find a blocklist entry that is older. An owner can change back from address B
@@ -1684,7 +1806,8 @@ fails the same way on every run. The job counts the contact in `skippedCount`, l
 
 **Skipped contacts:** A contact whose flag step was not run counts as skipped in
 the summary, not matched. This includes an owner with no `profiles` row, a date
-guard that failed, and an address that is not the current `users.email`.
+guard that failed, an entry with no usable date after an admin clear, and an
+address that is not the current `users.email`.
 
 **Import guards.** `MODE_STATE` skips the `join_date` and
 `email_address_since` guards. The bounce guard and the Clear Block bound
@@ -1692,6 +1815,37 @@ compare `blockedAt`. So an entry whose `blockedAt` is not later than the
 owner's latest admin Clear Block does not set `email_blocked`. The import does
 not increment the unmatched recipient counter. A blocklist entry has no
 verification tag.
+
+**No usable date after an admin clear (#2426).** The run time is always later
+than an admin clear. If the job compared it with the clear, the next import
+would set a cleared flag again. So an entry with no usable `blockedAt` is
+skipped when a clear is on record for the flag that the entry sets. The skip
+happens in `EmailEventApplier::apply()`, after the date guards and before the
+event row insert. The applier writes no event row and no flag-change row. It
+logs the event name and the user ID, not the address. The summary counts the
+contact as skipped.
+
+| Brevo reason code | Flag the entry sets | Skipped when |
+| --- | --- | --- |
+| `hardBounce` | `email_bounced` | `email_bounce_cleared_at` is not NULL (set by Clear Bounced and by a confirmed email change that clears a bounce) |
+| `contactFlaggedAsSpam`, `unsubscribedVia*`, `adminBlocked` | `email_blocked` | `CarRepository::latestFlagClearAt()` finds an admin Clear Block for the owner |
+
+Rules:
+
+- A bounce clear does not guard `email_blocked`, and a Clear Block does not
+  guard `email_bounced`. Each flag follows its own clear.
+- Any admin clear on record guards a no-date entry. The guard has no time
+  window.
+- With no clear on record, an entry with no usable date still sets the flag,
+  with the run time as its time. The first import does not change.
+- An entry with a usable date follows the normal guards. Brevo's `blockedAt`
+  must be later than the clear.
+- A later real block still arrives through the webhook and the reconciliation
+  job. Those paths carry a dated event.
+- Clearing the UserSpice logs removes the Clear Block times. Then
+  `latestFlagClearAt()` finds nothing, and the import has no lower bound for
+  `email_blocked`. `email_bounce_cleared_at` is a profile column, so the log
+  clear does not remove it.
 
 **Admin UI:** `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
 — the manual "run now" wrapper, sharing `27-Reconcile-Brevo-Events.php`'s

@@ -243,6 +243,122 @@ final class DeliverabilityFlagLogTest extends TestCase
         );
     }
 
+    // --- Optional cleared_at and owner_requested keys (#2357) ---------------
+
+    public function testRecordAddsClearedAtAndOwnerRequestedWhenBothAreSet(): void
+    {
+        $log = $this->makeLog();
+
+        $this->assertTrue($log->record(
+            7,
+            42,
+            'email_opted_out',
+            1,
+            0,
+            'admin',
+            clearedAt: '2026-10-20 10:00:00',
+            ownerRequested: true
+        ));
+
+        $metadata = $this->calls[0][3];
+        $this->assertSame('2026-10-20 10:00:00', $metadata['cleared_at']);
+        $this->assertSame(1, $metadata['owner_requested'], 'owner_requested is the int 1, not true');
+        $this->assertSame(
+            ['cleared_at', 'flag', 'new', 'old', 'owner_id', 'owner_requested', 'source'],
+            $this->sortedKeys($metadata)
+        );
+    }
+
+    public function testRecordAddsOnlyClearedAtWhenOwnerRequestedIsFalse(): void
+    {
+        $log = $this->makeLog();
+
+        $log->record(7, 42, 'email_blocked', 1, 0, 'admin', clearedAt: '2026-10-20 10:00:00');
+
+        $this->assertSame(
+            ['cleared_at', 'flag', 'new', 'old', 'owner_id', 'source'],
+            $this->sortedKeys($this->calls[0][3])
+        );
+    }
+
+    public function testRecordAddsOnlyOwnerRequestedWhenClearedAtIsNull(): void
+    {
+        $log = $this->makeLog();
+
+        $log->record(7, 42, 'email_opted_out', 1, 0, 'admin', ownerRequested: true);
+
+        $this->assertSame(
+            ['flag', 'new', 'old', 'owner_id', 'owner_requested', 'source'],
+            $this->sortedKeys($this->calls[0][3])
+        );
+    }
+
+    public function testRecordKeepsTheCoreKeysUnchangedWhenTheNewKeysAreSet(): void
+    {
+        $log = $this->makeLog();
+
+        $log->record(
+            7,
+            42,
+            'email_blocked',
+            1,
+            0,
+            'admin',
+            clearedAt: '2026-10-20 10:00:00',
+            ownerRequested: true
+        );
+
+        [, , $lognote, $metadata] = $this->calls[0];
+        $this->assertSame('Owner 42 email_blocked changed from 1 to 0 (source: admin)', $lognote);
+        $this->assertSame(42, $metadata['owner_id']);
+        $this->assertSame('email_blocked', $metadata['flag']);
+        $this->assertSame(1, $metadata['old']);
+        $this->assertSame(0, $metadata['new']);
+        $this->assertSame('admin', $metadata['source']);
+    }
+
+    public function testRecordWithNeitherNewKeyWritesExactlyTheCoreKeys(): void
+    {
+        $log = $this->makeLog();
+
+        $log->record(7, 42, 'email_blocked', 1, 0, 'admin');
+
+        $this->assertSame(
+            ['owner_id' => 42, 'flag' => 'email_blocked', 'old' => 1, 'new' => 0, 'source' => 'admin'],
+            $this->calls[0][3]
+        );
+    }
+
+    #[DataProvider('badClearedAtProvider')]
+    public function testRecordThrowsOnAClearedAtThatIsNotARealDatetimeInTheStoredFormat(string $clearedAt): void
+    {
+        $log = $this->makeLog();
+
+        try {
+            $log->record(7, 42, 'email_blocked', 1, 0, 'admin', clearedAt: $clearedAt);
+            $this->fail('InvalidArgumentException expected');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('cleared_at must be in format', $e->getMessage());
+        }
+        $this->assertSame([], $this->calls, 'A bad cleared_at writes no row');
+    }
+
+    /** @return array<string, array{string}> */
+    public static function badClearedAtProvider(): array
+    {
+        return [
+            'empty string' => [''],
+            'garbage' => ['garbage'],
+            'ISO 8601 with a T' => ['2026-10-20T10:00:00'],
+            'date only' => ['2026-10-20'],
+            'leading space' => [' 2026-10-20 10:00:00'],
+            'fractional seconds' => ['2026-10-20 10:00:00.5'],
+            'impossible day (rolls over)' => ['2026-02-30 12:00:00'],
+            'impossible hour' => ['2026-10-20 25:00:00'],
+            'impossible month' => ['2026-13-01 00:00:00'],
+        ];
+    }
+
     /**
      * @param array<string, mixed> $array
      * @return list<string>

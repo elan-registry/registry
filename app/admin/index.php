@@ -6,17 +6,20 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
+use ElanRegistry\Car\ClearBlockOutcome;
 use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\Cron\SendVerificationBatchJob;
+use ElanRegistry\Email\BrevoBlocklistClient;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\Input as ElanInput;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
@@ -800,7 +803,6 @@ if (ElanInput::existsPost()) {
                 // (logs, LOG_CATEGORY_EMAIL_BOUNCED) inside this transaction.
                 case "mark_bounced":
                 case "clear_bounced":
-                case "clear_suppression":
                     // Admin-only — see the identical check on
                     // verification_send_batch above for rationale.
                     if (!hasPerm([2], $currentUserId)) {
@@ -836,12 +838,11 @@ if (ElanInput::existsPost()) {
                     // Keyed on the literal case labels above. $command is
                     // `mixed` as far as static analysis is concerned, so a
                     // match() on it can never be proven exhaustive; a lookup
-                    // keyed by the same three strings is equivalent and honest
+                    // keyed by the same two strings is equivalent and honest
                     // about the one impossible branch.
                     $verifyActionMap = [
-                        'mark_bounced'      => ['Mark Bounced', 'marked as bounced', 'already marked as bounced'],
-                        'clear_bounced'     => ['Clear Bounced', 'cleared of the bounce flag', 'no bounce flag to clear'],
-                        'clear_suppression' => ['Clear Suppression', 'cleared of the suppression flag', 'no suppression flag to clear'],
+                        'mark_bounced'  => ['Mark Bounced', 'marked as bounced', 'already marked as bounced'],
+                        'clear_bounced' => ['Clear Bounced', 'cleared of the bounce flag', 'no bounce flag to clear'],
                     ];
                     [$verifyOperation, $verifySuccessVerb, $verifyNoChangeVerb] = $verifyActionMap[(string) $command];
 
@@ -850,7 +851,7 @@ if (ElanInput::existsPost()) {
                     try {
                         $verifyOwnerData = (new Owner($verifyOwnerId))->data();
 
-                        // mark_bounced / clear_bounced / clear_suppression all act
+                        // mark_bounced / clear_bounced both act
                         // on the WHOLE owner (CarVerificationManager::*ForOwner()),
                         // so a `noowner` car must not reach this handler: the
                         // `noowner` system account (GDPR-erasure reassignment
@@ -885,10 +886,8 @@ if (ElanInput::existsPost()) {
                                 (string) $verifyOwnerData->email,
                                 $currentUserId
                             );
-                        } elseif ($command === 'clear_bounced') {
-                            $verifyChanged = $verificationManager->clearBouncedForOwner($verifyOwnerId, $currentUserId);
                         } else {
-                            $verifyChanged = $verificationManager->clearSuppressedForOwner($verifyOwnerId, $currentUserId);
+                            $verifyChanged = $verificationManager->clearBouncedForOwner($verifyOwnerId, $currentUserId);
                         }
 
                         $verificationRepo->commit();
@@ -929,6 +928,142 @@ if (ElanInput::existsPost()) {
                             $e->getMessage()
                         ));
                         $errors[] = 'That action could not be applied due to an unexpected error. Check the logs for details.';
+                    }
+                    break;
+
+                // Owner-requested deliverability actions (#2357).
+                //
+                // Clear Block also removes the Brevo block. Clear Opt-out
+                // clears email_opted_out only. The admin confirms that the
+                // owner asked for the change. A POST without owner_requested=1
+                // changes nothing, so a missing confirm step fails closed.
+                //
+                // No log line here holds an exception message or an address:
+                // CarRepository puts the address in its exception messages.
+                case "clear_block":
+                case "clear_opt_out":
+                    if (!hasPerm([2], $currentUserId)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            "Verification: non-admin attempted command '{$command}'");
+                        $errors[] = 'Administrator access is required for this action.';
+                        break;
+                    }
+
+                    if (ElanInput::get('owner_requested') !== '1') {
+                        $errors[] = 'Confirm that the owner asked for this change.';
+                        break;
+                    }
+
+                    $requestOperation = $command === 'clear_block' ? 'Clear Block' : 'Clear Opt-out';
+                    $requestCarId = (int) ElanInput::get('car_id');
+                    $requestOwnerId = 0;
+                    $requestInTransaction = false;
+                    $requestResult = null;
+
+                    try {
+                        $requestCarData = $requestCarId > 0 ? $verificationRepo->findById($requestCarId) : null;
+                        if ($requestCarData === null) {
+                            $errors[] = 'That car could not be found. It may have been removed.';
+                            break;
+                        }
+
+                        $requestOwnerId = (int) $requestCarData->user_id;
+                        $requestOwnerData = (new Owner($requestOwnerId))->data();
+
+                        // Both actions act on the WHOLE owner. The `noowner`
+                        // system account holds many unrelated cars, so a
+                        // `noowner` car must not reach this handler. The UI
+                        // hides the action for this case.
+                        if (($requestOwnerData->username ?? '') === 'noowner') {
+                            throw new CarValidationException(
+                                "Car {$requestCarId} has no individual owner to apply '{$command}' to"
+                            );
+                        }
+
+                        $requestOwnerLabel = sendEmailOwnerLabel($requestOwnerData, $requestOwnerId);
+
+                        if ($command === 'clear_opt_out') {
+                            $verificationRepo->beginTransaction();
+                            $requestInTransaction = true;
+                            $requestChanged = $verificationManager->clearOptedOutForOwner($requestOwnerId, $currentUserId);
+                            $verificationRepo->commit();
+                            $requestInTransaction = false;
+
+                            $successes[] = sprintf(
+                                '%s: %s.',
+                                $requestOwnerLabel,
+                                $requestChanged ? 'cleared of the opt-out' : 'no opt-out to clear'
+                            );
+                            $requestResult = $requestChanged ? 'flag changed' : 'no change';
+                        } else {
+                            // clearBlockedForOwner() runs its own transaction,
+                            // so the Brevo call holds no row lock.
+                            $requestOutcome = $verificationManager->clearBlockedForOwner(
+                                $requestOwnerId,
+                                $currentUserId,
+                                new BrevoBlocklistClient(dbi())
+                            );
+                            $requestResult = $requestOutcome->kind;
+
+                            // No default arm: a new outcome kind must get its own message.
+                            [$requestIsError, $requestMessage] = match ($requestOutcome->kind) {
+                                ClearBlockOutcome::NOT_BLOCKED => [false, 'no block to clear.'],
+                                ClearBlockOutcome::CLEARED => [false, 'cleared of the block. Brevo no longer blocks this address.'],
+                                ClearBlockOutcome::CLEARED_NO_ADDRESS => [false, 'cleared of the block in the registry. No address is on record, so Brevo was not called.'],
+                                ClearBlockOutcome::CLEARED_ADDRESS_MOVED => [false, "cleared of the block in the registry. The blocked address is no longer this owner's address. The Brevo block stays."],
+                                ClearBlockOutcome::CLEARED_SHARED_ADDRESS => [false, 'cleared of the block in the registry. Another account uses this address. The Brevo block stays.'],
+                                ClearBlockOutcome::BREVO_FAILED => [true, 'Brevo did not remove the block. Try again later.'],
+                                ClearBlockOutcome::BREVO_NOT_SET_UP => [true, 'Brevo is not set up on this site, so the block was not removed. The registry flag did not change.'],
+                                ClearBlockOutcome::ADDRESS_CHANGED => [true, 'The block changed during this action. The registry flag did not change. Try again.'],
+                            };
+
+                            if ($requestIsError) {
+                                $errors[] = $requestMessage;
+                            } else {
+                                $successes[] = $requestOwnerLabel . ': ' . $requestMessage;
+                                // Opted out: the row shows Clear Opt-out next, not Clear Bounced.
+                                if ($requestOutcome->isCleared() && $requestOutcome->stillBounced && !$requestOutcome->stillOptedOut) {
+                                    $successes[] = "This owner is also marked bounced. Use Clear Bounced if the owner's mailbox works.";
+                                }
+                            }
+                        }
+                    } catch (CarValidationException $e) {
+                        if ($requestInTransaction) {
+                            $verificationRepo->rollback();
+                        }
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification: %s validation failure for car %d, owner %d: %s',
+                            $requestOperation,
+                            $requestCarId,
+                            $requestOwnerId,
+                            ExceptionLogSummary::of($e)
+                        ));
+                        $errors[] = $e->getUserMessage();
+                    } catch (\Throwable $e) {
+                        // One catch for all other faults: each one must roll
+                        // back an open transaction, and none may log a message.
+                        if ($requestInTransaction) {
+                            $verificationRepo->rollback();
+                        }
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification: %s failed for car %d, owner %d: %s',
+                            $requestOperation,
+                            $requestCarId,
+                            $requestOwnerId,
+                            ExceptionLogSummary::of($e)
+                        ));
+                        $errors[] = 'That action could not be applied. The registry flag did not change. Check the logs for details.';
+                    }
+
+                    // After the try: a throw from this line must not reach
+                    // the catch above, whose text says the flag did not change.
+                    if ($requestResult !== null) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                            'Verification: %s for owner %d, result %s (owner_requested=1)',
+                            $requestOperation,
+                            $requestOwnerId,
+                            $requestResult
+                        ));
                     }
                     break;
             }

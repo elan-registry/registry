@@ -856,6 +856,138 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertSame('0', $this->flags($userId)['blocked']);
     }
 
+    // --- Fallback event time (#2426) ---------------------------------------
+
+    /** The import's run time when Brevo gave no usable date. It is after every clear seeded below. */
+    private const RUN_TIME = '2026-09-09 03:00:00';
+
+    /** An admin clear that happened before the run time. */
+    private const CLEARED_AT = '2026-09-09 01:00:00';
+
+    /** Seed the Clear Block row with an explicit clear time, as the admin action writes it. */
+    private function seedClearBlockRowAt(int $ownerId, string $clearedAt): void
+    {
+        $this->assertTrue(
+            (new DeliverabilityFlagLog())->record(
+                0,
+                $ownerId,
+                DeliverabilityFlagLog::FLAG_BLOCKED,
+                1,
+                0,
+                DeliverabilityFlagLog::SOURCE_ADMIN,
+                clearedAt: $clearedAt
+            ),
+            'Test setup: the Clear Block row must be written'
+        );
+    }
+
+    /** Apply one import entry whose time is the fallback run time. */
+    private function applyFallbackEntry(int $userId, string $event): \ElanRegistry\Car\EmailEventApplyResult
+    {
+        return $this->applier->apply(
+            EmailEventMatch::matched($userId, null, self::RUN_TIME),
+            $this->emailOf($userId),
+            $event,
+            null,
+            'import-fallback-' . $userId . '-' . $event,
+            self::RUN_TIME,
+            'import',
+            EmailEventApplier::MODE_STATE,
+            null,
+            true
+        );
+    }
+
+    /** @return array<string, array{string, bool}> event, true for a Clear Bounced and false for a Clear Block */
+    public static function fallbackClearProvider(): array
+    {
+        return [
+            'spam after Clear Block' => ['spam', false],
+            'unsubscribed after Clear Block' => ['unsubscribed', false],
+            'hard_bounce after Clear Bounced' => ['hard_bounce', true],
+            'blocked after Clear Bounced' => ['blocked', true],
+            'invalid_email after Clear Bounced' => ['invalid_email', true],
+        ];
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerSkipsWhenAClearIsOnRecord(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner($clearBounced ? ['email_bounce_cleared_at' => self::CLEARED_AT] : []);
+        if (!$clearBounced) {
+            $this->seedClearBlockRowAt($userId, self::CLEARED_AT);
+        }
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertSame([], $this->eventRows($userId), 'No event row is written');
+        $this->assertNoFlags($userId, 'A run time is not a date that can beat an admin clear');
+
+        $lines = $this->db->query(
+            'SELECT lognote FROM logs WHERE id > ? AND user_id = ? AND lognote LIKE ?',
+            [$this->logIdFloor, $userId, '%no usable event date%']
+        )->results();
+        $this->assertCount(1, $lines);
+        $this->assertSame(
+            "Brevo: event \"{$event}\" for owner {$userId} not recorded: no usable event date and an admin clear is on record.",
+            $lines[0]->lognote
+        );
+        $this->assertStringNotContainsString('@', $lines[0]->lognote);
+    }
+
+    /** @return array<string, array{string, string}> event, the flag column that it sets */
+    public static function fallbackNoClearProvider(): array
+    {
+        return [
+            'spam' => ['spam', 'blocked'],
+            'unsubscribed' => ['unsubscribed', 'blocked'],
+            'hard_bounce' => ['hard_bounce', 'bounced'],
+            'blocked' => ['blocked', 'bounced'],
+        ];
+    }
+
+    #[DataProvider('fallbackNoClearProvider')]
+    public function testFallbackMarkerAppliesWithNoClear(string $event, string $flag): void
+    {
+        $userId = $this->makeOwner();
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
+        $this->assertCount(1, $this->eventRows($userId, $event));
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags[$flag], 'With no clear on record the run time applies as before');
+        $this->assertSame(self::RUN_TIME, $flags[$flag . '_at']);
+    }
+
+    public function testFallbackMarkerWithEventModeThrows(): void
+    {
+        $userId = $this->makeOwner();
+
+        try {
+            $this->applier->apply(
+                EmailEventMatch::matched($userId, null, self::LONG_AGO),
+                $this->emailOf($userId),
+                'spam',
+                null,
+                $this->id('fallback-event-mode'),
+                self::RUN_TIME,
+                'webhook',
+                EmailEventApplier::MODE_EVENT,
+                null,
+                true
+            );
+            $this->fail('InvalidArgumentException expected');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('fallback event time', $e->getMessage());
+        }
+        $this->assertSame([], $this->eventRows($userId), 'Nothing is written');
+        $this->assertNoFlags($userId, 'Nothing is written');
+    }
+
     // --- Live-DB guard: the affected-row count ----------------------------
 
     public function testInsertingTheSameEventTwiceThroughTheRealAdapterGivesOneThenZeroAffectedRows(): void

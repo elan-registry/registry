@@ -786,8 +786,8 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
 
                         // The `noowner` system account (GDPR-erasure reassignment
                         // target, see CarAdministrationService) and a row with no
-                        // live owner at all are not real owners: mark_bounced /
-                        // clear_bounced / clear_suppression all act on the WHOLE
+                        // live owner at all are not real owners: each row action
+                        // acts on the WHOLE
                         // owner (CarVerificationManager::*ForOwner()). A click here
                         // would write the flag on the `noowner` profile row, which
                         // stands for many unrelated cars. Same username check
@@ -817,7 +817,6 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                         $queueBounced     = (int) ($queueCar->email_bounced_active ?? 0) === 1;
                         $queueBlocked     = (int) ($queueCar->email_blocked_active ?? 0) === 1;
                         $queueOptedOut    = (int) ($queueCar->email_opted_out ?? 0) === 1;
-                        $queueSuppressed  = $queueBlocked || $queueOptedOut;
                         $queueBlockedCause = $queueBlocked && isset($queueCar->email_blocked_cause)
                             ? (string) $queueCar->email_blocked_cause : null;
 
@@ -836,13 +835,21 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             $queueNoActionTitle = 'This owner has no profile row. Fix the profile before you change email state.';
                         }
 
-                        // One action per row, from the owner's state. A blocked or opted-out
-                        // owner comes first: one who is not bounced needs Clear Suppression,
-                        // not Mark Bounced. A single soft bounce keeps the car Pending (Brevo
-                        // escalates repeated soft bounces), so Mark Bounced is disabled there.
-                        if ($queueSuppressed) {
-                            $queueAction = ['command' => 'clear_suppression', 'label' => 'Clear Suppression',
-                                            'class' => 'btn-outline-secondary', 'disabled' => false];
+                        // One action per row, from the owner's state, in the order Clear Block,
+                        // Clear Opt-out, Clear Bounced, Mark Bounced. A blocked or opted-out
+                        // owner who is not bounced needs a clear, not Mark Bounced. After Clear
+                        // Block, the row shows the next action that still applies. A single soft
+                        // bounce keeps the car Pending (Brevo escalates repeated soft bounces),
+                        // so Mark Bounced is disabled there. Clear Block and Clear Opt-out need
+                        // the owner's request, so they open the confirm modal ('ownerRequest').
+                        if ($queueBlocked) {
+                            $queueAction = ['command' => 'clear_block', 'label' => 'Clear Block',
+                                            'class' => 'btn-outline-secondary', 'disabled' => false,
+                                            'ownerRequest' => true];
+                        } elseif ($queueOptedOut) {
+                            $queueAction = ['command' => 'clear_opt_out', 'label' => 'Clear Opt-out',
+                                            'class' => 'btn-outline-secondary', 'disabled' => false,
+                                            'ownerRequest' => true];
                         } elseif ($queueBounced) {
                             $queueAction = ['command' => 'clear_bounced', 'label' => 'Clear Bounced',
                                             'class' => 'btn-outline-secondary', 'disabled' => false];
@@ -885,15 +892,23 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                                      "read-only for editors" contract — the server independently
                                      enforces the same hasPerm([2]) check on the POST side, this is
                                      purely so an editor isn't shown controls their click would reject. -->
+                                <?php if (!empty($queueAction['ownerRequest'])) { ?>
+                                <!-- No name/value: the confirm modal adds the command and
+                                     owner_requested=1 to the form (tab-verification.js). -->
+                                <button type="button" class="btn btn-sm <?= vsEsc($queueAction['class']) ?>"
+                                        data-owner-request-command="<?= vsEsc($queueAction['command']) ?>"
+                                        form="owner-action-<?= vsEsc($queueCarId) ?>"><?= vsEsc($queueAction['label']) ?></button>
+                                <?php } else { ?>
                                 <button type="submit" class="btn btn-sm <?= vsEsc($queueAction['class']) ?>"
                                         name="command" value="<?= vsEsc($queueAction['command']) ?>"
                                         form="owner-action-<?= vsEsc($queueCarId) ?>"
                                         <?= $queueAction['disabled']
                                             ? 'disabled title="One soft bounce does not confirm a dead address."'
                                             : '' ?>><?= vsEsc($queueAction['label']) ?></button>
+                                <?php } ?>
                                 <?php } elseif ($vsCanToggle) { ?>
-                                <!-- No live, non-system owner: mark_bounced / clear_bounced /
-                                     clear_suppression all act on the whole owner, and acting on
+                                <!-- No live, non-system owner: each row action acts on the
+                                     whole owner, and acting on
                                      `noowner` or a row with no owner would reach every other car
                                      that account holds. -->
                                 <span class="text-muted" title="<?= vsEsc($queueNoActionTitle) ?>">&mdash;</span>
@@ -925,6 +940,26 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
             <input type="hidden" name="car_id" value="<?= vsEsc((int) ($queueCar->id ?? 0)) ?>">
         </form>
         <?php } ?>
+
+        <!-- Clear Block and Clear Opt-out confirm step (#2357). The server
+             refuses a POST without owner_requested=1. -->
+        <div class="modal fade" id="ownerRequestConfirmModal" tabindex="-1" aria-labelledby="ownerRequestConfirmModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title" id="ownerRequestConfirmModalLabel">Owner request</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger mb-0"><?= vsEsc('Confirm that the owner asked for this change.') ?></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="ownerRequestConfirmButton">Confirm</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <?php } ?>
 
 <?php } ?>

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use Closure;
+use DateTimeImmutable;
+use ElanRegistry\AppConstants;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
 use InvalidArgumentException;
@@ -16,8 +18,13 @@ use InvalidArgumentException;
  * Each change to `email_opted_out`, `email_blocked` or `email_bounced` writes
  * one `logs` row with category `LogCategories::LOG_CATEGORY_EMAIL_BOUNCED`.
  * The `logs.metadata` JSON holds `owner_id` (int), `flag`, `old`, `new` and
- * `source`. `CarRepository::latestFlagClearAt()` and `recentFlagChanges()`
- * read that JSON, so the keys and value types here are a contract with them.
+ * `source`. Two more keys are optional. Each one is present only when the
+ * caller sets it: `cleared_at` (string, `AppConstants::DATETIME_FORMAT`) and
+ * `owner_requested` (int 1). Admin Clear Block sets both, and admin Clear
+ * Opt-out sets `owner_requested` (#2357). `CarRepository::latestFlagClearAt()` and
+ * `recentFlagChanges()` read that JSON, so the keys and value types here are a
+ * contract with them. When a row has `cleared_at`, the readers use it in place
+ * of `logdate`.
  * The `lognote` repeats the same values as text for the admin log viewer.
  *
  * One exception: `restoreArchivedAccount()` copies the archived opt-out into
@@ -93,12 +100,25 @@ final class DeliverabilityFlagLog
      * @param int    $old          Flag value before the change (0 or 1).
      * @param int    $new          Flag value after the change (0 or 1).
      * @param string $source       One of {@see self::SOURCES}.
+     * @param string|null $clearedAt Time of the clear in `AppConstants::DATETIME_FORMAT`.
+     *                               The log readers use it in place of `logdate`.
+     *                               Null writes no `cleared_at` key.
+     * @param bool   $ownerRequested True when the owner asked for the change.
+     *                               False writes no `owner_requested` key.
      * @return bool True when a row was written, false when the value did not change.
      * @throws InvalidArgumentException When an argument is not a permitted value.
      * @throws CarDatabaseException     When the `logs` insert fails.
      */
-    public function record(int $actingUserId, int $ownerId, string $flag, int $old, int $new, string $source): bool
-    {
+    public function record(
+        int $actingUserId,
+        int $ownerId,
+        string $flag,
+        int $old,
+        int $new,
+        string $source,
+        ?string $clearedAt = null,
+        bool $ownerRequested = false
+    ): bool {
         if ($actingUserId < 0) {
             throw new InvalidArgumentException("Acting user ID must be 0 or more, got {$actingUserId}");
         }
@@ -109,6 +129,9 @@ final class DeliverabilityFlagLog
         self::assertValidSource($source);
         if (!in_array($old, [0, 1], true) || !in_array($new, [0, 1], true)) {
             throw new InvalidArgumentException("Flag values must be 0 or 1, got old={$old} new={$new}");
+        }
+        if ($clearedAt !== null) {
+            self::assertValidClearedAt($clearedAt);
         }
 
         if ($old === $new) {
@@ -122,6 +145,12 @@ final class DeliverabilityFlagLog
             'new' => $new,
             'source' => $source,
         ];
+        if ($clearedAt !== null) {
+            $metadata['cleared_at'] = $clearedAt;
+        }
+        if ($ownerRequested) {
+            $metadata['owner_requested'] = 1;
+        }
         $lognote = "Owner {$ownerId} {$flag} changed from {$old} to {$new} (source: {$source})";
 
         $logId = ($this->logger)($actingUserId, LogCategories::LOG_CATEGORY_EMAIL_BOUNCED, $lognote, $metadata);
@@ -132,6 +161,32 @@ final class DeliverabilityFlagLog
         }
 
         return true;
+    }
+
+    /**
+     * Check that a clear time is a real calendar time in `AppConstants::DATETIME_FORMAT`.
+     *
+     * The '!' prefix and the error check reject a rollover such as
+     * '2026-02-30 12:00:00'. The round trip rejects a value with a different
+     * shape, so `CarRepository::flagLogDate()` can read every value written here.
+     *
+     * @param string $clearedAt Value to check.
+     * @return void
+     * @throws InvalidArgumentException When `$clearedAt` is not in that format.
+     */
+    private static function assertValidClearedAt(string $clearedAt): void
+    {
+        $parsed = DateTimeImmutable::createFromFormat('!' . AppConstants::DATETIME_FORMAT, $clearedAt);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (
+            $parsed === false
+            || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+            || $parsed->format(AppConstants::DATETIME_FORMAT) !== $clearedAt
+        ) {
+            throw new InvalidArgumentException(
+                'cleared_at must be in format ' . AppConstants::DATETIME_FORMAT . ", got '{$clearedAt}'"
+            );
+        }
     }
 
     /**
