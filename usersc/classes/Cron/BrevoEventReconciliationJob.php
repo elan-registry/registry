@@ -72,6 +72,9 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
     public const JOB_NAME = 'brevo_reconciliation';
 
+    /** healthchecks.io check slug, without the environment suffix. */
+    private const HEALTHCHECK_SLUG = 'brevo-event-reconciliation';
+
     /**
      * The event types that the job fetches, as Brevo's statistics API names
      * them, mapped to the webhook's event name.
@@ -182,6 +185,8 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * @param \DateTimeImmutable|null $now Fixes "now" for the window and
      *        retention cutoffs; defaults to wall-clock time. Injectable so
      *        tests can assert exact boundaries rather than tolerances.
+     * @param HealthcheckPinger|null $pinger Pings healthchecks.io after a
+     *        claimed run; defaults to a real pinger
      */
     public function __construct(
         DatabaseInterface $db,
@@ -190,8 +195,9 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         private readonly EmailEventApplier $applier,
         private readonly BrevoEventReconciliationClient $client,
         ?\DateTimeImmutable $now = null,
+        ?HealthcheckPinger $pinger = null,
     ) {
-        parent::__construct($db);
+        parent::__construct($db, $pinger);
         $this->now = $now ?? new \DateTimeImmutable();
     }
 
@@ -203,6 +209,11 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     protected function guardIntervalHours(): int
     {
         return self::GUARD_INTERVAL_HOURS;
+    }
+
+    protected function healthcheckSlug(): string
+    {
+        return self::HEALTHCHECK_SLUG;
     }
 
     /**
@@ -256,6 +267,11 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                 )
                 : ''
         ));
+
+        // A failed poll is logged, not thrown, so the ping must be told.
+        if ($summary->pollFailed) {
+            $this->markRunFailed();
+        }
     }
 
     /**

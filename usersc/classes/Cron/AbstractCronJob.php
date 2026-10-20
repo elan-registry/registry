@@ -60,8 +60,20 @@ use ElanRegistry\LogCategories;
  * section, for the full rationale — this docblock intentionally doesn't
  * duplicate it.
  *
+ * HEALTHCHECKS.IO PING: a job whose {@see self::healthcheckSlug()} returns a
+ * slug pings that check at the end of each claimed run — `success` when
+ * `execute()` returns, `/fail` when it throws or calls
+ * {@see self::markRunFailed()}. A run that returns before `execute()` (switch
+ * off, disabled, missing or unreadable row, claim lost) pings nothing, so a
+ * lapsed check means no real run happened. An exception thrown inside the
+ * claimed block, including from the claim itself, sends `/fail`. `runNow()`
+ * never pings: a manual run is not the scheduled health signal. See
+ * {@see HealthcheckPinger}.
+ *
  * Subclasses implement `jobName()`, `guardIntervalHours()` and `execute()`.
- * A subclass may also override `refusesWhileSwitchOff()`, and nothing else.
+ * A subclass may also override `refusesWhileSwitchOff()` and
+ * `healthcheckSlug()`, and nothing else. `execute()` may call
+ * `markRunFailed()` for a failure that it handles without a throw.
  * `run()` is `final` — subclasses must not override the
  * crash-isolation/guard sequencing.
  *
@@ -88,8 +100,25 @@ use ElanRegistry\LogCategories;
  */
 abstract class AbstractCronJob
 {
-    public function __construct(protected readonly DatabaseInterface $db)
-    {
+    private readonly HealthcheckPinger $pinger;
+
+    /**
+     * Set by {@see self::markRunFailed()} during one `execute()`. `run()`
+     * resets it before each `execute()`, so one soft failure does not mark
+     * the next run of the same instance as failed.
+     */
+    private bool $runFailed = false;
+
+    /**
+     * @param DatabaseInterface $db The enabled-check and guard connection
+     * @param HealthcheckPinger|null $pinger Pings healthchecks.io after a
+     *        claimed run; defaults to a real pinger
+     */
+    public function __construct(
+        protected readonly DatabaseInterface $db,
+        ?HealthcheckPinger $pinger = null,
+    ) {
+        $this->pinger = $pinger ?? new HealthcheckPinger();
     }
 
     /** The er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value for this job. */
@@ -116,9 +145,34 @@ abstract class AbstractCronJob
     }
 
     /**
+     * The healthchecks.io check slug for this job, without the environment
+     * suffix.
+     *
+     * The default is null: the job has no check and `run()` pings nothing.
+     *
+     * @return string|null The check slug, or null for no ping
+     */
+    protected function healthcheckSlug(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Mark the current run as failed for the healthchecks.io ping, for a
+     * failure that `execute()` handles and logs without a throw.
+     *
+     * Changes only the ping. It does not stamp `last_failure_at`.
+     */
+    protected function markRunFailed(): void
+    {
+        $this->runFailed = true;
+    }
+
+    /**
      * Run this job: check the switch gate ({@see self::refusesWhileSwitchOff()}),
      * check enabled, claim the guard, set a time-limit backstop, execute with
-     * crash isolation. Never throws.
+     * crash isolation, ping the healthchecks.io check
+     * ({@see self::healthcheckSlug()}). Never throws.
      */
     final public function run(): void
     {
@@ -167,8 +221,14 @@ abstract class AbstractCronJob
             // claimed run arms the backstop.
             set_time_limit(CRON_TRANSPORT_INTERVAL_MINUTES * 60);
 
+            $this->runFailed = false;
             $this->execute();
+            $this->pingHealthcheck($this->runFailed);
         } catch (\Throwable $e) {
+            // Ping before the failure stamp, so that the alert does not
+            // depend on the database write.
+            $this->pingHealthcheck(true);
+
             // Record the failure on the row BEFORE logging it. The claim above
             // already stamped last_run_at, so without this the dashboard reads
             // a crashed run as a fresh successful one — a job that throws every
@@ -183,6 +243,40 @@ abstract class AbstractCronJob
             // No message. An exception message can hold an email address, and
             // a log line must not.
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, "Cron job '{$jobName}' failed: " . ExceptionLogSummary::of($e));
+        }
+    }
+
+    /**
+     * Ping this job's healthchecks.io check, if it has one.
+     *
+     * The pinger catches transport faults, but its own `logger()` calls write
+     * to the database and can throw. A subclass or a test double can also
+     * throw. A ping fault must never become a job failure,
+     * so this guard keeps it from escaping `run()`, or, on the success path,
+     * from being recorded as a failure of the job.
+     *
+     * @param bool $failed True to ping the `/fail` endpoint
+     */
+    private function pingHealthcheck(bool $failed): void
+    {
+        $slug = $this->healthcheckSlug();
+        if ($slug === null) {
+            return;
+        }
+
+        try {
+            if ($failed) {
+                $this->pinger->fail($slug);
+            } else {
+                $this->pinger->success($slug);
+            }
+        } catch (\Throwable $e) {
+            try {
+                logger(0, LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, "Healthcheck ping for '{$slug}' failed: " . ExceptionLogSummary::of($e));
+            } catch (\Throwable) {
+                // logger() writes to the database and can throw. On the
+                // failure path, a throw here would skip the failure stamp.
+            }
         }
     }
 

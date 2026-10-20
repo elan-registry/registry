@@ -7,6 +7,7 @@ use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
+use ElanRegistry\Cron\HealthcheckPinger;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ProfileFlagValueException;
@@ -17,6 +18,7 @@ use PHPUnit\Framework\TestCase;
 use Tests\Support\AbstractCronJobFakeDatabase;
 use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
+use Tests\Support\RecordingHealthcheckTransport;
 use Tests\Support\SpyEmailEventApplier;
 
 require_once __DIR__ . '/../../Support/FakeDatabase.php';
@@ -24,6 +26,7 @@ require_once __DIR__ . '/../../Support/AbstractCronJobFakeDatabase.php';
 require_once __DIR__ . '/../../Support/FakeBrevoEvent.php';
 require_once __DIR__ . '/../../Support/FakeBrevoEventReconciliationClient.php';
 require_once __DIR__ . '/../../Support/SpyEmailEventApplier.php';
+require_once __DIR__ . '/../../Support/RecordingHealthcheckTransport.php';
 
 /**
  * BrevoEventReconciliationJob (#1889, #2359). The matcher is a stub, and the
@@ -57,6 +60,12 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
     private string $originalTimezone = 'UTC';
 
+    /** Records every healthchecks.io ping URL that a job built by makeJob() sends. */
+    private RecordingHealthcheckTransport $pingTransport;
+
+    /** @var array<string, array{env: string|null, getenv: string|false}> */
+    private array $savedEnv = [];
+
     /**
      * A stub unless a test calls expectRepoCalls(): PHPUnit warns on a mock
      * with no expectations.
@@ -86,11 +95,27 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->matcherCalls = [];
         $this->matchFor = static fn (string $messageId, string $address): EmailEventMatch
             => EmailEventMatch::matched(self::USER_ID, null, '2026-09-08 04:00:00');
+
+        $this->pingTransport = new RecordingHealthcheckTransport();
+        foreach (['HEALTHCHECKS_PING_KEY', 'HEALTHCHECKS_SLUG_SUFFIX'] as $name) {
+            $this->savedEnv[$name] = ['env' => $_ENV[$name] ?? null, 'getenv' => getenv($name)];
+            putenv($name);
+        }
+        $_ENV['HEALTHCHECKS_PING_KEY'] = 'KEY123';
+        $_ENV['HEALTHCHECKS_SLUG_SUFFIX'] = '-prod';
     }
 
     protected function tearDown(): void
     {
         date_default_timezone_set($this->originalTimezone);
+        foreach ($this->savedEnv as $name => $saved) {
+            if ($saved['env'] === null) {
+                unset($_ENV[$name]);
+            } else {
+                $_ENV[$name] = $saved['env'];
+            }
+            putenv($saved['getenv'] === false ? $name : "{$name}={$saved['getenv']}");
+        }
     }
 
     /**
@@ -144,7 +169,8 @@ final class BrevoEventReconciliationJobTest extends TestCase
             $matcher,
             $this->applier,
             $client,
-            new DateTimeImmutable(self::NOW)
+            new DateTimeImmutable(self::NOW),
+            new HealthcheckPinger($this->pingTransport),
         );
     }
 
@@ -1065,6 +1091,41 @@ final class BrevoEventReconciliationJobTest extends TestCase
         } catch (RuntimeException $e) {
             $this->assertSame('backfill crashed', $e->getMessage());
         }
+    }
+
+    // --- healthchecks.io ping (#1875) ------------------------------------
+
+    private const PING_URL = 'https://hc-ping.com/KEY123/brevo-event-reconciliation-prod';
+
+    public function testCleanRunPingsSuccessOnly(): void
+    {
+        $this->makeJob([new FakeBrevoEvent()])->run();
+
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls);
+    }
+
+    /** A failed poll is logged, not thrown, so the job must mark the run failed. */
+    public function testFailedPollPingsFailOnly(): void
+    {
+        $this->makeJob([new FakeBrevoEvent(event: 'hardBounces')], failingTypes: ['softBounces'])->run();
+
+        $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
+    }
+
+    public function testThrownBackfillFailurePingsFail(): void
+    {
+        $this->applier->failWith(new RuntimeException('backfill crashed'));
+
+        $this->makeJob([new FakeBrevoEvent()])->run();
+
+        $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
+    }
+
+    public function testRunNowPingsNothingEvenWhenAPollFails(): void
+    {
+        $this->makeJob([], failingTypes: ['softBounces'])->runNow();
+
+        $this->assertSame([], $this->pingTransport->urls);
     }
 
     // --- Helpers ---------------------------------------------------------

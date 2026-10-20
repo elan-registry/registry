@@ -2533,8 +2533,33 @@ a job-owned enabled flag independent of UserSpice's own `crons.active`.
 **Constructor**:
 
 ```php
-public function __construct(protected readonly DatabaseInterface $db)
+public function __construct(
+    protected readonly DatabaseInterface $db,
+    ?HealthcheckPinger $pinger = null,
+)
 ```
+
+**Healthcheck hooks (#1875)**:
+
+- Optional constructor parameter `?HealthcheckPinger $pinger = null`. When
+  `null`, the job builds the default pinger.
+- `protected healthcheckSlug(): ?string` — The check slug without the
+  environment suffix. The default returns `null`, which means no ping.
+  `BrevoSuppressionSyncJob` keeps the default.
+- `protected markRunFailed(): void` — A job calls this for a soft failure
+  (a failure it handles without throwing). `run()` then pings `/fail`
+  instead of success. It does not stamp `last_failure_at` and does not change
+  the dashboard badge.
+- `run()` pings success after `execute()` returns without a failure flag. It
+  pings `/fail` when `execute()` throws or when `markRunFailed()` was called.
+  In the `catch` block, the `/fail` ping runs before the failure stamp and
+  the failure log line.
+- A run that returns before `execute()` pings nothing. The switch, a
+  disabled, missing, or unreadable enabled flag, or a lost claim can end a run
+  this way.
+- An exception inside the claimed block sends `/fail`. This includes an
+  exception that the claim itself throws.
+- `runNow()` never pings.
 
 **Used By**:
 
@@ -2553,6 +2578,54 @@ public function __construct(protected readonly DatabaseInterface $db)
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_CRON_JOB_SKIPPED`
 
 ---
+
+### HealthcheckPinger
+
+**Location**: `/usersc/classes/Cron/HealthcheckPinger.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Sends a success or failure ping to healthchecks.io for one cron
+job. The URL is `https://hc-ping.com/<key>/<slug><suffix>`, with `/fail`
+added for a failure. The key and suffix come from `HEALTHCHECKS_PING_KEY` and
+`HEALTHCHECKS_SLUG_SUFFIX` (see [ENVIRONMENT.md](ENVIRONMENT.md)).
+
+**Constructor**:
+
+```php
+public function __construct(?HealthcheckTransport $transport = null)
+```
+
+When `$transport` is `null`, the class uses `CurlHealthcheckTransport`.
+
+**Public Methods**:
+
+- `success(string $slug): void` — Ping the success URL for `$slug`.
+- `fail(string $slug): void` — Ping the `/fail` URL for `$slug`.
+
+Both methods never throw. A missing key or suffix, a transport error, or a
+non-2xx status writes one `LOG_CATEGORY_HEALTHCHECK_PING` line. The line holds
+the slug and the failure kind. It never holds the URL or the key. If either
+value is empty, the pinger does not ping.
+
+**Used By**: `AbstractCronJob::run()`
+
+### HealthcheckTransport (interface)
+
+**Location**: `/usersc/classes/Cron/HealthcheckTransport.php`
+
+- `send(string $url): int` — Send a GET request to `$url`. Return the HTTP
+  status code. Throw on a transport error.
+
+Tests pass a fake implementation to `HealthcheckPinger` so no test makes an
+HTTP request.
+
+### CurlHealthcheckTransport
+
+**Location**: `/usersc/classes/Cron/CurlHealthcheckTransport.php`
+
+**Purpose**: The production `HealthcheckTransport`. It sends a GET request
+with curl. The connect timeout is 3 s. The total timeout is 5 s.
 
 ### CronJobEnabledState (enum)
 
@@ -2802,6 +2875,8 @@ handler already calls, so the two paths can never drift apart.
   rationale as `BrevoEventReconciliationJob`). Public so the admin
   Verification tab can show the next-eligible time from the same value the
   guard uses.
+- `HEALTHCHECK_SLUG = 'send-verification-batch'` — **Private.** The
+  healthchecks.io check slug without the environment suffix
 
 **Constructor**:
 
@@ -2811,6 +2886,7 @@ public function __construct(
     private readonly VerificationSettings $settings,
     private readonly CarVerificationSendService $sendSvc,
     private readonly VerificationBatchSender $sender,
+    ?HealthcheckPinger $pinger = null,
 )
 ```
 
@@ -2818,6 +2894,7 @@ public function __construct(
 
 - `jobName(): string` — Returns `'send_verification_batch'`
 - `guardIntervalHours(): int` — Returns `20`
+- `healthcheckSlug(): string` — Protected. Returns `'send-verification-batch'`
 - `refusesWhileSwitchOff(): bool` — Protected. Returns `true` while the
   verification switch is off. `AbstractCronJob::run()` and `runNow()` call it
   before any other step
@@ -3113,6 +3190,7 @@ public function __construct(
     private readonly EmailEventApplier $applier,
     private readonly BrevoEventReconciliationClient $client,
     ?\DateTimeImmutable $now = null,
+    ?HealthcheckPinger $pinger = null,
 )
 ```
 
@@ -3130,11 +3208,15 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 - `SHORT_RETENTION_DAYS = 90` — The prune keeps every other row this long,
   except each car's latest `sent` row of its current owner. That row loses its
   address only when it is older than 90 days
+- `HEALTHCHECK_SLUG = 'brevo-event-reconciliation'` — **Private.** The
+  healthchecks.io check slug without the environment suffix
 
 **Methods**:
 
 - `jobName(): string` — Returns `'brevo_reconciliation'`
 - `guardIntervalHours(): int` — Returns `20`
+- `healthcheckSlug(): string` — Protected. Returns
+  `'brevo-event-reconciliation'`
 - `execute(): void` — Backfill one page, prune expired rows in a `finally`
   block, then log a one-line summary (with a distinct suffix if the poll
   failed). The prune logs its count

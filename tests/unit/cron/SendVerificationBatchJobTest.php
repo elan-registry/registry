@@ -8,6 +8,7 @@ use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
 use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
+use ElanRegistry\Cron\HealthcheckPinger;
 use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -16,6 +17,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\AbstractCronJobFakeDatabase;
 use Tests\Support\BrevoSiteRoot;
+use Tests\Support\RecordingHealthcheckTransport;
 use Tests\Support\SwitchableVerificationSettingsFakeDatabase;
 use Tests\Support\VerificationSettingsFakeDatabase;
 
@@ -23,6 +25,7 @@ require_once __DIR__ . '/../../Support/FakeDatabase.php';
 require_once __DIR__ . '/../../Support/AbstractCronJobFakeDatabase.php';
 require_once __DIR__ . '/../../Support/VerificationSettingsFakeDatabase.php';
 require_once __DIR__ . '/../../Support/SwitchableVerificationSettingsFakeDatabase.php';
+require_once __DIR__ . '/../../Support/RecordingHealthcheckTransport.php';
 
 /**
  * Unit tests for SendVerificationBatchJob (#1885).
@@ -66,10 +69,24 @@ final class SendVerificationBatchJobTest extends TestCase
     /** Temp site root that holds the sendinblue plugin files, or null when none was made. */
     private ?BrevoSiteRoot $brevoSiteRoot = null;
 
+    /** Records every healthchecks.io ping URL that a job built by makeJob() sends. */
+    private RecordingHealthcheckTransport $pingTransport;
+
+    /** @var array<string, array{env: string|null, getenv: string|false}> */
+    private array $savedEnv = [];
+
     protected function setUp(): void
     {
         global $mockLogEntries;
         $mockLogEntries = [];
+
+        $this->pingTransport = new RecordingHealthcheckTransport();
+        foreach (['HEALTHCHECKS_PING_KEY', 'HEALTHCHECKS_SLUG_SUFFIX'] as $name) {
+            $this->savedEnv[$name] = ['env' => $_ENV[$name] ?? null, 'getenv' => getenv($name)];
+            putenv($name);
+        }
+        $_ENV['HEALTHCHECKS_PING_KEY'] = 'KEY123';
+        $_ENV['HEALTHCHECKS_SLUG_SUFFIX'] = '-prod';
 
         $GLOBALS['mockSentEmails'] = [];
         unset($GLOBALS['mockEmailSendResult']);
@@ -80,6 +97,14 @@ final class SendVerificationBatchJobTest extends TestCase
     {
         unset($GLOBALS['mockSentEmails'], $GLOBALS['mockEmailSendResult'], $GLOBALS['hookTestDb']);
         $this->brevoSiteRoot?->remove();
+        foreach ($this->savedEnv as $name => $saved) {
+            if ($saved['env'] === null) {
+                unset($_ENV[$name]);
+            } else {
+                $_ENV[$name] = $saved['env'];
+            }
+            putenv($saved['getenv'] === false ? $name : "{$name}={$saved['getenv']}");
+        }
         parent::tearDown();
     }
 
@@ -144,6 +169,7 @@ final class SendVerificationBatchJobTest extends TestCase
             $settings,
             $sendSvc,
             $sender,
+            new HealthcheckPinger($this->pingTransport),
         );
     }
 
@@ -709,6 +735,124 @@ final class SendVerificationBatchJobTest extends TestCase
 
         $claims = array_filter($db->sqlLog(), static fn (string $sql): bool => stripos($sql, 'last_run_at = NOW()') !== false);
         $this->assertCount(1, $claims, 'The first run after the switch goes on must claim');
+    }
+
+    // --- healthchecks.io ping (#1875) ----------------------------------------
+
+    private const PING_URL = 'https://hc-ping.com/KEY123/send-verification-batch-prod';
+
+    public function testRunPingsSuccessWhenTheEligibleSetIsEmpty(): void
+    {
+        $repo = $this->createStub(CarRepository::class);
+        $repo->method('findVerificationEligible')->willReturn([]);
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc))->run();
+
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls);
+    }
+
+    public function testRunPingsFailWhenTheEligibilityQueryFails(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->method('findVerificationEligible')->willThrowException(new CarDatabaseException('query failed'));
+        $repo->expects($this->never())->method('findById');
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc))->run();
+
+        $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
+        $log = $this->logsContaining('eligible-car query FAILED');
+        $this->assertNotEmpty($log, 'The failure must still be logged');
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+    }
+
+    /**
+     * @return array<string, array{0: int|null}>
+     */
+    public static function brokenPingProvider(): array
+    {
+        return ['transport throws' => [null], 'healthchecks.io returns 500' => [500]];
+    }
+
+    /**
+     * A broken ping must not stop the batch or its bookkeeping. Two cars are
+     * really sent (mocked mail function), then the counts UPDATE is recorded.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('brokenPingProvider')]
+    public function testBatchStillSendsAndRecordsTheRunWhenThePingFails(?int $status): void
+    {
+        if ($status === null) {
+            $this->pingTransport->throw = new RuntimeException('network down');
+        } else {
+            $this->pingTransport->status = $status;
+        }
+
+        $repo = $this->createStub(CarRepository::class);
+        $repo->method('findVerificationEligible')->willReturn([(object) ['id' => 1], (object) ['id' => 2]]);
+        $repo->method('findById')->willReturnCallback(fn (int $id): object => $this->makeSendableCar($id));
+        $repo->method('effectiveEmailFlags')->willReturn(
+            new \ElanRegistry\Car\EffectiveEmailFlags(true, false, null, false, null, null, null, false, null, null, 'owner@example.com')
+        );
+        $repo->method('updateVerificationCode')->willReturn(true);
+        $repo->method('updateVerificationSentAt')->willReturn(true);
+        $repo->method('insertEmailEvent')->willReturn(1);
+        $repo->method('incrementVerificationAttempts')->willReturn(true);
+
+        $sendSvc = $this->makeSendSvc($repo);
+        $sender = $this->makeSender($repo, $sendSvc);
+
+        $recordingDb = new class extends AbstractCronJobFakeDatabase {
+            /** @var list<array{sql: string, params: array<mixed>}> */
+            public array $updateCalls = [];
+
+            public function query(string $sql, array $params = []): AbstractCronJobFakeDatabase
+            {
+                if (stripos($sql, 'last_sent_count') !== false) {
+                    $this->updateCalls[] = ['sql' => $sql, 'params' => $params];
+                    return $this;
+                }
+
+                return parent::query($sql, $params);
+            }
+
+            public function error(): bool
+            {
+                return $this->updateCalls !== [] ? false : parent::error();
+            }
+
+            public function count(): int
+            {
+                return $this->updateCalls !== [] ? 1 : parent::count();
+            }
+        };
+
+        $job = $this->makeJob($this->makeSettings(batchSize: 5), $sendSvc, $sender, $recordingDb);
+        $job->run();
+
+        $this->assertCount(1, $this->pingTransport->urls, 'The ping must have been tried');
+        $this->assertCount(2, $GLOBALS['mockSentEmails'], 'Both cars must be sent although the ping fails');
+        $this->assertCount(1, $recordingDb->updateCalls, 'The run counts must still be recorded');
+        $this->assertSame([2, 0, 0, SendVerificationBatchJob::JOB_NAME], $recordingDb->updateCalls[0]['params']);
+        $this->assertNotEmpty($this->logsContaining('cron batch complete'));
+        $jobFailures = array_filter(
+            $GLOBALS['mockLogEntries'] ?? [],
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE
+        );
+        $this->assertSame([], array_values($jobFailures), 'A ping fault must not be reported as a job failure');
+    }
+
+    public function testRunPingsNothingAndSendsNothingWhenTheSwitchIsOff(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->never())->method('findVerificationEligible');
+        $repo->expects($this->never())->method('findById');
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob($this->makeSettings(enabled: false), $sendSvc, $this->makeSender($repo, $sendSvc))->run();
+
+        $this->assertSame([], $this->pingTransport->urls);
+        $this->assertSame([], $GLOBALS['mockSentEmails']);
     }
 
     // --- Helpers -------------------------------------------------------------

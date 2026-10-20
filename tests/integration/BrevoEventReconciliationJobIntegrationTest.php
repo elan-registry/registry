@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
+require_once __DIR__ . '/../Support/RecordingHealthcheckTransport.php';
 require_once __DIR__ . '/../Support/FakeBrevoEvent.php';
 require_once __DIR__ . '/../Support/FakeBrevoEventReconciliationClient.php';
 
@@ -11,9 +12,11 @@ use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
+use ElanRegistry\Cron\HealthcheckPinger;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
+use Tests\Support\RecordingHealthcheckTransport;
 use Tests\Support\SendinblueMessagesTable;
 
 /**
@@ -138,7 +141,8 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             new EmailEventMatcher($this->repo),
             $this->applier,
             new FakeBrevoEventReconciliationClient($events),
-            $now ?? new \DateTimeImmutable(self::RUN_AT)
+            $now ?? new \DateTimeImmutable(self::RUN_AT),
+            new HealthcheckPinger(new RecordingHealthcheckTransport())
         );
     }
 
@@ -450,7 +454,8 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             new EmailEventMatcher($this->repo),
             $this->applier,
             new ThrowingBrevoEventReconciliationClient(),
-            new \DateTimeImmutable(self::RUN_AT)
+            new \DateTimeImmutable(self::RUN_AT),
+            new HealthcheckPinger(new RecordingHealthcheckTransport())
         );
 
         try {

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
+require_once __DIR__ . '/../Support/RecordingHealthcheckTransport.php';
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationEmailComposer;
@@ -10,7 +11,9 @@ use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
 use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
+use ElanRegistry\Cron\HealthcheckPinger;
 use ElanRegistry\Cron\SendVerificationBatchJob;
+use Tests\Support\RecordingHealthcheckTransport;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -136,7 +139,9 @@ final class SendVerificationBatchSwitchOffIntegrationTest extends IntegrationTes
             $this->db,
             new VerificationSettings($this->db),
             $service,
-            new VerificationBatchSender($this->repo, $service, 0)
+            new VerificationBatchSender($this->repo, $service, 0),
+            // Recording transport: run() must not call healthchecks.io from a test.
+            new HealthcheckPinger(new RecordingHealthcheckTransport())
         );
     }
 

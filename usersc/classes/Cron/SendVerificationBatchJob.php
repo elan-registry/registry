@@ -61,6 +61,9 @@ final class SendVerificationBatchJob extends AbstractCronJob
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
     public const JOB_NAME = 'send_verification_batch';
 
+    /** healthchecks.io check slug, without the environment suffix. */
+    private const HEALTHCHECK_SLUG = 'send-verification-batch';
+
     /**
      * Minimum hours between claimed runs.
      *
@@ -96,14 +99,17 @@ final class SendVerificationBatchJob extends AbstractCronJob
      *        {@see \ElanRegistry\Car\CarRepository} dependency: this class must
      *        not have its own opinion about how eligibility is determined.
      * @param VerificationBatchSender $sender The shared per-car send loop
+     * @param HealthcheckPinger|null $pinger Pings healthchecks.io after a
+     *        claimed run; defaults to a real pinger
      */
     public function __construct(
         DatabaseInterface $db,
         private readonly VerificationSettings $settings,
         private readonly CarVerificationSendService $sendSvc,
         private readonly VerificationBatchSender $sender,
+        ?HealthcheckPinger $pinger = null,
     ) {
-        parent::__construct($db);
+        parent::__construct($db, $pinger);
     }
 
     /**
@@ -136,6 +142,14 @@ final class SendVerificationBatchJob extends AbstractCronJob
     }
 
     /**
+     * {@inheritDoc}
+     */
+    protected function healthcheckSlug(): string
+    {
+        return self::HEALTHCHECK_SLUG;
+    }
+
+    /**
      * Send one batch of verification emails and persist its outcome counts.
      *
      * Reached only after {@see AbstractCronJob::run()} has won the guard claim,
@@ -162,6 +176,9 @@ final class SendVerificationBatchJob extends AbstractCronJob
                 $batchSize,
                 $e->getMessage()
             ));
+            // Handled without a throw, so the ping must be told: a success
+            // ping here would hide a job that can never send.
+            $this->markRunFailed();
             return;
         }
 

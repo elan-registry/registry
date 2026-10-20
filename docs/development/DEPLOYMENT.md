@@ -1014,6 +1014,91 @@ correcting them is pending and does not affect whether jobs run.
 - [ ] The interval in cPanel still matches the contract above; if it changed,
       update this section in the same change.
 
+### Cron monitoring (healthchecks.io)
+
+healthchecks.io alerts when a cron job does not report a successful run.
+Each monitored job pings its check at the end of a scheduled run.
+`BrevoSuppressionSyncJob` has no check.
+
+| Job | Checks |
+| --- | --- |
+| `SendVerificationBatchJob` | `send-verification-batch-prod`, `send-verification-batch-test` |
+| `BrevoEventReconciliationJob` | `brevo-event-reconciliation-prod`, `brevo-event-reconciliation-test` |
+
+**Check settings** (the same for all four checks):
+
+- Period and timeout: 1 day (86400 s).
+- Grace: 2 hours (7200 s).
+- Created paused. A paused check starts on its first ping.
+- Alerts go to the Discord integration.
+
+The healthchecks.io dashboard is the source of truth for these settings.
+
+**Environment variables.** Add these two lines to the server's `.env`. Get
+the ping key from 1Password:
+`op://ElanRegistry/healthchecks.io - api key for elanregistry/pingkey`.
+
+On test:
+
+```dotenv
+HEALTHCHECKS_PING_KEY=<ping key from 1Password>
+HEALTHCHECKS_SLUG_SUFFIX=-test
+```
+
+On production:
+
+```dotenv
+HEALTHCHECKS_PING_KEY=<ping key from 1Password>
+HEALTHCHECKS_SLUG_SUFFIX=-prod
+```
+
+Both environments use the same ping key. Only the suffix changes. If either
+value is empty, the jobs log a `HealthcheckPing` line and send no ping. After
+the next scheduled run of each job, its check changes from paused to up in
+the healthchecks.io dashboard. See [ENVIRONMENT.md](ENVIRONMENT.md),
+"healthchecks.io Cron Monitoring".
+
+**What a lapse means.** The check got no successful scheduled run in 1 day
+plus the grace time. One of these causes applies:
+
+- The cron transport stopped.
+- The guard never passed.
+- The job never finishes.
+- The verification switch is off. This applies to the send job only. Its run
+  returns before the ping.
+- An admin paused or disabled the job in the admin dashboard.
+- The job's `er_cron_job_runs` row is missing or unreadable. See the
+  `CronJobFailure` logs.
+
+**What a `/fail` means.** The job reported a failure. Either `execute()`
+threw, or a soft failure occurred: the eligible-car query failed or the Brevo
+poll failed.
+
+A soft failure sends `/fail` but does not stamp `last_failure_at`. The admin
+Verification tab can show a green run while healthchecks.io shows a failure.
+Check the logs first.
+
+**What to check first:**
+
+1. The cron status on the Verification tab.
+2. The logs under `CronJobFailure` and `HealthcheckPing`.
+3. The cron transport (see "Verifying the transport" above).
+
+**Pause and Resume.** The admin Pause button sets
+`er_cron_job_runs.enabled = 0`. It does not change `crons.active`.
+
+- When an admin presses Pause on a job, also pause its check in
+  healthchecks.io. This is a manual step. If you skip it, the check lapses
+  and sends an alert.
+- Resume needs no extra step. A paused check resumes at the next ping.
+- Manual "Run now" never pings.
+
+**Add a check for a new environment.** Create a check for each monitored job.
+Use the job slug plus the new suffix, for example
+`send-verification-batch-staging`. Use the same settings as above. Set
+`HEALTHCHECKS_SLUG_SUFFIX` to the new suffix (`-staging`) in that
+environment's `.env`.
+
 ### Deployment Verification Checklist
 
 After each deployment, verify:

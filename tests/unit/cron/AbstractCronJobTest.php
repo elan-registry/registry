@@ -2,17 +2,83 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Cron\HealthcheckPinger;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\AbstractCronJobFakeDatabase;
+use Tests\Support\RecordingHealthcheckTransport;
 use Tests\Support\RefusingSpyCronJob;
 use Tests\Support\SpyCronJob;
 
 require_once __DIR__ . '/../../Support/FakeDatabase.php';
 require_once __DIR__ . '/../../Support/AbstractCronJobFakeDatabase.php';
 require_once __DIR__ . '/../../Support/SpyCronJob.php';
+require_once __DIR__ . '/../../Support/RecordingHealthcheckTransport.php';
 require_once __DIR__ . '/../../Support/RefusingSpyCronJob.php';
+
+/**
+ * HealthcheckPinger that throws, to show that run() contains a pinger fault.
+ * The real pinger throws only when its own logger() call fails.
+ */
+class ThrowingHealthcheckPinger extends HealthcheckPinger
+{
+    public function success(string $slug): void
+    {
+        throw new RuntimeException('pinger broke');
+    }
+
+    public function fail(string $slug): void
+    {
+        throw new RuntimeException('pinger broke');
+    }
+}
+
+/**
+ * Stands in for the global $mockLogEntries array. The bootstrap logger()
+ * stub appends to it, so this makes logger() throw for one message prefix,
+ * as a failed database insert in the real logger() would.
+ *
+ * @implements ArrayAccess<int, array{user_id: int, category: string, message: string, metadata: mixed}>
+ */
+class LogEntriesThatThrowOnPrefix implements ArrayAccess, Countable
+{
+    /** @var list<array{user_id: int, category: string, message: string, metadata: mixed}> */
+    public array $entries = [];
+
+    public function __construct(private readonly string $throwOnPrefix)
+    {
+    }
+
+    public function offsetSet(mixed $offset, mixed $value): void
+    {
+        if (str_starts_with($value['message'], $this->throwOnPrefix)) {
+            throw new RuntimeException('log insert failed');
+        }
+        $this->entries[] = $value;
+    }
+
+    public function offsetExists(mixed $offset): bool
+    {
+        return isset($this->entries[$offset]);
+    }
+
+    /** @return array{user_id: int, category: string, message: string, metadata: mixed} */
+    public function offsetGet(mixed $offset): array
+    {
+        return $this->entries[$offset];
+    }
+
+    public function offsetUnset(mixed $offset): void
+    {
+        unset($this->entries[$offset]);
+    }
+
+    public function count(): int
+    {
+        return count($this->entries);
+    }
+}
 
 /**
  * Unit tests for AbstractCronJob — the template-method base every cron job
@@ -26,10 +92,56 @@ require_once __DIR__ . '/../../Support/RefusingSpyCronJob.php';
 #[Group('fast')]
 final class AbstractCronJobTest extends TestCase
 {
+    private const PING_SLUG = 'spy-job';
+    private const PING_BASE = 'https://hc-ping.com/KEY123/spy-job-prod';
+
+    /** @var array<string, array{env: string|null, getenv: string|false}> */
+    private array $savedEnv = [];
+
     protected function setUp(): void
     {
         global $mockLogEntries;
         $mockLogEntries = [];
+
+        foreach (['HEALTHCHECKS_PING_KEY', 'HEALTHCHECKS_SLUG_SUFFIX'] as $name) {
+            $this->savedEnv[$name] = ['env' => $_ENV[$name] ?? null, 'getenv' => getenv($name)];
+            putenv($name);
+        }
+        $_ENV['HEALTHCHECKS_PING_KEY'] = 'KEY123';
+        $_ENV['HEALTHCHECKS_SLUG_SUFFIX'] = '-prod';
+    }
+
+    protected function tearDown(): void
+    {
+        // One test swaps in a throwing log object; it must not reach the next class.
+        global $mockLogEntries;
+        $mockLogEntries = [];
+
+        foreach ($this->savedEnv as $name => $saved) {
+            if ($saved['env'] === null) {
+                unset($_ENV[$name]);
+            } else {
+                $_ENV[$name] = $saved['env'];
+            }
+            putenv($saved['getenv'] === false ? $name : "{$name}={$saved['getenv']}");
+        }
+        parent::tearDown();
+    }
+
+    /**
+     * A SpyCronJob with a slug and a real pinger over a recording transport.
+     *
+     * @param class-string<SpyCronJob> $class
+     */
+    private function pingingJob(
+        AbstractCronJobFakeDatabase $db,
+        RecordingHealthcheckTransport $transport,
+        string $class = SpyCronJob::class,
+    ): SpyCronJob {
+        $job = new $class($db, new HealthcheckPinger($transport));
+        $job->slug = self::PING_SLUG;
+
+        return $job;
     }
 
     public function testRunExecutesWhenEnabledAndClaimSucceeds(): void
@@ -475,5 +587,249 @@ final class AbstractCronJobTest extends TestCase
 
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+    }
+
+    // --- healthchecks.io ping (#1875) ---------------------------------------
+
+    public function testRunPingsSuccessOnceWhenExecuteReturns(): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $job = $this->pingingJob(new AbstractCronJobFakeDatabase(), $transport);
+
+        $job->run();
+
+        $this->assertSame([self::PING_BASE], $transport->urls);
+    }
+
+    public function testRunPingsFailOnlyWhenExecuteCallsMarkRunFailed(): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $db = new AbstractCronJobFakeDatabase();
+        $job = $this->pingingJob($db, $transport);
+        $job->softFail = true;
+
+        $job->run();
+
+        $this->assertSame([self::PING_BASE . '/fail'], $transport->urls);
+        $this->assertSame(0, $db->failureStampWrites(), 'A soft failure changes the ping only');
+    }
+
+    public function testSoftFailureFlagResetsBetweenRunsOnOneInstance(): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $job = $this->pingingJob(new AbstractCronJobFakeDatabase(), $transport);
+
+        $job->softFail = true;
+        $job->run();
+        $job->softFail = false;
+        $job->run();
+
+        $this->assertSame([self::PING_BASE . '/fail', self::PING_BASE], $transport->urls);
+    }
+
+    public function testRunPingsFailBeforeItWritesTheFailureLogEntry(): void
+    {
+        global $mockLogEntries;
+
+        // Status 500 makes the pinger log a HealthcheckPing line when it runs,
+        // so the position of that line shows when the ping happened.
+        $transport = new RecordingHealthcheckTransport();
+        $transport->status = 500;
+        $job = $this->pingingJob(new AbstractCronJobFakeDatabase(), $transport);
+        $job->throwOnExecute(new RuntimeException('boom'));
+
+        $job->run();
+
+        $this->assertSame([self::PING_BASE . '/fail'], $transport->urls);
+        $this->assertSame(
+            [LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE],
+            array_column($mockLogEntries, 'category'),
+            'The fail ping must come before the failure log entry'
+        );
+    }
+
+    public function testRunPingsFailWhenTheFailureStampThrows(): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $db = new AbstractCronJobFakeDatabase(failureStampThrows: true);
+        $job = $this->pingingJob($db, $transport);
+        $job->throwOnExecute(new RuntimeException('boom'));
+
+        $job->run();
+
+        $this->assertSame([self::PING_BASE . '/fail'], $transport->urls);
+    }
+
+    public function testPingerThatThrowsDoesNotEscapeRunOnSuccessPath(): void
+    {
+        global $mockLogEntries;
+
+        $db = new AbstractCronJobFakeDatabase();
+        $job = new SpyCronJob($db, new ThrowingHealthcheckPinger(new RecordingHealthcheckTransport()));
+        $job->slug = self::PING_SLUG;
+
+        $job->run();
+
+        $this->assertSame(1, $job->executeCalls);
+        $this->assertSame(0, $db->failureStampWrites(), 'A ping fault must not mark the job as failed');
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, $mockLogEntries[0]['category']);
+        $this->assertStringNotContainsString('pinger broke', $mockLogEntries[0]['message']);
+    }
+
+    public function testPingerThatThrowsDoesNotEscapeRunOnFailurePath(): void
+    {
+        global $mockLogEntries;
+
+        $db = new AbstractCronJobFakeDatabase();
+        $job = new SpyCronJob($db, new ThrowingHealthcheckPinger(new RecordingHealthcheckTransport()));
+        $job->slug = self::PING_SLUG;
+        $job->throwOnExecute(new RuntimeException('boom'));
+
+        $job->run();
+
+        $this->assertSame(1, $db->failureStampWrites(), 'The failure stamp must still be written');
+        $categories = array_column($mockLogEntries, 'category');
+        $this->assertContains(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $categories, 'The job failure must still be logged');
+    }
+
+    /**
+     * The fail ping goes out before the failure stamp, so the alert does not
+     * depend on the database write. A stamp that throws logs its own line, so
+     * the order of the three lines shows the order of the three steps.
+     */
+    public function testRunPingsFailBeforeTheFailureStamp(): void
+    {
+        global $mockLogEntries;
+
+        $transport = new RecordingHealthcheckTransport();
+        $transport->status = 500;
+        $job = $this->pingingJob(new AbstractCronJobFakeDatabase(failureStampThrows: true), $transport);
+        $job->throwOnExecute(new RuntimeException('boom'));
+
+        $job->run();
+
+        $this->assertSame(
+            [
+                LogCategories::LOG_CATEGORY_HEALTHCHECK_PING,
+                LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+                LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+            ],
+            array_column($mockLogEntries, 'category'),
+            'Expected the ping line, then the failure-stamp line, then the run failure line'
+        );
+        $this->assertStringContainsString('could not be recorded', $mockLogEntries[1]['message']);
+        $this->assertStringContainsString('failed: RuntimeException', $mockLogEntries[2]['message']);
+    }
+
+    /**
+     * logger() writes to the database and can throw. A throw from the ping
+     * guard's own log line must not skip the failure stamp or the run
+     * failure line, and must not escape run().
+     */
+    public function testPingGuardLogFaultDoesNotSkipTheFailureStamp(): void
+    {
+        global $mockLogEntries;
+
+        $entries = new LogEntriesThatThrowOnPrefix('Healthcheck ping for ');
+        $mockLogEntries = $entries;
+
+        $db = new AbstractCronJobFakeDatabase();
+        $job = new SpyCronJob($db, new ThrowingHealthcheckPinger(new RecordingHealthcheckTransport()));
+        $job->slug = self::PING_SLUG;
+        $job->throwOnExecute(new RuntimeException('boom'));
+
+        $job->run();
+
+        $this->assertSame(1, $db->failureStampWrites(), 'The failure stamp must still be written');
+        $this->assertSame(
+            [LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE],
+            array_column($entries->entries, 'category'),
+            'The run failure line must still be written'
+        );
+    }
+
+    /**
+     * @return array<string, array{0: AbstractCronJobFakeDatabase}>
+     */
+    public static function unclaimedRunProvider(): array
+    {
+        return [
+            'claim fails' => [new AbstractCronJobFakeDatabase(enabled: true, claimSucceeds: false)],
+            'disabled' => [new AbstractCronJobFakeDatabase(enabled: false)],
+            'row missing' => [new AbstractCronJobFakeDatabase(rowExists: false)],
+            'row unreadable' => [new AbstractCronJobFakeDatabase(queryErrors: true)],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('unclaimedRunProvider')]
+    public function testRunThatDoesNotReachExecutePingsNothing(AbstractCronJobFakeDatabase $db): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $job = $this->pingingJob($db, $transport);
+
+        $job->run();
+
+        $this->assertSame(0, $job->executeCalls, 'The run must not reach execute()');
+        $this->assertSame([], $transport->urls);
+    }
+
+    public function testRunRefusedBySwitchPingsNothingThenPingsOnceWhenSwitchFlips(): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $job = $this->pingingJob(new AbstractCronJobFakeDatabase(), $transport, RefusingSpyCronJob::class);
+
+        $job->run();
+        $this->assertSame([], $transport->urls, 'A refused run must not ping');
+
+        assert($job instanceof RefusingSpyCronJob);
+        $job->refuse = false;
+        $job->run();
+
+        $this->assertSame([self::PING_BASE], $transport->urls, 'The same setup must ping once the switch is on');
+    }
+
+    /**
+     * @return array<string, array{0: \Closure(SpyCronJob): void}>
+     */
+    public static function runNowOutcomeProvider(): array
+    {
+        return [
+            'success' => [static function (SpyCronJob $job): void {
+            }],
+            'soft failure' => [static function (SpyCronJob $job): void {
+                $job->softFail = true;
+            }],
+            'execute throws' => [static function (SpyCronJob $job): void {
+                $job->throwOnExecute(new RuntimeException('boom'));
+            }],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('runNowOutcomeProvider')]
+    public function testRunNowPingsNothing(\Closure $arrange): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $job = $this->pingingJob(new AbstractCronJobFakeDatabase(), $transport);
+        $arrange($job);
+
+        $job->runNow();
+
+        $this->assertSame(1, $job->executeCalls);
+        $this->assertSame([], $transport->urls);
+    }
+
+    public function testNullSlugPingsNothingOnSuccessOrThrow(): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $job = $this->pingingJob(new AbstractCronJobFakeDatabase(), $transport);
+        $job->slug = null;
+
+        $job->run();
+        $job->throwOnExecute(new RuntimeException('boom'));
+        $job->run();
+
+        $this->assertSame(2, $job->executeCalls, 'Both runs must reach execute()');
+        $this->assertSame([], $transport->urls);
     }
 }
