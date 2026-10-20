@@ -8,6 +8,7 @@ use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
+use ElanRegistry\Cron\HealthcheckPinger;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -17,6 +18,7 @@ use Tests\Support\FakeBrevoBlockedContact;
 use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
 use Tests\Support\FakeBrevoSuppressionSyncClient;
+use Tests\Support\RecordingHealthcheckTransport;
 use Tests\Support\SpyEmailEventApplier;
 
 require_once __DIR__ . '/../../Support/FakeDatabase.php';
@@ -26,6 +28,7 @@ require_once __DIR__ . '/../../Support/FakeBrevoEventReconciliationClient.php';
 require_once __DIR__ . '/../../Support/FakeBrevoBlockedContact.php';
 require_once __DIR__ . '/../../Support/FakeBrevoSuppressionSyncClient.php';
 require_once __DIR__ . '/../../Support/SpyEmailEventApplier.php';
+require_once __DIR__ . '/../../Support/RecordingHealthcheckTransport.php';
 
 /**
  * Issue #2359: no log line holds an email address, and no `catch` block of the
@@ -701,7 +704,11 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
             new FakeBrevoEventReconciliationClient([
                 new FakeBrevoEvent(email: self::ADDRESS, event: 'hardBounces', messageId: 'm-2359'),
             ]),
-            new DateTimeImmutable(self::NOW)
+            new DateTimeImmutable(self::NOW),
+            // A recording transport keeps the test off the network.
+            // HEALTHCHECKS_* is not set here, so run() still logs the pinger's
+            // "not sent" line. That line holds no email address.
+            new HealthcheckPinger(new RecordingHealthcheckTransport()),
         );
     }
 

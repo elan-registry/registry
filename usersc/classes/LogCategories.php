@@ -552,6 +552,15 @@ class LogCategories
     public const LOG_CATEGORY_CRON_JOB_SKIPPED = 'CronJobSkipped';
 
     /**
+     * Healthcheck ping problem
+     * Used when HealthcheckPinger cannot ping healthchecks.io: the ping config
+     * is missing, the transport fails, or the response is not 2xx. Kept apart
+     * from CronJobFailure, which feeds the Verification tab failure summary:
+     * a missing ping key must not read as a broken job.
+     */
+    public const LOG_CATEGORY_HEALTHCHECK_PING = 'HealthcheckPing';
+
+    /**
      * Migration operations
      * Used for system migrations and upgrades
      */

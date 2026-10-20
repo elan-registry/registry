@@ -15,6 +15,8 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 - An owner who opted out of registry email no longer gets car transfer notices. A bounce or a block on the owner's
   address also stops them. The transfer request itself still completes.
   ([#2463](https://github.com/elan-registry/registry/issues/2463))
+- The privacy policy names healthchecks.io as a processor. It receives the scheduled task name and run status,
+  and no personal data. ([#1875](https://github.com/elan-registry/registry/issues/1875))
 
 ## Admin-Facing Changes
 
@@ -44,6 +46,10 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - The log lines that the transfer email service writes no longer hold an email address. A failed admin alert
   names the admin's position in the list, not the address.
   ([#2463](https://github.com/elan-registry/registry/issues/2463))
+- The verification send job and the Brevo event reconciliation job ping healthchecks.io after each scheduled run.
+  A missed run or a failed run sends an alert to Discord. When an admin pauses one of these jobs, the admin also
+  pauses its check in healthchecks.io (see `DEPLOYMENT.md`). A "Run now" click does not ping.
+  ([#1875](https://github.com/elan-registry/registry/issues/1875))
 
 ## Issues Resolved
 
@@ -54,5 +60,5 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - [#2357](https://github.com/elan-registry/registry/issues/2357) — Replace Clear Suppression with Clear Block and Clear Opt-out.
 - [#2460](https://github.com/elan-registry/registry/issues/2460) — Stop soft bounces on owner-to-owner contact mail from setting email_bounced.
 - [#2463](https://github.com/elan-registry/registry/issues/2463) — Make the transfer notification mail obey the email opt-out.
-- WIP: [#1875](https://github.com/elan-registry/registry/issues/1875) — Monitor the verification cron jobs with healthchecks.io.
+- [#1875](https://github.com/elan-registry/registry/issues/1875) — Monitor the verification cron jobs with healthchecks.io.
 - WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — Register the production Brevo webhook and turn on the verification switch.

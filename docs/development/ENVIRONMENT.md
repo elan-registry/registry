@@ -163,6 +163,22 @@ the note under
 `docs/development/EMAIL_SYSTEM.md`'s "Brevo Webhooks — Verified Behaviour"
 section for why webhook testing happens on test.elanregistry.org instead).
 
+### healthchecks.io Cron Monitoring
+
+**Usage**: `ElanRegistry\Cron\HealthcheckPinger` (see
+[CLASSES.md](CLASSES.md) and the "Cron monitoring (healthchecks.io)" section
+in [DEPLOYMENT.md](DEPLOYMENT.md))
+
+- `HEALTHCHECKS_PING_KEY` — the project ping key. The 1Password path is
+  `op://ElanRegistry/healthchecks.io - api key for elanregistry/pingkey`.
+  The key is a secret. Anyone who holds it can suppress alerts. Keep it only
+  in `.env` (`chmod 600`).
+- `HEALTHCHECKS_SLUG_SUFFIX` — `-prod` or `-test`. The pinger adds it to the
+  check slug, so one key serves all environments.
+
+Both values are required. If either is empty, the pinger writes a
+`HealthcheckPing` log line and does not ping. Leave both unset in Docker dev.
+
 ### Cloudflare Turnstile CAPTCHA
 
 **Usage**: `usersc/includes/turnstile.php`

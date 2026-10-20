@@ -25,7 +25,7 @@ if (!securePage($php_self)) {
 
 $policy = <<<'GUIDEHTML'
 <h1><a id="privacy-policy" href="#privacy-policy" class="" aria-hidden="true" title="Permalink"></a>Privacy Policy</h1>
-<p><strong>Effective: October 18, 2026</strong></p>
+<p><strong>Effective: October 20, 2026</strong></p>
 <p>The Elan Registry is a community database for Lotus Elan cars, run by enthusiasts for enthusiasts. This page explains what information we collect, what we do with it, and what rights you have over your data.</p>
 <p>The short version: we collect what's needed to run the registry, we keep your personal details private, and you can change or delete your data at any time. If you decide to leave, we'll remove your personal information but may keep the car records themselves so the registry stays useful to the community.</p>
 <h2><a id="what-we-collect" href="#what-we-collect" class="" aria-hidden="true" title="Permalink"></a>What we collect</h2>
@@ -41,6 +41,7 @@ $policy = <<<'GUIDEHTML'
 <p>We use Brevo, a third-party email delivery service based in the EU, to send transactional email: password resets, contact messages, and transfer notifications. Brevo receives the recipient's email address and the content of that one message; it does not receive your other registry data. We use Brevo because there's no way to reliably deliver email without a processor like it.</p>
 <p>We have not started sending car-verification request emails yet. When we do, they will also go through Brevo. How we record the delivery status of all registry email is described in the next section.</p>
 <p>Every verification email includes a one-click link to opt out, no login required. The opt-out stops all registry email to you except account mail (password reset, sign-in, and email change). You can turn registry email back on yourself from Account Settings at any time. If your email bounced because the address itself no longer works, verification emails resume automatically as soon as you confirm a different, working email address. There's no separate switch to flip for that case.</p>
+<p>We use healthchecks.io, a monitoring service run by SIA Monkey See Monkey Do in Latvia (EU), to tell us when a scheduled task on the site finishes or fails. Healthchecks.io receives the task name and its run status (success or failure). It does not receive any personal data.</p>
 <p>What we don't do: sell your data, show your last name or email publicly, track your exact location, or keep detailed browsing histories.</p>
 <h2><a id="email-delivery-records" href="#email-delivery-records" class="" aria-hidden="true" title="Permalink"></a>Email delivery records</h2>
 <p>The registry records the delivery status of all registry email sent to your address. The status is delivered, bounced, spam, or unsubscribed. Brevo processes the email and tells us what happened to it.</p>
@@ -69,7 +70,7 @@ $policy = <<<'GUIDEHTML'
 <h2><a id="updates" href="#updates" class="" aria-hidden="true" title="Permalink"></a>Updates</h2>
 <p>If we change this policy, we'll update the effective date at the top of the page and post the new version here. Anything significant, we'll announce to users.</p>
 <hr />
-<p><em>Last updated: October 18, 2026. This update adds the Email delivery records section (what we record about the delivery of registry email and how long we keep it), and explains that the email opt-out stops all registry email to you except account mail (password reset, sign-in, and email change).</em></p>
+<p><em>Last updated: October 20, 2026. This update adds healthchecks.io as a processor: a monitoring service that tells us when a scheduled task finishes or fails, and receives no personal data.</em></p>
 
 GUIDEHTML;
 ?>

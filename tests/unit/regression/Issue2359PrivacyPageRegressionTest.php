@@ -97,8 +97,6 @@ final class Issue2359PrivacyPageRegressionTest extends TestCase
             // Issue #2360: the opt-out stops all registry email except account mail.
             'the opt-out stops all registry email except the three kinds of account mail'
                 => ['/no login required\. The opt-out stops all registry email to you except account mail \(password reset, sign-in, and email change\)/i'],
-            'the last-updated sentence names the delivery records and the opt-out change'
-                => ['/Last updated: [A-Z][a-z]+ \d{1,2}, \d{4}\. This update adds the Email delivery records section .*and explains that the email opt-out stops all registry email/i'],
         ];
     }
 
@@ -122,7 +120,7 @@ final class Issue2359PrivacyPageRegressionTest extends TestCase
         $this->assertSame(1, preg_match('/Effective: ([A-Z][a-z]+ \d{1,2}, \d{4})/', $policy, $effective));
         $this->assertSame(1, preg_match('/Last updated: ([A-Z][a-z]+ \d{1,2}, \d{4})/', $policy, $updated));
         $this->assertSame($effective[1], $updated[1], 'The two dates describe the one revision');
-        $this->assertNotSame('October 14, 2026', $updated[1], 'The date of the previous revision must change');
+        $this->assertNotSame('October 18, 2026', $updated[1], 'The date of the previous revision must change');
     }
 
     /** The privacy wording does not mention the test site, a mail trap or the like. */
