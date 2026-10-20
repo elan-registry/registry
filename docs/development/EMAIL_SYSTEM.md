@@ -101,6 +101,10 @@ filter events by tag. They use the tag for one purpose only: the unmatched
 recipient counter counts an event only when it carries this tag. See
 [Brevo Webhook Receiver](#brevo-webhook-receiver-1887).
 
+The tag `send-owner-email` (`AppConstants::OWNER_CONTACT_EMAIL_TAG`) marks
+owner contact mail. The soft-bounce count reads it from
+`plg_sendinblue_messages.tags` and skips that mail (#2460).
+
 ### The `tags` option
 
 The `email()` override in plugin 1.8.0 and later accepts `$opts['tags']`. The
@@ -127,7 +131,7 @@ The registry uses `caller`. The plugin function `sendinblueTagFromFile()`
 (`usersc/plugins/sendinblue/functions.php`) builds the tag. It removes every
 character outside `A-Za-z0-9_.-` and cuts the result to 64 characters. The
 setting is database state. Set it once for each environment. Later deploys keep
-it. Without it, all mail except verification mail has no tag.
+it. Without it, all mail except verification and owner contact mail has no tag.
 
 ### Tags in `caller` mode
 
@@ -135,8 +139,9 @@ it. Without it, all mail except verification mail has no tag.
 | --- | --- | --- |
 | Car verification | `usersc/classes/Car/CarVerificationSendService.php` | `car_verification` (explicit) |
 | Feedback form | `app/api/contact/send-feedback.php` | `send-feedback` |
-| Owner contact form | `app/api/contact/send-owner-email.php` | `send-owner-email` |
+| Owner contact form | `app/api/contact/send-owner-email.php` | `send-owner-email` (explicit) |
 | Admin contact | `app/admin/includes/process-admin-contact.php` | `process-admin-contact` |
+| Transfer notices | `usersc/classes/Transfer/TransferEmailService.php` | `TransferEmailService` |
 | Registration recovery | `usersc/classes/RegistrationRecoveryNotifier.php` | `RegistrationRecoveryNotifier` |
 | Join | `usersc/join.php` | `join` |
 | Account settings | `usersc/user_settings.php` | `user_settings` |
@@ -146,6 +151,12 @@ it. Without it, all mail except verification mail has no tag.
 | Resend verification link | `users/verify_resend.php` | `verify_resend` |
 | Admin user manager | `users/views/_admin_user.php`, `users/views/_admin_users.php` | `_admin_user`, `_admin_users` |
 | Admin test email | `users/views/_admin_email_test.php` | `_admin_email_test` |
+
+The owner contact endpoint passes `AppConstants::OWNER_CONTACT_EMAIL_TAG`
+(`send-owner-email`) as `$opts['tags']`. The soft-bounce count reads this tag
+from `plg_sendinblue_messages.tags`. An explicit tag stays when `tag_mode` is
+`off`. Do not change the value without a data migration, because stored rows
+keep the old tag.
 
 Core `users/join.php` and `users/user_settings.php` also call `email()`. Their
 tags are `join` and `user_settings`. To find new callers, run
@@ -675,7 +686,7 @@ bounce:
 
 - The chip shows **Soft bounce**.
 - The car is still under the **Pending** pill. A soft bounce is not final.
-  Brevo escalates repeated soft bounces. The
+  The registry escalates repeated soft bounces, except for owner contact mail. The
   owner's `email_bounced` flag stays 0, and the Pending view includes only cars
   whose owner has no flag.
 
@@ -1048,9 +1059,9 @@ changes or the session ends.
 **Class:** `SendPolicy` (`usersc/classes/Car/SendPolicy.php`)
 
 `SendPolicy` is the one table that says which owner flags stop which mail.
-The verification send, the owner-to-owner contact endpoint, and the admin
-contact endpoint all ask it before they call `email()`. The endpoint
-files are `app/api/contact/send-owner-email.php` and
+The verification send, the owner-to-owner contact endpoint, the admin
+contact endpoint, and `TransferEmailService` all ask it before they call
+`email()`. The endpoint files are `app/api/contact/send-owner-email.php` and
 `app/admin/includes/process-admin-contact.php`.
 
 | Mail | Blocked by | Who is told |
@@ -1058,13 +1069,16 @@ files are `app/api/contact/send-owner-email.php` and
 | Verification email | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | The admin batch report shows the reason for each refused car |
 | Owner-to-owner contact | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The sender gets the same response as for a real send, to stop address enumeration. A log line names the user IDs and the flag names |
 | Admin contact | No profile, `email_bounced`, `email_opted_out`. Not `email_blocked` | The admin or editor sees a message. It gives the bounce date, the opt-out, or the missing profile |
+| Transfer notices (`TransferEmailService`: request notice, response to the requester, decision notice to the previous owner) | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The service logs the skip in the `EMAIL_ERROR` category. The log line names the user ID and the flag names. The send method returns `true`, so the caller does not treat the skip as a failure |
 | Account mail (join, password reset, email change, passwordless, reauthentication) | Never blocked | Not applicable |
 | Registrar feedback | Never blocked | Not applicable |
 
 - An admin can write to an owner whose only flag is `email_blocked`. An
   admin block stops registry mail. It does not stop a direct message from
   an admin.
-- A bounce stops all three kinds, because the address does not accept mail.
+- The transfer admin alert goes to admin addresses. The policy does not
+  apply to it.
+- A bounce stops all four kinds, because the address does not accept mail.
 - Opt-out now covers all non-account mail. Before #2360, it covered only
   verification email.
 - Flags follow the [Address-Match Rule](#address-match-rule-2356).
@@ -1284,7 +1298,7 @@ the response does not change. The webhook does not call it for an event that is 
 | Brevo event | Effect |
 | --- | --- |
 | `hard_bounce`, `blocked`, `invalid`, `invalid_email` | Immediately flags the owner as bounced (`profiles.email_bounced = 1`, with `email_bounced_address` set to the reported address and `email_bounced_at` set to the event time) |
-| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
+| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. A soft bounce of owner contact mail does not count either (#2460): the count skips a send cycle when the `plg_sendinblue_messages` row for that `brevo_message_id` has the tag `send-owner-email` in its `tags`. A cycle with no plugin row, or with null tags, still counts, so an owner contact cycle counts again after its plugin row is deleted. A purge of plugin rows (#2384) must keep a row while its message ID is still in `er_email_events`. The sender picks the recipient, so a full mailbox must not mark the owner bounced. Hard bounces, blocks and spam of owner contact mail still set their flags. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
 | `delivered` | Event row only. Implicitly resets the soft-bounce escalation window (the count query only looks at soft bounces after the most recent `delivered` row) |
 | `spam` | Flags the owner as blocked (`profiles.email_blocked = 1`, cause `spam`, with the address and event time). This is a distinct signal from a bounce |
 | `unsubscribed` | The same as `spam`, with cause `unsubscribed` |
@@ -1438,6 +1452,11 @@ The applier cuts `reason` to 255 characters of valid UTF-8
   run once for the owner. The count is keyed by `user_id` and by the exact
   address (`COLLATE utf8mb4_bin`), so a former holder of the address, or an
   accent variant of it, does not count.
+- **Owner contact soft bounces do not count (#2460).** The count query adds
+  `NOT EXISTS` on `plg_sendinblue_messages` with `FIND_IN_SET` on `tags`. When
+  the plugin table or its `tags` column does not exist, the query runs without
+  this filter. `CarRepository` checks `information_schema` once for each
+  instance and caches the result.
 
 **What the dashboard chip shows.** A car shows the rows of its owner after
 the car's cycle start. The cycle start is the car's latest `sent` row

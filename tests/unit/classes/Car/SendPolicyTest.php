@@ -97,6 +97,7 @@ final class SendPolicyTest extends TestCase
             'owner contact' => [MailKind::OwnerContact, $all],
             // An admin block stops registry mail, not a direct admin message.
             'admin contact' => [MailKind::AdminContact, ['no_profile', 'email_bounced', 'email_opted_out']],
+            'transfer notice' => [MailKind::TransferNotice, $all],
         ];
     }
 
@@ -107,10 +108,10 @@ final class SendPolicyTest extends TestCase
         $this->assertSame($expected, $this->policy->blockingFlags($kind));
     }
 
-    public function test_mailKind_hasExactlyThreeKinds(): void
+    public function test_mailKind_hasExactlyFourKinds(): void
     {
         $this->assertSame(
-            ['verification', 'owner_contact', 'admin_contact'],
+            ['verification', 'owner_contact', 'admin_contact', 'transfer_notice'],
             array_map(static fn (MailKind $k): string => $k->value, MailKind::cases())
         );
     }

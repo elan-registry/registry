@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
+use ElanRegistry\AppConstants;
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\MailKind;
@@ -222,7 +223,7 @@ if (!$sendDecision->allowed) {
         ->send();
 }
 
-$result = email($toEmail, $subject, $body, $replyOpts);
+$result = email($toEmail, $subject, $body, ['tags' => AppConstants::OWNER_CONTACT_EMAIL_TAG] + $replyOpts);
 
 if ($result !== true) {
     ApiResponse::serverError()

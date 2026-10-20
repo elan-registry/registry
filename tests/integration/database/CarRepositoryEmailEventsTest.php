@@ -7,6 +7,7 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\SendinblueMessagesTable;
 
 /**
  * Real-SQL tests for CarRepository's er_email_events methods; unit tests only
@@ -15,15 +16,34 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('integration')]
 final class CarRepositoryEmailEventsTest extends IntegrationTestCase
 {
+    private static bool $madePluginTable = false;
+
     private CarRepository $repo;
     private int $userId;
     private int $carId;
+
+    /** @var list<string> */
+    private array $pluginMessageIds = [];
+
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$madePluginTable) {
+            DB::getInstance()->query('DROP TABLE IF EXISTS plg_sendinblue_messages');
+            self::$madePluginTable = false;
+        }
+        parent::tearDownAfterClass();
+    }
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
 
+        // The plugin table must exist before the first repository read, because
+        // the repository caches its table and column probe per instance.
+        if (SendinblueMessagesTable::createIfMissing($this->db)) {
+            self::$madePluginTable = true;
+        }
         $this->repo = new CarRepository($this->db);
         $this->userId = $this->createTestUser([], true);
         $this->carId = $this->createTestCar($this->userId, [
@@ -37,6 +57,9 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
+            foreach ($this->pluginMessageIds as $messageId) {
+                $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
+            }
             // The noowner tests must write no row. If the code under test is wrong, the row
             // belongs to an account that the base class does not track, so delete it here.
             $noowner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
@@ -44,6 +67,7 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
                 $this->deleteEmailEventsForUserIds([(int) $noowner->id]);
             }
         }
+        $this->pluginMessageIds = [];
         // The other er_email_events rows go with their users in IntegrationTestCase::tearDown() (#2358).
         parent::tearDown();
     }
@@ -661,6 +685,156 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         $this->expectException(\ElanRegistry\Exceptions\CarValidationException::class);
 
         $this->repo->findLatestEmailEventsByCarIds($carIds);
+    }
+
+    // --- Owner contact soft bounces (#2460) --------------------------------
+
+    /** Insert a plugin message row. A null $tags value stores SQL NULL. */
+    private function seedPluginRow(string $messageId, ?string $tags): void
+    {
+        $this->db->query(
+            "INSERT INTO plg_sendinblue_messages
+                (message_id, recipient_email, sender_email, kind, tags, status, accepted_at)
+             VALUES (?, ?, 'registry@example.test', 'transactional', ?, 'accepted', '2026-01-01 08:00:00')",
+            [$messageId, $this->carEmail(), $tags]
+        );
+        $this->assertFalse($this->db->error(), 'Failed to seed plugin row: ' . $this->db->errorString());
+        $this->pluginMessageIds[] = $messageId;
+    }
+
+    /**
+     * Seed one soft-bounce event for each tag value. A null entry seeds the
+     * event with a plugin row that has NULL tags.
+     *
+     * @param list<?string> $tagsPerMessage
+     * @return list<string> The message IDs
+     */
+    private function seedSoftBouncesWithTags(array $tagsPerMessage): array
+    {
+        $ids = [];
+        foreach ($tagsPerMessage as $i => $tags) {
+            $id = 'tag-' . uniqid('', true) . '-' . $i;
+            $this->seedPluginRow($id, $tags);
+            $this->insertRawEvent('soft_bounce', $id, sprintf('2026-01-01 %02d:00:00', 10 + $i));
+            $ids[] = $id;
+        }
+        $this->assertNotEmpty($ids, 'Test setup: no soft bounce was seeded');
+
+        return $ids;
+    }
+
+    private function softBounceCount(): int
+    {
+        return $this->repo->countSoftBouncesSinceLastDelivered($this->userId, $this->carEmail());
+    }
+
+    /** Fails without the #2460 change: the count has no owner-contact filter. */
+    #[Group('fast')]
+    public function testOwnerContactSoftBouncesAreNotCounted(): void
+    {
+        $ids = $this->seedSoftBouncesWithTags(['send-owner-email', 'send-owner-email', 'send-owner-email']);
+
+        $this->assertSame(0, $this->softBounceCount());
+        foreach ($ids as $id) {
+            $this->assertSame(1, $this->eventCountForMessage($id), 'The event row is still recorded');
+        }
+    }
+
+    /** Passes without the #2460 change: verification mail has always counted, and the filter must not change that. */
+    #[Group('fast')]
+    public function testVerificationSoftBouncesStillCount(): void
+    {
+        $this->seedSoftBouncesWithTags(['car_verification', 'car_verification', 'car_verification']);
+
+        $this->assertSame(3, $this->softBounceCount());
+    }
+
+    /** Fails without the #2460 change: the two owner contact cycles count. */
+    #[Group('fast')]
+    public function testMixedTwoOwnerContactAndOneVerificationCountsOne(): void
+    {
+        $this->seedSoftBouncesWithTags(['send-owner-email', 'car_verification', 'send-owner-email']);
+
+        $this->assertSame(1, $this->softBounceCount());
+    }
+
+    /** Fails without the #2460 change: the tagged cycle counts. */
+    #[Group('fast')]
+    public function testTagListWithOwnerContactAmongOthersIsExcluded(): void
+    {
+        $this->seedSoftBouncesWithTags(['foo,send-owner-email']);
+
+        $this->assertSame(0, $this->softBounceCount());
+    }
+
+    /** Passes without the #2460 change: it guards that FIND_IN_SET matches a whole tag, not a prefix. */
+    #[Group('fast')]
+    public function testSimilarTagIsNotExcluded(): void
+    {
+        $this->seedSoftBouncesWithTags(['send-owner-email-x']);
+
+        $this->assertSame(1, $this->softBounceCount());
+    }
+
+    /** Passes without the #2460 change: with no plugin row the cycle counted before and still counts. */
+    #[Group('fast')]
+    public function testSoftBounceWithNoPluginRowStillCounts(): void
+    {
+        $this->insertRawEvent('soft_bounce', 'noplugin-' . uniqid('', true), '2026-01-01 10:00:00');
+
+        $this->assertSame(1, $this->softBounceCount());
+    }
+
+    /** Passes without the #2460 change: NULL tags mean untagged mail, which counted before and still counts. */
+    #[Group('fast')]
+    public function testSoftBounceWithNullTagsStillCounts(): void
+    {
+        $this->seedSoftBouncesWithTags([null]);
+
+        $this->assertSame(1, $this->softBounceCount());
+    }
+
+    /**
+     * The message ID columns have different collations. The compare must run
+     * without MySQL error 1267 and give the expected count. The count throws
+     * on a SQL error, so a collation failure fails this test.
+     * Fails without the #2460 change: the owner-contact cycle counts.
+     */
+    #[Group('fast')]
+    public function testMessageIdCompareRunsWithoutCollationError(): void
+    {
+        $this->seedSoftBouncesWithTags(['send-owner-email', 'car_verification']);
+
+        $this->assertSame(1, $this->softBounceCount());
+    }
+
+    /**
+     * A plugin table without a `tags` column gets the original query. The
+     * test changes the table definition (DDL commits, so no transaction
+     * wraps it) and restores the column in `finally`. It runs only on a
+     * table that this class created, because the drop loses the tag data
+     * of a real plugin table.
+     *
+     * Passes without the #2460 change: the original query is the fallback.
+     */
+    public function testPluginTableWithoutTagsColumnFallsBackToOldCount(): void
+    {
+        if (!self::$madePluginTable) {
+            $this->markTestSkipped('plg_sendinblue_messages was not created by this test class; the DDL would drop real tag data.');
+        }
+
+        $this->seedSoftBouncesWithTags([null, null]);
+
+        $this->db->query('ALTER TABLE plg_sendinblue_messages DROP COLUMN tags');
+        $this->assertFalse($this->db->error(), 'Test setup: drop column: ' . $this->db->errorString());
+        try {
+            // A new instance, because the probe result is cached per instance.
+            $repo = new CarRepository($this->db);
+            $this->assertSame(2, $repo->countSoftBouncesSinceLastDelivered($this->userId, $this->carEmail()));
+        } finally {
+            $this->db->query('ALTER TABLE plg_sendinblue_messages ADD COLUMN tags VARCHAR(255) NULL AFTER kind');
+            $this->assertFalse($this->db->error(), 'Test cleanup: restore column: ' . $this->db->errorString());
+        }
     }
 
     private function occurredAtFor(string $messageId): string

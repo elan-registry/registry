@@ -118,7 +118,7 @@ For the full workflow, see
 | `email_blocked_address` | `varchar(155) NULL` | The address that is blocked. Stored normalized (lower case). Never empty while `email_blocked = 1`. |
 | `email_blocked_at` | `datetime NULL` | When the block happened. |
 | `email_blocked_cause` | `varchar(16) NULL` | `spam`, `unsubscribed`, `blocklist`, or NULL when the cause is unknown. |
-| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | The address in `email_bounced_address` bounced (#1884, #2101). Set by a hard bounce, by soft-bounce escalation, and by the admin Mark Bounced action. |
+| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | The address in `email_bounced_address` bounced (#1884, #2101). Set by a hard bounce, by soft-bounce escalation (not owner-contact mail), and by the admin Mark Bounced action. |
 | `email_bounced_address` | `varchar(155) NULL` | The address that bounced. Stored normalized (lower case). |
 | `email_bounced_at` | `datetime NULL` | When the bounce happened. Every path that sets `email_bounced` also sets it (#2320). The one exception is a flag that the #2101 migration copied with no dated event or `EMAIL BOUNCED` row: its date is NULL. |
 | `email_bounce_cleared_at` | `datetime NULL` | When the bounce was last cleared. Soft bounces before this time do not count toward a new escalation. |

@@ -140,12 +140,12 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         return (string) $this->db->query('SELECT email FROM users WHERE id = ?', [$userId])->first()->email;
     }
 
-    private function seedPluginRow(string $messageId, string $recipient, string $acceptedAt): void
+    private function seedPluginRow(string $messageId, string $recipient, string $acceptedAt, ?string $tags = null): void
     {
         $this->db->query(
-            "INSERT INTO plg_sendinblue_messages (message_id, recipient_email, sender_email, kind, status, accepted_at)
-             VALUES (?, ?, 'registry@example.test', 'transactional', 'accepted', ?)",
-            [$messageId, $recipient, $acceptedAt]
+            "INSERT INTO plg_sendinblue_messages (message_id, recipient_email, sender_email, kind, tags, status, accepted_at)
+             VALUES (?, ?, 'registry@example.test', 'transactional', ?, 'accepted', ?)",
+            [$messageId, $recipient, $tags, $acceptedAt]
         );
         $this->assertFalse($this->db->error(), 'Test setup: plugin row: ' . $this->db->errorString());
         $this->pluginMessageIds[] = $messageId;
@@ -753,6 +753,95 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $flags = $this->flags($userId);
         $this->assertSame('1', $flags['bounced']);
         $this->assertSame('2026-10-14 11:01:00', $flags['bounced_at'], 'The time is that of the soft bounce that escalated');
+    }
+
+    // --- Owner contact soft bounces (#2460) -------------------------------
+
+    /**
+     * Seed a plugin row with $tags, then apply one soft bounce for it.
+     * Each call uses a later time, so the cycles keep their order.
+     */
+    private function applyTaggedSoftBounce(int $userId, string $tags, int $hour): string
+    {
+        $messageId = $this->id('tagged');
+        $messageTime = sprintf('2026-10-14 %02d:00:00', $hour);
+        $this->seedPluginRow($messageId, $this->emailOf($userId), $messageTime, $tags);
+        $this->applyEvent($userId, 'soft_bounce', $messageId, $messageTime, sprintf('2026-10-14 %02d:01:00', $hour));
+
+        return $messageId;
+    }
+
+    /** Fails without the #2460 change: the third owner contact soft bounce sets email_bounced. */
+    public function testThreeOwnerContactSoftBouncesRecordEventsButDoNotSetBounced(): void
+    {
+        $userId = $this->makeOwner();
+
+        foreach ([9, 10, 11] as $hour) {
+            $this->applyTaggedSoftBounce($userId, 'send-owner-email', $hour);
+        }
+
+        $rows = $this->eventRows($userId, 'soft_bounce');
+        $this->assertCount(3, $rows, 'The event rows are still recorded');
+        foreach ($rows as $row) {
+            $this->assertSame('soft_bounce', $row->event);
+        }
+        $flags = $this->flags($userId);
+        $this->assertSame('0', $flags['bounced']);
+        $this->assertNull($flags['bounced_at']);
+    }
+
+    /** Passes without the #2460 change: verification soft bounces escalated before, and the filter must keep that. */
+    public function testThreeVerificationSoftBouncesStillEscalate(): void
+    {
+        $userId = $this->makeOwner();
+
+        foreach ([9, 10, 11] as $hour) {
+            $this->applyTaggedSoftBounce($userId, 'car_verification', $hour);
+        }
+
+        $this->assertCount(3, $this->eventRows($userId, 'soft_bounce'));
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags['bounced']);
+        $this->assertSame('2026-10-14 11:01:00', $flags['bounced_at']);
+    }
+
+    /** Fails without the #2460 change: the two owner contact cycles count, so the third event escalates. */
+    public function testTwoOwnerContactPlusOneVerificationSoftBounceDoesNotEscalate(): void
+    {
+        $userId = $this->makeOwner();
+
+        $this->applyTaggedSoftBounce($userId, 'send-owner-email', 9);
+        $this->applyTaggedSoftBounce($userId, 'send-owner-email', 10);
+        $this->applyTaggedSoftBounce($userId, 'car_verification', 11);
+
+        $this->assertCount(3, $this->eventRows($userId, 'soft_bounce'));
+        $this->assertSame('0', $this->flags($userId)['bounced']);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function ownerContactFlagEventProvider(): array
+    {
+        return [
+            'hard bounce' => ['hard_bounce', 'bounced'],
+            'blocked' => ['blocked', 'bounced'],
+            'spam' => ['spam', 'blocked'],
+        ];
+    }
+
+    /** Passes without the #2460 change: only soft bounces are filtered, so these events set their flags before and after. */
+    #[DataProvider('ownerContactFlagEventProvider')]
+    public function testHardBounceBlockedAndSpamOnOwnerContactMailStillSetTheirFlag(string $event, string $flag): void
+    {
+        $userId = $this->makeOwner();
+        $messageId = $this->id('owner-contact');
+        $this->seedPluginRow($messageId, $this->emailOf($userId), '2026-10-14 09:00:00', 'send-owner-email');
+
+        $this->assertTrue($this->applyEvent($userId, $event, $messageId, '2026-10-14 09:00:00', '2026-10-14 09:01:00'));
+
+        $this->assertCount(1, $this->eventRows($userId, $event));
+        $this->assertSame('1', $this->flags($userId)[$flag]);
     }
 
     // --- MODE_STATE -------------------------------------------------------

@@ -12,14 +12,14 @@ use ElanRegistry\AppConstants;
  *
  * Each send path asks this class before it calls `email()`, so the rules
  * live in one place and cannot drift apart between the verification send,
- * owner contact and admin contact:
+ * owner contact, admin contact and transfer notices:
  *
- * | Flag              | Verification | OwnerContact | AdminContact |
- * |-------------------|--------------|--------------|--------------|
- * | `no_profile`      | blocks       | blocks       | blocks       |
- * | `email_bounced`   | blocks       | blocks       | blocks       |
- * | `email_opted_out` | blocks       | blocks       | blocks       |
- * | `email_blocked`   | blocks       | blocks       | sent         |
+ * | Flag              | Verification | OwnerContact | AdminContact | TransferNotice |
+ * |-------------------|--------------|--------------|--------------|----------------|
+ * | `no_profile`      | blocks       | blocks       | blocks       | blocks         |
+ * | `email_bounced`   | blocks       | blocks       | blocks       | blocks         |
+ * | `email_opted_out` | blocks       | blocks       | blocks       | blocks         |
+ * | `email_blocked`   | blocks       | blocks       | sent         | blocks         |
  *
  * An admin can still write to an owner whose only flag is `email_blocked`,
  * because an admin block stops registry mail, not a direct message from an
@@ -61,7 +61,7 @@ final class SendPolicy
         ];
 
         return match ($kind) {
-            MailKind::Verification, MailKind::OwnerContact => $all,
+            MailKind::Verification, MailKind::OwnerContact, MailKind::TransferNotice => $all,
             MailKind::AdminContact => array_values(array_diff($all, [SendDecision::FLAG_BLOCKED])),
         };
     }
