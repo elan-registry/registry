@@ -18,11 +18,11 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 
 Changes visible only to administrators (admin dashboard, maintenance tools, settings, etc.). One sentence each.
 
-- One-sentence description of what changed. ([#NNN](https://github.com/elan-registry/registry/issues/NNN))
+- The Verification tab and the send job use a batch size of at most 25, even when the database holds a larger value. ([#2363](https://github.com/elan-registry/registry/issues/2363))
 
 ## Issues Resolved
 
-- WIP: [#2363](https://github.com/elan-registry/registry/issues/2363) — Limit the verification batch size to the 25 maximum.
+- [#2363](https://github.com/elan-registry/registry/issues/2363) — Limit the verification batch size to the 25 maximum.
 - WIP: [#2420](https://github.com/elan-registry/registry/issues/2420) — Stop the Brevo event and suppression paths from writing email addresses to the logs table.
 - WIP: [#2425](https://github.com/elan-registry/registry/issues/2425) — Stop BrevoSuppressionSyncClient from logging the Brevo error message.
 - WIP: [#2426](https://github.com/elan-registry/registry/issues/2426) — Stop a suppression import with no usable blockedAt from undoing an admin clear.

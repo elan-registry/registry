@@ -35,8 +35,8 @@ use ElanRegistry\LogCategories;
  * byte-for-byte the same send, differing only in what triggers them.
  *
  * BOUNDED WORK PER INVOCATION. One page of at most
- * {@see VerificationSettings::batchSize()} cars (clamped to [1, 25] at the
- * write side) per claimed run, never a loop until the eligible set empties.
+ * {@see VerificationSettings::batchSize()} cars (clamped to [1, 25] on write
+ * and on read) per claimed run, never a loop until the eligible set empties.
  * cron.php dispatches jobs in-process with no subprocess boundary (see
  * {@see AbstractCronJob}), so an unbounded walk over the ~1,500-car eligible
  * backlog would hold the whole cron hit open — and, more importantly, would

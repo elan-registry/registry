@@ -1826,7 +1826,8 @@ dependency exists between the two.
   (`app/admin/includes/tab-verification.php`, #2085)
 - `batchSize(): int` - Configured verification-email batch size
   (`er_verification_settings.batch_size`); fails closed to `5` on any read
-  problem (#1884)
+  problem (#1884). Clamps a stored value outside `[1, 25]` to that range and
+  logs a `VERIFICATION_CONFIG_WARNING` with the stored value (#2363)
 - `setBatchSize(int $size, int $actingUserId = 0): bool` - Set the batch
   size, clamped to `[1, 25]` regardless of the submitted value; never throws
   (logs and returns `false` on a DB error or unconfirmed write) (#1885)
