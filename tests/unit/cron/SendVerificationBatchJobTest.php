@@ -192,6 +192,25 @@ final class SendVerificationBatchJobTest extends TestCase
         $this->makeJob($this->makeSettings(batchSize: 7), $sendSvc, $sender)->runNow();
     }
 
+    /**
+     * makeSettings() builds a real VerificationSettings over a fake DB row, so
+     * the read-side clamp in batchSize() runs. A stored 255 must reach the
+     * query as 25 (#2363).
+     */
+    public function testExecuteClampsAnOutOfRangeStoredBatchSizeToTwentyFive(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())
+            ->method('findVerificationEligible')
+            ->with(25, 0)
+            ->willReturn([]);
+
+        $sendSvc = $this->makeSendSvc($repo);
+        $sender = $this->makeSender($repo, $sendSvc);
+
+        $this->makeJob($this->makeSettings(batchSize: 255), $sendSvc, $sender)->runNow();
+    }
+
     // --- execute() — eligible ids pass through unchanged -------------------
 
     public function testEligibleCarIdsPassThroughUnchangedToProcessBatch(): void

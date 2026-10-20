@@ -95,54 +95,7 @@ const SEED_SUPPRESSED_CAR_MODEL = '__PW_SEED_VST_SUPPRESSED__';
 
 $db = dbi();
 
-// The local dev DB already has a large pool of pre-existing eligible cars
-// (low ids, ORDER BY last_verified ASC puts NULL-last_verified rows first —
-// ties broken by insertion order) that fill up the default batch_size = 5
-// preview before this fixture's freshly-seeded, higher-id car is ever
-// reached. Raise batch_size to widen that preview window as far as possible.
-//
-// This does NOT guarantee the seeded car appears: batch_size is a TINYINT
-// UNSIGNED column (hard max 255). The column's ceiling is written directly
-// (255, not some larger value) — under STRICT_TRANS_TABLES (the local dev
-// DB's mode) MySQL does NOT silently truncate an out-of-range value, it
-// rejects the UPDATE outright with `ERROR 1264 (22003): Out of range value
-// for column 'batch_size'`, and \DB::query() never throws on a failed
-// statement, so a previous version of this fixture that wrote 1000 expecting
-// truncation was actually a silent no-op — confirmed empirically against
-// local MySQL. Even at 255, the local dev DB's ~1500 pre-existing eligible
-// rows (see admin-verification-send-tool.spec.js's own header note) can
-// still out-rank this fixture's seeded car every time — that spec file
-// documents the resulting environment limitation and the workaround each
-// affected test uses. This is local dev data only (this script's
-// US_ENVIRONMENT=development guard above ensures it never runs against
-// test/prod), and #1885's future batch-size UI is unaffected since nothing
-// here claims to test that value's default.
-//
-// The original value is read first and restored via a shutdown function, so
-// this fixture doesn't permanently drift a shared settings row every run.
-$db->query('SELECT batch_size FROM er_verification_settings LIMIT 1');
-if ($db->error()) {
-    fwrite(STDERR, "ERROR: Failed to read current batch_size from er_verification_settings: {$db->errorString()}\n");
-    exit(1);
-}
-$originalBatchSizeRow = $db->first();
-$originalBatchSize = is_object($originalBatchSizeRow) ? (int) $originalBatchSizeRow->batch_size : null;
-
-register_shutdown_function(static function () use ($db, $originalBatchSize): void {
-    if ($originalBatchSize === null) {
-        return;
-    }
-    $db->query('UPDATE er_verification_settings SET batch_size = ?', [$originalBatchSize]);
-    if ($db->error()) {
-        fwrite(STDERR, "ERROR: Failed to restore batch_size to {$originalBatchSize}: {$db->errorString()}\n");
-    }
-});
-
-$db->query('UPDATE er_verification_settings SET batch_size = 255');
-if ($db->error()) {
-    fwrite(STDERR, "ERROR: Failed to raise batch_size to 255: {$db->errorString()}\n");
-    exit(1);
-}
+// The fixture does not write batch_size. The preview uses the stored value.
 
 // Idempotent cleanup, mirroring seed-bounced-car.php's pattern exactly.
 foreach ([

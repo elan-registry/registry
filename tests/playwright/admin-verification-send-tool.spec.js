@@ -1,9 +1,9 @@
 // Admin Verification tab: "Send Verification Emails" (#1884) and the
 // Automatic Sending panel (#1885).
 //
-// The local DB holds more eligible cars than the batch-size cap (max 255) can
-// show, so the seeded eligible car may not appear in the preview. Tests that
-// need any eligible row use the first rendered row.
+// The local DB holds more eligible cars than the batch size (default 5,
+// max 25) can show, so the seeded eligible car may not appear in the preview.
+// Tests that need any eligible row use the first rendered row.
 //
 // SAFETY: never submit the "Send batch" form unless automatic sending is
 // confirmed PAUSED. The pause-check in app/admin/index.php

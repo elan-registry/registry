@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Cron\SendVerificationBatchJob;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -56,6 +57,9 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
     /** @var array{enabled: int, unmatched_recipient_count: int, last_cron_request_at: ?string}|null */
     private ?array $originalSettings = null;
 
+    /** Stored batch_size, as found; null until setUp reads it. */
+    private ?int $originalBatchSize = null;
+
     /** @var array<string, mixed>|null The send_verification_batch row of er_cron_job_runs, as found */
     private ?array $originalAutoSendRow = null;
 
@@ -77,10 +81,12 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         $this->editorId = $this->createTestUser(['permissions' => 1]);
         $this->grantTestPermission($this->editorId, self::PERMISSION_EDITOR);
 
+        $this->originalBatchSize = null;
         $row = $this->db->query(
-            'SELECT enabled, unmatched_recipient_count, last_cron_request_at FROM er_verification_settings WHERE id = 1'
+            'SELECT enabled, unmatched_recipient_count, last_cron_request_at, batch_size FROM er_verification_settings WHERE id = 1'
         )->first();
         $this->assertIsObject($row, 'er_verification_settings must have its id = 1 row');
+        $this->originalBatchSize = (int) $row->batch_size;
         $this->originalSettings = [
             'enabled'                   => (int) $row->enabled,
             'unmatched_recipient_count' => (int) $row->unmatched_recipient_count,
@@ -106,6 +112,20 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
                     ]
                 );
             }
+            if ($this->originalBatchSize !== null) {
+                $this->db->query(
+                    'UPDATE er_verification_settings SET batch_size = ? WHERE id = 1',
+                    [$this->originalBatchSize]
+                );
+                if ($this->db->error()) {
+                    // An assert here would hide the real test failure.
+                    fwrite(STDERR, 'tearDown: batch_size restore failed: ' . $this->db->errorString() . "\n");
+                }
+            }
+            // The 255 render logs a user_id 0 warning that the user_id delete below misses.
+            $this->db->query(
+                "DELETE FROM logs WHERE user_id = 0 AND logtype = 'VerificationConfigWarning' AND lognote LIKE 'er_verification_settings.batch_size holds 255,%'"
+            );
             if ($this->originalAutoSendRow !== null) {
                 $columns = array_keys($this->originalAutoSendRow);
                 $this->db->query('DELETE FROM er_cron_job_runs WHERE job_name = ?', [SendVerificationBatchJob::JOB_NAME]);
@@ -403,6 +423,34 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         $this->assertStringContainsString('Counts unavailable', $text);
         $this->assertStringNotContainsString('sent,', $text);
         $this->assertStringNotContainsString('No automatic run yet', $text);
+    }
+
+    /**
+     * #2363: a batch_size written straight to the database, past the
+     * setBatchSize() clamp, must show as 25 in the admin field.
+     */
+    public function testBatchSizeFieldShowsTheClampedValueWhenTheStoredValueIsTooLarge(): void
+    {
+        $this->db->query('UPDATE er_verification_settings SET batch_size = 255 WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: batch_size 255: ' . $this->db->errorString());
+
+        $xpath = $this->getVerificationTab(null);
+
+        $input = $xpath->query('//input[@id="verificationBatchSize"]')->item(0);
+        $this->assertInstanceOf(DOMElement::class, $input, 'The admin sees the batch size field');
+        $this->assertSame('25', $input->getAttribute('value'));
+
+        // Uses the tearDown DELETE's filter, so a reworded message fails here
+        // and does not leak rows without notice.
+        $this->assertSame(
+            1,
+            $this->countMatchingLogs(
+                LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+                'er_verification_settings.batch_size holds 255,%',
+                0
+            ),
+            'One render must log exactly one batch_size warning'
+        );
     }
 
     public function testEditorSeesTheTabWithAdminControlsRemoved(): void
