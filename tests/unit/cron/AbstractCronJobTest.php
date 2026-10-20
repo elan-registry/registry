@@ -660,6 +660,23 @@ final class AbstractCronJobTest extends TestCase
         $this->assertSame([self::PING_BASE . '/fail'], $transport->urls);
     }
 
+    /**
+     * The claim runs inside run()'s try, so a claim that throws must still
+     * send the alert. Moving the claim above the try would lose it.
+     */
+    public function testRunPingsFailWhenTheClaimThrows(): void
+    {
+        $transport = new RecordingHealthcheckTransport();
+        $db = new AbstractCronJobFakeDatabase(claimThrows: true);
+        $job = $this->pingingJob($db, $transport);
+
+        $job->run();
+
+        $this->assertSame([self::PING_BASE . '/fail'], $transport->urls);
+        $this->assertSame(0, $job->executeCalls, 'A claim that throws must not reach execute()');
+        $this->assertSame(1, $db->failureStampWrites(), 'A claim that throws must stamp the failure');
+    }
+
     public function testPingerThatThrowsDoesNotEscapeRunOnSuccessPath(): void
     {
         global $mockLogEntries;
@@ -675,6 +692,7 @@ final class AbstractCronJobTest extends TestCase
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, $mockLogEntries[0]['category']);
         $this->assertStringNotContainsString('pinger broke', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('success ping step', $mockLogEntries[0]['message']);
     }
 
     public function testPingerThatThrowsDoesNotEscapeRunOnFailurePath(): void
@@ -691,6 +709,7 @@ final class AbstractCronJobTest extends TestCase
         $this->assertSame(1, $db->failureStampWrites(), 'The failure stamp must still be written');
         $categories = array_column($mockLogEntries, 'category');
         $this->assertContains(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $categories, 'The job failure must still be logged');
+        $this->assertStringContainsString('fail ping step', $mockLogEntries[0]['message'], 'The guard must log the fail ping fault first');
     }
 
     /**
@@ -731,7 +750,7 @@ final class AbstractCronJobTest extends TestCase
     {
         global $mockLogEntries;
 
-        $entries = new LogEntriesThatThrowOnPrefix('Healthcheck ping for ');
+        $entries = new LogEntriesThatThrowOnPrefix('Healthcheck fail ping step');
         $mockLogEntries = $entries;
 
         $db = new AbstractCronJobFakeDatabase();

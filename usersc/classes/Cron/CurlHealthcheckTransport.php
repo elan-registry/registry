@@ -7,9 +7,9 @@ namespace ElanRegistry\Cron;
 /**
  * CurlHealthcheckTransport - Sends a healthchecks.io ping with cURL
  *
- * The timeouts are short because the ping runs inside the cron job's own
- * time budget, in cron.php's in-process dispatch loop: a slow or unreachable
- * healthchecks.io must not hold up the jobs after this one.
+ * The timeouts are short because cron.php runs the jobs one after another in
+ * one process. They limit how long a slow or unreachable healthchecks.io can
+ * delay the jobs after this one.
  *
  * @package ElanRegistry\Cron
  * @since v2.30.9
@@ -31,8 +31,8 @@ class CurlHealthcheckTransport implements HealthcheckTransport
      */
     public function send(string $url): int
     {
-        // Plain \RuntimeException, not an ElanRegistryException subtype: the
-        // pinger catches it at once, and it never leaves this class pair.
+        // Plain \RuntimeException, not an ElanRegistryException subtype:
+        // HealthcheckPinger catches \Throwable, so the type does not matter.
         $ch = curl_init($url);
         if ($ch === false) {
             throw new \RuntimeException('Healthcheck ping: cURL could not start.');

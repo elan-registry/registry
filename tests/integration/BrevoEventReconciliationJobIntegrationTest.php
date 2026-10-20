@@ -13,6 +13,7 @@ use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\HealthcheckPinger;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
@@ -125,6 +126,11 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             foreach ($this->pluginMessageIds as $messageId) {
                 $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
             }
+            // HEALTHCHECKS_* is unset here, so a claimed run() logs one "not sent" line.
+            $this->db->query(
+                'DELETE FROM logs WHERE logtype = ? AND lognote LIKE ?',
+                [LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, "Healthcheck % ping for 'brevo-event-reconciliation' not sent:%"]
+            );
         }
         parent::tearDown();
     }

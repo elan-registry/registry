@@ -398,7 +398,7 @@ final class SendVerificationBatchJobTest extends TestCase
             }
         };
 
-        $job = new SendVerificationBatchJob($recordingDb, $this->makeSettings(batchSize: 5), $sendSvc, $sender);
+        $job = new SendVerificationBatchJob($recordingDb, $this->makeSettings(batchSize: 5), $sendSvc, $sender, new HealthcheckPinger($this->pingTransport));
         $job->runNow();
 
         $this->assertCount(1, $recordingDb->updateCalls, 'recordRunCounts() must issue exactly one UPDATE');
@@ -469,7 +469,7 @@ final class SendVerificationBatchJobTest extends TestCase
             }
         };
 
-        $job = new SendVerificationBatchJob($recordingDb, $this->makeSettings(batchSize: 5), $sendSvc, $sender);
+        $job = new SendVerificationBatchJob($recordingDb, $this->makeSettings(batchSize: 5), $sendSvc, $sender, new HealthcheckPinger($this->pingTransport));
         $job->runNow();
 
         $this->assertCount(1, $recordingDb->updateCalls, 'recordRunCounts() must issue exactly one UPDATE');
@@ -515,7 +515,7 @@ final class SendVerificationBatchJobTest extends TestCase
             }
         };
 
-        $job = new SendVerificationBatchJob($db, $this->makeSettings(batchSize: 5), $sendSvc, $sender);
+        $job = new SendVerificationBatchJob($db, $this->makeSettings(batchSize: 5), $sendSvc, $sender, new HealthcheckPinger($this->pingTransport));
         $job->runNow();
 
         $log = $this->logsContaining('run counts could not be written');
@@ -587,7 +587,7 @@ final class SendVerificationBatchJobTest extends TestCase
             }
         };
 
-        $job = new SendVerificationBatchJob($db, $this->makeSettings(batchSize: 5), $sendSvc, $sender);
+        $job = new SendVerificationBatchJob($db, $this->makeSettings(batchSize: 5), $sendSvc, $sender, new HealthcheckPinger($this->pingTransport));
         $job->runNow();
 
         $log = $this->logsContaining('the row appears not to be seeded');
@@ -666,7 +666,7 @@ final class SendVerificationBatchJobTest extends TestCase
             }
         };
 
-        $job = new SendVerificationBatchJob($db, $this->makeSettings(batchSize: 5), $sendSvc, $sender);
+        $job = new SendVerificationBatchJob($db, $this->makeSettings(batchSize: 5), $sendSvc, $sender, new HealthcheckPinger($this->pingTransport));
         $job->runNow();
 
         $this->assertSame(
@@ -725,16 +725,24 @@ final class SendVerificationBatchJobTest extends TestCase
         // The switch is read through this fake, so the test can flip it
         // between two runs of the same job.
         $settingsDb = new SwitchableVerificationSettingsFakeDatabase();
-        $job = new SendVerificationBatchJob($db, new VerificationSettings($settingsDb), $sendSvc, $sender);
+        $job = new SendVerificationBatchJob(
+            $db,
+            new VerificationSettings($settingsDb),
+            $sendSvc,
+            $sender,
+            new HealthcheckPinger($this->pingTransport),
+        );
 
         $job->run();
         $this->assertSame([], $db->sqlLog(), 'The run while the switch is off must not claim');
+        $this->assertSame([], $this->pingTransport->urls, 'The run while the switch is off must not ping');
 
         $settingsDb->on = true;
         $job->run();
 
         $claims = array_filter($db->sqlLog(), static fn (string $sql): bool => stripos($sql, 'last_run_at = NOW()') !== false);
         $this->assertCount(1, $claims, 'The first run after the switch goes on must claim');
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls, 'The first run after the switch goes on must ping success');
     }
 
     // --- healthchecks.io ping (#1875) ----------------------------------------

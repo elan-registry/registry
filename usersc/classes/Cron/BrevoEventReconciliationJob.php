@@ -211,6 +211,9 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         return self::GUARD_INTERVAL_HOURS;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     protected function healthcheckSlug(): string
     {
         return self::HEALTHCHECK_SLUG;
@@ -225,6 +228,9 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      *
      * A backfill failure goes on to `run()` after the prune
      * ({@see self::backfillThenPrune()}).
+     *
+     * A failed poll is logged, not thrown, so this method calls
+     * `markRunFailed()` for it, and `run()` pings `/fail`.
      */
     protected function execute(): void
     {

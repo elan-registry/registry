@@ -1035,8 +1035,8 @@ Each monitored job pings its check at the end of a scheduled run.
 The healthchecks.io dashboard is the source of truth for these settings.
 
 **Environment variables.** Add these two lines to the server's `.env`. Get
-the ping key from 1Password:
-`op://ElanRegistry/healthchecks.io - api key for elanregistry/pingkey`.
+the ping key from 1Password. [ENVIRONMENT.md](ENVIRONMENT.md),
+"healthchecks.io Cron Monitoring", gives the 1Password path.
 
 On test:
 
@@ -1075,8 +1075,9 @@ threw, or a soft failure occurred: the eligible-car query failed or the Brevo
 poll failed.
 
 A soft failure sends `/fail` but does not stamp `last_failure_at`. The admin
-Verification tab can show a green run while healthchecks.io shows a failure.
-Check the logs first.
+Verification tab can show a green run while healthchecks.io shows a failure
+(see `AbstractCronJob::markRunFailed()` in [CLASSES.md](CLASSES.md)). Check
+the logs first.
 
 **What to check first:**
 

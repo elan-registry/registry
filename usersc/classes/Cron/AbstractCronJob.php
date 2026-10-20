@@ -163,7 +163,7 @@ abstract class AbstractCronJob
      *
      * Changes only the ping. It does not stamp `last_failure_at`.
      */
-    protected function markRunFailed(): void
+    final protected function markRunFailed(): void
     {
         $this->runFailed = true;
     }
@@ -250,10 +250,10 @@ abstract class AbstractCronJob
      * Ping this job's healthchecks.io check, if it has one.
      *
      * The pinger catches transport faults, but its own `logger()` calls write
-     * to the database and can throw. A subclass or a test double can also
-     * throw. A ping fault must never become a job failure,
-     * so this guard keeps it from escaping `run()`, or, on the success path,
-     * from being recorded as a failure of the job.
+     * to the database and can throw. An injected pinger can also throw. A
+     * ping fault must never become a job failure. So this guard keeps it from
+     * escaping `run()`, and on the success path keeps `run()` from recording
+     * it as a failure of the job.
      *
      * @param bool $failed True to ping the `/fail` endpoint
      */
@@ -271,8 +271,11 @@ abstract class AbstractCronJob
                 $this->pinger->success($slug);
             }
         } catch (\Throwable $e) {
+            // "threw", not "failed": the request may have gone out before a
+            // log call inside the pinger threw, so the ping result is unknown.
+            $kind = $failed ? 'fail' : 'success';
             try {
-                logger(0, LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, "Healthcheck ping for '{$slug}' failed: " . ExceptionLogSummary::of($e));
+                logger(0, LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, "Healthcheck {$kind} ping step for '{$slug}' threw: " . ExceptionLogSummary::of($e));
             } catch (\Throwable) {
                 // logger() writes to the database and can throw. On the
                 // failure path, a throw here would skip the failure stamp.

@@ -88,6 +88,11 @@ final class SendVerificationBatchSwitchOffIntegrationTest extends IntegrationTes
             );
             $this->setSwitch($this->originalSwitch);
             $this->db->query('DELETE FROM logs WHERE logtype = ? AND lognote LIKE ?', [LogCategories::LOG_CATEGORY_CAR_VERIFICATION, self::EXECUTE_LOG]);
+            // HEALTHCHECKS_* is unset here, so a claimed run() logs one "not sent" line.
+            $this->db->query(
+                'DELETE FROM logs WHERE logtype = ? AND lognote LIKE ?',
+                [LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, "Healthcheck % ping for 'send-verification-batch' not sent:%"]
+            );
         }
         parent::tearDown();
     }

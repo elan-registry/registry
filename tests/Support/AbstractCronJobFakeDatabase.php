@@ -97,6 +97,11 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
      *                        DatabaseInterface fault path, kept separate from
      *                        the throwing one because recordFailure() handles
      *                        them in two different branches.
+     * @param bool $claimThrows When true, the CronJobGuard claim UPDATE throws
+     *                        straight out of query(), the same prepare()-time
+     *                        PDOException shape as $failureStampThrows. It
+     *                        drives the "/fail ping on a claim that throws"
+     *                        test (#1875).
      */
     public function __construct(
         private readonly bool $enabled = true,
@@ -109,6 +114,7 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
         private readonly bool $unmatchedCounterUpdateSucceeds = true,
         private readonly bool $failureStampThrows = false,
         private readonly bool $failureStampErrors = false,
+        private readonly bool $claimThrows = false,
     ) {
         $this->lastSkipLoggedAtMinutes = $lastSkipLoggedAtMinutesAgo === null
             ? null
@@ -125,6 +131,9 @@ class AbstractCronJobFakeDatabase extends FakeDatabase
     {
         $this->sqlLog[] = $sql;
         $this->lastQueryWasClaim = stripos($sql, 'last_run_at = NOW()') !== false;
+        if ($this->lastQueryWasClaim && $this->claimThrows) {
+            throw new \RuntimeException('simulated prepare()-time failure on the claim UPDATE');
+        }
         // Checked and set BEFORE the generic er_verification_settings flag
         // below, since the increment UPDATE also contains that table name and
         // must not be classified as the ordinary isEnabled()/setEnabled() read

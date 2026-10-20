@@ -14,8 +14,9 @@ require_once __DIR__ . '/../../Support/RecordingHealthcheckTransport.php';
 /**
  * Unit tests for HealthcheckPinger (#1875).
  *
- * The pinger must never throw and must never put the ping key or the
- * hc-ping.com host in a log line. Every failure scenario asserts both.
+ * The pinger must never throw on a transport fault, and must never put the
+ * ping key or the hc-ping.com host in a log line. Every failure scenario
+ * asserts both.
  */
 #[Group('fast')]
 final class HealthcheckPingerTest extends TestCase
@@ -130,12 +131,27 @@ final class HealthcheckPingerTest extends TestCase
     public function testReadsKeyAndSuffixFromEnvArrayWhenGetenvIsEmpty(): void
     {
         $this->configure('ENVKEY', '-test');
-        putenv('HEALTHCHECKS_PING_KEY');
         $transport = new RecordingHealthcheckTransport();
 
         (new HealthcheckPinger($transport))->success(self::SLUG);
 
         $this->assertSame(['https://hc-ping.com/ENVKEY/send-verification-batch-test'], $transport->urls);
+    }
+
+    /**
+     * `$_ENV` wins over `getenv()`, as in BrevoDevOverride. A swapped read
+     * order would pass both single-source tests above.
+     */
+    public function testEnvArrayWinsWhenBothSourcesAreSet(): void
+    {
+        $this->configure('ENVKEY', '-prod');
+        putenv('HEALTHCHECKS_PING_KEY=GETENVKEY');
+        putenv('HEALTHCHECKS_SLUG_SUFFIX=-test');
+        $transport = new RecordingHealthcheckTransport();
+
+        (new HealthcheckPinger($transport))->success(self::SLUG);
+
+        $this->assertSame(['https://hc-ping.com/ENVKEY/send-verification-batch-prod'], $transport->urls);
     }
 
     // --- Missing configuration -----------------------------------------
@@ -172,6 +188,15 @@ final class HealthcheckPingerTest extends TestCase
             $this->assertCount(1, $this->logs(), "{$method}() must log exactly once");
             $this->assertSame(LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, $this->logs()[0]['category']);
             $this->assertStringContainsString('not sent', $this->logs()[0]['message']);
+            $keyEmpty = $key === null || $key === '';
+            $suffixEmpty = $suffix === null || $suffix === '';
+            $message = $this->logs()[0]['message'];
+            $keyEmpty
+                ? $this->assertStringContainsString('HEALTHCHECKS_PING_KEY', $message)
+                : $this->assertStringNotContainsString('HEALTHCHECKS_PING_KEY', $message);
+            $suffixEmpty
+                ? $this->assertStringContainsString('HEALTHCHECKS_SLUG_SUFFIX', $message)
+                : $this->assertStringNotContainsString('HEALTHCHECKS_SLUG_SUFFIX', $message);
             $this->assertNoSecretInLogs();
         }
     }

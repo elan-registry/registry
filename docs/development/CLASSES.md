@@ -2546,14 +2546,14 @@ public function __construct(
 - `protected healthcheckSlug(): ?string` — The check slug without the
   environment suffix. The default returns `null`, which means no ping.
   `BrevoSuppressionSyncJob` keeps the default.
-- `protected markRunFailed(): void` — A job calls this for a soft failure
+- `final protected markRunFailed(): void` — A job calls this for a soft failure
   (a failure it handles without throwing). `run()` then pings `/fail`
   instead of success. It does not stamp `last_failure_at` and does not change
   the dashboard badge.
 - `run()` pings success after `execute()` returns without a failure flag. It
   pings `/fail` when `execute()` throws or when `markRunFailed()` was called.
   In the `catch` block, the `/fail` ping runs before the failure stamp and
-  the failure log line.
+  the failure log line, so the alert does not depend on a database write.
 - A run that returns before `execute()` pings nothing. The switch, a
   disabled, missing, or unreadable enabled flag, or a lost claim can end a run
   this way.
@@ -2603,8 +2603,11 @@ When `$transport` is `null`, the class uses `CurlHealthcheckTransport`.
 - `success(string $slug): void` — Ping the success URL for `$slug`.
 - `fail(string $slug): void` — Ping the `/fail` URL for `$slug`.
 
-Both methods never throw. A missing key or suffix, a transport error, or a
-non-2xx status writes one `LOG_CATEGORY_HEALTHCHECK_PING` line. The line holds
+Neither method throws on a transport fault. The pinger's own `logger()` calls
+write to the database and can throw, so a caller must guard the call, as
+`AbstractCronJob::pingHealthcheck()` does. A missing key or suffix, a
+transport error, or a non-2xx status writes one `LOG_CATEGORY_HEALTHCHECK_PING`
+line. The line holds
 the slug and the failure kind. It never holds the URL or the key. If either
 value is empty, the pinger does not ping.
 
@@ -2894,14 +2897,17 @@ public function __construct(
 
 - `jobName(): string` — Returns `'send_verification_batch'`
 - `guardIntervalHours(): int` — Returns `20`
-- `healthcheckSlug(): string` — Protected. Returns `'send-verification-batch'`
+- `healthcheckSlug(): string` — Protected. Returns `'send-verification-batch'`.
+  Narrows the parent's `?string` return type, because this job always pings
 - `refusesWhileSwitchOff(): bool` — Protected. Returns `true` while the
   verification switch is off. `AbstractCronJob::run()` and `runNow()` call it
   before any other step
 - `execute(): void` — Read the configured batch size, ask
   `CarVerificationSendService::findEligible()` for that many candidates,
   hand ids to `VerificationBatchSender::processBatch()`, persist outcome
-  counts, log a routine completion line under `LOG_CATEGORY_CAR_VERIFICATION`
+  counts, log a routine completion line under `LOG_CATEGORY_CAR_VERIFICATION`.
+  If the eligible-car query fails, it logs, calls `markRunFailed()` and
+  returns, so `run()` pings `/fail`
 
 **Private Methods**:
 
@@ -3216,10 +3222,12 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 - `jobName(): string` — Returns `'brevo_reconciliation'`
 - `guardIntervalHours(): int` — Returns `20`
 - `healthcheckSlug(): string` — Protected. Returns
-  `'brevo-event-reconciliation'`
+  `'brevo-event-reconciliation'`. Narrows the parent's `?string` return type,
+  because this job always pings
 - `execute(): void` — Backfill one page, prune expired rows in a `finally`
   block, then log a one-line summary (with a distinct suffix if the poll
-  failed). The prune logs its count
+  failed). The prune logs its count. A failed poll calls `markRunFailed()`,
+  so `run()` pings `/fail`
 - `runNowWithSummary(): ReconciliationSummary` — Sibling to the inherited
   `final runNow()` for the manual "run now" admin path (#2061). Not an
   override — `runNow()` stays `final`/void. Wraps the backfill and prune in

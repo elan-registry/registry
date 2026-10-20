@@ -20,9 +20,12 @@ use ElanRegistry\LogCategories;
  * check that does not exist, and the failure would show only as a log line.
  * So if either value is empty, no request is sent.
  *
- * Never throws: a monitoring fault must not stop the job that it monitors.
- * Each problem (missing config, transport error, non-2xx status) gives one
- * log line under LOG_CATEGORY_HEALTHCHECK_PING. The ping key lets anyone
+ * A transport fault never throws out of this class: a monitoring fault must
+ * not stop the job that it monitors. The logger() calls write to the
+ * database and can throw, so the caller guards each call
+ * (AbstractCronJob::pingHealthcheck()). Each problem (missing config,
+ * transport error, non-2xx status) gives one log line under
+ * LOG_CATEGORY_HEALTHCHECK_PING. The ping key lets anyone
  * suppress the alerts, so no log line holds the key or the URL.
  *
  * @package ElanRegistry\Cron
@@ -45,7 +48,7 @@ class HealthcheckPinger
     }
 
     /**
-     * Ping the check for a run that completed. Never throws.
+     * Ping the check for a run that completed. Throws only if logger() throws.
      *
      * @param string $slug The check slug without the environment suffix
      */
@@ -55,7 +58,7 @@ class HealthcheckPinger
     }
 
     /**
-     * Ping the `/fail` endpoint of the check for a run that failed. Never throws.
+     * Ping the `/fail` endpoint of the check for a run that failed. Throws only if logger() throws.
      *
      * @param string $slug The check slug without the environment suffix
      */
@@ -75,10 +78,17 @@ class HealthcheckPinger
         $suffix = self::env('HEALTHCHECKS_SLUG_SUFFIX');
 
         if ($key === '' || $suffix === '') {
+            // The names are not secret. Name only the empty ones, so the
+            // operator knows which value to fix on the server.
+            $missing = array_keys(array_filter(
+                ['HEALTHCHECKS_PING_KEY' => $key, 'HEALTHCHECKS_SLUG_SUFFIX' => $suffix],
+                static fn (string $value): bool => $value === ''
+            ));
             logger(0, LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, sprintf(
-                "Healthcheck %s ping for '%s' not sent: HEALTHCHECKS_PING_KEY or HEALTHCHECKS_SLUG_SUFFIX is not set.",
+                "Healthcheck %s ping for '%s' not sent: %s not set.",
                 $kind,
-                $slug
+                $slug,
+                implode(' and ', $missing)
             ));
             return;
         }

@@ -177,7 +177,7 @@ final class SendVerificationBatchJob extends AbstractCronJob
                 $e->getMessage()
             ));
             // Handled without a throw, so the ping must be told: a success
-            // ping here would hide a job that can never send.
+            // ping here would hide a failed eligibility query.
             $this->markRunFailed();
             return;
         }
