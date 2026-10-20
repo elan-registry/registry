@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Cron\SendVerificationBatchJob;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -438,6 +439,18 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         $input = $xpath->query('//input[@id="verificationBatchSize"]')->item(0);
         $this->assertInstanceOf(DOMElement::class, $input, 'The admin sees the batch size field');
         $this->assertSame('25', $input->getAttribute('value'));
+
+        // Uses the tearDown DELETE's filter, so a reworded message fails here
+        // and does not leak rows without notice.
+        $this->assertSame(
+            1,
+            $this->countMatchingLogs(
+                LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+                'er_verification_settings.batch_size holds 255,%',
+                0
+            ),
+            'One render must log exactly one batch_size warning'
+        );
     }
 
     public function testEditorSeesTheTabWithAdminControlsRemoved(): void
