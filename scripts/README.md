@@ -634,7 +634,9 @@ node scripts/playwright-auth-setup.js prod nonadmin
 Scripts for configuring and verifying the Brevo webhook that feeds the
 bounce-detection endpoint (`app/api/webhooks/brevo.php`, #1887). The capture
 endpoint is test-environment-only. The registration script registers test
-URLs by default, and the production receiver only with `--allow-prod`. See `docs/releases/RELEASE_NOTES_v2.30.2.md`'s
+URLs by default, and the production receiver only with `--allow-prod`.
+
+See `docs/releases/RELEASE_NOTES_v2.30.2.md`'s
 "Required Actions After Deployment" for the full post-deployment runbook
 these scripts support, and `docs/development/EMAIL_SYSTEM.md` § "Brevo
 Webhooks — Verified Behaviour (#1871)" for the underlying payload/event facts

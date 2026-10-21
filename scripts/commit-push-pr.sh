@@ -156,6 +156,9 @@ fi
 # to trigger from a live git status).
 is_forbidden_path() {
     case "$1" in
+        # The one committed planning file (see .gitignore and
+        # .claude/rules/planning-docs.md). Must stay above docs/plans/*.
+        docs/plans/releases/v2.30-deploy.md) return 1 ;;
         docs/plans/*|_noupload/*) return 0 ;;
         *) return 1 ;;
     esac

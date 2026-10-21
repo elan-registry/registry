@@ -34,14 +34,14 @@ namespace ElanRegistry\Spike1888;
  *   php scripts/spike-1888/brevo-register-webhook.php --delete --id=123
  *   php scripts/spike-1888/brevo-register-webhook.php --env=/home/<cpanel-account>/test.elanregistry.org
  *
- * --host overrides DB_HOST so this script can reach test's plg_sendinblue
- * row from elsewhere (e.g. an SSH tunnel to test's DB) without editing
- * --env's .env file. It is NOT a way to rehearse this against local dev's own
- * database: --create still calls Brevo's live production API with whichever
- * account plg_sendinblue.key points at, so pairing --host with the local
- * Docker database would register a real webhook against test's Brevo account
- * using local dev's (usually absent or unrelated) Brevo credentials — not a
- * safe local rehearsal.
+ * --host overrides DB_HOST so this script can reach the target environment's
+ * plg_sendinblue row (test or production) from elsewhere (e.g. an SSH tunnel
+ * to that environment's DB) without editing --env's .env file. It is NOT a
+ * way to rehearse this against local dev's own database: --create still calls
+ * Brevo's live production API with whichever account plg_sendinblue.key
+ * points at, so pairing --host with the local Docker database would register
+ * a real webhook using local dev's (usually absent or unrelated) Brevo
+ * credentials — not a safe local rehearsal.
  *
  * To run this script locally against the Docker dev environment (for
  * --list-webhooks or --delete, not --create — see above), run it inside the
@@ -151,6 +151,8 @@ function parseArgs(): array
         $opts = [];
     }
 
+    $allowProd = isset($opts['allow-prod']);
+
     return [
         'envDir' => (string) optValue($opts, 'env', dirname(__DIR__, 2)),
         'host' => optValue($opts, 'host', null),
@@ -158,13 +160,13 @@ function parseArgs(): array
         'listWebhooks' => isset($opts['list-webhooks']),
         'delete' => isset($opts['delete']),
         'url' => optValue($opts, 'url', null),
-        'allowProd' => isset($opts['allow-prod']),
+        'allowProd' => $allowProd,
         'token' => optValue($opts, 'token', null),
         // A forgotten --description must not label the production webhook "test env".
         'description' => (string) optValue(
             $opts,
             'description',
-            isset($opts['allow-prod']) ? 'Elan Registry production' : '1888 — test env'
+            $allowProd ? 'Elan Registry production' : '1888 — test env'
         ),
         'id' => optValue($opts, 'id', null),
         'help' => isset($opts['help']),
@@ -195,8 +197,8 @@ function usage(): void
       --delete             Delete a webhook (requires --id) and exit
       --id=<id>            Webhook id to delete
       --env=<dir>          Directory containing the .env file (default: repo root)
-      --host=<host>        Override DB_HOST (e.g. reaching test's DB over an
-                            SSH tunnel). NOT a local Docker rehearsal mode —
+      --host=<host>        Override DB_HOST (e.g. reaching test's or production's
+                            DB over an SSH tunnel). NOT a local Docker rehearsal mode —
                             --create always calls Brevo's live API; see file docblock.
       --help               Show this message
 

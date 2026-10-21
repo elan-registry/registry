@@ -14,7 +14,8 @@ use PHPUnit\Framework\TestCase;
  * child process. `--env` points at an empty directory. A URL that passes the
  * guard then stops in loadConfig() with exit 1 and "No .env file". A URL that
  * fails the guard stops first with exit 2. So no case reads a real .env or
- * calls Brevo.
+ * calls Brevo. The accepted cases match loadConfig()'s message "No .env file
+ * found in", so a change to that message fails them too.
  *
  * @issue 2088
  * @link https://github.com/elan-registry/registry/issues/2088
