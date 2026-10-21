@@ -42,7 +42,6 @@ after an item is written.
 ### `app/admin/includes/process-transfer-approve.php` `app/admin/includes/process-transfer-deny.php` `app/api/cars/transfer-request.php`
 
 - [ ] The outer `catch (\Throwable ...)` around `TransferEmailService` logs `getMessage()`, which can hold an email address. Log `ExceptionLogSummary::of($e)` instead (found in #2463)
-- [ ] In approve and deny, the success line says "At least one transfer ... notification sent" when `sendResponse()` returned true because the policy skipped both parties. Reword it to "sent or skipped by policy", or return sent/skipped counts from the service (found in #2463)
 
 ### `app/admin/includes/tab-car_mgmt.php`
 

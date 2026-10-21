@@ -511,7 +511,7 @@ class CarVerificationManager
             } catch (\Throwable $rollbackFailure) {
                 // A throw from rollback() would replace $e, the real cause.
                 $message = 'CarVerificationManager::clearFlagsForConfirmedEmailChange() rollback failed for userId='
-                    . $userId . ' [' . get_class($rollbackFailure) . ']: ' . $rollbackFailure->getMessage()
+                    . $userId . ': ' . ExceptionLogSummary::of($rollbackFailure)
                     . ' (original failure: ' . get_class($e) . ')';
                 try {
                     logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
@@ -567,7 +567,9 @@ class CarVerificationManager
      *    `users.email` under {@see EmailAddress::normalize()}, or when another
      *    user has it as `users.email`. Only the registry flag clears.
      * 4. Otherwise, record the clear time, then call Brevo. A failed call
-     *    logs the owner ID, the reason and the HTTP status, and writes nothing.
+     *    logs the owner ID, the reason, the HTTP status and the log-safe
+     *    detail, and writes nothing. A successful call logs the owner ID and
+     *    the outcome at once, before the registry write.
      * 5. Lock the profile and clear the flag only when `email_blocked_address`
      *    did not change during the call. Write the audit row with
      *    `cleared_at` and `owner_requested`.
@@ -623,10 +625,11 @@ class CarVerificationManager
             $unblock = $client->unblock($target);
             if (!$unblock->isSuccess()) {
                 logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                    'Verification: Clear Block Brevo unblock failed for owner %d (reason %s, HTTP %s)',
+                    'Verification: Clear Block Brevo unblock failed for owner %d (reason %s, HTTP %s, detail %s)',
                     $ownerId,
                     (string) $unblock->reason(),
-                    $unblock->httpStatus() === null ? 'none' : (string) $unblock->httpStatus()
+                    $unblock->httpStatus() === null ? 'none' : (string) $unblock->httpStatus(),
+                    $unblock->detail() ?? 'none'
                 ));
                 // A retry cannot fix a missing key or SDK, so the admin gets other text.
                 $notSetUp = in_array(
@@ -636,6 +639,14 @@ class CarVerificationManager
                 );
                 return $notSetUp ? ClearBlockOutcome::brevoNotSetUp() : ClearBlockOutcome::brevoFailed();
             }
+            // Logged before the registry write: if that write throws, or
+            // ends in addressChanged or notBlocked, this line is the only
+            // record that Brevo no longer blocks the address.
+            logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+                'Verification: Clear Block Brevo unblock done for owner %d (outcome %s)',
+                $ownerId,
+                $unblock->outcome()
+            ));
         }
 
         $this->repo->beginTransaction();

@@ -54,6 +54,11 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }
+            // Clear Block logs a successful Brevo unblock under the fake admin ID.
+            $this->db->query(
+                'DELETE FROM logs WHERE logtype = ? AND user_id = ? AND lognote LIKE ?',
+                [LogCategories::LOG_CATEGORY_CAR_VERIFICATION, self::ADMIN_ID, 'Verification: Clear Block Brevo unblock done for owner %']
+            );
             // The base class deletes the er_email_events rows of the test users (#2358).
             foreach ($this->loggedOwnerIds as $ownerId) {
                 $this->db->query(

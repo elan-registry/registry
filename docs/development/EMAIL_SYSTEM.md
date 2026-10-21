@@ -889,9 +889,14 @@ A different user may now hold the old address.
   the Brevo block stays.
 - The call logs nothing and keeps no exception message. The SDK puts the
   request URL, with the address, in its messages, and a Brevo error body can
-  repeat the address. On failure, the manager logs the owner ID, the reason
-  and the HTTP status only: `Verification: Clear Block Brevo unblock failed
-  for owner %d (reason %s, HTTP %s)`.
+  repeat the address. On failure, the manager logs the owner ID, the reason,
+  the HTTP status and a log-safe detail only: `Verification: Clear Block
+  Brevo unblock failed for owner %d (reason %s, HTTP %s, detail %s)`. The
+  detail is a `BrevoApiFactory` cause code or an `ExceptionLogSummary`.
+- On success, the manager logs `Verification: Clear Block Brevo unblock done
+  for owner %d (outcome %s)` at once, before the registry write. If that
+  write then fails, the log still shows that Brevo removed the block. Run
+  Clear Block again: Brevo answers 404, and the registry flag clears.
 - In local development, `BrevoDevOverride` points the call at mock-brevo
   (`BREVO_API_HOST`).
 

@@ -324,7 +324,7 @@ final class SendVerificationBatchJobTest extends TestCase
     public function testEligibilityQueryFailureIsLoggedAndSendsNothing(): void
     {
         $repo = $this->createMock(CarRepository::class);
-        $repo->method('findVerificationEligible')->willThrowException(new CarDatabaseException('query failed'));
+        $repo->method('findVerificationEligible')->willThrowException(new CarDatabaseException('query failed for owner@example.org'));
         $repo->expects($this->never())->method('findById');
 
         $sendSvc = $this->makeSendSvc($repo);
@@ -335,6 +335,9 @@ final class SendVerificationBatchJobTest extends TestCase
         $log = $this->logsContaining('eligible-car query FAILED');
         $this->assertNotEmpty($log, 'An eligibility query failure must be logged, not silent');
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+        // The summary, not the message: a repository message can hold an address.
+        $this->assertStringContainsString('CarDatabaseException (code 0)', $log[0]['message']);
+        $this->assertStringNotContainsString('owner@example.org', $log[0]['message']);
     }
 
     // --- execute() — recordRunCounts() writes the three columns -------------

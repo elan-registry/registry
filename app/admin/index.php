@@ -818,11 +818,10 @@ if (ElanInput::existsPost()) {
                         $verifyCarData = $verifyCarId > 0 ? $verificationRepo->findById($verifyCarId) : null;
                     } catch (\Throwable $e) {
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                            'Verification %s: findById threw for car %d [%s]: %s',
+                            'Verification %s: findById threw for car %d: %s',
                             $command,
                             $verifyCarId,
-                            get_class($e),
-                            $e->getMessage()
+                            ExceptionLogSummary::of($e)
                         ));
                         $errors[] = 'That car could not be read. Please try again.';
                         break;
@@ -906,12 +905,12 @@ if (ElanInput::existsPost()) {
                     } catch (CarValidationException $e) {
                         $verificationRepo->rollback();
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-                            "Verification: {$verifyOperation} validation failure for owner {$verifyOwnerId}: " . $e->getMessage());
+                            "Verification: {$verifyOperation} validation failure for owner {$verifyOwnerId}: " . ExceptionLogSummary::of($e));
                         $errors[] = $e->getUserMessage();
                     } catch (ElanRegistryException $e) {
                         $verificationRepo->rollback();
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-                            "Verification: {$verifyOperation} failed for owner {$verifyOwnerId}: " . $e->getMessage());
+                            "Verification: {$verifyOperation} failed for owner {$verifyOwnerId}: " . ExceptionLogSummary::of($e));
                         $errors[] = 'That action could not be applied. Nothing was changed — check the logs for details.';
                     } catch (\Throwable $e) {
                         // Matches this file's other cases' catch-all clause
@@ -921,11 +920,10 @@ if (ElanInput::existsPost()) {
                         // that isn't an ElanRegistryException subtype.
                         $verificationRepo->rollback();
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                            'Verification: %s unexpected error [%s] for owner %d: %s',
+                            'Verification: %s unexpected error for owner %d: %s',
                             $verifyOperation,
-                            get_class($e),
                             $verifyOwnerId,
-                            $e->getMessage()
+                            ExceptionLogSummary::of($e)
                         ));
                         $errors[] = 'That action could not be applied due to an unexpected error. Check the logs for details.';
                     }

@@ -841,7 +841,11 @@ final class TransferEmailServiceTest extends TestCase
         $this->assertStringContainsString('user 1', $skips[0]['message']);
     }
 
-    public function testSendResponseBothOptedOutMakesNoMailerCallAndReturnsTrue(): void
+    /**
+     * A skip is not a send. When the policy skips both notices, no mail went
+     * out, so the caller must not log "at least one notification sent".
+     */
+    public function testSendResponseDeniedBothOptedOutMakesNoMailerCallAndReturnsFalse(): void
     {
         $db       = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
         $subjects = [];
@@ -851,9 +855,39 @@ final class TransferEmailServiceTest extends TestCase
             $this->policy([1 => ['email_opted_out'], 2 => ['email_opted_out']])
         );
 
-        $this->assertTrue($service->sendResponse(1, false));
+        $this->assertFalse($service->sendResponse(1, false));
         $this->assertSame([], $subjects);
         $this->assertCount(2, $this->skipLogEntries());
+    }
+
+    public function testSendResponseApprovedBothOptedOutMakesNoMailerCallAndReturnsFalse(): void
+    {
+        $db       = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow(['user_id' => 2]));
+        $subjects = [];
+        $service  = new TransferEmailService(
+            $db,
+            $this->recordingMailer($subjects),
+            $this->policy([2 => ['email_blocked'], 7 => ['email_opted_out']])
+        );
+
+        $this->assertFalse($service->sendResponse(1, true, '', 7));
+        $this->assertSame([], $subjects);
+        $this->assertCount(2, $this->skipLogEntries());
+    }
+
+    public function testSendResponseOneSkippedAndOneFailedReturnsFalse(): void
+    {
+        $db       = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $subjects = [];
+        // The requester (2) is skipped. The one mail, to the previous owner, fails.
+        $service  = new TransferEmailService(
+            $db,
+            $this->recordingMailer($subjects, [1 => false]),
+            $this->policy([2 => ['email_opted_out']])
+        );
+
+        $this->assertFalse($service->sendResponse(1, false));
+        $this->assertCount(1, $subjects, 'Only the previous owner mail was tried');
     }
 
     public function testSendAdminAlertIgnoresThePolicy(): void

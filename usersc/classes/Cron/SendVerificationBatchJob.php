@@ -9,6 +9,7 @@ use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -174,7 +175,7 @@ final class SendVerificationBatchJob extends AbstractCronJob
                 "Cron job '%s': eligible-car query FAILED (batch size %d) — nothing sent this run: %s",
                 self::JOB_NAME,
                 $batchSize,
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             // Handled without a throw, so the ping must be told: a success
             // ping here would hide a failed eligibility query.
@@ -288,7 +289,7 @@ final class SendVerificationBatchJob extends AbstractCronJob
                 . ' (the batch itself was unaffected — dashboard counts will be stale).'
                 . ' Check that 20260916000000_add_cron_job_runs_last_outcome_counts has applied: %s',
                 self::JOB_NAME,
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return;
         }

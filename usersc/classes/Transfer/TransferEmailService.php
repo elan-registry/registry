@@ -263,14 +263,15 @@ class TransferEmailService
      * Send transfer response notification (approved/denied) to the requester,
      * and also notify the previous owner.
      *
-     * The send policy can skip either notice. A skipped notice counts as
-     * delivered for the return value.
+     * The send policy can skip either notice. A skipped notice is not a
+     * sent notice, so it does not make the return value true.
      *
      * @param int $transferRequestId Transfer request ID
      * @param bool $isApproved Whether the request was approved
      * @param string $adminNotes Admin notes from the administrator; empty string if none
      * @param int|null $previousOwnerId Previous owner ID (for approved transfers)
-     * @return bool True if at least one notification was delivered or skipped by the send policy
+     * @return bool True if at least one notification was delivered. False when
+     *              each one failed or the send policy skipped it.
      */
     public function sendResponse(int $transferRequestId, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool
     {
@@ -301,7 +302,7 @@ class TransferEmailService
             $subject = EMAIL_SUBJECT_PREFIX . " Transfer Request $status - {$carData->year} {$carData->series} {$carData->variant} (Chassis: {$carData->chassis})";
             $requesterId = dbInt($transferData, 'requested_by_user_id');
             if (!$this->policyAllows($requesterId, 'Transfer response notification')) {
-                $requesterNotificationSent = true;
+                $requesterNotificationSent = false;
             } else {
                 $requesterNotificationSent = (bool) ($this->mailer)($requester->email, $subject, $emailBody);
 
@@ -337,7 +338,8 @@ class TransferEmailService
      * @param bool $isApproved Whether the request was approved
      * @param string $adminNotes Admin notes from the administrator; empty string if none
      * @param int|null $previousOwnerId Previous owner ID (for approved transfers)
-     * @return bool True if the email was delivered, or the send policy skipped it
+     * @return bool True if the email was delivered. False when it failed or
+     *              the send policy skipped it.
      */
     private function sendPreviousOwnerNotification(array $ctx, object $requester, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool
     {
@@ -363,7 +365,7 @@ class TransferEmailService
             }
 
             if (!$this->policyAllows($lookupId, 'Transfer previous owner notification')) {
-                return true;
+                return false;
             }
 
             $transferRequest = (object)[

@@ -71,7 +71,8 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
      *
      * The two Brevo API clients, VerificationBatchSender and
      * CarVerificationSendService are here because their `catch` blocks log an
-     * exception that can hold an address. BrevoApiFactory and
+     * exception that can hold an address. SendVerificationBatchJob is here
+     * for the same reason: its eligibility query is a CarRepository call. BrevoApiFactory and
      * BrevoBlocklistClient (#2357) are here because their `catch` blocks see
      * an SDK exception whose message holds the request URL with the address.
      * BrevoSuppressionSyncClient has one `catch` since its SDK load moved to
@@ -82,7 +83,7 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
     private const SCANNED_FILES = [
         'app/api/webhooks/brevo.php' => 3,
         'usersc/classes/Car/BrevoWebhookEventProcessor.php' => 3,
-        'usersc/classes/Cron/AbstractCronJob.php' => 2,
+        'usersc/classes/Cron/AbstractCronJob.php' => 4,
         'usersc/classes/Cron/BrevoEventReconciliationJob.php' => 4,
         'usersc/classes/Cron/BrevoSuppressionSyncJob.php' => 5,
         'app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php' => 1,
@@ -95,6 +96,7 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         'usersc/classes/Cron/BrevoEventReconciliationClient.php' => 2,
         'usersc/classes/Car/VerificationBatchSender.php' => 3,
         'usersc/classes/Car/CarVerificationSendService.php' => 5,
+        'usersc/classes/Cron/SendVerificationBatchJob.php' => 2,
     ];
 
     /**
@@ -102,18 +104,19 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
      * of scope. The value holds the file, the first line of the part, a marker
      * after its end, and the least number of `catch` blocks in it.
      *
-     * The admin Clear Block and Clear Opt-out handler (#2357) is one part of
-     * app/admin/index.php. The other cases of that file log exception
-     * messages, and #2357 does not change them.
+     * The admin owner deliverability handlers are one part of
+     * app/admin/index.php: Mark Bounced, Clear Bounced, Clear Block and
+     * Clear Opt-out (#2357). The other cases of that file log exception
+     * messages, and they are out of scope.
      *
      * @var array<string, array{path: string, start: string, end: string, catches: int}>
      */
     private const SCANNED_SECTIONS = [
-        'app/admin/index.php (clear_block, clear_opt_out)' => [
+        'app/admin/index.php (mark_bounced, clear_bounced, clear_block, clear_opt_out)' => [
             'path' => 'app/admin/index.php',
-            'start' => 'case "clear_block":',
+            'start' => 'case "mark_bounced":',
             'end' => '// Convert error/success arrays to UserSpice session messages',
-            'catches' => 2,
+            'catches' => 6,
         ],
     ];
 

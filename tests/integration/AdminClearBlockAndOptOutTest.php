@@ -611,6 +611,11 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
         $this->assertSame([], $result['errors']);
         $this->assertAnyContains(self::TEXT_CLEARED, $result['successes'], 'Success message');
         $this->assertBlockCleared();
+        $this->assertContains(
+            sprintf('Verification: Clear Block Brevo unblock done for owner %d (outcome notBlocked)', $this->ownerId),
+            $this->verificationLogNotes(),
+            'The Brevo result is logged before the registry write'
+        );
     }
 
     public function test_clearBlock_brevoUnreachable_keepsTheFlagAndLogsOwnerAndReasonWithoutTheAddress(): void
@@ -626,10 +631,11 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
         $this->assertSame([], $this->flagChangeRows(), 'A failed call writes no flag-change row');
 
         $notes = $this->verificationLogNotes();
-        $this->assertContains(
-            sprintf('Verification: Clear Block Brevo unblock failed for owner %d (reason transport, HTTP none)', $this->ownerId),
-            $notes,
-            'The owner ID and the reason are logged'
+        $prefix = sprintf('Verification: Clear Block Brevo unblock failed for owner %d (reason transport, HTTP none, detail ', $this->ownerId);
+        $this->assertCount(
+            1,
+            array_filter($notes, static fn (string $note): bool => str_starts_with($note, $prefix)),
+            'The owner ID, the reason and the exception summary are logged'
         );
         $this->assertContains(
             sprintf('Verification: Clear Block for owner %d, result brevo_failed (owner_requested=1)', $this->ownerId),
@@ -660,7 +666,7 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
         $this->assertSame([], $this->flagChangeRows(), 'No key writes no flag-change row');
         $this->assertContains($this->ownerEmail, $this->mockBlockedEmails(), 'No call: the Brevo block stays');
         $this->assertContains(
-            sprintf('Verification: Clear Block Brevo unblock failed for owner %d (reason no_api_key, HTTP none)', $this->ownerId),
+            sprintf('Verification: Clear Block Brevo unblock failed for owner %d (reason no_api_key, HTTP none, detail key_not_set)', $this->ownerId),
             $this->verificationLogNotes()
         );
     }

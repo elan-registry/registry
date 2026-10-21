@@ -3029,8 +3029,12 @@ message. The SDK puts the request URL, with the address, in its messages.
   Brevo encoded twice, and Brevo answers 404. A 2xx answer gives `removed`.
   A 404 gives `notBlocked`. Each other case gives `failed` with a reason:
   `no_address` (empty or whitespace address, no call), `db_error` (the API key
-  query failed), `no_api_key`, `no_sdk`, `http` (with the status) or
-  `transport` (no HTTP answer, or a throw before the call)
+  query failed), `no_api_key`, `no_sdk` (the SDK is not installed),
+  `sdk_load_failed` (the SDK is installed but did not load), `http` (with the
+  status) or `transport` (no HTTP answer, or a throw before the call). A
+  failed result carries a log-safe detail: the `BrevoApiFactory` cause for a
+  key or SDK failure, or `ExceptionLogSummary::of()` for `http` and
+  `transport`
 - `createApi(string $apiKey): ?object` - Protected seam. Loads the SDK and
   builds the API object through `BrevoApiFactory`. Returns null when the SDK
   did not load
@@ -3049,22 +3053,27 @@ message. The SDK puts the request URL, with the address, in its messages.
 **Namespace**: `ElanRegistry\Email`
 
 **Purpose**: The result of one `BrevoBlocklistClient::unblock()` call (#2357).
-The class is final. It holds an outcome, a reason and an HTTP status. It holds
-no address, no response body and no exception message.
+The class is final. It holds an outcome, a reason, an HTTP status and a
+log-safe detail. It holds no address, no response body and no exception
+message.
 
 **Methods**:
 
-- `removed()`, `notBlocked()` and `failed(string $reason, ?int $httpStatus = null)` -
+- `removed()`, `notBlocked()` and `failed(string $reason, ?int $httpStatus = null, ?string $detail = null)` -
   Static constructors. `notBlocked()` has the status 404
 - `outcome(): string` - `OUTCOME_REMOVED`, `OUTCOME_NOT_BLOCKED` or
   `OUTCOME_FAILED`
 - `isSuccess(): bool` - True for `removed` and `notBlocked`. The address is off
   the blocklist after the call
 - `reason(): ?string` - One of `REASON_NO_API_KEY`, `REASON_NO_SDK`,
-  `REASON_HTTP`, `REASON_TRANSPORT`, `REASON_DB_ERROR` or `REASON_NO_ADDRESS`
-  for a failed result.
-  Null on success
+  `REASON_SDK_LOAD_FAILED`, `REASON_HTTP`, `REASON_TRANSPORT`,
+  `REASON_DB_ERROR` or `REASON_NO_ADDRESS` for a failed result.
+  Null on success. `CarVerificationManager` reports `REASON_NO_API_KEY` and
+  `REASON_NO_SDK` as "Brevo is not set up", and every other reason as a
+  Brevo failure
 - `httpStatus(): ?int` - The status that Brevo sent, or null
+- `detail(): ?string` - For a failed result, a `BrevoApiFactory` cause code
+  or an `ExceptionLogSummary`. Null on success
 
 **Used By**: `BrevoBlocklistClient`, `CarVerificationManager::clearBlockedForOwner()`
 
@@ -3370,9 +3379,10 @@ $emailService = new TransferEmailService(
   `email_bounced`, `email_opted_out` or `email_blocked`.
 - On a skip, the service logs one line in the `EMAIL_ERROR` category. The
   line names the user ID and the flag names, and never an email address.
-- A skipped send returns `true`, so the caller does not log the skip as a
-  failure. `sendResponse()` returns `true` when at least one notice was
-  delivered or skipped.
+- `sendRequest()` returns `true` on a skip, so the caller does not log the
+  skip as a failure. `sendResponse()` returns `true` only when at least one
+  notice was sent. A skip counts as not sent, so the caller logs "No transfer
+  ... notification sent" when each notice failed or was skipped.
 
 **Public Methods**:
 

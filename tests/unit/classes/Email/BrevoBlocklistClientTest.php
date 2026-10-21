@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Email\BrevoApiFactory;
 use ElanRegistry\Email\BrevoBlocklistClient;
 use ElanRegistry\Email\BrevoUnblockResult;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -32,10 +33,24 @@ final class BrevoBlocklistClientTest extends TestCase
 {
     private const SDK_AUTOLOAD = __DIR__ . '/../../../../usersc/plugins/sendinblue/vendor/autoload.php';
 
+    /** The fake site root of {@see self::clientWithSdkAutoloader()}, or null. */
+    private ?string $sdkRoot = null;
+
     protected function setUp(): void
     {
         global $mockLogEntries;
         $mockLogEntries = [];
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->sdkRoot !== null) {
+            $dir = $this->sdkRoot . 'usersc/plugins/sendinblue/vendor';
+            @unlink($dir . '/autoload.php');
+            foreach ([$dir, dirname($dir), dirname($dir, 2), dirname($dir, 3), $this->sdkRoot] as $path) {
+                @rmdir($path);
+            }
+        }
     }
 
     /**
@@ -147,6 +162,7 @@ final class BrevoBlocklistClientTest extends TestCase
         $this->assertFalse($result->isSuccess());
         $this->assertSame(BrevoUnblockResult::REASON_HTTP, $result->reason());
         $this->assertSame(500, $result->httpStatus());
+        $this->assertStringStartsWith('Brevo\Client\ApiException (code 500) at ', (string) $result->detail());
         $this->assertStringNotContainsString('owner@example.org', var_export($result, true));
     }
 
@@ -200,6 +216,7 @@ final class BrevoBlocklistClientTest extends TestCase
         $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
         $this->assertSame(BrevoUnblockResult::REASON_NO_API_KEY, $result->reason());
         $this->assertNull($result->httpStatus());
+        $this->assertSame(BrevoApiFactory::CAUSE_KEY_NOT_SET, $result->detail());
         $this->assertSame(0, $client->createApiCalls, 'No key: the API object is not built');
     }
 
@@ -222,6 +239,7 @@ final class BrevoBlocklistClientTest extends TestCase
 
         $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
         $this->assertSame(BrevoUnblockResult::REASON_DB_ERROR, $result->reason());
+        $this->assertSame(BrevoApiFactory::CAUSE_DB_ERROR, $result->detail());
         $this->assertSame(0, $client->createApiCalls);
     }
 
@@ -250,6 +268,60 @@ final class BrevoBlocklistClientTest extends TestCase
         $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
         $this->assertSame(BrevoUnblockResult::REASON_NO_SDK, $result->reason());
         $this->assertSame(1, $client->createApiCalls, 'The seam was asked for the API object');
+    }
+
+    /**
+     * Point the real createApi() seam at a fake site root, so loadSdk() reads
+     * the given autoloader. Null: no autoloader file.
+     */
+    private function clientWithSdkAutoloader(?string $autoloaderSource): BrevoBlocklistClient
+    {
+        global $abs_us_root, $us_url_root;
+        $root = sys_get_temp_dir() . '/brevo-sdk-' . bin2hex(random_bytes(4)) . '/';
+        $dir = $root . 'usersc/plugins/sendinblue/vendor';
+        $this->assertTrue(mkdir($dir, 0777, true));
+        $this->sdkRoot = $root;
+        if ($autoloaderSource !== null) {
+            file_put_contents($dir . '/autoload.php', $autoloaderSource);
+        }
+        $abs_us_root = $root;
+        $us_url_root = '';
+
+        return new BrevoBlocklistClient(new SendinblueSettingsFakeDatabase('test-api-key'));
+    }
+
+    /**
+     * @return array<string, array{0: string|null, 1: string, 2: string}>
+     */
+    public static function sdkLoadProvider(): array
+    {
+        return [
+            'no autoloader file (not installed)' => [null, BrevoUnblockResult::REASON_NO_SDK, BrevoApiFactory::CAUSE_AUTOLOADER_ABSENT],
+            'autoloader throws' => [
+                "<?php throw new \\RuntimeException('broken for owner@example.org');",
+                BrevoUnblockResult::REASON_SDK_LOAD_FAILED,
+                BrevoApiFactory::CAUSE_AUTOLOADER_FAILED,
+            ],
+            'autoloader defines no API class' => ['<?php // empty', BrevoUnblockResult::REASON_SDK_LOAD_FAILED, BrevoApiFactory::CAUSE_API_CLASS_MISSING],
+        ];
+    }
+
+    /**
+     * Only a missing autoloader means "not set up". A broken load is a fault
+     * that a retry or a fix can solve, so it gets its own reason.
+     */
+    #[DataProvider('sdkLoadProvider')]
+    #[RunInSeparateProcess]
+    public function test_unblock_sdkLoadFailure_mapsTheCauseToTheReasonAndDetail(?string $autoloader, string $reason, string $cause): void
+    {
+        $client = $this->clientWithSdkAutoloader($autoloader);
+
+        $result = $client->unblock('owner@example.org');
+
+        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
+        $this->assertSame($reason, $result->reason());
+        $this->assertSame($cause, $result->detail());
+        $this->assertStringNotContainsString('owner@example.org', var_export($result, true));
     }
 
     /**
@@ -301,10 +373,16 @@ final class BrevoBlocklistClientTest extends TestCase
         $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
         $this->assertSame(BrevoUnblockResult::REASON_TRANSPORT, $result->reason());
         $this->assertNull($result->httpStatus(), 'The exception code is not an HTTP status');
+        $this->assertStringStartsWith(
+            sprintf('RuntimeException (code %d) at ', ThrowingBrevoBlocklistClient::EXCEPTION_CODE),
+            (string) $result->detail(),
+            'The detail is the log-safe summary'
+        );
         $dump = var_export($result, true) . json_encode($mockLogEntries);
         $this->assertStringNotContainsString(ThrowingBrevoBlocklistClient::LEAKED_ADDRESS, $dump);
         $this->assertStringNotContainsString('owner@example.org', $dump);
-        $this->assertStringNotContainsString((string) ThrowingBrevoBlocklistClient::EXCEPTION_CODE, $dump);
+        $this->assertStringNotContainsString('cURL error', $dump);
+        $this->assertSame([], $mockLogEntries, 'The client logs nothing');
     }
 }
 
