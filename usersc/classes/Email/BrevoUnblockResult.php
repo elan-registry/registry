@@ -13,8 +13,9 @@ namespace ElanRegistry\Email;
  * blocklist after the call.
  *
  * A failed result holds a reason code, the HTTP status when Brevo sent
- * one, and a log-safe detail: an {@see \ElanRegistry\Exceptions\ExceptionLogSummary}
- * or a {@see BrevoApiFactory} cause code. It holds no address, no response
+ * one, and a log-safe detail: an {@see \ElanRegistry\Exceptions\ExceptionLogSummary},
+ * or a {@see BrevoApiFactory} cause code (followed by ": <ExceptionLogSummary>"
+ * when the SDK autoloader threw). It holds no address, no response
  * body and no exception message, because the SDK puts the request URL, with
  * the address, in its messages.
  *
@@ -85,9 +86,10 @@ final class BrevoUnblockResult
      *
      * @param string      $reason     One of the `REASON_*` constants
      * @param int|null    $httpStatus The HTTP status for {@see self::REASON_HTTP}, or null
-     * @param string|null $detail     A log-safe detail: an ExceptionLogSummary
-     *                                or a BrevoApiFactory cause code. Never an
-     *                                exception message or an address.
+     * @param string|null $detail     A log-safe detail: an ExceptionLogSummary,
+     *                                or a BrevoApiFactory cause code, optionally
+     *                                followed by ": <ExceptionLogSummary>". Never
+     *                                an exception message or an address.
      * @return self The result
      */
     public static function failed(string $reason, ?int $httpStatus = null, ?string $detail = null): self

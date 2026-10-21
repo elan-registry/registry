@@ -3073,8 +3073,9 @@ message.
   `REASON_NO_SDK` as "Brevo is not set up", and every other reason as a
   Brevo failure
 - `httpStatus(): ?int` - The status that Brevo sent, or null
-- `detail(): ?string` - For a failed result, a `BrevoApiFactory` cause code
-  or an `ExceptionLogSummary`. Null on success
+- `detail(): ?string` - For a failed result, an `ExceptionLogSummary`, or a
+  `BrevoApiFactory` cause code (followed by `: <ExceptionLogSummary>` when
+  the SDK autoloader threw). Null on success
 
 **Used By**: `BrevoBlocklistClient`, `CarVerificationManager::clearBlockedForOwner()`
 

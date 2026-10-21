@@ -892,7 +892,8 @@ A different user may now hold the old address.
   repeat the address. On failure, the manager logs the owner ID, the reason,
   the HTTP status and a log-safe detail only: `Verification: Clear Block
   Brevo unblock failed for owner %d (reason %s, HTTP %s, detail %s)`. The
-  detail is a `BrevoApiFactory` cause code or an `ExceptionLogSummary`.
+  detail is an `ExceptionLogSummary`, or a `BrevoApiFactory` cause code
+  (followed by `: <ExceptionLogSummary>` when the SDK autoloader threw).
 - On success, the manager logs `Verification: Clear Block Brevo unblock done
   for owner %d (outcome %s)` at once, before the registry write. If that
   write then fails, the log still shows that Brevo removed the block. Run

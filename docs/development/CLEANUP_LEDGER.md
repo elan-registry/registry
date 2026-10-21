@@ -254,7 +254,7 @@ after an item is written.
 
 ### `usersc/classes/Car/CarVerificationManager.php`
 
-- [ ] The Clear Block rollback-failure comment (~L678) says no log row holds an exception message; the `error_log()` fallback on that path does. Say so in the comment (found in /finish-milestone v2.30.9)
+- [ ] No test makes `logger()` throw on the Clear Block "unblock done" line. Add a case in `tests/unit/cars/services/CarVerificationManagerTest.php`: the registry write still runs, the outcome is `CLEARED`, and `error_log` gets the summary (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Car/ClearBlockOutcome.php` + `usersc/classes/Email/BrevoUnblockResult.php`
 

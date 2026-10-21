@@ -24,7 +24,8 @@ use ElanRegistry\Exceptions\ExceptionLogSummary;
  * puts the request URL, with the address, in its messages, and a Brevo error
  * body can echo the address. The caller logs the owner ID and the result's
  * reason, HTTP status and detail only. The detail is an
- * {@see ExceptionLogSummary} or a {@see BrevoApiFactory} cause code.
+ * {@see ExceptionLogSummary}, or a {@see BrevoApiFactory} cause code
+ * (followed by ": <ExceptionLogSummary>" when the SDK autoloader threw).
  *
  * Not `final`: the protected {@see self::createApi()} seam lets a unit test
  * replace the SDK API object, so the test makes no network call and needs no
@@ -66,7 +67,8 @@ class BrevoBlocklistClient
      * `no_api_key`, `no_sdk` (no SDK autoloader file), `sdk_load_failed` (the
      * autoloader threw, or it did not define the API class), `http` (with the
      * status) or `transport` (no HTTP answer, or a throw before the call).
-     * A key or SDK failure has the factory cause as its detail. An `http` or
+     * A key or SDK failure has the factory cause as its detail, followed by
+     * ": <ExceptionLogSummary>" when the SDK autoloader threw. An `http` or
      * `transport` failure has the {@see ExceptionLogSummary} as its detail.
      *
      * @param string $address The address to unblock, not URL-encoded

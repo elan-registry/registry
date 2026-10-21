@@ -518,7 +518,7 @@ class CarVerificationManager
                 } catch (\Throwable $logFailure) {
                     // logger() writes to the database. If that fails too, the
                     // PHP error log is the only record left.
-                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . ExceptionLogSummary::of($logFailure) . ')');
                 }
             }
             throw $e;
@@ -683,7 +683,8 @@ class CarVerificationManager
                 $this->repo->rollback();
             } catch (\Throwable $rollbackFailure) {
                 // A throw from rollback() would replace $e, the real cause.
-                // The summary, not the message: no Clear Block log row holds an exception message.
+                // The summary, not the message: no Clear Block log line, in
+                // the logs table or the PHP error log, holds an exception message.
                 $message = 'CarVerificationManager::clearBlockedForOwner() rollback failed for owner '
                     . $ownerId . ': ' . ExceptionLogSummary::of($rollbackFailure)
                     . ' (original failure: ' . get_class($e) . ')';
@@ -692,7 +693,7 @@ class CarVerificationManager
                 } catch (\Throwable $logFailure) {
                     // logger() writes to the database. If that fails too, the
                     // PHP error log is the only record left.
-                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . $logFailure->getMessage() . ')');
+                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . ExceptionLogSummary::of($logFailure) . ')');
                 }
             }
             throw $e;
