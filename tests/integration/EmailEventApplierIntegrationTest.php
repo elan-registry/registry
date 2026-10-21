@@ -13,6 +13,7 @@ use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\SendinblueMessagesTable;
 
 /**
  * Real-database tests for EmailEventApplier (#2359): the one locked
@@ -36,23 +37,6 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('car-verification')]
 final class EmailEventApplierIntegrationTest extends IntegrationTestCase
 {
-    private const PLUGIN_TABLE_SQL = 'CREATE TABLE IF NOT EXISTS plg_sendinblue_messages (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        message_id VARCHAR(191) NOT NULL,
-        recipient_email VARCHAR(255) NOT NULL,
-        sender_email VARCHAR(255) NOT NULL,
-        kind VARCHAR(32) NOT NULL,
-        tags VARCHAR(255) NULL,
-        status VARCHAR(32) NOT NULL,
-        accepted_at DATETIME NOT NULL,
-        delivered_at DATETIME NULL,
-        last_event_at DATETIME NULL,
-        last_checked_at DATETIME NULL,
-        last_reason VARCHAR(255) NULL,
-        UNIQUE KEY message_id (message_id),
-        KEY recipient_accepted (recipient_email(128), accepted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci';
-
     /** A time that every fixture guard is before. */
     private const LONG_AGO = '2020-01-01 00:00:00';
 
@@ -125,16 +109,9 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
 
     private function makePluginTable(): void
     {
-        $exists = (int) $this->db->query(
-            "SELECT COUNT(*) AS cnt FROM information_schema.TABLES
-              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'plg_sendinblue_messages'"
-        )->first()->cnt > 0;
-        if ($exists) {
-            return;
+        if (SendinblueMessagesTable::createIfMissing($this->db)) {
+            self::$madePluginTable = true;
         }
-        $this->db->query(self::PLUGIN_TABLE_SQL);
-        $this->assertFalse($this->db->error(), 'Test setup: plugin table: ' . $this->db->errorString());
-        self::$madePluginTable = true;
     }
 
     // --- Fixtures --------------------------------------------------------
@@ -163,12 +140,12 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         return (string) $this->db->query('SELECT email FROM users WHERE id = ?', [$userId])->first()->email;
     }
 
-    private function seedPluginRow(string $messageId, string $recipient, string $acceptedAt): void
+    private function seedPluginRow(string $messageId, string $recipient, string $acceptedAt, ?string $tags = null): void
     {
         $this->db->query(
-            "INSERT INTO plg_sendinblue_messages (message_id, recipient_email, sender_email, kind, status, accepted_at)
-             VALUES (?, ?, 'registry@example.test', 'transactional', 'accepted', ?)",
-            [$messageId, $recipient, $acceptedAt]
+            "INSERT INTO plg_sendinblue_messages (message_id, recipient_email, sender_email, kind, tags, status, accepted_at)
+             VALUES (?, ?, 'registry@example.test', 'transactional', ?, 'accepted', ?)",
+            [$messageId, $recipient, $tags, $acceptedAt]
         );
         $this->assertFalse($this->db->error(), 'Test setup: plugin row: ' . $this->db->errorString());
         $this->pluginMessageIds[] = $messageId;
@@ -778,6 +755,95 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertSame('2026-10-14 11:01:00', $flags['bounced_at'], 'The time is that of the soft bounce that escalated');
     }
 
+    // --- Owner contact soft bounces (#2460) -------------------------------
+
+    /**
+     * Seed a plugin row with $tags, then apply one soft bounce for it.
+     * Each call uses a later time, so the cycles keep their order.
+     */
+    private function applyTaggedSoftBounce(int $userId, string $tags, int $hour): string
+    {
+        $messageId = $this->id('tagged');
+        $messageTime = sprintf('2026-10-14 %02d:00:00', $hour);
+        $this->seedPluginRow($messageId, $this->emailOf($userId), $messageTime, $tags);
+        $this->applyEvent($userId, 'soft_bounce', $messageId, $messageTime, sprintf('2026-10-14 %02d:01:00', $hour));
+
+        return $messageId;
+    }
+
+    /** Fails without the #2460 change: the third owner contact soft bounce sets email_bounced. */
+    public function testThreeOwnerContactSoftBouncesRecordEventsButDoNotSetBounced(): void
+    {
+        $userId = $this->makeOwner();
+
+        foreach ([9, 10, 11] as $hour) {
+            $this->applyTaggedSoftBounce($userId, 'send-owner-email', $hour);
+        }
+
+        $rows = $this->eventRows($userId, 'soft_bounce');
+        $this->assertCount(3, $rows, 'The event rows are still recorded');
+        foreach ($rows as $row) {
+            $this->assertSame('soft_bounce', $row->event);
+        }
+        $flags = $this->flags($userId);
+        $this->assertSame('0', $flags['bounced']);
+        $this->assertNull($flags['bounced_at']);
+    }
+
+    /** Passes without the #2460 change: verification soft bounces escalated before, and the filter must keep that. */
+    public function testThreeVerificationSoftBouncesStillEscalate(): void
+    {
+        $userId = $this->makeOwner();
+
+        foreach ([9, 10, 11] as $hour) {
+            $this->applyTaggedSoftBounce($userId, 'car_verification', $hour);
+        }
+
+        $this->assertCount(3, $this->eventRows($userId, 'soft_bounce'));
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags['bounced']);
+        $this->assertSame('2026-10-14 11:01:00', $flags['bounced_at']);
+    }
+
+    /** Fails without the #2460 change: the two owner contact cycles count, so the third event escalates. */
+    public function testTwoOwnerContactPlusOneVerificationSoftBounceDoesNotEscalate(): void
+    {
+        $userId = $this->makeOwner();
+
+        $this->applyTaggedSoftBounce($userId, 'send-owner-email', 9);
+        $this->applyTaggedSoftBounce($userId, 'send-owner-email', 10);
+        $this->applyTaggedSoftBounce($userId, 'car_verification', 11);
+
+        $this->assertCount(3, $this->eventRows($userId, 'soft_bounce'));
+        $this->assertSame('0', $this->flags($userId)['bounced']);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function ownerContactFlagEventProvider(): array
+    {
+        return [
+            'hard bounce' => ['hard_bounce', 'bounced'],
+            'blocked' => ['blocked', 'bounced'],
+            'spam' => ['spam', 'blocked'],
+        ];
+    }
+
+    /** Passes without the #2460 change: only soft bounces are filtered, so these events set their flags before and after. */
+    #[DataProvider('ownerContactFlagEventProvider')]
+    public function testHardBounceBlockedAndSpamOnOwnerContactMailStillSetTheirFlag(string $event, string $flag): void
+    {
+        $userId = $this->makeOwner();
+        $messageId = $this->id('owner-contact');
+        $this->seedPluginRow($messageId, $this->emailOf($userId), '2026-10-14 09:00:00', 'send-owner-email');
+
+        $this->assertTrue($this->applyEvent($userId, $event, $messageId, '2026-10-14 09:00:00', '2026-10-14 09:01:00'));
+
+        $this->assertCount(1, $this->eventRows($userId, $event));
+        $this->assertSame('1', $this->flags($userId)[$flag]);
+    }
+
     // --- MODE_STATE -------------------------------------------------------
 
     public function testStateModeSetsAClearFlagAndSkipsTheJoinAndAddressGuards(): void
@@ -877,6 +943,138 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->applyEvent($userId, 'spam', 'import-' . $userId, self::LONG_AGO, date('Y-m-d H:i:s', strtotime('-1 day')), mode: EmailEventApplier::MODE_STATE, source: 'import');
 
         $this->assertSame('0', $this->flags($userId)['blocked']);
+    }
+
+    // --- Fallback event time (#2426) ---------------------------------------
+
+    /** The import's run time when Brevo gave no usable date. It is after every clear seeded below. */
+    private const RUN_TIME = '2026-09-09 03:00:00';
+
+    /** An admin clear that happened before the run time. */
+    private const CLEARED_AT = '2026-09-09 01:00:00';
+
+    /** Seed the Clear Block row with an explicit clear time, as the admin action writes it. */
+    private function seedClearBlockRowAt(int $ownerId, string $clearedAt): void
+    {
+        $this->assertTrue(
+            (new DeliverabilityFlagLog())->record(
+                0,
+                $ownerId,
+                DeliverabilityFlagLog::FLAG_BLOCKED,
+                1,
+                0,
+                DeliverabilityFlagLog::SOURCE_ADMIN,
+                clearedAt: $clearedAt
+            ),
+            'Test setup: the Clear Block row must be written'
+        );
+    }
+
+    /** Apply one import entry whose time is the fallback run time. */
+    private function applyFallbackEntry(int $userId, string $event): \ElanRegistry\Car\EmailEventApplyResult
+    {
+        return $this->applier->apply(
+            EmailEventMatch::matched($userId, null, self::RUN_TIME),
+            $this->emailOf($userId),
+            $event,
+            null,
+            'import-fallback-' . $userId . '-' . $event,
+            self::RUN_TIME,
+            'import',
+            EmailEventApplier::MODE_STATE,
+            null,
+            true
+        );
+    }
+
+    /** @return array<string, array{string, bool}> event, true for a Clear Bounced and false for a Clear Block */
+    public static function fallbackClearProvider(): array
+    {
+        return [
+            'spam after Clear Block' => ['spam', false],
+            'unsubscribed after Clear Block' => ['unsubscribed', false],
+            'hard_bounce after Clear Bounced' => ['hard_bounce', true],
+            'blocked after Clear Bounced' => ['blocked', true],
+            'invalid_email after Clear Bounced' => ['invalid_email', true],
+        ];
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerSkipsWhenAClearIsOnRecord(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner($clearBounced ? ['email_bounce_cleared_at' => self::CLEARED_AT] : []);
+        if (!$clearBounced) {
+            $this->seedClearBlockRowAt($userId, self::CLEARED_AT);
+        }
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertSame([], $this->eventRows($userId), 'No event row is written');
+        $this->assertNoFlags($userId, 'A run time is not a date that can beat an admin clear');
+
+        $lines = $this->db->query(
+            'SELECT lognote FROM logs WHERE id > ? AND user_id = ? AND lognote LIKE ?',
+            [$this->logIdFloor, $userId, '%no usable event date%']
+        )->results();
+        $this->assertCount(1, $lines);
+        $this->assertSame(
+            "Brevo: event \"{$event}\" for owner {$userId} not recorded: no usable event date and an admin clear is on record.",
+            $lines[0]->lognote
+        );
+        $this->assertStringNotContainsString('@', $lines[0]->lognote);
+    }
+
+    /** @return array<string, array{string, string}> event, the flag column that it sets */
+    public static function fallbackNoClearProvider(): array
+    {
+        return [
+            'spam' => ['spam', 'blocked'],
+            'unsubscribed' => ['unsubscribed', 'blocked'],
+            'hard_bounce' => ['hard_bounce', 'bounced'],
+            'blocked' => ['blocked', 'bounced'],
+        ];
+    }
+
+    #[DataProvider('fallbackNoClearProvider')]
+    public function testFallbackMarkerAppliesWithNoClear(string $event, string $flag): void
+    {
+        $userId = $this->makeOwner();
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
+        $this->assertCount(1, $this->eventRows($userId, $event));
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags[$flag], 'With no clear on record the run time applies as before');
+        $this->assertSame(self::RUN_TIME, $flags[$flag . '_at']);
+    }
+
+    public function testFallbackMarkerWithEventModeThrows(): void
+    {
+        $userId = $this->makeOwner();
+
+        try {
+            $this->applier->apply(
+                EmailEventMatch::matched($userId, null, self::LONG_AGO),
+                $this->emailOf($userId),
+                'spam',
+                null,
+                $this->id('fallback-event-mode'),
+                self::RUN_TIME,
+                'webhook',
+                EmailEventApplier::MODE_EVENT,
+                null,
+                true
+            );
+            $this->fail('InvalidArgumentException expected');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('fallback event time', $e->getMessage());
+        }
+        $this->assertSame([], $this->eventRows($userId), 'Nothing is written');
+        $this->assertNoFlags($userId, 'Nothing is written');
     }
 
     // --- Live-DB guard: the affected-row count ----------------------------

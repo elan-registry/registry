@@ -13,6 +13,11 @@ use ElanRegistry\Cron\AbstractCronJob;
  * method actually reached the job's work, and can optionally throw from
  * execute() to exercise run()/runNow()'s crash isolation.
  *
+ * For the healthchecks.io ping: `$slug` is what healthcheckSlug() returns
+ * (null by default, so existing tests see no ping), and `$softFail` makes
+ * execute() call markRunFailed(). The inherited constructor takes an
+ * optional HealthcheckPinger, so a test passes one in to record the pings.
+ *
  * `jobName()` returns 'brevo_reconciliation', which is in
  * CronJobGuard::ALLOWED_JOB_NAMES — any other name would be rejected by the
  * guard before the fake database saw the claim, preventing the "claim succeeded"
@@ -28,6 +33,12 @@ class SpyCronJob extends AbstractCronJob
 {
     /** Number of times execute() has been entered. */
     public int $executeCalls = 0;
+
+    /** Returned by healthcheckSlug(); null means no ping. */
+    public ?string $slug = null;
+
+    /** When true, execute() calls markRunFailed(). */
+    public bool $softFail = false;
 
     /** @var \Throwable|null Thrown from execute() when set. */
     private ?\Throwable $throwOnExecute = null;
@@ -48,9 +59,18 @@ class SpyCronJob extends AbstractCronJob
         return 24;
     }
 
+    protected function healthcheckSlug(): ?string
+    {
+        return $this->slug;
+    }
+
     protected function execute(): void
     {
         $this->executeCalls++;
+
+        if ($this->softFail) {
+            $this->markRunFailed();
+        }
 
         if ($this->throwOnExecute !== null) {
             throw $this->throwOnExecute;

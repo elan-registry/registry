@@ -48,7 +48,7 @@ final class VerificationSettings
     private const SETTINGS_ROW_ID = 1;
 
     /**
-     * Smallest batch size {@see setBatchSize()} will persist.
+     * Smallest batch size {@see setBatchSize()} will persist and {@see batchSize()} will return.
      *
      * A batch of zero or fewer is not "sending paused" — pausing is what the
      * feature switch and the cron job's own enable flag are for — it is a
@@ -58,7 +58,7 @@ final class VerificationSettings
     private const BATCH_SIZE_MIN = 1;
 
     /**
-     * Largest batch size {@see setBatchSize()} will persist.
+     * Largest batch size {@see setBatchSize()} will persist and {@see batchSize()} will return.
      *
      * The verification programme deliberately sends in small batches to protect
      * sender reputation (#1922); 25 is the ceiling an admin can reach from the
@@ -261,6 +261,16 @@ final class VerificationSettings
     }
 
     /**
+     * Clamp a batch size to `[BATCH_SIZE_MIN, BATCH_SIZE_MAX]`
+     *
+     * The write and the read share this one range rule.
+     */
+    private static function clampBatchSize(int $size): int
+    {
+        return max(self::BATCH_SIZE_MIN, min(self::BATCH_SIZE_MAX, $size));
+    }
+
+    /**
      * Whether the admin tab's feature-switch checkbox should render `disabled`
      *
      * Pure UI-affordance logic, extracted out of `tab-verification.php`'s inline
@@ -334,11 +344,12 @@ final class VerificationSettings
      * verification-email send tool's batch-size preview, and a database hiccup
      * should fall back to a conservative batch size, not break the page.
      *
-     * Written by {@see self::setBatchSize()}, which clamps to `[1, 25]` before
-     * writing — so a value outside that range read back here can only have come
-     * from a direct database edit, not from the admin dashboard.
+     * {@see self::setBatchSize()} clamps to `[1, 25]` before it writes, but a
+     * direct database write (a test fixture, a manual edit) can bypass it. The
+     * read clamps to the same range too, so no caller ever sends more than 25
+     * emails in one batch. An out-of-range stored value logs a warning.
      *
-     * @return int Configured batch size, or 5 if it could not be read
+     * @return int Configured batch size in `[1, 25]`, or 5 if it could not be read
      */
     public function batchSize(): int
     {
@@ -362,7 +373,20 @@ final class VerificationSettings
             return 5;
         }
 
-        return (int) $batchSize;
+        $stored = (int) $batchSize;
+        $clamped = self::clampBatchSize($stored);
+        if ($clamped !== $stored) {
+            $this->logWarning(sprintf(
+                'er_verification_settings.batch_size holds %d, outside [%d, %d] — using %d. '
+                . 'Save a valid batch size on the Verification tab.',
+                $stored,
+                self::BATCH_SIZE_MIN,
+                self::BATCH_SIZE_MAX,
+                $clamped
+            ));
+        }
+
+        return $clamped;
     }
 
     /**
@@ -464,7 +488,7 @@ final class VerificationSettings
      */
     public function setBatchSize(int $size, int $actingUserId = 0): bool
     {
-        $clamped = max(self::BATCH_SIZE_MIN, min(self::BATCH_SIZE_MAX, $size));
+        $clamped = self::clampBatchSize($size);
 
         $this->db->query(
             'UPDATE er_verification_settings SET batch_size = ? WHERE id = ?',

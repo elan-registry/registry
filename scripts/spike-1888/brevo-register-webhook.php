@@ -16,26 +16,32 @@ namespace ElanRegistry\Spike1888;
  * Brevo's REST API so a test registration can be set up and torn down
  * without a trip through the Brevo dashboard.
  *
- * This is test-environment-only by design: --create refuses any --url that
- * does not start with "https://test." (no bypass flag). Production webhook
- * registration is explicitly out of scope for #1888.
+ * By default --create accepts only a --url that starts with "https://test.".
+ * The --allow-prod flag (#2088) accepts one URL only: PROD_WEBHOOK_URL, the
+ * production receiver, as an exact match. The flag does not open other
+ * hosts, so a typo or a look-alike host cannot get a production token. The
+ * script checks the URL before it reads .env or calls Brevo.
  *
  * Examples:
  *   php scripts/spike-1888/brevo-register-webhook.php \
- *       --create --url='https://test.elanregistry.org/scripts/spike-1888/capture.php' \
+ *       --create --url='https://test.elanregistry.org/app/api/webhooks/brevo.php' \
  *       --token=<same value as that server's BREVO_WEBHOOK_TOKEN>
+ *   php scripts/spike-1888/brevo-register-webhook.php \
+ *       --create --allow-prod --url='https://elanregistry.org/app/api/webhooks/brevo.php' \
+ *       --token=<same value as production's BREVO_WEBHOOK_TOKEN> \
+ *       --description='Elan Registry production'
  *   php scripts/spike-1888/brevo-register-webhook.php --list-webhooks
  *   php scripts/spike-1888/brevo-register-webhook.php --delete --id=123
  *   php scripts/spike-1888/brevo-register-webhook.php --env=/home/<cpanel-account>/test.elanregistry.org
  *
- * --host overrides DB_HOST so this script can reach test's plg_sendinblue
- * row from elsewhere (e.g. an SSH tunnel to test's DB) without editing
- * --env's .env file. It is NOT a way to rehearse this against local dev's own
- * database: --create still calls Brevo's live production API with whichever
- * account plg_sendinblue.key points at, so pairing --host with the local
- * Docker database would register a real webhook against test's Brevo account
- * using local dev's (usually absent or unrelated) Brevo credentials — not a
- * safe local rehearsal.
+ * --host overrides DB_HOST so this script can reach the target environment's
+ * plg_sendinblue row (test or production) from elsewhere (e.g. an SSH tunnel
+ * to that environment's DB) without editing --env's .env file. It is NOT a
+ * way to rehearse this against local dev's own database: --create still calls
+ * Brevo's live production API with whichever account plg_sendinblue.key
+ * points at, so pairing --host with the local Docker database would register
+ * a real webhook using local dev's (usually absent or unrelated) Brevo
+ * credentials — not a safe local rehearsal.
  *
  * To run this script locally against the Docker dev environment (for
  * --list-webhooks or --delete, not --create — see above), run it inside the
@@ -81,6 +87,9 @@ if (!function_exists('curl_init')) {
 const REPO_ROOT = __DIR__ . '/../..';
 const BREVO_API_BASE = 'https://api.brevo.com/v3';
 
+/** The only URL that --create accepts with --allow-prod. */
+const PROD_WEBHOOK_URL = 'https://elanregistry.org/app/api/webhooks/brevo.php';
+
 /**
  * The delivery events subscribed on --create. Open and click events are
  * not subscribed, because the registry records no open or click.
@@ -115,6 +124,7 @@ function optValue(array $opts, string $name, ?string $default): ?string
  *     listWebhooks: bool,
  *     delete: bool,
  *     url: ?string,
+ *     allowProd: bool,
  *     token: ?string,
  *     description: string,
  *     id: ?string,
@@ -130,6 +140,7 @@ function parseArgs(): array
         'list-webhooks',
         'delete',
         'url:',
+        'allow-prod',
         'token:',
         'description:',
         'id:',
@@ -140,6 +151,8 @@ function parseArgs(): array
         $opts = [];
     }
 
+    $allowProd = isset($opts['allow-prod']);
+
     return [
         'envDir' => (string) optValue($opts, 'env', dirname(__DIR__, 2)),
         'host' => optValue($opts, 'host', null),
@@ -147,8 +160,14 @@ function parseArgs(): array
         'listWebhooks' => isset($opts['list-webhooks']),
         'delete' => isset($opts['delete']),
         'url' => optValue($opts, 'url', null),
+        'allowProd' => $allowProd,
         'token' => optValue($opts, 'token', null),
-        'description' => (string) optValue($opts, 'description', '1888 — test env'),
+        // A forgotten --description must not label the production webhook "test env".
+        'description' => (string) optValue(
+            $opts,
+            'description',
+            $allowProd ? 'Elan Registry production' : '1888 — test env'
+        ),
         'id' => optValue($opts, 'id', null),
         'help' => isset($opts['help']),
     ];
@@ -160,33 +179,65 @@ function usage(): void
     Brevo webhook registration helper (spike/issue #1888)
 
     Usage:
-      php scripts/spike-1888/brevo-register-webhook.php --create --url=<url> --token=<token> [options]
+      php scripts/spike-1888/brevo-register-webhook.php --create --url=<url> --token=<token> [--allow-prod] [options]
       php scripts/spike-1888/brevo-register-webhook.php --list-webhooks [--env=<dir>]
       php scripts/spike-1888/brevo-register-webhook.php --delete --id=<webhook-id> [--env=<dir>]
 
     Options:
       --create             Register a new transactional webhook and exit
       --url=<url>          Webhook URL (required for --create); must start with https://test.
+                            unless --allow-prod is given
+      --allow-prod         Accept only the production receiver URL:
+                            https://elanregistry.org/app/api/webhooks/brevo.php
+                            Takes no value: --allow-prod=0 still turns it on.
       --token=<token>      Bearer token for the webhook's bearer auth (required for --create; never printed)
-      --description=<text> Webhook description (default: "1888 — test env")
+      --description=<text> Webhook description (default: "1888 — test env", or
+                            "Elan Registry production" with --allow-prod)
       --list-webhooks      List the account's transactional webhooks and exit
       --delete             Delete a webhook (requires --id) and exit
       --id=<id>            Webhook id to delete
       --env=<dir>          Directory containing the .env file (default: repo root)
-      --host=<host>        Override DB_HOST (e.g. reaching test's DB over an
-                            SSH tunnel). NOT a local Docker rehearsal mode —
+      --host=<host>        Override DB_HOST (e.g. reaching test's or production's
+                            DB over an SSH tunnel). NOT a local Docker rehearsal mode —
                             --create always calls Brevo's live API; see file docblock.
       --help               Show this message
 
     Examples:
       php scripts/spike-1888/brevo-register-webhook.php --create \\
-          --url='https://test.elanregistry.org/scripts/spike-1888/capture.php' \\
+          --url='https://test.elanregistry.org/app/api/webhooks/brevo.php' \\
           --token=<same value as that server's BREVO_WEBHOOK_TOKEN> \\
           --description='1888 — test env'
+      php scripts/spike-1888/brevo-register-webhook.php --create --allow-prod \\
+          --url='https://elanregistry.org/app/api/webhooks/brevo.php' \\
+          --token=<same value as production's BREVO_WEBHOOK_TOKEN> \\
+          --description='Elan Registry production'
       php scripts/spike-1888/brevo-register-webhook.php --list-webhooks
       php scripts/spike-1888/brevo-register-webhook.php --delete --id=123
 
     TXT);
+}
+
+/**
+ * Check a --create URL against the environment that the flags allow.
+ *
+ * The error text never holds the token, because the caller prints it.
+ *
+ * @param string $url       The --url value, compared as given (no trim, no case fold).
+ * @param bool   $allowProd True when --allow-prod is set.
+ *
+ * @return ?string Null when the URL is allowed, else an error message.
+ */
+function createUrlError(string $url, bool $allowProd): ?string
+{
+    if ($allowProd) {
+        return $url === PROD_WEBHOOK_URL
+            ? null
+            : '--allow-prod accepts only --url=' . PROD_WEBHOOK_URL . ' (exact match).';
+    }
+
+    return str_starts_with($url, 'https://test.')
+        ? null
+        : '--url must start with https://test. To register the production receiver, add --allow-prod.';
 }
 
 /**
@@ -430,15 +481,12 @@ function listWebhooks(array $config): void
 /**
  * Create a new transactional webhook.
  *
+ * The caller must check $url with createUrlError() first.
+ *
  * @param array{key: string, from: string, from_name: string, reply: string} $config
  */
 function createWebhook(array $config, string $url, string $token, string $description): void
 {
-    if (!str_starts_with($url, 'https://test.')) {
-        fwrite(STDERR, "--url must start with https://test. — this script only registers test-environment webhooks (no bypass; production registration is out of scope for #1888).\n");
-        exit(2);
-    }
-
     $response = brevoRequest('POST', '/webhooks', $config['key'], [
         'url' => $url,
         'type' => 'transactional',
@@ -481,10 +529,19 @@ if ($args['help'] || (!$args['create'] && !$args['listWebhooks'] && !$args['dele
     exit(2);
 }
 
-if ($args['create'] && ($args['url'] === null || $args['token'] === null)) {
-    fwrite(STDERR, "--create requires --url and --token.\n");
-    usage();
-    exit(2);
+if ($args['create']) {
+    if ($args['url'] === null || $args['token'] === null) {
+        fwrite(STDERR, "--create requires --url and --token.\n");
+        usage();
+        exit(2);
+    }
+
+    // Check the URL first, so a bad URL never reads .env or the API key.
+    $urlError = createUrlError($args['url'], $args['allowProd']);
+    if ($urlError !== null) {
+        fwrite(STDERR, $urlError . "\n");
+        exit(2);
+    }
 }
 
 if ($args['delete'] && $args['id'] === null) {

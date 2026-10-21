@@ -355,13 +355,13 @@ else
     # shellcheck source=/dev/null
     source "$FN_FILE"
     scenario4_ok=1
-    for bad in "docs/plans/analysis/x.md" "docs/plans/sprints/v2.30.md" "_noupload/secret.txt"; do
+    for bad in "docs/plans/analysis/x.md" "docs/plans/sprints/v2.30.md" "docs/plans/releases/v2.31-deploy.md" "_noupload/secret.txt"; do
         if ! is_forbidden_path "$bad"; then
             echo "FAIL: Scenario 4: is_forbidden_path did not reject '$bad'"
             scenario4_ok=0
         fi
     done
-    for good in "app/api/cars/index.php" "docs/development/DATABASE.md" "tests/hooks/test-commit-push-pr.sh"; do
+    for good in "app/api/cars/index.php" "docs/development/DATABASE.md" "tests/hooks/test-commit-push-pr.sh" "docs/plans/releases/v2.30-deploy.md"; do
         if is_forbidden_path "$good"; then
             echo "FAIL: Scenario 4: is_forbidden_path incorrectly rejected '$good'"
             scenario4_ok=0

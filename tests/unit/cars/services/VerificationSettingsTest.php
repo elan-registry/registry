@@ -343,6 +343,52 @@ final class VerificationSettingsTest extends TestCase
     }
 
     // =========================================================================
+    // batchSize() — read-side clamp to [1, 25] (#2363)
+    // =========================================================================
+
+    /**
+     * A direct database write can store a value that setBatchSize() would
+     * never write. batchSize() must still return a value in [1, 25] and
+     * log one warning that names the stored value.
+     *
+     * @return array<string, array{int, int}> [stored, expected return]
+     */
+    public static function outOfRangeStoredBatchSizeProvider(): array
+    {
+        return [
+            'above the maximum' => [255, 25],
+            'zero'              => [0, 1],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('outOfRangeStoredBatchSizeProvider')]
+    public function testBatchSizeClampsOutOfRangeStoredValueAndLogsOneWarning(int $stored, int $expected): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => $stored]);
+
+        $this->assertSame($expected, (new VerificationSettings($db))->batchSize());
+
+        $warnings = array_values(array_filter(
+            $mockLogEntries,
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING
+        ));
+        $this->assertCount(1, $warnings, 'An out-of-range stored batch size must log exactly one warning');
+        $this->assertStringContainsString((string) $stored, $warnings[0]['message']);
+    }
+
+    public function testBatchSizeReturnsInRangeStoredValueWithoutWarning(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => 10]);
+
+        $this->assertSame(10, (new VerificationSettings($db))->batchSize());
+        $this->assertSame([], $mockLogEntries, 'An in-range stored batch size must log nothing');
+    }
+
+    // =========================================================================
     // setBatchSize() (#1885) — clamps to [1, 25], never rejects
     // =========================================================================
 

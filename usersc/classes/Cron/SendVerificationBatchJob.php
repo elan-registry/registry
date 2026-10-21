@@ -9,6 +9,7 @@ use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -35,8 +36,8 @@ use ElanRegistry\LogCategories;
  * byte-for-byte the same send, differing only in what triggers them.
  *
  * BOUNDED WORK PER INVOCATION. One page of at most
- * {@see VerificationSettings::batchSize()} cars (clamped to [1, 25] at the
- * write side) per claimed run, never a loop until the eligible set empties.
+ * {@see VerificationSettings::batchSize()} cars (clamped to [1, 25] on write
+ * and on read) per claimed run, never a loop until the eligible set empties.
  * cron.php dispatches jobs in-process with no subprocess boundary (see
  * {@see AbstractCronJob}), so an unbounded walk over the ~1,500-car eligible
  * backlog would hold the whole cron hit open — and, more importantly, would
@@ -60,6 +61,9 @@ final class SendVerificationBatchJob extends AbstractCronJob
 {
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
     public const JOB_NAME = 'send_verification_batch';
+
+    /** healthchecks.io check slug, without the environment suffix. */
+    private const HEALTHCHECK_SLUG = 'send-verification-batch';
 
     /**
      * Minimum hours between claimed runs.
@@ -96,14 +100,17 @@ final class SendVerificationBatchJob extends AbstractCronJob
      *        {@see \ElanRegistry\Car\CarRepository} dependency: this class must
      *        not have its own opinion about how eligibility is determined.
      * @param VerificationBatchSender $sender The shared per-car send loop
+     * @param HealthcheckPinger|null $pinger Pings healthchecks.io after a
+     *        claimed run; defaults to a real pinger
      */
     public function __construct(
         DatabaseInterface $db,
         private readonly VerificationSettings $settings,
         private readonly CarVerificationSendService $sendSvc,
         private readonly VerificationBatchSender $sender,
+        ?HealthcheckPinger $pinger = null,
     ) {
-        parent::__construct($db);
+        parent::__construct($db, $pinger);
     }
 
     /**
@@ -136,6 +143,14 @@ final class SendVerificationBatchJob extends AbstractCronJob
     }
 
     /**
+     * {@inheritDoc}
+     */
+    protected function healthcheckSlug(): string
+    {
+        return self::HEALTHCHECK_SLUG;
+    }
+
+    /**
      * Send one batch of verification emails and persist its outcome counts.
      *
      * Reached only after {@see AbstractCronJob::run()} has won the guard claim,
@@ -160,8 +175,11 @@ final class SendVerificationBatchJob extends AbstractCronJob
                 "Cron job '%s': eligible-car query FAILED (batch size %d) — nothing sent this run: %s",
                 self::JOB_NAME,
                 $batchSize,
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
+            // Handled without a throw, so the ping must be told: a success
+            // ping here would hide a failed eligibility query.
+            $this->markRunFailed();
             return;
         }
 
@@ -271,7 +289,7 @@ final class SendVerificationBatchJob extends AbstractCronJob
                 . ' (the batch itself was unaffected — dashboard counts will be stale).'
                 . ' Check that 20260916000000_add_cron_job_runs_last_outcome_counts has applied: %s',
                 self::JOB_NAME,
-                $e->getMessage()
+                ExceptionLogSummary::of($e)
             ));
             return;
         }

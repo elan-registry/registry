@@ -307,9 +307,9 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         $this->assertSame([], $this->repo->recentFlagChanges($ownerId, 100), 'A failed write logs no flag change');
     }
 
-    /** #1895 AC 9: same eligibility result as the admin clearSuppressedForOwner(). */
+    /** #1895 AC 9: same eligibility result as the admin clearOptedOutForOwner() (#2357). */
     #[Group('fast')]
-    public function testEligibilityParityWithAdminClearSuppressedForOwner(): void
+    public function testEligibilityParityWithAdminClearOptedOutForOwner(): void
     {
         $ownerOneId = $this->createTestUser([], true);
         $this->setOwnerOptedOut($ownerOneId);
@@ -324,7 +324,7 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         $this->assertNotContains($carTwoId, $before);
 
         $this->manager->clearSuppressedForOwnerByOwner($ownerOneId);
-        $this->manager->clearSuppressedForOwner($ownerTwoId, $ownerTwoId);
+        $this->assertTrue($this->manager->clearOptedOutForOwner($ownerTwoId, $ownerTwoId), 'Test setup: the admin clear must change the flag');
 
         $after = $this->allVerificationEligibleCarIds();
 

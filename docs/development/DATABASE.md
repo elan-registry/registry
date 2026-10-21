@@ -112,13 +112,13 @@ For the full workflow, see
 | `lat`, `lon` | `float` | Geographic coordinates |
 | `bio` | `text` | User biography |
 | `website` | `varchar(100)` | Personal website |
-| `email_opted_out` | `TINYINT(1) NOT NULL DEFAULT 0` | The owner asked to stop all registry email except account mail (password reset, sign-in, email change) (#1883, #2360). Renamed from `email_suppressed` in #2101. Set by the opt-out link in the verification email. Cleared by Resume (owner) and by Clear Suppression (admin). |
+| `email_opted_out` | `TINYINT(1) NOT NULL DEFAULT 0` | The owner asked to stop all registry email except account mail (password reset, sign-in, email change) (#1883, #2360). Renamed from `email_suppressed` in #2101. Set by the opt-out link in the verification email. Cleared by Resume (owner) and by Clear Opt-out (admin). |
 | `email_opted_out_at` | `datetime NULL` | When the owner opted out. NULL when the flag is 0. Can also be NULL for a flag that the #2101 migration copied, when no `EMAIL SUPPRESSED` history row dates it. |
 | `email_blocked` | `TINYINT(1) NOT NULL DEFAULT 0` | Brevo will not deliver to `email_blocked_address` (spam complaint, unsubscribe, or blocklist) (#2101). Set by delivery events and the suppression import. An admin clears it, and a confirmed change to another address clears it. |
 | `email_blocked_address` | `varchar(155) NULL` | The address that is blocked. Stored normalized (lower case). Never empty while `email_blocked = 1`. |
 | `email_blocked_at` | `datetime NULL` | When the block happened. |
 | `email_blocked_cause` | `varchar(16) NULL` | `spam`, `unsubscribed`, `blocklist`, or NULL when the cause is unknown. |
-| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | The address in `email_bounced_address` bounced (#1884, #2101). Set by a hard bounce, by soft-bounce escalation, and by the admin Mark Bounced action. |
+| `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | The address in `email_bounced_address` bounced (#1884, #2101). Set by a hard bounce, by soft-bounce escalation (not owner-contact mail), and by the admin Mark Bounced action. |
 | `email_bounced_address` | `varchar(155) NULL` | The address that bounced. Stored normalized (lower case). |
 | `email_bounced_at` | `datetime NULL` | When the bounce happened. Every path that sets `email_bounced` also sets it (#2320). The one exception is a flag that the #2101 migration copied with no dated event or `EMAIL BOUNCED` row: its date is NULL. |
 | `email_bounce_cleared_at` | `datetime NULL` | When the bounce was last cleared. Soft bounces before this time do not count toward a new escalation. |
@@ -138,8 +138,11 @@ never blocked by a flag.
 
 Each flag change writes one `logs` row with `logtype` `EmailBounced`
 (`LogCategories::LOG_CATEGORY_EMAIL_BOUNCED`). The
-`logs.metadata` JSON holds `owner_id`, `flag`, `old`, `new` and `source`. The
-row holds no email address. `profiles` has no history table, so these `logs`
+`logs.metadata` JSON holds `owner_id`, `flag`, `old`, `new` and `source`. It
+holds two more keys only when the caller sets them: `cleared_at` (string, `Y-m-d H:i:s`) and
+`owner_requested` (integer 1). Admin Clear Block and Clear Opt-out set
+`owner_requested`. Clear Block also sets `cleared_at`. The readers ignore
+unknown keys. The row holds no email address. `profiles` has no history table, so these `logs`
 rows are the audit trail. See `DeliverabilityFlagLog` in
 [CLASSES.md](CLASSES.md). The migration is in
 `database/migrations/20261012000000_move_deliverability_flags_to_profiles.php`.
@@ -434,7 +437,7 @@ the migration history in `database/migrations/` for the rest.
 | `enabled` | `boolean NOT NULL DEFAULT 0` | Feature switch; gates all verification-related sends (#1881–#1883). Admin-gated toggle on the Verification System tab; `setEnabled(true)` throws `VerificationConfigException` if Brevo is not ready. |
 | `last_cron_request_at` | `datetime NULL` | Timestamp of the most recent accepted cron transport hit (#1974). Used by `VerificationSettings::cronReady()` to check if the 10-minute cron transport is responsive. `NULL` until first successful hit. |
 | `unmatched_recipient_count` | `int unsigned NOT NULL DEFAULT 0` | Counter of verification-tagged Brevo events (webhook and reconciliation) of our mail whose recipient no single user holds (#1887, #2085, #2359). An event with another tag, or with no tag, does not count. The suppression import does not count. Used for operational monitoring. Incremented by the webhook receiver (`app/api/webhooks/brevo.php`) and `BrevoEventReconciliationJob`, never reset. |
-| `batch_size` | `tinyint unsigned NOT NULL DEFAULT 5` | Maximum number of verification emails to send in one admin batch (#1884). Controls the preview table size in the Verification tab send-tool section and the default batch count; read via `VerificationSettings::batchSize()`. |
+| `batch_size` | `tinyint unsigned NOT NULL DEFAULT 5` | Maximum number of verification emails to send in one admin batch (#1884). Controls the preview table size in the Verification tab send-tool section and the default batch count; valid range 1 to 25. `VerificationSettings::setBatchSize()` clamps on write and `VerificationSettings::batchSize()` clamps on read (#2363). |
 
 **Written By**: `VerificationSettings` class (all writes), via `app/api/webhooks/brevo.php`,
 `BrevoEventReconciliationJob`, `BrevoSuppressionSyncJob`, admin toggle endpoint, cron transport

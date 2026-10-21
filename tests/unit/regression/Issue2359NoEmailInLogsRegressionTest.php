@@ -8,6 +8,7 @@ use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
+use ElanRegistry\Cron\HealthcheckPinger;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -17,6 +18,7 @@ use Tests\Support\FakeBrevoBlockedContact;
 use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
 use Tests\Support\FakeBrevoSuppressionSyncClient;
+use Tests\Support\RecordingHealthcheckTransport;
 use Tests\Support\SpyEmailEventApplier;
 
 require_once __DIR__ . '/../../Support/FakeDatabase.php';
@@ -26,6 +28,7 @@ require_once __DIR__ . '/../../Support/FakeBrevoEventReconciliationClient.php';
 require_once __DIR__ . '/../../Support/FakeBrevoBlockedContact.php';
 require_once __DIR__ . '/../../Support/FakeBrevoSuppressionSyncClient.php';
 require_once __DIR__ . '/../../Support/SpyEmailEventApplier.php';
+require_once __DIR__ . '/../../Support/RecordingHealthcheckTransport.php';
 
 /**
  * Issue #2359: no log line holds an email address, and no `catch` block of the
@@ -66,19 +69,62 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
      * `catch` blocks that the file has, so a rewrite that removes the blocks
      * (and so the scan) fails here instead of passing with nothing scanned.
      *
+     * The two Brevo API clients, VerificationBatchSender and
+     * CarVerificationSendService are here because their `catch` blocks log an
+     * exception that can hold an address. SendVerificationBatchJob is here
+     * for the same reason: its eligibility query is a CarRepository call. BrevoApiFactory and
+     * BrevoBlocklistClient (#2357) are here because their `catch` blocks see
+     * an SDK exception whose message holds the request URL with the address.
+     * BrevoSuppressionSyncClient has one `catch` since its SDK load moved to
+     * BrevoApiFactory.
+     *
      * @var array<string, int>
      */
     private const SCANNED_FILES = [
         'app/api/webhooks/brevo.php' => 3,
         'usersc/classes/Car/BrevoWebhookEventProcessor.php' => 3,
-        'usersc/classes/Cron/AbstractCronJob.php' => 2,
+        'usersc/classes/Cron/AbstractCronJob.php' => 4,
         'usersc/classes/Cron/BrevoEventReconciliationJob.php' => 4,
         'usersc/classes/Cron/BrevoSuppressionSyncJob.php' => 5,
         'app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php' => 1,
         'app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php' => 1,
         'usersc/classes/Car/EmailEventApplier.php' => 2,
         'usersc/classes/Car/EmailEventMatcher.php' => 0,
+        'usersc/classes/Cron/BrevoSuppressionSyncClient.php' => 1,
+        'usersc/classes/Email/BrevoApiFactory.php' => 1,
+        'usersc/classes/Email/BrevoBlocklistClient.php' => 1,
+        'usersc/classes/Cron/BrevoEventReconciliationClient.php' => 2,
+        'usersc/classes/Car/VerificationBatchSender.php' => 3,
+        'usersc/classes/Car/CarVerificationSendService.php' => 5,
+        'usersc/classes/Cron/SendVerificationBatchJob.php' => 2,
     ];
+
+    /**
+     * Parts of a file that the scans check, when the rest of the file is out
+     * of scope. The value holds the file, the first line of the part, a marker
+     * after its end, and the least number of `catch` blocks in it.
+     *
+     * The admin owner deliverability handlers are one part of
+     * app/admin/index.php: Mark Bounced, Clear Bounced, Clear Block and
+     * Clear Opt-out (#2357). The other cases of that file log exception
+     * messages, and they are out of scope.
+     *
+     * @var array<string, array{path: string, start: string, end: string, catches: int}>
+     */
+    private const SCANNED_SECTIONS = [
+        'app/admin/index.php (mark_bounced, clear_bounced, clear_block, clear_opt_out)' => [
+            'path' => 'app/admin/index.php',
+            'start' => 'case "mark_bounced":',
+            'end' => '// Convert error/success arrays to UserSpice session messages',
+            'catches' => 6,
+        ],
+    ];
+
+    /** Property and method names whose value is an address. Lower case. */
+    private const ADDRESS_MEMBERS = ['email', 'email_address', 'getemail', 'recipient_email'];
+
+    /** Array keys whose value is an address. Lower case. */
+    private const ADDRESS_KEYS = ['email', 'email_address', 'recipient_email'];
 
     protected function setUp(): void
     {
@@ -182,11 +228,13 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
      *
      * The scans above look at exception messages. This scan looks at the
      * arguments of each `logger(` call (also inside a string, as in `"{$email}"`).
-     * It reports a variable that is named like an address, an `['email']` key,
-     * and an `->email` property. A call to `addressLogHash(` is allowed: it
-     * returns a hash, not the address. A call to `get_debug_type(` or `strlen(`
-     * and a comparison such as `$x === ''` also give no address. A message that a caller builds first and
-     * then passes in a variable is not seen. The behaviour tests in Part 2 and in
+     * It reports a variable that is named like an address, an `['email']` or
+     * `['email_address']` key, an `->email` or `->email_address` property, and
+     * a `->getEmail()` call. It sees `logger(` and `\logger(`. A call to
+     * `addressLogHash(` is allowed: it returns a hash, not the address. A call
+     * to `get_debug_type(` or `strlen(` and a comparison such as `$x === ''`
+     * also give no address. A message that a caller builds first and then
+     * passes in a variable is not seen. The behaviour tests in Part 2 and in
      * BrevoWebhookEventProcessorTest cover that case.
      *
      * @return list<array{line: int, found: string}> Each hit
@@ -198,7 +246,11 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         $hits = [];
 
         for ($i = 0; $i < $count; $i++) {
-            if (!is_array($tokens[$i]) || $tokens[$i][0] !== T_STRING || strtolower($tokens[$i][1]) !== 'logger') {
+            // "\logger(" is one T_NAME_FULLY_QUALIFIED token, not a T_STRING.
+            if (!is_array($tokens[$i])
+                || !in_array($tokens[$i][0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)
+                || ltrim(strtolower($tokens[$i][1]), '\\') !== 'logger'
+            ) {
                 continue;
             }
             $previous = self::previousCodeToken($tokens, $i);
@@ -250,10 +302,12 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
                     $hits[] = ['line' => $token[2], 'found' => $token[1]];
                 } elseif ($token[0] === T_OBJECT_OPERATOR || $token[0] === T_NULLSAFE_OBJECT_OPERATOR) {
                     $next = self::nextCodeIndex($tokens, $j);
-                    if ($next !== null && is_array($tokens[$next]) && $tokens[$next][0] === T_STRING && strtolower($tokens[$next][1]) === 'email') {
-                        $hits[] = ['line' => $tokens[$next][2], 'found' => '->email'];
+                    if ($next !== null && is_array($tokens[$next]) && $tokens[$next][0] === T_STRING
+                        && in_array(strtolower($tokens[$next][1]), self::ADDRESS_MEMBERS, true)
+                    ) {
+                        $hits[] = ['line' => $tokens[$next][2], 'found' => '->' . $tokens[$next][1]];
                     }
-                } elseif ($token[0] === T_CONSTANT_ENCAPSED_STRING && in_array(strtolower(trim($token[1], '\'"')), ['email', 'recipient_email'], true)) {
+                } elseif ($token[0] === T_CONSTANT_ENCAPSED_STRING && in_array(strtolower(trim($token[1], '\'"')), self::ADDRESS_KEYS, true)) {
                     $previousToken = self::previousCodeToken($tokens, $j);
                     if ($previousToken === '[') {
                         $hits[] = ['line' => $token[2], 'found' => "[{$token[1]}]"];
@@ -336,6 +390,47 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         return $cases;
     }
 
+    /**
+     * @return array<string, array{string, int}> label => [part source, least `catch` blocks]
+     */
+    public static function scannedSectionProvider(): array
+    {
+        $cases = [];
+        foreach (self::SCANNED_SECTIONS as $label => $section) {
+            $source = file_get_contents(self::ROOT . '/' . $section['path']);
+            if (!is_string($source)) {
+                throw new \RuntimeException("{$section['path']} must be readable");
+            }
+            $start = strpos($source, $section['start']);
+            $end = $start === false ? false : strpos($source, $section['end'], $start);
+            if ($start === false || $end === false) {
+                throw new \RuntimeException("{$label}: the start or end marker is missing");
+            }
+            $cases[$label] = ['<?php ' . substr($source, $start, $end - $start), $section['catches']];
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('scannedSectionProvider')]
+    public function testSectionCatchBlocksAndLoggerCallsHoldNoAddress(string $source, int $minimumCatches): void
+    {
+        $scan = self::scanCatchBlocks($source);
+
+        $this->assertGreaterThanOrEqual($minimumCatches, $scan['catches'], 'The scan must find the catch blocks of the section');
+        $this->assertSame([], $scan['offending'], 'A catch block calls ->getMessage() in the section');
+        $this->assertSame([], self::exceptionMessageCalls($source), 'An exception variable calls ->getMessage() in the section');
+
+        $hits = self::addressesInLoggerCalls($source);
+
+        $this->assertSame(
+            [],
+            $hits,
+            'A logger() call in the section has an address in its arguments: '
+            . implode(', ', array_map(static fn (array $h): string => "{$h['found']} (line {$h['line']})", $hits))
+        );
+    }
+
     #[DataProvider('scannedFileProvider')]
     public function testNoCatchBlockCallsGetMessage(string $path, int $minimumCatches): void
     {
@@ -397,6 +492,34 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         $hits = self::addressesInLoggerCalls($source);
 
         $this->assertSame([2, 3, 4, 5, 6], array_column($hits, 'line'));
+    }
+
+    /**
+     * One snippet for each address rule. Each snippet has one address
+     * that the scan must report.
+     *
+     * @return array<string, array{string, string}> Source line, expected hit
+     */
+    public static function addedLoggerRuleProvider(): array
+    {
+        return [
+            'getEmail() call' => ["logger(0, 'x', 'to ' . \$owner->getEmail());", '->getEmail'],
+            'email_address property' => ["logger(0, 'x', 'to ' . \$row->email_address);", '->email_address'],
+            'email_address key' => ["logger(0, 'x', 'to ' . \$row['email_address']);", "['email_address']"],
+            'recipient_email property' => ["logger(0, 'x', 'to ' . \$row->recipient_email);", '->recipient_email'],
+            'fully qualified logger' => ["\\logger(0, 'x', 'to ' . \$email);", '$email'],
+            // The allowance of a safe call must end at its own ")", also when
+            // the call holds a nested call. If it does not end, the address after it is not seen.
+            'address after a safe call' => ["logger(0, 'x', addressLogHash(trim(\$a)) . ' ' . \$email);", '$email'],
+        ];
+    }
+
+    #[DataProvider('addedLoggerRuleProvider')]
+    public function testLoggerScanSeesTheAddedRules(string $line, string $expected): void
+    {
+        $hits = self::addressesInLoggerCalls("<?php\n{$line}\n");
+
+        $this->assertSame([['line' => 2, 'found' => $expected]], $hits);
     }
 
     public function testLoggerScanAllowsTheHashHelperAndOtherCode(): void
@@ -584,7 +707,11 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
             new FakeBrevoEventReconciliationClient([
                 new FakeBrevoEvent(email: self::ADDRESS, event: 'hardBounces', messageId: 'm-2359'),
             ]),
-            new DateTimeImmutable(self::NOW)
+            new DateTimeImmutable(self::NOW),
+            // A recording transport keeps the test off the network.
+            // HEALTHCHECKS_* is not set here, so run() still logs the pinger's
+            // "not sent" line. That line holds no email address.
+            new HealthcheckPinger(new RecordingHealthcheckTransport()),
         );
     }
 

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
+require_once __DIR__ . '/../Support/RecordingHealthcheckTransport.php';
 require_once __DIR__ . '/../Support/FakeBrevoEvent.php';
 require_once __DIR__ . '/../Support/FakeBrevoEventReconciliationClient.php';
 
@@ -11,9 +12,11 @@ use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
+use ElanRegistry\Cron\HealthcheckPinger;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
+use Tests\Support\RecordingHealthcheckTransport;
 
 /**
  * #1889, #2034, #2358: BrevoEventReconciliationJob::runNow() bypasses
@@ -153,7 +156,8 @@ final class BrevoEventReconciliationRunNowBypassIntegrationTest extends Integrat
             new EmailEventMatcher($this->repo),
             $this->applier,
             new FakeBrevoEventReconciliationClient($events),
-            new \DateTimeImmutable('2026-09-09 03:00:00')
+            new \DateTimeImmutable('2026-09-09 03:00:00'),
+            new HealthcheckPinger(new RecordingHealthcheckTransport())
         );
     }
 

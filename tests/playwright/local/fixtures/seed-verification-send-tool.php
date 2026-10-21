@@ -14,7 +14,7 @@ use ElanRegistry\DatabaseInterface;
  * same US_ENVIRONMENT=development guard so this can never run against a
  * deployed database.
  *
- * Seeds three owners, each with one car:
+ * Seeds four owners, each with one car:
  *  The deliverability flags are on the owner profile (#2101), and an eligible
  *  car needs an owner with a profiles row. Each owner below has one.
  *
@@ -31,12 +31,20 @@ use ElanRegistry\DatabaseInterface;
  *    it, and to exercise the Mark Bounced/Clear Bounced buttons' `form=`
  *    wiring against a row that already carries a bounce.
  *  - one SUPPRESSED car (profile email_opted_out = 1): same purpose as the bounced
- *    car, but for the Clear Suppression action.
+ *    car, but for the Clear Opt-out action.
+ *  - one BOTH-FLAGS car (#2357): profile email_blocked = 1 with
+ *    email_blocked_address equal to the owner's email, and email_opted_out = 1.
+ *    The row shows Clear Block first, then Clear Opt-out. The address is also
+ *    put on the mock-brevo blocklist, so Clear Block runs a real DELETE.
+ *
+ * With `--brevo-blocked` the script seeds nothing. It prints
+ * `{"brevoBlocked": <bool>}` for the both-flags address, read from mock-brevo.
  *
  * Prints a single JSON line to stdout:
  * `{"eligibleCarId": <id>, "eligibleUserId": <id>, "eligibleChassis": <string>,
  *   "bouncedCarId": <id>, "bouncedUserId": <id>,
- *   "suppressedCarId": <id>, "suppressedUserId": <id>}`
+ *   "suppressedCarId": <id>, "suppressedUserId": <id>,
+ *   "bothCarId": <id>, "bothUserId": <id>, "bothAddress": <string>}`
  */
 
 $projectRoot = dirname(__DIR__, 4);
@@ -93,62 +101,69 @@ const SEED_SUPPRESSED_USERNAME = '__playwright_seed_vst_suppressed_owner__';
 const SEED_SUPPRESSED_EMAIL = 'playwright-seed-vst-suppressed-owner@example.invalid';
 const SEED_SUPPRESSED_CAR_MODEL = '__PW_SEED_VST_SUPPRESSED__';
 
+const SEED_BOTH_USERNAME = '__playwright_seed_vst_both_owner__';
+const SEED_BOTH_EMAIL = 'playwright-seed-vst-both-owner@example.invalid';
+const SEED_BOTH_CAR_MODEL = '__PW_SEED_VST_BOTH__';
+
 $db = dbi();
 
-// The local dev DB already has a large pool of pre-existing eligible cars
-// (low ids, ORDER BY last_verified ASC puts NULL-last_verified rows first —
-// ties broken by insertion order) that fill up the default batch_size = 5
-// preview before this fixture's freshly-seeded, higher-id car is ever
-// reached. Raise batch_size to widen that preview window as far as possible.
-//
-// This does NOT guarantee the seeded car appears: batch_size is a TINYINT
-// UNSIGNED column (hard max 255). The column's ceiling is written directly
-// (255, not some larger value) — under STRICT_TRANS_TABLES (the local dev
-// DB's mode) MySQL does NOT silently truncate an out-of-range value, it
-// rejects the UPDATE outright with `ERROR 1264 (22003): Out of range value
-// for column 'batch_size'`, and \DB::query() never throws on a failed
-// statement, so a previous version of this fixture that wrote 1000 expecting
-// truncation was actually a silent no-op — confirmed empirically against
-// local MySQL. Even at 255, the local dev DB's ~1500 pre-existing eligible
-// rows (see admin-verification-send-tool.spec.js's own header note) can
-// still out-rank this fixture's seeded car every time — that spec file
-// documents the resulting environment limitation and the workaround each
-// affected test uses. This is local dev data only (this script's
-// US_ENVIRONMENT=development guard above ensures it never runs against
-// test/prod), and #1885's future batch-size UI is unaffected since nothing
-// here claims to test that value's default.
-//
-// The original value is read first and restored via a shutdown function, so
-// this fixture doesn't permanently drift a shared settings row every run.
-$db->query('SELECT batch_size FROM er_verification_settings LIMIT 1');
-if ($db->error()) {
-    fwrite(STDERR, "ERROR: Failed to read current batch_size from er_verification_settings: {$db->errorString()}\n");
-    exit(1);
-}
-$originalBatchSizeRow = $db->first();
-$originalBatchSize = is_object($originalBatchSizeRow) ? (int) $originalBatchSizeRow->batch_size : null;
-
-register_shutdown_function(static function () use ($db, $originalBatchSize): void {
-    if ($originalBatchSize === null) {
-        return;
+/**
+ * Call the mock-brevo API, which is the only Brevo host this fixture may use.
+ * Returns the HTTP status and the body.
+ *
+ * @return array{0: int, 1: string}
+ */
+function mockBrevoRequest(string $method, string $path, ?array $json = null): array
+{
+    $host = (string) ($_ENV['BREVO_API_HOST'] ?? getenv('BREVO_API_HOST') ?: '');
+    if ($host === '' || !str_contains($host, 'mock-brevo')) {
+        fwrite(STDERR, "ERROR: BREVO_API_HOST must point at mock-brevo. The fixture never calls the real Brevo API.\n");
+        exit(1);
     }
-    $db->query('UPDATE er_verification_settings SET batch_size = ?', [$originalBatchSize]);
-    if ($db->error()) {
-        fwrite(STDERR, "ERROR: Failed to restore batch_size to {$originalBatchSize}: {$db->errorString()}\n");
-    }
-});
 
-$db->query('UPDATE er_verification_settings SET batch_size = 255');
-if ($db->error()) {
-    fwrite(STDERR, "ERROR: Failed to raise batch_size to 255: {$db->errorString()}\n");
-    exit(1);
+    $parts = parse_url($host);
+    $origin = $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+
+    $apiKey = (string) ($GLOBALS['db']->query('SELECT * FROM plg_sendinblue')->first()->key ?? '');
+    $path = str_replace('{key}', rawurlencode($apiKey), $path);
+
+    $headers = ['api-key: ' . $apiKey, 'Accept: application/json'];
+    if ($json !== null) {
+        $headers[] = 'Content-Type: application/json';
+    }
+    $context = stream_context_create(['http' => [
+        'method'        => $method,
+        'header'        => implode("\r\n", $headers),
+        'content'       => $json === null ? '' : json_encode($json),
+        'ignore_errors' => true,
+        'timeout'       => 10,
+    ]]);
+    $body = @file_get_contents($origin . $path, false, $context);
+    $status = 0;
+    foreach ($http_response_header as $line) {
+        if (preg_match('#^HTTP/\S+ (\d{3})#', $line, $m)) {
+            $status = (int) $m[1];
+        }
+    }
+
+    return [$status, (string) $body];
 }
+
+if (in_array('--brevo-blocked', $argv ?? [], true)) {
+    [, $body] = mockBrevoRequest('GET', '/v3/smtp/blockedContacts?limit=100');
+    $emails = array_column((array) (json_decode($body, true)['contacts'] ?? []), 'email');
+    echo json_encode(['brevoBlocked' => in_array(SEED_BOTH_EMAIL, $emails, true)]) . "\n";
+    exit(0);
+}
+
+// The fixture does not write batch_size. The preview uses the stored value.
 
 // Idempotent cleanup, mirroring seed-bounced-car.php's pattern exactly.
 foreach ([
     [SEED_ELIGIBLE_USERNAME, SEED_ELIGIBLE_CAR_MODEL],
     [SEED_BOUNCED_USERNAME, SEED_BOUNCED_CAR_MODEL],
     [SEED_SUPPRESSED_USERNAME, SEED_SUPPRESSED_CAR_MODEL],
+    [SEED_BOTH_USERNAME, SEED_BOTH_CAR_MODEL],
 ] as [$username, $carModel]) {
     $db->query('DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$username]);
     $db->query('DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$username]);
@@ -277,7 +292,43 @@ function seedOwnerAndCar(
     ]
 );
 
+// Both flags: email_blocked_address matches users.email, so Clear Block calls
+// Brevo. The same address is put on the mock-brevo blocklist.
+[$bothUserId, $bothCarId] = seedOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_BOTH_USERNAME,
+    SEED_BOTH_EMAIL,
+    [
+        'model'              => SEED_BOTH_CAR_MODEL,
+        'chassis'            => 'SEEDVSTX' . bin2hex(random_bytes(3)),
+        'owner_last_updated' => date('Y-m-d H:i:s', strtotime('-2 years')),
+        'last_verified'      => null,
+    ],
+    [
+        'email_blocked'         => 1,
+        'email_blocked_address' => SEED_BOTH_EMAIL,
+        'email_blocked_at'      => date('Y-m-d H:i:s', strtotime('-1 day')),
+        'email_blocked_cause'   => 'blocklist',
+        'email_opted_out'       => 1,
+        'email_opted_out_at'    => date('Y-m-d H:i:s', strtotime('-1 day')),
+    ]
+);
+
+mockBrevoRequest('DELETE', '/v3/smtp/blockedContacts/' . rawurlencode(SEED_BOTH_EMAIL));
+[$blockStatus] = mockBrevoRequest('POST', '/mock-status/accounts/{key}/blocked', [
+    'email'  => SEED_BOTH_EMAIL,
+    'reason' => 'hardBounce',
+]);
+if ($blockStatus !== 201) {
+    fwrite(STDERR, "ERROR: mock-brevo did not accept the seeded block (HTTP {$blockStatus}).\n");
+    exit(1);
+}
+
 echo json_encode([
+    'bothCarId'        => $bothCarId,
+    'bothUserId'       => $bothUserId,
+    'bothAddress'      => SEED_BOTH_EMAIL,
     'eligibleCarId'    => $eligibleCarId,
     'eligibleUserId'   => $eligibleUserId,
     'eligibleChassis'  => SEED_ELIGIBLE_CHASSIS,

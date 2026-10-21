@@ -44,8 +44,9 @@ When generating release notes:
    changes visible only to administrators (admin dashboard, maintenance tools,
    settings). Keep these sections separate. Each item is one line, benefit-focused.
    Remove a section or subsection entirely if it has no entries.
-3. **Issues Resolved** lists every closed issue in the milestone, sorted by
-   issue number. Each entry is **one sentence** summarizing what shipped —
+3. **Issues Resolved** lists every closed issue in the milestone, in the
+   order approved at `/start-milestone` Step 5. Do not sort it by number:
+   `/finish-issue` reads this order to name the next issue. Each entry is **one sentence** summarizing what shipped —
    not the verbatim GitHub title, and not a changelog essay. Full detail
    lives in the issue/PR itself; the release notes are a pointer, not a
    substitute for reading it. Format: `- [#NNN](URL) — One-sentence summary.`
@@ -77,7 +78,7 @@ When generating release notes:
 | ------- | ------- | ----- |
 | User-Facing Changes | What public visitors will notice | Benefit-focused, one plain sentence each — no bolded titles, no asides |
 | Admin-Facing Changes | What administrators will notice | Same format; keep separate from user-facing |
-| Issues Resolved | Complete closure list | Sorted by issue number, one-sentence summary (not verbatim GH title) |
+| Issues Resolved | Complete closure list | Approved work order, one-sentence summary (not verbatim GH title) |
 
 ### Release Requirements
 

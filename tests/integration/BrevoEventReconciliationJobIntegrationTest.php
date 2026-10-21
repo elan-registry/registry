@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
+require_once __DIR__ . '/../Support/RecordingHealthcheckTransport.php';
 require_once __DIR__ . '/../Support/FakeBrevoEvent.php';
 require_once __DIR__ . '/../Support/FakeBrevoEventReconciliationClient.php';
 
@@ -11,9 +12,13 @@ use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatcher;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
+use ElanRegistry\Cron\HealthcheckPinger;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeBrevoEvent;
 use Tests\Support\FakeBrevoEventReconciliationClient;
+use Tests\Support\RecordingHealthcheckTransport;
+use Tests\Support\SendinblueMessagesTable;
 
 /**
  * A Brevo client whose poll throws, to test the prune after a failed backfill.
@@ -55,23 +60,6 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
 
     /** The job's "now" in most tests. */
     private const RUN_AT = '2026-09-09 03:00:00';
-
-    private const PLUGIN_TABLE_SQL = 'CREATE TABLE IF NOT EXISTS plg_sendinblue_messages (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        message_id VARCHAR(191) NOT NULL,
-        recipient_email VARCHAR(255) NOT NULL,
-        sender_email VARCHAR(255) NOT NULL,
-        kind VARCHAR(32) NOT NULL,
-        tags VARCHAR(255) NULL,
-        status VARCHAR(32) NOT NULL,
-        accepted_at DATETIME NOT NULL,
-        delivered_at DATETIME NULL,
-        last_event_at DATETIME NULL,
-        last_checked_at DATETIME NULL,
-        last_reason VARCHAR(255) NULL,
-        UNIQUE KEY message_id (message_id),
-        KEY recipient_accepted (recipient_email(128), accepted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci';
 
     /** True when this class made the plugin table, so it must drop it. */
     private static bool $madePluginTable = false;
@@ -138,6 +126,11 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             foreach ($this->pluginMessageIds as $messageId) {
                 $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
             }
+            // HEALTHCHECKS_* is unset here, so a claimed run() logs one "not sent" line.
+            $this->db->query(
+                'DELETE FROM logs WHERE logtype = ? AND lognote LIKE ?',
+                [LogCategories::LOG_CATEGORY_HEALTHCHECK_PING, "Healthcheck % ping for 'brevo-event-reconciliation' not sent:%"]
+            );
         }
         parent::tearDown();
     }
@@ -154,7 +147,8 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             new EmailEventMatcher($this->repo),
             $this->applier,
             new FakeBrevoEventReconciliationClient($events),
-            $now ?? new \DateTimeImmutable(self::RUN_AT)
+            $now ?? new \DateTimeImmutable(self::RUN_AT),
+            new HealthcheckPinger(new RecordingHealthcheckTransport())
         );
     }
 
@@ -167,9 +161,7 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     /** Record a plugin row for this message ID (step (b)). Makes the plugin table when it is absent. */
     private function seedPluginRow(string $messageId, string $recipient): void
     {
-        if (!$this->repo->sendinblueMessagesTableExists()) {
-            $this->db->query(self::PLUGIN_TABLE_SQL);
-            $this->assertFalse($this->db->error(), 'Test setup: plugin table: ' . $this->db->errorString());
+        if (SendinblueMessagesTable::createIfMissing($this->db)) {
             self::$madePluginTable = true;
         }
         $this->db->query(
@@ -468,7 +460,8 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             new EmailEventMatcher($this->repo),
             $this->applier,
             new ThrowingBrevoEventReconciliationClient(),
-            new \DateTimeImmutable(self::RUN_AT)
+            new \DateTimeImmutable(self::RUN_AT),
+            new HealthcheckPinger(new RecordingHealthcheckTransport())
         );
 
         try {

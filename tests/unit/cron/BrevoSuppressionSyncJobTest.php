@@ -465,6 +465,84 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         ];
     }
 
+    /**
+     * The marker tells EmailEventApplier that the time is the run time, not
+     * Brevo's date, so it must not be compared with an admin clear (#2426).
+     *
+     * @param mixed $blockedAt
+     */
+    #[DataProvider('unusableBlockedAts')]
+    public function testUnusableBlockedAtSetsTheFallbackMarker(mixed $blockedAt): void
+    {
+        $this->matchEveryEmailTo(1);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, $blockedAt),
+        ])->runNow();
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertTrue($this->applier->calls[0]['occurredAtIsFallback']);
+    }
+
+    public function testUsableBlockedAtLeavesTheFallbackMarkerOff(): void
+    {
+        $this->matchEveryEmailTo(1);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+        ])->runNow();
+
+        $this->assertFalse($this->applier->calls[0]['occurredAtIsFallback']);
+        $this->assertSame(self::BLOCKED_AT_LOCAL, $this->applier->calls[0]['occurredAt']);
+    }
+
+    /** A date 301 s after the run time is no usable date: the run time and the marker apply (#2426). */
+    public function testBlockedAtMoreThanFiveMinutesAheadTakesTheRunTimeAndSetsTheMarker(): void
+    {
+        $this->matchEveryEmailTo(1);
+        $ahead = gmdate('Y-m-d\TH:i:s\Z', (new DateTimeImmutable(self::NOW))->getTimestamp() + 301);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, $ahead),
+        ])->runNow();
+
+        $this->assertSame(self::NOW, $this->applier->calls[0]['occurredAt']);
+        $this->assertTrue($this->applier->calls[0]['occurredAtIsFallback']);
+        $log = $this->logsContaining('more than 5 minutes after the run time');
+        $this->assertNotEmpty($log, 'The fallback line names the reason');
+        $this->assertStringContainsString('owner 1', $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message']);
+    }
+
+    /** A date 299 s after the run time is clock skew that the job accepts as given. */
+    public function testBlockedAtLessThanFiveMinutesAheadIsUsedAsGiven(): void
+    {
+        $this->matchEveryEmailTo(1);
+        $nowTimestamp = (new DateTimeImmutable(self::NOW))->getTimestamp();
+        $ahead = gmdate('Y-m-d\TH:i:s\Z', $nowTimestamp + 299);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, $ahead),
+        ])->runNow();
+
+        $this->assertSame('2026-09-09 03:04:59', $this->applier->calls[0]['occurredAt']);
+        $this->assertFalse($this->applier->calls[0]['occurredAtIsFallback']);
+        $this->assertSame([], $this->logsContaining('no usable blocked-at date'));
+    }
+
+    /** A far-future date was the old cap's edge. It is now no usable date. */
+    public function testBlockedAtOneYearAheadIsNoUsableDate(): void
+    {
+        $this->matchEveryEmailTo(1);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', null, '2027-09-09T03:00:00.000Z'),
+        ])->runNow();
+
+        $this->assertSame(self::NOW, $this->applier->calls[0]['occurredAt']);
+        $this->assertTrue($this->applier->calls[0]['occurredAtIsFallback']);
+    }
+
     // --- Incremental window / bounded work --------------------------------
 
     public function testIncrementalRunFetchesExactlyOneBoundedPage(): void

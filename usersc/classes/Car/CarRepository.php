@@ -150,6 +150,9 @@ class CarRepository
 
     private bool $transactionOwner = false;
 
+    /** Cached result of {@see sendinblueTagsColumnExists()}. Null until the first read. */
+    private ?bool $sendinblueTagsColumnExists = null;
+
     public function __construct(private DatabaseInterface $db) {}
 
     /**
@@ -851,6 +854,96 @@ class CarRepository
         $this->writeProfileBlockClear($userId, 'clearProfileBlocked');
 
         return $old;
+    }
+
+    /**
+     * Read what admin Clear Block needs before its Brevo call (#2357)
+     *
+     * Clear Block clears the stored block, not the effective flag, so it
+     * needs the stored flag and the stored address with no address match.
+     * The read takes no lock: Brevo is called after it, and
+     * {@see clearProfileBlockedIfAddress()} reads the row again under the
+     * lock before it writes.
+     *
+     * @param int $ownerId Owner user ID
+     * @return array{blocked: bool, blockedAddress: ?string, userEmail: string}|null
+     *         `blocked` is false only for a stored 0. `userEmail` is ''
+     *         when the users row is missing. Null when the owner has no
+     *         profiles row.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findBlockClearTarget(int $ownerId): ?array
+    {
+        $state = $this->findProfileEmailState($ownerId);
+        if ($state === null) {
+            return null;
+        }
+
+        return [
+            // Any value other than 0 counts as set, so Clear Block repairs it.
+            'blocked'        => (string) $state->email_blocked !== '0',
+            'blockedAddress' => self::nullableString($state->email_blocked_address),
+            'userEmail'      => (string) ($state->user_email ?? ''),
+        ];
+    }
+
+    /**
+     * Clear an owner's block only when its stored address did not change (#2357)
+     *
+     * Admin Clear Block calls Brevo before it takes the lock. Call this
+     * method inside the caller's transaction after that call. It locks the
+     * profile row and the users row ({@see findProfileEmailState()} with
+     * SELECT ... FOR UPDATE OF p, u), then compares the stored
+     * `email_blocked_address` with `$expectedBlockedAddress`. The compare is
+     * exact and null-safe: no normalization, and NULL matches only NULL.
+     * When the address changed, it writes nothing, so the caller can roll
+     * back. When the address matches, it clears `email_blocked` with its
+     * address, date and cause, as {@see clearProfileBlocked()} does.
+     *
+     * When the address matches, a stored value other than 0 or 1 is written
+     * over, and `old` is
+     * 1 for it ({@see writerFlagValue()}).
+     *
+     * @param int         $ownerId                Owner user ID
+     * @param string|null $expectedBlockedAddress The `email_blocked_address` that the caller read before the Brevo call
+     * @return array{old: int, addressMatched: bool, stillBounced: bool, stillOptedOut: bool}|null
+     *         `old` is the flag value before the call (0 or 1). The flag was
+     *         cleared only when `addressMatched` is true and `old` is 1.
+     *         `stillBounced` is true when `email_bounced` applies to the
+     *         owner's current address, read under the lock. `stillOptedOut`
+     *         is true when `email_opted_out` is 1, read under the lock. Null when the
+     *         owner has no profiles row (nothing is written).
+     * @throws CarDatabaseException If a query fails
+     */
+    public function clearProfileBlockedIfAddress(int $ownerId, ?string $expectedBlockedAddress): ?array
+    {
+        $state = $this->findProfileEmailState($ownerId, true);
+        if ($state === null) {
+            return null;
+        }
+        [$old, $valid] = self::writerFlagValue($state->email_blocked, 'email_blocked', $ownerId, 1);
+        // A bad bounce value reads as not bounced, as the email_bounced_active SQL does.
+        [$bounced] = self::writerFlagValue($state->email_bounced, 'email_bounced', $ownerId, 0);
+        $result = [
+            'old'            => $old,
+            'addressMatched' => self::nullableString($state->email_blocked_address) === $expectedBlockedAddress,
+            'stillBounced'   => EffectiveEmailFlags::flagApplies(
+                $bounced,
+                self::nullableString($state->email_bounced_address),
+                self::currentAddress($state)
+            ),
+            'stillOptedOut'  => (string) $state->email_opted_out === '1',
+        ];
+        if (!$result['addressMatched'] || ($valid && $old === 0)) {
+            return $result;
+        }
+        if (!$valid) {
+            self::logFlagRepair($state->email_blocked, 'email_blocked', $ownerId);
+        }
+
+        $this->writeProfileBlockClear($ownerId, 'clearProfileBlockedIfAddress');
+
+        return $result;
     }
 
     /**
@@ -2203,13 +2296,16 @@ class CarRepository
      * The time is the metadata `cleared_at` when the row has a valid one
      * (#2357), else `logdate`.
      *
-     * `logdate` FALLBACK: {@see DeliverabilityFlagLog::record()} does not
-     * write `cleared_at` today, so every row uses `logdate`. `logger()` sets
-     * `logdate` when it inserts the row, inside the clear's transaction. So
-     * the value is a little earlier than the commit of the clear, and it is
-     * the server's wall time. {@see EmailEventApplier::apply()} compares an
-     * event time with this value as wall time, to find whether a spam or
-     * unsubscribe event came after an admin Clear Block (#2359).
+     * {@see DeliverabilityFlagLog::record()} writes `cleared_at` only when
+     * its caller passes `clearedAt:`. Admin Clear Block passes the time that
+     * it records before its Brevo call, or at the start of its transaction
+     * when it makes no Brevo call. A row with `cleared_at` uses that time.
+     * Other rows use `logdate`: `logger()` sets it when it inserts the row,
+     * inside the clear's transaction. So the value is a little earlier than
+     * the commit of the clear, and it is the server's wall time.
+     * {@see EmailEventApplier::apply()} compares an event time with this
+     * value as wall time, to find whether a spam or unsubscribe event came
+     * after an admin Clear Block (#2359).
      *
      * `logs.metadata` is a BLOB, so the query converts it to utf8mb4 before
      * it reads JSON (a plain JSON_EXTRACT raises error 3144). The `logtype`
@@ -2838,6 +2934,19 @@ class CarRepository
      * The address compare uses `COLLATE utf8mb4_bin`, because the column
      * collation would match an accent or case variant of the address.
      *
+     * A soft bounce of owner contact mail does not count (#2460). The sender
+     * picks the recipient, so a full mailbox must not mark the owner bounced.
+     * The query skips a send cycle whose `plg_sendinblue_messages` row has
+     * {@see AppConstants::OWNER_CONTACT_EMAIL_TAG} in its comma-separated
+     * `tags`. A cycle with no plugin row, or with null tags, still counts.
+     * So an owner contact cycle counts again after its plugin row is deleted.
+     * The purge of plugin rows (#2384) deletes every row older than 90 days,
+     * also a row whose message ID `er_email_events` still names. After that,
+     * an owner contact soft bounce of that send cycle counts again (see
+     * EMAIL_SYSTEM.md, "Retention of Plugin Rows"). When the plugin table or its `tags` column
+     * does not exist, the query has no such filter
+     * ({@see sendinblueTagsColumnExists()}).
+     *
      * @param int $userId Owner user ID
      * @param string $email Address to count soft bounces for. Normalized here
      *                      ({@see EmailAddress::normalize()}).
@@ -2847,6 +2956,25 @@ class CarRepository
     public function countSoftBouncesSinceLastDelivered(int $userId, string $email): int
     {
         $address = EmailAddress::normalize($email);
+
+        $ownerContactFilter = '';
+        $filterParams = [];
+        if ($this->sendinblueTagsColumnExists()) {
+            // The collations can differ: er_email_events uses
+            // utf8mb4_unicode_ci, and the plugin table takes the server
+            // default (utf8mb4_0900_ai_ci on MySQL 8). Without an explicit
+            // COLLATE, MySQL refuses the compare (error 1267). The subquery
+            // cannot use the message_id index, but it runs only for one
+            // owner's soft-bounce rows.
+            $ownerContactFilter = "
+                AND NOT EXISTS (
+                    SELECT 1
+                      FROM plg_sendinblue_messages m
+                     WHERE m.message_id COLLATE utf8mb4_bin = er_email_events.brevo_message_id COLLATE utf8mb4_bin
+                       AND FIND_IN_SET(?, m.tags)
+                )";
+            $filterParams = [AppConstants::OWNER_CONTACT_EMAIL_TAG];
+        }
 
         $this->db->query(
             "SELECT COUNT(DISTINCT brevo_message_id) AS cnt
@@ -2871,8 +2999,8 @@ class CarRepository
                         (SELECT p.email_address_since FROM profiles p WHERE p.user_id = ?),
                         '1970-01-01 00:00:00'
                     )
-                )",
-            [$userId, $address, $userId, $address, $userId, $userId]
+                )" . $ownerContactFilter,
+            [$userId, $address, $userId, $address, $userId, $userId, ...$filterParams]
         );
 
         if ($this->db->error()) {
@@ -3299,27 +3427,70 @@ class CarRepository
      */
     public function sendinblueMessagesTableExists(): bool
     {
-        $this->db->query(
+        // A missing COUNT row must throw: returning false would make the
+        // account-deletion privacy step skip the plugin rows and keep
+        // personal data.
+        return $this->informationSchemaCountIsPositive(
             'SELECT COUNT(*) AS cnt
                FROM information_schema.tables
               WHERE table_schema = DATABASE()
                 AND table_name = ?',
-            ['plg_sendinblue_messages']
+            ['plg_sendinblue_messages'],
+            'sendinblueMessagesTableExists'
         );
+    }
+
+    /**
+     * Tell whether the sendinblue plugin's message log has a `tags` column
+     *
+     * The table and the column come from the plugin, so a site can lack
+     * either. One `information_schema` read checks both the table
+     * and the column. The result is cached for the life of this instance,
+     * because the soft-bounce count runs once for each event in a batch.
+     *
+     * @return bool True when `plg_sendinblue_messages.tags` exists in the current schema
+     * @throws CarDatabaseException If the query fails or returns no COUNT row
+     */
+    private function sendinblueTagsColumnExists(): bool
+    {
+        if ($this->sendinblueTagsColumnExists !== null) {
+            return $this->sendinblueTagsColumnExists;
+        }
+
+        // A missing COUNT row must throw: returning false would let owner
+        // contact soft bounces mark the owner bounced.
+        return $this->sendinblueTagsColumnExists = $this->informationSchemaCountIsPositive(
+            'SELECT COUNT(*) AS cnt
+               FROM information_schema.columns
+              WHERE table_schema = DATABASE()
+                AND table_name = ?
+                AND column_name = ?',
+            ['plg_sendinblue_messages', 'tags'],
+            'sendinblueTagsColumnExists'
+        );
+    }
+
+    /**
+     * Run an information_schema COUNT(*) probe and tell whether the count is above zero
+     *
+     * A COUNT() query always returns one row. A missing row means the query
+     * did not run as written, so the probe throws and does not guess.
+     *
+     * @param string $sql SELECT COUNT(*) AS cnt query against information_schema
+     * @param list<string> $params Bound values
+     * @param string $caller Method name for the exception message
+     * @return bool True when cnt > 0
+     * @throws CarDatabaseException If the query fails or returns no COUNT row
+     */
+    private function informationSchemaCountIsPositive(string $sql, array $params, string $caller): bool
+    {
+        $this->db->query($sql, $params);
         if ($this->db->error()) {
-            throw new CarDatabaseException(
-                'CarRepository::sendinblueMessagesTableExists failed: ' . $this->db->errorString()
-            );
+            throw new CarDatabaseException("CarRepository::{$caller} failed: " . $this->db->errorString());
         }
         $row = $this->db->first();
         if (!is_object($row) || !isset($row->cnt)) {
-            // A COUNT() query always returns one row. A missing row means the
-            // query did not run as written. Returning false would make the
-            // account-deletion privacy step skip the plugin rows and keep
-            // personal data.
-            throw new CarDatabaseException(
-                'CarRepository::sendinblueMessagesTableExists returned no COUNT row'
-            );
+            throw new CarDatabaseException("CarRepository::{$caller} returned no COUNT row");
         }
 
         return (int) $row->cnt > 0;

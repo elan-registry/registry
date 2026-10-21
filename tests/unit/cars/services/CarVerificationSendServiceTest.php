@@ -700,16 +700,41 @@ final class CarVerificationSendServiceTest extends TestCase
     }
 
     /**
-     * The plugin logs its reason in a separate row with no car id, so the
-     * failed-send log line must carry it.
+     * The plugin text can echo the recipient address, so the failed-send log
+     * line says that an error was reported but does not copy its text.
      */
     #[RunInSeparateProcess]
     #[AllowMockObjectsWithoutExpectations]
-    public function testFailedSendLogIncludesTheMailerError(): void
+    public function testFailedSendLogDoesNotCopyTheMailerErrorText(): void
     {
         require_once __DIR__ . '/fixtures/sendinblue-last-error.php';
+        $GLOBALS['mockSendinblueLastError'] = 'Brevo rejected leak-test-2420@example.org: Key not found';
 
-        $this->assertStringEndsWith('Mailer error: Brevo API error 401: Key not found', $this->failedSendLogLine());
+        $line = $this->failedSendLogLine();
+
+        $this->assertStringEndsWith('Mailer error: reported (text not logged)', $line);
+        $this->assertStringNotContainsStringIgnoringCase('leak-test-2420', $line);
+        $this->assertStringNotContainsString('Key not found', $line);
+    }
+
+    /**
+     * A Brevo SDK ApiException message starts with "[NNN]". The line keeps
+     * the HTTP status and drops the rest, which can echo the address.
+     */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFailedSendLogKeepsOnlyTheHttpStatusOfAnSdkError(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-error.php';
+        $GLOBALS['mockSendinblueLastError'] = '[400] Client error: `POST https://api.brevo.com/v3/smtp/email` '
+            . 'resulted in a `400 Bad Request` response: {"code":"invalid_parameter",'
+            . '"message":"email is not valid: leak-test-2420@example.org"}';
+
+        $line = $this->failedSendLogLine();
+
+        $this->assertStringEndsWith('Mailer error: HTTP 400', $line);
+        $this->assertStringNotContainsStringIgnoringCase('leak-test-2420', $line);
+        $this->assertStringNotContainsString('invalid_parameter', $line);
     }
 
     /** Runs a send where email() returns false and returns the one failed-send log line. */

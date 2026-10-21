@@ -382,9 +382,10 @@ milestone does not depend on it.
 
 ### Step 5: Recommend an issue order
 
-This order is advice for this session. No file stores it. After each
-merge, `/finish-issue` names the next open issue: the lowest-numbered open
-issue in the milestone without `status:blocked`.
+Step 6 stores the approved order in the release notes: the `WIP:` entries
+of the "Issues Resolved" section go in that order. After each merge,
+`/finish-issue` names the first `WIP:` entry whose issue is open and does
+not have `status:blocked`.
 
 Launch the **senior-product-manager** agent to analyze all issues and
 determine the best sequence. Consider:
@@ -406,8 +407,9 @@ Synthesize agent recommendations into a numbered list with a brief rationale
 for each position. Flag any issues that will likely require
 wiki/architecture document updates. Also list:
 
-- **Order conflicts** — an issue that must wait for a higher-numbered open
-  issue. The lowest-numbered rule would pick it too early.
+- **Order conflicts** — an issue that must not start until another issue
+  closes. The stored order does not stop a developer who types
+  `/start-issue` for that issue, so the issue also needs `status:blocked`.
 - **Combine groups** — issues that touch the same code and must land as one
   PR. `/plan-milestone` Step 4 may already have posted these. Read the
   issue comments for the phrase `Combine into one PR with`.
@@ -451,9 +453,11 @@ Otherwise, create a draft release notes file at
 - Fill in the version and today's date
 - Write a brief summary based on the milestone description
 - Populate the "Issues Resolved" section with all open issues from the
-  milestone (linked to GitHub using
-  `https://github.com/elan-registry/registry/issues/NNN`), each entry
-  prefixed with `WIP:` since none are actually resolved yet at milestone
+  milestone, in the order approved in Step 5, not sorted by number. Put the
+  issues of a combine group next to each other. `/finish-issue` reads this
+  order to name the next issue. Link each entry to
+  `https://github.com/elan-registry/registry/issues/NNN`. Prefix each entry
+  with `WIP:`, since none are actually resolved yet at milestone
   creation — e.g. `WIP: [#423](https://github.com/elan-registry/registry/issues/423) — Issue title`.
   `/execute-plan` fills in each issue's real Technical/User-Facing Changes
   bullet as that issue is implemented, and `/finish-issue` strips this

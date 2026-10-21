@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
+use ElanRegistry\Car\ClearBlockOutcome;
 use ElanRegistry\Car\DeliverabilityFlagLog;
+use ElanRegistry\Email\BrevoUnblockResult;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
@@ -12,6 +14,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\FakeBrevoBlocklistClient;
 
 /**
  * Unit tests for CarVerificationManager service class
@@ -69,6 +72,29 @@ final class CarVerificationManagerTest extends TestCase
         $this->assertStringNotContainsString('@', $row['lognote'], 'The audit row must not hold an email address');
 
         return $row['metadata'];
+    }
+
+    /**
+     * Assert one flag audit row whose metadata holds the core keys and the extra keys.
+     *
+     * @param list<string> $extraKeys
+     * @return array<string, int|string>
+     */
+    private function assertOneFlagLogRowWithKeys(int $actingUserId, int $ownerId, string $flag, int $old, int $new, string $source, array $extraKeys): array
+    {
+        $this->assertCount(1, $this->flagLogRows, 'Exactly one audit row per flag change');
+        $metadata = $this->flagLogRows[0]['metadata'];
+        $this->assertSame($actingUserId, $this->flagLogRows[0]['userId']);
+        $this->assertSame(
+            ['owner_id' => $ownerId, 'flag' => $flag, 'old' => $old, 'new' => $new, 'source' => $source],
+            array_diff_key($metadata, array_flip($extraKeys))
+        );
+        foreach ($extraKeys as $key) {
+            $this->assertArrayHasKey($key, $metadata);
+        }
+        $this->assertStringNotContainsString('@', $this->flagLogRows[0]['lognote'], 'The audit row must not hold an email address');
+
+        return $metadata;
     }
 
     public function testSetVerificationCodeSucceeds(): void
@@ -580,61 +606,523 @@ final class CarVerificationManagerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // clearSuppressedForOwner() — admin Clear Suppression (interim until #2357)
+    // clearBlockedForOwner() — admin Clear Block (#2357)
     // ------------------------------------------------------------------
 
-    public function testClearSuppressedForOwnerClearsBlockAndOptOutOnTheProfileAndNothingOnCars(): void
+    /**
+     * A Clear Block read as findBlockClearTarget() returns it.
+     *
+     * @param array{blocked?: bool, blockedAddress?: ?string, userEmail?: string} $overrides
+     * @return array{blocked: bool, blockedAddress: ?string, userEmail: string}
+     */
+    private function blockedState(array $overrides = []): array
     {
-        $this->mockRepo->expects($this->once())->method('clearProfileBlocked')->with(42)->willReturn(1);
-        $this->mockRepo->expects($this->once())->method('setProfileOptedOut')->with(42, false)->willReturn(1);
-        $this->mockRepo->expects($this->never())->method('findByOwner');
-        $this->mockRepo->expects($this->never())->method('updateCar');
-        // The bounce is not a suppression: Clear Suppression leaves it.
-        $this->mockRepo->expects($this->never())->method('clearProfileBounced');
+        return array_merge([
+            'blocked' => true,
+            'blockedAddress' => 'owner@example.org',
+            'userEmail' => 'owner@example.org',
+        ], $overrides);
+    }
 
-        $changed = $this->manager->clearSuppressedForOwner(42, 7);
+    /**
+     * Script the repository for a Clear Block that reaches the write step.
+     *
+     * @param array{blocked: bool, blockedAddress: ?string, userEmail: string} $state
+     * @param array{old: int, addressMatched: bool, stillBounced: bool, stillOptedOut: bool}|null $writeResult
+     */
+    private function scriptClearBlock(array $state, ?array $writeResult, bool $otherUserHasAddress = false): void
+    {
+        $this->mockRepo->method('findBlockClearTarget')->willReturn($state);
+        $this->mockRepo->method('findUserIdsByAddress')->willReturn($otherUserHasAddress ? [42, 99] : [42]);
+        $this->mockRepo->method('clearProfileBlockedIfAddress')->willReturn($writeResult);
+    }
 
-        $this->assertTrue($changed);
-        $this->assertCount(2, $this->flagLogRows, 'One audit row per flag that changed');
-        $this->assertSame(
-            [
-                ['owner_id' => 42, 'flag' => 'email_blocked', 'old' => 1, 'new' => 0, 'source' => 'admin'],
-                ['owner_id' => 42, 'flag' => 'email_opted_out', 'old' => 1, 'new' => 0, 'source' => 'admin'],
-            ],
-            array_column($this->flagLogRows, 'metadata')
+    private function removedClient(?\Closure $onUnblock = null): FakeBrevoBlocklistClient
+    {
+        return new FakeBrevoBlocklistClient(BrevoUnblockResult::removed(), $onUnblock);
+    }
+
+    public function testClearBlockedForOwnerWhenFlagIsZeroCallsNothingAndWritesNothing(): void
+    {
+        $this->mockRepo->method('findBlockClearTarget')->willReturn($this->blockedState(['blocked' => false]));
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('clearProfileBlockedIfAddress');
+        $client = $this->removedClient();
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::NOT_BLOCKED, $outcome->kind);
+        $this->assertSame([], $client->calls);
+        $this->assertSame([], $this->flagLogRows);
+    }
+
+    public function testClearBlockedForOwnerMatchingAddressCallsBrevoThenClearsAndLogsTheRow(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]);
+        $this->mockRepo->expects($this->once())->method('beginTransaction');
+        $this->mockRepo->expects($this->once())->method('clearProfileBlockedIfAddress')->with(42, 'owner@example.org');
+        $this->mockRepo->expects($this->once())->method('commit');
+        $this->mockRepo->expects($this->never())->method('rollback');
+        $client = $this->removedClient();
+        $before = time();
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertFalse($outcome->stillBounced);
+        $this->assertSame(['owner@example.org'], $client->calls, 'Brevo is called once with the blocked address');
+        $metadata = $this->assertOneFlagLogRowWithKeys(7, 42, 'email_blocked', 1, 0, 'admin', ['cleared_at', 'owner_requested']);
+        $this->assertSame(1, $metadata['owner_requested']);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', (string) $metadata['cleared_at']);
+        $this->assertGreaterThanOrEqual($before, strtotime((string) $metadata['cleared_at']));
+        $this->assertLessThanOrEqual(time(), strtotime((string) $metadata['cleared_at']));
+    }
+
+    /**
+     * The clear time is taken before the Brevo call, so an import entry that
+     * Brevo dated during the call counts as a new block.
+     */
+    public function testClearBlockedForOwnerRecordsTheClearTimeBeforeTheBrevoCall(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]);
+        $client = $this->removedClient(static function (): void {
+            sleep(2);
+        });
+        $before = time();
+
+        $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $clearedAt = strtotime((string) $this->flagLogRows[0]['metadata']['cleared_at']);
+        $this->assertLessThanOrEqual($before + 1, $clearedAt, 'cleared_at is the time before the 2 s Brevo call');
+    }
+
+    public function testClearBlockedForOwnerBrevoNotBlockedCountsAsSuccess(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]);
+        $client = new FakeBrevoBlocklistClient(BrevoUnblockResult::notBlocked());
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertCount(1, $this->flagLogRows);
+    }
+
+    public function testClearBlockedForOwnerPassesStillBouncedToTheOutcome(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => true, 'stillBounced' => true, 'stillOptedOut' => false]);
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+
+        $this->assertTrue($outcome->stillBounced);
+    }
+
+    public function testClearBlockedForOwnerPassesStillOptedOutToTheOutcome(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => true, 'stillBounced' => true, 'stillOptedOut' => true]);
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+
+        $this->assertTrue($outcome->stillBounced);
+        $this->assertTrue($outcome->stillOptedOut);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function brevoFailureReasonProvider(): array
+    {
+        return [
+            'no API key' => [BrevoUnblockResult::REASON_NO_API_KEY, ClearBlockOutcome::BREVO_NOT_SET_UP],
+            'no SDK' => [BrevoUnblockResult::REASON_NO_SDK, ClearBlockOutcome::BREVO_NOT_SET_UP],
+            // An installed SDK that did not load is a fault, not a missing setup.
+            'SDK load failed' => [BrevoUnblockResult::REASON_SDK_LOAD_FAILED, ClearBlockOutcome::BREVO_FAILED],
+            'HTTP error' => [BrevoUnblockResult::REASON_HTTP, ClearBlockOutcome::BREVO_FAILED],
+            'transport error' => [BrevoUnblockResult::REASON_TRANSPORT, ClearBlockOutcome::BREVO_FAILED],
+            // A failed key query is not a missing key: a retry can work.
+            'key query DB error' => [BrevoUnblockResult::REASON_DB_ERROR, ClearBlockOutcome::BREVO_FAILED],
+        ];
+    }
+
+    #[DataProvider('brevoFailureReasonProvider')]
+    public function testClearBlockedForOwnerMapsTheBrevoFailureReasonToItsOutcome(string $reason, string $expectedKind): void
+    {
+        $this->mockRepo->method('findBlockClearTarget')->willReturn($this->blockedState());
+        $this->mockRepo->method('findUserIdsByAddress')->willReturn([42]);
+        $this->mockRepo->expects($this->never())->method('clearProfileBlockedIfAddress');
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, new FakeBrevoBlocklistClient(BrevoUnblockResult::failed($reason)));
+
+        $this->assertSame($expectedKind, $outcome->kind);
+        $this->assertFalse($outcome->isCleared());
+        $this->assertSame([], $this->flagLogRows, 'No flag-change row');
+    }
+
+    public function testClearBlockedForOwnerEmptyBlockedAddressUsesTheUserEmail(): void
+    {
+        $this->scriptClearBlock(
+            $this->blockedState(['blockedAddress' => '  ', 'userEmail' => 'user@example.org']),
+            ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]
         );
-        $this->assertSame([7, 7], array_column($this->flagLogRows, 'userId'));
+        $this->mockRepo->expects($this->once())->method('clearProfileBlockedIfAddress')->with(42, '  ');
+        $client = $this->removedClient();
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertSame(['user@example.org'], $client->calls);
     }
 
-    public function testClearSuppressedForOwnerLogsOnlyTheFlagThatChanged(): void
+    public function testClearBlockedForOwnerNullBlockedAddressUsesTheUserEmail(): void
     {
-        $this->mockRepo->method('clearProfileBlocked')->willReturn(0);
-        $this->mockRepo->method('setProfileOptedOut')->willReturn(1);
+        $this->scriptClearBlock(
+            $this->blockedState(['blockedAddress' => null, 'userEmail' => 'user@example.org']),
+            ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]
+        );
+        $this->mockRepo->expects($this->once())->method('clearProfileBlockedIfAddress')->with(42, null);
+        $client = $this->removedClient();
 
-        $this->assertTrue($this->manager->clearSuppressedForOwner(42, 7));
-        $this->assertOneFlagLogRow(7, 42, 'email_opted_out', 1, 0, 'admin');
+        $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(['user@example.org'], $client->calls);
     }
 
-    public function testClearSuppressedForOwnerReturnsFalseAndLogsNothingWhenNothingWasSet(): void
+    public function testClearBlockedForOwnerNoAddressAtAllClearsTheFlagWithoutABrevoCall(): void
     {
-        $this->mockRepo->method('clearProfileBlocked')->willReturn(0);
-        $this->mockRepo->method('setProfileOptedOut')->willReturn(0);
+        $this->scriptClearBlock(
+            $this->blockedState(['blockedAddress' => null, 'userEmail' => '']),
+            ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]
+        );
+        $client = $this->removedClient();
 
-        $this->assertFalse($this->manager->clearSuppressedForOwner(42, 7));
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::CLEARED_NO_ADDRESS, $outcome->kind);
+        $this->assertTrue($outcome->isCleared());
+        $this->assertSame([], $client->calls);
+        $this->assertCount(1, $this->flagLogRows);
+    }
+
+    public function testClearBlockedForOwnerAddressNoLongerTheOwnersClearsTheFlagWithoutABrevoCall(): void
+    {
+        $this->scriptClearBlock(
+            $this->blockedState(['blockedAddress' => 'old@example.org', 'userEmail' => 'new@example.org']),
+            ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]
+        );
+        $client = $this->removedClient();
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::CLEARED_ADDRESS_MOVED, $outcome->kind);
+        $this->assertSame([], $client->calls);
+        $this->assertCount(1, $this->flagLogRows);
+    }
+
+    public function testClearBlockedForOwnerComparesAddressesUnderTheNormalizeRule(): void
+    {
+        $this->scriptClearBlock(
+            $this->blockedState(['blockedAddress' => ' Owner@Example.ORG ', 'userEmail' => 'owner@example.org']),
+            ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]
+        );
+        $client = $this->removedClient();
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind, 'Case and outer spaces do not make the address "moved"');
+        $this->assertSame(['Owner@Example.ORG'], $client->calls, 'Brevo gets the address without the outer spaces');
+    }
+
+    public function testClearBlockedForOwnerTrimsTheUserEmailFallbackBeforeTheBrevoCall(): void
+    {
+        $this->scriptClearBlock(
+            $this->blockedState(['blockedAddress' => null, 'userEmail' => ' user@example.org ']),
+            ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]
+        );
+        $client = $this->removedClient();
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertSame(['user@example.org'], $client->calls, 'Spaces would reach the Brevo path as %20');
+    }
+
+    public function testClearBlockedForOwnerAddressUsedByAnotherAccountClearsTheFlagWithoutABrevoCall(): void
+    {
+        $this->scriptClearBlock(
+            $this->blockedState(),
+            ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false],
+            otherUserHasAddress: true
+        );
+        $client = $this->removedClient();
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::CLEARED_SHARED_ADDRESS, $outcome->kind);
+        $this->assertSame([], $client->calls);
+        $this->assertCount(1, $this->flagLogRows);
+    }
+
+    public function testClearBlockedForOwnerOwnerAsOnlyHolderOfTheAddressIsNotShared(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]);
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+    }
+
+    public function testClearBlockedForOwnerBrevoFailureWritesNothingAndLogsOwnerIdAndStatusOnly(): void
+    {
+        global $mockLogEntries;
+        $this->mockRepo->method('findBlockClearTarget')->willReturn($this->blockedState());
+        $this->mockRepo->method('findUserIdsByAddress')->willReturn([42]);
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->never())->method('clearProfileBlockedIfAddress');
+        $client = new FakeBrevoBlocklistClient(BrevoUnblockResult::failed(
+            BrevoUnblockResult::REASON_HTTP,
+            500,
+            'Brevo\Client\ApiException (code 500) at ObjectSerializer.php:12'
+        ));
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(ClearBlockOutcome::BREVO_FAILED, $outcome->kind);
+        $this->assertFalse($outcome->isCleared());
+        $this->assertSame([], $this->flagLogRows, 'No flag-change row');
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(7, $mockLogEntries[0]['user_id']);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $mockLogEntries[0]['category']);
+        $this->assertSame(
+            'Verification: Clear Block Brevo unblock failed for owner 42 (reason http, HTTP 500,'
+            . ' detail Brevo\Client\ApiException (code 500) at ObjectSerializer.php:12)',
+            $mockLogEntries[0]['message']
+        );
+        $this->assertStringNotContainsString('owner@example.org', json_encode($mockLogEntries, JSON_THROW_ON_ERROR));
+    }
+
+    public function testClearBlockedForOwnerBrevoFailureWithNoStatusLogsNone(): void
+    {
+        global $mockLogEntries;
+        $this->mockRepo->method('findBlockClearTarget')->willReturn($this->blockedState());
+        $this->mockRepo->method('findUserIdsByAddress')->willReturn([42]);
+        $client = new FakeBrevoBlocklistClient(BrevoUnblockResult::failed(BrevoUnblockResult::REASON_NO_API_KEY));
+
+        $this->manager->clearBlockedForOwner(42, 7, $client);
+
+        $this->assertSame(
+            'Verification: Clear Block Brevo unblock failed for owner 42 (reason no_api_key, HTTP none, detail none)',
+            $mockLogEntries[0]['message']
+        );
+    }
+
+    /**
+     * The Brevo unblock is logged at once, before the registry write, so the
+     * log shows it when the write never happens.
+     */
+    public function testClearBlockedForOwnerSuccessLogsTheBrevoUnblockBeforeTheRegistryWrite(): void
+    {
+        global $mockLogEntries;
+        $this->mockRepo->method('findBlockClearTarget')->willReturn($this->blockedState());
+        $this->mockRepo->method('findUserIdsByAddress')->willReturn([42]);
+        $logRowsAtWrite = null;
+        $this->mockRepo->method('clearProfileBlockedIfAddress')->willReturnCallback(
+            static function () use (&$logRowsAtWrite): array {
+                global $mockLogEntries;
+                $logRowsAtWrite = count($mockLogEntries);
+
+                return ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false];
+            }
+        );
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertSame(1, $logRowsAtWrite, 'The unblock row is written before the registry write');
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(7, $mockLogEntries[0]['user_id']);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $mockLogEntries[0]['category']);
+        $this->assertSame(
+            'Verification: Clear Block Brevo unblock done for owner 42 (outcome removed)',
+            $mockLogEntries[0]['message']
+        );
+        $this->assertStringNotContainsString('owner@example.org', json_encode($mockLogEntries, JSON_THROW_ON_ERROR));
+    }
+
+    public function testClearBlockedForOwnerRegistryWriteThrowsAfterUnblockKeepsTheUnblockLogRow(): void
+    {
+        global $mockLogEntries;
+        $this->mockRepo->method('findBlockClearTarget')->willReturn($this->blockedState());
+        $this->mockRepo->method('findUserIdsByAddress')->willReturn([42]);
+        $this->mockRepo->method('clearProfileBlockedIfAddress')
+            ->willThrowException(new CarDatabaseException('write failed for owner@example.org'));
+        $this->mockRepo->expects($this->once())->method('rollback');
+
+        try {
+            $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+            $this->fail('Expected CarDatabaseException');
+        } catch (CarDatabaseException) {
+            // Expected: the caller reports the failure.
+        }
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $mockLogEntries[0]['category']);
+        $this->assertSame(
+            'Verification: Clear Block Brevo unblock done for owner 42 (outcome removed)',
+            $mockLogEntries[0]['message']
+        );
+        $this->assertStringNotContainsString('owner@example.org', json_encode($mockLogEntries, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('write failed', json_encode($mockLogEntries, JSON_THROW_ON_ERROR));
+    }
+
+    public function testClearBlockedForOwnerNotBlockedAtBrevoLogsTheOutcome(): void
+    {
+        global $mockLogEntries;
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => false, 'stillBounced' => false, 'stillOptedOut' => false]);
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, new FakeBrevoBlocklistClient(BrevoUnblockResult::notBlocked()));
+
+        $this->assertSame(ClearBlockOutcome::ADDRESS_CHANGED, $outcome->kind);
+        $this->assertSame(
+            ['Verification: Clear Block Brevo unblock done for owner 42 (outcome notBlocked)'],
+            array_column($mockLogEntries, 'message')
+        );
+    }
+
+    public function testClearBlockedForOwnerAddressChangedDuringTheCallRollsBackAndClearsNothing(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => false, 'stillBounced' => false, 'stillOptedOut' => false]);
+        $this->mockRepo->expects($this->once())->method('rollback');
+        $this->mockRepo->expects($this->never())->method('commit');
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+
+        $this->assertSame(ClearBlockOutcome::ADDRESS_CHANGED, $outcome->kind);
+        $this->assertFalse($outcome->isCleared());
+        $this->assertSame([], $this->flagLogRows);
+    }
+
+    public function testClearBlockedForOwnerFlagAlreadyClearedDuringTheCallCommitsWithNoRow(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), ['old' => 0, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]);
+        $this->mockRepo->expects($this->once())->method('commit');
+        $this->mockRepo->expects($this->never())->method('rollback');
+
+        $outcome = $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+
+        $this->assertSame(ClearBlockOutcome::NOT_BLOCKED, $outcome->kind);
         $this->assertSame([], $this->flagLogRows);
     }
 
     #[Group('regression')]
-    public function testClearSuppressedForOwnerNoProfileRowPutsDetailInMessageAndFriendlyTextInUserMessage(): void
+    public function testClearBlockedForOwnerFalsyLoggerIdRollsBackAndThrows(): void
     {
-        $this->mockRepo->method('clearProfileBlocked')->willReturn(null);
-        $this->mockRepo->expects($this->never())->method('findByOwner');
+        $this->scriptClearBlock($this->blockedState(), ['old' => 1, 'addressMatched' => true, 'stillBounced' => false, 'stillOptedOut' => false]);
+        $this->mockRepo->expects($this->once())->method('beginTransaction');
+        $this->mockRepo->expects($this->once())->method('rollback');
+        $this->mockRepo->expects($this->never())->method('commit');
+        $manager = new CarVerificationManager($this->mockRepo, new DeliverabilityFlagLog(static fn (): int => 0));
+
+        $this->expectException(CarDatabaseException::class);
+        $manager->clearBlockedForOwner(42, 7, $this->removedClient());
+    }
+
+    /**
+     * A throw from rollback() must not replace the real failure, and its log row holds no exception message.
+     */
+    public function testClearBlockedForOwnerRollbackThrowsLogsTheSummaryAndKeepsTheOriginalException(): void
+    {
+        global $mockLogEntries;
+        $this->mockRepo->method('findBlockClearTarget')->willReturn($this->blockedState());
+        $this->mockRepo->method('findUserIdsByAddress')->willReturn([42]);
+        $original = new CarDatabaseException('original');
+        $this->mockRepo->method('clearProfileBlockedIfAddress')->willThrowException($original);
+        $this->mockRepo->expects($this->once())->method('rollback')
+            ->willThrowException(new \RuntimeException('rollback lost owner@example.org'));
+        $this->mockRepo->expects($this->never())->method('commit');
 
         try {
-            $this->manager->clearSuppressedForOwner(46, 7);
+            $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+            $this->fail('Expected CarDatabaseException');
+        } catch (CarDatabaseException $e) {
+            $this->assertSame($original, $e);
+        }
+
+        $this->assertCount(2, $mockLogEntries, 'The Brevo unblock row, then the rollback failure row');
+        $this->assertSame('Verification: Clear Block Brevo unblock done for owner 42 (outcome removed)', $mockLogEntries[0]['message']);
+        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $mockLogEntries[1]['category']);
+        $this->assertSame(7, $mockLogEntries[1]['user_id']);
+        $this->assertStringContainsString('rollback failed for owner 42', $mockLogEntries[1]['message']);
+        $this->assertStringContainsString('RuntimeException', $mockLogEntries[1]['message']);
+        $this->assertStringNotContainsString('rollback lost', $mockLogEntries[1]['message']);
+        $this->assertStringNotContainsString('owner@example.org', json_encode($mockLogEntries, JSON_THROW_ON_ERROR));
+    }
+
+    public function testClearBlockedForOwnerThrowsWhenOwnerHasNoProfilesRow(): void
+    {
+        $this->mockRepo->method('findBlockClearTarget')->willReturn(null);
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $client = $this->removedClient();
+
+        try {
+            $this->manager->clearBlockedForOwner(46, 7, $client);
             $this->fail('Expected CarDatabaseException');
         } catch (CarDatabaseException $e) {
             $this->assertStringContainsString('owner 46 has no profiles row', $e->getMessage());
+            $this->assertSame('The block could not be cleared. Please try again or contact support.', $e->getUserMessage());
+        }
+        $this->assertSame([], $client->calls);
+    }
+
+    public function testClearBlockedForOwnerThrowsAndRollsBackWhenTheProfileVanishesDuringTheCall(): void
+    {
+        $this->scriptClearBlock($this->blockedState(), null);
+        $this->mockRepo->expects($this->once())->method('rollback');
+        $this->mockRepo->expects($this->never())->method('commit');
+
+        $this->expectException(CarDatabaseException::class);
+        $this->manager->clearBlockedForOwner(42, 7, $this->removedClient());
+    }
+
+    // ------------------------------------------------------------------
+    // clearOptedOutForOwner() — admin Clear Opt-out (#2357)
+    // ------------------------------------------------------------------
+
+    public function testClearOptedOutForOwnerClearsOnlyTheOptOutAndLogsOwnerRequested(): void
+    {
+        $this->mockRepo->expects($this->once())->method('setProfileOptedOut')->with(42, false)->willReturn(1);
+        $this->mockRepo->expects($this->never())->method('clearProfileBlocked');
+        $this->mockRepo->expects($this->never())->method('clearProfileBlockedIfAddress');
+        $this->mockRepo->expects($this->never())->method('clearProfileBounced');
+        $this->mockRepo->expects($this->never())->method('findByOwner');
+        $this->mockRepo->expects($this->never())->method('updateCar');
+
+        $changed = $this->manager->clearOptedOutForOwner(42, 7);
+
+        $this->assertTrue($changed);
+        $metadata = $this->assertOneFlagLogRowWithKeys(7, 42, 'email_opted_out', 1, 0, 'admin', ['owner_requested']);
+        $this->assertSame(1, $metadata['owner_requested']);
+        $this->assertArrayNotHasKey('cleared_at', $metadata, 'Only Clear Block records cleared_at');
+    }
+
+    public function testClearOptedOutForOwnerReturnsFalseAndLogsNothingWhenNotOptedOut(): void
+    {
+        $this->mockRepo->method('setProfileOptedOut')->willReturn(0);
+
+        $this->assertFalse($this->manager->clearOptedOutForOwner(42, 7));
+        $this->assertSame([], $this->flagLogRows);
+    }
+
+    #[Group('regression')]
+    public function testClearOptedOutForOwnerNoProfileRowPutsDetailInMessageAndFriendlyTextInUserMessage(): void
+    {
+        $this->mockRepo->method('setProfileOptedOut')->willReturn(null);
+        $this->mockRepo->expects($this->never())->method('findByOwner');
+
+        try {
+            $this->manager->clearOptedOutForOwner(46, 7);
+            $this->fail('Expected CarDatabaseException');
+        } catch (CarDatabaseException $e) {
+            $this->assertStringContainsString('owner 46 has no profiles row', $e->getMessage());
+            $this->assertStringContainsString('clearOptedOutForOwner', $e->getMessage());
             $this->assertSame(
                 'The opt-out could not be cleared. Please try again or contact support.',
                 $e->getUserMessage()
@@ -731,7 +1219,7 @@ final class CarVerificationManagerTest extends TestCase
         $this->mockRepo->method('clearFlagsForConfirmedEmailChange')
             ->willThrowException(new CarDatabaseException('original'));
         $this->mockRepo->expects($this->once())->method('rollback')
-            ->willThrowException(new \RuntimeException('rb'));
+            ->willThrowException(new \RuntimeException('rb lost owner@example.org'));
         $this->mockRepo->expects($this->never())->method('commit');
 
         try {
@@ -746,7 +1234,10 @@ final class CarVerificationManagerTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $mockLogEntries[0]['category']);
         $this->assertSame(42, $mockLogEntries[0]['user_id']);
         $this->assertStringContainsString('rollback failed', $mockLogEntries[0]['message']);
-        $this->assertStringContainsString('rb', $mockLogEntries[0]['message']);
+        $this->assertStringContainsString('RuntimeException (code 0) at ', $mockLogEntries[0]['message']);
         $this->assertStringContainsString('userId=42', $mockLogEntries[0]['message']);
+        // The summary, not the message: the message can hold an address.
+        $this->assertStringNotContainsString('rb lost', $mockLogEntries[0]['message']);
+        $this->assertStringNotContainsString('owner@example.org', $mockLogEntries[0]['message']);
     }
 }

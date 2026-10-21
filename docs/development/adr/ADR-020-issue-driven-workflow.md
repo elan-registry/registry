@@ -323,6 +323,15 @@ are on GitHub: the comment `Combine into one PR with #A, #B`, and the
 store of state and the script that kept it in step with GitHub. It follows the
 reasoning in "Alternatives Considered" for a Projects board.
 
+**Update (v2.30.9):** the lowest-numbered rule picked issues out of the
+approved order, for example a late-stage issue with a low number. The order
+now lives in the release notes draft. `/start-milestone` writes the `WIP:`
+entries of "Issues Resolved" in the approved order, and `/finish-issue` names
+the first entry whose issue is open and not blocked. This adds no second
+store: the list already exists, is committed on the milestone branch, and
+`/finish-issue` already edits it. The lowest-numbered rule stays as the
+fallback for an issue that has no entry.
+
 ### Other changes
 
 - **`/commit-push-pr` runs on `model: sonnet`.** A script does the git and

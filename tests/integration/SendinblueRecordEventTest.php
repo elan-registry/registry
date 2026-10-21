@@ -6,6 +6,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\SendinblueMessagesTable;
 
 /**
  * Behavioral tests for sendinblueRecordEvent() (#2355).
@@ -51,30 +52,8 @@ final class SendinblueRecordEventTest extends IntegrationTestCase
         // the connection that made it, so both handles must be one connection.
         $this->assertSame(DB::getInstance(), $GLOBALS['db'] ?? null, 'Global $db is not DB::getInstance()');
 
-        // Equivalent to the table after plugin migrate.php updates 00006-00008 (sendinblue 1.8.0).
-        // A TEMPORARY table hides a real table of the same name, MySQL drops it at
-        // disconnect, and no test row can get into a real table.
-        $create = DB::getInstance()->query(
-            'CREATE TEMPORARY TABLE plg_sendinblue_messages (
-                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                message_id VARCHAR(191) NOT NULL,
-                recipient_email VARCHAR(255) NOT NULL,
-                sender_email VARCHAR(255) NOT NULL,
-                kind VARCHAR(32) NOT NULL,
-                tags VARCHAR(255) NULL,
-                status VARCHAR(32) NOT NULL,
-                accepted_at DATETIME NOT NULL,
-                delivered_at DATETIME NULL,
-                last_event_at DATETIME NULL,
-                last_checked_at DATETIME NULL,
-                last_reason VARCHAR(255) NULL,
-                UNIQUE KEY message_id (message_id),
-                KEY recipient_accepted (recipient_email(128), accepted_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-        );
-        if ($create->error()) {
-            $this->fail('Could not create the temporary plg_sendinblue_messages table: ' . $create->errorString());
-        }
+        // A TEMPORARY table, so that no test row can get into a real table.
+        SendinblueMessagesTable::createTemporary($this->db);
     }
 
     protected function tearDown(): void

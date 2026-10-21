@@ -70,7 +70,7 @@ try {
         if ($notificationSent) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "At least one transfer denial notification sent for request #$transferId");
         } else {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "All transfer denial notifications failed for request #$transferId (see email log for details)");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "No transfer denial notification sent for request #$transferId: each one failed or the send policy skipped it (see email log for details)");
         }
     } catch (\Throwable $emailEx) {
         logger(

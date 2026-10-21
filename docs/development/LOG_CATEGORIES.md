@@ -4,7 +4,7 @@
 
 **Version:** v2.12.0+
 
-**Current count:** 115 constants in `LogCategories.php` (checked 2026-09-27)
+**Current count:** 116 constants in `LogCategories.php` (checked 2026-10-20)
 
 ## Quick Start
 
@@ -149,6 +149,10 @@ Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.
 - `LOG_CATEGORY_CRON_REQUEST` → `CronRequest` (Scheduled tasks)
 - `LOG_CATEGORY_CRON_JOB_FAILURE` → `CronJobFailure` (Cron job failed)
 - `LOG_CATEGORY_CRON_JOB_SKIPPED` → `CronJobSkipped` (Cron job was paused)
+- `LOG_CATEGORY_HEALTHCHECK_PING` → `HealthcheckPing` (`HealthcheckPinger`
+  could not send a ping: missing config, transport error, or non-2xx status.
+  The line names the slug and the failure kind. It never holds the URL or
+  the key)
 - `LOG_CATEGORY_DEPLOYMENT` → `Deployment` (Deployment events)
 - `LOG_CATEGORY_MIGRATIONS` → `Migrations` (System migrations)
 - `LOG_CATEGORY_USER_MANAGER` → `UserManager` (User management)
@@ -374,5 +378,5 @@ try {
 
 ## Version History
 
-- The class contains 115 constants as of 2026-09-27. The class is the source
+- The class contains 116 constants as of 2026-10-20. The class is the source
   of truth. Use the discovery command above for the current list and count.

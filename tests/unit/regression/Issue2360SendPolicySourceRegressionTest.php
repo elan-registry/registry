@@ -45,6 +45,8 @@ final class Issue2360SendPolicySourceRegressionTest extends TestCase
 {
     private const OWNER_FILE = 'app/api/contact/send-owner-email.php';
     private const ADMIN_FILE = 'app/admin/includes/process-admin-contact.php';
+    /** A class file, not an endpoint: it sends through an injected mailer (#2463). */
+    private const TRANSFER_SERVICE_FILE = 'usersc/classes/Transfer/TransferEmailService.php';
 
     /**
      * Variable names that hold an address or an object with an address,
@@ -394,7 +396,11 @@ PHP;
      */
     public static function endpointFileProvider(): array
     {
-        return ['owner' => [self::OWNER_FILE], 'admin' => [self::ADMIN_FILE]];
+        return [
+            'owner' => [self::OWNER_FILE],
+            'admin' => [self::ADMIN_FILE],
+            'transfer email service' => [self::TRANSFER_SERVICE_FILE],
+        ];
     }
 
     // ------------------------------------------------------------------

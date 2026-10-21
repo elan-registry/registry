@@ -1,9 +1,9 @@
 // Admin Verification tab: "Send Verification Emails" (#1884) and the
 // Automatic Sending panel (#1885).
 //
-// The local DB holds more eligible cars than the batch-size cap (max 255) can
-// show, so the seeded eligible car may not appear in the preview. Tests that
-// need any eligible row use the first rendered row.
+// The local DB holds more eligible cars than the batch size (default 5,
+// max 25) can show, so the seeded eligible car may not appear in the preview.
+// Tests that need any eligible row use the first rendered row.
 //
 // SAFETY: never submit the "Send batch" form unless automatic sending is
 // confirmed PAUSED. The pause-check in app/admin/index.php
@@ -15,6 +15,12 @@ const { test, expect } = require('@playwright/test');
 const { runPhpFixture } = require('./fixture-runner.js');
 const { ensureLoggedIn, login, logout } = require('./auth-helper.js');
 
+// One worker for the whole file. The seed deletes and inserts its owners, and
+// the file-level beforeAll runs once per worker. With fullyParallel, a second
+// worker's seed deletes the both-flags car that the serial Clear Block tests
+// hold, and they time out.
+test.describe.configure({ mode: 'default' });
+
 let eligibleCarId;
 let eligibleUserId;
 let _eligibleChassis;
@@ -22,6 +28,8 @@ let bouncedCarId;
 let _bouncedUserId;
 let suppressedCarId;
 let _suppressedUserId;
+let bothCarId;
+let bothAddress;
 
 test.beforeAll(() => {
     // The fixture needs the database, which is reachable only in the app container.
@@ -35,12 +43,25 @@ test.beforeAll(() => {
     _bouncedUserId = seeded.bouncedUserId;
     suppressedCarId = seeded.suppressedCarId;
     _suppressedUserId = seeded.suppressedUserId;
+    bothCarId = seeded.bothCarId;
+    bothAddress = seeded.bothAddress;
 
     expect(eligibleCarId).toBeGreaterThan(0);
     expect(eligibleUserId).toBeGreaterThan(0);
     expect(bouncedCarId).toBeGreaterThan(0);
     expect(suppressedCarId).toBeGreaterThan(0);
+    expect(bothCarId).toBeGreaterThan(0);
+    expect(bothAddress).toContain('@');
 });
+
+/**
+ * Ask mock-brevo, through the fixture, whether the both-flags address is still blocked.
+ * @returns {boolean}
+ */
+function isBothAddressBlockedAtBrevo() {
+    const out = runPhpFixture('tests/playwright/local/fixtures/seed-verification-send-tool.php', ['--brevo-blocked']);
+    return JSON.parse(out.trim()).brevoBlocked;
+}
 
 test.describe('Admin Verification Send Tool', () => {
     test.beforeEach(async ({ page }) => {
@@ -69,7 +90,7 @@ test.describe('Admin Verification Send Tool', () => {
     });
 
     // AC5/AC6 wiring only — the row's single contextual action button
-    // (Mark Bounced / Clear Bounced / Clear Suppression, chosen by the
+    // (Clear Block / Clear Opt-out / Clear Bounced / Mark Bounced, chosen by the
     // car's own state). Uses the first rendered row (see file header). The
     // Send section lives in the Eligible pill view, not the default view
     // (see the test above), so this requests it directly.
@@ -90,7 +111,7 @@ test.describe('Admin Verification Send Tool', () => {
         await expect(actionButtons).toHaveCount(1);
 
         const actionBtn = actionButtons.first();
-        await expect(actionBtn).toHaveText(/^(Mark Bounced|Clear Bounced|Clear Suppression)$/);
+        await expect(actionBtn).toHaveText(/^(Clear Block|Clear Opt-out|Clear Bounced|Mark Bounced)$/);
 
         const expectedFormId = `owner-action-${carId}`;
         await expect(actionBtn).toHaveAttribute('form', expectedFormId);
@@ -147,6 +168,7 @@ test.describe('Admin Verification Send Tool', () => {
 
         await expect(card.locator('td', { hasText: String(bouncedCarId) })).toHaveCount(0);
         await expect(card.locator('td', { hasText: String(suppressedCarId) })).toHaveCount(0);
+        await expect(card.locator('td', { hasText: String(bothCarId) })).toHaveCount(0);
     });
 });
 
@@ -352,6 +374,149 @@ test.describe('Admin Verification Automatic Sending panel', () => {
     });
 });
 
+// Clear Block and Clear Opt-out (#2357). The tests run in order: each one
+// changes the one seeded both-flags owner, and the next one starts from that
+// state. The block is also on the mock-brevo blocklist, so Clear Block runs a
+// real DELETE against mock-brevo.
+test.describe('Admin Verification Clear Block and Clear Opt-out', () => {
+    test.describe.configure({ mode: 'serial' });
+
+    const queueRow = (page, carId) => page.locator('#verificationQueue table tbody tr', {
+        has: page.locator(`td:text-is("${carId}")`),
+    });
+
+    const gotoPill = async (page, status) => {
+        await page.goto(`app/admin/index.php?tab=verification&status=${status}&show=100`, { waitUntil: 'networkidle' });
+    };
+
+    // The toast auto-dismisses, so start waiting before the click.
+    const waitForToast = (page, kind) => {
+        const toast = page.locator(`.us-toast:has(.us-bar-${kind}) .toast-body`).first();
+        return toast
+            .waitFor({ state: 'visible', timeout: 10000 })
+            .then(() => toast.textContent())
+            .catch(() => '');
+    };
+
+    test.beforeEach(async ({ page }) => {
+        await ensureLoggedIn(page);
+    });
+
+    test('an owner with both flags shows Clear Block, not Clear Opt-out, in the Blocked and Opted out pills', async ({ page }) => {
+        expect(isBothAddressBlockedAtBrevo(), 'the fixture put the address on the mock-brevo blocklist').toBe(true);
+
+        for (const status of ['blocked', 'opted_out']) {
+            await gotoPill(page, status);
+            const row = queueRow(page, bothCarId);
+            await expect(row, `both-flags row under status=${status}`).toBeVisible();
+
+            const buttons = row.locator('td').last().locator('button');
+            await expect(buttons).toHaveCount(1);
+            await expect(buttons.first()).toHaveText('Clear Block');
+            await expect(buttons.first()).toHaveAttribute('type', 'button');
+            await expect(buttons.first()).toHaveAttribute('data-owner-request-command', 'clear_block');
+            await expect(buttons.first()).toHaveAttribute('form', `owner-action-${bothCarId}`);
+        }
+    });
+
+    test('a POST without owner_requested=1 is refused and changes nothing', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification&status=blocked&show=100', { waitUntil: 'networkidle' });
+        const csrf = await page.locator(`form#owner-action-${bothCarId} input[name="csrf"]`).getAttribute('value');
+        expect(csrf).toBeTruthy();
+
+        const response = await page.request.post('app/admin/index.php?tab=verification', {
+            form: { csrf, command: 'clear_block', car_id: String(bothCarId) },
+        });
+        expect(response.status()).toBe(200);
+
+        expect(isBothAddressBlockedAtBrevo(), 'a refused POST leaves the Brevo block').toBe(true);
+        await gotoPill(page, 'blocked');
+        await expect(queueRow(page, bothCarId).getByRole('button', { name: 'Clear Block' })).toBeVisible();
+    });
+
+    test('the confirm modal shows the owner-request text, and Cancel changes nothing', async ({ page }) => {
+        await gotoPill(page, 'blocked');
+        const form = page.locator(`form#owner-action-${bothCarId}`);
+        const modal = page.locator('#ownerRequestConfirmModal');
+
+        await queueRow(page, bothCarId).getByRole('button', { name: 'Clear Block' }).click();
+        await expect(modal).toBeVisible();
+        await expect(modal).toContainText('Confirm that the owner asked for this change.');
+        await expect(modal.locator('.modal-header')).toHaveClass(/bg-danger/);
+        // Opening the modal adds nothing to the form.
+        await expect(form.locator('input[name="owner_requested"]')).toHaveCount(0);
+        await expect(form.locator('input[name="command"]')).toHaveCount(0);
+
+        await modal.getByRole('button', { name: 'Cancel' }).click();
+        await expect(modal).toBeHidden();
+        await expect(form.locator('input[name="owner_requested"]')).toHaveCount(0);
+
+        await gotoPill(page, 'blocked');
+        await expect(queueRow(page, bothCarId).getByRole('button', { name: 'Clear Block' })).toBeVisible();
+        expect(isBothAddressBlockedAtBrevo(), 'Cancel leaves the Brevo block in place').toBe(true);
+    });
+
+    test('Confirm posts owner_requested=1 and Clear Block removes the block at mock-brevo', async ({ page }) => {
+        await gotoPill(page, 'blocked');
+        const modal = page.locator('#ownerRequestConfirmModal');
+
+        await queueRow(page, bothCarId).getByRole('button', { name: 'Clear Block' }).click();
+        await expect(modal).toBeVisible();
+
+        const successToast = waitForToast(page, 'success');
+        const requestSent = page.waitForRequest(req => req.method() === 'POST'
+            && (req.postData() || '').includes('owner_requested=1'));
+        await page.locator('#ownerRequestConfirmButton').click();
+
+        const post = new URLSearchParams((await requestSent).postData() || '');
+        expect(post.get('command')).toBe('clear_block');
+        expect(post.get('owner_requested')).toBe('1');
+        expect(post.get('car_id')).toBe(String(bothCarId));
+        expect(post.get('csrf')).toBeTruthy();
+
+        const flash = ((await successToast) || '').trim();
+        expect(flash).toContain('cleared of the block. Brevo no longer blocks this address.');
+        expect(flash).not.toContain(bothAddress);
+        await page.waitForLoadState('networkidle');
+
+        expect(isBothAddressBlockedAtBrevo(), 'mock-brevo no longer lists the address').toBe(false);
+
+        // The block is gone, so the owner leaves the Blocked pill. The opt-out
+        // stays, so the row now offers Clear Opt-out.
+        await gotoPill(page, 'blocked');
+        await expect(queueRow(page, bothCarId)).toHaveCount(0);
+        await gotoPill(page, 'opted_out');
+        const buttons = queueRow(page, bothCarId).locator('td').last().locator('button');
+        await expect(buttons).toHaveCount(1);
+        await expect(buttons.first()).toHaveText('Clear Opt-out');
+        await expect(buttons.first()).toHaveAttribute('data-owner-request-command', 'clear_opt_out');
+    });
+
+    test('Clear Opt-out asks for confirmation, posts owner_requested=1, and the owner leaves the Opted out pill', async ({ page }) => {
+        await gotoPill(page, 'opted_out');
+        const modal = page.locator('#ownerRequestConfirmModal');
+
+        await queueRow(page, bothCarId).getByRole('button', { name: 'Clear Opt-out' }).click();
+        await expect(modal).toBeVisible();
+        await expect(modal).toContainText('Confirm that the owner asked for this change.');
+
+        const successToast = waitForToast(page, 'success');
+        const requestSent = page.waitForRequest(req => req.method() === 'POST'
+            && (req.postData() || '').includes('owner_requested=1'));
+        await page.locator('#ownerRequestConfirmButton').click();
+
+        const post = new URLSearchParams((await requestSent).postData() || '');
+        expect(post.get('command')).toBe('clear_opt_out');
+        expect(post.get('owner_requested')).toBe('1');
+
+        expect(((await successToast) || '').trim()).toContain('cleared of the opt-out');
+        await page.waitForLoadState('networkidle');
+
+        await gotoPill(page, 'opted_out');
+        await expect(queueRow(page, bothCarId)).toHaveCount(0);
+    });
+});
+
 // Non-admin refusal for the #1885 commands (hasPerm([2]) gate). Uses the
 // persistent non-admin account (see car-edit-missing-car.spec.js).
 test.describe('Admin Verification non-admin access (#1885 commands)', () => {
@@ -431,7 +596,7 @@ test.describe('Admin Verification non-admin access (#1885 commands)', () => {
 
 // Not covered here:
 // 1. The "Send batch" happy path: email() is undefined locally (see header).
-// 2. Full Mark Bounced / Clear Bounced / Clear Suppression round trips: each
+// 2. Full Mark Bounced / Clear Bounced round trips: each
 //    needs its own seeded car so the tests do not change shared data.
 // 3. XSS escaping in the preview: the seeded <script> chassis cannot rank into
 //    the capped preview on the local dataset.
