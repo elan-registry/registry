@@ -6,73 +6,45 @@
 
 An owner with a registered car gets a verification email in production that
 works, and can use it to confirm their car. The cron jobs alert when they
-stop, and the mail plugin's message log has a retention limit.
+stop, and the privacy policy describes the email and monitoring services.
 
 ## User-Facing Changes
 
-Changes visible to public registry visitors (car listings, owner pages, search, etc.). One sentence each.
-
-- An owner who opted out of registry email no longer gets car transfer notices. A bounce or a block on the owner's
-  address also stops them. The transfer request itself still completes.
+- An owner who opted out of registry email, or whose address bounced or is blocked, no longer gets car transfer notices, and the transfer request still completes.
   ([#2463](https://github.com/elan-registry/registry/issues/2463))
-- An owner with a registered car gets a car-verification request email in production, and can use its links
-  to verify the car, report it sold, or opt out.
+- An owner with a registered car gets a car-verification request email in production, with links to verify the car, report it sold, or opt out.
   ([#2088](https://github.com/elan-registry/registry/issues/2088))
-- The privacy policy now says that car-verification request emails go through Brevo, and that the email
-  service log keeps a recipient address for no more than 90 days.
+- The privacy policy now says that car-verification request emails go through Brevo and
+  that the email service log keeps a recipient address for no more than 90 days.
   ([#2088](https://github.com/elan-registry/registry/issues/2088))
-- The privacy policy names healthchecks.io as a processor. It receives the scheduled task name and run status,
-  and no personal data. ([#1875](https://github.com/elan-registry/registry/issues/1875))
+- The privacy policy names healthchecks.io as a processor that receives the scheduled task name and run status, and no personal data.
+  ([#1875](https://github.com/elan-registry/registry/issues/1875))
 
 ## Admin-Facing Changes
 
-Changes visible only to administrators (admin dashboard, maintenance tools, settings, etc.). One sentence each.
-
-- The Verification tab and the send job use a batch size of at most 25, even when the database holds a larger value. ([#2363](https://github.com/elan-registry/registry/issues/2363))
-- Elan Registry's own log lines for the Brevo event, suppression and verification-send paths no longer hold email
-  addresses, but the sendinblue plugin's log row still can.
+- The Verification tab and the send job use a batch size of at most 25, even when the database holds a larger value.
+  ([#2363](https://github.com/elan-registry/registry/issues/2363))
+- Elan Registry's own log lines for the Brevo event, suppression and verification-send paths no longer hold email addresses.
   ([#2420](https://github.com/elan-registry/registry/issues/2420), [#2425](https://github.com/elan-registry/registry/issues/2425))
-- The Verification tab row has two new actions, Clear Block and Clear Opt-out. They replace Clear Suppression.
-  Clear Block removes the address from Brevo's blocklist and clears the registry block.
-  Clear Opt-out clears the opt-out only. Each action asks the admin to confirm that the owner asked for the change.
-  Clear Block calls Brevo only when the blocked address is still the owner's address and no other account uses it.
-  If Brevo fails, the block stays and the admin sees "Brevo did not remove the block. Try again later."
-  On a site where Brevo is not set up, the block also stays, and the admin sees that Brevo is not set up.
+- The Verification tab row has two new actions, Clear Block and Clear Opt-out, that replace Clear Suppression.
+  ([#2357](https://github.com/elan-registry/registry/issues/2357))
+- Clear Block removes the address from Brevo's blocklist, and the block stays if Brevo fails or is not set up.
   ([#2357](https://github.com/elan-registry/registry/issues/2357))
 - The suppression import no longer sets a flag again after an admin Clear Block or Clear Bounced
-  when Brevo's `blockedAt` is missing or not usable. The import also treats a `blockedAt` more than 5 minutes
-  in the future as not usable. With no clear on record, the import still sets the flag.
+  when Brevo's `blockedAt` is missing, unusable, or more than 5 minutes in the future.
   ([#2426](https://github.com/elan-registry/registry/issues/2426))
-- Clearing the UserSpice logs (admin Logs page) removes the Clear Block times. The import guard for
-  `email_blocked` then has no lower bound. The guard for `email_bounced` stays, because it reads a profile column.
+- Clearing the UserSpice logs removes the Clear Block times, so the import guard for `email_blocked` then has no lower bound.
   ([#2357](https://github.com/elan-registry/registry/issues/2357), [#2426](https://github.com/elan-registry/registry/issues/2426))
-- Soft bounces on owner-to-owner contact mail no longer set `email_bounced` on the recipient. The registry still
-  records each bounce event. Hard bounces, blocks and spam complaints on that mail still set their flags.
+- Soft bounces on owner-to-owner contact mail no longer set `email_bounced` on the recipient, but hard bounces, blocks and spam complaints still set their flags.
   ([#2460](https://github.com/elan-registry/registry/issues/2460))
-- The log lines that the transfer email service writes no longer hold an email address. A failed admin alert
-  names the admin's position in the list, not the address.
-  ([#2463](https://github.com/elan-registry/registry/issues/2463))
-- The verification send job and the Brevo event reconciliation job ping healthchecks.io after each scheduled run.
-  A missed run or a failed run sends an alert to Discord. When an admin pauses one of these jobs, the admin also
-  pauses its check in healthchecks.io (see `DEPLOYMENT.md`). A "Run now" click does not ping.
+- The transfer email service no longer writes email addresses to its log lines. ([#2463](https://github.com/elan-registry/registry/issues/2463))
+- The verification send job and the Brevo event reconciliation job ping healthchecks.io after each scheduled run, and a missed or failed run sends an alert to Discord.
   ([#1875](https://github.com/elan-registry/registry/issues/1875))
-- Production has its own Brevo webhook. It records delivery, bounce, block and spam events for real member
-  email. The registration script registers the production receiver only with the new `--allow-prod` flag.
-  Without the flag, `--create` still accepts only a `https://test.` URL.
+- A "Run now" click does not ping healthchecks.io. ([#1875](https://github.com/elan-registry/registry/issues/1875))
+- Production has its own Brevo webhook that records delivery, bounce, block and spam events for real member email.
   ([#2088](https://github.com/elan-registry/registry/issues/2088))
-- At go-live, a one-time purge deletes the `plg_sendinblue_messages` rows older than 90 days. The recurring
-  purge job is [#2384](https://github.com/elan-registry/registry/issues/2384), in milestone v2.30.10.
+- The registration script registers the production receiver only with the new `--allow-prod` flag.
   ([#2088](https://github.com/elan-registry/registry/issues/2088))
-- Before the switch goes on in production, the team tests the verification system on test through real Brevo.
-  ([#2088](https://github.com/elan-registry/registry/issues/2088))
-  - Test-car setup: each test car is due for verification, its owner has not opted out, its address is not
-    bounced or suppressed, and it sends to an inbox the team controls.
-  - Send: an admin send and the cron batch, each with the `car_verification` tag.
-  - Links: the Verify, Sold and opt-out links in the received email.
-  - Bounces and complaints: a hard bounce (also on a password-reset email), a soft-bounce escalation, a
-    block, and a spam complaint on owner-to-owner contact mail. Each sets the owner's profile flag.
-  - Nightly jobs: the suppression sync and the reconciliation of the same events.
-  - Notice: the owner's paused-email notice after a bounce and after an opt-out.
 
 ## Issues Resolved
 
