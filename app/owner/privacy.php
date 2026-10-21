@@ -25,7 +25,7 @@ if (!securePage($php_self)) {
 
 $policy = <<<'GUIDEHTML'
 <h1><a id="privacy-policy" href="#privacy-policy" class="" aria-hidden="true" title="Permalink"></a>Privacy Policy</h1>
-<p><strong>Effective: October 20, 2026</strong></p>
+<p><strong>Effective: October 21, 2026</strong></p>
 <p>The Elan Registry is a community database for Lotus Elan cars, run by enthusiasts for enthusiasts. This page explains what information we collect, what we do with it, and what rights you have over your data.</p>
 <p>The short version: we collect what's needed to run the registry, we keep your personal details private, and you can change or delete your data at any time. If you decide to leave, we'll remove your personal information but may keep the car records themselves so the registry stays useful to the community.</p>
 <h2><a id="what-we-collect" href="#what-we-collect" class="" aria-hidden="true" title="Permalink"></a>What we collect</h2>
@@ -39,7 +39,7 @@ $policy = <<<'GUIDEHTML'
 <h2><a id="what-we-do-with-it" href="#what-we-do-with-it" class="" aria-hidden="true" title="Permalink"></a>What we do with it</h2>
 <p>We use your information to run the registry, let users contact each other safely, power search and browsing, and keep the site secure.</p>
 <p>We use Brevo, a third-party email delivery service based in the EU, to send transactional email: password resets, contact messages, and transfer notifications. Brevo receives the recipient's email address and the content of that one message; it does not receive your other registry data. We use Brevo because there's no way to reliably deliver email without a processor like it.</p>
-<p>We have not started sending car-verification request emails yet. When we do, they will also go through Brevo. How we record the delivery status of all registry email is described in the next section.</p>
+<p>We also send car-verification request emails through Brevo. How we record the delivery status of all registry email is described in the next section.</p>
 <p>Every verification email includes a one-click link to opt out, no login required. The opt-out stops all registry email to you except account mail (password reset, sign-in, and email change). You can turn registry email back on yourself from Account Settings at any time. If your email bounced because the address itself no longer works, verification emails resume automatically as soon as you confirm a different, working email address. There's no separate switch to flip for that case.</p>
 <p>We use healthchecks.io, a monitoring service run by SIA Monkey See Monkey Do in Latvia (EU), to tell us when a scheduled task on the site finishes or fails. Healthchecks.io receives the task name and its run status (success or failure). It does not receive any personal data.</p>
 <p>What we don't do: sell your data, show your last name or email publicly, track your exact location, or keep detailed browsing histories.</p>
@@ -51,6 +51,7 @@ $policy = <<<'GUIDEHTML'
 <li>Soft-bounce, delivery, send, and other records are kept for 90 days.</li>
 <li>For each car, we keep the record of the latest verification email. It keeps its date but has no email address. We keep it as long as the car exists. After the car is deleted, the next nightly clean-up removes the record once it is 90 days old. We also remove it when your account is deleted.</li>
 </ul>
+<p>The email service log on our site keeps the recipient address of each message for no more than 90 days. After that, we delete the address.</p>
 <p>Your profile also holds your current bounce, block, and opt-out state, with the last flagged address and its date. A bounce or a block stays until you confirm a different email address or an administrator clears it. The opt-out stays until you use Resume registry email in Account Settings or an administrator clears it. This state is removed when your account is deleted.</p>
 <p>Your profile keeps a copy of the last email address we recorded for you. We use it to check whether your address changed. This copy is removed when your account is deleted.</p>
 <p>When one of these flags changes, the site log records your user ID and the name of the flag. It does not record your email address.</p>
@@ -70,7 +71,7 @@ $policy = <<<'GUIDEHTML'
 <h2><a id="updates" href="#updates" class="" aria-hidden="true" title="Permalink"></a>Updates</h2>
 <p>If we change this policy, we'll update the effective date at the top of the page and post the new version here. Anything significant, we'll announce to users.</p>
 <hr />
-<p><em>Last updated: October 20, 2026. This update adds healthchecks.io as a processor: a monitoring service that tells us when a scheduled task finishes or fails, and receives no personal data.</em></p>
+<p><em>Last updated: October 21, 2026. This update says that we now send car-verification request emails through Brevo. It also adds the 90-day limit on how long the email service log keeps a recipient address.</em></p>
 
 GUIDEHTML;
 ?>

@@ -1298,7 +1298,7 @@ the response does not change. The webhook does not call it for an event that is 
 | Brevo event | Effect |
 | --- | --- |
 | `hard_bounce`, `blocked`, `invalid`, `invalid_email` | Immediately flags the owner as bounced (`profiles.email_bounced = 1`, with `email_bounced_address` set to the reported address and `email_bounced_at` set to the event time) |
-| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. A soft bounce of owner contact mail does not count either (#2460): the count skips a send cycle when the `plg_sendinblue_messages` row for that `brevo_message_id` has the tag `send-owner-email` in its `tags`. A cycle with no plugin row, or with null tags, still counts, so an owner contact cycle counts again after its plugin row is deleted. A purge of plugin rows (#2384) must keep a row while its message ID is still in `er_email_events`. The sender picks the recipient, so a full mailbox must not mark the owner bounced. Hard bounces, blocks and spam of owner contact mail still set their flags. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
+| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. A soft bounce of owner contact mail does not count either (#2460): the count skips a send cycle when the `plg_sendinblue_messages` row for that `brevo_message_id` has the tag `send-owner-email` in its `tags`. A cycle with no plugin row, or with null tags, still counts, so an owner contact cycle counts again after its plugin row is deleted. [Retention of plugin rows](#retention-of-plugin-rows) says when the purge deletes that row. The sender picks the recipient, so a full mailbox must not mark the owner bounced. Hard bounces, blocks and spam of owner contact mail still set their flags. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
 | `delivered` | Event row only. Implicitly resets the soft-bounce escalation window (the count query only looks at soft bounces after the most recent `delivered` row) |
 | `spam` | Flags the owner as blocked (`profiles.email_blocked = 1`, cause `spam`, with the address and event time). This is a distinct signal from a bounce |
 | `unsubscribed` | The same as `spam`, with cause `unsubscribed` |
@@ -1545,6 +1545,7 @@ two cutoffs (`CarRepository::deleteEmailEventsOlderThan()`):
 - **Soft-bounce count.** Both rows use the 90-day cutoff. So the prune
   deletes every soft bounce that is older than a `delivered` row it deletes.
   A pruned `delivered` row cannot let an older soft bounce count again.
+- **Plugin rows.** See [Retention of plugin rows](#retention-of-plugin-rows).
 - **Switch off.** The prune runs with the verification switch off.
 - **After a failed backfill.** The prune runs in a `finally` block, so a
   failed backfill does not stop it. The backfill failure still reaches
@@ -1559,6 +1560,28 @@ blocked-contacts *import* is #1923, nightly *reconciliation* is #1889), and
 no admin UI rendering of the per-car event history. Later issues added the
 admin UI: the unmatched-recipient counter (#2085, see the Status Indicators
 list above) and the latest event of each car in its Status chip (#2361).
+
+### Retention of Plugin Rows
+
+The table `plg_sendinblue_messages` keeps a recipient address for 90 days or
+less. The upstream sendinblue plugin 1.8.0 has no retention setting for this
+table. The Registry enforces the limit with a purge of rows older than 90 days.
+
+1. **At go-live, run a one-time purge.** Run this SQL once:
+   `DELETE FROM plg_sendinblue_messages WHERE accepted_at < NOW() - INTERVAL 90 DAY;`
+2. **After go-live, the purge job runs.** [#2384](https://github.com/elan-registry/registry/issues/2384)
+   adds the job (milestone v2.30.10).
+
+Until #2384 ships, a row can stay longer than 90 days after the go-live day.
+
+The purge deletes every row older than 90 days. This includes a row whose
+message ID `er_email_events` still names. The effect on matching:
+
+- A soft bounce of owner contact mail counts again for that send cycle. The
+  count has no plugin row to read the tag `send-owner-email` from. See the
+  `soft_bounce` row in the event table.
+- A later event for the message matches no user by step (b). See the
+  address-match steps above.
 
 ### Address-Match Rule (#2356)
 
