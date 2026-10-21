@@ -320,8 +320,13 @@ final class BrevoBlocklistClientTest extends TestCase
 
         $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
         $this->assertSame($reason, $result->reason());
-        $this->assertSame($cause, $result->detail());
+        // An autoloader that threw adds its ExceptionLogSummary after the cause.
+        $this->assertStringStartsWith($cause, (string) $result->detail());
+        if ($cause === BrevoApiFactory::CAUSE_AUTOLOADER_FAILED) {
+            $this->assertStringContainsString('RuntimeException', (string) $result->detail());
+        }
         $this->assertStringNotContainsString('owner@example.org', var_export($result, true));
+        $this->assertStringNotContainsString('broken for', var_export($result, true));
     }
 
     /**

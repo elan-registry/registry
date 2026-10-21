@@ -41,7 +41,7 @@ after an item is written.
 
 ### `app/admin/includes/process-transfer-approve.php` `app/admin/includes/process-transfer-deny.php` `app/api/cars/transfer-request.php`
 
-- [ ] The outer `catch (\Throwable ...)` around `TransferEmailService` logs `getMessage()`, which can hold an email address. Log `ExceptionLogSummary::of($e)` instead (found in #2463)
+- [ ] No test asserts the "No transfer approval/denial notification sent ... each one failed or the send policy skipped it" `EMAIL_ERROR` line. In `tests/integration/transfer/CarTransferWorkflowTest.php`, approve and deny with both parties opted out and assert that one row (found in /finish-milestone v2.30.9)
 
 ### `app/admin/includes/tab-car_mgmt.php`
 
@@ -254,7 +254,7 @@ after an item is written.
 
 ### `usersc/classes/Car/CarVerificationManager.php`
 
-- [ ] The Clear Block rollback-failure comment (~L690) says no log row holds an exception message; the `error_log()` fallback on that path does. Say so in the comment (found in /finish-milestone v2.30.9)
+- [ ] The Clear Block rollback-failure comment (~L678) says no log row holds an exception message; the `error_log()` fallback on that path does. Say so in the comment (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Car/ClearBlockOutcome.php` + `usersc/classes/Email/BrevoUnblockResult.php`
 
@@ -275,7 +275,6 @@ after an item is written.
 - [ ] The flag list is written three times: `SendDecision::FLAG_ORDER`, the `$all` list in `blockingFlags()`, and the table docblock. Build it once, or use a `SendFlag` enum (found in /finish-milestone v2.30.8)
 - [ ] `adminMessage()` has no sentence for `email_blocked`, which is right only for `MailKind::AdminContact`. Take the `MailKind`, or rename it `adminContactMessage()` (found in /finish-milestone v2.30.8)
 - [ ] A malformed or zero-date `email_bounced_at` makes `toDate()` (~L204) return null with no log line. The send is still refused, but the admin message has no date and the bad value stays hidden. Log it with the owner ID (the decision needs to carry it) (found in #2360)
-- [ ] `forUser()` relies on `array_intersect` keeping the first array's order to meet `SendDecision::FLAG_ORDER`; add a comment or sort against `FLAG_ORDER` (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Car/SendResult.php`
 

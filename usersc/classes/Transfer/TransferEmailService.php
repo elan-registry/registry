@@ -53,8 +53,8 @@ class TransferEmailService
     /**
      * Ask the send policy whether one owner can get a transfer notice
      *
-     * A skip is logged here, so that the send method can return true and the
-     * caller does not log the skip as a failure.
+     * A skip is logged here, so that sendRequest() can return true with no
+     * failure log. sendResponse() counts a skip as not sent.
      *
      * @param int $userId Owner user ID
      * @param string $context Caller label used in the log message (e.g. "Transfer request notification")

@@ -47,6 +47,12 @@ class BrevoBlocklistClient
      */
     private ?string $sdkLoadCause = null;
 
+    /**
+     * The log-safe {@see BrevoApiFactory} detail of that SDK load failure (an
+     * ExceptionLogSummary when the autoloader threw), or an empty string.
+     */
+    private string $sdkLoadDetail = '';
+
     public function __construct(private readonly DatabaseInterface $db)
     {
     }
@@ -87,9 +93,10 @@ class BrevoBlocklistClient
             }
 
             $this->sdkLoadCause = null;
+            $this->sdkLoadDetail = '';
             $api = $this->createApi($apiKey);
             if ($api === null) {
-                return self::sdkFailureResult($this->sdkLoadCause);
+                return self::sdkFailureResult($this->sdkLoadCause, $this->sdkLoadDetail);
             }
 
             $api->smtpBlockedContactsEmailDelete($address);
@@ -120,6 +127,7 @@ class BrevoBlocklistClient
         $load = $factory->loadSdk();
         if ($load['reason'] !== null) {
             $this->sdkLoadCause = $load['cause'];
+            $this->sdkLoadDetail = $load['detail'];
             return null;
         }
 
@@ -134,9 +142,10 @@ class BrevoBlocklistClient
      * in an installed SDK, so the admin gets the retry text, not the setup text.
      *
      * @param string|null $cause The {@see BrevoApiFactory} `CAUSE_*` constant, or null
-     * @return BrevoUnblockResult A failed result with the cause as its detail
+     * @param string $detail The factory's log-safe detail, or an empty string
+     * @return BrevoUnblockResult A failed result with the cause, and the detail when present, as its detail
      */
-    private static function sdkFailureResult(?string $cause): BrevoUnblockResult
+    private static function sdkFailureResult(?string $cause, string $detail): BrevoUnblockResult
     {
         $loadFailed = in_array(
             $cause,
@@ -147,7 +156,7 @@ class BrevoBlocklistClient
         return BrevoUnblockResult::failed(
             $loadFailed ? BrevoUnblockResult::REASON_SDK_LOAD_FAILED : BrevoUnblockResult::REASON_NO_SDK,
             null,
-            $cause
+            ($cause !== null && $detail !== '') ? $cause . ': ' . $detail : $cause
         );
     }
 

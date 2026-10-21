@@ -1074,7 +1074,7 @@ contact endpoint, and `TransferEmailService` all ask it before they call
 | Verification email | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | The admin batch report shows the reason for each refused car |
 | Owner-to-owner contact | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The sender gets the same response as for a real send, to stop address enumeration. A log line names the user IDs and the flag names |
 | Admin contact | No profile, `email_bounced`, `email_opted_out`. Not `email_blocked` | The admin or editor sees a message. It gives the bounce date, the opt-out, or the missing profile |
-| Transfer notices (`TransferEmailService`: request notice, response to the requester, decision notice to the previous owner) | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The service logs the skip in the `EMAIL_ERROR` category. The log line names the user ID and the flag names. The send method returns `true`, so the caller does not treat the skip as a failure |
+| Transfer notices (`TransferEmailService`: request notice, response to the requester, decision notice to the previous owner) | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The service logs the skip in the `EMAIL_ERROR` category. The log line names the user ID and the flag names. `sendRequest()` returns `true`, so the caller does not treat the skip as a failure. `sendResponse()` counts a skip as not sent. When no notice was sent, the caller logs "No transfer ... notification sent" |
 | Account mail (join, password reset, email change, passwordless, reauthentication) | Never blocked | Not applicable |
 | Registrar feedback | Never blocked | Not applicable |
 

@@ -642,11 +642,18 @@ class CarVerificationManager
             // Logged before the registry write: if that write throws, or
             // ends in addressChanged or notBlocked, this line is the only
             // record that Brevo no longer blocks the address.
-            logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+            $doneMessage = sprintf(
                 'Verification: Clear Block Brevo unblock done for owner %d (outcome %s)',
                 $ownerId,
                 $unblock->outcome()
-            ));
+            );
+            try {
+                logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $doneMessage);
+            } catch (\Throwable $logFailure) {
+                // Brevo already changed. Keep the record and go on to the
+                // registry write, so a logs table fault does not stop it.
+                error_log('[ElanRegistry] ' . $doneMessage . ' (logger failed: ' . ExceptionLogSummary::of($logFailure) . ')');
+            }
         }
 
         $this->repo->beginTransaction();

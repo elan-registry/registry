@@ -3033,7 +3033,8 @@ message. The SDK puts the request URL, with the address, in its messages.
   `sdk_load_failed` (the SDK is installed but did not load), `http` (with the
   status) or `transport` (no HTTP answer, or a throw before the call). A
   failed result carries a log-safe detail: the `BrevoApiFactory` cause for a
-  key or SDK failure, or `ExceptionLogSummary::of()` for `http` and
+  key or SDK failure (followed by the factory's `ExceptionLogSummary` when the
+  SDK autoloader threw), or `ExceptionLogSummary::of()` for `http` and
   `transport`
 - `createApi(string $apiKey): ?object` - Protected seam. Loads the SDK and
   builds the API object through `BrevoApiFactory`. Returns null when the SDK

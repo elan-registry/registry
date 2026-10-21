@@ -19,8 +19,8 @@ namespace ElanRegistry\Car;
  * - CLEARED_NO_ADDRESS: no address to unblock. No Brevo call. The flag is cleared.
  * - CLEARED_ADDRESS_MOVED: the blocked address is not the owner's address. No Brevo call. The flag is cleared.
  * - CLEARED_SHARED_ADDRESS: another account uses the address. No Brevo call. The flag is cleared.
- * - BREVO_FAILED: the Brevo call failed, or the API key query failed. No write.
- * - BREVO_NOT_SET_UP: no Brevo API key, or the SDK did not load. No call, no write.
+ * - BREVO_FAILED: the Brevo call failed, the API key query failed, or the SDK is installed but did not load. No write.
+ * - BREVO_NOT_SET_UP: no Brevo API key, or no SDK autoloader file. No call, no write.
  * - ADDRESS_CHANGED: the stored block changed during this action. The transaction rolled back.
  *
  * @package ElanRegistry\Car
