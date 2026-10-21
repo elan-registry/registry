@@ -106,6 +106,10 @@ after an item is written.
 
 - [ ] The seven integration classes that use `createIfMissing()` drop `plg_sendinblue_messages` in `tearDownAfterClass()` and do not check `->error()`. A failed drop leaves a test-made table, and a later class then gets `false` from `createIfMissing()` and treats it as a plugin table it must not drop. Add a static `drop()` that throws on a DB error, and use it in the seven classes (found in #2420)
 
+### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
+
+- [ ] Only the `CLEARED` outcome runs an import afterwards. Add one after a shared-address (and moved-address) Clear Block: Brevo's entry with its original `blockedAt` and with none; the flag stays clear and the other account does not change (found in /finish-milestone v2.30.9)
+
 ### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
 
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
@@ -196,6 +200,10 @@ after an item is written.
 
 - [ ] No test reaches the poll catch of `BrevoEventReconciliationClient::fetchEvents()` with an address in the exception message. Add a protected `createApi()` seam, as in `BrevoSuppressionSyncClient`, and a test that shows no log row holds the address (found in #2420)
 
+### `tests/unit/cron/SendVerificationBatchJobTest.php` (test coverage)
+
+- [ ] The #2363 clamp test calls `runNow()`, which never pings. Add a `run()` test with stored `batch_size = 255`: one success ping, one `VERIFICATION_CONFIG_WARNING`, `findVerificationEligible(25, 0)` (found in /finish-milestone v2.30.9)
+
 ### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
 
 - [ ] The source check that the webhook does not read the switch (~L101) repeats behavior tests (`BrevoWebhookEndpointTest` ~L351, `BrevoEventPathParityIntegrationTest` ~L556, ~L605, ~L621). Delete it. Keep the convention scans at ~L63 and ~L110 (found in /finish-milestone v2.30.8)
@@ -204,6 +212,10 @@ after an item is written.
 
 - [ ] The source-position checks at ~L317, ~L322 and ~L353 repeat behavior tests (`SendOwnerEmailSendPolicyTest` ~L246, ~L334, `AdminContactSendPolicyTest`). Delete them, and keep the tests of the checker helper (found in /finish-milestone v2.30.8)
 - [ ] Replace the source check at ~L328 (policy check after the template render) with a behavior test: with a missing template, a blocked recipient and a clean recipient get the same error, and the log has no policy line (found in /finish-milestone v2.30.8)
+
+### `tests/unit/regression/Issue2460OwnerContactTagSourceRegressionTest.php` (test quality)
+
+- [ ] The regex needs the exact `email(...['tags'=>...]+$replyOpts)` text, and the constant test is a tautology. Assert `sendinblueTagFromFile(<endpoint path>) === OWNER_CONTACT_EMAIL_TAG`, and add a mock-Brevo send in `SendOwnerEmailSendPolicyTest` that checks the plugin row `tags` (found in /finish-milestone v2.30.9)
 
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
@@ -241,6 +253,16 @@ after an item is written.
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
 
+### `usersc/classes/Car/CarVerificationManager.php`
+
+- [ ] The Clear Block rollback-failure comment (~L690) says no log row holds an exception message; the `error_log()` fallback on that path does. Say so in the comment (found in /finish-milestone v2.30.9)
+
+### `usersc/classes/Car/ClearBlockOutcome.php` + `usersc/classes/Email/BrevoUnblockResult.php`
+
+- [ ] Make the closed kind/outcome/reason sets backed enums, so the `app/admin/index.php` map becomes an exhaustive `match`, `isCleared()` lives on the enum, and `BrevoUnblockResult::failed()` cannot take an unknown reason (found in /finish-milestone v2.30.9)
+- [ ] `BrevoUnblockResult::failed()`: reject an `httpStatus` with a reason other than HTTP (and null with HTTP); `notBlocked()` should not carry 404 (found in /finish-milestone v2.30.9)
+- [ ] Pick one value-object style for both types: `final readonly` + public properties, or private properties + accessors (found in /finish-milestone v2.30.9)
+
 ### `usersc/classes/Car/EmailEventMatch.php`
 
 - [ ] Make the class `final readonly`. The accessors return `?? 0` or `?? ''` after `requireMatched()`, which hides a broken invariant. Return the typed value with a PHPStan assert instead (found in /finish-milestone v2.30.8)
@@ -254,14 +276,29 @@ after an item is written.
 - [ ] The flag list is written three times: `SendDecision::FLAG_ORDER`, the `$all` list in `blockingFlags()`, and the table docblock. Build it once, or use a `SendFlag` enum (found in /finish-milestone v2.30.8)
 - [ ] `adminMessage()` has no sentence for `email_blocked`, which is right only for `MailKind::AdminContact`. Take the `MailKind`, or rename it `adminContactMessage()` (found in /finish-milestone v2.30.8)
 - [ ] A malformed or zero-date `email_bounced_at` makes `toDate()` (~L204) return null with no log line. The send is still refused, but the admin message has no date and the bad value stays hidden. Log it with the owner ID (the decision needs to carry it) (found in #2360)
+- [ ] `forUser()` relies on `array_intersect` keeping the first array's order to meet `SendDecision::FLAG_ORDER`; add a comment or sort against `FLAG_ORDER` (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Car/SendResult.php`
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
 
+### `usersc/classes/Cron/HealthcheckPinger.php` + `usersc/classes/Cron/CurlHealthcheckTransport.php`
+
+- [ ] `HealthcheckPinger`: read the two env values in the constructor (or a config object), so tests need no `putenv` (found in /finish-milestone v2.30.9)
+- [ ] `CurlHealthcheckTransport`: set `CURLOPT_PROTOCOLS => CURLPROTO_HTTPS` and an explicit `CURLOPT_FOLLOWLOCATION => false` (defense in depth; the base URL is constant) (found in /finish-milestone v2.30.9)
+
+### `usersc/classes/Cron/SuppressionSyncSummary.php`
+
+- [ ] Reject negative counts in the constructor, and check `matched + unmatched + alreadyFlagged + skipped <= contactsExamined` when `contactsExamined > 0`; call it with named arguments (found in /finish-milestone v2.30.9)
+
 ### `usersc/classes/Email/BrevoApiFactory.php`
 
 - [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockResult`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory (found in #2426)
+- [ ] Replace the `array{reason, cause, detail}` returns of `readApiKey()` and `loadSdk()` with two small readonly result types (or PHPStan shape aliases) (found in /finish-milestone v2.30.9)
+
+### `usersc/classes/Email/BrevoBlocklistClient.php`
+
+- [ ] Inject `BrevoApiFactory` (constructor default) instead of two inline `new BrevoApiFactory($this->db)`; the protected `createApi()` seam can then go (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Exceptions/ProfileFlagValueException.php`
 
@@ -284,6 +321,10 @@ after an item is written.
 ### `usersc/classes/Car/CarRepository.php` + `usersc/classes/Owner.php`
 
 - [ ] The "address changed" compare exists in `Owner::update()` and in `CarRepository::clearFlagsForConfirmedEmailChange()`. Use one named method in both (found in /finish-milestone v2.30.7)
+
+### `usersc/classes/Migration/DeliverabilityMigrationQueries.php` + `tests/integration/database/DeliverabilityMigrationFixture.php`
+
+- [ ] The "admin Clear Suppression" text (queries L64, L232; fixture L28) describes legacy `cars_hist` rows. Add "former action, replaced in #2357" so a reader does not look for it (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/CarVerificationManager.php` + `usersc/classes/Car/EmailEventApplier.php`
 
