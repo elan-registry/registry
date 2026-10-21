@@ -15,6 +15,12 @@ Changes visible to public registry visitors (car listings, owner pages, search, 
 - An owner who opted out of registry email no longer gets car transfer notices. A bounce or a block on the owner's
   address also stops them. The transfer request itself still completes.
   ([#2463](https://github.com/elan-registry/registry/issues/2463))
+- An owner with a registered car gets a car-verification request email in production, and can use its links
+  to verify the car, report it sold, or opt out.
+  ([#2088](https://github.com/elan-registry/registry/issues/2088))
+- The privacy policy now says that car-verification request emails go through Brevo, and that the email
+  service log keeps a recipient address for no more than 90 days.
+  ([#2088](https://github.com/elan-registry/registry/issues/2088))
 - The privacy policy names healthchecks.io as a processor. It receives the scheduled task name and run status,
   and no personal data. ([#1875](https://github.com/elan-registry/registry/issues/1875))
 
@@ -50,6 +56,23 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
   A missed run or a failed run sends an alert to Discord. When an admin pauses one of these jobs, the admin also
   pauses its check in healthchecks.io (see `DEPLOYMENT.md`). A "Run now" click does not ping.
   ([#1875](https://github.com/elan-registry/registry/issues/1875))
+- Production has its own Brevo webhook. It records delivery, bounce, block and spam events for real member
+  email. The registration script registers the production receiver only with the new `--allow-prod` flag.
+  Without the flag, `--create` still accepts only a `https://test.` URL.
+  ([#2088](https://github.com/elan-registry/registry/issues/2088))
+- At go-live, a one-time purge deletes the `plg_sendinblue_messages` rows older than 90 days. The recurring
+  purge job is [#2384](https://github.com/elan-registry/registry/issues/2384), in milestone v2.30.10.
+  ([#2088](https://github.com/elan-registry/registry/issues/2088))
+- Before the switch goes on in production, the team tests the verification system on test through real Brevo.
+  ([#2088](https://github.com/elan-registry/registry/issues/2088))
+  - Test-car setup: each test car is due for verification, its owner has not opted out, its address is not
+    bounced or suppressed, and it sends to an inbox the team controls.
+  - Send: an admin send and the cron batch, each with the `car_verification` tag.
+  - Links: the Verify, Sold and opt-out links in the received email.
+  - Bounces and complaints: a hard bounce (also on a password-reset email), a soft-bounce escalation, a
+    block, and a spam complaint on owner-to-owner contact mail. Each sets the owner's profile flag.
+  - Nightly jobs: the suppression sync and the reconciliation of the same events.
+  - Notice: the owner's paused-email notice after a bounce and after an opt-out.
 
 ## Issues Resolved
 
@@ -61,4 +84,4 @@ Changes visible only to administrators (admin dashboard, maintenance tools, sett
 - [#2460](https://github.com/elan-registry/registry/issues/2460) — Stop soft bounces on owner-to-owner contact mail from setting email_bounced.
 - [#2463](https://github.com/elan-registry/registry/issues/2463) — Make the transfer notification mail obey the email opt-out.
 - [#1875](https://github.com/elan-registry/registry/issues/1875) — Monitor the verification cron jobs with healthchecks.io.
-- WIP: [#2088](https://github.com/elan-registry/registry/issues/2088) — Register the production Brevo webhook and turn on the verification switch.
+- [#2088](https://github.com/elan-registry/registry/issues/2088) — Register the production Brevo webhook and turn on the verification switch.

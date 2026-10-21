@@ -61,8 +61,6 @@ final class Issue1875PrivacyPageRegressionTest extends TestCase
                 => ['/run by SIA Monkey See Monkey Do in Latvia/i'],
             'receives no personal data'
                 => ['/run status.{0,60}It does not receive any personal data/i'],
-            'the last-updated sentence names the healthchecks.io change'
-                => ['/Last updated: [A-Z][a-z]+ \d{1,2}, \d{4}\. This update adds healthchecks\.io as a processor/i'],
         ];
     }
 

@@ -589,13 +589,41 @@ subscribes to `opened`. An existing subscription keeps `opened` until you
 change it, and each open then writes one `logs` row. Remove `opened`,
 `uniqueOpened` and `click`, if present.
 
-- **Production:** edit the subscription in the Brevo dashboard. Do not delete
-  the webhook: `scripts/spike-1888/brevo-register-webhook.php --create`
-  accepts only a `https://test.` URL, so it cannot create it again.
+- **Production:** edit the subscription in the Brevo dashboard, or delete it
+  and register it again with `--create --allow-prod`. See the steps below.
 - **Test:** edit it in the dashboard, or delete it and create it again with
-  the script's `--create`.
+  the script's `--create`. Without `--allow-prod`, `--create` accepts only a
+  URL that starts with `https://test.`.
 
 List the webhooks with `--list-webhooks` to confirm.
+
+To register the production webhook, follow these steps.
+
+1. Make a new token on your machine: `openssl rand -hex 32`. The value must
+   differ from the test value. See
+   [ENVIRONMENT.md](ENVIRONMENT.md#brevo-webhook-authentication).
+2. Set `BREVO_WEBHOOK_TOKEN` to the new value in the production `.env`.
+3. In the Brevo dashboard, turn off link click-tracking. Go to
+   Transactional, Settings, Tracking.
+4. Run the script with `--list-webhooks`. The deploy removes `scripts/`
+   from the server (`.deployignore`), so run each script command in these
+   steps from a local checkout, with `--env=<dir>` pointing at a `.env`
+   that reaches the production database. To reach it over an SSH tunnel,
+   also pass `--host`. `--host` replaces only `DB_HOST`, so it does not
+   replace `--env`. If a webhook for the production URL exists, delete it
+   with `--delete --id=<id>`. `--create` does not check for an existing
+   webhook, so a second one sends each event twice.
+5. Run the script with `--create --allow-prod`. The URL rules and the
+   command are in
+   [scripts/README.md](../../scripts/README.md#spike-1888brevo-register-webhookphp).
+6. Run the script with `--list-webhooks`.
+7. Check the `events=` list in the output. It must be the script's
+   `CREATE_EVENTS` list: `delivered`, `softBounce`, `hardBounce`, `blocked`,
+   `invalid`, `spam` and `unsubscribed`. It has no open or click event.
+   Brevo sends these events with snake_case names (`softBounce` arrives as
+   `soft_bounce`). The receiver accepts the names in
+   [Brevo Webhook Receiver](EMAIL_SYSTEM.md#brevo-webhook-receiver-1887).
+8. Wait for one real event. Check that it creates an `er_email_events` row.
 
 Then run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` on test
 and verify. After that, run it on production. The script sets the permissions

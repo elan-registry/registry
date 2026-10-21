@@ -632,8 +632,11 @@ node scripts/playwright-auth-setup.js prod nonadmin
 ## Brevo Webhook Setup (#1888)
 
 Scripts for configuring and verifying the Brevo webhook that feeds the
-bounce-detection endpoint (`app/api/webhooks/brevo.php`, #1887). Both are
-test-environment-only by design. See `docs/releases/RELEASE_NOTES_v2.30.2.md`'s
+bounce-detection endpoint (`app/api/webhooks/brevo.php`, #1887). The capture
+endpoint is test-environment-only. The registration script registers test
+URLs by default, and the production receiver only with `--allow-prod`.
+
+See `docs/releases/RELEASE_NOTES_v2.30.2.md`'s
 "Required Actions After Deployment" for the full post-deployment runbook
 these scripts support, and `docs/development/EMAIL_SYSTEM.md` § "Brevo
 Webhooks — Verified Behaviour (#1871)" for the underlying payload/event facts
@@ -669,11 +672,25 @@ CLI script that registers, lists, and deletes Brevo transactional webhooks
 via Brevo's REST API — the checked-in, scriptable alternative to manual
 dashboard clicks that #1888's acceptance criteria require.
 
+The script checks `--url` before it reads `.env` or calls Brevo. A bad URL
+exits with code 2:
+
+- Without `--allow-prod`, the URL must start with `https://test.`.
+- With `--allow-prod` (#2088), the URL must be exactly
+  `https://elanregistry.org/app/api/webhooks/brevo.php`. The flag accepts no
+  other host, path, query, or scheme, and it does not accept test URLs.
+
 ```bash
-# Register a webhook (test URLs only — no bypass for production)
+# Register the test receiver
 php scripts/spike-1888/brevo-register-webhook.php \
-  --create --url='https://test.elanregistry.org/scripts/spike-1888/capture.php' \
+  --create --url='https://test.elanregistry.org/app/api/webhooks/brevo.php' \
   --token=<same value as that server's BREVO_WEBHOOK_TOKEN>
+
+# Register the production receiver
+php scripts/spike-1888/brevo-register-webhook.php \
+  --create --allow-prod --url='https://elanregistry.org/app/api/webhooks/brevo.php' \
+  --token=<same value as production's BREVO_WEBHOOK_TOKEN> \
+  --description='Elan Registry production'
 
 # List existing transactional webhooks
 php scripts/spike-1888/brevo-register-webhook.php --list-webhooks
