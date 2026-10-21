@@ -15,7 +15,8 @@ stop, and the privacy policy describes the email and monitoring services.
 - An owner with a registered car gets a car-verification request email in production, with links to verify the car, report it sold, or opt out.
   ([#2088](https://github.com/elan-registry/registry/issues/2088))
 - The privacy policy now says that car-verification request emails go through Brevo and
-  that the email service log keeps a recipient address for no more than 90 days.
+  that the email service log keeps a recipient address for no more than 90 days, which a one-time purge at go-live
+  sets and a recurring purge ([#2384](https://github.com/elan-registry/registry/issues/2384)) will keep.
   ([#2088](https://github.com/elan-registry/registry/issues/2088))
 - The privacy policy names healthchecks.io as a processor that receives the scheduled task name and run status, and no personal data.
   ([#1875](https://github.com/elan-registry/registry/issues/1875))
@@ -28,7 +29,8 @@ stop, and the privacy policy describes the email and monitoring services.
   ([#2420](https://github.com/elan-registry/registry/issues/2420), [#2425](https://github.com/elan-registry/registry/issues/2425))
 - The Verification tab row has two new actions, Clear Block and Clear Opt-out, that replace Clear Suppression.
   ([#2357](https://github.com/elan-registry/registry/issues/2357))
-- Clear Block removes the address from Brevo's blocklist, and the block stays if Brevo fails or is not set up.
+- Clear Block removes the address from Brevo's blocklist only when the address is still the owner's and no other
+  account uses it, and the block stays if Brevo fails or is not set up.
   ([#2357](https://github.com/elan-registry/registry/issues/2357))
 - The suppression import no longer sets a flag again after an admin Clear Block or Clear Bounced
   when Brevo's `blockedAt` is missing, unusable, or more than 5 minutes in the future.

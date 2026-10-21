@@ -104,7 +104,7 @@ after an item is written.
 
 ### `tests/Support/SendinblueMessagesTable.php` (test-only)
 
-- [ ] The six integration classes that use it drop `plg_sendinblue_messages` in `tearDownAfterClass()` and do not check `->error()`. A failed drop leaves a test-made table, and a later class then gets `false` from `createIfMissing()` and treats it as a plugin table it must not drop. Add a static `drop()` that throws on a DB error, and use it in the six classes (found in #2420)
+- [ ] The seven integration classes that use `createIfMissing()` drop `plg_sendinblue_messages` in `tearDownAfterClass()` and do not check `->error()`. A failed drop leaves a test-made table, and a later class then gets `false` from `createIfMissing()` and treats it as a plugin table it must not drop. Add a static `drop()` that throws on a DB error, and use it in the seven classes (found in #2420)
 
 ### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
 

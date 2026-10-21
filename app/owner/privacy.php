@@ -71,7 +71,7 @@ $policy = <<<'GUIDEHTML'
 <h2><a id="updates" href="#updates" class="" aria-hidden="true" title="Permalink"></a>Updates</h2>
 <p>If we change this policy, we'll update the effective date at the top of the page and post the new version here. Anything significant, we'll announce to users.</p>
 <hr />
-<p><em>Last updated: October 21, 2026. This update says that we now send car-verification request emails through Brevo. It also adds the 90-day limit on how long the email service log keeps a recipient address.</em></p>
+<p><em>Last updated: October 21, 2026. This update says that we now send car-verification request emails through Brevo. It also adds the 90-day limit on how long the email service log keeps a recipient address, and names healthchecks.io, a monitoring service that receives no personal data.</em></p>
 
 GUIDEHTML;
 ?>

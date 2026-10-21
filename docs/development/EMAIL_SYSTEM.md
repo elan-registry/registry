@@ -1563,14 +1563,15 @@ list above) and the latest event of each car in its Status chip (#2361).
 
 ### Retention of Plugin Rows
 
-The table `plg_sendinblue_messages` keeps a recipient address for 90 days or
-less. The upstream sendinblue plugin 1.8.0 has no retention setting for this
-table. The Registry enforces the limit with a purge of rows older than 90 days.
+The table `plg_sendinblue_messages` must keep a recipient address for 90 days
+or less. The upstream sendinblue plugin 1.8.0 has no retention setting for
+this table. The Registry sets the limit in two steps: a one-time purge at
+go-live, then a recurring purge job. The job does not exist yet.
 
 1. **At go-live, run a one-time purge.** Run this SQL once:
    `DELETE FROM plg_sendinblue_messages WHERE accepted_at < NOW() - INTERVAL 90 DAY;`
 2. **After go-live, the purge job runs.** [#2384](https://github.com/elan-registry/registry/issues/2384)
-   adds the job (milestone v2.30.10).
+   adds the job.
 
 Until #2384 ships, a row can stay longer than 90 days after the go-live day.
 

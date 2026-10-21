@@ -2940,8 +2940,10 @@ class CarRepository
      * {@see AppConstants::OWNER_CONTACT_EMAIL_TAG} in its comma-separated
      * `tags`. A cycle with no plugin row, or with null tags, still counts.
      * So an owner contact cycle counts again after its plugin row is deleted.
-     * A purge of plugin rows (#2384) must keep a row while its message ID is
-     * still in `er_email_events`. When the plugin table or its `tags` column
+     * The purge of plugin rows (#2384) deletes every row older than 90 days,
+     * also a row whose message ID `er_email_events` still names. After that,
+     * an owner contact soft bounce of that send cycle counts again (see
+     * EMAIL_SYSTEM.md, "Retention of Plugin Rows"). When the plugin table or its `tags` column
      * does not exist, the query has no such filter
      * ({@see sendinblueTagsColumnExists()}).
      *
