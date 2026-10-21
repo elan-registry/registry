@@ -29,6 +29,8 @@ stop, and the privacy policy describes the email and monitoring services.
   ([#2420](https://github.com/elan-registry/registry/issues/2420), [#2425](https://github.com/elan-registry/registry/issues/2425))
 - The Verification tab row has two new actions, Clear Block and Clear Opt-out, that replace Clear Suppression.
   ([#2357](https://github.com/elan-registry/registry/issues/2357))
+- A page that still posts the old Clear Suppression action shows "That action is no longer available. Reload the page and try again."
+  ([#2357](https://github.com/elan-registry/registry/issues/2357))
 - Clear Block removes the address from Brevo's blocklist only when the address is still the owner's and no other
   account uses it, and the block stays if Brevo fails or is not set up.
   ([#2357](https://github.com/elan-registry/registry/issues/2357))

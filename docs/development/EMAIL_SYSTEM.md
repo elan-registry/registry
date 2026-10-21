@@ -322,12 +322,16 @@ the suppression import. To stop all event writes, do these three steps:
    every call with 401, and Brevo retries the call later.
 2. Set `er_cron_job_runs.enabled = 0` for `brevo_reconciliation` and
    `brevo_suppression_sync`. This also stops the retention prune, because the
-   reconciliation job runs the prune.
+   reconciliation job runs the prune. Also pause the
+   `brevo-event-reconciliation-<env>` check in healthchecks.io. Otherwise it
+   lapses and alerts Discord (see
+   [DEPLOYMENT.md, Cron monitoring](DEPLOYMENT.md#cron-monitoring-healthchecksio)).
 3. Do not use Run Now for the two Brevo jobs, `27-Reconcile-Brevo-Events.php`
    or `28-Reconcile-Brevo-Suppressions.php`. These paths read neither the
    switch nor `enabled`. Run Now for the send batch still reads the switch.
 
 After the incident, restore the token and set `enabled = 1` for both jobs.
+The paused check resumes at the next ping.
 Reconciliation must run within 48 hours of the empty token. The job fetches
 the last 48 hours only. An event that Brevo stops retrying and that is older than 48
 hours is not recovered by the nightly run.
