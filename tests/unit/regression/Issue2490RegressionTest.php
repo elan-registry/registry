@@ -14,8 +14,8 @@ use PHPUnit\Framework\TestCase;
  * printed before the response headers, so redirects and JSON responses broke.
  * Docker and CI still ran PHP 8.4, so no environment showed the defect.
  *
- * Part 1 scans project-owned PHP code (comments excluded) for the three
- * deprecated forms. Part 2 fails when the version files name different minor
+ * Part 1 scans project-owned PHP code (comments and inline HTML excluded) for
+ * the three deprecated forms. Part 2 fails when the version files name different minor
  * versions, so a partial version change fails the unit suite.
  *
  * @issue 2490
@@ -29,10 +29,25 @@ final class Issue2490RegressionTest extends TestCase
     private const PHP_MINOR = '8.5';
 
     /**
-     * Project-owned PHP roots. usersc/plugins/ is upstream and is skipped.
-     * The repo-root PHP files are added in projectPhpFiles().
+     * Project-owned PHP roots. users/ and parts of usersc/ are upstream (see
+     * USERSC_UPSTREAM), so only their project-owned parts are listed.
+     * vendor/ and node_modules/ are skipped. The repo-root PHP files are
+     * added in projectPhpFiles().
      */
-    private const SCAN_ROOTS = ['app', 'usersc', 'scripts', 'tests', 'database', 'tools', 'error', 'stubs', 'users/init.php'];
+    private const SCAN_ROOTS = [
+        'app', 'usersc', 'scripts', 'tests', 'database', 'tools', 'error', 'stubs', 'docs',
+        'users/init.php', 'users/cron',
+        'usersc/plugins/hooker/hooks', 'usersc/plugins/ai_prompts/custom_prompts',
+        'usersc/widgets/settings', 'usersc/widgets/tools',
+        'usersc/templates/customizer/file_nav_custom.php', 'usersc/templates/customizer/assets/child_themes',
+    ];
+
+    /**
+     * Upstream (mostly gitignored) code that the usersc root skips. A finding
+     * there goes upstream, and skipping it keeps the local scan close to the
+     * CI scan. The project-owned parts are separate SCAN_ROOTS.
+     */
+    private const USERSC_UPSTREAM = ['/usersc/plugins/', '/usersc/widgets/', '/usersc/templates/customizer/'];
 
     /** @var array<string, string> label => pattern on code with comments removed */
     private const DEPRECATED_FORMS = [
@@ -86,6 +101,8 @@ final class Issue2490RegressionTest extends TestCase
             <?php
             // PDO::MYSQL_ATTR_INIT_COMMAND, curl_close($ch)
             /** $http_response_header */
+            ?>
+            Prose: PDO::MYSQL_ATTR_INIT_COMMAND, curl_close($ch), $http_response_header
             PHP;
         $this->assertSame([], self::findDeprecatedForms($comments));
     }
@@ -134,7 +151,8 @@ final class Issue2490RegressionTest extends TestCase
     {
         $code = '';
         foreach (token_get_all($source) as $token) {
-            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+            // Inline HTML is prose (docs pages, prompt Markdown), not code.
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT, T_INLINE_HTML], true)) {
                 continue;
             }
             $code .= is_array($token) ? $token[1] : $token;
@@ -158,7 +176,8 @@ final class Issue2490RegressionTest extends TestCase
         $root = (string) realpath(self::ROOT);
         $self = (string) realpath(__FILE__);
 
-        $files = glob($root . '/*.php') ?: [];
+        $files = glob($root . '/*.php');
+        $this->assertIsArray($files, 'glob() failed for the repo-root PHP files');
         foreach (self::SCAN_ROOTS as $relative) {
             $path = $root . '/' . $relative;
             if (is_file($path)) {
@@ -168,8 +187,12 @@ final class Issue2490RegressionTest extends TestCase
             $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS));
             foreach ($iterator as $file) {
                 $name = $file->getPathname();
+                $inPath = substr($name, strlen($root));
+                if ($relative === 'usersc' && self::startsWithAny($inPath, self::USERSC_UPSTREAM)) {
+                    continue;
+                }
                 if (str_ends_with($name, '.php') && $name !== $self
-                    && preg_match('#/(usersc/plugins|vendor|node_modules)/#', substr($name, strlen($root))) !== 1) {
+                    && preg_match('#/(vendor|node_modules)/#', $inPath) !== 1) {
                     $files[] = $name;
                 }
             }
@@ -177,5 +200,19 @@ final class Issue2490RegressionTest extends TestCase
         sort($files);
 
         return $files;
+    }
+
+    /**
+     * @param list<string> $prefixes
+     */
+    private static function startsWithAny(string $path, array $prefixes): bool
+    {
+        foreach ($prefixes as $prefix) {
+            if (str_starts_with($path, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

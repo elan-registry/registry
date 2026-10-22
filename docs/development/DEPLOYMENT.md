@@ -181,6 +181,7 @@ before merge, not by GitHub blocking the merge button itself (see issue #1437).
   actual check status and requires explicit confirmation before merging. See
   [#1437](https://github.com/elan-registry/registry/issues/1437) for the rationale.
 - **Configuration**: `.github/workflows/tests.yml`; PHP 8.5 via `shivammathur/setup-php`
+  (also the `composer.json` floor, `>=8.5`)
 
 ### Milestone Release PRs
 

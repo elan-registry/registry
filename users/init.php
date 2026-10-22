@@ -82,9 +82,9 @@ $GLOBALS['config'] = array(
         // UserSpice INSERT statements that omit columns without defaults)
         // ATTR_STRINGIFY_FETCHES matches production driver which returns
         // strings from DB, so type bugs surface in dev/test
-        // Pdo\Mysql, because PHP 8.5 deprecates the old PDO MySQL constants
-        // and the notice prints before the response headers (#2490)
         'options'      => array(
+            // Use Pdo\Mysql, not PDO::MYSQL_ATTR_*. PHP 8.5 deprecates the old
+            // constants, and the notice prints before the response headers.
             Pdo\Mysql::ATTR_INIT_COMMAND => "SET SESSION sql_mode = ''",
             PDO::ATTR_STRINGIFY_FETCHES => true,
         ),

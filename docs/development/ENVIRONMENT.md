@@ -550,9 +550,10 @@ call `IntegrationTestCase::saveBrevoTestKey()` to make a real send
   anyone should close #1968.
 - **Floor: PHP 8.5**: `composer.json` requires `>=8.5`, and `phpstan.neon`
   sets `phpVersion: 80500`. The floor is the same as the deployed minor
-  version, because the host moved test and production to 8.5 without notice
-  (#2490). Code can use the PHP 8.5 API, for example `Pdo\Mysql` constants
-  and `http_get_last_response_headers()`. `Issue2490RegressionTest` fails if
+  version, so CI and PHPStan reject code that does not run on the host
+  (#2490). Code uses `Pdo\Mysql` constants and
+  `http_get_last_response_headers()` (both PHP 8.4), which replace forms that
+  PHP 8.5 deprecates. `Issue2490RegressionTest` fails if
   the Dockerfile, CI, Composer and PHPStan versions do not agree.
 - **CLI PHP (Homebrew)**: The shell finds `php` and `composer` through PATH.
   These commands use Homebrew's linked PHP. Keep it on the same version as
