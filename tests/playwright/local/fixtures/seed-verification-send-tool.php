@@ -140,7 +140,7 @@ function mockBrevoRequest(string $method, string $path, ?array $json = null): ar
     ]]);
     $body = @file_get_contents($origin . $path, false, $context);
     $status = 0;
-    foreach ($http_response_header as $line) {
+    foreach (http_get_last_response_headers() ?? [] as $line) {
         if (preg_match('#^HTTP/\S+ (\d{3})#', $line, $m)) {
             $status = (int) $m[1];
         }

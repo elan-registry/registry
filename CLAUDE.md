@@ -46,8 +46,8 @@ Shell tests: `bash tests/hooks/test-*.sh`.
 
 ## Development Setup
 
-- PHP: `composer.json` requires 8.2.29 or later (compatibility floor). Local,
-  CI, test, and production use PHP 8.4.x (production 8.4.25). MySQL 8.0+.
+- PHP: `composer.json` requires 8.5 or later (the floor). Local, CI, test,
+  and production use PHP 8.5.x. MySQL 8.0+.
 - `vlucas/phpdotenv` loads a plaintext `.env` (`chmod 600`).
 - Docker is the only local environment. Start it with `docker compose up -d`.
   `DB_HOST=db` resolves only inside the Compose network, so run each command

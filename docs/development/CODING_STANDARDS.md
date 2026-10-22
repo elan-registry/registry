@@ -1,6 +1,6 @@
 # Coding Standards for Elan Registry
 
-**Updated:** September 27, 2026 | **Runtime:** PHP 8.4 | **Minimum:** PHP 8.2.29
+**Updated:** October 22, 2026 | **Runtime:** PHP 8.5 | **Minimum:** PHP 8.5
 
 ---
 

@@ -60,9 +60,6 @@ function fetchUrl(string $url): ?string
     $body = curl_exec($ch);
     $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
-    if (PHP_VERSION_ID < 80500) {
-        curl_close($ch);
-    }
 
     if ($body === false) {
         warn("curl error fetching $url: $curlError");

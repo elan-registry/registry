@@ -390,7 +390,7 @@ Docker Compose v2.0.0 or later, and `jq` on the host. Claude Code's
 tool call with `jq` and deny the call if it is missing, so a session without
 `jq` cannot run any of those tools. Install it with `brew install jq` (macOS)
 or your package manager before starting a Claude Code session in this repo.
-The stack runs a PHP 8.4 app container,
+The stack runs a PHP 8.5 app container,
 MySQL 8.0, phpMyAdmin, a mock Brevo API, and a landing page. It bind-mounts
 the checkout as the web root. Issue 2116 introduced the stack for
 `Registry2/`. Both `Registry2/` and `Registry/` run the full toolchain with
@@ -460,7 +460,7 @@ To run local cron as well, start the stack with `--profile cron`. See
 [Development Setup](#development-setup), step 6.
 
 The stack has five services, plus the opt-in `cron` service (see step 6 of
-[Development Setup](#development-setup)). `app` runs PHP 8.4. `db` runs
+[Development Setup](#development-setup)). `app` runs PHP 8.5. `db` runs
 MySQL 8.0 and has no host port. `phpmyadmin` provides database inspection.
 `mock-brevo` runs the local mock of Brevo's transactional email API
 (`ghcr.io/unibrain1/mock-brevo:1.4.0`) and provides a web inbox. `landing`
@@ -543,20 +543,22 @@ call `IntegrationTestCase::saveBrevoTestKey()` to make a real send
 ### PHP Version
 
 - **Local development, CI, test, and production**: These environments use
-  PHP 8.4.x. Production uses PHP 8.4.25. Issue #1968 tracked an earlier hold
-  on PHP 8.2 for test and production. That hold ended when production moved to
-  PHP 8.4.25. This statement does not say whether anyone should close #1968.
-- **`phpstan.neon` value `phpVersion: 80229`**: This setting pins static
-  analysis to the compatibility floor. The floor is lower than the deployed
-  version. This choice keeps first-party code from using syntax that PHP 8.3
-  or 8.4 introduced, such as property hooks and asymmetric visibility. It does
-  not mean that any environment uses PHP 8.2. `composer.json` also sets the
-  compatibility floor with `>=8.2.29`. Neither value describes the deployed
-  version. Changing either value requires a separate decision.
+  PHP 8.5.x. Production uses PHP 8.5.11. The host sets the patch level, so the
+  Docker image uses the floating `php:8.5-apache` tag. Issue #1968
+  tracked an earlier hold on PHP 8.2 for test and production. That hold ended
+  when production moved to PHP 8.4.25. This statement does not say whether
+  anyone should close #1968.
+- **Floor: PHP 8.5**: `composer.json` requires `>=8.5`, and `phpstan.neon`
+  sets `phpVersion: 80500`. The floor is the same as the deployed minor
+  version, so CI and PHPStan reject code that does not run on the host
+  (#2490). Code uses `Pdo\Mysql` constants and
+  `http_get_last_response_headers()` (both PHP 8.4), which replace forms that
+  PHP 8.5 deprecates. `Issue2490RegressionTest` fails if
+  the Dockerfile, CI, Composer and PHPStan versions do not agree.
 - **CLI PHP (Homebrew)**: The shell finds `php` and `composer` through PATH.
   These commands use Homebrew's linked PHP. Keep it on the same version as
-  the Docker app container with `brew install php@8.4`, then
-  `brew link php@8.4 --force --overwrite` and `hash -r`. The shell runs unit
+  the Docker app container with `brew install php@8.5`, then
+  `brew link php@8.5 --force --overwrite` and `hash -r`. The shell runs unit
   tests (`composer test:quick`, `test:unit`) and static analysis
   (`composer check:php`, PHPStan) with Homebrew's linked PHP. Integration
   tests need the database, so run them in the container instead — see step 4

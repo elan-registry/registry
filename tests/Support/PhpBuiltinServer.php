@@ -518,7 +518,7 @@ final class PhpBuiltinServer
      * token, so a stale orphan, or anyone else's server that happens to hold
      * the port, can never be mistaken for this instance.
      *
-     * @param array<mixed> $headers Raw response header lines ($http_response_header), status line first.
+     * @param array<mixed> $headers Raw response header lines (http_get_last_response_headers()), status line first.
      * @param string|false $body    Response body, or false when the request failed.
      * @param string       $token   This instance's readiness token.
      *
@@ -650,11 +650,9 @@ final class PhpBuiltinServer
                 return false;
             }
 
-            // Reset each attempt.
-            $http_response_header = [];
             $body = @file_get_contents($this->url(self::READY_PATH), false, $context);
 
-            if (self::isReadyResponse($http_response_header, $body, $this->token)) {
+            if (self::isReadyResponse(http_get_last_response_headers() ?? [], $body, $this->token)) {
                 return true;
             }
 
