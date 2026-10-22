@@ -176,10 +176,11 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
             'timeout' => 10,
         ]]);
         $body = @file_get_contents(self::MOCK_BASE . $path, false, $context);
-        if ($body === false || !isset($http_response_header[0])) {
+        $responseHeaders = http_get_last_response_headers() ?? [];
+        if ($body === false || !isset($responseHeaders[0])) {
             $this->fail("mock-brevo is not reachable at {$path}. Run this test in the app container (docker compose up -d).");
         }
-        preg_match('#HTTP/\S+\s+(\d{3})#', $http_response_header[0], $match);
+        preg_match('#HTTP/\S+\s+(\d{3})#', $responseHeaders[0], $match);
 
         return ['status' => (int) ($match[1] ?? 0), 'body' => $body];
     }

@@ -164,12 +164,10 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $response = curl_exec($ch);
         if ($response === false) {
             $error = curl_error($ch);
-            curl_close($ch);
             throw new RuntimeException("curl request to webhook endpoint failed: {$error}");
         }
 
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
         return ['status' => $status, 'body' => (string) $response];
     }

@@ -551,7 +551,6 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $body = curl_exec($ch);
         $this->assertNotFalse($body, 'curl to verify_car.php failed: ' . curl_error($ch));
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
         return ['status' => $status, 'body' => (string) $body];
     }

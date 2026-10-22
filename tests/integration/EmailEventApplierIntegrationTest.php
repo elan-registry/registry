@@ -1097,7 +1097,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $property = new ReflectionProperty($connection, 'opts');
         /** @var array<int, mixed> $opts */
         $opts = $property->getValue($connection);
-        $foundRows = (int) constant(defined('Pdo\Mysql::ATTR_FOUND_ROWS') ? 'Pdo\Mysql::ATTR_FOUND_ROWS' : 'PDO::MYSQL_ATTR_FOUND_ROWS');
+        $foundRows = Pdo\Mysql::ATTR_FOUND_ROWS;
 
         $this->assertFalse(
             (bool) ($opts[$foundRows] ?? false),

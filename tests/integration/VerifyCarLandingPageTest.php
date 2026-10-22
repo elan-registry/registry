@@ -155,13 +155,11 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $response = curl_exec($ch);
         if ($response === false) {
             $error = curl_error($ch);
-            curl_close($ch);
             throw new RuntimeException("curl request to verify_car.php failed: {$error}");
         }
 
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        curl_close($ch);
 
         $rawHeaders = substr((string) $response, 0, $headerSize);
         $responseBody = substr((string) $response, $headerSize);

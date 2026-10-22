@@ -6,10 +6,9 @@
 # a baked-in copy would only be shadowed by the mount while making the image
 # huge and the build dependent on a clean tree.
 #
-# PHP 8.4 matches confirmed production (8.4.25) and the composer.json platform
-# pin (8.4.0). It is also a hard floor for the test suite: PHPUnit 12 requires
-# PHP >= 8.3, so an 8.2 container could not run `composer test:full` at all.
-FROM php:8.4-apache
+# PHP 8.5 matches test and production (8.5.x) and the composer.json floor
+# (>=8.5). The host sets the patch level, so the tag floats on the minor.
+FROM php:8.5-apache
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -27,7 +26,7 @@ ARG APP_GID=20
 
 # Build-time headers for the PHP extensions compiled below: libzip-dev for
 # ext-zip, the jpeg/png/freetype trio for ext-gd (see docker-php-ext-configure
-# below). curl and mbstring are already compiled into php:8.4-apache (see the
+# below). curl and mbstring are already compiled into php:8.5-apache (see the
 # "NOT built here" note below), so their dev headers (libcurl4-openssl-dev,
 # libonig-dev) are not needed — confirmed via `php -m` rather than assumed;
 # left out rather than kept "just in case."
@@ -59,7 +58,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # a grep of the runtime code caught it during initial extension enumeration,
 # since Composer has no ext-exif dependency declaration to enumerate from.)
 #
-# NOT built here, because php:8.4-apache already compiles them in and a second
+# NOT built here, because php:8.5-apache already compiles them in and a second
 # `docker-php-ext-install` would fail the build on a duplicate module:
 #   curl, mbstring, openssl, fileinfo, json, libxml, dom, xml, xmlwriter,
 #   ctype, tokenizer, phar, pcre, iconv
