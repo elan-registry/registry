@@ -101,8 +101,8 @@ scripts/check-blocking-findings.sh <number> --include-important
   `/review-milestone <version>`. Its Step 4 fixes each finding, runs the
   verification suite, pushes, moves the marker, and starts a new CI review.
   After it ends, type `/release-milestone <version>`.
-- **Exit 2** — can't verify: no posted review comment was found, the `gh`
-  call failed, or a grep failed while it scanned the review. Treat as "can't
+- **Exit 2** — can't verify: no review comment with a verdict for the head
+  commit was found, or the `gh` call failed. Treat as "can't
   verify," not "clean." Stop and report the error. If no review comment
   posted, tell the user to type `/review-milestone <version>`. It reuses
   the open PR and starts the CI review. For a `gh` failure, tell the user

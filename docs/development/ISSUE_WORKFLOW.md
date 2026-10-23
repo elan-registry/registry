@@ -669,8 +669,8 @@ false, the milestone is not done.
    type `/finish-milestone <version>`. When the checks pass, it opens the PR
    to `main`, or reuses the PR that is already open. It confirms that the CI
    review posted and CI is green. `scripts/verify-ci-review.sh` accepts only a
-   review that was posted after the latest push. It fixes a Blocking or Important finding on
-   the milestone branch, because `/release-milestone` fixes nothing. After each
+   review that has a verdict for the head commit. It fixes a Blocking or Important
+   finding on the milestone branch, because `/release-milestone` fixes nothing. After each
    fix that passes `scripts/run-verification-suite.sh` and is pushed, its
    Step 4 moves the marker's `sha:` line to the pushed commit. A commit that
    did not go through this loop needs `/finish-milestone`.

@@ -368,11 +368,12 @@ The hermetic test is `tests/hooks/test-check-deploy-sheet-fresh.sh`.
 
 ### verify-ci-review.sh
 
-Confirms that a CI code review posted on a PR, and recovers once if it did
-not. Then it checks the review for unresolved findings. A successful
-`claude-code-review.yml` run is not proof of a review: the run can succeed
-with no comment. The comment with the `Strengths` heading is the only proof.
-`/finish-issue` Step 2.5 and `/review-milestone` Step 4 call this script.
+Confirms that a CI code review posted on a PR for its head commit, and
+recovers once if it did not. Then it checks the review for unresolved
+findings. A successful `claude-code-review.yml` run is not proof of a review:
+the run can succeed with no comment. The review comment itself is the only
+proof. `/finish-issue` Step 2.5 and `/review-milestone` Step 4 call this
+script.
 
 ```bash
 scripts/verify-ci-review.sh <pr-number> <interval-s> <timeout-s> \
@@ -382,41 +383,75 @@ scripts/verify-ci-review.sh <pr-number> <interval-s> <timeout-s> \
 - **`--trigger`.** Sets the one recovery attempt. `workflow` runs
   `gh workflow run claude-code-review.yml`. `label` adds the `deep-review`
   label. `none` makes no recovery attempt.
-- **`--include-important`.** Also fails on an unresolved `Important` finding.
+- **`--include-important`.** Also fails when the verdict has `important`
+  above 0.
 - **`--check-skip-tag`.** Treats a `[skip-review]` PR title as a correct
   outcome (exit 3).
-- **Head-commit freshness.** A review counts only when its comment was
-  created at or after the time that the head commit reached the branch. The
-  script reads that time from the repository activity API (the newest entry
-  whose `after` is the head SHA). A committer date is not used, because it
-  can be older than the push. The script uses the newest review comment, on
-  all comment pages. An older comment reviewed an earlier head. The script
-  waits for a newer one, and then recovers, as it does when no comment
-  exists. For a PR from a fork, the check does not apply and the script
-  prints a warning.
+- **Head-commit freshness.** A review counts only when a verdict for the PR
+  head commit exists (see [Review verdict line](#review-verdict-line)). A
+  verdict for an older SHA reviewed an earlier head. The script waits for a
+  new verdict, and then recovers, as it does when no review exists.
 - **Label recovery.** Adding a label that the PR already has sends no
   `labeled` event. With `--trigger=label`, the script removes `deep-review`
   first when the PR has it, then adds it.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | A review for the head commit posted. No unresolved `Blocking` finding (and no unresolved `Important` finding with `--include-important`). |
-| 1 | Cannot verify: a `gh` call failed, a time or the head commit could not be read, or the arguments are not valid. This is not "no review posted". |
-| 2 | A review posted, but an unresolved `Blocking` or `Important` finding remains. |
+| 0 | A verdict for the head commit exists, with `blocking=0` (and `important=0` with `--include-important`). |
+| 1 | Cannot verify: a `gh` call failed, the head commit could not be read, or the arguments are not valid. This is not "no review posted". |
+| 2 | A verdict for the head commit exists, but `blocking` is above 0 (or `important` is above 0, with `--include-important`). |
 | 3 | No review, and the PR title has `[skip-review]` (only with `--check-skip-tag`). |
-| 4 | No review for the head commit after the poll and one recovery attempt. |
+| 4 | No verdict for the head commit after the poll and one recovery attempt. |
 
-The hermetic test is `tests/hooks/test-check-blocking-findings.sh`.
+The hermetic test is `tests/hooks/test-check-blocking-findings.sh` (Part B).
+
+### Review verdict line
+
+The `Post review` step of `claude-code-review.yml` renders the review from
+the structured output of the model and posts it as `github-actions[bot]`.
+The last line of the comment is a hidden verdict line:
+
+```text
+<!-- claude-review-verdict sha=<head SHA> blocking=<n> important=<n> -->
+```
+
+`verify-ci-review.sh`, `check-blocking-findings.sh` and
+`check-review-posted.sh` each have the same verdict rule. A comment counts
+only when all of these are true:
+
+- The author is `github-actions[bot]`. Only a workflow run that holds the
+  `GITHUB_TOKEN` of this repo posts as that account, and that needs write
+  access to the repo. A fork PR gets a read-only token, so it cannot post.
+- The last line of the body matches
+  `^<!-- claude-review-verdict sha=([0123456789abcdef]{40}) blocking=([0123456789]+) important=([0123456789]+) -->$`.
+  The scripts spell out each hex character, not a range such as `a-f`, so
+  the locale cannot widen the match. Text after the verdict line, upper
+  case, extra spaces, or a short SHA makes the comment not count.
+- The SHA is the current PR head (`gh pr view --json headRefOid`).
+
+A human comment, a `claude[bot]` reply, a verdict for an older SHA, and an
+old-format review with no verdict line do not count. The scripts read every
+page of PR comments (`gh api --paginate`), so a PR with more than 30
+comments still returns its newest verdict. When the head lookup fails, or
+the head SHA is not valid, each script gives its "cannot verify" exit.
+
+The workflow renders the text and the counts from the same data. The test
+`tests/hooks/test-review-render.sh` runs the real workflow steps against
+fixtures. The script tests use the shared `gh` stub
+`tests/hooks/lib/gh-stub.sh`, which applies the real `--jq` filter to
+fixture JSON.
 
 ### Other PR review readers
 
-These scripts read every page of PR comments (`gh api --paginate`), so a PR
-with more than 30 comments still returns its newest review:
-
-- `check-blocking-findings.sh` checks the same newest review that
-  `verify-ci-review.sh` picks. Test: `tests/hooks/test-check-blocking-findings.sh`.
-- `check-review-posted.sh` counts the review comments. Test:
-  `tests/hooks/test-check-review-posted.sh`.
+- `check-blocking-findings.sh` reads the counts in the newest verdict for the
+  head commit (by `created_at`, then comment ID). It exits 1 when
+  `blocking` is above 0, or `important` is above 0 with
+  `--include-important`. It exits 2 when no verdict for the head commit
+  exists or a `gh` call fails. Test:
+  `tests/hooks/test-check-blocking-findings.sh` (Part A).
+- `check-review-posted.sh` prints the count of verdicts for the head commit
+  and exits 0. It exits 1 with empty stdout when a `gh` call fails,
+  including the head lookup. Test: `tests/hooks/test-check-review-posted.sh`.
 - `fetch-pr-findings.sh` returns the reviews, inline comments and failed
   checks as one JSON object. Test: `tests/hooks/test-fetch-pr-findings.sh`.
 
