@@ -7,6 +7,9 @@
  * - Hardcoded color values instead of var(--bs-*) references
  * - Manual show/hide instead of bootstrap.Toast API
  * - BS4 class names (close, ml-2, mr-2 instead of btn-close, ms-2, me-2)
+ * - sanitizeAndFormat() escapes the decoded text before innerHTML (#2439).
+ *   Upstream has the same double decode. Keep this escape if the override
+ *   goes away in #234.
  *
  * Issue #536: Toast notifications overlap page heading
  *
@@ -178,8 +181,22 @@ $usGetMsg = !empty($_GET['msg']) ? (string)$_GET['msg'] : null;
     }
   }
 
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   /**
-   * Sanitizes HTML using a safe token-replacement approach.
+   * Swaps allow-listed tags for tokens, reduces the rest to text, then
+   * restores the tokens.
+   *
+   * textContent decodes entities, so "&lt;img&gt;" becomes "<img>". The
+   * text is escaped again before the tokens are restored, or innerHTML
+   * would parse it as a tag (#2439).
    */
   function sanitizeAndFormat(html) {
     var temp = String(html).substring(0, MAX_MESSAGE_LENGTH);
@@ -208,7 +225,8 @@ $usGetMsg = !empty($_GET['msg']) ? (string)$_GET['msg'] : null;
     });
 
     var doc = new DOMParser().parseFromString(temp, 'text/html');
-    var safeText = doc.body.textContent || "";
+    // Tokens hold only letters, digits, "_" and "-", so escaping leaves them intact.
+    var safeText = escapeHtml(doc.body.textContent || "");
 
     tokens.forEach(function(tag, index) {
       var escaped = TOKEN_PREFIX.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');

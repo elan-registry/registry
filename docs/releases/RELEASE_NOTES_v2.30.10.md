@@ -8,7 +8,10 @@ an owner's address no longer stays behind after account deletion or in logs.
 
 ## User-Facing Changes
 
-- (Filled in as issues are completed.)
+- Pop-up messages show special characters in a name or a link as plain
+  text. Before, an encoded name or a crafted link could add HTML, such as
+  an image or a link, to a message. The site security policy blocked
+  scripts in that HTML.
 
 ## Admin-Facing Changes
 
@@ -16,7 +19,7 @@ an owner's address no longer stays behind after account deletion or in logs.
 
 ## Issues Resolved
 
-- WIP: [#2439](https://github.com/elan-registry/registry/issues/2439) — Stop stored XSS through double entity decode in toast flash messages.
+- [#2439](https://github.com/elan-registry/registry/issues/2439) — Escape the decoded text in pop-up messages, so an encoded name or `?err=`/`?msg=` value cannot add HTML.
 - WIP: [#2487](https://github.com/elan-registry/registry/issues/2487) — Remove the remaining raw exception messages from log rows.
 - WIP: [#2419](https://github.com/elan-registry/registry/issues/2419) — Delete plugin mail rows for the current and pending address at account deletion.
 - WIP: [#2384](https://github.com/elan-registry/registry/issues/2384) — Purge `plg_sendinblue_messages` rows older than 90 days.
