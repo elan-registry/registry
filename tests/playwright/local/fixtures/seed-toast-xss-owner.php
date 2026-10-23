@@ -96,6 +96,9 @@ foreach ($owners as $owner) {
     $cleanupQueries[] = ['DELETE FROM user_permission_matches WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$owner['username']]];
     $cleanupQueries[] = ['DELETE FROM users WHERE username = ?', [$owner['username']]];
 }
+// Last, and by model, not car_id: the cars_delete trigger writes a history row
+// for each delete above.
+$cleanupQueries[] = ['DELETE FROM cars_hist WHERE model = ?', [SEED_CAR_MODEL]];
 foreach ($cleanupQueries as [$cleanupSql, $cleanupParams]) {
     $db->query($cleanupSql, $cleanupParams);
     if ($db->error()) {

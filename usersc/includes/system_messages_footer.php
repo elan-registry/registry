@@ -8,21 +8,24 @@
  * - Manual show/hide instead of bootstrap.Toast API
  * - BS4 class names (close, ml-2, mr-2 instead of btn-close, ms-2, me-2)
  * - sanitizeAndFormat() escapes the decoded text before innerHTML (#2439).
- *   Upstream has the same double decode. Keep this escape if the override
- *   goes away in #234.
+ *   Upstream has the same double decode. If this override is deleted, the
+ *   upstream file needs the same escape first.
  *
  * Issue #536: Toast notifications overlap page heading
  *
- * @todo Issue #234 (BS5 migration): Remove this override. The upstream
+ * @todo BS5 migration: Remove this override. The upstream
  *       users/includes/system_messages_footer.php uses BS5 features:
  *       - CSS: var(--bs-success), var(--bs-primary-rgb), etc.
  *       - JS: bootstrap.Toast API, btn-close class, data-bs-dismiss,
  *             ms-2/me-2 utility classes
  *       All of these work natively with Bootstrap 5. After migration:
- *       1. Delete this file (upstream will be used automatically)
- *       2. Verify toast colors render (var(--bs-*) CSS variables resolve)
- *       3. Verify close button works (data-bs-dismiss="toast")
- *       4. Verify auto-hide works (bootstrap.Toast API available)
+ *       1. Confirm upstream sanitizeAndFormat() escapes the text after
+ *          textContent (#2439). If not, report it upstream and keep this file
+ *       2. Delete this file (upstream will be used automatically)
+ *       3. Run tests/playwright/security/toast-xss.spec.js
+ *       4. Verify toast colors render (var(--bs-*) CSS variables resolve)
+ *       5. Verify close button works (data-bs-dismiss="toast")
+ *       6. Verify auto-hide works (bootstrap.Toast API available)
  */
 
 // Collect messages

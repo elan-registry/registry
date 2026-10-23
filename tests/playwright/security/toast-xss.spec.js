@@ -52,6 +52,8 @@ test.describe('Toast renderer does not create elements from entity text (#2439)'
         await openWithErr(page, '&amp;lt;img id=xss2439a src=x onerror=x&amp;gt;');
 
         await expectNoInjectedImg(page, 'xss2439a');
+        // Without the fix this input makes no element either. Only this text
+        // check fails under the bug, so keep it.
         await expect(page.locator(TOAST_BODY).first()).toContainText('&lt;img');
     });
 
@@ -130,14 +132,17 @@ test.describe('Admin contact success toast shows an owner name as text (#2439)',
         await expect(form).toBeAttached();
         // The modal fields are hidden until a row button opens it. Set the values
         // directly and submit the form, as the row button handler would.
-        await form.evaluate((f, data) => {
-            f.querySelector('[name="owner_id"]').value = String(data.userId);
-            f.querySelector('[name="car_id"]').value = String(data.carId);
-            f.querySelector('[name="message"]').value = 'Playwright toast check for #2439';
-            f.submit();
-        }, owner);
-
-        await page.waitForURL(url => url.pathname.endsWith('/app/admin/index.php'), { waitUntil: 'domcontentloaded' });
+        // The handler redirects back to this same URL, so a URL wait is already
+        // true before the submit. Wait for the next document's DOMContentLoaded.
+        await Promise.all([
+            page.waitForEvent('domcontentloaded'),
+            form.evaluate((f, data) => {
+                f.querySelector('[name="owner_id"]').value = String(data.userId);
+                f.querySelector('[name="car_id"]').value = String(data.carId);
+                f.querySelector('[name="message"]').value = 'Playwright toast check for #2439';
+                f.submit();
+            }, owner),
+        ]);
     }
 
     test('owner with single-encoded last name: toast shows the name as text', async ({ page }) => {
