@@ -173,6 +173,10 @@ after an item is written.
 
 - [ ] The `action=fetchImages`/`action=removeImages` string match used to filter `save.php` route interception (5 call sites, e.g. ~line 985) checks for the literal substring `action=fetchImages` in the raw POST body. The real body is `multipart/form-data`, where the field looks like `name="action"\r\n\r\nfetchImages`, so the substring check can never match. Each site is safe today only because of request-timing luck (the matched call runs before the route is registered, or no other `save.php` call happens in that window) — found during #2295's review. Switch each to `postData.includes('fetchImages')` / `includes('removeImages')` (or parse the multipart `action` field) so the filter is correct on its own, not by accident of timing. (found in #2295)
 
+### `tests/playwright/local/fixtures/seed-email-paused-notice.php`
+
+- [ ] Cleanup deletes `cars_hist` by `car_id` before the `cars` delete, so the `cars_delete` trigger still leaves one history row for each seeded car on each run. Delete `cars_hist` by `model = SEED_CAR_MODEL` after the `cars` deletes, as `seed-toast-xss-owner.php` does (found in #2439)
+
 ### `tests/unit/admin/VerificationBannerReasonTest.php` (test coverage)
 
 - [ ] The "never echo unescaped" regexes miss `<?= htmlspecialchars($y) . $verificationBrevoNotReadyReason ?>` and `printf(...)`, and `[^;]*` can match across lines into comment text. Count the variable's uses in `app/admin/index.php` and assert each one is known. (found in /finish-milestone v2.30.6)
