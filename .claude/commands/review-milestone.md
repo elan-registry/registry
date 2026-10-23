@@ -275,7 +275,7 @@ scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=label \
   the cause (for example, `gh auth login`), then type
   `/review-milestone $ARGUMENTS`. Step 3 reuses the open PR.
 - **Exit 2** — comment confirmed, but an unresolved Blocking or Important
-  finding remains (see stdout for the heading(s)). Fix it here:
+  finding remains (see the review comment for the findings). Fix it here:
   `/release-milestone` does not fix findings. For each fix:
 
   1. Commit it on the milestone branch.
@@ -309,7 +309,7 @@ scripts/verify-ci-review.sh <pr-number> 30 300 --trigger=label \
   Wait for the `milestone-review` check to finish
   (`gh pr checks <pr-number> --watch`, run with the Bash tool
   `timeout: 600000`), then run this script again. The script accepts only
-  a review comment created after the head commit reached the branch. It
+  a review comment that has a verdict for the head commit. It
   waits for that comment, and it ignores the old one. Repeat until it
   exits 0. If a finding needs user judgment or access only they
   have (e.g. a prod-host check), use AskUserQuestion — "defer to a tracked

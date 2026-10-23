@@ -1,47 +1,49 @@
 #!/usr/bin/env bash
-# Detects unresolved Blocking (and optionally Important) findings in a PR's
-# posted review comments. CI's gate in claude-code-review.yml (both the
-# pr-to-milestone-review and milestone-review jobs) uses the same
-# HEADING_PATTERN (the Blocking part) and EXCLUSION_PATTERN, and the same
-# per-grep `|| [ $? -eq 1 ]` guard, so a command-line check and CI's gate can
-# never silently disagree about the same comment.
-# tests/hooks/test-check-blocking-findings.sh (Part C) fails if the workflow
-# and this script drift apart, and it also runs the workflow's gate block
-# itself to check the logic, not just the patterns.
+# Checks the CI review verdict of a PR for unresolved Blocking findings, and
+# optionally for Important findings.
 #
-# Why not just eyeball the raw comment bodies: a plain read can mistake a
-# recap heading ("### Blocking finding from the previous round: resolved")
-# for a live finding, or miss a genuine section after an earlier recap in
-# the same comment (#1843) — both are exactly why CI's gate uses a specific,
-# hardened grep instead of free-text judgment, and why this script exists
-# rather than reimplementing that judgment ad hoc per caller.
+# The workflow step "Post review" in claude-code-review.yml renders the review
+# from the structured output of the model. Code counts the findings, so the
+# counts cannot disagree with the text. The step posts the review as
+# github-actions[bot], and the last line of the comment is a hidden verdict
+# line:
+#
+#   <!-- claude-review-verdict sha=<head SHA> blocking=<n> important=<n> -->
+#
+# This script reads the counts from that line. It does not read the headings,
+# because a model can write any heading text. The CI gate reads the same
+# counts from the structured output, so this script and the gate agree.
+#
+# A verdict counts only when all of these are true:
+#   - The author is github-actions[bot]. Only a workflow run that holds the
+#     GITHUB_TOKEN of this repo posts as that account, and that needs write
+#     access to the repo. A fork PR gets a read-only token, so it cannot post.
+#   - The verdict line is the last line of the body, in the exact format.
+#   - The SHA in the verdict is the current head commit of the PR.
+# When more than one verdict counts, the newest one wins (by created_at, then
+# by comment ID). The script reads all pages of comments. A human comment, a
+# claude[bot] reply, a verdict for an older commit, and an old-format review
+# (no verdict line) do not count.
 #
 # Usage: scripts/check-blocking-findings.sh <pr-number> [--include-important]
 #
-# Arguments are recognized by shape, not position, so `--include-important`
-# may come before or after the PR number.
+# The script finds each argument by its shape, not by its position. So
+# `--include-important` can come before or after the PR number.
 #
-# Without --include-important: matches CI's gate contract exactly — only
-# `Blocking` headings count (Important is advisory in CI; the prompt's own
-# calibration is "Blocking = verified only, suspicions go under Important").
-# With --include-important: also treats `Important` headings as blocking —
-# this repo's pre-merge commands (/release-milestone, /review-milestone) are
-# intentionally stricter than CI here and should pass this flag.
+# Without --include-important, only `blocking` counts. This is the CI gate
+# contract: CI treats Important findings as advice. With --include-important,
+# `important` also counts. The pre-merge commands (/release-milestone,
+# /review-milestone) use this flag because they are stricter than CI.
 #
-# Checks the LAST comment matching the "Strengths" anchor (the same anchor
-# check-review-posted.sh uses to identify a genuine posted review, as
-# opposed to an arbitrary human comment that happens to contain the word
-# "Blocking") — not every comment on the PR. It reads all pages of comments,
-# so it checks the same newest review that verify-ci-review.sh accepts. One
-# page holds only 30 comments, and the first page has the oldest ones.
-#
-# Prints one line per non-excluded match found (for context) and exits:
-#   0 = clean (no unresolved findings)
-#   1 = at least one unresolved Blocking (or Important, if requested) finding
-#   2 = can't verify — no review comment found, a gh API call
-#       failed (auth/network/rate-limit/404), a grep failed while it scanned
-#       the review, or the arguments were invalid.
-#       Never treat exit 2 as "clean" — it means the check did not run.
+# Exit codes:
+#   0 = clean: the newest verdict has blocking=0 (and important=0 with
+#       --include-important)
+#   1 = at least one unresolved Blocking finding (or Important finding, with
+#       --include-important). The script prints the counts to stdout.
+#   2 = cannot verify: no review comment with a verdict for the head commit
+#       was found, a gh call failed (auth, network, rate limit, 404), the head
+#       SHA is not valid, or the arguments are not valid.
+#       Never treat exit 2 as clean. It means the check did not run.
 
 set -euo pipefail
 
@@ -72,79 +74,75 @@ if [ -z "$PR_NUM" ]; then
   exit 2
 fi
 
-GH_ERR="$(mktemp)"
-trap 'rm -f "$GH_ERR"' EXIT
-
-# With --paginate, gh runs the --jq filter on each page separately. So the
-# filter prints the ID of each review comment, and the shell keeps the last
-# ID of all pages. Then a second call reads the body of that one comment.
-if ! REVIEW_IDS=$(gh api "repos/elan-registry/registry/issues/${PR_NUM}/comments" --paginate \
-    --jq '.[] | select(.body | test("#{1,6}\\s+Strengths|\\*\\*Strengths\\*\\*")) | .id' \
-    2>"$GH_ERR"); then
-  echo "gh api call failed for PR #${PR_NUM} — cannot verify Blocking/Important status (NOT evidence of a clean PR):" >&2
-  cat "$GH_ERR" >&2
-  exit 2
-fi
-REVIEW_ID="${REVIEW_IDS##*$'\n'}"
-
-if [ -z "$REVIEW_ID" ]; then
-  echo "No Strengths-anchored review comment found on PR #${PR_NUM} — cannot verify Blocking/Important status." >&2
-  exit 2
-fi
-case "$REVIEW_ID" in
-  *[!0-9]*)
-    echo "gh api returned a comment ID that is not a number ('${REVIEW_ID}') for PR #${PR_NUM} — cannot verify Blocking/Important status." >&2
-    exit 2
-    ;;
-esac
-
-if ! REVIEW_BODY=$(gh api "repos/elan-registry/registry/issues/comments/${REVIEW_ID}" \
-    --jq '.body // ""' 2>"$GH_ERR"); then
-  echo "gh api call failed for comment ${REVIEW_ID} on PR #${PR_NUM} — cannot verify Blocking/Important status (NOT evidence of a clean PR):" >&2
-  cat "$GH_ERR" >&2
-  exit 2
-fi
-
-if [ -z "$REVIEW_BODY" ]; then
-  echo "Review comment ${REVIEW_ID} on PR #${PR_NUM} has an empty body — cannot verify Blocking/Important status." >&2
-  exit 2
-fi
-
-# Same regex as claude-code-review.yml: match a Blocking heading (markdown
-# heading or bold form, allowing trailing words like "Blocking findings"),
-# exclude lines that are a recap of an already-resolved prior round.
+# --- Verdict rule -----------------------------------------------------------
+# The same rule is in check-review-posted.sh, check-blocking-findings.sh and
+# verify-ci-review.sh. The "Post review" step of
+# .github/workflows/claude-code-review.yml writes the verdict line. When one
+# copy changes, change all of them.
 #
-# The exclusion is intentionally narrow — anchored to actual recap phrasing
-# ("previous/prior/earlier round", or the heading ending in "resolved") —
-# rather than a bare `resolved` substring match, which would also exclude a
-# live, forward-looking heading like "### Blocking issues, unresolved" (the
-# substring "resolved" occurs inside "unresolved" too).
-HEADING_PATTERN='#{1,6}[[:space:]]+Blocking([[:space:]]|$)|\*\*Blocking\*\*([[:space:]]|$)'
-if [ "$INCLUDE_IMPORTANT" -eq 1 ]; then
-  HEADING_PATTERN="${HEADING_PATTERN}"'|#{1,6}[[:space:]]+Important([[:space:]]|$)|\*\*Important\*\*([[:space:]]|$)'
-fi
+# Explicit characters, not ranges: a range such as a-f can follow the locale.
+VERDICT_RE='^<!-- claude-review-verdict sha=([0123456789abcdef]{40}) blocking=([0123456789]+) important=([0123456789]+) -->$'
 
-EXCLUSION_PATTERN='(previous|prior|earlier)[[:space:]]+round|:[[:space:]]*resolved[[:space:]]*$|\(resolved\)'
+# Prints one line per verdict for the PR head commit, oldest first:
+# created_at, comment ID, blocking count, important count (tab-separated).
+# Returns 1 when a gh call fails or the head SHA is not valid.
+head_verdicts() {
+  local pr="$1" head_sha records created id last_line found=""
+  if ! head_sha=$(gh pr view "$pr" --repo elan-registry/registry --json headRefOid -q .headRefOid); then
+    echo "Could not read the head commit of PR #${pr}." >&2
+    return 1
+  fi
+  if ! [[ $head_sha =~ ^[0123456789abcdef]{40}$ ]]; then
+    echo "The head commit of PR #${pr} is not a 40-character lowercase SHA (got '${head_sha}')." >&2
+    return 1
+  fi
+  # gh runs the --jq filter on each page separately (--paginate). So the
+  # filter prints one record per comment, and never a total. The record holds
+  # the last line of the body, after the filter removes each CR and one
+  # trailing newline. The filter is one line, so a log of the call is one line.
+  local filter='.[] | select(.user.login == "github-actions[bot]")'
+  filter+=' | [(.created_at // ""), (.id | tostring), ((.body // "") | gsub("\r"; "")'
+  filter+=' | (if endswith("\n") then .[:-1] else . end) | split("\n") | (last // ""))] | @tsv'
+  if ! records=$(gh api "repos/elan-registry/registry/issues/${pr}/comments" --paginate \
+      --jq "$filter"); then
+    echo "Could not read the comments of PR #${pr}." >&2
+    return 1
+  fi
+  while IFS=$'\t' read -r created id last_line; do
+    [[ $last_line =~ $VERDICT_RE ]] || continue
+    [ "${BASH_REMATCH[1]}" = "$head_sha" ] || continue
+    found+="${created}"$'\t'"${id}"$'\t'"${BASH_REMATCH[2]}"$'\t'"${BASH_REMATCH[3]}"$'\n'
+  done <<< "$records"
+  if [ -n "$found" ]; then
+    printf '%s' "$found" | LC_ALL=C sort -t $'\t' -k1,1 -k2,2n
+  fi
+  return 0
+}
+# --- End of verdict rule ----------------------------------------------------
 
-# Both greps need the `|| [ $? -eq 1 ]` guard, because either one can
-# legitimately match nothing and exit 1. The first does so on a clean review
-# with no Blocking heading at all. The second does so when every heading it
-# receives is an excluded recap. Without the guard, `pipefail` fails the
-# assignment and `set -e` stops the script with exit 1 ("finding found")
-# before it prints anything (#2222).
-# The guard accepts only exit 1 (no match). A real grep error (exit 2) makes
-# the guard fail, and the `if !` below reports it as exit 2 ("cannot
-# verify"), never as a finding and never as clean.
-if ! MATCHES=$(printf '%s\n' "$REVIEW_BODY" \
-  | { grep -E "^(${HEADING_PATTERN})" || [ $? -eq 1 ]; } \
-  | { grep -viE "$EXCLUSION_PATTERN" || [ $? -eq 1 ]; }); then
-  echo "grep failed while scanning the review on PR #${PR_NUM} — cannot verify Blocking/Important status (NOT evidence of a clean PR)." >&2
+if ! VERDICTS=$(head_verdicts "$PR_NUM"); then
+  echo "check-blocking-findings.sh: cannot verify the Blocking/Important status of PR #${PR_NUM} (NOT evidence of a clean PR)." >&2
   exit 2
 fi
 
-if [ -n "$MATCHES" ]; then
-  echo "Unresolved finding heading(s):"
-  printf '%s\n' "$MATCHES"
+if [ -z "$VERDICTS" ]; then
+  echo "No review comment with a verdict for the head commit of PR #${PR_NUM} — cannot verify the Blocking/Important status." >&2
+  exit 2
+fi
+
+IFS=$'\t' read -r _ REVIEW_ID BLOCKING IMPORTANT <<< "${VERDICTS##*$'\n'}"
+
+# The counts are digits only (the verdict rule checks this). A string test,
+# not arithmetic, so a very long number cannot overflow.
+has_findings() {
+  case "$1" in
+    *[!0]*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if has_findings "$BLOCKING" || { [ "$INCLUDE_IMPORTANT" -eq 1 ] && has_findings "$IMPORTANT"; }; then
+  echo "Unresolved findings in review comment ${REVIEW_ID} on PR #${PR_NUM}: blocking=${BLOCKING} important=${IMPORTANT}"
   exit 1
 fi
 
