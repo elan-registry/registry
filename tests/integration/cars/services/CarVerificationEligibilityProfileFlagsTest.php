@@ -514,7 +514,7 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
         $changed = $this->manager->setSuppressedForOwner($ownerId);
         $this->assertTrue($changed, 'The opt-out must be recorded although email_blocked is set');
 
-        $this->repo->clearProfileBlocked($ownerId);
+        $this->repo->clearProfileBlockedIfAddress($ownerId, self::OWNER_EMAIL);
 
         $flags = $this->getOwnerEmailFlags($ownerId);
         $this->assertSame('0', (string) $flags['email_blocked'], 'Test setup: the block must be cleared');

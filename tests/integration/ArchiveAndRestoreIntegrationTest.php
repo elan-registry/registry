@@ -50,6 +50,8 @@ final class ArchiveAndRestoreIntegrationTest extends IntegrationTestCase
                     // ignore cleanup errors
                 }
             }
+            // The users delete trigger writes a holding row (#2419) that no hook removes here.
+            $this->deleteDeletedUserAddressRows($this->restoredUserIds);
         }
         $this->createdArchiveIds = [];
         $this->restoredUserIds   = [];

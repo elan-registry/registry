@@ -194,6 +194,13 @@ abstract class IntegrationTestCase extends TestCase
                     fwrite(STDERR, "NOTE: tearDown() cleanup failed for user ID {$userId}: {$e->getMessage()}\n");
                 }
             }
+            // One call for all users: the users delete trigger wrote a holding row for each (#2419).
+            // DB::query() can still throw a PDOException from prepare(), so this keeps parent::tearDown() reachable.
+            try {
+                $this->deleteDeletedUserAddressRows($this->createdUserIds);
+            } catch (RuntimeException $e) {
+                fwrite(STDERR, "NOTE: tearDown() cleanup of er_deleted_user_addresses failed: {$e->getMessage()}\n");
+            }
         }
 
         parent::tearDown();
@@ -968,6 +975,44 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Delete the er_deleted_user_addresses holding rows that the users
+     * AFTER DELETE trigger leaves behind (#2419).
+     *
+     * The table is absent in a schema that has not run the migration yet.
+     * The check runs on each call so a test that creates or drops the table
+     * does not leave a stale answer.
+     *
+     * @param int[] $userIds User IDs whose holding rows to remove
+     */
+    protected function deleteDeletedUserAddressRows(array $userIds): void
+    {
+        if ($userIds === []) {
+            return;
+        }
+
+        // DB::query() sets error() and does not throw, so each step checks it.
+        $check = $this->db->query(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            ['er_deleted_user_addresses']
+        );
+        if ($check->error()) {
+            fwrite(STDERR, "NOTE: er_deleted_user_addresses check failed: {$check->errorString()}\n");
+            return;
+        }
+        if ($check->count() === 0) {
+            return;
+        }
+
+        $delete = $this->db->query(
+            'DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', array_fill(0, count($userIds), '?')) . ')',
+            array_values($userIds)
+        );
+        if ($delete->error()) {
+            fwrite(STDERR, "NOTE: er_deleted_user_addresses cleanup failed: {$delete->errorString()}\n");
+        }
+    }
+
+    /**
      * Delete a test user from database
      *
      * @param int $userId The user ID to delete
@@ -983,6 +1028,7 @@ abstract class IntegrationTestCase extends TestCase
             $this->deleteEmailEventsForUserIds([$userId]);
             $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
             $this->db->delete('users', ['id', '=', $userId]);
+            $this->deleteDeletedUserAddressRows([$userId]);
             // Remove from tracking so tearDown doesn't double-delete
             $this->createdUserIds = array_values(array_diff($this->createdUserIds, [$userId]));
             return true;

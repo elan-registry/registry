@@ -41,4 +41,20 @@ final class EmailAddress
     {
         return strtolower(trim((string) $address));
     }
+
+    /**
+     * Tell whether a new address is a change of address from the seen one.
+     *
+     * Owner::update() and CarRepository::clearFlagsForConfirmedEmailChange()
+     * use this compare, so a case-only or white-space-only edit is not a
+     * change in either of them. The compare is symmetric.
+     *
+     * @param string|null $seen The stored `profiles.email_address_seen`
+     * @param string|null $new  The new or current `users.email`
+     * @return bool True when the two addresses differ after normalization
+     */
+    public static function isChange(?string $seen, ?string $new): bool
+    {
+        return self::normalize($seen) !== self::normalize($new);
+    }
 }

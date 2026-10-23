@@ -136,7 +136,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         'effectiveEmailFlags',
         'clearFlagsForConfirmedEmailChange',
         'setProfileBlocked',
-        'clearProfileBlocked',
         'writeProfileBlockClear',
         'setProfileBounced',
         'clearProfileBounced',

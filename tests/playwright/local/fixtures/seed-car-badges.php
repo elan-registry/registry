@@ -171,6 +171,12 @@ $db = dbi();
 // not delete them, or it breaks a parallel Verified row run.
 $ownerNames = $verifiedRowMode ? array_merge([SEED_USERNAME], SEED_FLAGGED_OWNERS) : [SEED_USERNAME];
 $ownerMarks = implode(', ', array_fill(0, count($ownerNames), '?'));
+// The users AFTER DELETE trigger leaves a holding row per deleted user (#2419).
+// Capture the ids first: the username lookup finds nothing after the delete.
+$seedUserIds = array_map(
+    'intval',
+    array_column($db->query("SELECT id FROM users WHERE username IN ({$ownerMarks})", $ownerNames)->results(true), 'id')
+);
 $cleanupQueries = [
     ["DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username IN ({$ownerMarks}))", $ownerNames],
     ["DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username IN ({$ownerMarks}))", $ownerNames],
@@ -183,6 +189,19 @@ foreach ($cleanupQueries as [$cleanupSql, $cleanupParams]) {
     if ($db->error()) {
         fwrite(STDERR, "ERROR: Cleanup query failed ({$cleanupSql}): {$db->errorString()}\n");
         exit(1);
+    }
+}
+if ($seedUserIds !== []) {
+    // The table is absent until the migration runs.
+    $holdingTable = $db->query(
+        'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+        ['er_deleted_user_addresses']
+    );
+    if ($holdingTable->count() > 0) {
+        $db->query(
+            'DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', array_fill(0, count($seedUserIds), '?')) . ')',
+            $seedUserIds
+        );
     }
 }
 

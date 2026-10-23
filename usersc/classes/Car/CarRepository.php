@@ -827,36 +827,6 @@ class CarRepository
     }
 
     /**
-     * Clear an owner's block (`email_blocked` with its address, time and cause)
-     *
-     * A stored value other than 0 or 1 is always written over, and the
-     * return value is the opposite of the value written ({@see writerFlagValue()}).
-     *
-     * @param int $userId Owner user ID
-     * @return int|null The old flag value (0 or 1), or null when the owner has
-     *                  no profiles row (nothing is written)
-     * @throws CarDatabaseException If a query fails
-     */
-    public function clearProfileBlocked(int $userId): ?int
-    {
-        $state = $this->findProfileEmailState($userId, true);
-        if ($state === null) {
-            return null;
-        }
-        [$old, $valid] = self::writerFlagValue($state->email_blocked, 'email_blocked', $userId, 1);
-        if ($valid && $old === 0) {
-            return $old;
-        }
-        if (!$valid) {
-            self::logFlagRepair($state->email_blocked, 'email_blocked', $userId);
-        }
-
-        $this->writeProfileBlockClear($userId, 'clearProfileBlocked');
-
-        return $old;
-    }
-
-    /**
      * Read what admin Clear Block needs before its Brevo call (#2357)
      *
      * Clear Block clears the stored block, not the effective flag, so it
@@ -898,7 +868,7 @@ class CarRepository
      * exact and null-safe: no normalization, and NULL matches only NULL.
      * When the address changed, it writes nothing, so the caller can roll
      * back. When the address matches, it clears `email_blocked` with its
-     * address, date and cause, as {@see clearProfileBlocked()} does.
+     * address, date and cause.
      *
      * When the address matches, a stored value other than 0 or 1 is written
      * over, and `old` is
@@ -1118,8 +1088,7 @@ class CarRepository
         [$bounced, $bouncedValid] = self::writerFlagValue($row->email_bounced, 'email_bounced', $userId, 1);
         [$blocked, $blockedValid] = self::writerFlagValue($row->email_blocked, 'email_blocked', $userId, 1);
         $current = EmailAddress::normalize(self::nullableString($row->user_email));
-        $seen    = EmailAddress::normalize(self::nullableString($row->email_address_seen));
-        $changed = $current !== $seen;
+        $changed = EmailAddress::isChange(self::nullableString($row->email_address_seen), $current);
 
         if ($changed) {
             if ($bounced === 1) {
@@ -3379,7 +3348,10 @@ class CarRepository
      * - `email_address_seen`, `email_bounced_address` and
      *   `email_blocked_address` of the profile,
      * - `DISTINCT email` of the user's er_email_events rows,
-     * - `cars.email` of the user's cars.
+     * - `cars.email` of the user's cars,
+     * - `email` and `email_new` of the user's `er_deleted_user_addresses`
+     *   row. The `users_delete_capture_addresses` trigger writes this row
+     *   when the `users` row is deleted (#2419).
      *
      * @param int $userId User ID
      * @return list<string> Unique non-empty addresses, normalized
@@ -3395,6 +3367,7 @@ class CarRepository
                              FOR UPDATE',
             'events'  => 'SELECT DISTINCT email FROM er_email_events WHERE user_id = ?',
             'cars'    => 'SELECT email FROM cars WHERE user_id = ?',
+            'holding row' => 'SELECT email, email_new FROM er_deleted_user_addresses WHERE user_id = ?',
         ];
 
         $addresses = [];
@@ -3414,6 +3387,33 @@ class CarRepository
         }
 
         return self::normalizeAddressList($addresses);
+    }
+
+    /**
+     * Delete a deleted user's holding row from er_deleted_user_addresses (account deletion)
+     *
+     * The account-deletion privacy step calls this last, in its transaction,
+     * after it has deleted the rows for the addresses in the holding row.
+     *
+     * @param int $userId User ID. A value less than 1 issues no query.
+     * @return int Number of rows deleted (0 or 1)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function deleteDeletedUserAddresses(int $userId): int
+    {
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        $this->db->query('DELETE FROM er_deleted_user_addresses WHERE user_id = ?', [$userId]);
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::deleteDeletedUserAddresses failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
     }
 
     /**

@@ -41,6 +41,7 @@ final class AccountCleanupDeliverabilityTest extends IntegrationTestCase
                 $this->db->query('DELETE FROM profiles WHERE user_id = ?', [$userId]);
                 $this->db->query('DELETE FROM user_permission_matches WHERE user_id = ?', [$userId]);
                 $this->db->query('DELETE FROM users WHERE id = ?', [$userId]);
+                $this->deleteDeletedUserAddressRows([$userId]);
             }
             foreach ($this->archiveIds as $archiveId) {
                 $this->db->query('DELETE FROM deleted_accounts_archive WHERE id = ?', [$archiveId]);
@@ -65,6 +66,7 @@ final class AccountCleanupDeliverabilityTest extends IntegrationTestCase
         $this->db->query('DELETE FROM profiles WHERE user_id = ?', [$userId]);
         $this->db->query('DELETE FROM user_permission_matches WHERE user_id = ?', [$userId]);
         $this->db->query('DELETE FROM users WHERE id = ?', [$userId]);
+        $this->deleteDeletedUserAddressRows([$userId]);
 
         return $archiveId;
     }

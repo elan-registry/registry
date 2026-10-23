@@ -31,7 +31,7 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
      *
      * @param list<array{sql: string, params: array<mixed>}> $queries Out: every query, in order
      * @param int|null $failOnQuery 1-based number of the query that reports an error
-     * @param list<list<array<string, mixed>>> $resultsByQuery Rows that results() returns, by query number
+     * @param array<int, list<array<string, mixed>>> $resultsByQuery Rows that results() returns, by 0-based query number
      * @param int $count The value that count() returns
      * @param object|array<string, mixed> $firstRow The value that first() returns
      */
@@ -339,19 +339,23 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
 
     // --- lockProfileAndFindAddresses() ------------------------------------
 
-    public function testLockProfileAndFindAddressesMergesTheThreeSourcesNormalizedAndUnique(): void
+    public function testLockProfileAndFindAddressesMergesTheFourSourcesNormalizedAndUnique(): void
     {
         $queries = [];
         $repo = new CarRepository($this->makeRecordingDb($queries, resultsByQuery: [
             [['email_address_seen' => 'Seen@Example.com', 'email_bounced_address' => null, 'email_blocked_address' => '']],
             [['email' => 'seen@example.com'], ['email' => 'event@example.com']],
             [['email' => ' CAR@example.com '], ['email' => '']],
+            [['email' => 'Held@Example.com', 'email_new' => 'pending@example.com']],
         ]));
 
         $addresses = $repo->lockProfileAndFindAddresses(42);
 
-        $this->assertSame(['seen@example.com', 'event@example.com', 'car@example.com'], $addresses);
-        $this->assertCount(3, $queries);
+        $this->assertSame(
+            ['seen@example.com', 'event@example.com', 'car@example.com', 'held@example.com', 'pending@example.com'],
+            $addresses
+        );
+        $this->assertCount(4, $queries);
         $this->assertStringContainsString('FOR UPDATE', $queries[0]['sql'], 'The first read takes the profile lock');
         $this->assertStringContainsString('FROM profiles', $queries[0]['sql']);
         foreach ($queries as $query) {
@@ -359,14 +363,56 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
         }
     }
 
-    /** A user with no profile, no event and no car has no address: the result is an empty list. */
+    /**
+     * The holding row that the users_delete_capture_addresses trigger writes
+     * gives both `email` and `email_new` (#2419).
+     */
+    public function testLockProfileAndFindAddressesReadsEmailAndEmailNewOfTheHoldingRow(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, resultsByQuery: [
+            3 => [['email' => 'deleted@example.com', 'email_new' => 'Changing@Example.com']],
+        ]));
+
+        $this->assertSame(['deleted@example.com', 'changing@example.com'], $repo->lockProfileAndFindAddresses(42));
+        $this->assertSame(
+            'SELECT email, email_new FROM er_deleted_user_addresses WHERE user_id = ?',
+            $queries[3]['sql']
+        );
+        $this->assertSame([42], $queries[3]['params']);
+    }
+
+    public function testLockProfileAndFindAddressesSkipsANullHoldingRowAddress(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, resultsByQuery: [
+            3 => [['email' => 'deleted@example.com', 'email_new' => null]],
+        ]));
+
+        $this->assertSame(['deleted@example.com'], $repo->lockProfileAndFindAddresses(42));
+    }
+
+    public function testLockProfileAndFindAddressesDropsAHoldingRowAddressThatAnotherSourceHas(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, resultsByQuery: [
+            [['email_address_seen' => 'owner@example.com', 'email_bounced_address' => null, 'email_blocked_address' => null]],
+            [],
+            [],
+            [['email' => ' OWNER@example.com ', 'email_new' => 'owner@example.com']],
+        ]));
+
+        $this->assertSame(['owner@example.com'], $repo->lockProfileAndFindAddresses(42));
+    }
+
+    /** A user with no profile, no event, no car and no holding row has no address: the result is an empty list. */
     public function testLockProfileAndFindAddressesReturnsAnEmptyListWhenThereIsNoAddress(): void
     {
         $queries = [];
         $repo = new CarRepository($this->makeRecordingDb($queries));
 
         $this->assertSame([], $repo->lockProfileAndFindAddresses(42));
-        $this->assertCount(3, $queries, 'All three sources are read even when the profile row is missing');
+        $this->assertCount(4, $queries, 'All four sources are read even when the profile row is missing');
     }
 
     public function testLockProfileAndFindAddressesNamesTheSourceThatFailed(): void
@@ -378,6 +424,51 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
         $this->expectExceptionMessage('failed to read cars for user=42');
 
         $repo->lockProfileAndFindAddresses(42);
+    }
+
+    public function testLockProfileAndFindAddressesNamesTheHoldingRowWhenItsReadFails(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, failOnQuery: 4));
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessage('failed to read holding row for user=42');
+
+        $repo->lockProfileAndFindAddresses(42);
+    }
+
+    // --- deleteDeletedUserAddresses() -------------------------------------
+
+    #[DataProvider('nonPositiveUserIdProvider')]
+    public function testDeleteDeletedUserAddressesIssuesNoQueryForANonPositiveUserId(int $userId): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, count: 1));
+
+        $this->assertSame(0, $repo->deleteDeletedUserAddresses($userId));
+        $this->assertSame([], $queries, 'A delete with a bad user ID could remove the wrong holding row');
+    }
+
+    public function testDeleteDeletedUserAddressesBindsTheUserIdOnlyAndReturnsTheCount(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, count: 1));
+
+        $this->assertSame(1, $repo->deleteDeletedUserAddresses(42));
+        $this->assertCount(1, $queries);
+        $this->assertSame('DELETE FROM er_deleted_user_addresses WHERE user_id = ?', $queries[0]['sql']);
+        $this->assertSame([42], $queries[0]['params'], 'The delete binds the user ID and nothing else');
+    }
+
+    public function testDeleteDeletedUserAddressesThrowsWhenTheQueryFails(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, failOnQuery: 1));
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessage('deleteDeletedUserAddresses failed for user=42');
+
+        $repo->deleteDeletedUserAddresses(42);
     }
 
     // --- deleteEmailEventsOlderThan() -------------------------------------

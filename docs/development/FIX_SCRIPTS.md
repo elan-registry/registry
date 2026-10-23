@@ -148,6 +148,84 @@ restructuring, `FIX/_ARCHIVE/`), and several were edited *after* that move — s
 a `git log` on the pre-archive path stops at the move commit and recovers a
 stale version.
 
+## Rerun the Deletion Privacy Step (`30-Rerun-Deletion-Privacy-Step.php`)
+
+Script `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php`
+runs the account-deletion privacy step again for one deleted user ID (#2419).
+It is a repeatable maintenance script. An admin runs it. An editor cannot.
+
+### When to run it
+
+Run it when the `UserDeletion` log has this CRITICAL line for a user:
+
+```text
+CRITICAL: privacy step failed for user N at stage S, rolled back, personal data remains: ExceptionClass (code C)
+```
+
+`N` is the user ID. `S` is the stage that failed. If the rollback also
+failed, the line says `rollback failed: ExceptionClass (code C)` in place of
+`rolled back`. Run the script in both cases. The personal data of that
+user then remains: the plugin mail rows, the email events, the profile and the
+holding row in `er_deleted_user_addresses`. The log line holds no address.
+
+Do not run it for a "privacy step refused" line. Read that line first. The
+refusal means the ID is below 1, or the ID still has a `users` row, or the
+check failed.
+
+### How to find the user ID
+
+1. Open the `logs` table or the admin log view. Filter the category to `UserDeletion`.
+2. Find the CRITICAL line.
+3. Read the number after `for user`.
+
+The log row also stores the same ID as its user ID.
+
+### Steps
+
+1. Open the Maintenance page in the admin console.
+2. Open `30-Rerun-Deletion-Privacy-Step`.
+3. Enter the user ID in the field `Deleted user ID`.
+4. Click `Run Privacy Step`.
+
+The script refuses an ID that still has a `users` row. This protects a live
+owner's profile. It shows the user ID and row counts only, never an address.
+
+### What success looks like
+
+The page shows a green "Committed" message and a table of deleted row counts:
+
+| Row | Count |
+| --- | --- |
+| `plg_sendinblue_messages` | Plugin mail rows deleted. |
+| `er_email_events` | Email events deleted. |
+| `er_deleted_user_addresses` | Holding rows deleted. A first rerun shows 1. |
+
+If the page shows a note that `plg_sendinblue_messages` does not exist, the
+site has no plugin table. Zero plugin rows is then correct.
+
+A second run for the same ID is safe. It finds no rows and shows 0 for each.
+It also logs a summary line to the `UserDeletion` log.
+
+### If the run fails again
+
+1. Read the page. A "Failed at stage" message names the stage. A "Refused"
+   message means the ID has a `users` row or the check failed.
+2. Read the `UserDeletion` log for the exception class and code.
+3. Fix the cause. Examples are a database lock timeout or a missing table.
+4. Run the script again. The holding row stays after a failure, so the
+   addresses are still available.
+5. If the failure repeats, open a GitHub issue. Put the user ID, the stage,
+   the exception class and the code in it. Do not put an address in it.
+
+Nothing retries a failed step by itself. See
+[#2421](https://github.com/elan-registry/registry/issues/2421).
+
+### After a deploy
+
+The script is a new page. Run `21-Fix-Page-Permissions.php` from the
+Maintenance page on test, then on production. This adds the permission row for
+the new page.
+
 ## See Also
 
 - `/app/admin/scripts/fix/_TEMPLATE_Fix-Script.php` - The standardized template

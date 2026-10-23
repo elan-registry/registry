@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Tests\Support;
 
 /**
- * UserDeletionHookFakeDatabase - FakeDatabase double for the account-deletion hook
+ * UserDeletionHookFakeDatabase - FakeDatabase double for the account-deletion privacy step
  *
  * Records every statement and transaction call in one ordered list, so a test
- * can check the order of steps in `usersc/scripts/after_user_deletion.php`.
+ * can check the order of steps in `AccountDeletionPrivacyStep`.
  * It tracks whether a transaction is open. A test can make one statement
  * fail (with an SQLSTATE and driver code), and can report the sendinblue
  * plugin table as absent. get(), insert(), update() and delete() throw,
@@ -32,15 +32,22 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
     /** Whether the current statement is the one told to fail. */
     private bool $currentFails = false;
 
+    /** Number of rows the current statement reports from count(). */
+    private int $currentCount = 0;
+
     /**
      * @param bool $pluginTableExists What the information_schema check reports
      * @param string|null $failOnSql A statement that contains this text fails
      * @param array{0: string, 1: int, 2: string} $failInfo PDO errorInfo() triple of the failure
+     * @param list<int> $liveUserIds IDs for which `SELECT id FROM users WHERE id = ?` finds a row
+     * @param bool $rollbackThrows True to make rollBack() throw, as PDO does on a lost connection
      */
     public function __construct(
         private readonly bool $pluginTableExists = true,
         private readonly ?string $failOnSql = null,
         private readonly array $failInfo = ['HY000', 1234, 'simulated failure'],
+        private readonly array $liveUserIds = [],
+        private readonly bool $rollbackThrows = false,
     ) {
     }
 
@@ -49,6 +56,9 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
         $this->events[] = 'SQL: ' . preg_replace('/\s+/', ' ', trim($sql));
         $this->currentSql = $sql;
         $this->currentFails = $this->failOnSql !== null && str_contains($sql, $this->failOnSql);
+        $this->currentCount = (str_contains($sql, 'SELECT id FROM users WHERE id = ?') && in_array($params[0] ?? null, $this->liveUserIds, true))
+            ? 1
+            : 0;
 
         return $this;
     }
@@ -75,6 +85,11 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
     public function delete(string $table, array|int $where): self|false
     {
         throw new \LogicException('unrecorded call');
+    }
+
+    public function count(): int
+    {
+        return $this->currentCount;
     }
 
     public function error(): bool
@@ -123,6 +138,9 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
     {
         $this->events[] = 'ROLLBACK';
         $this->open = false;
+        if ($this->rollbackThrows) {
+            throw new \PDOException('simulated rollback failure', 2006);
+        }
 
         return true;
     }
