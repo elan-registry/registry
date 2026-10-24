@@ -279,7 +279,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
         $this->assertTrue($result->refused);
         $this->assertFalse($result->committed);
         $this->assertSame(['SQL: SELECT id FROM users WHERE id = ?'], $db->events, 'Only the live-user check runs: no BEGIN, no delete');
-        $this->assertLogged('CRITICAL: privacy step refused user 77: a users row still exists, no row deleted');
+        $this->assertLogged('CRITICAL: privacy step refused user 77: a users row still exists, no row deleted; if an account deletion ran, check the trigger users_delete_capture_addresses and the user permission rows');
     }
 
     /** A failed live-user check refuses too: the step cannot prove the user is gone. */

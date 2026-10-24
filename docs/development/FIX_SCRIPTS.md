@@ -203,8 +203,12 @@ The page shows a green "Committed" message and a table of deleted row counts:
 If the page shows a note that `plg_sendinblue_messages` does not exist, the
 site has no plugin table. Zero plugin rows is then correct.
 
-A second run for the same ID is safe. It finds no rows and shows 0 for each.
-It also logs a summary line to the `UserDeletion` log.
+A second run for the same ID is safe. It finds no holding row, profile or
+event rows. It also logs a summary line to the `UserDeletion` log.
+
+If the page warns that it found no holding row for the ID, check the ID
+against the CRITICAL log line. A mistyped ID, a second run, or a missing
+trigger gives this warning.
 
 ### If the run fails again
 

@@ -60,7 +60,7 @@ $userIdRejected = $is_exec && $targetUserId === false;
                         <div class="card-body">
                             <p class="mb-3">Deletes the remaining personal data of one deleted user. Run it when the <code>UserDeletion</code> log shows <code>CRITICAL: privacy step failed for user N</code>.</p>
 
-                            <div class="alert alert-info">
+                            <div class="alert alert-primary">
                                 <h5><i class="fa fa-info-circle"></i> What this script does:</h5>
                                 <ul class="mb-0">
                                     <li>Reads the addresses from the user's <code>er_deleted_user_addresses</code> row, the profile, the email events and the cars</li>
@@ -154,8 +154,14 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                                 <tr><th scope="row"><code>er_deleted_user_addresses</code></th><td><?= (int) $result->deletedHoldingRowCount ?></td></tr>
                                             </tbody>
                                         </table>
+                                        <?php // With the trigger in place, a failed step leaves a holding row. None means a wrong ID, a second run, or a missing trigger. ?>
+                                        <?php if ($result->deletedHoldingRowCount === 0): ?>
+                                            <div class="alert alert-warning mt-2 mb-0">
+                                                No holding row was found for user <?= (int) $targetUserId ?>. This ID may never have had a failed privacy step. Check the ID in the CRITICAL log line.
+                                            </div>
+                                        <?php endif; ?>
                                         <?php if ($result->pluginTableAbsent): ?>
-                                            <div class="alert alert-info mt-2 mb-0">
+                                            <div class="alert alert-primary mt-2 mb-0">
                                                 <code>plg_sendinblue_messages</code> does not exist on this site, so no plugin rows were deleted.
                                             </div>
                                         <?php endif; ?>

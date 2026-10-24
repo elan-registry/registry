@@ -464,7 +464,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         $row = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId])->first();
         $this->assertSame($userId, (int) $row->user_id, 'The car cleanup must not move a live owner\'s car');
         $this->assertContains(
-            "CRITICAL: privacy step refused user {$userId}: a users row still exists, no row deleted",
+            "CRITICAL: privacy step refused user {$userId}: a users row still exists, no row deleted; if an account deletion ran, check the trigger users_delete_capture_addresses and the user permission rows",
             $this->deletionLogNotes($userId)
         );
     }
@@ -669,6 +669,32 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         $this->runHook($owner['id']);
 
         $this->assertFalse($this->pluginRowExists($hit), 'A row for the pending email_new address must go');
+        $this->assertNull($this->holdingRow($owner['id']), 'The hook path removes the holding row');
+        foreach ($this->deletionLogNotes($owner['id']) as $note) {
+            $this->assertStringNotContainsString('found no er_deleted_user_addresses row', $note);
+        }
+    }
+
+    public function testAHookRunWithNoHoldingRowLogsCriticalNamingTheTrigger(): void
+    {
+        $userId = $this->createOwner();
+        $this->loginAsTestUser($this->adminId);
+        // A missing trigger writes no holding row. Delete it to get the same state.
+        $this->deleteUsersRowOnly($userId);
+        $this->db->query('DELETE FROM er_deleted_user_addresses WHERE user_id = ?', [$userId]);
+        $this->assertFalse($this->db->error(), 'Test setup: holding-row delete: ' . $this->db->errorString());
+
+        $id = $userId;
+        $db = $this->db;
+        require TESTING_ROOT . '/usersc/scripts/after_user_deletion.php';
+
+        $notes = $this->deletionLogNotes($userId);
+        $this->assertContains(
+            "CRITICAL: privacy step for user {$userId} found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses",
+            $notes
+        );
+        $this->assertSame(0, $this->profileCount($userId), 'The step still commits the other deletes');
+        $this->assertContains("Complete cleanup: reassigned 0 cars to noowner user (ID: {$this->noownerId()})", $notes, 'The car cleanup still runs');
     }
 
     public function testCurrentUsersEmailMessagesAreDeletedWhenProfileSeenIsStale(): void

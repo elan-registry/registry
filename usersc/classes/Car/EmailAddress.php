@@ -7,8 +7,9 @@ namespace ElanRegistry\Car;
 /**
  * EmailAddress - The matching rule for owner email addresses
  *
- * Runtime code compares addresses from `users`, `cars`, `profiles`,
- * `er_email_events` and the sendinblue plugin with this rule. Both sides of a
+ * Runtime code compares addresses from tables such as `users`, `cars`,
+ * `profiles`, `er_email_events`, `er_deleted_user_addresses` and the
+ * sendinblue plugin with this rule. Both sides of a
  * compare go through {@see self::normalize()}, then the compare is byte for
  * byte. Do the compare in PHP, or in SQL with `COLLATE utf8mb4_bin`, because
  * the column collations are case- and accent-insensitive.

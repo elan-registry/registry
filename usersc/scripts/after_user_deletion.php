@@ -69,6 +69,17 @@ if ($privacyResult->refused) {
     return;
 }
 
+// deleteUsers() deleted the users row just before this hook, so the
+// users_delete_capture_addresses trigger wrote a holding row. A committed step
+// that deleted none means the trigger is missing (for example after a UserSpice
+// upgrade rebuilt users), and the current and pending address rows stay.
+if ($privacyResult->committed && $privacyResult->deletedHoldingRowCount === 0) {
+    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
+        'CRITICAL: privacy step for user %d found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses',
+        $id
+    ));
+}
+
 // Capture car list before cleanup so both branches below can log per-car
 // after commit. Hoisted above the noowner-exists split so both branches —
 // including the fallback, which previously never fetched a car list at all

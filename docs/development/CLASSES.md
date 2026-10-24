@@ -673,8 +673,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
     `stillBounced` (true when `email_bounced` applies to the owner's current address, read under the
     lock) and `stillOptedOut` (true when `email_opted_out` is 1, read under the lock). It clears the
     flag only when `addressMatched` is true and `old` is 1. When the address changed
-    it writes nothing, so the caller can roll back. It is the only block clear for one owner:
-    `clearProfileBlocked()` had no production caller and was removed (#2419).
+    it writes nothing, so the caller can roll back. It is the only block clear for one owner.
   - `setProfileBounced(int $userId, string $address, string $bouncedAt): ?int` - Set `email_bounced`
     with address and `email_bounced_at`. Same repeat rule as the block.
   - `clearProfileBounced(int $userId): ?int` - Clear `email_bounced` and its address and time, and set
@@ -778,11 +777,11 @@ to provide a focused, testable data access layer wrapping the `cars`,
   was cleared. A second run with the same cutoffs changes no row (#1889, #2358)
 - `lockProfileAndFindAddresses(int $userId): array` - First call of the
   account-deletion privacy step, inside its transaction. It runs
-  `SELECT ... FROM profiles WHERE user_id = ? FOR UPDATE`. This is the lock that
-  the event step of #2359 will take. Then no event row for the user can arrive
-  between the read and the delete. Today an event write takes no profile lock,
-  so this design applies after #2359 ships. A user with no profile row gets a
-  gap lock.
+  `SELECT ... FROM profiles WHERE user_id = ? FOR UPDATE`. This is the same lock
+  that `EmailEventApplier::apply()` takes first, through
+  `lockEventGuardState()`. So no event row for the user can arrive between the
+  read and the delete, if the user has a profile row. A user with no profile row
+  gets a gap lock.
   Returns the unique, non-empty, normalized addresses from four reads (seven
   columns). It reads them in this order, and a failed read names its source in
   the `CarDatabaseException` message:

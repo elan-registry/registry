@@ -73,7 +73,7 @@ final class AccountDeletionPrivacyStep
             logger($userId, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
                 $liveUser === null
                     ? 'CRITICAL: privacy step refused user %d: the users row check failed, no row deleted'
-                    : 'CRITICAL: privacy step refused user %d: a users row still exists, no row deleted',
+                    : 'CRITICAL: privacy step refused user %d: a users row still exists, no row deleted; if an account deletion ran, check the trigger users_delete_capture_addresses and the user permission rows',
                 $userId
             ));
             return AccountDeletionPrivacyResult::refused();
@@ -81,7 +81,7 @@ final class AccountDeletionPrivacyStep
 
         $result = $this->deleteInTransaction($userId);
 
-        // The log rows are written after the commit, so a rollback cannot remove them.
+        // The log rows are written after the transaction ends (commit or rollback), so a rollback cannot remove them.
         // Only a committed result sets pluginTableAbsent.
         if ($result->pluginTableAbsent) {
             logger($userId, LogCategories::LOG_CATEGORY_USER_DELETION, "Privacy step: plg_sendinblue_messages is absent, no plugin rows to delete for user $userId");

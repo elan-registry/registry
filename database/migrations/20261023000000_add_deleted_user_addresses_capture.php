@@ -20,8 +20,10 @@ use Phinx\Migration\AbstractMigration;
  * script (`30-Rerun-Deletion-Privacy-Step.php`) then has the addresses.
  *
  * Column types and collation match `users.email` (VARCHAR(155)
- * utf8mb4_unicode_ci) and `users.email_new`. Both are NULL here, because a
- * holding row can come from a row that has no pending address.
+ * utf8mb4_unicode_ci) and `users.email_new`. `email_new` is NULL when no
+ * email change was pending. `users.email` is NOT NULL, but `email` is nullable
+ * here too, so that an odd source row can never make the trigger insert, and
+ * with it the users delete, fail.
  *
  * The trigger is AFTER DELETE, so it records only a row that MySQL removed.
  * It ignores `@disable_triggers`: a deletion must never skip the capture.

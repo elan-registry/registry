@@ -67,20 +67,24 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        if ($this->databaseConnected) {
-            foreach ($this->pluginMessageIds as $messageId) {
-                $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
+        // DB::query() can throw from prepare(). The finally keeps parent::tearDown(), which deletes the test users, reachable.
+        try {
+            if ($this->databaseConnected) {
+                foreach ($this->pluginMessageIds as $messageId) {
+                    $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
+                }
+                foreach ($this->loggedUserIds as $userId) {
+                    $this->db->query('DELETE FROM logs WHERE user_id = ?', [$userId]);
+                }
+                // A committed rerun records itself in fix_script_runs.
+                $this->db->query(
+                    'DELETE FROM fix_script_runs WHERE id > ? AND script_name = ?',
+                    [$this->fixScriptRunsMaxId, basename(self::SCRIPT)]
+                );
             }
-            foreach ($this->loggedUserIds as $userId) {
-                $this->db->query('DELETE FROM logs WHERE user_id = ?', [$userId]);
-            }
-            // A committed rerun records itself in fix_script_runs.
-            $this->db->query(
-                'DELETE FROM fix_script_runs WHERE id > ? AND script_name = ?',
-                [$this->fixScriptRunsMaxId, basename(self::SCRIPT)]
-            );
+        } finally {
+            parent::tearDown();
         }
-        parent::tearDown();
     }
 
     private function uniqueAddress(string $prefix): string
@@ -136,6 +140,17 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
         return ['id' => $userId, 'rows' => [$currentRow, $pendingRow]];
     }
 
+    /**
+     * fix_script_runs rows that this test's runs of the script recorded.
+     */
+    private function recordedRunCount(): int
+    {
+        return (int) $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM fix_script_runs WHERE id > ? AND script_name = ?',
+            [$this->fixScriptRunsMaxId, basename(self::SCRIPT)]
+        )->first()->cnt;
+    }
+
     private function deleteUsersRowOnly(int $userId): void
     {
         $this->db->delete('users', ['id', '=', $userId]);
@@ -173,6 +188,22 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
         foreach ($owner['rows'] as $messageId) {
             $this->assertFalse($this->pluginRowExists($messageId), 'The rerun reads both addresses from the holding row');
         }
+        $this->assertSame(1, $this->recordedRunCount(), 'A committed rerun records itself in fix_script_runs');
+        $this->assertStringNotContainsString('No holding row was found', $result['raw']);
+    }
+
+    public function testARerunForAnIdWithNoHoldingRowWarnsTheAdmin(): void
+    {
+        $owner = $this->createPendingDeletedOwner();
+        // A second run, or a mistyped ID of a deleted user, has no holding row.
+        $this->db->query('DELETE FROM er_deleted_user_addresses WHERE user_id = ?', [$owner['id']]);
+        $this->assertFalse($this->db->error(), 'Test setup: holding-row delete: ' . $this->db->errorString());
+
+        $result = $this->invokeEndpoint(self::SCRIPT, ['user_id' => (string) $owner['id']], $this->adminId);
+
+        $this->assertSame(0, $result['exitCode'], substr($result['raw'], 0, 800));
+        $this->assertStringContainsString('Committed. Rows deleted', $result['raw']);
+        $this->assertStringContainsString("No holding row was found for user {$owner['id']}.", $result['raw']);
     }
 
     public function testTheRerunPageAndLogShowNoAddress(): void
@@ -212,6 +243,7 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
         foreach ($owner['rows'] as $messageId) {
             $this->assertTrue($this->pluginRowExists($messageId), 'A live owner keeps the plugin rows');
         }
+        $this->assertSame(0, $this->recordedRunCount(), 'A refused rerun must not show as completed');
     }
 
     public function testABadCsrfTokenRunsNothing(): void
@@ -264,12 +296,11 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
 
         $result = $this->invokeEndpoint(self::SCRIPT, ['user_id' => (string) $owner['id']], $editor);
 
-        // securePage() lets an editor in (the page is registered for editors), so the isAdmin() gate must stop it.
-        $this->assertStringContainsString('Administrator access required.', $result['raw']);
-        $this->assertSame(1, (int) $this->db->query(
-            'SELECT COUNT(*) AS cnt FROM logs WHERE user_id = ? AND logtype = ?',
-            [$editor, LogCategories::LOG_CATEGORY_SECURITY]
-        )->first()->cnt, 'The isAdmin() denial writes one SECURITY log line');
+        // PageRegistrationSeed registers app/admin/scripts/ pages for admin only, so securePage() stops an editor.
+        // The positive marker: the page ran to the end and securePage() sent the redirect.
+        // Without it, a crash would also show no page.
+        $this->assertSame(0, $result['exitCode'], substr($result['raw'], 0, 500));
+        $this->assertSame(302, $result['httpCode'], 'securePage() must redirect an editor');
         $this->assertStringNotContainsString('Rerun Deletion Privacy Step', $result['raw'], 'An editor must not see the page');
         $this->assertStringNotContainsString('Committed', $result['raw']);
         $this->assertSame(1, $this->holdingRowCount($owner['id']));
@@ -303,6 +334,7 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
         $this->assertStringNotContainsString('Committed', $result['raw']);
         $this->assertSame(1, $this->holdingRowCount($owner['id']), 'The holding row stays for the next rerun');
         $this->assertSame(1, $this->profileCount($owner['id']));
+        $this->assertSame(0, $this->recordedRunCount(), 'A rolled-back rerun must not show as completed');
         $notes = array_map(
             static fn (object $row): string => (string) $row->lognote,
             $this->db->query('SELECT lognote FROM logs WHERE user_id = ? AND logtype = ?', [$this->adminId, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR])->results()
