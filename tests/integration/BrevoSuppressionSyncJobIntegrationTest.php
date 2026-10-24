@@ -496,11 +496,11 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     /**
      * Seed the Clear Block row the way DeliverabilityFlagLog::record() writes it for source admin.
      * CarVerificationManager's Clear Block action writes the same row. Also sets
-     * `email_address_since` to ADDRESS_SINCE, so call setAddressSince() after this, not before.
+     * `email_address_since` to `$addressSince`.
      */
-    private function seedClearBlock(int $carId, string $clearedAt): void
+    private function seedClearBlock(int $carId, string $clearedAt, string $addressSince = self::ADDRESS_SINCE): void
     {
-        $this->setAddressSince($carId, self::ADDRESS_SINCE);
+        $this->setAddressSince($carId, $addressSince);
         $this->assertTrue(
             (new DeliverabilityFlagLog())->record(
                 0,
@@ -517,11 +517,11 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
     /**
      * Set the Clear Bounced time on the owner's profile, as the Clear Bounced action leaves it.
-     * Also sets `email_address_since` to ADDRESS_SINCE, so call setAddressSince() after this, not before.
+     * Also sets `email_address_since` to `$addressSince`.
      */
-    private function seedClearBounced(int $carId, string $clearedAt): void
+    private function seedClearBounced(int $carId, string $clearedAt, string $addressSince = self::ADDRESS_SINCE): void
     {
-        $this->setAddressSince($carId, self::ADDRESS_SINCE);
+        $this->setAddressSince($carId, $addressSince);
         $this->db->query(
             'UPDATE profiles SET email_bounce_cleared_at = ? WHERE user_id = ?',
             [$clearedAt, (int) $this->ownerFlagsForCar($carId)->user_id]
@@ -547,7 +547,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $lines = $this->noUsableDateLines($carId);
         $this->assertCount(1, $lines, 'The skip writes one log line');
         $this->assertSame(
-            "Brevo: event \"{$event}\" for owner {$ownerId} not recorded: no usable event date and an admin clear is on record.",
+            "Brevo: event \"{$event}\" for owner {$ownerId} not recorded: no usable event date and a clear for the current address is on record.",
             $lines[0]
         );
         $this->assertStringNotContainsString('@', $lines[0], 'The log line holds no address');
@@ -605,10 +605,8 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         [$spamCarId, $spamEmail] = $this->createSuppressionCar();
         [$bounceCarId, $bounceEmail] = $this->createSuppressionCar();
         $oldClear = '2026-09-01 00:00:00';
-        $this->seedClearBlock($spamCarId, $oldClear);
-        $this->seedClearBounced($bounceCarId, $oldClear);
-        $this->setAddressSince($spamCarId, '2026-09-05 00:00:00');
-        $this->setAddressSince($bounceCarId, '2026-09-05 00:00:00');
+        $this->seedClearBlock($spamCarId, $oldClear, '2026-09-05 00:00:00');
+        $this->seedClearBounced($bounceCarId, $oldClear, '2026-09-05 00:00:00');
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([

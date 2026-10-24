@@ -182,8 +182,9 @@ class EmailEventApplier
      *    `spam` or `unsubscribed` checks
      *    {@see CarRepository::latestFlagClearAt()} for an admin Clear Block.
      *    A confirmed email change also sets `email_bounce_cleared_at`, but
-     *    not after `email_address_since`, so that clear never counts. With
-     *    no such clear, the run time applies.
+     *    not after `email_address_since`, so that clear never counts. When
+     *    `email_address_since` is NULL or a date is not a valid datetime,
+     *    any clear counts. With no such clear, the run time applies.
      * 4. Insert the event row. A duplicate changes nothing and is not new.
      * 5. No `profiles` row: keep the row, log the user ID, set no flag.
      * 6. The flag changes only when the event address is the current
@@ -355,7 +356,7 @@ class EmailEventApplier
         // $state is not null here: a null state fails the guard above.
         if ($occurredAtIsFallback && $this->clearIsOnRecord($userId, $state, $event)) {
             logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo: event "%s" for owner %d not recorded: no usable event date and an admin clear is on record.',
+                'Brevo: event "%s" for owner %d not recorded: no usable event date and a clear for the current address is on record.',
                 $event,
                 $userId
             ));
@@ -403,11 +404,12 @@ class EmailEventApplier
     }
 
     /**
-     * Whether a clear for the current address is on record for the flag that an event sets (#2426, #2482)
+     * Whether a clear for the current address is on record (#2426, #2482)
      *
-     * A hard bounce checks `email_bounce_cleared_at`, which admin Clear
-     * Bounced and a confirmed email change that clears a bounce set. `spam` and `unsubscribed`
-     * check the latest admin Clear Block row. With no clear, nothing counts.
+     * The clear is for the flag that the event sets. A hard bounce checks
+     * `email_bounce_cleared_at`, which admin Clear Bounced and a confirmed
+     * email change that clears a bounce set. `spam` and `unsubscribed` check
+     * the latest admin Clear Block row. With no clear, nothing counts.
      *
      * The clear counts only when it is after `email_address_since`. A clear
      * from an earlier address does not guard the current one. The compare is
@@ -416,7 +418,8 @@ class EmailEventApplier
      * The latest clear is enough: when it is not after the bound, no earlier
      * clear is. When `email_address_since` is NULL or not a valid datetime,
      * or the clear time is not a valid datetime, the clear counts (fail
-     * closed, as before #2482). An invalid date writes its own log line.
+     * closed, as before #2482). A NULL or invalid date writes its own log
+     * line.
      *
      * Called under the profile lock, so a clear that committed before the
      * lock is visible here.
@@ -429,12 +432,14 @@ class EmailEventApplier
     {
         if (in_array($event, self::HARD_BOUNCE_EVENTS, true)) {
             $clearedAt = $state['email_bounce_cleared_at'];
+            $clearLabel = 'email_bounce_cleared_at';
         } elseif (isset(self::SUPPRESSION_EVENT_CAUSES[$event])) {
             $clearedAt = $this->repo->latestFlagClearAt(
                 $userId,
                 DeliverabilityFlagLog::FLAG_BLOCKED,
                 DeliverabilityFlagLog::SOURCE_ADMIN
             );
+            $clearLabel = 'the admin Clear Block time';
         } else {
             return false;
         }
@@ -442,22 +447,30 @@ class EmailEventApplier
             return false;
         }
         if ($state['email_address_since'] === null) {
-            return true;
-        }
-
-        try {
-            return strcmp(
-                self::wallTime($clearedAt, 'cleared_at'),
-                self::wallTime($state['email_address_since'], 'email_address_since')
-            ) > 0;
-        } catch (CarValidationException) {
-            // Not storedWallTime(): its line says the date sets no bound, but here the clear counts.
             logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo: owner %d has an admin clear time or an email_address_since that is not a valid datetime, so the clear counts and the dateless import entry is skipped.',
+                'Brevo: owner %d: email_address_since is NULL, so the clear counts and the dateless import entry is skipped.',
                 $userId
             ));
             return true;
         }
+
+        // $label names the value being parsed, so the log line names the bad one.
+        try {
+            $label = $clearLabel;
+            $clear = self::wallTime($clearedAt, $label);
+            $label = 'email_address_since';
+            $since = self::wallTime($state['email_address_since'], $label);
+        } catch (CarValidationException) {
+            // Not storedWallTime(): its line says the date sets no bound, but here the clear counts.
+            logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo: owner %d: %s is not a valid datetime, so the clear counts and the dateless import entry is skipped.',
+                $userId,
+                $label
+            ));
+            return true;
+        }
+
+        return strcmp($clear, $since) > 0;
     }
 
     /**

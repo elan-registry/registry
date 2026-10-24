@@ -994,8 +994,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
         // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: a data-hygiene warning about
         // Brevo's payload, not a job fault — the run continues and the
-        // suppression is still applied unless an admin clear is on record
-        // (#2426). Matches the category both
+        // suppression is still applied unless a clear for the current address
+        // is on record (#2426, #2482). Matches the category both
         // BrevoWebhookEventProcessor and BrevoEventReconciliationJob use for
         // the identical condition, so all three paths' date problems land in
         // one searchable place.

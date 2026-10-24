@@ -1017,7 +1017,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $lines = $this->fallbackSkipLines($userId);
         $this->assertCount(1, $lines);
         $this->assertSame(
-            "Brevo: event \"{$event}\" for owner {$userId} not recorded: no usable event date and an admin clear is on record.",
+            "Brevo: event \"{$event}\" for owner {$userId} not recorded: no usable event date and a clear for the current address is on record.",
             $lines[0]
         );
         $this->assertStringNotContainsString('@', $lines[0]);
@@ -1093,6 +1093,10 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertFalse($result->flagApplied);
         $this->assertNoFlags($userId, 'With no address change time the clear counts');
         $this->assertCount(1, $this->fallbackSkipLines($userId));
+        $this->assertSame(1, $this->logLineCount(
+            $userId,
+            "Brevo: owner {$userId}: email_address_since is NULL, so the clear counts and the dateless import entry is skipped."
+        ));
     }
 
     /** The connection runs with sql_mode '', so MySQL stores a zero date. */
@@ -1109,7 +1113,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertSame([], $this->eventRows($userId));
         $this->assertNoFlags($userId, 'With an invalid address change time the clear counts');
         $this->assertCount(1, $this->fallbackSkipLines($userId));
-        $this->assertSame(1, $this->invalidClearDateLineCount($userId));
+        $this->assertSame(1, $this->invalidClearDateLineCount($userId, 'email_address_since'));
     }
 
     /** A zero Clear Bounced time sets no bound in the date guard, but the clear still counts here. */
@@ -1124,18 +1128,23 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertSame([], $this->eventRows($userId));
         $this->assertNoFlags($userId, 'With an invalid clear time the clear counts');
         $this->assertCount(1, $this->fallbackSkipLines($userId));
-        $this->assertSame(1, $this->invalidClearDateLineCount($userId));
+        $this->assertSame(1, $this->invalidClearDateLineCount($userId, 'email_bounce_cleared_at'));
     }
 
-    private function invalidClearDateLineCount(int $userId): int
+    /** @param string $label The value the log line names as not valid */
+    private function invalidClearDateLineCount(int $userId, string $label): int
+    {
+        return $this->logLineCount(
+            $userId,
+            "Brevo: owner {$userId}: {$label} is not a valid datetime, so the clear counts and the dateless import entry is skipped."
+        );
+    }
+
+    private function logLineCount(int $userId, string $lognote): int
     {
         return (int) $this->db->query(
             'SELECT COUNT(*) AS n FROM logs WHERE id > ? AND user_id = ? AND lognote = ?',
-            [
-                $this->logIdFloor,
-                $userId,
-                "Brevo: owner {$userId} has an admin clear time or an email_address_since that is not a valid datetime, so the clear counts and the dateless import entry is skipped.",
-            ]
+            [$this->logIdFloor, $userId, $lognote]
         )->first()->n;
     }
 
