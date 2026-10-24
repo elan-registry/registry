@@ -2401,13 +2401,16 @@ public function apply(
   `CarRepository::BLOCKED_CAUSES`. The import passes `blocklist` for Brevo's
   `adminBlocked`, while the event row stays `unsubscribed`.
 - `$occurredAtIsFallback` is true when `$occurredAt` is the import's run time
-  and not a date from Brevo (#2426). It is valid only with `MODE_STATE`. When
-  it is set and an admin clear is on record for the flag that the event sets,
-  `apply()` writes no event row and no flag, logs the event name and the user
-  ID, and returns `EmailEventApplyResult(false, false)`. A hard bounce checks
-  `email_bounce_cleared_at`. `spam` and `unsubscribed` check
-  `CarRepository::latestFlagClearAt()` for an admin Clear Block. With no clear
-  on record, the run time applies.
+  and not a date from Brevo (#2426). It is valid only with `MODE_STATE`.
+  When it is set and a clear that counts is on record for the flag that the
+  event sets, `apply()` writes no event row and no flag. It logs the event
+  name and the user ID, and returns `EmailEventApplyResult(false, false)`.
+  A hard bounce checks `email_bounce_cleared_at`. `spam` and `unsubscribed`
+  check `CarRepository::latestFlagClearAt()` for an admin Clear Block. A clear
+  counts only when it is later than `email_address_since` (#2482). When
+  `email_address_since` is NULL or not a valid datetime, or the clear time is
+  not a valid datetime, the clear counts. With no clear that counts, the run
+  time applies.
 - Returns an `EmailEventApplyResult` with `eventRowWritten` (true when a new
   event row was written) and `flagApplied` (true when the flag step ran for
   the current address; false for a skipped step such as no profile row, address

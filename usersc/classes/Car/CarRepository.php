@@ -1103,6 +1103,8 @@ class CarRepository
                 }
                 $this->writeProfileBlockClear($userId, 'clearFlagsForConfirmedEmailChange');
             }
+            // Keep this write after the bounce clear: the clear must not be later
+            // than email_address_since, or the import counts it for the new address (#2482).
             $this->writeProfile(
                 $userId,
                 'email_address_since = ?, email_address_seen = ?',
