@@ -1014,16 +1014,140 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertSame([], $this->eventRows($userId), 'No event row is written');
         $this->assertNoFlags($userId, 'A run time is not a date that can beat an admin clear');
 
-        $lines = $this->db->query(
-            'SELECT lognote FROM logs WHERE id > ? AND user_id = ? AND lognote LIKE ?',
-            [$this->logIdFloor, $userId, '%no usable event date%']
-        )->results();
+        $lines = $this->fallbackSkipLines($userId);
         $this->assertCount(1, $lines);
         $this->assertSame(
             "Brevo: event \"{$event}\" for owner {$userId} not recorded: no usable event date and an admin clear is on record.",
-            $lines[0]->lognote
+            $lines[0]
         );
-        $this->assertStringNotContainsString('@', $lines[0]->lognote);
+        $this->assertStringNotContainsString('@', $lines[0]);
+    }
+
+    /** Seed the admin clear for the flag that the event sets. */
+    private function seedClearFor(int $userId, bool $clearBounced, string $clearedAt): void
+    {
+        if ($clearBounced) {
+            $this->db->query('UPDATE profiles SET email_bounce_cleared_at = ? WHERE user_id = ?', [$clearedAt, $userId]);
+            $this->assertFalse($this->db->error(), 'Test setup: Clear Bounced: ' . $this->db->errorString());
+        } else {
+            $this->seedClearBlockRowAt($userId, $clearedAt);
+        }
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerAppliesWhenTheClearIsBeforeTheAddressChange(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => '2026-09-05 00:00:00']);
+        $this->seedClearFor($userId, $clearBounced, '2026-09-01 00:00:00');
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
+        $flag = $clearBounced ? 'bounced' : 'blocked';
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags[$flag], 'A clear for the old address does not guard the new one');
+        $this->assertSame(self::RUN_TIME, $flags[$flag . '_at']);
+        $this->assertSame([], $this->fallbackSkipLines($userId));
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerSkipsWhenTheClearIsAfterTheAddressChange(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => '2026-09-05 00:00:00']);
+        $this->seedClearFor($userId, $clearBounced, self::CLEARED_AT);
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertSame([], $this->eventRows($userId));
+        $this->assertNoFlags($userId, 'A clear after the address change still guards');
+        $this->assertCount(1, $this->fallbackSkipLines($userId));
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerAppliesWhenTheClearIsAtTheSecondOfTheAddressChange(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => '2026-09-05 00:00:00']);
+        $this->seedClearFor($userId, $clearBounced, '2026-09-05 00:00:00');
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertTrue($result->flagApplied);
+        $flag = $clearBounced ? 'bounced' : 'blocked';
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags[$flag], 'A clear at the address change is for the old address');
+        $this->assertSame(self::RUN_TIME, $flags[$flag . '_at']);
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerSkipsWhenTheAddressChangeTimeIsNull(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => null]);
+        $this->seedClearFor($userId, $clearBounced, self::CLEARED_AT);
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertNoFlags($userId, 'With no address change time the clear counts');
+        $this->assertCount(1, $this->fallbackSkipLines($userId));
+    }
+
+    /** The connection runs with sql_mode '', so MySQL stores a zero date. */
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerSkipsWhenTheAddressChangeTimeIsAZeroDate(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => '0000-00-00 00:00:00']);
+        $this->seedClearFor($userId, $clearBounced, self::CLEARED_AT);
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertSame([], $this->eventRows($userId));
+        $this->assertNoFlags($userId, 'With an invalid address change time the clear counts');
+        $this->assertCount(1, $this->fallbackSkipLines($userId));
+        $this->assertSame(1, $this->invalidClearDateLineCount($userId));
+    }
+
+    /** A zero Clear Bounced time sets no bound in the date guard, but the clear still counts here. */
+    public function testFallbackMarkerSkipsWhenTheClearTimeIsAZeroDate(): void
+    {
+        $userId = $this->makeOwner(['email_bounce_cleared_at' => '0000-00-00 00:00:00']);
+
+        $result = $this->applyFallbackEntry($userId, 'hard_bounce');
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertSame([], $this->eventRows($userId));
+        $this->assertNoFlags($userId, 'With an invalid clear time the clear counts');
+        $this->assertCount(1, $this->fallbackSkipLines($userId));
+        $this->assertSame(1, $this->invalidClearDateLineCount($userId));
+    }
+
+    private function invalidClearDateLineCount(int $userId): int
+    {
+        return (int) $this->db->query(
+            'SELECT COUNT(*) AS n FROM logs WHERE id > ? AND user_id = ? AND lognote = ?',
+            [
+                $this->logIdFloor,
+                $userId,
+                "Brevo: owner {$userId} has an admin clear time or an email_address_since that is not a valid datetime, so the clear counts and the dateless import entry is skipped.",
+            ]
+        )->first()->n;
+    }
+
+    /** @return list<string> */
+    private function fallbackSkipLines(int $userId): array
+    {
+        $rows = $this->db->query(
+            'SELECT lognote FROM logs WHERE id > ? AND user_id = ? AND lognote LIKE ?',
+            [$this->logIdFloor, $userId, '%no usable event date%']
+        )->results();
+
+        return array_map(static fn (object $row): string => (string) $row->lognote, $rows);
     }
 
     /** @return array<string, array{string, string}> event, the flag column that it sets */

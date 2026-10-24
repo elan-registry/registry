@@ -1881,10 +1881,10 @@ owner's latest admin Clear Block does not set `email_blocked`. The import does
 not increment the unmatched recipient counter. A blocklist entry has no
 verification tag.
 
-**No usable date after an admin clear (#2426).** The run time is always later
+**No usable date after an admin clear (#2426, window added in #2482).** The run time is always later
 than an admin clear. If the job compared it with the clear, the next import
 would set a cleared flag again. So an entry with no usable `blockedAt` is
-skipped when a clear is on record for the flag that the entry sets. The skip
+skipped when a clear that counts is on record for the flag that the entry sets. The skip
 happens in `EmailEventApplier::apply()`, after the date guards and before the
 event row insert. The applier writes no event row and no flag-change row. It
 logs the event name and the user ID, not the address. The summary counts the
@@ -1892,16 +1892,24 @@ contact as skipped.
 
 | Brevo reason code | Flag the entry sets | Skipped when |
 | --- | --- | --- |
-| `hardBounce` | `email_bounced` | `email_bounce_cleared_at` is not NULL (set by Clear Bounced and by a confirmed email change that clears a bounce) |
-| `contactFlaggedAsSpam`, `unsubscribedVia*`, `adminBlocked` | `email_blocked` | `CarRepository::latestFlagClearAt()` finds an admin Clear Block for the owner |
+| `hardBounce` | `email_bounced` | `email_bounce_cleared_at` is later than `email_address_since` (set by Clear Bounced. The clear from a confirmed email change is not later, so it does not count.) |
+| `contactFlaggedAsSpam`, `unsubscribedVia*`, `adminBlocked` | `email_blocked` | `CarRepository::latestFlagClearAt()` finds an admin Clear Block for the owner later than `email_address_since` |
 
 Rules:
 
 - A bounce clear does not guard `email_blocked`, and a Clear Block does not
   guard `email_bounced`. Each flag follows its own clear.
-- Any admin clear on record guards a no-date entry. The guard has no time
-  window.
-- With no clear on record, an entry with no usable date still sets the flag,
+- A clear guards a no-date entry only when it is later than
+  `email_address_since`. The compare is strict. A clear at the same second
+  does not count.
+- A clear for an earlier address does not count. A confirmed email change
+  writes `email_bounce_cleared_at` at or before `email_address_since`, so that
+  clear does not count. The flag applies at the run time.
+- When `email_address_since` is NULL or not a valid datetime, or the clear
+  time is not a valid datetime, any clear counts. This is the fail-closed
+  rule from #2426. An invalid date writes the log line "has an admin clear
+  time or an email_address_since that is not a valid datetime".
+- With no clear that counts, an entry with no usable date still sets the flag,
   with the run time as its time. The first import does not change.
 - An entry with a usable date follows the normal guards. Brevo's `blockedAt`
   must be later than the clear.

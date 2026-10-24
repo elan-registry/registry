@@ -476,12 +476,31 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     /** An admin clear that happened after the run time, as when the page was fetched before it. */
     private const CLEARED_AFTER_RUN = '2026-09-09 04:00:00';
 
+    /** Earlier than every fixed clear time, so a seeded clear is for the current address. */
+    private const ADDRESS_SINCE = '2026-08-01 00:00:00';
+
+    /**
+     * Set `email_address_since` on the car owner's profile. createTestUser() sets it to the real
+     * clock, which is after every fixed clear time below. A clear counts for a fallback entry only
+     * when it is after this time (#2482).
+     */
+    private function setAddressSince(int $carId, string $since): void
+    {
+        $this->db->query(
+            'UPDATE profiles SET email_address_since = ? WHERE user_id = ?',
+            [$since, (int) $this->ownerFlagsForCar($carId)->user_id]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: email_address_since: ' . $this->db->errorString());
+    }
+
     /**
      * Seed the Clear Block row the way DeliverabilityFlagLog::record() writes it for source admin.
-     * CarVerificationManager's Clear Block action writes the same row.
+     * CarVerificationManager's Clear Block action writes the same row. Also sets
+     * `email_address_since` to ADDRESS_SINCE, so call setAddressSince() after this, not before.
      */
     private function seedClearBlock(int $carId, string $clearedAt): void
     {
+        $this->setAddressSince($carId, self::ADDRESS_SINCE);
         $this->assertTrue(
             (new DeliverabilityFlagLog())->record(
                 0,
@@ -496,9 +515,13 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         );
     }
 
-    /** Set the Clear Bounced time on the owner's profile, as the Clear Bounced action leaves it. */
+    /**
+     * Set the Clear Bounced time on the owner's profile, as the Clear Bounced action leaves it.
+     * Also sets `email_address_since` to ADDRESS_SINCE, so call setAddressSince() after this, not before.
+     */
     private function seedClearBounced(int $carId, string $clearedAt): void
     {
+        $this->setAddressSince($carId, self::ADDRESS_SINCE);
         $this->db->query(
             'UPDATE profiles SET email_bounce_cleared_at = ? WHERE user_id = ?',
             [$clearedAt, (int) $this->ownerFlagsForCar($carId)->user_id]
@@ -574,6 +597,34 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertSame([], $this->flagChanges($bounceCarId));
         $this->assertOneSkipLine($spamCarId, 'spam');
         $this->assertOneSkipLine($bounceCarId, 'blocked');
+    }
+
+    /** A clear from before the address change does not guard the current address (#2482). */
+    public function testNoUsableBlockedAtAfterOldClearsSetsBothFlags(): void
+    {
+        [$spamCarId, $spamEmail] = $this->createSuppressionCar();
+        [$bounceCarId, $bounceEmail] = $this->createSuppressionCar();
+        $oldClear = '2026-09-01 00:00:00';
+        $this->seedClearBlock($spamCarId, $oldClear);
+        $this->seedClearBounced($bounceCarId, $oldClear);
+        $this->setAddressSince($spamCarId, '2026-09-05 00:00:00');
+        $this->setAddressSince($bounceCarId, '2026-09-05 00:00:00');
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, null),
+                FakeBrevoBlockedContact::withReason($bounceEmail, 'hardBounce', null, null),
+            ]),
+        ])->runFullBackfill();
+
+        $this->assertSame(2, $summary->matchedCount);
+        $this->assertSame(0, $summary->skippedCount);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($spamCarId)->email_blocked);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($bounceCarId)->email_bounced);
+        $this->assertSame(1, $this->countEventRows($spamCarId));
+        $this->assertSame(1, $this->countEventRows($bounceCarId));
+        $this->assertSame([], $this->noUsableDateLines($spamCarId));
+        $this->assertSame([], $this->noUsableDateLines($bounceCarId));
     }
 
     /** now + 301 s is no usable date. now + 299 s is clock skew that the job uses as given. */

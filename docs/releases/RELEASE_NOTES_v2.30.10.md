@@ -19,6 +19,10 @@ an owner's address no longer stays behind after account deletion or in logs.
   plugin mail records sent to the owner's current address and to a
   pending new address. Before, these records stayed when the profile
   held an old address.
+- The Brevo suppression sync now sets a block or a bounce flag for an
+  entry with no usable date when the only admin clear is from before the
+  owner's current address. Before, any old clear stopped that entry for
+  all later runs.
 - A new maintenance script, **Rerun Deletion Privacy Step**, finishes the
   privacy step for one deleted user ID. Run it when the log shows
   "CRITICAL: privacy step failed". See `docs/development/FIX_SCRIPTS.md`.
@@ -42,7 +46,7 @@ an owner's address no longer stays behind after account deletion or in logs.
 - [#2419](https://github.com/elan-registry/registry/issues/2419) —
   Delete plugin mail rows for the current and pending address at account deletion, and add a manual rerun of the privacy step.
 - WIP: [#2384](https://github.com/elan-registry/registry/issues/2384) — Purge `plg_sendinblue_messages` rows older than 90 days.
-- WIP: [#2482](https://github.com/elan-registry/registry/issues/2482) —
+- [#2482](https://github.com/elan-registry/registry/issues/2482) —
   Count only a clear after `email_address_since` when the suppression import has no usable date.
 - WIP: [#2461](https://github.com/elan-registry/registry/issues/2461) —
   Use one order for opted out, blocked and bounced in the send report, the Status chip and the notice.
