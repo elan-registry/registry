@@ -64,26 +64,32 @@ $privacyResult = (new AccountDeletionPrivacyStep($db, $repo))->run($id);
 
 // deleteUsers() ignores a failed DELETE FROM users and still includes this
 // hook. A refusal means the users row may still exist, so the car cleanup
-// must not move a live owner's cars. The step already logged CRITICAL.
+// must not move a live owner's cars. The step already logged why it refused.
+// This line records that the cars still name the ID, because no tool moves
+// them later.
 if ($privacyResult->refused) {
+    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
+        'CRITICAL: car cleanup skipped for user %d because the privacy step refused; the cars and pending transfer requests still name this ID',
+        $id
+    ));
     return;
 }
 
 // deleteUsers() deleted the users row just before this hook, so the
 // users_delete_capture_addresses trigger wrote a holding row. A committed step
 // that deleted none means the trigger is missing (for example after a UserSpice
-// upgrade rebuilt users), and the current and pending address rows stay.
+// upgrade rebuilt users), and the current and pending address rows stay. It can
+// also mean that a concurrent delete removed the users row first, so this
+// delete removed no row and the trigger did not fire.
 if ($privacyResult->committed && $privacyResult->deletedHoldingRowCount === 0) {
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
-        'CRITICAL: privacy step for user %d found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses',
+        'CRITICAL: privacy step for user %d found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses, or the users row was already gone before this deletion',
         $id
     ));
 }
 
-// Capture car list before cleanup so both branches below can log per-car
-// after commit. Hoisted above the noowner-exists split so both branches —
-// including the fallback, which previously never fetched a car list at all
-// before calling reassignCarsByUser() — capture it identically.
+// Capture the car list before cleanup so both branches below can log per car
+// after commit.
 try {
     $userCars = $repo->findByOwner($id);
 } catch (CarDatabaseException $e) {

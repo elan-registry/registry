@@ -280,6 +280,9 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
 
         $result = $this->invokeEndpoint(self::SCRIPT, ['user_id' => (string) $owner['id']], $plainUser);
 
+        // The positive marker: the page ran to the end and securePage() sent the redirect.
+        $this->assertSame(0, $result['exitCode'], substr($result['raw'], 0, 500));
+        $this->assertSame(302, $result['httpCode'], 'securePage() must redirect a plain user');
         $this->assertStringNotContainsString('Committed', $result['raw']);
         $this->assertStringNotContainsString('Rerun Deletion Privacy Step', $result['raw'], 'A non-admin must not see the page');
         $this->assertSame(1, $this->holdingRowCount($owner['id']));
@@ -306,6 +309,51 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
         $this->assertSame(1, $this->holdingRowCount($owner['id']));
         $this->assertSame(1, $this->profileCount($owner['id']));
         $this->assertTrue($this->pluginRowExists($owner['rows'][0]));
+    }
+
+    /**
+     * isAdmin() is the second gate. A site can give an editor this page in
+     * the page permissions, and securePage() then lets the editor in. The
+     * page must still refuse the run.
+     */
+    public function testAnEditorWithPagePermissionIsStoppedByIsAdmin(): void
+    {
+        $owner = $this->createPendingDeletedOwner();
+        $editor = $this->createTestUser(['permissions' => 1]);
+        $this->grantTestPermission($editor, self::PERMISSION_EDITOR);
+        $this->loggedUserIds[] = $editor;
+
+        $page = $this->db->query('SELECT id FROM pages WHERE page = ?', [self::SCRIPT]);
+        $this->assertFalse($page->error(), 'Test setup: pages lookup: ' . $page->errorString());
+        $this->assertSame(1, $page->count(), 'Test setup: PageRegistrationSeed must register the page');
+        $pageId = (int) $page->first()->id;
+
+        $this->db->insert('permission_page_matches', ['permission_id' => self::PERMISSION_EDITOR, 'page_id' => $pageId]);
+        $this->assertFalse($this->db->error(), 'Test setup: page permission: ' . $this->db->errorString());
+        $matchId = (int) $this->db->lastId();
+        $this->assertGreaterThan(0, $matchId, 'Test setup: page permission row ID');
+
+        try {
+            $result = $this->invokeEndpoint(self::SCRIPT, ['user_id' => (string) $owner['id']], $editor);
+        } finally {
+            // Other tests expect the seeded admin-only permission, so the row must go even when the call fails.
+            $this->db->query('DELETE FROM permission_page_matches WHERE id = ?', [$matchId]);
+            $this->assertFalse($this->db->error(), 'Test cleanup: page permission delete: ' . $this->db->errorString());
+        }
+
+        $this->assertSame(0, $result['exitCode'], substr($result['raw'], 0, 500));
+        $this->assertStringContainsString('Administrator access required', $result['raw']);
+        $this->assertStringNotContainsString('Committed', $result['raw']);
+        $securityLogs = (int) $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM logs WHERE user_id = ? AND logtype = ?',
+            [$editor, LogCategories::LOG_CATEGORY_SECURITY]
+        )->first()->cnt;
+        $this->assertSame(1, $securityLogs, 'isAdmin() refusal must write a Security log row');
+        $this->assertSame(1, $this->holdingRowCount($owner['id']));
+        $this->assertSame(1, $this->profileCount($owner['id']));
+        foreach ($owner['rows'] as $messageId) {
+            $this->assertTrue($this->pluginRowExists($messageId));
+        }
     }
 
     public function testAFailedRerunShowsTheStageAndLogsNoAddress(): void
@@ -354,6 +402,9 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
 
         $result = $this->invokeEndpoint(self::SCRIPT, ['user_id' => (string) $owner['id']], null);
 
+        // The positive marker: the page ran to the end and securePage() sent the redirect to the login page.
+        $this->assertSame(0, $result['exitCode'], substr($result['raw'], 0, 500));
+        $this->assertSame(302, $result['httpCode'], 'securePage() must redirect a logged-out visitor');
         $this->assertStringNotContainsString('Committed', $result['raw']);
         $this->assertSame(1, $this->holdingRowCount($owner['id']));
         $this->assertSame(1, $this->profileCount($owner['id']));

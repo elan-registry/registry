@@ -22,6 +22,17 @@ an owner's address no longer stays behind after account deletion or in logs.
 - A new maintenance script, **Rerun Deletion Privacy Step**, finishes the
   privacy step for one deleted user ID. Run it when the log shows
   "CRITICAL: privacy step failed". See `docs/development/FIX_SCRIPTS.md`.
+- Deploy steps for the deletion change, on test and then on production:
+  1. Run `composer migrate`. The migration adds the
+     `er_deleted_user_addresses` table and the
+     `users_delete_capture_addresses` trigger. The database user needs the
+     TRIGGER privilege. If binary logging is on, the user also needs
+     `log_bin_trust_function_creators=1`, or SUPER or
+     SYSTEM_VARIABLES_ADMIN. Without the trigger, the migration fails.
+  2. Open `30-Rerun-Deletion-Privacy-Step.php` once as an admin, so
+     UserSpice creates its `pages` row.
+  3. Run `21-Fix-Page-Permissions.php` from the Maintenance page, so the
+     new script page gets its permission rows.
 
 ## Issues Resolved
 

@@ -40,7 +40,7 @@ final class AddDeletedUserAddressesSandboxTest extends MigrationSandboxTestCase
         $this->assertNotNull($emailNew);
         $this->assertNotNull($deletedAt);
 
-        $this->assertSame('int unsigned', strtolower($userId['COLUMN_TYPE']));
+        $this->assertSame($this->columnInfo('users', 'id')['COLUMN_TYPE'] ?? null, $userId['COLUMN_TYPE']);
         $this->assertSame('NO', $userId['IS_NULLABLE']);
         $this->assertSame('YES', $email['IS_NULLABLE']);
         $this->assertSame('YES', $emailNew['IS_NULLABLE']);

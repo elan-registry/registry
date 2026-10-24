@@ -467,6 +467,10 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
             "CRITICAL: privacy step refused user {$userId}: a users row still exists, no row deleted; if an account deletion ran, check the trigger users_delete_capture_addresses and the user permission rows",
             $this->deletionLogNotes($userId)
         );
+        $this->assertContains(
+            "CRITICAL: car cleanup skipped for user {$userId} because the privacy step refused; the cars and pending transfer requests still name this ID",
+            $this->deletionLogNotes($userId)
+        );
     }
 
     // --- Failure and absent plugin table ----------------------------------------
@@ -690,7 +694,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $notes = $this->deletionLogNotes($userId);
         $this->assertContains(
-            "CRITICAL: privacy step for user {$userId} found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses",
+            "CRITICAL: privacy step for user {$userId} found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses, or the users row was already gone before this deletion",
             $notes
         );
         $this->assertSame(0, $this->profileCount($userId), 'The step still commits the other deletes');

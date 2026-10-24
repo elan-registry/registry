@@ -473,7 +473,7 @@ copies both addresses into this table at delete time. The table has no FK.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `user_id` | `int UNSIGNED` | PRIMARY KEY. ID of the deleted user. |
+| `user_id` | `int` | PRIMARY KEY. ID of the deleted user. Signed, as `users.id` is, so that the trigger insert never fails. |
 | `email` | `varchar(155) NULL` | `users.email` of the deleted row. Nullable so that the trigger insert never fails, although `users.email` is NOT NULL. |
 | `email_new` | `varchar(155) NULL` | `users.email_new` of the deleted row. NULL when no email change was pending. |
 | `deleted_at` | `datetime NOT NULL` | Time of the delete |
@@ -571,8 +571,10 @@ data, use `(new Owner($userId))->data()`.
   check `information_schema.TRIGGERS` for `users_delete_capture_addresses`. Without
   the trigger, the privacy step cannot find `users.email` and `users.email_new`.
   The hook then logs `CRITICAL: privacy step for user N found no
-  er_deleted_user_addresses row; check trigger users_delete_capture_addresses`
-  after each deletion.
+  er_deleted_user_addresses row; check trigger users_delete_capture_addresses,
+  or the users row was already gone before this deletion` after each deletion.
+  The second cause is a concurrent delete of the same ID: the hook's own
+  delete then removed no row, so the trigger did not fire.
 - The trigger runs as its definer, the migration user. If that user is
   dropped, or `er_deleted_user_addresses` is missing, every `DELETE FROM users`
   fails, so no account can be deleted, and no deletion skips the capture. But
@@ -626,11 +628,11 @@ ID.
    The profile lock is the lock that the event step takes first, so no event
    row can arrive between the address read and the deletes. The hook itself
    stops on a user ID below 1, with its own CRITICAL line, before the step
-   runs. The step also refuses an ID below 1 (a second guard: the hook and the
-   rerun script both reject it first), an ID that
-   still has a `users` row, and an ID for which the `users` row check fails. A
-   refusal writes a CRITICAL log line and deletes nothing, and the hook then
-   stops: upstream
+   runs. The step refuses three IDs: an ID below 1 (a backstop, because the
+   hook and the rerun script reject it earlier), an ID that still has a
+   `users` row, and an ID for which the `users` row check fails. A refusal
+   writes a CRITICAL log line and deletes nothing. The hook then logs
+   `CRITICAL: car cleanup skipped for user N` and stops: upstream
    `deleteUsers()` ignores a failed `DELETE FROM users`, so the cars of a live
    owner must not move. If a stage fails, the step rolls
    back, logs a CRITICAL line, and the hook continues with steps 2 and 3. The

@@ -18,8 +18,8 @@ require_once __DIR__ . '/../../Support/UserDeletionHookFakeDatabase.php';
  * The real transaction and lock behavior needs a real database, and
  * UserDeletionPrivacyStepTest (integration) covers it. This test covers the
  * paths that a unit double can show: the order of the statements, the plugin
- * table that is absent, a failure that rolls the step back, and the two
- * guards that refuse before any delete.
+ * table that is absent, a failure that rolls the step back, and the three
+ * refusals before any delete.
  */
 #[Group('fast')]
 final class AccountDeletionPrivacyStepTest extends TestCase

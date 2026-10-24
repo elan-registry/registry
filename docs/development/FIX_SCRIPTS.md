@@ -168,9 +168,17 @@ failed, the line says `rollback failed: ExceptionClass (code C)` in place of
 user then remains: the plugin mail rows, the email events, the profile and the
 holding row in `er_deleted_user_addresses`. The log line holds no address.
 
-Do not run it for a "privacy step refused" line. Read that line first. The
-refusal means the ID is below 1, or the ID still has a `users` row, or the
-check failed.
+For a "privacy step refused" line, read the reason in the line first:
+
+- `the ID is below 1` or `a users row still exists`: do not run the script.
+  The step deleted nothing, because the ID is not a deleted user.
+- `the users row check failed`: the step could not read `users`. Make sure
+  that no `users` row has ID `N`, then run the script for `N`.
+
+After a refusal from the deletion hook, the log also has the line
+`CRITICAL: car cleanup skipped for user N`. The script does not move cars.
+If no `users` row has ID `N`, reassign the cars and expire their pending
+transfer requests by hand.
 
 ### How to find the user ID
 
@@ -226,9 +234,13 @@ Nothing retries a failed step by itself. See
 
 ### After a deploy
 
-The script is a new page. Run `21-Fix-Page-Permissions.php` from the
-Maintenance page on test, then on production. This adds the permission row for
-the new page.
+The script is a new page. UserSpice creates its `pages` row when an admin
+first opens it, and `21-Fix-Page-Permissions.php` changes only pages that have
+a row. So on test, then on production:
+
+1. Open `30-Rerun-Deletion-Privacy-Step.php` once as an admin.
+2. Run `21-Fix-Page-Permissions.php` from the Maintenance page. This adds the
+   permission rows for the new page.
 
 ## See Also
 

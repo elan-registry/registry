@@ -785,7 +785,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
   Returns the unique, non-empty, normalized addresses from four reads (seven
   columns). It reads them in this order, and a failed read names its source in
   the `CarDatabaseException` message:
-  1. `profiles`: `email_address_seen`, `email_bounced_address` and
+  1. `profile`: `email_address_seen`, `email_bounced_address` and
      `email_blocked_address` (the read that takes the lock),
   2. `events`: `DISTINCT email` of the user's `er_email_events` rows,
   3. `cars`: `cars.email` of the user's cars,

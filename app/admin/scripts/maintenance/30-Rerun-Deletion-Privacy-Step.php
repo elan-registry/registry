@@ -18,8 +18,6 @@ use ElanRegistry\LogCategories;
  * {@see AccountDeletionPrivacyStep::run()} refuses an ID that still has a
  * `users` row, because it would then delete a live owner's profile. The page
  * and the log show the user ID and the row counts only, never an address.
- *
- * Issue #2419.
  */
 require_once '../../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/fix-script-core.php';

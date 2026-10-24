@@ -11,7 +11,8 @@ namespace Tests\Support;
  * can check the order of steps in `AccountDeletionPrivacyStep`.
  * It tracks whether a transaction is open. A test can make one statement
  * fail (with an SQLSTATE and driver code), and can report the sendinblue
- * plugin table as absent. get(), insert(), update() and delete() throw,
+ * plugin table as absent. A test can also set the row count of a
+ * statement. get(), insert(), update() and delete() throw,
  * so a statement cannot bypass the recorded list.
  *
  * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
@@ -41,6 +42,7 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
      * @param array{0: string, 1: int, 2: string} $failInfo PDO errorInfo() triple of the failure
      * @param list<int> $liveUserIds IDs for which `SELECT id FROM users WHERE id = ?` finds a row
      * @param bool $rollbackThrows True to make rollBack() throw, as PDO does on a lost connection
+     * @param array<string, int> $countBySql count() for a statement that contains the key text. The first match wins.
      */
     public function __construct(
         private readonly bool $pluginTableExists = true,
@@ -48,6 +50,7 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
         private readonly array $failInfo = ['HY000', 1234, 'simulated failure'],
         private readonly array $liveUserIds = [],
         private readonly bool $rollbackThrows = false,
+        private readonly array $countBySql = [],
     ) {
     }
 
@@ -59,6 +62,14 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
         $this->currentCount = (str_contains($sql, 'SELECT id FROM users WHERE id = ?') && in_array($params[0] ?? null, $this->liveUserIds, true))
             ? 1
             : 0;
+        if ($this->currentCount === 0) {
+            foreach ($this->countBySql as $needle => $count) {
+                if (str_contains($sql, $needle)) {
+                    $this->currentCount = $count;
+                    break;
+                }
+            }
+        }
 
         return $this;
     }

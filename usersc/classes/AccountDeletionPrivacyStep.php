@@ -49,11 +49,12 @@ final class AccountDeletionPrivacyStep
     /**
      * Run the privacy step for one deleted user.
      *
-     * Refuses a user ID below 1, and an ID that still has a `users` row,
-     * because the step would then delete a live owner's profile. A refusal
-     * writes a CRITICAL log line and deletes nothing. A failure rolls back
-     * every stage and writes a CRITICAL log line. It does not throw, because
-     * the caller must continue with the car cleanup.
+     * Refuses a user ID below 1, an ID that still has a `users` row (the
+     * step would then delete a live owner's profile), and an ID whose
+     * `users` row check fails. A refusal writes a CRITICAL log line and
+     * deletes nothing. A failure rolls back every stage and writes a CRITICAL
+     * log line. It does not throw, because the caller must continue with the
+     * car cleanup.
      *
      * @param int $userId ID of the deleted user
      * @return AccountDeletionPrivacyResult Outcome and row counts, no address
@@ -82,7 +83,6 @@ final class AccountDeletionPrivacyStep
         $result = $this->deleteInTransaction($userId);
 
         // The log rows are written after the transaction ends (commit or rollback), so a rollback cannot remove them.
-        // Only a committed result sets pluginTableAbsent.
         if ($result->pluginTableAbsent) {
             logger($userId, LogCategories::LOG_CATEGORY_USER_DELETION, "Privacy step: plg_sendinblue_messages is absent, no plugin rows to delete for user $userId");
         }

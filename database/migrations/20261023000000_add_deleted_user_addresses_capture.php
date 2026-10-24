@@ -19,11 +19,11 @@ use Phinx\Migration\AbstractMigration;
  * transaction. A row stays only when the step did not commit. The rerun
  * script (`30-Rerun-Deletion-Privacy-Step.php`) then has the addresses.
  *
- * Column types and collation match `users.email` (VARCHAR(155)
- * utf8mb4_unicode_ci) and `users.email_new`. `email_new` is NULL when no
- * email change was pending. `users.email` is NOT NULL, but `email` is nullable
- * here too, so that an odd source row can never make the trigger insert, and
- * with it the users delete, fail.
+ * Column types and collation match `users.id` (signed INT), `users.email`
+ * (VARCHAR(155) utf8mb4_unicode_ci) and `users.email_new`. `email_new` is
+ * NULL when no email change was pending. `users.email` is NOT NULL, but
+ * `email` is nullable here too, so that an odd source row can never make the
+ * trigger insert, and with it the users delete, fail.
  *
  * The trigger is AFTER DELETE, so it records only a row that MySQL removed.
  * It ignores `@disable_triggers`: a deletion must never skip the capture.
@@ -52,7 +52,7 @@ final class AddDeletedUserAddressesCapture extends AbstractMigration
                 'engine' => 'InnoDB',
                 'collation' => 'utf8mb4_unicode_ci',
             ])
-                ->addColumn('user_id', 'integer', ['signed' => false, 'null' => false])
+                ->addColumn('user_id', 'integer', ['null' => false])
                 ->addColumn('email', 'string', ['limit' => 155, 'null' => true, 'default' => null])
                 ->addColumn('email_new', 'string', ['limit' => 155, 'null' => true, 'default' => null])
                 ->addColumn('deleted_at', 'datetime', ['null' => false])
@@ -87,7 +87,7 @@ final class AddDeletedUserAddressesCapture extends AbstractMigration
         // relaxed server-wide.
         try {
             $this->execute('DROP TRIGGER IF EXISTS `' . self::TRIGGER . '`');
-            // No @disable_triggers check, unlike the audit triggers: a deletion
+            // No @disable_triggers check, unlike the cars_update audit trigger: a deletion
             // must never skip the capture, or the privacy step loses the addresses.
             $this->execute(
                 'CREATE TRIGGER `' . self::TRIGGER . '` AFTER DELETE ON `users` FOR EACH ROW BEGIN
