@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\AccountDeletionPrivacyStep;
 use ElanRegistry\Exceptions\CarDatabaseException;
-use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\LogCategories;
 
 /**
@@ -17,9 +17,10 @@ use ElanRegistry\LogCategories;
  * - $db: Database instance (global)
  *
  * Note: deleteUsers() (users/helpers/users.php) has already removed the `users`
- * and `user_permission_matches` rows before this script runs. The two
- * transactions below cover the privacy step and the car cleanup only — not the
- * user row deletion itself.
+ * and `user_permission_matches` rows before this script runs. The
+ * `users_delete_capture_addresses` trigger keeps the row's addresses for the
+ * privacy step (AccountDeletionPrivacyStep). The privacy step and the car
+ * cleanup each run in their own transaction — not the user row deletion itself.
  */
 
 // Shadows the ambient page-scope $db global (untyped — mixed per phpstan-bootstrap.php)
@@ -56,73 +57,39 @@ if ($id < 1) {
     return;
 }
 
-// Privacy step (#2358). It runs first, in its own transaction, so that each
-// early return below keeps no personal data and leaves no transaction open.
-// The event step (EmailEventApplier) takes the same profile lock first, so
-// for a user with a profiles row no event row can arrive between the address
-// read and the deletes. A user with no profiles row gets only a gap lock (see
-// CarRepository::lockProfileAndFindAddresses()).
-// The plugin delete reads the user's event message IDs, so it runs before the
-// event delete. A failure rolls back this step only, and the car cleanup
-// still runs. The log names the user ID, the stage, the exception class and
-// code only, because an exception message can contain an address.
-$privacyCommitted = false;
-$pluginTableAbsent = false;
-$deletedEmailEventCount = 0;
-$deletedPluginMessageCount = 0;
-$privacyStage = 'begin';
-try {
-    $repo->beginTransaction();
-    $privacyStage = 'lock and read addresses';
-    $addresses = $repo->lockProfileAndFindAddresses($id);
-    $privacyStage = 'plugin delete';
-    $pluginRows = 0;
-    if ($repo->sendinblueMessagesTableExists()) {
-        $pluginRows = $repo->deleteSendinblueMessagesForUser($id, $addresses);
-    } else {
-        $pluginTableAbsent = true;
-    }
-    $privacyStage = 'event delete';
-    $eventRows = $repo->deleteEmailEventsForUser($id);
-    $privacyStage = 'profile delete';
-    $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-    if ($db->error()) {
-        throw new OwnerDatabaseException("Failed to delete profile for user $id");
-    }
-    $privacyStage = 'commit';
-    $repo->commit();
-    $privacyCommitted = true;
-    $deletedEmailEventCount = $eventRows;
-    $deletedPluginMessageCount = $pluginRows;
-} catch (\Throwable $e) {
-    // The users row is already gone. Stopping here would leave the user's
-    // cars pointing at a deleted user, so the hook logs and continues.
-    $repo->rollback();
+// Privacy step (#2358, #2419). It runs first, in its own transaction, so that
+// each early return below keeps no personal data and leaves no transaction
+// open. A failure rolls back this step only, and the car cleanup still runs.
+$privacyResult = (new AccountDeletionPrivacyStep($db, $repo))->run($id);
+
+// deleteUsers() ignores a failed DELETE FROM users and still includes this
+// hook. A refusal means the users row may still exist, so the car cleanup
+// must not move a live owner's cars. The step already logged why it refused.
+// This line records that the cars still name the ID, because no tool moves
+// them later.
+if ($privacyResult->refused) {
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
-        'CRITICAL: privacy step failed for user %d at stage %s, rolled back, personal data remains: %s (code %s)',
-        $id,
-        $privacyStage,
-        get_class($e),
-        (string) $e->getCode()
+        'CRITICAL: car cleanup skipped for user %d because the privacy step refused; the cars and pending transfer requests still name this ID',
+        $id
+    ));
+    return;
+}
+
+// deleteUsers() deleted the users row just before this hook, so the
+// users_delete_capture_addresses trigger wrote a holding row. A committed step
+// that deleted none means the trigger is missing (for example after a UserSpice
+// upgrade rebuilt users), and the current and pending address rows stay. It can
+// also mean that a concurrent delete removed the users row first, so this
+// delete removed no row and the trigger did not fire.
+if ($privacyResult->committed && $privacyResult->deletedHoldingRowCount === 0) {
+    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
+        'CRITICAL: privacy step for user %d found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses, or the users row was already gone before this deletion',
+        $id
     ));
 }
 
-// The log rows are written after the commit, so a rollback cannot remove them.
-if ($pluginTableAbsent && $privacyCommitted) {
-    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "Privacy step: plg_sendinblue_messages is absent, no plugin rows to delete for user $id");
-}
-logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
-    'Privacy step for user %d: %s, deleted %d er_email_events rows and %d plg_sendinblue_messages rows',
-    $id,
-    $privacyCommitted ? 'committed' : 'rolled back',
-    $deletedEmailEventCount,
-    $deletedPluginMessageCount
-));
-
-// Capture car list before cleanup so both branches below can log per-car
-// after commit. Hoisted above the noowner-exists split so both branches —
-// including the fallback, which previously never fetched a car list at all
-// before calling reassignCarsByUser() — capture it identically.
+// Capture the car list before cleanup so both branches below can log per car
+// after commit.
 try {
     $userCars = $repo->findByOwner($id);
 } catch (CarDatabaseException $e) {
@@ -146,8 +113,8 @@ if ($noOwnerQuery->count() > 0) {
     // users row has already been deleted.
     //
     // ASSUMPTION: this hook is only invoked from admin-authenticated deleteUsers()
-    // callers (currently only tab-account_cleanup.php, gated by securePage() +
-    // isAdmin()). ADR-010 documents a potential future cron caller — if that is ever
+    // callers (tab-account_cleanup.php and the upstream users/views/_admin_user.php
+    // page, both admin-only). ADR-010 documents a potential future cron caller — if that is ever
     // added without a session, this catch will silently abort car reassignment (logged
     // only), leaving cars pointing at the now-deleted user ID. At that point, resolve
     // $adminUserId via a dedicated service/system account rather than currentUserId().

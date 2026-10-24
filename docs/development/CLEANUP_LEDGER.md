@@ -51,6 +51,10 @@ after an item is written.
 
 - [ ] The `set_time_limit(120)` comment (~L110-132) says the network wait of a Brevo page counts toward `max_execution_time`. On Linux it counts CPU time only. The wall-clock limit is Cloudflare's, about 100 seconds. Correct the reason, or delete the call (found in #2359)
 
+### `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php`
+
+- [ ] A live user ID typed on this page makes `AccountDeletionPrivacyStep::run()` write the deletion-incident CRITICAL refusal line under that owner's ID. Give `run()` a caller context, so that a refusal from this page logs a non-CRITICAL line that names the admin ID (found in #2419)
+
 ### `app/api/cars/list.php`
 
 - [ ] `(new CarShowcaseService())->getNewCarIds()` (~64) runs an uncached query on every DataTables request (page turn, sort, search) since #1900. Before, it ran once per page load. Memoize it per request or for a short time. Accepted as low risk for v2.30.4. (found in /finish-milestone v2.30.4)
@@ -139,6 +143,10 @@ after an item is written.
 - [ ] `setUp()` does not check the `us_ip_list` SELECT, and `tearDown()` does not check the re-insert. A failure deletes the developer's IP row with no error. Assert both results (found in #2378)
 - [ ] No test covers the `$readError` suffix in `usersc/scripts/during_user_creation.php` when the `users` SELECT itself fails. Force the failure with `PassThroughDatabase` and assert the error text in the log row (found in #2378)
 
+### `tests/integration/UserDeletionPrivacyStepTest.php` + `tests/integration/admin/RerunDeletionPrivacyStepScriptTest.php`
+
+- [ ] `uniqueAddress`, `insertPluginRow`, `pluginRowExists`, `profileCount`, `deleteUsersRowOnly` and the holding-row reader are near-copies in both files (about 60 lines). Move them to a shared trait in `tests/Support/` (found in #2419)
+
 ### `tests/integration/UserDeletionReassignmentTest.php`
 
 - [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L380, renames `car_transfer_requests.admin_notes`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
@@ -173,9 +181,9 @@ after an item is written.
 
 - [ ] The `action=fetchImages`/`action=removeImages` string match used to filter `save.php` route interception (5 call sites, e.g. ~line 985) checks for the literal substring `action=fetchImages` in the raw POST body. The real body is `multipart/form-data`, where the field looks like `name="action"\r\n\r\nfetchImages`, so the substring check can never match. Each site is safe today only because of request-timing luck (the matched call runs before the route is registered, or no other `save.php` call happens in that window) — found during #2295's review. Switch each to `postData.includes('fetchImages')` / `includes('removeImages')` (or parse the multipart `action` field) so the filter is correct on its own, not by accident of timing. (found in #2295)
 
-### `tests/playwright/local/fixtures/seed-email-paused-notice.php`
+### `tests/playwright/local/fixtures/` + `tests/integration/database/EmailEventRekeyMigrationFixture.php`
 
-- [ ] Cleanup deletes `cars_hist` by `car_id` before the `cars` delete, so the `cars_delete` trigger still leaves one history row for each seeded car on each run. Delete `cars_hist` by `model = SEED_CAR_MODEL` after the `cars` deletes, as `seed-toast-xss-owner.php` does (found in #2439)
+- [ ] Seven `seed-*.php` fixtures and the migration fixture each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. Three also copy the username-to-ID lookup. None checks `$db->error()` after the check or the delete, although the cleanup loop in the same files exits on an error. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
 
 ### `tests/unit/admin/VerificationBannerReasonTest.php` (test coverage)
 
@@ -224,14 +232,6 @@ after an item is written.
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
 
-### `tests/unit/scripts/AfterUserDeletionPrivacyStepTest.php` (test coverage)
-
-- [ ] The hook catches a failure in the car cleanup and only logs "Cleanup failed", so an unrecorded fake call there fails no test. Assert no "Cleanup failed" line in one happy-path test. Also assert no `DELETE FROM profiles` in the privacy-failure test, as its docblock says (found in #2358 review)
-
-### `tests/unit/scripts/AfterUserDeletionWiringTest.php`
-
-- [ ] Add an integration case to `UserDeletionPrivacyStepTest` in which the `noowner` account is missing: the events and the profile are still deleted, and no transaction stays open. Then delete the source-order checks at ~L91, ~L120 and ~L132 (found in /finish-milestone v2.30.8)
-
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
 - [ ] Move `significantTokens()` / `tokensCallFunction()` into one `tests/Support/` helper, shared with the sibling pins from #2161 (from #2169)
@@ -242,6 +242,10 @@ after an item is written.
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
+### `usersc/classes/AccountDeletionPrivacyStep.php`
+
+- [ ] The CRITICAL line for a failed stage, its rollback-failure part, and the rerun script's catch log only the class and `(code 0)`, so a lock wait and a schema fault look the same. Use `ExceptionLogSummary::of()` (class, code, SQLSTATE, throw site, no message). Put `$db->errorString()` in the profile-delete `OwnerDatabaseException` message, and update the pinned `(code 0)` assertions (found in #2419)
+
 ### `usersc/classes/ApiResponse.php`
 
 - [ ] In `buildAndEmitHeaders()`, the `JsonException` fallback keeps the status code that was set before `json_encode()`, so a `success()` response can send HTTP 200 with a `success:false` body. Set 500 in the fallback when headers are not sent (from #1793)
@@ -250,7 +254,6 @@ after an item is written.
 
 - [ ] `recentFlagChanges()` (~L2260) has no production caller. Delete it, or let #2357 add it with its first caller (found in /finish-milestone v2.30.7)
 - [ ] The block-cause names are four loose string sets: `BLOCKED_CAUSES`, `EmailEventApplier::SUPPRESSION_EVENT_CAUSES`, the bare `'spam'` and `'unsubscribed'` matches in `VerificationTabStatus::chip()`, and `EffectiveEmailFlags::$blockedCause` (`?string`). Add `enum BlockedCause: string` and convert to a string only at the database boundary (found in /finish-milestone v2.30.8)
-- [ ] `clearProfileBlocked()` (~L837) has no production caller since `clearSuppressedForOwner()` was removed. About 6 test files and the `Issue2356EmailFlagMatchSourceRegressionTest` allow-list still use it. Delete it, move its tests to `clearProfileBlockedIfAddress()`, and update `CLASSES.md` (found in #2426)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
@@ -319,10 +322,6 @@ after an item is written.
   - Check first: `docs/development/LOG_CATEGORIES.md` lists the constants.
   - Check first: `ApiResponseTest.php` (~406, ~692) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
   - Do this with #1997, which splits the overloaded categories in the same file.
-
-### `usersc/classes/Car/CarRepository.php` + `usersc/classes/Owner.php`
-
-- [ ] The "address changed" compare exists in `Owner::update()` and in `CarRepository::clearFlagsForConfirmedEmailChange()`. Use one named method in both (found in /finish-milestone v2.30.7)
 
 ### `usersc/classes/Migration/DeliverabilityMigrationQueries.php` + `tests/integration/database/DeliverabilityMigrationFixture.php`
 

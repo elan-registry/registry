@@ -129,6 +129,11 @@ $db = dbi();
 // ->first() row, since more than one marker row can accumulate (e.g. two
 // runs racing, or a previous run failing after insert but before a clean
 // exit) and a single-row delete would silently leave orphans behind.
+// The users AFTER DELETE trigger leaves a holding row (#2419); capture the ids first.
+$seedUserIds = array_map(
+    'intval',
+    array_column($db->query('SELECT id FROM users WHERE username IN (?, ?)', [SEED_USERNAME, SEED_CLEAN_USERNAME])->results(true), 'id')
+);
 $db->query('DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_USERNAME]);
 $db->query('DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_USERNAME]);
 $db->query('DELETE FROM users WHERE username = ?', [SEED_USERNAME]);
@@ -139,6 +144,19 @@ $db->query('DELETE FROM cars WHERE model = ?', [SEED_CAR_MODEL]);
 $db->query('DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_CLEAN_USERNAME]);
 $db->query('DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [SEED_CLEAN_USERNAME]);
 $db->query('DELETE FROM users WHERE username = ?', [SEED_CLEAN_USERNAME]);
+if ($seedUserIds !== []) {
+    // The table is absent until the migration runs.
+    $holdingTable = $db->query(
+        'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+        ['er_deleted_user_addresses']
+    );
+    if ($holdingTable->count() > 0) {
+        $db->query(
+            'DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', array_fill(0, count($seedUserIds), '?')) . ')',
+            $seedUserIds
+        );
+    }
+}
 $db->query('DELETE FROM cars WHERE model = ?', [SEED_CLEAN_CAR_MODEL]);
 
 $userInserted = $db->insert('users', [

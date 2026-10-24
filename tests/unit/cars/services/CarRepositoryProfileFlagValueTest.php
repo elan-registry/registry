@@ -285,8 +285,8 @@ final class CarRepositoryProfileFlagValueTest extends TestCase
                 'email_blocked = 1',
                 0,
             ],
-            'clearProfileBlocked' => [
-                static fn (CarRepository $r) => $r->clearProfileBlocked(self::USER_ID),
+            'clearProfileBlockedIfAddress' => [
+                static fn (CarRepository $r) => $r->clearProfileBlockedIfAddress(self::USER_ID, self::ADDRESS)['old'] ?? null,
                 ['email_blocked' => 2],
                 'email_blocked',
                 'email_blocked = 0',

@@ -324,10 +324,10 @@ class Owner
             // With no profile row there is nothing to write, the same as the
             // profile update below.
             if ($lockedProfile !== null && array_key_exists('email', $userFields)) {
-                $normalizedEmail = EmailAddress::normalize((string) $userFields['email']);
-                if ($normalizedEmail !== EmailAddress::normalize($lockedProfile->email_address_seen)) {
+                $newEmail = (string) $userFields['email'];
+                if (EmailAddress::isChange($lockedProfile->email_address_seen, $newEmail)) {
                     $profileFields['email_address_since'] = date(AppConstants::DATETIME_FORMAT);
-                    $profileFields['email_address_seen'] = $normalizedEmail;
+                    $profileFields['email_address_seen'] = EmailAddress::normalize($newEmail);
                 }
             }
 

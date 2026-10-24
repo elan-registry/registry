@@ -1508,30 +1508,41 @@ The readers are `CarRepository::findLatestEmailEventsByCarIds()` and
   the owner.
 - A car merge moves `car_id` from the merged car to the surviving car. It
   changes no other column.
-- An account deletion runs a privacy step first, in its own transaction. The
-  step locks the profile row (`SELECT ... FOR UPDATE`). This is the same lock
-  that the event step takes first. So no event row for the user can arrive
-  between the address read and the deletes. The step reads the user's
-  addresses from the profile, the user's event rows and the user's cars. It
-  deletes the user's `plg_sendinblue_messages` rows, then the user's event
-  rows, then the profile. It skips an address that is another user's current
-  `users.email`. If the plugin table is absent, the step logs this and
-  continues. If the step fails, it rolls back, logs a CRITICAL line with the
-  user ID, the stage and the exception class, and the hook continues with the
-  car cleanup. The step then logs a summary line, whether it committed or
-  rolled back.
+- An account deletion runs a privacy step first, in its own transaction
+  (`AccountDeletionPrivacyStep`). The step locks the profile row
+  (`SELECT ... FOR UPDATE`). This is the same lock that the event step takes
+  first. So no event row for the user can arrive between the address read and
+  the deletes. The step reads the user's addresses from the profile, the user's
+  event rows, the user's cars and the user's `er_deleted_user_addresses` row.
+  It deletes the user's `plg_sendinblue_messages` rows, then the user's event
+  rows, then the profile, then the holding row. It skips an address that is
+  another user's current `users.email`. If the plugin table is absent, the step
+  logs this and continues. If the step fails, it rolls back and logs a CRITICAL
+  line with the user ID, the stage and the exception class. The hook then
+  continues with the car cleanup. The step logs a summary line, whether it
+  committed or rolled back.
+
+  **Holding row.** Upstream `deleteUsers()` deletes the `users` row before the
+  hook runs, so the step cannot read `users.email` or `users.email_new`. The
+  trigger `users_delete_capture_addresses` copies both addresses into
+  `er_deleted_user_addresses` when the row is deleted. The step reads them
+  from there. So a stale `email_address_seen` and a pending `email_new` are
+  covered. The step deletes the holding row in the same transaction. After a
+  failed step, the row stays and a rerun has the addresses. See
+  [DATABASE.md](DATABASE.md#er_deleted_user_addresses---addresses-of-a-deleted-user-2419).
+
+  **Rerun.** After the CRITICAL "privacy step failed" line, an admin runs
+  `30-Rerun-Deletion-Privacy-Step.php` for the user ID. See
+  [FIX_SCRIPTS.md](FIX_SCRIPTS.md#rerun-the-deletion-privacy-step-30-rerun-deletion-privacy-stepphp).
 
   The address sources include `cars.email` of the user's cars. On a
   transferred car, this field can hold the old address of a previous owner.
   So the step can delete the plugin mail-log rows of that person. This
   over-deletes log rows. It does not leak data.
 
-  Known gaps:
+  Known gap:
 
-  - The step cannot read the current `users.email`, because the hook already
-    deleted that row. So a stale `email_address_seen` or a pending `email_new`
-    is not covered. See [#2419](https://github.com/elan-registry/registry/issues/2419).
-  - A failed privacy step leaves the data in place, and nothing retries it.
+  - Nothing retries a failed privacy step. An admin must run the rerun script.
     See [#2421](https://github.com/elan-registry/registry/issues/2421).
 
 ### Event Retention

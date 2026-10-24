@@ -165,9 +165,27 @@ foreach ([
     [SEED_SUPPRESSED_USERNAME, SEED_SUPPRESSED_CAR_MODEL],
     [SEED_BOTH_USERNAME, SEED_BOTH_CAR_MODEL],
 ] as [$username, $carModel]) {
+    // The users AFTER DELETE trigger leaves a holding row (#2419); capture the id first.
+    $seedUserIds = array_map(
+        'intval',
+        array_column($db->query('SELECT id FROM users WHERE username = ?', [$username])->results(true), 'id')
+    );
     $db->query('DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$username]);
     $db->query('DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$username]);
     $db->query('DELETE FROM users WHERE username = ?', [$username]);
+    if ($seedUserIds !== []) {
+        // The table is absent until the migration runs.
+        $holdingTable = $db->query(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            ['er_deleted_user_addresses']
+        );
+        if ($holdingTable->count() > 0) {
+            $db->query(
+                'DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', array_fill(0, count($seedUserIds), '?')) . ')',
+                $seedUserIds
+            );
+        }
+    }
     $db->query('DELETE FROM cars WHERE model = ?', [$carModel]);
 }
 

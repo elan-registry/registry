@@ -660,7 +660,6 @@ to provide a focused, testable data access layer wrapping the `cars`,
     `email_blocked` with address, time and cause. `$cause` is one of `BLOCKED_CAUSES` or null. Writes
     when the flag is 0 or is set for another address. A repeat for the same address keeps the first
     time and cause.
-  - `clearProfileBlocked(int $userId): ?int` - Clear `email_blocked` and its address, time and cause.
   - `findBlockClearTarget(int $ownerId): ?array` - Admin Clear Block's read before the Brevo call. No
     lock. Returns `blocked` (false only for a stored 0), the stored `blockedAddress` (no address match)
     and `userEmail` (`''` when the users row is missing). Returns `null` for an owner with no `profiles`
@@ -674,7 +673,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
     `stillBounced` (true when `email_bounced` applies to the owner's current address, read under the
     lock) and `stillOptedOut` (true when `email_opted_out` is 1, read under the lock). It clears the
     flag only when `addressMatched` is true and `old` is 1. When the address changed
-    it writes nothing, so the caller can roll back.
+    it writes nothing, so the caller can roll back. It is the only block clear for one owner.
   - `setProfileBounced(int $userId, string $address, string $bouncedAt): ?int` - Set `email_bounced`
     with address and `email_bounced_at`. Same repeat rule as the block.
   - `clearProfileBounced(int $userId): ?int` - Clear `email_bounced` and its address and time, and set
@@ -778,15 +777,24 @@ to provide a focused, testable data access layer wrapping the `cars`,
   was cleared. A second run with the same cutoffs changes no row (#1889, #2358)
 - `lockProfileAndFindAddresses(int $userId): array` - First call of the
   account-deletion privacy step, inside its transaction. It runs
-  `SELECT ... FROM profiles WHERE user_id = ? FOR UPDATE`. This is the lock that
-  the event step of #2359 will take. Then no event row for the user can arrive
-  between the read and the delete. Today an event write takes no profile lock,
-  so this design applies after #2359 ships. A user with no profile row gets a
-  gap lock.
-  Returns the unique, non-empty, normalized addresses from five sources:
-  `email_address_seen`, `email_bounced_address` and `email_blocked_address` of
-  the profile, `DISTINCT email` of the user's event rows, and `cars.email` of
-  the user's cars (#2358)
+  `SELECT ... FROM profiles WHERE user_id = ? FOR UPDATE`. This is the same lock
+  that `EmailEventApplier::apply()` takes first, through
+  `lockEventGuardState()`. So no event row for the user can arrive between the
+  read and the delete, if the user has a profile row. A user with no profile row
+  gets a gap lock.
+  Returns the unique, non-empty, normalized addresses from four reads (seven
+  columns). It reads them in this order, and a failed read names its source in
+  the `CarDatabaseException` message:
+  1. `profile`: `email_address_seen`, `email_bounced_address` and
+     `email_blocked_address` (the read that takes the lock),
+  2. `events`: `DISTINCT email` of the user's `er_email_events` rows,
+  3. `cars`: `cars.email` of the user's cars,
+  4. `holding row`: `email` and `email_new` of the user's
+     `er_deleted_user_addresses` row. The `users_delete_capture_addresses`
+     trigger writes this row when the `users` row is deleted (#2419).
+
+  A NULL, empty or non-string value is skipped. A duplicate after
+  normalization is kept once, at its first position (#2358, #2419)
 - `sendinblueMessagesTableExists(): bool` - Whether the sendinblue plugin's
   `plg_sendinblue_messages` table exists in the current schema. A site without
   the plugin has no such table (#2358)
@@ -798,11 +806,19 @@ to provide a focused, testable data access layer wrapping the `cars`,
   rows. It skips an address that is another user's current `users.email`. It
   drops an empty, non-string or duplicate address, and issues no `IN ()` for an
   empty list. A `$userId` less than 1 issues no query (#2358)
+- `deleteDeletedUserAddresses(int $userId): int` - Delete the user's holding
+  row from `er_deleted_user_addresses` (`DELETE ... WHERE user_id = ?`, the user
+  ID is the only bound value). The privacy step calls it last in its
+  transaction, so on a failure the row stays and a rerun still has the
+  addresses. Returns the rows deleted (0 or 1). A `$userId` less than 1 issues
+  no query and returns 0. Throws `CarDatabaseException` on a query failure
+  (#2419)
 - `clearFlagsForConfirmedEmailChange(int $userId): ?array` - Clear the bounce and the block when a
   confirmed email change gives a new address (#2356). Call it inside a transaction. It locks the
   `profiles` row and the `users` row (`SELECT ... FOR UPDATE OF p, u`), profiles first, the same order
-  as `Owner::update()`. Then it makes one compare: the normalized `users.email`
-  against `email_address_seen`. If they are equal, it writes nothing. If they differ, it clears
+  as `Owner::update()`. Then it makes one compare,
+  `EmailAddress::isChange()` of `email_address_seen` and `users.email`, the
+  same compare that `Owner::update()` makes. If they are equal, it writes nothing. If they differ, it clears
   `email_bounced` (with address and date, and sets `email_bounce_cleared_at`), clears `email_blocked`
   (with address, date and cause), and sets `email_address_since` to now and `email_address_seen` to the
   normalized address. It keeps `email_opted_out`. Returns `array{bounced: int, blocked: int,
@@ -1032,9 +1048,10 @@ row. Add a row and a test here when you add one.
 
 - Car class (composed data-access layer)
 - `app/api/cars/chassis-availability.php`, `app/api/cars/transfer-request.php` (`findByChassisKey()`)
-- User-deletion hook (`reassignCarsByUser()`, and in the privacy step
-  `lockProfileAndFindAddresses()`, `sendinblueMessagesTableExists()`,
-  `deleteSendinblueMessagesForUser()`, `deleteEmailEventsForUser()`)
+- User-deletion hook (`reassignCarsByUser()`)
+- `AccountDeletionPrivacyStep` (`lockProfileAndFindAddresses()`,
+  `sendinblueMessagesTableExists()`, `deleteSendinblueMessagesForUser()`,
+  `deleteEmailEventsForUser()`, `deleteDeletedUserAddresses()`) (#2358, #2419)
 - `CarAdministrationService` (`detachEmailEventsFromCar()` on car deletion, `transferEmailEvents()` on car merge)
 - `CarVerificationManager::clearFlagsForConfirmedEmailChange()` (the `verifySuccess` hook) (#2356)
 - `EmailNoticeBuilder`, `CarVerificationSendService`, `BrevoSuppressionSyncJob`, `user_form_hook.php`, `user_settings.php`, and the Email on file row (`effectiveEmailFlags()`)
@@ -3498,6 +3515,84 @@ if ($result['valid']) {
 
 ## Support Classes
 
+### AccountDeletionPrivacyStep
+
+**Location**: `/usersc/classes/AccountDeletionPrivacyStep.php`
+
+**Namespace**: `ElanRegistry`
+
+**Purpose**: `final class` that deletes the personal data of a deleted user
+that does not go with the `users` row (#2358, #2419): the sendinblue plugin
+mail rows, the `er_email_events` rows, the `profiles` row, and the
+`er_deleted_user_addresses` holding row that the
+`users_delete_capture_addresses` trigger wrote.
+
+**Constructor**: `__construct(DatabaseInterface $db, ?CarRepository $repo = null)`.
+`$repo` must use the same connection. `null` creates one on `$db`.
+
+**Methods**:
+
+- `run(int $userId): AccountDeletionPrivacyResult` - Run the step for one
+  deleted user. It does not throw, because the caller must continue with the
+  car cleanup.
+  - It refuses a user ID less than 1, an ID that still has a `users` row, and
+    an ID for which the `users` row check fails. A refusal deletes nothing and
+    writes a CRITICAL log line. On a refusal, `after_user_deletion.php` stops
+    and skips the car cleanup.
+  - If the rollback itself throws, the CRITICAL line says `rollback failed`
+    with that exception's class and code in place of `rolled back`, and
+    `run()` still returns.
+  - Otherwise it runs these stages in one transaction:
+    `lockProfileAndFindAddresses()`, the plugin delete
+    (`deleteSendinblueMessagesForUser()`, only when
+    `sendinblueMessagesTableExists()`), `deleteEmailEventsForUser()`, the
+    `profiles` delete, then `deleteDeletedUserAddresses()`. The plugin delete
+    reads the event message IDs, so it runs before the event delete. The
+    holding row goes last, so on a failure it stays and a rerun has the
+    addresses.
+  - A failure at any stage rolls back all stages and writes a CRITICAL line
+    that names the stage.
+  - After the transaction it logs the outcome and the row counts, and that the
+    plugin table is absent when that is so. All lines use
+    `LOG_CATEGORY_USER_DELETION`. A log line names the user ID, the stage, the
+    exception class and code only, never the exception message, because a
+    message can contain an address.
+
+**Used By**:
+
+- `usersc/scripts/after_user_deletion.php` (after upstream `deleteUsers()`
+  deletes the `users` row)
+- `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php` (runs the
+  step again for one user ID after a CRITICAL "privacy step failed" line)
+
+---
+
+### AccountDeletionPrivacyResult
+
+**Location**: `/usersc/classes/AccountDeletionPrivacyResult.php`
+
+**Namespace**: `ElanRegistry`
+
+**Purpose**: `final` value object with readonly properties that holds the
+outcome of `AccountDeletionPrivacyStep::run()` (#2419). It holds no address,
+so a caller can show it on a page or write it to a log.
+
+**Properties**: `$committed`, `$refused`, `$failedStage` (`?string`, the stage
+that failed when the step rolled back), `$deletedEmailEventCount`,
+`$deletedPluginMessageCount`, `$deletedHoldingRowCount` (0 or 1) and
+`$pluginTableAbsent`. The counts are 0 when the run did not commit.
+
+| Outcome | How to create it | Properties |
+| --- | --- | --- |
+| Committed | `committed(int $deletedEmailEventCount, int $deletedPluginMessageCount, int $deletedHoldingRowCount, bool $pluginTableAbsent)` | `committed` true and the row counts |
+| Rolled back | `rolledBack(string $stage)` | `committed` false, `failedStage` set |
+| Refused | `refused()` | `committed` false, `refused` true |
+
+**Used By**: `AccountDeletionPrivacyStep::run()` (returns it) and the rerun
+script `30-Rerun-Deletion-Privacy-Step.php` (shows it)
+
+---
+
 ### EmailAddress
 
 **Location**: `/usersc/classes/Car/EmailAddress.php`
@@ -3515,11 +3610,16 @@ addresses (#2358). Runtime code compares addresses from `users`, `cars`,
   through it, then the compare is byte for byte in PHP, or in SQL with
   `COLLATE utf8mb4_bin`. The column collations ignore case and accents, so a
   plain SQL `=` would match `jose@` and `josé@`.
+- `static isChange(?string $seen, ?string $new): bool` - True when the two
+  addresses differ after `normalize()`. A case-only or white-space-only edit is
+  not a change. NULL and `''` are equal. The compare is symmetric.
+  `Owner::update()` and `CarRepository::clearFlagsForConfirmedEmailChange()`
+  both use it, so they agree on what an address change is.
 
 **Used By**:
 
 - `CarRepository` (event writes, flag reads, the privacy-step address list)
-- `Owner`, `usersc/scripts/during_user_creation.php`,
+- `Owner` (`update()` uses `isChange()`), `usersc/scripts/during_user_creation.php`,
   `app/admin/includes/account-cleanup-helpers.php`
 
 **See Also**:

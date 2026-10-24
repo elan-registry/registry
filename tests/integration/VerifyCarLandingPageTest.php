@@ -1085,7 +1085,9 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->assertSame('2026-02-03 04:05:06', $flags['email_blocked_at']);
 
         // The block is cleared later through the profile writer. The opt-out stays.
-        $this->assertSame(1, (new \ElanRegistry\Car\CarRepository($this->db))->clearProfileBlocked($this->testUserId));
+        $cleared = (new \ElanRegistry\Car\CarRepository($this->db))
+            ->clearProfileBlockedIfAddress($this->testUserId, 'blocked-optout@example.com');
+        $this->assertSame(1, $cleared['old'] ?? null);
         $this->assertSame('0', (string) $this->getOwnerEmailFlags($this->testUserId)['email_blocked']);
         $this->assertSame(1, $this->profileOptedOut($this->testUserId), 'The opt-out outlives the block');
     }

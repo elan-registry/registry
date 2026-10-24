@@ -35,6 +35,7 @@
 - `er_verification_settings` (v2.30.2) — single-row gate for the verification system feature switch
 - `er_email_events` (v2.30.2) — durable log of inbound Brevo delivery-status webhook events (#1887)
 - `er_cron_job_runs` (v2.30.2) — generic "when did this job last run" table for `CronJobGuard`, replacing per-job bespoke settings columns (#2034)
+- `er_deleted_user_addresses` (v2.30.10) — holding row for the addresses of a deleted user (#2419)
 - Any future feature-config, workflow state, or application-owned table created after this issue
 
 **Upstream tables (not renamed):** `settings`, `users`, `users_session`, `us_*`, etc. (UserSpice), and `cars`, `car_transfer_requests`, `deleted_accounts_archive`, `elan_factory_info`, `car_models`, `fix_script_runs` (pre-existing project tables).
@@ -326,9 +327,10 @@ through `CarRepository::insertEmailEvent()`.
 - A car transfer to a new owner changes no row. The previous owner's rows
   stay with the previous owner, and the new owner sees the car as not sent.
 - `usersc/scripts/after_user_deletion.php` runs a privacy step first, in its
-  own transaction. It deletes the user's `plg_sendinblue_messages` rows
-  (`deleteSendinblueMessagesForUser()`), then the user's `er_email_events`
-  rows (`deleteEmailEventsForUser()`), including rows with `car_id` NULL.
+  own transaction (`AccountDeletionPrivacyStep`). It deletes the user's
+  `plg_sendinblue_messages` rows (`deleteSendinblueMessagesForUser()`), then
+  the user's `er_email_events` rows (`deleteEmailEventsForUser()`), including
+  rows with `car_id` NULL.
 
 **Migration.** `20261013000000_key_er_email_events_by_user.php` sets
 `user_id` from the car owner, or else from the one user with the same
@@ -462,6 +464,35 @@ would have meant a new migration for each one.
 | `last_skipped_count` | `int NULL` | (#1885) Skipped-car count from a job's most recent run. Same NULL-until-first-run semantics as `last_sent_count`. |
 | `last_failed_count` | `int NULL` | (#1885) Failed-car count from a job's most recent run — for `SendVerificationBatchJob` specifically, this also absorbs the `unrecorded` bucket (an email sent successfully but whose bookkeeping write failed), a deliberate conservative merge documented on `SendVerificationBatchJob::execute()`. Same NULL-until-first-run semantics as `last_sent_count`. |
 
+#### `er_deleted_user_addresses` - Addresses of a deleted user (#2419)
+
+Upstream `deleteUsers()` deletes the `users` row before it includes
+`usersc/scripts/after_user_deletion.php`. So the privacy step cannot read
+`users.email` or `users.email_new`. The trigger `users_delete_capture_addresses`
+copies both addresses into this table at delete time. The table has no FK.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `user_id` | `int` | PRIMARY KEY. ID of the deleted user. Signed, as `users.id` is, so that the trigger insert never fails. |
+| `email` | `varchar(155) NULL` | `users.email` of the deleted row. Nullable so that the trigger insert never fails, although `users.email` is NOT NULL. |
+| `email_new` | `varchar(155) NULL` | `users.email_new` of the deleted row. NULL when no email change was pending. |
+| `deleted_at` | `datetime NOT NULL` | Time of the delete |
+
+Engine InnoDB. Collation `utf8mb4_unicode_ci`, the same as `users`.
+
+**Lifecycle.** The row holds personal data. The privacy step deletes it in
+the same transaction as its other deletes. So a row stays only when the step
+did not commit. The rerun script then reads the addresses from the row. See
+[FIX_SCRIPTS.md](FIX_SCRIPTS.md#rerun-the-deletion-privacy-step-30-rerun-deletion-privacy-stepphp).
+
+**Written by:** the trigger only.
+**Read by:** `CarRepository::lockProfileAndFindAddresses()`.
+**Deleted by:** `CarRepository::deleteDeletedUserAddresses()`.
+
+**Migration.** `20261023000000_add_deleted_user_addresses_capture.php`
+creates the table and the trigger. `down()` drops the trigger, then the
+table. A holding row that is still in the table is lost.
+
 #### `phinxlog` - Phinx migration tracking
 
 Phinx's own tracking table. It stores one row per applied migration, recording
@@ -522,6 +553,38 @@ data, use `(new Owner($userId))->data()`.
   `@disable_triggers` variable
 - `cars_delete`: Logs car deletions to `cars_hist` table
 
+**Deleted-User Address Trigger** (implemented, #2419):
+
+- `users_delete_capture_addresses`: AFTER DELETE on `users`. It runs
+  `INSERT ... ON DUPLICATE KEY UPDATE` into `er_deleted_user_addresses` with
+  `OLD.id`, `OLD.email`, `OLD.email_new` and `NOW()`. A second delete of the
+  same ID replaces the earlier row.
+- The trigger ignores `@disable_triggers`. A deletion must never skip the
+  capture. AFTER, not BEFORE, so the trigger records only a row that MySQL
+  removed.
+- The trigger fires for every delete on `users`: the cleanup tab, the upstream
+  admin user page, and any later caller.
+- The trigger is on `users`, not in a file under `users/`. A UserSpice upgrade
+  that rebuilds the `users` table (drop and create) drops this trigger. After
+  such an upgrade, create the trigger again with the `CREATE TRIGGER`
+  statement in `20261023000000_add_deleted_user_addresses_capture.php`. Then
+  check `information_schema.TRIGGERS` for `users_delete_capture_addresses`. Without
+  the trigger, the privacy step cannot find `users.email` and `users.email_new`.
+  The hook then logs `CRITICAL: privacy step for user N found no
+  er_deleted_user_addresses row; check trigger users_delete_capture_addresses,
+  or the users row was already gone before this deletion` after each deletion.
+  The second cause is a concurrent delete of the same ID: the hook's own
+  delete then removed no row, so the trigger did not fire.
+- The trigger runs as its definer, the migration user. If that user is
+  dropped, or `er_deleted_user_addresses` is missing, every `DELETE FROM users`
+  fails, so no account can be deleted, and no deletion skips the capture. But
+  upstream `deleteUsers()` ignores the failed delete. It still deletes the
+  user's `user_permission_matches` rows and includes the hook. The account
+  stays, without its permission rows. The privacy step refuses with a CRITICAL
+  line that names the trigger and the permission rows. Fix the trigger, then
+  give the user permission 1 (User) again, plus any role it had, such as 3
+  (Editor). No log keeps the deleted permission rows.
+
 **Trigger Details**:
 
 - All triggers capture complete car record snapshots including owner data, `chassis_override`, and verification system columns (`owner_last_updated`, `vericode_sent_at`, `verification_attempts`, `verification_attempts_since`)
@@ -546,17 +609,38 @@ ID.
 
 **Cleanup Process** (`/usersc/scripts/after_user_deletion.php`):
 
-1. Run the privacy step first, in its own transaction. It locks the user's
-   `profiles` row with `SELECT ... FOR UPDATE`, and reads the user's addresses.
-   It deletes the user's `plg_sendinblue_messages` rows
-   (`deleteSendinblueMessagesForUser()`), then the user's `er_email_events`
-   rows (`deleteEmailEventsForUser()`), then the user's `profiles` row. The
-   profile lock is the lock that the event step takes first, so no event
-   row can arrive between the address read and the deletes. If the step
-   fails, it rolls back, logs a CRITICAL line, and the hook continues with
-   steps 2 and 3. The personal data then remains. See
-   [EMAIL_SYSTEM.md, Event recording](EMAIL_SYSTEM.md#event-recording-and-the-car-chip)
-   for the known gaps.
+1. Run the privacy step first, in its own transaction
+   (`AccountDeletionPrivacyStep::run()`). The stages run in this order, after
+   the transaction start (stage `begin` in a CRITICAL line):
+   1. `lock and read addresses`: lock the user's `profiles` row with
+      `SELECT ... FOR UPDATE`, then read the user's addresses. The sources are
+      the profile, the user's `er_email_events` rows, the user's cars and the
+      user's `er_deleted_user_addresses` row.
+   2. `plugin delete`: delete the user's `plg_sendinblue_messages` rows
+      (`deleteSendinblueMessagesForUser()`).
+   3. `event delete`: delete the user's `er_email_events` rows
+      (`deleteEmailEventsForUser()`).
+   4. `profile delete`: delete the user's `profiles` row.
+   5. `holding row delete`: delete the user's `er_deleted_user_addresses` row
+      (`deleteDeletedUserAddresses()`).
+   6. `commit`.
+
+   The profile lock is the lock that the event step takes first, so no event
+   row can arrive between the address read and the deletes. The hook itself
+   stops on a user ID below 1, with its own CRITICAL line, before the step
+   runs. The step refuses three IDs: an ID below 1 (a backstop, because the
+   hook and the rerun script reject it earlier), an ID that still has a
+   `users` row, and an ID for which the `users` row check fails. A refusal
+   writes a CRITICAL log line and deletes nothing. The hook then logs
+   `CRITICAL: car cleanup skipped for user N` and stops: upstream
+   `deleteUsers()` ignores a failed `DELETE FROM users`, so the cars of a live
+   owner must not move. If a stage fails, the step rolls
+   back, logs a CRITICAL line, and the hook continues with steps 2 and 3. The
+   personal data and the holding row then remain. Run the rerun script to
+   finish the deletion: see
+   [FIX_SCRIPTS.md](FIX_SCRIPTS.md#rerun-the-deletion-privacy-step-30-rerun-deletion-privacy-stepphp).
+   See [EMAIL_SYSTEM.md, Event recording](EMAIL_SYSTEM.md#event-recording-and-the-car-chip)
+   for the known gap.
 2. Transfer car ownership to the `noowner` user (preserves registry data)
 3. Expire any non-terminal transfer requests the user initiated
 4. All changes automatically logged via database triggers
