@@ -43,6 +43,7 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 | --- | --- | --- | --- |
 | **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, Owner |
 | `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
+| `ElanRegistry\Retention` | Retention rules for the nightly purge | `/usersc/classes/Retention/` | RetentionRule, RetentionPolicy |
 | `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/Reference/` | CarModel |
 
 ### Reference Data vs. Entity Classes
@@ -2591,6 +2592,8 @@ public function __construct(
 
 - `BrevoEventReconciliationJob` (extends `AbstractCronJob`)
 - `BrevoSuppressionSyncJob` (extends `AbstractCronJob`)
+- `RetentionPurgeJob` (extends `AbstractCronJob`; keeps the default
+  `refusesWhileSwitchOff()`, so it runs with the switch off)
 - `SendVerificationBatchJob` (extends `AbstractCronJob`; no `runNowWithSummary()`
   override — relies entirely on inherited `run()`/`runNow()`. It overrides
   `refusesWhileSwitchOff()`, so it is the only job that the switch stops)
@@ -2602,6 +2605,55 @@ public function __construct(
 - [DEPLOYMENT.md](DEPLOYMENT.md) — "Timeout & Crash Isolation" section (full contract rationale)
 - [DATABASE.md](DATABASE.md) — `er_cron_job_runs` schema
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_CRON_JOB_SKIPPED`
+
+---
+
+### RetentionPurgeJob
+
+**Location**: `/usersc/classes/Cron/RetentionPurgeJob.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Nightly job that runs the retention rules from
+`RetentionPolicy::rules()`. It extends `AbstractCronJob`.
+
+**Constants**: `JOB_NAME` is `'retention_purge'`. The guard interval is 20
+hours, as for the other daily jobs. `HEALTHCHECK_SLUG` is `'retention-purge'`. The shim is
+`users/cron/retention_purge.php`.
+
+**Constructor**:
+
+```php
+public function __construct(
+    DatabaseInterface $db,
+    array $rules,                          // list<RetentionRule>
+    ?\DateTimeImmutable $now = null,
+    ?HealthcheckPinger $pinger = null,
+)
+```
+
+**Behavior**:
+
+- It runs each rule inside its own `try/catch (\Throwable)`. Every rule gets
+  the same `$now`.
+- A rule that succeeds or skips writes one `LOG_CATEGORY_RETENTION_PURGE`
+  line. The line holds the rule name and counts.
+- A rule that fails writes one line in the same category with the rule name
+  and `ExceptionLogSummary::of()`. When the rule threw a
+  `RetentionPurgeException` from `forStep()`, the line also names the step
+  and the SQLSTATE, for example `(step: delete, SQLSTATE: HY000)`. It never
+  holds the exception message. If `name()` itself throws, the line uses
+  `rule #<index>`. The next rule still runs.
+- After the last rule, if any rule failed, the job throws
+  `RetentionPurgeException` that names the failed rules. `AbstractCronJob::run()`
+  then stamps `last_failure_at`, writes one `CronJobFailure` line and pings
+  `/fail`.
+- A skipped rule (table missing) is a success.
+- The job does not read the verification switch.
+
+**See Also**: [Retention](#retention),
+[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows),
+[DEPLOYMENT.md](DEPLOYMENT.md#retention-purge-job)
 
 ---
 
@@ -3521,6 +3573,80 @@ if ($result['valid']) {
     'format_type' => 'detected format type'
 ]
 ```
+
+## Retention
+
+**Namespace**: `ElanRegistry\Retention`
+
+**Location**: `/usersc/classes/Retention/`
+
+**Purpose**: Delete or clear old rows on a schedule. `RetentionPurgeJob`
+runs the rules. Each rule owns one table. Windows are `define()` constants in
+`usersc/includes/config.php`.
+
+### RetentionRule (interface)
+
+- `name(): string` — A stable name for log lines, for example
+  `sendinblue_messages`.
+- `purge(\DateTimeImmutable $now): RetentionResult` — The rule computes its
+  own cutoff from its window. It throws `RetentionPurgeException` on a
+  database error. It returns `skipped()` only when its own table does not
+  exist (see `RetentionResult`).
+
+### RetentionResult
+
+`final readonly` value object. Properties: `ruleName`, `deleted`, `cleared`,
+`?string $skipReason`. Named constructors: `RetentionResult::purged()` and
+`RetentionResult::skipped()`. A skipped result means the table does not exist.
+
+### RetentionPolicy
+
+`final` class. `RetentionPolicy::rules(DatabaseInterface $db):
+list<RetentionRule>` returns the one list of rules. It passes each window
+constant to its rule.
+
+### SendinblueMessagesRetentionRule
+
+`final` class that implements `RetentionRule`. Constructor:
+`(DatabaseInterface $db, int $retentionDays)`. `RetentionPolicy` passes
+`RETENTION_SENDINBLUE_MESSAGES_DAYS`.
+
+For `plg_sendinblue_messages` rows with `accepted_at` older than the window:
+
+1. It deletes the row when no `er_email_events.brevo_message_id` names its
+   `message_id`.
+2. It sets `recipient_email` to an empty string when an event names it. The
+   row keeps `message_id` and `tags`.
+
+It first checks `information_schema` for the table. If the table does not
+exist, it returns `skipped()` and deletes nothing. A failed check, or any
+error on the delete or the clear, throws `RetentionPurgeException`.
+A second run with the same cutoff changes no row. See
+[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows).
+
+### Add a rule
+
+1. Write a class in `usersc/classes/Retention/` that implements
+   `RetentionRule`.
+2. Add a `RETENTION_<NAME>_DAYS` constant to `usersc/includes/config.php`.
+   Add the same `define()` to `tests/bootstrap-unit.php`, because the unit
+   tests do not load `config.php`.
+3. Add one line to `RetentionPolicy::rules()`.
+
+The job needs no new seed row, shim or healthcheck for a new rule.
+
+### RetentionPurgeException
+
+`ElanRegistry\Exceptions\RetentionPurgeException` extends
+`ElanRegistryException`. A rule throws it on a database error. The job throws
+it after the loop when a rule failed.
+
+`forStep(string $message, string $step, ?string $sqlState)` builds it for one
+failed step of a rule. `step()` and `sqlState()` return those values, or null
+for the job-level exception. The job log prints the step and the SQLSTATE but
+not the message, because the message can echo a database error text.
+
+---
 
 ## Support Classes
 

@@ -28,6 +28,11 @@ if (!defined('BACKUP_RETENTION_AUTOMATED')) {
     define('BACKUP_FAILURE_LOOKBACK_DAYS', 7);
 }
 
+// Data retention window (normally from usersc/includes/config.php, #2384)
+if (!defined('RETENTION_SENDINBLUE_MESSAGES_DAYS')) {
+    define('RETENTION_SENDINBLUE_MESSAGES_DAYS', 90);
+}
+
 // Media/image, transfer-expiry, and email-subject constants (normally from
 // usersc/includes/config.php, #1067) — mirrors the real values exactly, not
 // placeholder test values, since several tests assert against these

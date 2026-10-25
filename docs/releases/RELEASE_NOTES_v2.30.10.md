@@ -12,6 +12,7 @@ an owner's address no longer stays behind after account deletion or in logs.
   text. Before, an encoded name or a crafted link could add HTML, such as
   an image or a link, to a message. The site security policy blocked
   scripts in that HTML.
+- The email service log no longer keeps a recipient address for more than 90 days. ([#2384](https://github.com/elan-registry/registry/issues/2384))
 
 ## Admin-Facing Changes
 
@@ -55,7 +56,8 @@ an owner's address no longer stays behind after account deletion or in logs.
 - WIP: [#2487](https://github.com/elan-registry/registry/issues/2487) — Remove the remaining raw exception messages from log rows.
 - [#2419](https://github.com/elan-registry/registry/issues/2419) —
   Delete plugin mail rows for the current and pending address at account deletion, and add a manual rerun of the privacy step.
-- WIP: [#2384](https://github.com/elan-registry/registry/issues/2384) — Purge `plg_sendinblue_messages` rows older than 90 days.
+- [#2384](https://github.com/elan-registry/registry/issues/2384) —
+  Delete the recipient address from the email service log after 90 days.
 - [#2482](https://github.com/elan-registry/registry/issues/2482) —
   Count only a clear after `email_address_since` when the suppression import has no usable date.
 - [#2461](https://github.com/elan-registry/registry/issues/2461) —

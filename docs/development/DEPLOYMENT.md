@@ -1053,8 +1053,9 @@ Each monitored job pings its check at the end of a scheduled run.
 | --- | --- |
 | `SendVerificationBatchJob` | `send-verification-batch-prod`, `send-verification-batch-test` |
 | `BrevoEventReconciliationJob` | `brevo-event-reconciliation-prod`, `brevo-event-reconciliation-test` |
+| `RetentionPurgeJob` | `retention-purge-prod`, `retention-purge-test` |
 
-**Check settings** (the same for all four checks):
+**Check settings** (the same for all six checks):
 
 - Period and timeout: 1 day (86400 s).
 - Grace: 2 hours (7200 s).
@@ -1128,6 +1129,17 @@ Use the job slug plus the new suffix, for example
 `send-verification-batch-staging`. Use the same settings as above. Set
 `HEALTHCHECKS_SLUG_SUFFIX` to the new suffix (`-staging`) in that
 environment's `.env`.
+
+### Retention purge job
+
+`RetentionPurgeJob` (`users/cron/retention_purge.php`) deletes old rows once a
+day. It runs a list of rules. Each rule owns one table and one window. The job
+runs with the verification switch off. The rule for
+`plg_sendinblue_messages` is the only rule now. See
+[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows) for what it does
+and [CLASSES.md](CLASSES.md#retention) for the classes.
+
+To add a rule, see [CLASSES.md, "Add a rule"](CLASSES.md#add-a-rule).
 
 ### Deployment Verification Checklist
 

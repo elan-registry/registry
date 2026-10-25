@@ -404,10 +404,12 @@ since they touch different files.
   "planned" from "actually shipped" in this document.
 - Use the `technical-documentation-writer` agent to finalize:
   - Fill in any remaining template placeholders
-  - Keep entries in "Issues Resolved", "User-Facing Changes", and
-    "Admin-Facing Changes" to **one sentence each** — full detail lives in
-    the issue/PR itself; the release notes are a pointer, not a changelog
-    essay
+  - Apply the template's "Be brief" rule to the whole file. The file is the
+    GitHub release body. Cut the summary to at most 2 sentences. Merge
+    entries until each issue has at most one entry in User-Facing or
+    Admin-Facing Changes. Cut each entry to one sentence of at most 20
+    words. Delete entries for changes no one can see. Full detail lives in
+    the issue/PR itself
   - Scope accuracy (issue membership vs. milestone) was already verified in
     Step 5.5 — this pass is about content completeness/wording, not re-doing
     that cross-check

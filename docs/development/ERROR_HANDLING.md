@@ -127,7 +127,7 @@ handling and logging.
   - HTTP status code (for API responses)
 - **Autoloading**: PSR-4 autoload via composer.json
 
-**Exception Types** (23 total):
+**Exception Types** (24 total):
 
 | Exception | HTTP | Category | Purpose |
 | --- | --- | --- | --- |
@@ -154,6 +154,7 @@ handling and logging.
 | AdminOperationException | 500 | AdminActions | Admin operations |
 | AdminContactException | 500 | AdminContact | Admin contact form |
 | AdminVerificationException | 500 | AdminVerification | Admin verification |
+| RetentionPurgeException | 500 | RetentionPurge | A retention rule failed in the nightly purge job |
 
 **Usage Pattern**:
 
@@ -207,6 +208,7 @@ improve discoverability, and maintain consistency.
 - System & File Operations (SystemError, FileError, ValidationError,
   ImageRemoval)
 - Admin & Management (AdminVerification, SettingsUpdate, UserManager, Logs)
+- Retention (RetentionPurge)
 - Location & Geocoding (Geocode, LocationService, LocationReverse)
 - Access Control (AccessDenied, SecurePage, HasPerm, PageNotFound)
 - And 4+ more domains

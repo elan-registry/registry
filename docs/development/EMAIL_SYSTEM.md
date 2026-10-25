@@ -304,11 +304,13 @@ cron transport delays reminders and does not stop them for good.
 | Brevo webhook (`app/api/webhooks/brevo.php`) | Runs. It records events and sets flags. It does not read the switch (#2359). |
 | `BrevoEventReconciliationJob` (backfill and prune) | Runs. |
 | `BrevoSuppressionSyncJob` | Runs. |
+| `RetentionPurgeJob` | Runs. |
 | Manual "run now" paths of both Brevo jobs | Run. |
 
 Among the cron jobs, only the send batch honours the switch. The prune, the
-reconciliation and the suppression import must run while sends are off. They
-read from Brevo and write the registry's own records. They send no email.
+reconciliation, the suppression import and the retention purge must run while
+sends are off. They read from Brevo or delete old records, and write the
+registry's own records. They send no email.
 `AbstractCronJob::refusesWhileSwitchOff()` makes the choice. The default
 returns `false`. The send batch overrides it. See
 [DEPLOYMENT.md, Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager).
@@ -1273,9 +1275,10 @@ trailing spaces. Matching never uses `LIKE`, `FIND_IN_SET` or a substring.
   [Brevo Suppression List Import](#brevo-suppression-list-import-1923).
 - The nightly prune blanks the address of each car's latest `sent` row once
   the row is older than 90 days. A later event for that message cannot match
-  by step (a). It matches by step (b) if the plugin row still exists.
-  Otherwise it matches no user, and a verification-tagged event counts as
-  unmatched.
+  by step (a). Step (b) needs the address in the plugin row. The retention
+  purge removes that address after 90 days (see
+  [Retention of plugin rows](#retention-of-plugin-rows)). So the event
+  matches no user, and a verification-tagged event counts as unmatched.
 
 An event for our message with no matching user returns `NO_USER_MATCH`. The
 webhook returns 2xx and writes no row. It logs the first 8 hex characters of
@@ -1321,7 +1324,7 @@ the response does not change. The webhook does not call it for an event that is 
 | Brevo event | Effect |
 | --- | --- |
 | `hard_bounce`, `blocked`, `invalid`, `invalid_email` | Immediately flags the owner as bounced (`profiles.email_bounced = 1`, with `email_bounced_address` set to the reported address and `email_bounced_at` set to the event time) |
-| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. A soft bounce of owner contact mail does not count either (#2460): the count skips a send cycle when the `plg_sendinblue_messages` row for that `brevo_message_id` has the tag `send-owner-email` in its `tags`. A cycle with no plugin row, or with null tags, still counts, so an owner contact cycle counts again after its plugin row is deleted. [Retention of plugin rows](#retention-of-plugin-rows) says when the purge deletes that row. The sender picks the recipient, so a full mailbox must not mark the owner bounced. Hard bounces, blocks and spam of owner contact mail still set their flags. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
+| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. A soft bounce of owner contact mail does not count either (#2460): the count skips a send cycle when the `plg_sendinblue_messages` row for that `brevo_message_id` has the tag `send-owner-email` in its `tags`. A cycle with no plugin row, or with null tags, still counts. The retention purge keeps the plugin row, with its tags, while an event names its message ID. So an owner contact cycle still does not count after 90 days. See [Retention of plugin rows](#retention-of-plugin-rows). The sender picks the recipient, so a full mailbox must not mark the owner bounced. Hard bounces, blocks and spam of owner contact mail still set their flags. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
 | `delivered` | Event row only. Implicitly resets the soft-bounce escalation window (the count query only looks at soft bounces after the most recent `delivered` row) |
 | `spam` | Flags the owner as blocked (`profiles.email_blocked = 1`, cause `spam`, with the address and event time). This is a distinct signal from a bounce |
 | `unsubscribed` | The same as `spam`, with cause `unsubscribed` |
@@ -1599,24 +1602,46 @@ list above) and the latest event of each car in its Status chip (#2361).
 
 The table `plg_sendinblue_messages` must keep a recipient address for 90 days
 or less. The upstream sendinblue plugin 1.8.0 has no retention setting for
-this table. The Registry sets the limit in two steps: a one-time purge at
-go-live, then a recurring purge job. The job does not exist yet.
+this table. The Registry sets the limit with a nightly purge job.
+`RetentionPurgeJob`
+([#2384](https://github.com/elan-registry/registry/issues/2384)) runs once a
+day. Its `SendinblueMessagesRetentionRule` applies the rules below. See
+[CLASSES.md](CLASSES.md#retention) for the classes.
 
-1. **At go-live, run a one-time purge.** Run this SQL once:
-   `DELETE FROM plg_sendinblue_messages WHERE accepted_at < NOW() - INTERVAL 90 DAY;`
-2. **After go-live, the purge job runs.** [#2384](https://github.com/elan-registry/registry/issues/2384)
-   adds the job.
+Go-live needs no one-time purge. The first nightly run handles the rows that
+are already older than 90 days. Do not delete old rows by hand with
+`DELETE ... WHERE accepted_at < ...`. That SQL also deletes the rows that an
+event still names, and then owner contact soft bounces count again (#2460).
 
-Until #2384 ships, a row can stay longer than 90 days after the go-live day.
+The window is the constant `RETENTION_SENDINBLUE_MESSAGES_DAYS` in
+`usersc/includes/config.php`. It is 90. A unit test fails if the value is
+more than 90, because `app/owner/privacy.php` promises 90 days.
 
-The purge deletes every row older than 90 days. This includes a row whose
-message ID `er_email_events` still names. The effect on matching:
+**What the rule does with a row older than 90 days** (by `accepted_at`):
 
-- A soft bounce of owner contact mail counts again for that send cycle. The
-  count has no plugin row to read the tag `send-owner-email` from. See the
-  `soft_bounce` row in the event table.
-- A later event for the message matches no user by step (b). See the
-  address-match steps above.
+| An `er_email_events.brevo_message_id` names the row | Result |
+| --- | --- |
+| No | The rule deletes the row. |
+| Yes | The rule keeps the row, with its `message_id` and `tags`. It sets `recipient_email` to an empty string. |
+
+A row that is not older than 90 days does not change.
+
+- **Soft bounces.** The kept row still holds the tag `send-owner-email`. So a
+  soft bounce of owner contact mail still does not count for that send cycle.
+  See the `soft_bounce` row in the event table.
+- **Step (b).** A cleared row has no address. A later event for that message
+  matches no user by step (b). See the address-match steps above.
+- **Switch.** The job runs with the verification switch off.
+- **Missing table.** The rule first checks `information_schema` for
+  `plg_sendinblue_messages`. If the table does not exist, the job writes one
+  skip line and deletes nothing. The run succeeds. A failed check, or any
+  error on the delete or the clear (also a missing `er_email_events`), is a
+  failure.
+- **Other database error.** The rule fails and the other rules still run.
+  The run counts as a failure: the job stamps `last_failure_at`, pings
+  `/fail` and writes one `CronJobFailure` line.
+- **Log.** The job writes one line for each rule under the category
+  `RetentionPurge`. A line holds the rule name and counts, never an address.
 
 ### Address-Match Rule (#2356)
 
