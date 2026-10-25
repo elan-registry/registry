@@ -26,7 +26,8 @@ building.
 A candidate is an open issue, not a pull request, with no milestone. An
 issue in a milestone belongs to that release and is never a candidate. Every
 issue query in this command uses `--paginate` (`gh api`) or `--limit 500`
-(`gh issue list`), because the backlog has more than 100 open issues.
+(`gh issue list`), because the repository has more than 100 open issues and
+each query filters them on the client side.
 
 ## Context check
 
@@ -185,7 +186,7 @@ Produce two lists:
 
 Two more kinds of work skip this gate entirely — check for both
 separately. Take only candidates (no milestone). An issue of
-either kind in another milestone stays in that milestone.
+either kind that is in a milestone stays in that milestone.
 
 - **`signal:forced`** — at most one per milestone (the housekeeping slot in
   Step 4). If more than one is a candidate, the user picks which ships now.

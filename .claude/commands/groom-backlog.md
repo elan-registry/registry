@@ -276,8 +276,8 @@ Produce one table before taking any action:
 |---|-------|--------------------------------------|------------------------|--------------------|
 ```
 
-An issue in the age-out table must not also be in the closures or moves
-tables. Pick one row for it.
+An issue in the age-out table must not also be in the closures or milestone
+removals tables. Pick one row for it.
 
 Ask the user to approve, adjust, or reject each section — one round, not
 per-item. Wait for approval before Step 5.
