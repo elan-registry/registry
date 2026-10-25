@@ -532,14 +532,30 @@ $soldDateError = null;
 // a 200 rather than following this file's usual PRG pattern: no write
 // happens on this path, so there is nothing for a refresh to re-submit and
 // no reason to pay a redirect round-trip just to reach the same notice.
+//
+// The Sold POST's own PRG redirect also lands here, because the car is sold
+// by then. That redirect carries `recorded=1` so the landing thanks the owner
+// instead of telling them the sale they just made was already recorded. The
+// flag is read on GET only: Input::raw() reads $_POST first, and a repeat
+// POST must keep the already-sold text. The flag changes text only, so a
+// hand-made URL can at most thank the owner for a sale that is recorded.
+// A refresh or bookmark of the landing URL shows the thank-you again. That is
+// accepted: the text stays true for as long as the car is sold.
 if ($action === 'sold' && $isSold) {
     $verifyNoticeState   = 'sold';
-    $verifyNoticeIcon    = 'fa-circle-info';
-    $verifyNoticeHeading = 'This car is already recorded as sold.';
+    if (!$isPost && Input::raw('recorded') === '1') {
+        $verifyNoticeIcon    = 'fa-circle-check';
+        $verifyNoticeHeading = 'Thank you — we\'ve recorded the sale';
+        $verifySoldLead      = 'We\'ve noted that this car was sold';
+    } else {
+        $verifyNoticeIcon    = 'fa-circle-info';
+        $verifyNoticeHeading = 'This car is already recorded as sold.';
+        $verifySoldLead      = 'We have it as sold';
+    }
     // A bad stored date gives null. Then the notice leaves out the date, so
     // it never shows a wrong date such as 1 January 1970.
     $verifySoldOn        = CarBadges::soldDate($verifyCar->solddate ?? null, $verifyCar->id ?? null)?->format('j F Y');
-    $verifyNoticeBody    = ($verifySoldOn !== null ? 'We have it as sold on ' . $verifySoldOn : 'We have it as sold')
+    $verifyNoticeBody    = ($verifySoldOn !== null ? $verifySoldLead . ' on ' . $verifySoldOn : $verifySoldLead)
         . '. It stays in your account marked as sold, we won\'t send you verification '
         . 'emails about it, and its history stays safely in the registry.';
     renderVerifyPage(__DIR__ . '/../views/cars/_verify_notice.php');
@@ -632,7 +648,7 @@ if ($isPost && $action === 'sold') {
         renderActionFailed('We could not record the sale.');
     }
 
-    verifyRedirect($verifySelfUrl, ['vericode' => $verifyCode, 'action' => 'sold']);
+    verifyRedirect($verifySelfUrl, ['vericode' => $verifyCode, 'action' => 'sold', 'recorded' => '1']);
 }
 
 if ($isPost && $action === 'optout') {

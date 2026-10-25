@@ -2134,6 +2134,13 @@ be a plain `<a>` with a text label. If a template needs a fallback for a button 
 contact hint built from `getFeedbackEmail()`. A `mailto:` link is not an http(s) link, so Brevo is not expected to
 rewrite it (not yet confirmed in a live send). The auth email templates in `usersc/views/` use this pattern.
 
+**Brevo click counts do not show owner clicks on verification email.** Outlook Safe Links opens the links of a message
+to scan them. On 2026-10-22 (#2088), it opened the Verify, Sold, and Opt-Out links of a verification email 3 minutes
+after delivery. Brevo logged 3 Clicked events. No car or owner data changed: a GET to `verify_car.php` never changes
+it. Only a POST from a button on the landing page does. So a Clicked event on a verification email does not show that
+the owner clicked. To see what an owner did, use the `cars_hist` rows with operation `VERIFIED` or `VERIFIED SOLD`,
+and the owner's `profiles.email_opted_out` flag.
+
 **Template-variable workaround: tested, does not work.** Some Brevo users report that supplying the URL via a
 template variable (`href="{{ params.link }}"` instead of a literal `href="https://..."`) sometimes escapes
 rewriting. Tested 2026-09-22 via a direct `POST /v3/smtp/email` send (`params: {link: <url>}`, `htmlContent`

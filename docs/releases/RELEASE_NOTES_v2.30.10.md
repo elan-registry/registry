@@ -13,6 +13,7 @@ an owner's address no longer stays behind after account deletion or in logs.
   an image or a link, to a message. The site security policy blocked
   scripts in that HTML.
 - The email service log no longer keeps a recipient address for more than 90 days. ([#2384](https://github.com/elan-registry/registry/issues/2384))
+- After an owner reports a car as sold, the page thanks them instead of saying the car is already sold.
 
 ## Admin-Facing Changes
 
@@ -72,6 +73,7 @@ an owner's address no longer stays behind after account deletion or in logs.
   Stop the suppression sync from adding a second event row for an owner that is already flagged.
 - WIP: [#2499](https://github.com/elan-registry/registry/issues/2499) — Show an opt-out as a warning in the paused-email notice.
 - WIP: [#2500](https://github.com/elan-registry/registry/issues/2500) — Show every block cause in the paused-email notice.
-- WIP: [#2497](https://github.com/elan-registry/registry/issues/2497) — Thank the owner after a Sold report, not tell them the car is already sold.
+- [#2497](https://github.com/elan-registry/registry/issues/2497) —
+  Thank the owner after a Sold report, not tell them the car is already sold.
 - WIP: [#2043](https://github.com/elan-registry/registry/issues/2043) — Show a visible error when the location gate blocks the join form.
 - WIP: [#2474](https://github.com/elan-registry/registry/issues/2474) — Retire the Backlog milestone.
