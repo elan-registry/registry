@@ -1490,12 +1490,13 @@ public static function verifiedTooltip(): string
 - `soldDate()` returns the sold date at midnight for display, or null when
   the car is not sold or the value is not a valid `Y-m-d` date. The account
   page, the car details page, and the vericode landing page use it for the
-  Vehicle Information card. The vericode "already sold" notice also uses it.
+  Vehicle Information card. The vericode "already sold" notice and the
+  thank-you after a Sold POST also use it.
   A sold car with a bad value (for example a zero date or `2024-02-30`) logs
   one entry to `LOG_CATEGORY_CAR_ERRORS`, with the car ID from `$carId` or
   `unknown`. `isSold()` is still true for that car, so the account hero and
   the cars list show Sold. The vericode landing page disables its sold button,
-  and the "already sold" notice leaves out the date. The Vehicle Information
+  and the "already sold" notice and the thank-you leave out the date. The Vehicle Information
   card has no Sold row.
 - `verifiedStatus()` returns the Verified row status for one car record. Returns
   an array with `source` and `date` keys when: the car is not sold, the car is

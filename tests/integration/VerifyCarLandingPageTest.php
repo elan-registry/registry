@@ -25,6 +25,10 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     private const CONFIRM_MARKERS = [self::MARKER_VERIFY, self::MARKER_SOLD, self::MARKER_OPTOUT];
     private const MARKER_LANDING = 'registry entry still correct?';
 
+    // #2497: the two texts of the 'sold' notice, as htmlspecialchars() renders them.
+    private const SOLD_THANK_YOU = 'Thank you — we&#039;ve recorded the sale';
+    private const SOLD_ALREADY = 'already recorded as sold';
+
     private static ?PhpBuiltinServer $server = null;
     private static string $projectRoot = '';
 
@@ -340,7 +344,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         ]);
 
         $this->assertSame(303, $result['status']);
-        $this->assertRedirectsToSelfWithQuery('vericode=' . $code . '&action=sold', $result['location']);
+        $this->assertRedirectsToSelfWithQuery('vericode=' . $code . '&action=sold&recorded=1', $result['location']);
 
         $after = $this->carRow();
         $this->assertSame($submittedDate, (string) $after['solddate'], 'solddate must equal the submitted date, not today');
@@ -453,7 +457,85 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
 
         $withAction = $this->get('vericode=' . $code . '&action=sold');
         $this->assertSame(200, $withAction['status']);
-        $this->assertStringContainsString('already recorded as sold', $withAction['body']);
+        $this->assertStringContainsString(self::SOLD_ALREADY, $withAction['body']);
+    }
+
+    /**
+     * #2497: the Sold POST's redirect lands on a car that is sold by then.
+     * The landing must thank the owner, not say the sale was already recorded.
+     */
+    public function testSoldPostRedirectLandingShowsThankYouNotAlreadySold(): void
+    {
+        $code = $this->issueVericode();
+        $soldDate = date('Y-m-d', strtotime('-10 days'));
+
+        $result = $this->post('vericode=' . $code . '&action=sold', [
+            'vericode' => $code,
+            'solddate' => $soldDate,
+        ]);
+        $this->assertSame(303, $result['status']);
+        $query = (string) parse_url((string) $result['location'], PHP_URL_QUERY);
+
+        $landing = $this->get($query);
+
+        $this->assertSame(200, $landing['status']);
+        $this->assertStringContainsString(self::SOLD_THANK_YOU, $landing['body']);
+        $this->assertStringContainsString(
+            'We&#039;ve noted that this car was sold on ' . date('j F Y', (int) strtotime($soldDate)),
+            $landing['body']
+        );
+        $this->assertStringNotContainsString(self::SOLD_ALREADY, $landing['body']);
+    }
+
+    /** #2497: a later visit to the plain Sold link still says the car is already sold. */
+    public function testLaterPlainSoldGetOnSoldCarStillShowsAlreadySold(): void
+    {
+        $code = $this->issueVericode();
+        $this->post('vericode=' . $code . '&action=sold', [
+            'vericode' => $code,
+            'solddate' => date('Y-m-d', strtotime('-10 days')),
+        ]);
+
+        $later = $this->get('vericode=' . $code . '&action=sold');
+
+        $this->assertSame(200, $later['status']);
+        $this->assertStringContainsString(self::SOLD_ALREADY, $later['body']);
+        $this->assertStringNotContainsString(self::SOLD_THANK_YOU, $later['body']);
+    }
+
+    /** #2497: the flag is GET-only, so a repeat POST that carries it stays a strict no-op. */
+    public function testRecordedFlagInPostBodyOnSoldCarStillRendersAlreadySoldWithNoWrite(): void
+    {
+        $code = $this->issueVericode();
+        $this->db->query('UPDATE cars SET solddate = ? WHERE id = ?', ['2020-01-01', $this->testCarId]);
+        $before = $this->carRow();
+
+        $result = $this->post('vericode=' . $code . '&action=sold&recorded=1', [
+            'vericode' => $code,
+            'solddate' => date('Y-m-d', strtotime('-2 days')),
+            'recorded' => '1',
+        ]);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(self::SOLD_ALREADY, $result['body']);
+        $this->assertStringNotContainsString(self::SOLD_THANK_YOU, $result['body']);
+        $this->assertSame($before['solddate'], $this->carRow()['solddate']);
+        $this->assertSame(0, $this->historyCount('VERIFIED SOLD'));
+    }
+
+    /** #2497: the flag on a car that is not sold has no effect. The Sold form shows. */
+    public function testRecordedFlagOnUnsoldCarShowsSoldFormNotThankYou(): void
+    {
+        $code = $this->issueVericode();
+        $before = $this->carRow();
+
+        $result = $this->get('vericode=' . $code . '&action=sold&recorded=1');
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(self::MARKER_SOLD, $result['body']);
+        $this->assertStringNotContainsString(self::SOLD_THANK_YOU, $result['body']);
+        $this->assertSame($before['solddate'], $this->carRow()['solddate']);
+        $this->assertSame(0, $this->historyCount('VERIFIED SOLD'));
     }
 
     public function testAlreadySoldCarPostActionSoldIsStrictNoOp(): void
