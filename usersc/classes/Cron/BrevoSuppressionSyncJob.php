@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Cron;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\DeliverabilityFlagLog;
@@ -63,10 +65,10 @@ use ElanRegistry\LogCategories;
  *
  * The incremental mode's under-fetching is safe for the same reason #1889's is:
  * the window is roughly twice the guard interval so every suppression is
- * offered to at least two runs. A repeat of an imported suppression writes
- * no second event row (`insertOwnerEmailEvent()` ignores a duplicate key),
- * and the profile writers skip a flag that already names the same address.
- * The synthetic message id below makes the duplicate key hold across runs.
+ * offered to at least two runs. An import writes no second event row when
+ * the owner already has a row of any date for the same address and the same
+ * cause group, from any source (#2502). The profile writers skip a flag that
+ * already names the same address.
  *
  * REASON-CODE MAPPING
  * -------------------
@@ -92,9 +94,11 @@ use ElanRegistry\LogCategories;
  * chip and the prune do not change. Only the cause on the profile is
  * `blocklist`.
  *
- * `blockedAt` is the event time. A missing, wrong-typed, unparseable or
- * non-positive value, or one more than MAX_FUTURE_SECONDS after the run time,
- * takes the run time and is marked as no usable date (#2426).
+ * `blockedAt` is the event time, in Paris wall time with a `Z` suffix. The
+ * job reads it as Europe/Paris time (#2501). A missing, wrong-typed,
+ * unparseable or non-positive value, or one more than MAX_FUTURE_SECONDS
+ * after the run time after the conversion, takes the run time and is marked
+ * as no usable date (#2426).
  *
  * ADDRESS CHECK AND PRIVACY
  * -------------------------
@@ -257,6 +261,17 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * without error, and with `sql_mode = ''` MySQL stores it as a zero date.
      */
     private const MAX_FUTURE_SECONDS = 300;
+
+    /**
+     * Zone of the wall time in Brevo's `blockedAt` (#2501).
+     *
+     * Brevo writes Paris local time with a `Z` suffix. On test, two blocks
+     * from 2026-10-22 came back exactly 2 hours (CEST) after the epoch
+     * `ts_event` of their webhooks, and still 2 hours after the change to
+     * CET on 2026-10-25. So Brevo applies the Paris offset of the event
+     * date, and the Paris DST rules convert the value back.
+     */
+    private const BLOCKED_AT_TIMEZONE = 'Europe/Paris';
 
     /** Reason-code bucket for codes {@see self::mapReasonCodeToEvent()} does not map. */
     private const UNRECOGNIZED_REASON_BUCKET = 'unrecognized';
@@ -719,8 +734,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
             // Deterministic, so re-running the backfill produces the same id
             // for the same contact and collides with the existing row under
-            // er_email_events' UNIQUE (user_id, brevo_message_id, event) — which
-            // is what makes the import idempotent. Built from the raw address
+            // er_email_events' UNIQUE (user_id, brevo_message_id, event). The
+            // cause-group check in EmailEventApplier stops a repeat first, so
+            // the key is the second guard. Built from the raw address
             // and the raw `blockedAt`, so rows that earlier releases wrote
             // keep their id, and a contact whose date fell back to run time
             // still gets a stable id across runs.
@@ -927,12 +943,36 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     }
 
     /**
+     * Parse Brevo's `blockedAt` as Paris wall time (#2501).
+     *
+     * A zero offset (`Z`, `+00:00`, `UTC`) is the label Brevo puts on Paris
+     * time, so the job reads the wall time again in
+     * {@see self::BLOCKED_AT_TIMEZONE}. A value with no zone gets the same
+     * zone. A non-zero offset is a real offset, and the job keeps it. Paris
+     * never has offset 0, so the second parse cannot loop. In the repeated
+     * hour of the change to CET, PHP picks the CEST reading, so a block in
+     * that hour can be 1 hour early.
+     *
+     * @throws \Exception When the value does not parse
+     */
+    private function parseBlockedAt(string $rawBlockedAt): DateTimeImmutable
+    {
+        $zone = new DateTimeZone(self::BLOCKED_AT_TIMEZONE);
+        $parsed = new DateTimeImmutable($rawBlockedAt, $zone);
+
+        return $parsed->getOffset() === 0
+            ? new DateTimeImmutable($parsed->format('Y-m-d H:i:s.u'), $zone)
+            : $parsed;
+    }
+
+    /**
      * Normalize Brevo's `blockedAt` into an er_email_events DATETIME string.
      *
      * Duplicated from {@see BrevoEventReconciliationJob::resolveOccurredAt()}
-     * rather than extracted to a shared helper. The two are the same six lines
-     * today, but they parse different fields of different endpoints with
-     * different log wording, and this codebase's convention is against
+     * rather than extracted to a shared helper. The two differ in the parse
+     * step (this one reads Paris time, #2501). They parse different fields
+     * of different endpoints with different log wording, and this codebase's
+     * convention is against
      * extracting a shared abstraction from two similar call sites before a
      * third arrives (see CLAUDE.md — "Three similar lines are better than a
      * premature abstraction"). If a third Brevo date-parsing caller appears,
@@ -950,7 +990,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * same clock or rows from the three paths sort against each other hours
      * apart.
      *
-     * A parsed value is trusted only when its Unix timestamp is positive and not
+     * {@see self::parseBlockedAt()} reads the value as Paris time first. A
+     * parsed value is trusted only when its Unix timestamp is positive and not
      * more than {@see self::MAX_FUTURE_SECONDS} after the run time. A value
      * outside that range takes the same logged fallback as an unparseable one.
      *
@@ -975,7 +1016,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
         if (is_string($rawBlockedAt) && $rawBlockedAt !== '') {
             try {
-                $parsed = new \DateTimeImmutable($rawBlockedAt);
+                $parsed = $this->parseBlockedAt($rawBlockedAt);
                 $seconds = $parsed->getTimestamp();
                 if ($seconds > 0 && $seconds <= $this->now->getTimestamp() + self::MAX_FUTURE_SECONDS) {
                     return ['occurredAt' => date(AppConstants::DATETIME_FORMAT, $seconds), 'usable' => true];

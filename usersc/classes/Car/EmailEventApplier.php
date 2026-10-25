@@ -186,6 +186,13 @@ class EmailEventApplier
      *    `email_address_since` is NULL or a date is not a valid datetime,
      *    any clear counts. With no such clear, the run time applies.
      * 4. Insert the event row. A duplicate changes nothing and is not new.
+     *    {@see self::MODE_STATE}: when the owner already has a row of any
+     *    date and source for the same address and cause group, write no
+     *    row and treat the event as not new
+     *    ({@see CarRepository::hasOwnerEmailEventForAddress()}). The
+     *    import's message ID never matches a webhook row (#2502). All hard
+     *    bounce names are one group ({@see self::causeGroup()}). The flag
+     *    step still runs.
      * 5. No `profiles` row: keep the row, log the user ID, set no flag.
      * 6. The flag changes only when the event address is the current
      *    `users.email`. {@see self::MODE_EVENT}: only for a new row.
@@ -221,7 +228,9 @@ class EmailEventApplier
      *                               current address (false for no users row,
      *                               a failed date guard, no profiles row, an
      *                               address that is not the current one, or a
-     *                               duplicate in MODE_EVENT)
+     *                               duplicate in MODE_EVENT). In MODE_STATE, a
+     *                               same-cause row on record gives no new row,
+     *                               and the flag step still runs.
      * @throws \InvalidArgumentException If the match is not a matched result,
      *                                   the source or mode is not permitted,
      *                                   `$blockedCause` is not permitted here, or
@@ -363,15 +372,23 @@ class EmailEventApplier
             return new EmailEventApplyResult(false, false);
         }
 
-        $isNew = $this->repo->insertOwnerEmailEvent(
-            $userId,
-            $address,
-            $event,
-            $reason,
-            $messageId,
-            $eventTime,
-            $match->carId()
-        ) === 1;
+        // The import's own message ID never matches a webhook row for the same
+        // block, so the unique key alone would let it write a second row (#2502).
+        if ($mode === self::MODE_STATE
+            && $this->repo->hasOwnerEmailEventForAddress($userId, $address, self::causeGroup($event))
+        ) {
+            $isNew = false;
+        } else {
+            $isNew = $this->repo->insertOwnerEmailEvent(
+                $userId,
+                $address,
+                $event,
+                $reason,
+                $messageId,
+                $eventTime,
+                $match->carId()
+            ) === 1;
+        }
 
         if (!$state['has_profile']) {
             logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
@@ -471,6 +488,20 @@ class EmailEventApplier
         }
 
         return strcmp($clear, $since) > 0;
+    }
+
+    /**
+     * The event names that record the same cause as an event (#2502)
+     *
+     * All hard bounce names are one cause: the webhook records `hard_bounce`
+     * and the import records `blocked` for the same block. Any other event
+     * is a cause of its own.
+     *
+     * @return list<string>
+     */
+    private static function causeGroup(string $event): array
+    {
+        return in_array($event, self::HARD_BOUNCE_EVENTS, true) ? self::HARD_BOUNCE_EVENTS : [$event];
     }
 
     /**

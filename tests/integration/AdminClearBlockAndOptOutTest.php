@@ -826,7 +826,7 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
             [date('Y-m-d H:i:s', strtotime($clearedAt) + 120), $rows[0]['id']]
         );
         $this->assertFalse($this->db->error(), 'Test setup: logdate: ' . $this->db->errorString());
-        $blockedAt = $offsetSeconds === null ? null : gmdate('Y-m-d\TH:i:s.000\Z', strtotime($clearedAt) + $offsetSeconds);
+        $blockedAt = $offsetSeconds === null ? null : FakeBrevoBlockedContact::blockedAtFor(strtotime($clearedAt) + $offsetSeconds);
         // A no-date entry takes the run time. Run 60 s after cleared_at, so
         // only the #2426 guard, not the time compare, keeps the flag clear.
         $runAt = $offsetSeconds === null ? (new DateTimeImmutable())->setTimestamp(strtotime($clearedAt) + 60) : null;

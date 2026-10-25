@@ -1210,6 +1210,66 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertNoFlags($userId, 'Nothing is written');
     }
 
+    // --- #2502: hasOwnerEmailEventForAddress -------------------------------
+
+    public function testOwnerEmailEventForAddressFindsAMatchingRow(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['blocked', 'hard_bounce']));
+    }
+
+    public function testOwnerEmailEventForAddressIsFalseForAnotherAddress(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'other@example.com', ['hard_bounce']));
+    }
+
+    public function testOwnerEmailEventForAddressIsFalseForAnAccentVariant(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'mätch@example.com', ['hard_bounce']));
+    }
+
+    public function testOwnerEmailEventForAddressIsFalseForAnotherCause(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['hard_bounce', 'blocked']));
+    }
+
+    public function testOwnerEmailEventForAddressIsFalseForAnotherUser(): void
+    {
+        $userId = $this->makeOwner();
+        $otherId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($otherId, 'match@example.com', ['spam']));
+    }
+
+    public function testOwnerEmailEventForAddressNormalizesTheInputAddress(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, ' MATCH@Example.COM ', ['spam']));
+    }
+
+    public function testOwnerEmailEventForAddressRejectsANonStringEvent(): void
+    {
+        $userId = $this->makeOwner();
+
+        $this->expectException(InvalidArgumentException::class);
+        /** @phpstan-ignore argument.type */
+        $this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['spam', 123]);
+    }
+
     // --- Live-DB guard: the affected-row count ----------------------------
 
     public function testInsertingTheSameEventTwiceThroughTheRealAdapterGivesOneThenZeroAffectedRows(): void

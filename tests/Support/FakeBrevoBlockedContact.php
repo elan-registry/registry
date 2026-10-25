@@ -62,6 +62,17 @@ class FakeBrevoBlockedContact
     }
 
     /**
+     * A Unix time in Brevo's `blockedAt` form: Paris wall time with a `Z`
+     * suffix, as the real API sends it (#2501).
+     */
+    public static function blockedAtFor(int $timestamp): string
+    {
+        return (new \DateTimeImmutable('@' . $timestamp))
+            ->setTimezone(new \DateTimeZone('Europe/Paris'))
+            ->format('Y-m-d\\TH:i:s.000\\Z');
+    }
+
+    /**
      * Build a contact carrying a reason, without naming the reason class.
      *
      * FakeBrevoBlockedContactReason lives in this file rather than its own, so

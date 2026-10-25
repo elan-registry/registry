@@ -1845,7 +1845,32 @@ the message-ID steps do not apply. The user needs no car. An address that no
 user holds, or that two users hold, is counted as unmatched and sets no flag.
 The job calls `apply()` once for the matched user with `MODE_STATE`. It stores
 an owner-level row (`car_id` NULL) under a message ID that it builds from the
-address, the reason code and `blockedAt`, so a repeat run writes no second row.
+address, the reason code and `blockedAt`. In `MODE_STATE`, `apply()` writes no
+row when the owner already has a row for the same address and the same cause
+group. A cause group is a set of event names, one of these: all
+`HARD_BOUNCE_EVENTS` names, `spam`, or `unsubscribed`. The group is not the
+reason code, so an earlier `unsubscribed` row also stops the row for an
+`adminBlocked` import. When the flag is already set for the same address, the
+flag step keeps the stored cause. Otherwise it sets the `blocklist` cause,
+unless a later admin Clear Block stops it. The check uses
+`CarRepository::hasOwnerEmailEventForAddress()`. It does not compare
+`occurred_at` or the source, so a row from the webhook, the reconciliation job
+or an earlier import counts. A row from before an admin clear also counts. The result
+is not new. The address check and the flag step still run, so the import sets
+the flag again when it is clear and no guard stops it. A webhook row followed
+by an import of the same block gives one row. When the owner's flag still
+applies, the run summary counts that contact as "already flagged" only. A
+repeat run writes no second row. `MODE_EVENT` keeps the unique-key rule
+`(user_id, brevo_message_id, event)`.
+
+The event history therefore holds one row per address and cause. A new block
+after an admin clear that only the import sees sets the flag, but writes no
+second row. The Status chip still shows it, because the chip reads the
+profile flags before the event rows.
+A webhook row for a verification send has the `car_id` of that car. On the
+owner's other cars, the Bounced chip then shows no reason text, because no
+owner-level row exists for that block. A webhook row for other mail has no
+`car_id` and shows on every car.
 The job passes the source `import` to the audit row. The reconciliation job
 passes `reconciliation`. The job runs with the verification switch off.
 
@@ -1855,13 +1880,31 @@ fails `FILTER_VALIDATE_EMAIL`, before any match. The summary counts it in
 
 **Time.** `blockedAt` is the event time. The job uses it only when it is a
 non-empty string that parses to a positive time, and that time is not more than
-5 minutes after the run time (`MAX_FUTURE_SECONDS = 300`). The webhook and the
+5 minutes after the run time (`MAX_FUTURE_SECONDS = 300`) after the Paris
+conversion below. The webhook and the
 reconciliation job use the same 5-minute cap. Any other value is "no usable
 date": a missing value, a value that is not a string, an empty string, a string
 that does not parse, a non-positive time, or a time more than 5 minutes after
 the run time. For no usable date, the job logs a warning with the user ID, not
 the address, and uses the run time as the event time. It also tells
 `apply()` that the time is a fallback. See Import guards.
+
+**Paris time.** Brevo writes `blockedAt` as Paris local time with a `Z`
+suffix (#2501). On test, two blocks from 2026-10-22 came back exactly 2 hours
+after the epoch `ts_event` of their webhooks (`20:52:44.000Z` against
+18:52:45 UTC, and `20:00:53.000Z` against 18:00:53 UTC). That is the CEST
+offset (UTC+2). On 2026-10-25, the first day of CET, the API still returned
+the same values. So Brevo applies the Paris offset of the event date, not the
+offset of the request date. `BrevoSuppressionSyncJob::parseBlockedAt()` reads
+a value with a zero offset (`Z`, `+00:00`) or no zone as `Europe/Paris` wall
+time. The Paris DST rules give 2 hours in summer and 1 hour in winter. A
+non-zero offset is a real offset, and the job keeps it. In the repeated hour
+of the change to CET, PHP picks the CEST reading, so a block in that hour can
+be 1 hour early. Before #2501, the job read `Z` as UTC. A run within 2 hours
+of a block rejected the value and used the run time. A later run stored the
+time 1 or 2 hours late. The job does not correct the rows that it wrote
+before the change. The synthetic message ID uses the raw string, so the change
+writes no second row for an entry that is already imported.
 
 **Window.** The nightly run asks Brevo for the last 48 hours only. It does not
 find a blocklist entry that is older. An owner can change back from address B

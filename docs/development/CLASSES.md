@@ -726,7 +726,21 @@ to provide a focused, testable data access layer wrapping the `cars`,
   same as in `insertEmailEvent()`. A `$userId` less than 1, a user that does not exist, or
   the `noowner` account writes no row and returns 0. The method does not check
   the address or the time. The callers clamp the time
-  (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it.
+  (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it. In
+  `MODE_STATE` (the suppression import), `apply()` does not call it when
+  `hasOwnerEmailEventForAddress()` finds a row in the same cause group
+  (#2502)
+- `hasOwnerEmailEventForAddress(int $userId, string $email, array $events): bool` -
+  True when `er_email_events` has a row for the user, the normalized address
+  and one of the event names (#2502). It returns false for a `$userId` less
+  than 1 or an empty `$events` list. The query is
+  `SELECT 1 ... WHERE user_id = ? AND email = ? COLLATE utf8mb4_bin AND event IN (...) LIMIT 1`.
+  It does not compare `occurred_at`. With the `COLLATE`, the `email` index
+  gives only a range scan, and MySQL picks an index that starts with
+  `user_id`. Throws `InvalidArgumentException` for an event that is not a string
+  (checked before the false cases), and `CarDatabaseException` on a query
+  error.
+  `EmailEventApplier::apply()` calls it in `MODE_STATE`
 - `findUserIdsByAddress(string $address): array` - Distinct IDs of the users
   whose `users.email` equals the address under the matching rule (#2359). SQL
   selects candidates with the column collation. PHP keeps only a byte-equal
@@ -2343,6 +2357,10 @@ same rules.
   `email_address_since`. For a bounce event it must not be before
   `email_bounce_cleared_at` either. A failed guard writes nothing
 - A duplicate event changes no column. Only a new row is "new"
+- In `MODE_STATE`, it writes no row when the owner already has a row of any
+  date for the same address and the same cause group, by event name (any `HARD_BOUNCE_EVENTS` event,
+  `spam`, or `unsubscribed`). The result is not new. The address check and
+  the flag step still run (#2502)
 - Cuts `reason` to 255 characters of valid UTF-8
 - Escalation rules owned here:
   - `hard_bounce` / `blocked` / `invalid` / `invalid_email` immediately set
