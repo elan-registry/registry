@@ -104,8 +104,12 @@ function readDbSummary(windowDays) {
     );
 }
 
+// Zero-based cell positions in a queue row.
+const USER_ID_CELL = 3;
+const STATUS_CELL = 6;
+
 function queueRow(page, carId) {
-    return page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${carId}")`) });
+    return page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:first-child:text-is("${carId}")`) });
 }
 
 async function numberOf(locator) {
@@ -164,7 +168,7 @@ async function expectBlockedAndOptedOutFilters(page) {
     await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
     const blockedRow = queueRow(page, blockedCarId);
     await expect(blockedRow).toBeVisible();
-    const blockedChip = blockedRow.locator('td').nth(5).locator('span.badge');
+    const blockedChip = blockedRow.locator('td').nth(STATUS_CELL).locator('span.badge');
     await expect(blockedChip).toHaveAttribute('data-chip', 'blocked');
     await expect(blockedChip).toHaveText(/^\s*Blocked\s*$/);
     for (const other of [suppressedCarId, bouncedCarId, bouncedCarIdB, staleBlockedCarId, pendingCarId]) {
@@ -178,7 +182,7 @@ async function expectBlockedAndOptedOutFilters(page) {
     await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
     const optedOutRow = queueRow(page, suppressedCarId);
     await expect(optedOutRow).toBeVisible();
-    await expect(optedOutRow.locator('td').nth(5).locator('span.badge')).toHaveAttribute('data-chip', 'opted_out');
+    await expect(optedOutRow.locator('td').nth(STATUS_CELL).locator('span.badge')).toHaveAttribute('data-chip', 'opted_out');
     for (const other of [blockedCarId, bouncedCarId, staleBlockedCarId, pendingCarId]) {
         await expect(queueRow(page, other), `car ${other} is not in the Opted out pill`).toHaveCount(0);
     }
@@ -192,7 +196,13 @@ async function expectBlockedAndOptedOutFilters(page) {
     // The seeded owner has the bounce flag and no hard-bounce event, so the
     // chip reads the flag that tab-verification.php passes (#2461).
     for (const car of [bouncedCarId, bouncedCarIdB]) {
-        await expect(queueRow(page, car).locator('td').nth(5).locator('span.badge')).toHaveAttribute('data-chip', 'bounced');
+        await expect(queueRow(page, car).locator('td').nth(STATUS_CELL).locator('span.badge')).toHaveAttribute('data-chip', 'bounced');
+    }
+    // Both cars show the one owner's user ID, linked to the user's admin page (#2498).
+    for (const car of [bouncedCarId, bouncedCarIdB]) {
+        const userIdLink = queueRow(page, car).locator('td').nth(USER_ID_CELL).locator('a');
+        await expect(userIdLink, `user ID of car ${car}`).toHaveText(String(bouncedUserId));
+        await expect(userIdLink).toHaveAttribute('href', new RegExp(`view=user&id=${bouncedUserId}$`));
     }
 
     // A block for an old address does not apply: no Blocked pill row, and the
@@ -200,7 +210,7 @@ async function expectBlockedAndOptedOutFilters(page) {
     await page.goto(`${TAB_URL}&status=pending&show=100`, { waitUntil: 'networkidle' });
     const staleRow = queueRow(page, staleBlockedCarId);
     await expect(staleRow).toBeVisible();
-    await expect(staleRow.locator('td').nth(5).locator('span.badge[data-chip="blocked"]')).toHaveCount(0);
+    await expect(staleRow.locator('td').nth(STATUS_CELL).locator('span.badge[data-chip="blocked"]')).toHaveCount(0);
 }
 
 // The panel renders in one place: after the summary cards, directly before
@@ -307,6 +317,7 @@ async function expectBrevoRow(page) {
 let pendingCarId;
 let bouncedCarId;
 let bouncedCarIdB;
+let bouncedUserId;
 let staleBlockedCarId;
 let suppressedCarId;
 let blockedCarId;
@@ -329,6 +340,7 @@ function seedVerificationFixture() {
     pendingCarId = seeded.pendingCarId;
     bouncedCarId = seeded.bouncedCarId;
     bouncedCarIdB = seeded.bouncedCarIdB;
+    bouncedUserId = seeded.bouncedUserId;
     staleBlockedCarId = seeded.staleBlockedCarId;
     suppressedCarId = seeded.suppressedCarId;
     blockedCarId = seeded.blockedCarId;
@@ -527,10 +539,10 @@ test.describe('Admin Verification Dashboard', () => {
     test('the soft-bounce row shows the "Soft bounce" chip and a disabled Mark Bounced button', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
 
-        const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${softBounceCarId}")`) });
+        const row = queueRow(page, softBounceCarId);
         await expect(row).toBeVisible();
 
-        const chip = row.locator('td').nth(5).locator('span.badge');
+        const chip = row.locator('td').nth(STATUS_CELL).locator('span.badge');
         await expect(chip).toHaveText(/Soft bounce/);
         await expect(chip).toHaveAttribute('data-chip', 'soft_bounce');
 
@@ -564,7 +576,7 @@ test.describe('Admin Verification Dashboard', () => {
         for (const { id, status, label } of cases) {
             await page.goto(`app/admin/index.php?tab=verification&status=${status}&show=100`, { waitUntil: 'networkidle' });
 
-            const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${id}")`) });
+            const row = queueRow(page, id);
             await expect(row, `row for seeded car ${id} under status=${status}`).toBeVisible();
 
             const actionButtons = row.locator('td').last().locator('button');
@@ -599,10 +611,10 @@ test.describe('Admin Verification Dashboard', () => {
         for (const { id, status, chip, text, action } of cases) {
             await page.goto(`app/admin/index.php?tab=verification&status=${status}&show=100`, { waitUntil: 'networkidle' });
 
-            const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${id}")`) });
+            const row = queueRow(page, id);
             await expect(row, `row for seeded car ${id} under status=${status}`).toBeVisible();
 
-            const badge = row.locator('td').nth(5).locator('span.badge');
+            const badge = row.locator('td').nth(STATUS_CELL).locator('span.badge');
             await expect(badge).toHaveText(text);
             await expect(badge).toHaveAttribute('data-chip', chip);
 
@@ -636,10 +648,10 @@ test.describe('Admin Verification Dashboard', () => {
     test('a terminal event after an earlier timestamp still wins the Status chip over a later Delivered', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
 
-        const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${precedenceCarId}")`) });
+        const row = queueRow(page, precedenceCarId);
         await expect(row).toBeVisible();
 
-        const chip = row.locator('td').nth(5).locator('span.badge');
+        const chip = row.locator('td').nth(STATUS_CELL).locator('span.badge');
         await expect(chip).toHaveText(/Bounced/);
         await expect(chip).toHaveAttribute('data-chip', 'bounced');
         await expect(chip).not.toHaveText(/Delivered/);
@@ -651,10 +663,10 @@ test.describe('Admin Verification Dashboard', () => {
     test('a transferred car shows "not sent" and not the previous owner\'s sent row', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
 
-        const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${transferCarId}")`) });
+        const row = queueRow(page, transferCarId);
         await expect(row).toBeVisible();
 
-        const statusCell = row.locator('td').nth(5);
+        const statusCell = row.locator('td').nth(STATUS_CELL);
         await expect(statusCell.locator('span.badge')).toHaveCount(0);
         await expect(statusCell).toHaveText('\u2014');
     });
@@ -668,10 +680,10 @@ test.describe('Admin Verification Dashboard', () => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
 
         for (const carId of [twinCarIdA, twinCarIdB]) {
-            const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${carId}")`) });
+            const row = queueRow(page, carId);
             await expect(row).toBeVisible();
 
-            const chip = row.locator('td').nth(5).locator('span.badge');
+            const chip = row.locator('td').nth(STATUS_CELL).locator('span.badge');
             await expect(chip).toHaveText(/Bounced/);
             await expect(chip).toHaveAttribute('data-chip', 'bounced');
         }
@@ -702,7 +714,7 @@ test.describe('Admin Verification Dashboard', () => {
     test('a chassis containing a <script> tag renders escaped in the queue table', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
 
-        const row = page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:text-is("${precedenceCarId}")`) });
+        const row = queueRow(page, precedenceCarId);
         await expect(row).toBeVisible();
 
         const chassisCell = row.locator('td').nth(1);
