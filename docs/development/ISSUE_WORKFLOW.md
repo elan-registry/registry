@@ -174,12 +174,10 @@ Scan what arrived since the last planning: owner contacts, analytics
 anomalies, error logs, and new backlog issues. Discover the theme in the
 signals. Do not invent it.
 
-A **candidate** is an open issue that has no milestone, or is in the
-`Backlog` milestone. The `Backlog` milestone is not a release commitment. An
-issue in any other milestone belongs to that release and is never a
-candidate. If no open milestone has the version you give,
-`/plan-milestone` offers to create it. You give the full title. It must start
-with the version.
+A **candidate** is an open issue that has no milestone. An issue in a
+milestone belongs to that release and is never a candidate. If no open
+milestone has the version you give, `/plan-milestone` offers to create it.
+You give the full title. It must start with the version.
 
 `/plan-milestone` also reads the newest release retrospective
 (`docs/plans/releases/<version>-retro.md`, see "4. Ship") and shows its three
@@ -304,7 +302,7 @@ Before it plans, `/start-issue` checks that the issue is ready. The issue
 needs three marks: a milestone, the `status:ready` label, and an
 `## Acceptance criteria` section in the body. Three cases fail the check:
 
-- **No milestone, or the `Backlog` milestone.** The command stops and names
+- **No milestone.** The command stops and names
   `/plan-milestone <version>`.
 - **A release milestone, but no `status:ready`.** `/plan-milestone` does not
   take an issue that is already in a release. You choose: stop and run
@@ -794,10 +792,8 @@ The command proposes. It changes nothing until you approve.
   signal reopens it.
 - **Remove the label.** An issue with the `stale` label that is now exempt,
   or that has a human comment since the label, loses the label.
-- **Exempt:** any issue in a milestone other than `Backlog`, and any issue
-  that has the label `signal:forced`, `component: security`, or
-  `gate-critical`. The `Backlog` milestone is not a release commitment, so it
-  does not exempt an issue.
+- **Exempt:** any issue in a milestone, and any issue that has the label
+  `signal:forced`, `component: security`, or `gate-critical`.
 - **Rescue:** a new signal reopens the issue with the new evidence attached.
   An owner asks, or analytics show the gap. The issue takes the new signal's
   label. `/new-issue` Step 2 finds a closed `stale-no-demand` match and offers
@@ -830,14 +826,14 @@ repairs are never "someday".
 `/groom-backlog` sweeps open issues on demand. It applies the three planning
 questions from Step 2, skips the exempt issues, recommends closures and
 target milestones, proposes the age-out actions, and acts on one approval.
-It moves an issue only into `Backlog`, and never into a release milestone.
+It never moves an issue into a release milestone.
 Only `/plan-milestone` adds an issue to a release, after its gate. For an
 issue in the backlog, `/groom-backlog` suggests a target milestone and ends
-with a pointer to `/plan-milestone <version>`. It moves an issue out of a
-release milestone only when the issue has no branch, no open PR, and a
-milestone that is not active. The move also removes `status:ready`. It does
-not sweep the cleanup ledger. `composer check:docs` catches a ledger
-group whose file is gone.
+with a pointer to `/plan-milestone <version>`. It removes the milestone from
+an issue only when the issue has no branch, no open PR, and a milestone that
+is not active. It also removes `status:ready`. It does not sweep the
+cleanup ledger. `composer check:docs` catches a ledger group whose file is
+gone.
 
 ### Review the test suite
 
@@ -859,7 +855,7 @@ state:
 
 | State | How it is known |
 | --- | --- |
-| Backlog | Open, and either no milestone or in the `Backlog` milestone |
+| Backlog | Open, and no milestone |
 | Ready | In the open milestone, `status:ready`, no branch |
 | In progress | A branch exists for the issue |
 | In review | A PR is open |
