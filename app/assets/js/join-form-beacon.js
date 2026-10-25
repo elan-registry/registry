@@ -10,9 +10,10 @@
  * server-side trace.
  *
  * Reasons: turnstile_error, turnstile_expired, turnstile_not_loaded,
- * js_exception, location_gps_failed, client_validation. The join form's
- * submit handler sends client_validation with the invalid fields' names
- * only, never their values (#2043).
+ * js_exception, location_gps_failed, location_search_failed,
+ * client_validation. The join form's submit handler sends client_validation
+ * with the invalid fields' names only, never their values (#2043). The
+ * location picker sends location_search_failed with the HTTP status only.
  *
  * @package ElanRegistry
  * @since 2.29.2

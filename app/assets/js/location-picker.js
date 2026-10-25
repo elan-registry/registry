@@ -33,6 +33,10 @@
          *        the widget itself has no server-reporting opinion; callers on pages where
          *        an unreported failure matters (e.g. a required-field registration blocker)
          *        can hook in their own beacon/logging here. Optional, no-op by default.
+         * @param {Function} options.onSearchError Callback(status) when a location search
+         *        fails. status is the HTTP status, or 0 for a network or JSON error. The
+         *        picker calls it once for each distinct status, so a visitor who keeps
+         *        typing does not send a report for each keystroke. Optional, no-op by default.
          * @param {boolean} options.showGPS Show GPS button (default: true)
          * @param {boolean} options.required Is location required (default: true)
          * @param {boolean} options.requireSelection Keep the input invalid until a location
@@ -47,6 +51,7 @@
                 urlRoot: '/',
                 onSelect: null,
                 onGPSError: null,
+                onSearchError: null,
                 showGPS: true,
                 required: true,
                 requireSelection: false
@@ -61,6 +66,7 @@
             this.debounceTimer = null;
             this.selectedLocation = null;
             this.currentFocusIndex = -1;
+            this.reportedSearchStatuses = new Set();
 
             this.init();
         }
@@ -77,13 +83,19 @@
 
         /**
          * Get the visible search input
+         *
+         * @returns {HTMLInputElement|null} The input, or null before render()
          */
         getInput() {
             return document.getElementById(`${this.options.containerId}-input`);
         }
 
         /**
-         * With requireSelection, keep the input invalid until a location is selected
+         * Keep the input invalid until a location is selected. Does nothing
+         * unless requireSelection is on, so other pages keep the plain
+         * required check.
+         *
+         * @returns {void}
          */
         syncValidity() {
             const input = this.getInput();
@@ -94,6 +106,9 @@
 
         /**
          * Write a location to the hidden form fields, or empty them for null
+         *
+         * @param {Object|null} location Location with city, state, country, lat, lon
+         * @returns {void}
          */
         writeHiddenFields(location) {
             ['city', 'state', 'country', 'lat', 'lon'].forEach(field => {
@@ -117,7 +132,9 @@
                 </button>
                 ${this.options.showGPS ? '<div class="text-center text-muted mb-2"><small>OR</small></div>' : ''}` : '';
 
-            // Match the text to the controls the visitor can actually see.
+            // render() sets this once, because the text depends on whether the
+            // GPS button shows. It is the one source for both the native
+            // validity message and the .invalid-feedback text, so they cannot differ.
             this.selectionMessage = gpsButton ?
                 'Select your town or city from the list, or press Use My Current Location.' :
                 'Select your town or city from the list.';
@@ -306,6 +323,7 @@
             this.showLoading(true);
             this.hideError();
 
+            let status = 0;
             try {
                 const response = await fetch(this.options.urlRoot + 'app/api/shared/location-search.php', {
                     method: 'POST',
@@ -320,6 +338,7 @@
                 });
 
                 if (!response.ok) {
+                    status = response.status;
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
@@ -337,9 +356,48 @@
 
             } catch (error) {
                 console.error('Location search error:', error);
-                this.showError('Unable to search locations. Please try again.');
+                this.showError(this.searchErrorMessage(status));
+                this.reportSearchError(status);
             } finally {
                 this.showLoading(false);
+            }
+        }
+
+        /**
+         * Plain-language next step for a failed search
+         *
+         * @param {number} status HTTP status, or 0 for a network or JSON error
+         * @returns {string} Message for the error box
+         */
+        searchErrorMessage(status) {
+            // A 403 is the CSRF check: the token from page render is stale,
+            // and only a reload gets a new one.
+            if (status === 403) {
+                return 'This page is out of date. Reload the page, then type your town or city again.';
+            }
+            const gpsBtn = document.getElementById(`${this.options.containerId}-gps-btn`);
+            return 'We could not search for locations. Try again in a moment.' +
+                (gpsBtn ? ' Or press Use My Current Location.' : '');
+        }
+
+        /**
+         * Invoke the caller-supplied onSearchError callback once for each
+         * distinct status. Each keystroke can start a search, and the join
+         * page reports through the shared join_failure_beacon rate limit.
+         * A throw from the callback must not break the picker.
+         *
+         * @param {number} status HTTP status, or 0 for a network or JSON error
+         * @returns {void}
+         */
+        reportSearchError(status) {
+            if (typeof this.options.onSearchError !== 'function' || this.reportedSearchStatuses.has(status)) {
+                return;
+            }
+            this.reportedSearchStatuses.add(status);
+            try {
+                this.options.onSearchError(status);
+            } catch (callbackError) {
+                console.error('LocationPicker: onSearchError callback threw', callbackError);
             }
         }
 
@@ -696,6 +754,13 @@
             this.selectedLocation = location;
             this.writeHiddenFields(location);
 
+            // Same text as the "Selected:" box, as selectLocation() does. An empty
+            // input would stay valueMissing when required is on.
+            const input = this.getInput();
+            if (input) {
+                input.value = displayText;
+            }
+
             // Show selected location display
             const selectedDiv = document.getElementById(`${this.options.containerId}-selected`);
             const selectedText = document.getElementById(`${this.options.containerId}-selected-text`);
@@ -715,6 +780,8 @@
 
         /**
          * Clear the selected location, its hidden fields, and the "Selected:" box
+         *
+         * @returns {void}
          */
         clearSelection() {
             this.selectedLocation = null;

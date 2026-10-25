@@ -12,6 +12,8 @@ const SUMMARY = '#join-validation-summary';
 const BEACON_URL = '**/app/api/shared/join-failure-report.php';
 const SELECT_TEXT = 'Select your town or city from the list, or press Use My Current Location.';
 const GPS_FALLBACK = 'Type your town or city in the Location box and select it from the list.';
+const SEARCH_RELOAD_TEXT = 'This page is out of date. Reload the page, then type your town or city again.';
+const SEARCH_RETRY_TEXT = 'We could not search for locations. Try again in a moment. Or press Use My Current Location.';
 
 const ROME = {
   city: 'Rome',
@@ -53,6 +55,44 @@ async function abortJoinPosts(page) {
     }
   });
   return posts;
+}
+
+// Answer every location search with an error status. Returns a live count of searches.
+async function failLocationSearch(page, status) {
+  const hits = { count: 0 };
+  await page.route('**/app/api/shared/location-search.php', async (route) => {
+    hits.count += 1;
+    await route.fulfill({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: false, message: 'stubbed search failure' }),
+    });
+  });
+  return hits;
+}
+
+// Record every beacon body and answer it, so no test writes a log row.
+async function recordBeacons(page) {
+  const bodies = [];
+  await page.route(BEACON_URL, async (route) => {
+    bodies.push(route.request().postData());
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+  });
+  return bodies;
+}
+
+function beaconsWithReason(bodies, reason) {
+  return bodies.filter((body) => new URLSearchParams(body).get('reason') === reason);
+}
+
+// Type a query and wait until its failed search has finished. The spinner
+// shows before the request and hides after the error is handled, so a
+// hidden spinner after the request means the picker's catch block ran.
+async function runFailingSearch(page, hits, query) {
+  const before = hits.count;
+  await page.locator(LOCATION_INPUT).fill(query);
+  await expect.poll(() => hits.count).toBe(before + 1);
+  await expect(page.locator('#location-picker-registration-spinner')).toBeHidden();
 }
 
 async function routeLocationSearch(page, results) {
@@ -136,6 +176,7 @@ test.describe('Join form blocked submit feedback (#2043)', () => {
     for (const field of ['city', 'state', 'country', 'lat', 'lon']) {
       await expect(page.locator(`#location-picker-registration-${field}`)).toHaveValue('');
     }
+    await expect(page.locator('#location-picker-registration-selected')).toBeHidden();
     const valid = await page.locator(LOCATION_INPUT).evaluate((el) => el.checkValidity());
     expect(valid).toBe(false);
   });
@@ -220,6 +261,43 @@ test.describe('Join form blocked submit feedback (#2043)', () => {
     await expect(page.locator(SUMMARY)).toBeHidden();
   });
 
+  // Setting navigator.geolocation to undefined leaves 'geolocation' in
+  // navigator true, so only deleting it from the prototype hides the button.
+  test('a browser with no Geolocation API gets the select text without the GPS button', async ({ page }) => {
+    const posts = await abortJoinPosts(page);
+    await page.addInitScript(() => {
+      delete window.Navigator.prototype.geolocation;
+    });
+    await page.reload();
+    await fillValidFields(page);
+
+    await page.locator('#next_button').click();
+
+    await expect(page.locator('#location-picker-registration-gps-btn')).toHaveCount(0);
+    await expect(page.locator(LOCATION_FEEDBACK)).toBeVisible();
+    await expect(page.locator(LOCATION_FEEDBACK)).toHaveText('Select your town or city from the list.');
+    await expect(page.locator(LOCATION_FEEDBACK)).not.toContainText('Use My Current Location');
+    expect(posts).toHaveLength(0);
+  });
+
+  test('a blocked submit, then a selection, then a second submit sends one POST with coordinates', async ({ page }) => {
+    const posts = await abortJoinPosts(page);
+    await routeLocationSearch(page, [ROME]);
+    await fillValidFields(page);
+
+    await page.locator('#next_button').click();
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    expect(posts).toHaveLength(0);
+
+    await selectFirstResult(page, 'Rome');
+    const sent = page.waitForRequest((req) => req.method() === 'POST' && /\/join\.php/.test(req.url()));
+    await page.locator('#next_button').click();
+    await sent;
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toContain('lat=' + ROME.lat);
+  });
+
   test('manual selection with valid fields lets the submit through', async ({ page }) => {
     const posts = await abortJoinPosts(page);
     await routeLocationSearch(page, [ROME]);
@@ -256,8 +334,10 @@ test.describe('Join form blocked submit feedback (#2043)', () => {
     // submit the form the way the browser does after a click.
     await page.locator('#join-form').evaluate((form) => form.requestSubmit());
 
-    await expect.poll(() => beaconBodies.length).toBeGreaterThan(0);
-    const body = beaconBodies[0];
+    // Count only client_validation, so a beacon with another reason cannot
+    // make the test pass or fail.
+    await expect.poll(() => beaconsWithReason(beaconBodies, 'client_validation').length).toBeGreaterThan(0);
+    const body = beaconsWithReason(beaconBodies, 'client_validation')[0];
     const params = new URLSearchParams(body);
     expect(params.get('reason')).toBe('client_validation');
     expect(params.get('detail')).toContain('confirm');
@@ -377,16 +457,72 @@ test.describe('Join form blocked submit feedback (#2043)', () => {
     });
     await fillValidFields(page);
 
+    const validationBeacons = () => beaconBodies.filter(
+      (body) => new URLSearchParams(body).get('reason') === 'client_validation');
+
     await page.locator('#next_button').click();
     await page.locator('#next_button').click();
     await page.locator('#next_button').click();
-    await expect.poll(() => beaconBodies.length).toBe(1);
+    // The submit handler moves focus in a later frame. If that frame lands
+    // inside fill(''), the Delete key goes to the location input instead.
+    await expect(page.locator(LOCATION_INPUT)).toBeFocused();
+    await expect.poll(() => validationBeacons().length).toBe(1);
 
     await page.locator('#email').fill('');
     await page.locator('#next_button').click();
 
-    await expect.poll(() => beaconBodies.length).toBe(2);
-    expect(new URLSearchParams(beaconBodies[1]).get('detail')).toContain('email');
+    await expect.poll(() => validationBeacons().length).toBe(2);
+    expect(new URLSearchParams(validationBeacons()[1]).get('detail')).toContain('email');
+  });
+
+  test('a search refused with 403 tells the visitor to reload and sends one beacon', async ({ page }) => {
+    const hits = await failLocationSearch(page, 403);
+    const beaconBodies = await recordBeacons(page);
+
+    await runFailingSearch(page, hits, 'Rome');
+
+    await expect(page.locator(LOCATION_ERROR)).toBeVisible();
+    await expect(page.locator(LOCATION_ERROR)).toHaveText(SEARCH_RELOAD_TEXT);
+    await expect.poll(() => beaconsWithReason(beaconBodies, 'location_search_failed').length).toBe(1);
+    const params = new URLSearchParams(beaconsWithReason(beaconBodies, 'location_search_failed')[0]);
+    expect(params.get('detail')).toBe('status=403');
+  });
+
+  test('repeated failed searches with the same status send only one beacon', async ({ page }) => {
+    const hits = await failLocationSearch(page, 403);
+    const beaconBodies = await recordBeacons(page);
+    // Count the reports in the page. The picker calls the callback in the
+    // same catch block that runs before the spinner hides, so this count is
+    // exact once runFailingSearch() returns.
+    await page.evaluate(() => {
+      const report = window.elanReportJoinFailure;
+      window.searchFailureReports = 0;
+      window.elanReportJoinFailure = (reason, detail) => {
+        if (reason === 'location_search_failed') {
+          window.searchFailureReports += 1;
+        }
+        return report(reason, detail);
+      };
+    });
+
+    await runFailingSearch(page, hits, 'Ro');
+    await runFailingSearch(page, hits, 'Rom');
+    await runFailingSearch(page, hits, 'Rome');
+
+    expect(await page.evaluate(() => window.searchFailureReports)).toBe(1);
+    await expect.poll(() => beaconsWithReason(beaconBodies, 'location_search_failed').length).toBe(1);
+  });
+
+  test('a search that fails with 500 tells the visitor to try again', async ({ page }) => {
+    const hits = await failLocationSearch(page, 500);
+    const beaconBodies = await recordBeacons(page);
+
+    await runFailingSearch(page, hits, 'Rome');
+
+    await expect(page.locator(LOCATION_ERROR)).toBeVisible();
+    await expect(page.locator(LOCATION_ERROR)).toHaveText(SEARCH_RETRY_TEXT);
+    await expect.poll(() => beaconsWithReason(beaconBodies, 'location_search_failed').length).toBe(1);
+    expect(new URLSearchParams(beaconsWithReason(beaconBodies, 'location_search_failed')[0]).get('detail')).toBe('status=500');
   });
 });
 
@@ -403,23 +539,25 @@ test.describe('LocationPicker selection state outside the join form (#2043)', ()
     });
   });
 
+  // required is on (the default), so an input that setLocation() leaves
+  // empty fails valueMissing even when the selection is set.
   for (const requireSelection of [false, true]) {
-    test(`setLocation() writes the hidden fields and leaves the input valid (requireSelection: ${requireSelection})`, async ({ page }) => {
+    test(`setLocation() writes the hidden fields and the input text, and leaves the input valid (required: true, requireSelection: ${requireSelection})`, async ({ page }) => {
       const state = await page.evaluate(({ location, requireSelection }) => {
-        const picker = new LocationPicker({ containerId: 'picker-under-test', requireSelection });
+        const picker = new LocationPicker({ containerId: 'picker-under-test', required: true, requireSelection });
         picker.setLocation(location, location.display);
         const input = document.getElementById('picker-under-test-input');
-        input.value = location.display;
         const fields = {};
         ['city', 'state', 'country', 'lat', 'lon'].forEach((f) => {
           fields[f] = document.getElementById('picker-under-test-' + f).value;
         });
-        return { fields, valid: input.checkValidity() };
+        return { fields, value: input.value, valid: input.checkValidity() };
       }, { location: ROME, requireSelection });
 
       expect(state.fields).toEqual({
         city: ROME.city, state: ROME.state, country: ROME.country, lat: ROME.lat, lon: ROME.lon,
       });
+      expect(state.value).toBe(ROME.display);
       expect(state.valid).toBe(true);
     });
   }

@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // The label text comes from the page markup, never from what the visitor
   // typed, so the summary cannot echo an email or password back (#2043).
   function fieldLabel(control) {
-    const label = control.id ? form.querySelector('label[for="' + CSS.escape(control.id) + '"]') : null;
+    const label = control.labels && control.labels.length > 0 ? control.labels[0] : null;
     const text = label ? label.textContent.replace(/\*/g, '').trim() : '';
     return text || control.getAttribute('aria-label') || control.getAttribute('placeholder') || control.name || control.id;
   }
@@ -412,13 +412,17 @@ document.addEventListener('DOMContentLoaded', function() {
         form.classList.add('was-validated');
 
         // Bootstrap marks each field, but a field inside the location picker
-        // or out of view is easy to miss. Name the fields above the button
-        // and move focus to the first one (#2043).
+        // or out of view is easy to miss. Name the fields above the button.
+        // The scroll to the first field is immediate. Focus follows in the
+        // next frame, after the summary text is set (#2043).
         const invalid = invalidControls();
         if (invalid.length > 0) {
           invalid[0].scrollIntoView({ block: 'center' });
         }
 
+        // Build the text before the box shows, so a failure here cannot
+        // leave an empty red alert on the page.
+        const text = summaryText(invalid);
         if (validationSummary) {
           // Empty first, so a screen reader announces the alert again when
           // the visitor submits twice with the same fields.
@@ -427,7 +431,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         window.requestAnimationFrame(function () {
           if (validationSummary) {
-            validationSummary.textContent = summaryText(invalid);
+            validationSummary.textContent = text;
           }
           // Text before focus, so the alert does not cut off the field's own description.
           if (invalid.length > 0) {

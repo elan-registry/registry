@@ -10,14 +10,15 @@ use ElanRegistry\LogCategories;
  *
  * Reports a join submission blocked entirely client-side (Turnstile
  * failed to load/error/expire, a JS exception before submit, a failed GPS
- * lookup in the location picker, or a submit that the browser's form
- * validation blocked) — cases where the POST to join.php never happens and
+ * lookup or location search in the location picker, or a submit that the
+ * browser's form validation blocked) — cases where the POST to join.php never happens and
  * would otherwise leave zero server-side trace.
  *
  * Reasons: turnstile_error, turnstile_expired, turnstile_not_loaded,
- * js_exception, location_gps_failed, client_validation. For
- * client_validation, detail holds the invalid fields' names only, never
- * their values (#2043).
+ * js_exception, location_gps_failed, location_search_failed,
+ * client_validation. For client_validation, detail holds the invalid
+ * fields' names only, never their values (#2043). For
+ * location_search_failed, detail holds the HTTP status only.
  *
  * Anonymous and deliberately CSRF-free. The beacon used to carry the join
  * page's render-time CSRF token. In production that token went stale in a
@@ -89,7 +90,7 @@ try {
 
 // Client sends a short enum reason, not free-text, to keep log payloads
 // bounded — this is not an arbitrary-text logging endpoint.
-$allowedReasons = ['turnstile_error', 'turnstile_expired', 'js_exception', 'turnstile_not_loaded', 'location_gps_failed', 'client_validation'];
+$allowedReasons = ['turnstile_error', 'turnstile_expired', 'js_exception', 'turnstile_not_loaded', 'location_gps_failed', 'location_search_failed', 'client_validation'];
 $reason = Input::raw('reason') ?? '';
 if (!in_array($reason, $allowedReasons, true)) {
     $reason = 'unknown';
