@@ -189,6 +189,11 @@ async function expectBlockedAndOptedOutFilters(page) {
     await page.goto(`${TAB_URL}&status=bounced&show=100`, { waitUntil: 'networkidle' });
     await expect(queueRow(page, bouncedCarId)).toBeVisible();
     await expect(queueRow(page, bouncedCarIdB)).toBeVisible();
+    // The seeded owner has the bounce flag and no hard-bounce event, so the
+    // chip reads the flag that tab-verification.php passes (#2461).
+    for (const car of [bouncedCarId, bouncedCarIdB]) {
+        await expect(queueRow(page, car).locator('td').nth(5).locator('span.badge')).toHaveAttribute('data-chip', 'bounced');
+    }
 
     // A block for an old address does not apply: no Blocked pill row, and the
     // car is an ordinary Pending car with no chip problem.

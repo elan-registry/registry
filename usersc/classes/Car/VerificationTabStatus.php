@@ -369,22 +369,25 @@ final readonly class VerificationTabStatus
      *
      * The owner's profile state comes first, because it stops all
      * verification email to the owner (#2101): no profiles row, then a
-     * block, then an opt-out. Otherwise the chip shows the car's latest
-     * email event, as chosen by
-     * CarRepository::findLatestEmailEventPerCarWithPrecedence().
+     * block, then a bounce, then an opt-out (#2461). The order is the same
+     * as SendPolicy::verificationReason() and
+     * EmailNoticeBuilder::buildForOwner(): a block and a bounce are facts
+     * about the address, and an opt-out is a preference. `$blocked` and
+     * `$bounced` mean the flag applies to the owner's current address
+     * (#2356), so the chip reads the same flags as the other two views.
      *
-     * A bounce that applies also stops email, but the chip does not test it.
-     * The chip reports what happened to the last email, and a hard-bounce
-     * event already shows "Bounced" through the event path. The Bounced pill
-     * and the row action read the bounce flag. So the pill and the chip can
-     * differ, as EMAIL_SYSTEM.md describes. `$blocked` means the block
-     * applies to the owner's current address (#2356).
+     * Otherwise the chip shows the car's latest email event, as chosen by
+     * CarRepository::findLatestEmailEventPerCarWithPrecedence(). A
+     * hard-bounce event still shows "Bounced" for an owner with no bounce
+     * flag. That test comes after the opt-out, so an old hard-bounce event
+     * from a previous address does not hide an opt-out.
      *
      * @param object|null $event        The chip event row, or null if the car has none
      * @param bool        $hasProfile   False when the owner has no profiles row
      * @param bool        $blocked      True when the owner's `profiles.email_blocked` applies to the current address
      * @param string|null $blockedCause The owner's `profiles.email_blocked_cause`, or null when unknown
      * @param bool        $optedOut     True when the owner's `profiles.email_opted_out` is set
+     * @param bool        $bounced      True when the owner's `profiles.email_bounced` applies to the current address
      * @return array{kind: string, label: string, class: string, reason: string}
      *         `kind` is '' when there is no event to show
      */
@@ -393,7 +396,8 @@ final readonly class VerificationTabStatus
         bool $hasProfile = true,
         bool $blocked = false,
         ?string $blockedCause = null,
-        bool $optedOut = false
+        bool $optedOut = false,
+        bool $bounced = false
     ): array {
         $name   = isset($event->event) ? (string) $event->event : null;
         $reason = trim((string) ($event->reason ?? ''));
@@ -407,15 +411,21 @@ final readonly class VerificationTabStatus
             return ['kind' => 'blocked', 'label' => 'Blocked', 'class' => 'text-bg-danger',
                     'reason' => $blockedCause ?? 'cause unknown'];
         }
+        $hardBounceEvent = $name !== null && in_array($name, EmailEventApplier::HARD_BOUNCE_EVENTS, true);
+        $bouncedChip     = ['kind' => 'bounced', 'label' => 'Bounced', 'class' => 'text-bg-danger',
+                            'reason' => $hardBounceEvent ? $reason : ''];
+        if ($bounced) {
+            return $bouncedChip;
+        }
         if ($optedOut) {
             return $optedOutChip;
+        }
+        if ($hardBounceEvent) {
+            return $bouncedChip;
         }
 
         if ($name === null) {
             return ['kind' => '', 'label' => '', 'class' => '', 'reason' => ''];
-        }
-        if (in_array($name, EmailEventApplier::HARD_BOUNCE_EVENTS, true)) {
-            return ['kind' => 'bounced', 'label' => 'Bounced', 'class' => 'text-bg-danger', 'reason' => $reason];
         }
 
         return match ($name) {
