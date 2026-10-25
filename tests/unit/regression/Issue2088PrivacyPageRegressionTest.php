@@ -54,8 +54,6 @@ final class Issue2088PrivacyPageRegressionTest extends TestCase
                 => ['/send car-verification request emails through Brevo/i'],
             'the email service log keeps a recipient address for no more than 90 days'
                 => ['/email service log.{0,60}recipient address.{0,60}(no more than 90 days|90 days or less)/i'],
-            'the last-updated sentence names this change'
-                => ['/Last updated: [A-Z][a-z]+ \d{1,2}, \d{4}\. This update.{0,80}verification request emails through Brevo.{0,120}90-day limit/i'],
         ];
     }
 

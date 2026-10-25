@@ -2910,12 +2910,16 @@ class CarRepository
      * The query skips a send cycle whose `plg_sendinblue_messages` row has
      * {@see AppConstants::OWNER_CONTACT_EMAIL_TAG} in its comma-separated
      * `tags`. A cycle with no plugin row, or with null tags, still counts.
-     * So an owner contact cycle counts again after its plugin row is deleted.
-     * The purge of plugin rows (#2384) deletes every row older than 90 days,
-     * also a row whose message ID `er_email_events` still names. After that,
-     * an owner contact soft bounce of that send cycle counts again (see
-     * EMAIL_SYSTEM.md, "Retention of Plugin Rows"). When the plugin table or its `tags` column
-     * does not exist, the query has no such filter
+     * So an owner contact cycle would count again if its plugin row were
+     * deleted while its soft-bounce events stay. Account deletion does not
+     * make that state: it deletes the user's plugin rows and events in one
+     * transaction ({@see \ElanRegistry\AccountDeletionPrivacyStep}).
+     * The purge of plugin rows (#2384) does not delete a row older than 90
+     * days while `er_email_events` still names its message ID. It clears only
+     * the address of that row. The row keeps its `message_id` and `tags`, so
+     * an owner contact soft bounce of that send cycle still does not count
+     * (see EMAIL_SYSTEM.md, "Retention of Plugin Rows"). When the plugin
+     * table or its `tags` column does not exist, the query has no such filter
      * ({@see sendinblueTagsColumnExists()}).
      *
      * @param int $userId Owner user ID

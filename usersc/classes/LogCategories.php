@@ -561,6 +561,14 @@ class LogCategories
     public const LOG_CATEGORY_HEALTHCHECK_PING = 'HealthcheckPing';
 
     /**
+     * Retention purge outcome
+     * Used by RetentionPurgeJob for one line per retention rule: the counts of
+     * a purge, a skip, or a failure. Kept apart from CronJobFailure, which
+     * feeds the Verification tab failure summary once per run.
+     */
+    public const LOG_CATEGORY_RETENTION_PURGE = 'RetentionPurge';
+
+    /**
      * Migration operations
      * Used for system migrations and upgrades
      */

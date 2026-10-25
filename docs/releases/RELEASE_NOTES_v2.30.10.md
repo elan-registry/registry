@@ -12,6 +12,7 @@ an owner's address no longer stays behind after account deletion or in logs.
   text. Before, an encoded name or a crafted link could add HTML, such as
   an image or a link, to a message. The site security policy blocked
   scripts in that HTML.
+- A nightly job now deletes the recipient address from the email service log after 90 days. ([#2384](https://github.com/elan-registry/registry/issues/2384))
 
 ## Admin-Facing Changes
 
@@ -47,6 +48,17 @@ an owner's address no longer stays behind after account deletion or in logs.
      UserSpice creates its `pages` row.
   3. Run `21-Fix-Page-Permissions.php` from the Maintenance page, so the
      new script page gets its permission rows.
+- Deploy steps for the retention purge, on test and then on production:
+  1. Create the checks `retention-purge-test` and `retention-purge-prod` in
+     healthchecks.io. Set the period to 1 day and the grace to 2 hours. Create
+     them paused. Send alerts to Discord. See `docs/development/DEPLOYMENT.md`,
+     "Cron monitoring". Do this first, so the first nightly run has a check
+     to ping.
+  2. Run `composer migrate`. The migration adds the `retention_purge` cron
+     rows.
+  3. After the first nightly run, check the `RetentionPurge` log line. Check
+     that `last_failure_at IS NULL` for `retention_purge` in
+     `er_cron_job_runs`.
 
 ## Issues Resolved
 
@@ -55,7 +67,8 @@ an owner's address no longer stays behind after account deletion or in logs.
 - WIP: [#2487](https://github.com/elan-registry/registry/issues/2487) — Remove the remaining raw exception messages from log rows.
 - [#2419](https://github.com/elan-registry/registry/issues/2419) —
   Delete plugin mail rows for the current and pending address at account deletion, and add a manual rerun of the privacy step.
-- WIP: [#2384](https://github.com/elan-registry/registry/issues/2384) — Purge `plg_sendinblue_messages` rows older than 90 days.
+- [#2384](https://github.com/elan-registry/registry/issues/2384) —
+  Delete the recipient address from the email service log after 90 days.
 - [#2482](https://github.com/elan-registry/registry/issues/2482) —
   Count only a clear after `email_address_since` when the suppression import has no usable date.
 - [#2461](https://github.com/elan-registry/registry/issues/2461) —
