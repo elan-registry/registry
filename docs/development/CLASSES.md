@@ -735,9 +735,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   and one of the event names (#2502). It returns false for a `$userId` less
   than 1 or an empty `$events` list. The query is
   `SELECT 1 ... WHERE user_id = ? AND email = ? COLLATE utf8mb4_bin AND event IN (...) LIMIT 1`.
-  It does not compare `occurred_at`. The `COLLATE` stops the `email` index
-  from serving the compare, so an index that starts with `user_id` serves
-  it. Throws `InvalidArgumentException` for an event that is not a string
+  It does not compare `occurred_at`. With the `COLLATE`, the `email` index
+  gives only a range scan, and MySQL picks an index that starts with
+  `user_id`. Throws `InvalidArgumentException` for an event that is not a string
   (checked before the false cases), and `CarDatabaseException` on a query
   error.
   `EmailEventApplier::apply()` calls it in `MODE_STATE`
