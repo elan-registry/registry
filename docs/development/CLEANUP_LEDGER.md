@@ -75,6 +75,10 @@ after an item is written.
 - [ ] line 358 — restates the line below it. Do it in #2045, which changes the year→model code (from #1978)
 - [ ] line 361 — restates the line below it. Do it in #2045, which changes the year→model code (from #1978)
 
+### `app/assets/js/location-picker.js`
+
+- [ ] `render()` ~L133 — the inner `showGPS` ternary for the "OR" divider is dead, because the outer `showGPS &&` guard already holds. Use the plain divider (found in #2043)
+
 ### `app/assets/js/model-loader.js` (est. −18)
 
 - [ ] Delete `ModelLoader.getModelByValue()` (~99-117). Nothing calls it (JS, PHP, or Playwright). (found in the #2208 audit)

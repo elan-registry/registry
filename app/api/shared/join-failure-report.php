@@ -9,9 +9,16 @@ use ElanRegistry\LogCategories;
  * AJAX Endpoint: Join Form Client-Side Failure Beacon
  *
  * Reports a join submission blocked entirely client-side (Turnstile
- * failed to load/error/expire, or a JS exception before submit) — cases
- * where the POST to join.php never happens and would otherwise leave
- * zero server-side trace.
+ * failed to load/error/expire, a JS exception before submit, a failed GPS
+ * lookup or location search in the location picker, or a submit that the
+ * browser's form validation blocked) — cases where the POST to join.php never happens and
+ * would otherwise leave zero server-side trace.
+ *
+ * Reasons: turnstile_error, turnstile_expired, turnstile_not_loaded,
+ * js_exception, location_gps_failed, location_search_failed,
+ * client_validation. For client_validation, detail holds the invalid
+ * fields' names only, never their values (#2043). For
+ * location_search_failed, detail holds the HTTP status only.
  *
  * Anonymous and deliberately CSRF-free. The beacon used to carry the join
  * page's render-time CSRF token. In production that token went stale in a
@@ -30,6 +37,7 @@ use ElanRegistry\LogCategories;
  * @since v2.29.2
  * @link https://github.com/elan-registry/registry/issues/1690
  * @link https://github.com/elan-registry/registry/issues/2227
+ * @link https://github.com/elan-registry/registry/issues/2043
  * @link https://github.com/elan-registry/registry/blob/main/docs/development/adr/ADR-019-no-csrf-on-public-read-only-endpoints.md
  */
 
@@ -82,7 +90,7 @@ try {
 
 // Client sends a short enum reason, not free-text, to keep log payloads
 // bounded — this is not an arbitrary-text logging endpoint.
-$allowedReasons = ['turnstile_error', 'turnstile_expired', 'js_exception', 'turnstile_not_loaded', 'location_gps_failed'];
+$allowedReasons = ['turnstile_error', 'turnstile_expired', 'js_exception', 'turnstile_not_loaded', 'location_gps_failed', 'location_search_failed', 'client_validation'];
 $reason = Input::raw('reason') ?? '';
 if (!in_array($reason, $allowedReasons, true)) {
     $reason = 'unknown';

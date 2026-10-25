@@ -421,6 +421,9 @@ includeHook($hooks, 'bottom');
                 urlRoot: urlRoot,
                 showGPS: true,
                 required: true,
+                // Typed text alone has no coordinates, so block submit until
+                // the visitor picks a result or uses GPS (#2043).
+                requireSelection: true,
                 // Location is a required field — a GPS failure here can block
                 // registration the same way a blocked submit does, and would
                 // otherwise be just as invisible server-side. Reuses the join
@@ -429,6 +432,14 @@ includeHook($hooks, 'bottom');
                 onGPSError: function (error) {
                     if (typeof window.elanReportJoinFailure === 'function') {
                         window.elanReportJoinFailure('location_gps_failed', 'code=' + (error && error.code));
+                    }
+                },
+                // requireSelection makes a failed search a registration blocker
+                // too: a stale CSRF token, the search rate limit, or a provider
+                // outage leaves no result to select (#2043).
+                onSearchError: function (status) {
+                    if (typeof window.elanReportJoinFailure === 'function') {
+                        window.elanReportJoinFailure('location_search_failed', 'status=' + status);
                     }
                 }
             });
