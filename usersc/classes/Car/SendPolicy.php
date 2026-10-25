@@ -135,8 +135,12 @@ final class SendPolicy
     /**
      * The reason a verification send is refused, for the admin report
      *
-     * The strings and their priority must stay stable: the admin batch
-     * report and the log lines show them.
+     * The admin batch report and the log lines show these strings. Do not
+     * change them, and change the priority only together with the two
+     * methods named below. The priority is: no profile, blocked, bounced,
+     * opted out. A block and a bounce are facts about the address. An
+     * opt-out is a preference. VerificationTabStatus::chip() and
+     * EmailNoticeBuilder::buildForOwner() use the same order (#2461).
      *
      * @param SendDecision $decision Result of {@see self::forUser()}
      * @return string|null The first reason, or null when the send is allowed
@@ -146,9 +150,9 @@ final class SendPolicy
         return match (true) {
             $decision->allowed                               => null,
             $decision->has(SendDecision::FLAG_NO_PROFILE)    => 'Owner has no profile.',
-            $decision->has(SendDecision::FLAG_OPTED_OUT)     => 'Owner has opted out of verification emails.',
             $decision->has(SendDecision::FLAG_BLOCKED)       => 'Owner email is blocked.',
             $decision->has(SendDecision::FLAG_BOUNCED)       => 'Owner email bounced.',
+            $decision->has(SendDecision::FLAG_OPTED_OUT)     => 'Owner has opted out of verification emails.',
             // Only no_match is left, which forUser() never sets. Refuse with a reason.
             default                                          => 'No owner has this address now.',
         };

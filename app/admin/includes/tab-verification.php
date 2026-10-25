@@ -825,7 +825,8 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             $queueHasProfile,
                             $queueBlocked,
                             $queueBlockedCause,
-                            $queueOptedOut
+                            $queueOptedOut,
+                            $queueBounced
                         );
 
                         // The owner actions write the profiles row, so an owner
@@ -842,6 +843,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                         // bounce keeps the car Pending (Brevo escalates repeated soft bounces),
                         // so Mark Bounced is disabled there. Clear Block and Clear Opt-out need
                         // the owner's request, so they open the confirm modal ('ownerRequest').
+                        // This is a clear order, not the chip order (#2461).
                         if ($queueBlocked) {
                             $queueAction = ['command' => 'clear_block', 'label' => 'Clear Block',
                                             'class' => 'btn-outline-secondary', 'disabled' => false,

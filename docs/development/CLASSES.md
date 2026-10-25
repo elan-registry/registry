@@ -1770,9 +1770,9 @@ other probes.
   `autoSendLastRunFailed()`, `autoSendCounts()`, `autoSendCountsUnreadable()`,
   `autoSendNextEligibleAt()`, `autoSendDesiredState()` give the automatic send job
   state and the card and Pause/Resume button state
-- Static `chip()` method generates the Status chip for a car row: profile state
-  (no profile / blocked / opted out) takes precedence over the car's latest email
-  event
+- Static `chip()` method generates the Status chip for a car row, in this
+  order: no profile, blocked, the bounce flag, opted out, then the car's
+  latest email event
 
 **Constants**:
 
@@ -1814,9 +1814,12 @@ other probes.
 - `autoSendDesiredState(): string` - Give the state the Pause/Resume button asks
   for. Returns `'disable'` when the job is enabled, `'enable'` when not
 - `chip(?object $event, bool $hasProfile, bool $blocked, ?string $blockedCause,
-  bool $optedOut): array` - Static method. Give the Status chip for a car row.
-  Profile state (no profile / blocked / opted out) takes precedence; otherwise
-  the chip shows the car's latest email event. Returns
+  bool $optedOut, bool $bounced = false): array` - Static method. Give the
+  Status chip for a car row. `$blocked` and `$bounced` are true only when the
+  flag applies to the owner's current address. Order: no profile, blocked,
+  bounced, opted out, the same as `SendPolicy::verificationReason()` (#2461).
+  Otherwise the chip shows the car's latest email event. A hard-bounce event
+  still shows "Bounced" for an owner with no bounce flag. Returns
   `['kind' => string, 'label' => string, 'class' => string, 'reason' => string]`.
   `kind` is empty when there is no event to show
 
@@ -2101,7 +2104,9 @@ send, owner contact and admin contact cannot drift apart. The mail table is in
   address that more than one user may hold. One blocking flag on any user stops
   the send. No user with the address gives `no_match`
 - `verificationReason(SendDecision $decision): ?string` - The first refusal
-  reason for the admin report, or `null` when allowed
+  reason for the admin report, or `null` when allowed. Order: no profile,
+  blocked, bounced, opted out. `VerificationTabStatus::chip()` and
+  `EmailNoticeBuilder::buildForOwner()` use the same order (#2461)
 - `adminMessage(SendDecision $decision): string` - The text for `usError()`.
   It starts with "Message not sent." and adds one sentence for each reason.
   It escapes the bounce date. It returns an empty string when allowed

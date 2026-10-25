@@ -19,7 +19,9 @@ use ElanRegistry\Exceptions\CarDatabaseException;
  * The state comes only from {@see CarRepository::effectiveEmailFlags()}, so
  * a flag stored for an old address does not show (#2356). The notice is
  * about the owner, not about a car: an owner with no car still gets it
- * (#2319). One state wins:
+ * (#2319). One state wins, in the order blocked, bounced, opted out. Both
+ * SendPolicy::verificationReason() and VerificationTabStatus::chip() use this
+ * order (#2461):
  * - `blocked`: `email_blocked_address`, dated `email_blocked_at`. A block
  *   wins over a bounce.
  * - `bounced`: `email_bounced_address`, dated `email_bounced_at`.

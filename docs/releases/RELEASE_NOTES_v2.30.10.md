@@ -23,6 +23,13 @@ an owner's address no longer stays behind after account deletion or in logs.
   entry with no usable date when the only admin clear is from before the
   owner's current address. Before, any old clear stopped that entry for
   all later runs.
+- For an owner with more than one email flag, the verification batch
+  report, the Verification tab Status chip and the owner's account notice
+  now give the same reason. The order is blocked, then bounced, then opted
+  out. Before, the batch report said "opted out" for an owner who was also
+  blocked, and the chip said "Blocked".
+  The chip now shows "Bounced" for an owner whose bounce flag applies,
+  also when the owner opted out.
 - A new maintenance script, **Rerun Deletion Privacy Step**, finishes the
   privacy step for one deleted user ID. Run it when the log shows
   "CRITICAL: privacy step failed". See `docs/development/FIX_SCRIPTS.md`.
@@ -48,7 +55,7 @@ an owner's address no longer stays behind after account deletion or in logs.
 - WIP: [#2384](https://github.com/elan-registry/registry/issues/2384) — Purge `plg_sendinblue_messages` rows older than 90 days.
 - [#2482](https://github.com/elan-registry/registry/issues/2482) —
   Count only a clear after `email_address_since` when the suppression import has no usable date.
-- WIP: [#2461](https://github.com/elan-registry/registry/issues/2461) —
+- [#2461](https://github.com/elan-registry/registry/issues/2461) —
   Use one order for opted out, blocked and bounced in the send report, the Status chip and the notice.
 - WIP: [#2498](https://github.com/elan-registry/registry/issues/2498) — Show the owner's user ID in the Verification Queue.
 - WIP: [#2501](https://github.com/elan-registry/registry/issues/2501) — Accept Brevo blocked-at dates that arrive 2 hours ahead in the suppression sync.
