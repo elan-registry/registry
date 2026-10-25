@@ -32,7 +32,7 @@ use ElanRegistry\Car\EmailNoticeBuilder;
  *   kind: 'blocked'|'bounced'|'opted_out',
  *   address: ?string,
  *   date: ?string,
- *   cause: ?string,
+ *   causes: list<string>,
  *   alsoOptedOut: bool,
  *   optedOutDate: ?string,
  *   contentHash: string
@@ -63,15 +63,25 @@ $_enCauseText = [
 $_enKind      = $emailNotice['kind'];
 $_enAddress   = '<strong>' . $_en($emailNotice['address'] ?? '') . '</strong>';
 $_enWhen      = $_enDate($emailNotice['date']);
-$_enCause     = $_enCauseText[$emailNotice['cause'] ?? ''] ?? null;
+$_enCauses    = [];
+foreach ($emailNotice['causes'] as $_enCauseKey) {
+    if (isset($_enCauseText[$_enCauseKey])) {
+        $_enCauses[] = $_en($_enCauseText[$_enCauseKey]);
+    }
+}
+// Join as "A" or "A and B". Commas come first if a third cause is added.
+$_enCause = match (count($_enCauses)) {
+    0       => null,
+    1       => $_enCauses[0],
+    default => implode(', ', array_slice($_enCauses, 0, -1)) . ' and ' . end($_enCauses),
+};
 if ($_enKind === EmailNoticeBuilder::KIND_BLOCKED) {
-    $_enMessage = 'Email to ' . $_enAddress . ' is blocked' . ($_enCause !== null ? ' because ' . $_en($_enCause) : '') . '.';
+    $_enMessage = 'Email to ' . $_enAddress . ' is blocked' . ($_enCause !== null ? ' because ' . $_enCause : '') . '.';
 } elseif ($_enKind === EmailNoticeBuilder::KIND_BOUNCED) {
     $_enMessage = 'Email to ' . $_enAddress . ' bounced' . ($_enWhen !== null ? ' on ' . $_enWhen : '') . '.';
 } else {
     $_enMessage = 'You opted out of registry email' . ($_enWhen !== null ? ' on ' . $_enWhen : '') . '.';
 }
-$_enLineClass = $_enKind === EmailNoticeBuilder::KIND_OPTED_OUT ? 'opted-out' : 'problem';
 $_enIcon      = $_enKind === EmailNoticeBuilder::KIND_OPTED_OUT ? 'fa-envelope' : 'fa-exclamation-triangle';
 
 $_enSettingsUrl = $_en($us_url_root . 'usersc/user_settings.php');
@@ -131,7 +141,7 @@ $_enDismissKey  = 'er.emailNotice.dismissed.' . $ownerId . '.' . $emailNotice['c
     <button type="button" class="btn-close er-email-notice__dismiss"
             aria-label="Dismiss this notice until your next visit"></button>
 
-    <div class="er-email-notice__line er-email-notice__line--<?= $_enLineClass ?>">
+    <div class="er-email-notice__line er-email-notice__line--problem">
         <p class="mb-2 text-break" id="email-notice-message">
             <i class="fas <?= $_enIcon ?> me-2 er-email-notice__icon" aria-hidden="true"></i><?= $_enMessage ?>
         </p>

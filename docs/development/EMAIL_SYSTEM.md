@@ -1031,11 +1031,13 @@ with no car sees it too (#2319). It links to the fix, so the owner does not
 need to know where to look.
 
 **Builder:** `EmailNoticeBuilder::buildForOwner(int $ownerId): ?array`
-(`usersc/classes/Car/EmailNoticeBuilder.php`). It calls only
-`CarRepository::effectiveEmailFlags()`, so a flag for an old address does not
-show (see [Address-Match Rule](#address-match-rule-2356)). It returns `null`
-when no flag applies. The array holds `kind`, `address`, `date`, `cause`,
-`alsoOptedOut`, `optedOutDate` and `contentHash`.
+(`usersc/classes/Car/EmailNoticeBuilder.php`). It calls
+`CarRepository::effectiveEmailFlags()` for every owner. A flag for an old
+address does not show (see [Address-Match Rule](#address-match-rule-2356)).
+For a block with an address, it also calls
+`CarRepository::ownerBlockEventCauses()` and `CarRepository::latestFlagClearAt()`.
+It returns `null` when no flag applies. The array holds `kind`, `address`,
+`date`, `causes`, `alsoOptedOut`, `optedOutDate` and `contentHash`.
 
 **States.** One state shows. The builder picks it in this order:
 
@@ -1050,8 +1052,25 @@ when no flag applies. The array holds `kind`, `address`, `date`, `cause`,
 - If a block or bounce has no stored address, `address` is the owner's current
   `users.email`. That flag applies to the current address.
 - A NULL `_at` column gives a null date. The notice then shows no date.
-- `cause` is one of `spam`, `unsubscribed` or `blocklist`. Any other stored
-  value, or none, gives no cause (#2318).
+- `causes` is a list of block causes. Each value is `spam`, `unsubscribed` or
+  `blocklist`, and each cause appears once. It is empty for a bounce, an
+  opt-out, and a block with no known cause.
+- The builder builds the list in this order:
+  - The profile cause, `email_blocked_cause`, comes first.
+  - Each other `spam` or `unsubscribed` event for the blocked address follows.
+    The builder counts only events after the latest admin Clear Block.
+    Events follow the order of `CarRepository::BLOCKED_CAUSES`.
+- A `blocklist` profile cause ignores `unsubscribed` events. An admin block
+  also writes an `unsubscribed` event, so the notice would otherwise say the
+  owner unsubscribed (#2500).
+- The hard-bounce event `blocked` is not a block cause.
+- An unknown profile cause adds no profile cause. The builder writes a log
+  line. Event causes still apply (#2318).
+- With no address, the builder runs no event query. The list then holds only
+  the profile cause.
+- If the event lookup fails, the builder logs the failure with no exception
+  message and keeps the notice with the profile cause only. The flags already
+  show the block, so the owner still sees it.
 
 **Copy.** The partial `app/views/_email_paused_notice.php` shows this text. It
 never shows the word "Brevo".
@@ -1061,10 +1080,20 @@ never shows the word "Brevo".
 | Blocked, cause `spam` | "Email to `<address>` is blocked because a message to this address was reported as spam." |
 | Blocked, cause `unsubscribed` | "Email to `<address>` is blocked because this address unsubscribed from registry email." |
 | Blocked, cause `blocklist` | "Email to `<address>` is blocked because an administrator blocked this address." |
+| Blocked, two causes | "Email to `<address>` is blocked because `<A>` and `<B>`." `<A>` and `<B>` are cause texts from the rows above, in list order. |
 | Blocked, no cause | "Email to `<address>` is blocked." |
 | Bounced | "Email to `<address>` bounced on `<date>`." The text "on `<date>`" is absent when the date is null. |
 | Opted out | "You opted out of registry email on `<date>`." The text "on `<date>`" is absent when the date is null. |
 
+- The partial keeps the list order. One cause text stands alone. Two texts
+  join with "and". A block has at most two causes: `blocklist` drops
+  `unsubscribed` events, and the events give only `spam` and `unsubscribed`.
+  For example, a profile cause `unsubscribed` and a `spam` event (the
+  2026-10-22 case) give: "Email to `<address>` is blocked because this address
+  unsubscribed from registry email and a message to this address was reported
+  as spam."
+- Every notice line uses the warning style, `er-email-notice__line--problem`.
+  The opted-out notice uses it too.
 - A blocked or bounced notice adds "Change your email address or contact an
   admin." It has two links: **Change email** (`usersc/user_settings.php#account-email`)
   and **Contact an admin** (`app/owner/contact/index.php`).

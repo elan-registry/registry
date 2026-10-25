@@ -277,10 +277,6 @@ after an item is written.
 
 - [ ] Make the class `final readonly`. The accessors return `?? 0` or `?? ''` after `requireMatched()`, which hides a broken invariant. Return the typed value with a PHPStan assert instead (found in /finish-milestone v2.30.8)
 
-### `usersc/classes/Car/EmailNoticeBuilder.php`
-
-- [ ] An `email_blocked_cause` value that is not in `BLOCKED_CAUSES` (~L77) becomes null with no log line. The owner sees the generic text and the bad value stays hidden. Log it (found in /finish-milestone v2.30.7)
-
 ### `usersc/classes/Car/SendPolicy.php`
 
 - [ ] The flag list is written three times: `SendDecision::FLAG_ORDER`, the `$all` list in `blockingFlags()`, and the table docblock. Build it once, or use a `SendFlag` enum (found in /finish-milestone v2.30.8)

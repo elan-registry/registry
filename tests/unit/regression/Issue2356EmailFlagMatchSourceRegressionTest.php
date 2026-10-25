@@ -987,7 +987,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
     // ------------------------------------------------------------------
 
     /**
-     * @return array{kind: string, address: ?string, date: ?string, cause: ?string, alsoOptedOut: bool, optedOutDate: ?string, contentHash: string}
+     * @return array{kind: string, address: ?string, date: ?string, causes: list<string>, alsoOptedOut: bool, optedOutDate: ?string, contentHash: string}
      */
     private function notice(string $kind, ?string $address, ?string $cause): array
     {
@@ -995,7 +995,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
             'kind' => $kind,
             'address' => $kind === 'opted_out' ? null : $address,
             'date' => '2026-09-15',
-            'cause' => $kind === 'blocked' ? $cause : null,
+            'causes' => $kind === 'blocked' && $cause !== null ? [$cause] : [],
             'alsoOptedOut' => $kind !== 'opted_out',
             'optedOutDate' => '2026-08-01',
             'contentHash' => str_repeat('a', 64),

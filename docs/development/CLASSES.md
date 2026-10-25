@@ -741,6 +741,11 @@ to provide a focused, testable data access layer wrapping the `cars`,
   (checked before the false cases), and `CarDatabaseException` on a query
   error.
   `EmailEventApplier::apply()` calls it in `MODE_STATE`
+- `ownerBlockEventCauses(int $userId, string $email, ?string $after): list<string>` -
+  Distinct `spam` and `unsubscribed` event names in `er_email_events` for the user and
+  the normalized address (`COLLATE utf8mb4_bin`). With `$after`, only rows with
+  `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
+  less than 1 or an empty address. `EmailNoticeBuilder` uses it for block causes (#2500).
 - `findUserIdsByAddress(string $address): array` - Distinct IDs of the users
   whose `users.email` equals the address under the matching rule (#2359). SQL
   selects candidates with the column collation. PHP keeps only a byte-equal
@@ -1608,10 +1613,11 @@ It returns a plain array and renders no HTML. The partial
 - `buildForOwner(int $ownerId): ?array` - One owner-level state, or `null` when no
   flag applies. An owner with no car still gets the notice (#2319). The shape is
   `array{kind: 'blocked'|'bounced'|'opted_out', address: ?string, date: ?string,
-  cause: ?string, alsoOptedOut: bool, optedOutDate: ?string, contentHash: string}`.
+  causes: list<string>, alsoOptedOut: bool, optedOutDate: ?string, contentHash: string}`.
 - Takes `CarRepository` by constructor injection, so a test can supply a mock. It
-  calls only `CarRepository::effectiveEmailFlags()`. A flag stored for an old
-  address does not show.
+  calls `CarRepository::effectiveEmailFlags()` for every owner. For a block with
+  an address, it also calls `ownerBlockEventCauses()` and `latestFlagClearAt()`.
+  A flag stored for an old address does not show.
 - `kind` constants: `KIND_BLOCKED`, `KIND_BOUNCED`, `KIND_OPTED_OUT`. One state wins.
   A block wins over a bounce. An opt-out is the `kind` only when no block or bounce
   applies. With a block or bounce, `alsoOptedOut` is true when the owner also opted
@@ -1619,14 +1625,21 @@ It returns a plain array and renders no HTML. The partial
 - `address` is the flagged address for `blocked` and `bounced`. If the flag has
   no stored address, it is the owner's current `users.email`. It is `null` for
   `opted_out`.
-- `cause` is set only for `blocked`. It is one of the `CarRepository::BLOCKED_CAUSE_*`
-  values. Any other stored value gives `null` (no cause, #2318).
+- `causes` is set only for `blocked`. Each value is a `CarRepository::BLOCKED_CAUSE_*`
+  value, and each appears once. The profile cause (`email_blocked_cause`) comes first.
+  Then the `spam` and `unsubscribed` events after the latest admin Clear Block add
+  their causes, in `BLOCKED_CAUSES` order. A `blocklist` profile cause drops
+  `unsubscribed` events. An unknown profile cause adds nothing and writes a log
+  line (#2318, #2500). If the event lookup throws `CarDatabaseException`, the
+  builder logs it (`ExceptionLogSummary`, no message) and keeps the profile cause
+  only. It is `[]` for `bounced` and `opted_out`.
 - `date` and `optedOutDate` are `Y-m-d`. A NULL or invalid `_at` column gives
   `null`, and the partial omits the date.
 - `contentHash` is a sha256 of the state. `account.php` uses it in the per-owner
   `sessionStorage` dismissal key, so a change to the state makes the notice
   reappear.
-- The builder reads no `er_email_events` and no `cars_hist` rows. It has no
+- The builder reads `er_email_events` only for a block with an address, through
+  `CarRepository::ownerBlockEventCauses()`. It reads no `cars_hist` rows. It has no
   per-car logic and no address list.
 
 ---

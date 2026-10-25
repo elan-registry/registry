@@ -2878,6 +2878,57 @@ class CarRepository
     }
 
     /**
+     * Find the block causes that an owner's er_email_events rows give for an address
+     *
+     * The account notice calls it to name each cause of a block (#2500). A
+     * block can have more than one cause, but `profiles.email_blocked_cause`
+     * holds only one. Only the events in
+     * {@see EmailEventApplier::SUPPRESSION_EVENTS} count. The `blocked` event
+     * is a hard bounce, not a block cause.
+     *
+     * The address is normalized and compared with `COLLATE utf8mb4_bin`, as
+     * in {@see hasOwnerEmailEventForAddress()}. With `$after`, only rows with
+     * `occurred_at` after that time count, so an event from before an admin
+     * Clear Block does not show.
+     *
+     * @param int $userId Owner user ID. A value less than 1 issues no query.
+     * @param string $email Recipient address. An empty address issues no query.
+     * @param string|null $after Lower bound for `occurred_at` (exclusive), in
+     *                           AppConstants::DATETIME_FORMAT. Null applies no bound.
+     * @return list<string> Each matching event once, in no set order
+     * @throws CarDatabaseException If the query fails
+     */
+    public function ownerBlockEventCauses(int $userId, string $email, ?string $after): array
+    {
+        $email = EmailAddress::normalize($email);
+        if ($userId < 1 || $email === '') {
+            return [];
+        }
+
+        $events = EmailEventApplier::SUPPRESSION_EVENTS;
+        $placeholders = implode(', ', array_fill(0, count($events), '?'));
+        $sql = "SELECT DISTINCT event
+                  FROM er_email_events
+                 WHERE user_id = ?
+                   AND email = ? COLLATE utf8mb4_bin
+                   AND event IN ({$placeholders})";
+        $params = [$userId, $email, ...$events];
+        if ($after !== null) {
+            $sql .= ' AND occurred_at > ?';
+            $params[] = $after;
+        }
+
+        $result = $this->db->query($sql, $params);
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::ownerBlockEventCauses failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return array_map(static fn (object $row): string => (string) $row->event, $result->results());
+    }
+
+    /**
      * Insert one er_email_events row from a SELECT source, and keep a duplicate unchanged
      *
      * A duplicate of the unique key `(user_id, brevo_message_id, event)`

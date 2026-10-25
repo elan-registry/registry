@@ -76,7 +76,8 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
      * BrevoBlocklistClient (#2357) are here because their `catch` blocks see
      * an SDK exception whose message holds the request URL with the address.
      * BrevoSuppressionSyncClient has one `catch` since its SDK load moved to
-     * BrevoApiFactory.
+     * BrevoApiFactory. EmailNoticeBuilder is here because its `catch` sees a
+     * CarRepository exception from a query that binds the address (#2500).
      *
      * @var array<string, int>
      */
@@ -97,6 +98,7 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         'usersc/classes/Car/VerificationBatchSender.php' => 3,
         'usersc/classes/Car/CarVerificationSendService.php' => 5,
         'usersc/classes/Cron/SendVerificationBatchJob.php' => 2,
+        'usersc/classes/Car/EmailNoticeBuilder.php' => 1,
     ];
 
     /**
