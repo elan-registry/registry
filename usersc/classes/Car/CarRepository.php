@@ -2825,6 +2825,59 @@ class CarRepository
     }
 
     /**
+     * Whether an owner has an er_email_events row for an address with one of the given events
+     *
+     * The suppression import calls it before it writes a row (#2502). The
+     * unique key `(user_id, brevo_message_id, event)` does not find a webhook
+     * row for the same block, because the import has its own message ID and
+     * can use another event name.
+     *
+     * The address is normalized ({@see EmailAddress::normalize()}), as the
+     * writers store it. The compare uses `COLLATE utf8mb4_bin`, because the
+     * column collation would match an accent or case variant of the address.
+     * `occurred_at` is not compared: a row of any date matches. The element
+     * check runs first, so a non-string event throws in every case.
+     *
+     * @param int $userId Owner user ID. A value less than 1 issues no query.
+     * @param string $email Recipient address
+     * @param list<string> $events Event names. An empty list issues no query.
+     * @return bool True when at least one row matches
+     * @throws InvalidArgumentException If an element of $events is not a string
+     * @throws CarDatabaseException If the query fails
+     */
+    public function hasOwnerEmailEventForAddress(int $userId, string $email, array $events): bool
+    {
+        foreach ($events as $event) {
+            if (!is_string($event)) {
+                throw new InvalidArgumentException(
+                    'CarRepository::hasOwnerEmailEventForAddress: each event must be a string'
+                );
+            }
+        }
+        if ($userId < 1 || $events === []) {
+            return false;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($events), '?'));
+        $this->db->query(
+            "SELECT 1
+               FROM er_email_events
+              WHERE user_id = ?
+                AND email = ? COLLATE utf8mb4_bin
+                AND event IN ({$placeholders})
+              LIMIT 1",
+            [$userId, EmailAddress::normalize($email), ...array_values($events)]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::hasOwnerEmailEventForAddress failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count() > 0;
+    }
+
+    /**
      * Insert one er_email_events row from a SELECT source, and keep a duplicate unchanged
      *
      * A duplicate of the unique key `(user_id, brevo_message_id, event)`

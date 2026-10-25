@@ -252,7 +252,7 @@ after an item is written.
 
 ### `usersc/classes/Car/CarRepository.php`
 
-- [ ] `recentFlagChanges()` (~L2260) has no production caller. Delete it, or let #2357 add it with its first caller (found in /finish-milestone v2.30.7)
+- [ ] `recentFlagChanges()` (~L2327) has no production caller, but about 20 unit and integration tests read flag-change rows through it. Delete it only after those tests use a test helper, or let #2357 add it with its first caller (found in /finish-milestone v2.30.7)
 - [ ] The block-cause names are four loose string sets: `BLOCKED_CAUSES`, `EmailEventApplier::SUPPRESSION_EVENT_CAUSES`, the bare `'spam'` and `'unsubscribed'` matches in `VerificationTabStatus::chip()`, and `EffectiveEmailFlags::$blockedCause` (`?string`). Add `enum BlockedCause: string` and convert to a string only at the database boundary (found in /finish-milestone v2.30.8)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`

@@ -321,6 +321,57 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertCount(1, $this->flagChanges($carId), 'The second run changes nothing, so it logs nothing');
     }
 
+    // --- #2502: an import after a webhook row for the same block -------------
+
+    /**
+     * @return array<string, array{string, string, string, string}> webhook event, reason code, import event, flag column
+     */
+    public static function webhookThenImportProvider(): array
+    {
+        return [
+            'spam' => ['spam', 'contactFlaggedAsSpam', 'spam', 'email_blocked'],
+            'hard bounce' => ['hard_bounce', 'hardBounce', 'blocked', 'email_bounced'],
+            'unsubscribed' => ['unsubscribed', 'unsubscribedViaEmail', 'unsubscribed', 'email_blocked'],
+        ];
+    }
+
+    #[DataProvider('webhookThenImportProvider')]
+    public function testImportAfterAWebhookRowForTheSameBlockWritesNoSecondRow(
+        string $webhookEvent,
+        string $reasonCode,
+        string $importEvent,
+        string $flagColumn
+    ): void {
+        [$carId, $email] = $this->createSuppressionCar();
+        $userId = (int) $this->ownerFlagsForCar($carId)->user_id;
+
+        $this->applier->apply(
+            \ElanRegistry\Car\EmailEventMatch::matched($userId, $carId, date('Y-m-d H:i:s', time() + 60)),
+            $email,
+            $webhookEvent,
+            null,
+            'webhook-msg-' . uniqid('', true),
+            date('Y-m-d H:i:s', time() + 120),
+            'webhook',
+            EmailEventApplier::MODE_EVENT
+        );
+        $this->assertSame(1, $this->countEventRows($carId), 'Test setup: the webhook wrote its row');
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->{$flagColumn}, 'Test setup: the webhook flagged the owner');
+
+        $summary = $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, $reasonCode, null, self::BLOCKED_AT_UTC),
+            ]),
+        ])->runFullBackfill();
+
+        $rows = $this->eventRows($carId);
+        $this->assertCount(1, $rows, "The import of {$importEvent} must not add a second row for the same block");
+        $this->assertSame($webhookEvent, $rows[0]->event);
+        $this->assertSame(1, $summary->alreadyFlaggedCount);
+        $this->assertSame(0, $summary->matchedCount);
+        $this->assertSame(1, (int) $this->ownerFlagsForCar($carId)->{$flagColumn}, 'The skip keeps the flag');
+    }
+
     // --- 4. Contact matching no user ---------------------------------------
 
     /**

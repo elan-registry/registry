@@ -1845,7 +1845,26 @@ the message-ID steps do not apply. The user needs no car. An address that no
 user holds, or that two users hold, is counted as unmatched and sets no flag.
 The job calls `apply()` once for the matched user with `MODE_STATE`. It stores
 an owner-level row (`car_id` NULL) under a message ID that it builds from the
-address, the reason code and `blockedAt`, so a repeat run writes no second row.
+address, the reason code and `blockedAt`. In `MODE_STATE`, `apply()` writes no
+row when the owner already has a row for the same address and the same cause
+group. A cause group is a set of event names, one of these: all
+`HARD_BOUNCE_EVENTS` names, `spam`, or `unsubscribed`. The group is not the
+reason code, so an earlier `unsubscribed` row also stops the row for an
+`adminBlocked` import. The flag step still sets the `blocklist` cause. The check uses
+`CarRepository::hasOwnerEmailEventForAddress()`. It does not compare
+`occurred_at` or the source, so a row from the webhook, the reconciliation job
+or an earlier import counts. A row from before an admin clear also counts. The result
+is not new. The address check and the flag step still run, so the import sets
+the flag again when it is clear and no guard stops it. A webhook row followed
+by an import of the same block gives one row. When the owner's flag still
+applies, the run summary counts that contact as "already flagged" only. A
+repeat run writes no second row. `MODE_EVENT` keeps the unique-key rule
+`(user_id, brevo_message_id, event)`.
+
+The event history therefore holds one row per address and cause. A new block
+after an admin clear that only the import sees sets the flag, but writes no
+second row. The Status chip still shows it, because the chip reads the
+profile flags before the event rows (decision at the #2502 plan gate).
 The job passes the source `import` to the audit row. The reconciliation job
 passes `reconciliation`. The job runs with the verification switch off.
 
@@ -1862,6 +1881,13 @@ that does not parse, a non-positive time, or a time more than 5 minutes after
 the run time. For no usable date, the job logs a warning with the user ID, not
 the address, and uses the run time as the event time. It also tells
 `apply()` that the time is a fallback. See Import guards.
+
+Brevo sent a `blockedAt` 2 hours later than its own webhook `ts_event`
+(2026-10-22: `21:04:58.680Z` against `19:04:58Z`). When that `blockedAt` is
+more than 5 minutes after the run time, the job uses the run time instead (the
+fallback). A later run accepts the value, and the event time is then 2 hours
+late. The cause is
+open (#2501). The parser keeps reading `Z` as UTC.
 
 **Window.** The nightly run asks Brevo for the last 48 hours only. It does not
 find a blocklist entry that is older. An owner can change back from address B

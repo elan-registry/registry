@@ -31,6 +31,7 @@ an owner's address no longer stays behind after account deletion or in logs.
   blocked, and the chip said "Blocked".
   The chip now shows "Bounced" for an owner whose bounce flag applies,
   also when the owner opted out.
+- The Brevo suppression sync no longer adds a second event row when a webhook already recorded the same block.
 - The Verification Queue has a new **User ID** column after Owner. The ID
   links to the user's admin page in a new tab. Two cars of one owner show
   the same ID.
@@ -65,7 +66,7 @@ an owner's address no longer stays behind after account deletion or in logs.
 - [#2498](https://github.com/elan-registry/registry/issues/2498) —
   Show the owner's user ID in the Verification Queue.
 - WIP: [#2501](https://github.com/elan-registry/registry/issues/2501) — Accept Brevo blocked-at dates that arrive 2 hours ahead in the suppression sync.
-- WIP: [#2502](https://github.com/elan-registry/registry/issues/2502) —
+- [#2502](https://github.com/elan-registry/registry/issues/2502) —
   Stop the suppression sync from adding a second event row for an owner that is already flagged.
 - WIP: [#2499](https://github.com/elan-registry/registry/issues/2499) — Show an opt-out as a warning in the paused-email notice.
 - WIP: [#2500](https://github.com/elan-registry/registry/issues/2500) — Show every block cause in the paused-email notice.

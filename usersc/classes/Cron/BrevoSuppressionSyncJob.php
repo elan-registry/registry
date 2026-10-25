@@ -63,10 +63,10 @@ use ElanRegistry\LogCategories;
  *
  * The incremental mode's under-fetching is safe for the same reason #1889's is:
  * the window is roughly twice the guard interval so every suppression is
- * offered to at least two runs. A repeat of an imported suppression writes
- * no second event row (`insertOwnerEmailEvent()` ignores a duplicate key),
- * and the profile writers skip a flag that already names the same address.
- * The synthetic message id below makes the duplicate key hold across runs.
+ * offered to at least two runs. An import writes no second event row when
+ * the owner already has a row of any date for the same address and the same
+ * cause group (event name), from any source (#2502). The profile writers skip a flag that
+ * already names the same address.
  *
  * REASON-CODE MAPPING
  * -------------------
