@@ -78,4 +78,5 @@ an owner's address no longer stays behind after account deletion or in logs.
   Thank the owner after a Sold report, not tell them the car is already sold.
 - [#2043](https://github.com/elan-registry/registry/issues/2043) —
   Show a visible error when the location gate blocks the join form.
-- WIP: [#2474](https://github.com/elan-registry/registry/issues/2474) — Retire the Backlog milestone.
+- WIP: [#2474](https://github.com/elan-registry/registry/issues/2474) —
+  Retire the Backlog milestone, so an unscheduled issue has no milestone.

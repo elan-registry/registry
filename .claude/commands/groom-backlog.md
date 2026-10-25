@@ -11,9 +11,9 @@ An on-demand audit of open issues: find low-value, make-work, trivial-test,
 or extreme-edge-case candidates for closure, and recommend a milestone (or a
 new milestone) for everything worth keeping that has no clear release target.
 Unlike `/plan-milestone`, this does not seal a milestone or write acceptance
-criteria. It closes issues, moves issues out of a release milestone into
-`Backlog`, creates milestones, and ages out stale issues. Then it stops.
-It never moves an issue into a release milestone (Step 3).
+criteria. It closes issues, removes the milestone from issues that do not
+serve their release, creates milestones, and ages out stale issues. Then it
+stops. It never moves an issue into a release milestone (Step 3).
 
 Orphaned cleanup-ledger groups need no sweep here: `composer check:docs`
 fails when a `CLEANUP_LEDGER.md` heading names a path that does not exist.
@@ -24,9 +24,10 @@ describe one decision applied at two different times (pre-seal vs. anytime).
 
 ## Arguments
 
-- `$ARGUMENTS` — optional. A milestone version (e.g. `v2.17.0`) or `backlog`
-  to scope the sweep to one milestone. Omit to sweep every open milestone
-  plus unmilestoned issues (the default, full sweep).
+- `$ARGUMENTS` — optional. A milestone version (e.g. `v2.17.0`) to scope
+  the sweep to one milestone, or `backlog` to sweep only the unmilestoned
+  issues. Omit to sweep every open milestone plus unmilestoned issues (the
+  default, full sweep).
 
 ## Step 1: Pull the issues
 
@@ -46,10 +47,10 @@ Record each milestone's number and full title. A title can have a suffix
 after the version, for example `v2.31.0: Reachable Owners and Findable
 Cars`. Step 5 uses the full title. For a version in `$ARGUMENTS`, take the
 milestone whose title is the version alone or the version followed by `:`
-or a space. For `backlog`, take the `Backlog` milestone and the
-unmilestoned issues. No match, or more than one match → stop. Show the
-open milestone titles. Tell the user: "Type `/groom-backlog` with the
-version of one open milestone, `backlog`, or no argument."
+or a space. For `backlog`, take only the unmilestoned issues. For any other
+argument, no match or more than one match → stop. Show the open milestone
+titles. Tell the user: "Type `/groom-backlog` with the version of one open
+milestone, `backlog`, or no argument."
 
 Read each issue's full body, not just the title — a title like "investigate
 X" can hide either a bounded chore or an open-ended one; the body decides.
@@ -108,33 +109,33 @@ if nothing gets better when it's fixed, say so plainly.
 ## Step 3: For survivors, recommend placement
 
 Exempt issues (`gate-critical`/`signal:forced`, marked in Step 2) skip this
-step's placement logic — they stay in their current milestone (or Backlog)
-untouched. Still list each one in Step 4's table, as
+step's placement logic — they stay in their current milestone (or with no
+milestone) untouched. Still list each one in Step 4's table, as
 **KEEP, gate-critical/signal:forced — exempt, no placement change**, so a
 future run doesn't silently drop them from the output.
 
 This command never moves an issue into a release milestone. Only
 `/plan-milestone` adds issues to a release, after its gate. Its "Candidate
-filter" reads only unmilestoned and `Backlog` issues. An issue that this
-command put in a release milestone would skip that gate. The only move is
-out of a release milestone, into `Backlog`.
+filter" reads only unmilestoned issues. An issue that this command put in
+a release milestone would skip that gate. The only move is out of a release
+milestone, to no milestone.
 
 For each other issue that passes the gate:
 
-- **Already in a release milestone** (not Backlog) whose theme it clearly
-  serves → leave it, no action.
-- **In a release milestone it does not serve** → recommend a move to
-  `Backlog`, but only when all three checks below pass. If a check fails,
-  list the issue as **no move** with the reason. The user de-scopes it by
-  hand, in the milestone's own workflow.
-- **In Backlog or unmilestoned** → do not move it. Recommend a target: the
+- **Already in a release milestone** whose theme it clearly serves → leave
+  it, no action.
+- **In a release milestone it does not serve** → recommend that Step 5
+  remove the milestone, but only when all three checks below pass. If a
+  check fails, list the issue as **no move** with the reason. The user
+  de-scopes it by hand, in the milestone's own workflow.
+- **Unmilestoned** → do not move it. Recommend a target: the
   closest open milestone by theme (read each milestone's description), or a
   new milestone. `/plan-milestone <version>` gates it from the backlog.
 - **Explicitly structured to ride along with other work** (e.g. a grab-bag
   issue that says "pull a group in when that file is next touched") →
-  leave in Backlog, with no target.
+  leave it with no milestone and no target.
 
-Checks before a move to `Backlog`. Empty output passes the check:
+Checks before the milestone is removed. Empty output passes the check:
 
 ```bash
 # 1. The issue has no branch
@@ -190,8 +191,7 @@ not change any issue in this step. Step 5 acts only on approval.
 
 **Exempt issues.** Never age out an issue that has any of these:
 
-- A milestone other than `Backlog`. The `Backlog` milestone is not a
-  release commitment, so it does not exempt an issue.
+- Any milestone.
 - The label `signal:forced`, `component: security`, or `gate-critical`.
 
 **Human comment.** A comment counts only when `user.type` is not `"Bot"`
@@ -214,7 +214,7 @@ CUTOFF=$(date -u -v-180d +%Y-%m-%d)
 gh issue list --repo elan-registry/registry --state open --limit 1000 \
   --search "created:<$CUTOFF -label:signal:forced -label:\"component: security\" -label:gate-critical -label:stale" \
   --json number,title,createdAt,milestone \
-  --jq '.[] | select(.milestone == null or .milestone.title == "Backlog") | "#\(.number) \(.createdAt[:10]) \(.title)"'
+  --jq '.[] | select(.milestone == null) | "#\(.number) \(.createdAt[:10]) \(.title)"'
 ```
 
 For each result, get the newest human comment. Propose **Warn** when there
@@ -255,7 +255,7 @@ Produce one table before taking any action:
 | # | Title | Reason (signal / workaround / edge-case / make-work) |
 |---|-------|--------------------------------------------------------|
 
-## Recommended moves to Backlog
+## Recommended milestone removals
 | # | Title | Current (full title) | Why it does not serve that milestone |
 |---|-------|----------------------|--------------------------------------|
 
@@ -268,8 +268,8 @@ Produce one table before taking any action:
 |---|-------|---------------------|-----|
 
 ## Recommended new milestone(s)
-| Full title | Theme sentence | Target issues (they stay in Backlog) |
-|------------|----------------|--------------------------------------|
+| Full title | Theme sentence | Target issues (they stay with no milestone) |
+|------------|----------------|---------------------------------------------|
 
 ## Age-out
 | # | Title | Action (warn / close / remove stale) | Created or stale since | Last human comment |
@@ -293,8 +293,8 @@ gh issue close NNN --repo elan-registry/registry --comment "<one-line reason, ma
 # New milestone(s): the full title from the Step 4 table
 gh api repos/elan-registry/registry/milestones -f title="<full title>" -f description="<theme sentence>"
 
-# Moves: into Backlog only. Leave out --remove-label when the issue has no status:ready
-gh issue edit NNN --repo elan-registry/registry --milestone "Backlog" --remove-label "status:ready"
+# Moves: remove the milestone only. Leave out --remove-label when the issue has no status:ready
+gh issue edit NNN --repo elan-registry/registry --remove-milestone --remove-label "status:ready"
 
 # Age-out: warn
 gh issue edit NNN --repo elan-registry/registry --add-label "stale"
@@ -320,13 +320,14 @@ hasn't actually happened.
 ## Step 6: Output summary
 
 - Closed: list with reasons
-- Moved to Backlog: list with the old milestone
+- Milestone removed: list with the old milestone
 - No move: list with the failed check
 - Targets: each target milestone with its issues
 - Created: new milestone(s) with full title and theme
 - Age-out: issues warned, closed with `stale-no-demand`, and `stale`
   removed
-- Left unchanged: Backlog grab-bag items and anything the user declined
+- Left unchanged: unmilestoned grab-bag items and anything the user
+  declined
 
 End with the next step, as plain text, not a menu:
 
