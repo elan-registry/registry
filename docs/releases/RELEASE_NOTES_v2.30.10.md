@@ -14,6 +14,7 @@ an owner's address no longer stays behind after account deletion or in logs.
   scripts in that HTML.
 - The email service log no longer keeps a recipient address for more than 90 days. ([#2384](https://github.com/elan-registry/registry/issues/2384))
 - After an owner reports a car as sold, the page thanks them instead of saying the car is already sold.
+- When the join form stops a submit, it shows which fields to fix. Location must be selected from the list.
 
 ## Admin-Facing Changes
 
@@ -75,5 +76,6 @@ an owner's address no longer stays behind after account deletion or in logs.
 - WIP: [#2500](https://github.com/elan-registry/registry/issues/2500) — Show every block cause in the paused-email notice.
 - [#2497](https://github.com/elan-registry/registry/issues/2497) —
   Thank the owner after a Sold report, not tell them the car is already sold.
-- WIP: [#2043](https://github.com/elan-registry/registry/issues/2043) — Show a visible error when the location gate blocks the join form.
+- [#2043](https://github.com/elan-registry/registry/issues/2043) —
+  Show a visible error when the location gate blocks the join form.
 - WIP: [#2474](https://github.com/elan-registry/registry/issues/2474) — Retire the Backlog milestone.

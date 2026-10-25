@@ -1,6 +1,18 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * View variables set by usersc/join.php before it requires this file.
+ * $email, $fname and $lname are set only on POST; every use below is guarded
+ * by !empty($_POST).
+ *
+ * @var array<mixed> $hooks
+ * @var bool $form_valid
+ * @var string $email
+ * @var string $fname
+ * @var string $lname
+ */
+
 /*
 Enhanced Lotus Elan Registry Registration Page
 Customized for the Lotus Elan Registry with improved UX and registry-specific features
@@ -243,6 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             <!-- Submit Section -->
             <div class="text-center pt-3">
+              <div id="join-validation-summary" class="alert alert-danger text-start d-none" role="alert"></div>
               <button type="submit" class="btn btn-primary btn-lg px-5" id="next_button">
                 <i class="fas fa-user-plus me-2"></i>
                 Create Registry Account
@@ -353,14 +366,108 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Form validation feedback
   const form = document.getElementById('join-form');
+  const validationSummary = document.getElementById('join-validation-summary');
+
+  // The label text comes from the page markup, never from what the visitor
+  // typed, so the summary cannot echo an email or password back (#2043).
+  function fieldLabel(control) {
+    const label = control.id ? form.querySelector('label[for="' + CSS.escape(control.id) + '"]') : null;
+    const text = label ? label.textContent.replace(/\*/g, '').trim() : '';
+    return text || control.getAttribute('aria-label') || control.getAttribute('placeholder') || control.name || control.id;
+  }
+
+  function hideValidationSummary() {
+    if (validationSummary) {
+      validationSummary.classList.add('d-none');
+      validationSummary.textContent = '';
+    }
+  }
+
+  // form.elements, not :invalid, so a control placed outside the <form>
+  // with form="join-form" (a plugin hook) is still listed.
+  function invalidControls() {
+    return Array.prototype.filter.call(form.elements, function (control) {
+      return control.willValidate && !control.validity.valid;
+    });
+  }
+
+  function summaryText(invalid) {
+    if (invalid.length === 0) {
+      return 'Please check the form and try again.';
+    }
+    const labels = invalid.map(fieldLabel);
+    return (labels.length === 1 ? 'Please fix this field before you continue: ' : 'Please fix these fields before you continue: ')
+      + labels.join(', ') + '.';
+  }
+
+  // One blocked visitor pressing submit again and again must not use up the
+  // shared join_failure_beacon limit and hide other reasons (Turnstile, GPS).
+  let lastReportedDetail = null;
+
   if (form) {
     form.addEventListener('submit', function(event) {
       if (!form.checkValidity()) {
         event.preventDefault();
         event.stopPropagation();
+        form.classList.add('was-validated');
+
+        // Bootstrap marks each field, but a field inside the location picker
+        // or out of view is easy to miss. Name the fields above the button
+        // and move focus to the first one (#2043).
+        const invalid = invalidControls();
+        if (invalid.length > 0) {
+          invalid[0].scrollIntoView({ block: 'center' });
+        }
+
+        if (validationSummary) {
+          // Empty first, so a screen reader announces the alert again when
+          // the visitor submits twice with the same fields.
+          validationSummary.textContent = '';
+          validationSummary.classList.remove('d-none');
+        }
+        window.requestAnimationFrame(function () {
+          if (validationSummary) {
+            validationSummary.textContent = summaryText(invalid);
+          }
+          // Text before focus, so the alert does not cut off the field's own description.
+          if (invalid.length > 0) {
+            invalid[0].focus({ preventScroll: true });
+          }
+        });
+
+        // Field identifiers only — never .value, because the form holds a password.
+        const detail = invalid.length > 0 ? invalid.map(function (control) {
+          return control.name || control.id;
+        }).join(',') : 'unknown';
+        if (detail !== lastReportedDetail && typeof window.elanReportJoinFailure === 'function') {
+          lastReportedDetail = detail;
+          window.elanReportJoinFailure('client_validation', detail);
+        }
+        return;
       }
+      hideValidationSummary();
       form.classList.add('was-validated');
     });
+
+    // While the summary shows, keep its list current as fields are fixed.
+    function refreshSummary() {
+      if (!validationSummary || validationSummary.classList.contains('d-none')) {
+        return;
+      }
+      const invalid = invalidControls();
+      if (invalid.length === 0) {
+        hideValidationSummary();
+      } else {
+        // Write only on a change: each write to a role="alert" region can be
+        // announced again, which would interrupt every keystroke.
+        const text = summaryText(invalid);
+        if (validationSummary.textContent !== text) {
+          validationSummary.textContent = text;
+        }
+      }
+    }
+    form.addEventListener('input', refreshSummary);
+    form.addEventListener('change', refreshSummary);
   }
 
   // Password confirmation validation

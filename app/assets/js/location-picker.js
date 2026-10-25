@@ -35,6 +35,10 @@
          *        can hook in their own beacon/logging here. Optional, no-op by default.
          * @param {boolean} options.showGPS Show GPS button (default: true)
          * @param {boolean} options.required Is location required (default: true)
+         * @param {boolean} options.requireSelection Keep the input invalid until a location
+         *        is selected from the results or GPS, or set with setLocation()
+         *        (default: false). Opt-in: only the join form needs a location chosen
+         *        before submit.
          */
         constructor(options) {
             this.options = Object.assign({
@@ -44,7 +48,8 @@
                 onSelect: null,
                 onGPSError: null,
                 showGPS: true,
-                required: true
+                required: true,
+                requireSelection: false
             }, options);
 
             this.container = document.getElementById(this.options.containerId);
@@ -66,6 +71,37 @@
         init() {
             this.render();
             this.attachEventListeners();
+
+            this.syncValidity();
+        }
+
+        /**
+         * Get the visible search input
+         */
+        getInput() {
+            return document.getElementById(`${this.options.containerId}-input`);
+        }
+
+        /**
+         * With requireSelection, keep the input invalid until a location is selected
+         */
+        syncValidity() {
+            const input = this.getInput();
+            if (this.options.requireSelection && input) {
+                input.setCustomValidity(this.selectedLocation ? '' : this.selectionMessage);
+            }
+        }
+
+        /**
+         * Write a location to the hidden form fields, or empty them for null
+         */
+        writeHiddenFields(location) {
+            ['city', 'state', 'country', 'lat', 'lon'].forEach(field => {
+                const el = document.getElementById(`${this.options.containerId}-${field}`);
+                if (el) {
+                    el.value = (location && location[field]) || '';
+                }
+            });
         }
 
         /**
@@ -81,6 +117,12 @@
                 </button>
                 ${this.options.showGPS ? '<div class="text-center text-muted mb-2"><small>OR</small></div>' : ''}` : '';
 
+            // Match the text to the controls the visitor can actually see.
+            this.selectionMessage = gpsButton ?
+                'Select your town or city from the list, or press Use My Current Location.' :
+                'Select your town or city from the list.';
+            const showFeedback = this.options.required || this.options.requireSelection;
+
             this.container.innerHTML = `
                 ${gpsButton}
 
@@ -88,7 +130,7 @@
                     <label for="${this.options.containerId}-input">
                         Location ${this.options.required ? '<span class="text-danger">*</span>' : ''}
                     </label>
-                    <div class="input-group">
+                    <div class="input-group${showFeedback ? ' has-validation' : ''}">
                         <input type="text"
                                class="form-control"
                                id="${this.options.containerId}-input"
@@ -98,10 +140,12 @@
                                aria-label="Search location"
                                aria-autocomplete="list"
                                aria-controls="${this.options.containerId}-results"
+                               ${showFeedback ? `aria-describedby="${this.options.containerId}-feedback"` : ''}
                                aria-expanded="false">
                         <span class="input-group-text d-none" id="${this.options.containerId}-spinner">
                                 <i class="fas fa-spinner fa-spin"></i>
                             </span>
+                        ${showFeedback ? `<div class="invalid-feedback" id="${this.options.containerId}-feedback">${this.selectionMessage}</div>` : ''}
                     </div>
                     <small class="form-text text-muted">Type at least 2 characters to see suggestions</small>
 
@@ -142,7 +186,7 @@
          * Attach event listeners
          */
         attachEventListeners() {
-            const input = document.getElementById(`${this.options.containerId}-input`);
+            const input = this.getInput();
             const gpsBtn = document.getElementById(`${this.options.containerId}-gps-btn`);
 
             if (input) {
@@ -171,6 +215,15 @@
          */
         handleInput(e) {
             const query = e.target.value.trim();
+
+            if (this.options.requireSelection) {
+                // Typed text no longer matches the selected location, so the old
+                // coordinates must not submit with it.
+                if (this.selectedLocation) {
+                    this.clearSelection();
+                }
+                this.syncValidity();
+            }
 
             if (query.length < 2) {
                 this.hideResults();
@@ -350,7 +403,7 @@
          */
         displayResults(results) {
             const resultsContainer = document.getElementById(`${this.options.containerId}-results`);
-            const input = document.getElementById(`${this.options.containerId}-input`);
+            const input = this.getInput();
 
             if (!results || results.length === 0) {
                 resultsContainer.innerHTML = `
@@ -396,7 +449,7 @@
          */
         async handleGPSClick() {
             if (!navigator.geolocation) {
-                this.showError('Geolocation is not supported by your browser');
+                this.showError('This browser cannot share your location. Type your town or city in the Location box and select it from the list.');
                 // A webview lacking the Geolocation API entirely is a real
                 // registration blocker (location is required) — report it the
                 // same as any other GPS failure rather than returning silently.
@@ -425,17 +478,16 @@
                 // shown its own specific message (and no .code), so don't
                 // overwrite it with the generic fallback text.
                 if (typeof error.code === 'number') {
-                    let message = 'Unable to get your location. ';
+                    const fallback = ' Type your town or city in the Location box and select it from the list.';
+                    let message = 'We could not get your location.';
                     if (error.code === 1) {
-                        message += 'Please enable location permissions.';
+                        message = 'Location access is off.';
                     } else if (error.code === 2) {
-                        message += 'Location unavailable.';
+                        message = 'We could not find your location.';
                     } else if (error.code === 3) {
-                        message += 'Request timed out.';
-                    } else {
-                        message += 'Please try manual search instead.';
+                        message = 'Finding your location took too long.';
                     }
-                    this.showError(message);
+                    this.showError(message + fallback);
                 }
 
                 this.callOnGPSError(error);
@@ -522,7 +574,7 @@
 
             } catch (error) {
                 console.error('Reverse geocoding error:', error);
-                this.showError('Unable to determine address from GPS coordinates. Please try manual search.');
+                this.showError('We could not find a town for your location. Type your town or city in the Location box and select it from the list.');
                 // Rethrow so the caller's own catch (handleGPSClick(), which reports
                 // via onGPSError) sees this too — a reverse-geocode failure blocks
                 // the required location field exactly like a raw geolocation error
@@ -540,16 +592,15 @@
         selectLocation(location) {
             this.selectedLocation = location;
 
-            // Populate hidden fields
-            document.getElementById(`${this.options.containerId}-city`).value = location.city || '';
-            document.getElementById(`${this.options.containerId}-state`).value = location.state || '';
-            document.getElementById(`${this.options.containerId}-country`).value = location.country || '';
-            document.getElementById(`${this.options.containerId}-lat`).value = location.lat || '';
-            document.getElementById(`${this.options.containerId}-lon`).value = location.lon || '';
+            this.writeHiddenFields(location);
 
             // Update input field
-            const input = document.getElementById(`${this.options.containerId}-input`);
+            const input = this.getInput();
             input.value = location.display || `${location.city}, ${location.state}, ${location.country}`;
+            this.syncValidity();
+            // A value set in code fires no event. The form's own listeners (the
+            // join form's validation alert) need one to see the field is now valid.
+            input.dispatchEvent(new Event('change', { bubbles: true }));
 
             // Show selected location
             const selectedDiv = document.getElementById(`${this.options.containerId}-selected`);
@@ -562,6 +613,7 @@
 
             // Hide results
             this.hideResults();
+            this.hideError();
 
             // Call callback
             if (typeof this.options.onSelect === 'function') {
@@ -598,7 +650,7 @@
          */
         hideResults() {
             const results = document.getElementById(`${this.options.containerId}-results`);
-            const input = document.getElementById(`${this.options.containerId}-input`);
+            const input = this.getInput();
 
             if (results) {
                 results.style.display = 'none';
@@ -639,18 +691,10 @@
          * @param {string} displayText - Display text for the location
          */
         setLocation(location, displayText) {
-            // Populate hidden fields
-            const cityField = document.getElementById(`${this.options.containerId}-city`);
-            const stateField = document.getElementById(`${this.options.containerId}-state`);
-            const countryField = document.getElementById(`${this.options.containerId}-country`);
-            const latField = document.getElementById(`${this.options.containerId}-lat`);
-            const lonField = document.getElementById(`${this.options.containerId}-lon`);
-
-            if (cityField) cityField.value = location.city || '';
-            if (stateField) stateField.value = location.state || '';
-            if (countryField) countryField.value = location.country || '';
-            if (latField) latField.value = location.lat || '';
-            if (lonField) lonField.value = location.lon || '';
+            // A pre-filled location counts as selected, so requireSelection does
+            // not block a form that pre-fills.
+            this.selectedLocation = location;
+            this.writeHiddenFields(location);
 
             // Show selected location display
             const selectedDiv = document.getElementById(`${this.options.containerId}-selected`);
@@ -665,6 +709,17 @@
             if (coordsText && location.lat && location.lon) {
                 coordsText.textContent = `${location.lat}, ${location.lon}`;
             }
+
+            this.syncValidity();
+        }
+
+        /**
+         * Clear the selected location, its hidden fields, and the "Selected:" box
+         */
+        clearSelection() {
+            this.selectedLocation = null;
+            this.writeHiddenFields(null);
+            document.getElementById(`${this.options.containerId}-selected`).classList.add('d-none');
         }
 
         /**

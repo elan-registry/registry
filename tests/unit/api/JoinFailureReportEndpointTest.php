@@ -263,10 +263,11 @@ final class JoinFailureReportEndpointTest extends TestCase
 
         $this->assertStringContainsString(
             "\$allowedReasons = ['turnstile_error', 'turnstile_expired', 'js_exception', "
-                . "'turnstile_not_loaded', 'location_gps_failed']",
+                . "'turnstile_not_loaded', 'location_gps_failed', 'client_validation']",
             $source,
             'The allowed-reasons enum must match the documented set of client-side failure reasons '
-                . '(Turnstile failures plus location_gps_failed for the required-field GPS blocker)'
+                . '(Turnstile failures, location_gps_failed for the required-field GPS blocker, '
+                . 'and client_validation for a submit blocked by form validation)'
         );
     }
 
@@ -388,6 +389,7 @@ final class JoinFailureReportEndpointTest extends TestCase
             'js_exception is allowed' => ['js_exception', 'js_exception'],
             'turnstile_not_loaded is allowed' => ['turnstile_not_loaded', 'turnstile_not_loaded'],
             'location_gps_failed is allowed' => ['location_gps_failed', 'location_gps_failed'],
+            'client_validation is allowed' => ['client_validation', 'client_validation'],
             'unrecognized string normalizes to unknown' => ['bogus_reason', 'unknown'],
             'empty string normalizes to unknown' => ['', 'unknown'],
             'sql-injection-shaped input normalizes to unknown' => ["'; DROP TABLE logs; --", 'unknown'],
@@ -397,7 +399,7 @@ final class JoinFailureReportEndpointTest extends TestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('reasonProvider')]
     public function testReasonNormalizationLogic(string $input, string $expected): void
     {
-        $allowedReasons = ['turnstile_error', 'turnstile_expired', 'js_exception', 'turnstile_not_loaded', 'location_gps_failed'];
+        $allowedReasons = ['turnstile_error', 'turnstile_expired', 'js_exception', 'turnstile_not_loaded', 'location_gps_failed', 'client_validation'];
         $reason = $input;
         if (!in_array($reason, $allowedReasons, true)) {
             $reason = 'unknown';

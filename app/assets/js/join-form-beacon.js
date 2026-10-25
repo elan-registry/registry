@@ -5,8 +5,14 @@
  * to load, render, error, or expire; an uncaught JS exception or unhandled
  * promise rejection originating from this page's own scripts; or a required
  * field's client-side widget failing, e.g. the location picker's GPS
- * lookup) — cases where the POST to join.php never happens and would
- * otherwise leave zero server-side trace.
+ * lookup; or the browser's form validation blocking the submit) — cases
+ * where the POST to join.php never happens and would otherwise leave zero
+ * server-side trace.
+ *
+ * Reasons: turnstile_error, turnstile_expired, turnstile_not_loaded,
+ * js_exception, location_gps_failed, client_validation. The join form's
+ * submit handler sends client_validation with the invalid fields' names
+ * only, never their values (#2043).
  *
  * @package ElanRegistry
  * @since 2.29.2

@@ -223,36 +223,6 @@ parameters:
 			path: usersc/views/_forgot_password.php
 
 		-
-			message: '#^Variable \$email might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_join.php
-
-		-
-			message: '#^Variable \$fname might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_join.php
-
-		-
-			message: '#^Variable \$form_valid might not be defined\.$#'
-			identifier: variable.undefined
-			count: 3
-			path: usersc/views/_join.php
-
-		-
-			message: '#^Variable \$hooks might not be defined\.$#'
-			identifier: variable.undefined
-			count: 2
-			path: usersc/views/_join.php
-
-		-
-			message: '#^Variable \$lname might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_join.php
-
-		-
 			message: '#^Function checkAccess not found\.$#'
 			identifier: function.notFound
 			count: 1

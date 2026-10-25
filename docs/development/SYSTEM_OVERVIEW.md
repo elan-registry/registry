@@ -110,7 +110,10 @@ researching a chassis number.
   exception to the API conventions: no auth, no CSRF, no rate limit, because it
   must stay freely crawlable.
 - **Join-failure beacon** (`app/api/shared/join-failure-report.php`) — records a
-  join attempt that failed in the browser before it reached the server. Also
+  join attempt that failed in the browser before it reached the server. Reasons:
+  Turnstile failures (`turnstile_error`, `turnstile_expired`,
+  `turnstile_not_loaded`), `js_exception`, `location_gps_failed`, and
+  `client_validation` (form validation blocked the submit; field names only). Also
   carries no CSRF token, under ADR-019's exception for anonymous diagnostic log
   writes: a render-time token went stale and dropped the reports (#2227), and
   its own rate limit bounds abuse instead.
