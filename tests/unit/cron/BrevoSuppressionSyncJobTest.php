@@ -47,11 +47,17 @@ final class BrevoSuppressionSyncJobTest extends TestCase
      */
     private const APP_TIMEZONE = 'America/Los_Angeles';
 
-    /** Brevo's UTC blocked-at used by FakeBrevoBlockedContact's default. */
-    private const BLOCKED_AT_UTC = '2026-09-08T12:00:00.000Z';
+    /**
+     * Brevo's blocked-at used by FakeBrevoBlockedContact's default. Brevo
+     * writes Paris wall time with a `Z` suffix (#2501).
+     */
+    private const BLOCKED_AT_BREVO = '2026-09-08T12:00:00.000Z';
 
-    /** self::BLOCKED_AT_UTC rendered in self::APP_TIMEZONE (UTC-7, PDT). */
-    private const BLOCKED_AT_LOCAL = '2026-09-08 05:00:00';
+    /**
+     * self::BLOCKED_AT_BREVO read as Paris time (CEST, 10:00 UTC) and
+     * rendered in self::APP_TIMEZONE (UTC-7, PDT).
+     */
+    private const BLOCKED_AT_LOCAL = '2026-09-08 03:00:00';
 
     /** Mirrors private BrevoSuppressionSyncJob::PAGE_SIZE. Brevo rejects 1000. */
     private const PAGE_SIZE = 100;
@@ -406,22 +412,70 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     /**
      * Three writers share occurred_at and countSoftBouncesSinceLastDelivered()
-     * compares their rows, so a UTC blockedAt must be converted.
+     * compares their rows, so the job converts blockedAt to the PHP default
+     * timezone after it reads the value as Paris time (#2501).
      */
-    public function testUtcBlockedAtIsStoredInThePhpDefaultTimezone(): void
+    public function testBlockedAtIsReadAsParisTimeAndStoredInThePhpDefaultTimezone(): void
     {
         $this->matchEveryEmailTo(1);
 
         $this->makeJobWithContacts([
-            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', null, self::BLOCKED_AT_UTC),
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', null, self::BLOCKED_AT_BREVO),
         ])->runNow();
 
-        $this->assertSame(
-            date('Y-m-d H:i:s', (new DateTimeImmutable(self::BLOCKED_AT_UTC))->getTimestamp()),
-            $this->applier->calls[0]['occurredAt']
-        );
         $this->assertSame(self::BLOCKED_AT_LOCAL, $this->applier->calls[0]['occurredAt']);
         $this->assertSame([], $this->logsContaining('no usable blocked-at date'));
+    }
+
+    /**
+     * The value seen on test (#2501): Brevo sent `20:52:44.000Z` for a block
+     * that the webhook dated 18:52:44 UTC (11:52:44 PDT). Before #2501 the job
+     * read it as UTC, 2 hours late, and a run within 2 hours of the block
+     * rejected it as a future date.
+     */
+    public function testTheCestOffsetSeenOnTestGivesTheWebhookTime(): void
+    {
+        $this->assertSame(
+            ['occurredAt' => '2026-10-22 11:52:44', 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-10-22T20:52:44.000Z', '2026-10-22 12:20:38')
+        );
+    }
+
+    /** In winter Paris is UTC+1 (CET), so the job takes 1 hour off, not 2. */
+    public function testACetValueLosesOneHour(): void
+    {
+        // 10:00 Paris (CET) = 09:00 UTC = 01:00 PST (US DST ended on 2026-11-01).
+        $this->assertSame(
+            ['occurredAt' => '2026-11-03 01:00:00', 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-11-03T10:00:00.000Z', '2026-11-03 12:00:00')
+        );
+    }
+
+    /** A non-zero offset is a real offset. The job keeps it. */
+    public function testAnExplicitNonZeroOffsetIsKept(): void
+    {
+        $this->assertSame(
+            ['occurredAt' => '2026-09-08 03:00:00', 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-09-08T12:00:00+02:00', self::NOW)
+        );
+    }
+
+    /** A value with no zone is Paris wall time too. */
+    public function testAValueWithNoZoneIsReadAsParisTime(): void
+    {
+        $this->assertSame(
+            ['occurredAt' => self::BLOCKED_AT_LOCAL, 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-09-08 12:00:00', self::NOW)
+        );
+    }
+
+    /** `+00:00` is the same label as `Z`. */
+    public function testAPlusZeroOffsetIsReadAsParisTime(): void
+    {
+        $this->assertSame(
+            ['occurredAt' => self::BLOCKED_AT_LOCAL, 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-09-08T12:00:00+00:00', self::NOW)
+        );
     }
 
     /**
@@ -489,7 +543,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->matchEveryEmailTo(1);
 
         $this->makeJobWithContacts([
-            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
         ])->runNow();
 
         $this->assertFalse($this->applier->calls[0]['occurredAtIsFallback']);
@@ -500,7 +554,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     public function testBlockedAtMoreThanFiveMinutesAheadTakesTheRunTimeAndSetsTheMarker(): void
     {
         $this->matchEveryEmailTo(1);
-        $ahead = gmdate('Y-m-d\TH:i:s\Z', (new DateTimeImmutable(self::NOW))->getTimestamp() + 301);
+        $ahead = FakeBrevoBlockedContact::blockedAtFor((new DateTimeImmutable(self::NOW))->getTimestamp() + 301);
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, $ahead),
@@ -519,7 +573,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     {
         $this->matchEveryEmailTo(1);
         $nowTimestamp = (new DateTimeImmutable(self::NOW))->getTimestamp();
-        $ahead = gmdate('Y-m-d\TH:i:s\Z', $nowTimestamp + 299);
+        $ahead = FakeBrevoBlockedContact::blockedAtFor($nowTimestamp + 299);
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, $ahead),
@@ -1336,7 +1390,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             'owner@example.com',
             'hardBounce',
             null,
-            self::BLOCKED_AT_UTC
+            self::BLOCKED_AT_BREVO
         );
 
         $this->makeJobWithContacts([$contact()])->runFullBackfill();
@@ -1417,9 +1471,9 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->matchEveryEmailTo(1);
 
         $this->makeJobWithContacts([
-            FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce', null, self::BLOCKED_AT_UTC),
-            FakeBrevoBlockedContact::withReason('b@example.com', 'hardBounce', null, self::BLOCKED_AT_UTC),
-            FakeBrevoBlockedContact::withReason('a@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+            FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce', null, self::BLOCKED_AT_BREVO),
+            FakeBrevoBlockedContact::withReason('b@example.com', 'hardBounce', null, self::BLOCKED_AT_BREVO),
+            FakeBrevoBlockedContact::withReason('a@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
             FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce', null, '2026-01-01T00:00:00.000Z'),
         ])->runFullBackfill();
 
@@ -1545,8 +1599,35 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Helpers ---------------------------------------------------------
 
+    /**
+     * Run the job at $now with one contact and return what it passed to apply().
+     *
+     * @return array{occurredAt: string, fallback: bool}
+     */
+    private function occurredAtForBlockedAt(string $blockedAt, string $now): array
+    {
+        $this->matchEveryEmailTo(1);
+        (new BrevoSuppressionSyncJob(
+            new AbstractCronJobFakeDatabase(),
+            $this->mockRepo,
+            new EmailEventMatcher($this->mockRepo),
+            $this->applier,
+            new FakeBrevoSuppressionSyncClient([
+                FakeBrevoSuppressionSyncClient::page([
+                    FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', null, $blockedAt),
+                ]),
+            ]),
+            new DateTimeImmutable($now)
+        ))->runNow();
+
+        return [
+            'occurredAt' => $this->applier->calls[0]['occurredAt'],
+            'fallback' => $this->applier->calls[0]['occurredAtIsFallback'],
+        ];
+    }
+
     /** Mirrors the job's id scheme on purpose: a scheme change must break these tests. */
-    private function syntheticId(string $email, string $code, string $datePart = self::BLOCKED_AT_UTC): string
+    private function syntheticId(string $email, string $code, string $datePart = self::BLOCKED_AT_BREVO): string
     {
         return 'suppression-import-' . md5($email . '|' . $code . '|' . $datePart);
     }

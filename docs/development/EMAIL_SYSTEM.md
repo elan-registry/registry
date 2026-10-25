@@ -1880,7 +1880,8 @@ fails `FILTER_VALIDATE_EMAIL`, before any match. The summary counts it in
 
 **Time.** `blockedAt` is the event time. The job uses it only when it is a
 non-empty string that parses to a positive time, and that time is not more than
-5 minutes after the run time (`MAX_FUTURE_SECONDS = 300`). The webhook and the
+5 minutes after the run time (`MAX_FUTURE_SECONDS = 300`) after the Paris
+conversion below. The webhook and the
 reconciliation job use the same 5-minute cap. Any other value is "no usable
 date": a missing value, a value that is not a string, an empty string, a string
 that does not parse, a non-positive time, or a time more than 5 minutes after
@@ -1888,12 +1889,22 @@ the run time. For no usable date, the job logs a warning with the user ID, not
 the address, and uses the run time as the event time. It also tells
 `apply()` that the time is a fallback. See Import guards.
 
-Brevo sent a `blockedAt` 2 hours later than its own webhook `ts_event`
-(2026-10-22: `21:04:58.680Z` against `19:04:58Z`). When that `blockedAt` is
-more than 5 minutes after the run time, the job uses the run time instead (the
-fallback). A later run accepts the value, but it finds the first row and
-writes no second row. The cause is open (#2501). The parser keeps reading `Z`
-as UTC.
+**Paris time.** Brevo writes `blockedAt` as Paris local time with a `Z`
+suffix (#2501). On test, two blocks from 2026-10-22 came back exactly 2 hours
+after the epoch `ts_event` of their webhooks (`20:52:44.000Z` against
+18:52:45 UTC, and `20:00:53.000Z` against 18:00:53 UTC). That is the CEST
+offset (UTC+2). On 2026-10-25, the first day of CET, the API still returned
+the same values. So Brevo applies the Paris offset of the event date, not the
+offset of the request date. `BrevoSuppressionSyncJob::parseBlockedAt()` reads
+a value with a zero offset (`Z`, `+00:00`) or no zone as `Europe/Paris` wall
+time. The Paris DST rules give 2 hours in summer and 1 hour in winter. A
+non-zero offset is a real offset, and the job keeps it. In the repeated hour
+of the change to CET, PHP picks the CEST reading, so a block in that hour can
+be 1 hour early. Before #2501, the job read `Z` as UTC. A run within 2 hours
+of a block rejected the value and used the run time. A later run stored the
+time 1 or 2 hours late. The job does not correct the rows that it wrote
+before the change. The synthetic message ID uses the raw string, so the change
+writes no second row for an entry that is already imported.
 
 **Window.** The nightly run asks Brevo for the last 48 hours only. It does not
 find a blocklist entry that is older. An owner can change back from address B

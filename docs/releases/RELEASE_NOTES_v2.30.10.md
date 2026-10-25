@@ -66,7 +66,8 @@ an owner's address no longer stays behind after account deletion or in logs.
   Use one order for opted out, blocked and bounced in the send report, the Status chip and the notice.
 - [#2498](https://github.com/elan-registry/registry/issues/2498) —
   Show the owner's user ID in the Verification Queue.
-- WIP: [#2501](https://github.com/elan-registry/registry/issues/2501) — Accept Brevo blocked-at dates that arrive 2 hours ahead in the suppression sync.
+- [#2501](https://github.com/elan-registry/registry/issues/2501) —
+  Read Brevo's blocked-at dates as Paris time, so the suppression sync stores the real block date.
 - [#2502](https://github.com/elan-registry/registry/issues/2502) —
   Stop the suppression sync from adding a second event row for an owner that is already flagged.
 - WIP: [#2499](https://github.com/elan-registry/registry/issues/2499) — Show an opt-out as a warning in the paused-email notice.

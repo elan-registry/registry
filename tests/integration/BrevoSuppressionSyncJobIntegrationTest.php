@@ -27,8 +27,8 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 {
     private const NOW = '2026-09-09 03:00:00';
 
-    /** Brevo's UTC blockedAt used by every contact seeded here. */
-    private const BLOCKED_AT_UTC = '2026-09-08T12:00:00.000Z';
+    /** Brevo's blockedAt (Paris wall time, `Z` suffix, #2501) used by every contact seeded here. */
+    private const BLOCKED_AT_BREVO = '2026-09-08T12:00:00.000Z';
 
     private CarRepository $repo;
     private EmailEventApplier $applier;
@@ -201,7 +201,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($email, 'hardBounce', 'mailbox unavailable', self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, 'hardBounce', 'mailbox unavailable', self::BLOCKED_AT_BREVO),
             ]),
         ])->runNow();
 
@@ -237,7 +237,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($email, 'hardBounce', 'mailbox unavailable', self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, 'hardBounce', 'mailbox unavailable', self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -262,9 +262,9 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         // A short page stops the loop; the end-of-data test belongs to the unit suite.
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($bounceEmail, 'hardBounce', null, self::BLOCKED_AT_UTC),
-                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
-                FakeBrevoBlockedContact::withReason($unsubEmail, 'unsubscribedViaEmail', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($bounceEmail, 'hardBounce', null, self::BLOCKED_AT_BREVO),
+                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
+                FakeBrevoBlockedContact::withReason($unsubEmail, 'unsubscribedViaEmail', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -293,7 +293,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     {
         [$carId, $email] = $this->createSuppressionCar();
 
-        $contact = FakeBrevoBlockedContact::withReason($email, 'hardBounce', 'mailbox unavailable', self::BLOCKED_AT_UTC);
+        $contact = FakeBrevoBlockedContact::withReason($email, 'hardBounce', 'mailbox unavailable', self::BLOCKED_AT_BREVO);
 
         $first = $this->makeJob([FakeBrevoSuppressionSyncClient::page([$contact])])->runFullBackfill();
         $this->assertSame(1, $first->matchedCount, 'First run newly flags the car');
@@ -360,7 +360,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($email, $reasonCode, null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, $reasonCode, null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -388,8 +388,8 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($strangerEmail, 'hardBounce', null, self::BLOCKED_AT_UTC),
-                FakeBrevoBlockedContact::withReason($email, 'hardBounce', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($strangerEmail, 'hardBounce', null, self::BLOCKED_AT_BREVO),
+                FakeBrevoBlockedContact::withReason($email, 'hardBounce', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -421,7 +421,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($email, 'unsubscribedViaEmail', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, 'unsubscribedViaEmail', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -458,7 +458,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($email, 'unsubscribedViaEmail', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, 'unsubscribedViaEmail', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -483,9 +483,9 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($tooLong, 'hardBounce', null, self::BLOCKED_AT_UTC),
-                FakeBrevoBlockedContact::withReason('not-an-address', 'hardBounce', null, self::BLOCKED_AT_UTC),
-                FakeBrevoBlockedContact::withReason($email, 'hardBounce', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($tooLong, 'hardBounce', null, self::BLOCKED_AT_BREVO),
+                FakeBrevoBlockedContact::withReason('not-an-address', 'hardBounce', null, self::BLOCKED_AT_BREVO),
+                FakeBrevoBlockedContact::withReason($email, 'hardBounce', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -691,13 +691,13 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
                     $farEmail,
                     'contactFlaggedAsSpam',
                     null,
-                    gmdate('Y-m-d\TH:i:s\Z', $nowTimestamp + 301)
+                    FakeBrevoBlockedContact::blockedAtFor($nowTimestamp + 301)
                 ),
                 FakeBrevoBlockedContact::withReason(
                     $nearEmail,
                     'contactFlaggedAsSpam',
                     null,
-                    gmdate('Y-m-d\TH:i:s\Z', $nowTimestamp + 299)
+                    FakeBrevoBlockedContact::blockedAtFor($nowTimestamp + 299)
                 ),
             ]),
         ])->runFullBackfill();
@@ -850,7 +850,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
     public static function pageFetchedBeforeClearProvider(): array
     {
         return [
-            'a date before the clear' => [self::BLOCKED_AT_UTC],
+            'a date before the clear' => [self::BLOCKED_AT_BREVO],
             'no date' => [null],
         ];
     }
@@ -883,7 +883,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($new, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($new, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -901,7 +901,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($old, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($old, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -922,8 +922,8 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
-                FakeBrevoBlockedContact::withReason($unsubEmail, 'unsubscribedViaApi', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($spamEmail, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
+                FakeBrevoBlockedContact::withReason($unsubEmail, 'unsubscribedViaApi', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -951,7 +951,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($email, 'adminBlocked', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, 'adminBlocked', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 
@@ -968,7 +968,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
 
         $summary = $this->makeJob([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($email, 'someFutureBrevoCode', null, self::BLOCKED_AT_UTC),
+                FakeBrevoBlockedContact::withReason($email, 'someFutureBrevoCode', null, self::BLOCKED_AT_BREVO),
             ]),
         ])->runFullBackfill();
 

@@ -255,7 +255,7 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
     {
         $client = new FakeBrevoSuppressionSyncClient([
             FakeBrevoSuppressionSyncClient::page([
-                FakeBrevoBlockedContact::withReason($email, $reasonCode, 'parity reason', $this->iso($blockedTs)),
+                FakeBrevoBlockedContact::withReason($email, $reasonCode, 'parity reason', FakeBrevoBlockedContact::blockedAtFor($blockedTs)),
             ]),
         ]);
 
