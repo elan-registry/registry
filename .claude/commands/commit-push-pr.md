@@ -122,8 +122,13 @@ prose.
    form `path: item text`. Keep the lines for step 7. If the exit code is
    not `0`, keep the line "Ledger: could not query" and the stderr for
    step 7.
-5. Write the PR body to a second temp file. Add these sections:
+5. Write the PR body to a second temp file. Keep it brief. Add these
+   sections:
 
+   - **Summary.** Write `Closes #<issue>` on the first line. Then write at
+     most 3 bullets. Each bullet is one short sentence that states what
+     changed and why. Do not write a test-results section, a file list, or
+     a restatement of the plan. The diff and CI show those facts.
    - **Risk flag.** If the plan has a `**Risk flag:**` line, copy it into
      the body word for word (`**Risk flag:** yes` or `**Risk flag:** no`).
      `/finish-issue` reads it from the PR body. If there is no plan, or the
