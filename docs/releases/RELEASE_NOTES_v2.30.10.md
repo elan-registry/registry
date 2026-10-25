@@ -31,7 +31,8 @@ an owner's address no longer stays behind after account deletion or in logs.
   blocked, and the chip said "Blocked".
   The chip now shows "Bounced" for an owner whose bounce flag applies,
   also when the owner opted out.
-- The Brevo suppression sync no longer adds a second event row when a webhook already recorded the same block.
+- The Brevo suppression sync no longer adds a second event row for a block
+  that the registry already recorded.
 - The Verification Queue has a new **User ID** column after Owner. The ID
   links to the user's admin page in a new tab. Two cars of one owner show
   the same ID.

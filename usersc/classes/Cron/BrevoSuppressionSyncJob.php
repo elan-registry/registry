@@ -65,7 +65,7 @@ use ElanRegistry\LogCategories;
  * the window is roughly twice the guard interval so every suppression is
  * offered to at least two runs. An import writes no second event row when
  * the owner already has a row of any date for the same address and the same
- * cause group (event name), from any source (#2502). The profile writers skip a flag that
+ * cause group, from any source (#2502). The profile writers skip a flag that
  * already names the same address.
  *
  * REASON-CODE MAPPING
@@ -719,8 +719,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
             // Deterministic, so re-running the backfill produces the same id
             // for the same contact and collides with the existing row under
-            // er_email_events' UNIQUE (user_id, brevo_message_id, event) — which
-            // is what makes the import idempotent. Built from the raw address
+            // er_email_events' UNIQUE (user_id, brevo_message_id, event). The
+            // cause-group check in EmailEventApplier stops a repeat first, so
+            // the key is the second guard. Built from the raw address
             // and the raw `blockedAt`, so rows that earlier releases wrote
             // keep their id, and a contact whose date fell back to run time
             // still gets a stable id across runs.

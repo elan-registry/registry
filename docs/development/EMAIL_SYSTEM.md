@@ -1850,8 +1850,9 @@ row when the owner already has a row for the same address and the same cause
 group. A cause group is a set of event names, one of these: all
 `HARD_BOUNCE_EVENTS` names, `spam`, or `unsubscribed`. The group is not the
 reason code, so an earlier `unsubscribed` row also stops the row for an
-`adminBlocked` import. When the flag is clear, the flag step sets the
-`blocklist` cause. When the flag is set, the cause stays. The check uses
+`adminBlocked` import. When the flag is already set for the same address, the
+flag step keeps the stored cause. Otherwise it sets the `blocklist` cause,
+unless a later admin Clear Block stops it. The check uses
 `CarRepository::hasOwnerEmailEventForAddress()`. It does not compare
 `occurred_at` or the source, so a row from the webhook, the reconciliation job
 or an earlier import counts. A row from before an admin clear also counts. The result
@@ -1866,6 +1867,9 @@ The event history therefore holds one row per address and cause. A new block
 after an admin clear that only the import sees sets the flag, but writes no
 second row. The Status chip still shows it, because the chip reads the
 profile flags before the event rows.
+A webhook row has the `car_id` of one car. On the owner's other cars, the
+Bounced chip then shows no reason text, because no owner-level row exists for
+that block.
 The job passes the source `import` to the audit row. The reconciliation job
 passes `reconciliation`. The job runs with the verification switch off.
 
