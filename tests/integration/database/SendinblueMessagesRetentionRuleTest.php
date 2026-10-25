@@ -257,9 +257,14 @@ final class SendinblueMessagesRetentionRuleTest extends IntegrationTestCase
             }
         };
 
-        $this->expectException(RetentionPurgeException::class);
-        $this->expectExceptionMessage('table check failed');
-        $this->rule($failing)->purge($this->now);
+        try {
+            $this->rule($failing)->purge($this->now);
+            $this->fail('A failed table check must throw');
+        } catch (RetentionPurgeException $e) {
+            $this->assertStringContainsString('table check failed', $e->getMessage());
+            $this->assertSame('table check', $e->step(), 'The job log line prints the step');
+            $this->assertSame('HY000', $e->sqlState(), 'The job log line prints the SQLSTATE');
+        }
     }
 
     public function testAFailedDeleteThrows(): void

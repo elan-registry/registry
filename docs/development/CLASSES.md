@@ -3626,9 +3626,14 @@ A second run with the same cutoff changes no row. See
 
 ### Add a rule
 
-1. Add a `RETENTION_<NAME>_DAYS` constant to `usersc/includes/config.php`.
-2. Write a class that implements `RetentionRule`.
+1. Write a class in `usersc/classes/Retention/` that implements
+   `RetentionRule`.
+2. Add a `RETENTION_<NAME>_DAYS` constant to `usersc/includes/config.php`.
+   Add the same `define()` to `tests/bootstrap-unit.php`, because the unit
+   tests do not load `config.php`.
 3. Add one line to `RetentionPolicy::rules()`.
+
+The job needs no new seed row, shim or healthcheck for a new rule.
 
 ### RetentionPurgeException
 

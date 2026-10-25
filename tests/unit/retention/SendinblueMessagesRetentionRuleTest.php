@@ -234,4 +234,29 @@ final class SendinblueMessagesRetentionRuleTest extends TestCase
         $this->assertSame(['2026-09-25 03:00:00'], $db->queries[1]['params'], 'DELETE cutoff');
         $this->assertSame(['2026-09-25 03:00:00'], $db->queries[2]['params'], 'UPDATE cutoff');
     }
+
+    /**
+     * The fake ignores SQL text, and CI runs no integration test. Without
+     * this test, a change to the keep-or-delete conditions passes CI.
+     */
+    public function testStatementsKeepTheConditionsThatDecideDeleteOrClear(): void
+    {
+        $db = self::db([self::TABLE_PRESENT, [], []]);
+
+        (new SendinblueMessagesRetentionRule($db, 90))->purge(self::now());
+
+        $normalize = static fn (string $sql): string => (string) preg_replace('/\s+/', ' ', trim($sql));
+        $delete = $normalize($db->queries[1]['sql']);
+        $update = $normalize($db->queries[2]['sql']);
+
+        $this->assertStringContainsString('WHERE accepted_at < ?', $delete);
+        $this->assertStringContainsString('AND NOT EXISTS ( SELECT 1 FROM er_email_events e', $delete, 'A row that an event names must stay (#2460)');
+        $this->assertStringContainsString(
+            'e.brevo_message_id COLLATE utf8mb4_bin = plg_sendinblue_messages.message_id COLLATE utf8mb4_bin',
+            $delete,
+            'Without COLLATE the join fails with error 1267, and the match must be case-sensitive'
+        );
+        $this->assertStringContainsString("SET recipient_email = ''", $update);
+        $this->assertStringContainsString("WHERE accepted_at < ? AND recipient_email != ''", $update);
+    }
 }

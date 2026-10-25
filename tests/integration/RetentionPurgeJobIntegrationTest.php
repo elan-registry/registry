@@ -291,7 +291,11 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
         );
         $this->assertSame(
             1,
-            $this->newLogCount(LogCategories::LOG_CATEGORY_RETENTION_PURGE, "Retention rule 'sendinblue_messages' failed:%")
+            $this->newLogCount(
+                LogCategories::LOG_CATEGORY_RETENTION_PURGE,
+                "Retention rule 'sendinblue_messages' failed:% (step: delete, SQLSTATE: HY000)"
+            ),
+            'The line must name the failed step and SQLSTATE of the real rule'
         );
     }
 

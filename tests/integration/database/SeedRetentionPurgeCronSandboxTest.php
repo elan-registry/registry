@@ -76,6 +76,35 @@ final class SeedRetentionPurgeCronSandboxTest extends MigrationSandboxTestCase
         $this->assertSame(1, $this->jobEnabled(self::JOB_NAME), 'up() after down() must seed the job on (enabled = 1)');
     }
 
+    /**
+     * Without its crons row the dispatcher never runs the job, and a job that
+     * never runs stamps no failure. So each row needs its own existence check.
+     */
+    #[Depends('testUpAfterDownSeedsAgain')]
+    public function testUpWithOnlyTheJobRowAddsTheCronsRow(): void
+    {
+        $this->pdo()->prepare('DELETE FROM crons WHERE file = ?')->execute([self::CRON_FILE]);
+        $this->assertSame(1, $this->jobRunsRowCount(self::JOB_NAME), 'The sandbox must start with the job row only');
+
+        $this->runUp(self::MIGRATION_FILE);
+
+        $this->assertSame(1, $this->cronsRowCount(self::CRON_FILE), 'up() must add the missing crons row');
+        $this->assertSame(1, $this->jobRunsRowCount(self::JOB_NAME), 'up() must not add a second job row');
+    }
+
+    #[Depends('testUpWithOnlyTheJobRowAddsTheCronsRow')]
+    public function testUpWithOnlyTheCronsRowAddsTheJobRow(): void
+    {
+        $this->pdo()->prepare('DELETE FROM er_cron_job_runs WHERE job_name = ?')->execute([self::JOB_NAME]);
+        $this->assertSame(1, $this->cronsRowCount(self::CRON_FILE), 'The sandbox must start with the crons row only');
+
+        $this->runUp(self::MIGRATION_FILE);
+
+        $this->assertSame(1, $this->jobRunsRowCount(self::JOB_NAME), 'up() must add the missing job row');
+        $this->assertSame(1, $this->jobEnabled(self::JOB_NAME), 'up() must add the job row on (enabled = 1)');
+        $this->assertSame(1, $this->cronsRowCount(self::CRON_FILE), 'up() must not add a second crons row');
+    }
+
     private function cronsRowCount(string $file): int
     {
         return $this->scalar('SELECT COUNT(*) FROM crons WHERE file = ?', [$file]);

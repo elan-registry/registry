@@ -149,9 +149,10 @@ final class RetentionPurgeJob extends AbstractCronJob
     /**
      * The failed step and SQLSTATE for the log line.
      *
-     * ExceptionLogSummary::of() gives only the class and file:line, and the
-     * steps of one rule share one throw line. Without this text, an operator
-     * cannot tell a failed delete from a failed table check.
+     * ExceptionLogSummary::of() gives only the class, code and file:line.
+     * forStep() builds every step exception, so every step of every rule
+     * shows the same file:line in RetentionPurgeException.php. Without this
+     * text, an operator cannot tell a failed delete from a failed table check.
      *
      * @param \Throwable $e The exception that the rule threw
      * @return string The text to add to the line, or '' when there is none

@@ -1139,14 +1139,7 @@ runs with the verification switch off. The rule for
 [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows) for what it does
 and [CLASSES.md](CLASSES.md#retention) for the classes.
 
-To add a rule:
-
-1. Add a window constant `RETENTION_<NAME>_DAYS` to `usersc/includes/config.php`.
-2. Write a rule class in `usersc/classes/Retention/` that implements
-   `RetentionRule`.
-3. Add one line for the rule to `RetentionPolicy::rules()`.
-
-The job needs no new seed row, shim or healthcheck for a new rule.
+To add a rule, see [CLASSES.md, "Add a rule"](CLASSES.md#add-a-rule).
 
 ### Deployment Verification Checklist
 

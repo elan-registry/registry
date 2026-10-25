@@ -465,7 +465,10 @@ would have meant a new migration for each one.
 | `last_failed_count` | `int NULL` | (#1885) Failed-car count from a job's most recent run — for `SendVerificationBatchJob` specifically, this also absorbs the `unrecorded` bucket (an email sent successfully but whose bookkeeping write failed), a deliberate conservative merge documented on `SendVerificationBatchJob::execute()`. Same NULL-until-first-run semantics as `last_sent_count`. |
 
 **Written by:** `CronJobGuard` and `AbstractCronJob`, for every job in
-`CronJobGuard::ALLOWED_JOB_NAMES`. The jobs are `send_verification_batch`,
+`CronJobGuard::ALLOWED_JOB_NAMES`. `SendVerificationBatchJob` also writes
+the three count columns. The Pause/Resume button on the admin Verification
+tab (`app/admin/index.php`) writes `enabled` for `send_verification_batch`.
+The jobs are `send_verification_batch`,
 `brevo_reconciliation`, `brevo_suppression_sync` and `retention_purge`
 (`RetentionPurgeJob`, #2384). A seed migration adds the row of each job.
 
