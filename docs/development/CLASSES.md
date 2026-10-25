@@ -1813,8 +1813,9 @@ other probes.
   guard allows the next automatic run, or `null` when the job never ran
 - `autoSendDesiredState(): string` - Give the state the Pause/Resume button asks
   for. Returns `'disable'` when the job is enabled, `'enable'` when not
-- `chip(?object $event, bool $hasProfile, bool $blocked, ?string $blockedCause,
-  bool $optedOut, bool $bounced = false): array` - Static method. Give the
+- `chip(?object $event, bool $hasProfile = true, bool $blocked = false,
+  ?string $blockedCause = null, bool $optedOut = false,
+  bool $bounced = false): array` - Static method. Give the
   Status chip for a car row. `$blocked` and `$bounced` are true only when the
   flag applies to the owner's current address. Order: no profile, blocked,
   bounced, opted out, the same as `SendPolicy::verificationReason()` (#2461).
