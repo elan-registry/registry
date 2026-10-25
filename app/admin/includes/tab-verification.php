@@ -743,6 +743,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             <th scope="col">Car</th>
                             <th scope="col">Chassis</th>
                             <th scope="col">Owner</th>
+                            <th scope="col">User ID</th>
                             <th scope="col">Sent</th>
                             <th scope="col">Days</th>
                             <th scope="col">Status</th>
@@ -752,6 +753,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                     <tbody>
                     <?php foreach ($vsQueueRows as $queueCar) {
                         $queueCarId = (int) ($queueCar->id ?? 0);
+                        $queueOwnerId = (int) ($queueCar->user_id ?? 0);
 
                         // cars.fname/cars.lname ARE present in this row (both queue queries
                         // select them, and fname/lname are denormalized onto cars — see
@@ -870,6 +872,13 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             </td>
                             <td><?= vsEsc($queueCar->chassis ?? '') ?></td>
                             <td><?= vsEsc($vsOwnerName !== '' ? $vsOwnerName : "owner #{$queueCar->user_id}") ?></td>
+                            <td>
+                                <?php if ($queueOwnerId > 0) { ?>
+                                <a href="<?= vsEsc($us_url_root . 'users/admin.php?view=user&id=' . $queueOwnerId) ?>" target="_blank" rel="noopener"><?= vsEsc($queueOwnerId) ?></a>
+                                <?php } else { ?>
+                                &mdash;
+                                <?php } ?>
+                            </td>
                             <td><?= $queueSentAt !== false ? vsEsc($queueSentAt->format('Y-m-d')) : '&mdash;' ?></td>
                             <td><?= $queueDays !== null ? vsEsc((string) $queueDays) : '&mdash;' ?></td>
                             <td>

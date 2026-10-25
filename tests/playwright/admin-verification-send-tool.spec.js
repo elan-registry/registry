@@ -382,7 +382,7 @@ test.describe('Admin Verification Clear Block and Clear Opt-out', () => {
     test.describe.configure({ mode: 'serial' });
 
     const queueRow = (page, carId) => page.locator('#verificationQueue table tbody tr', {
-        has: page.locator(`td:text-is("${carId}")`),
+        has: page.locator(`td:first-child:text-is("${carId}")`),
     });
 
     const gotoPill = async (page, status) => {

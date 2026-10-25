@@ -493,6 +493,84 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         );
     }
 
+    /** @return array<string, array{0: bool}> */
+    public static function queueViewerProvider(): array
+    {
+        return [
+            'admin'  => [false],
+            'editor' => [true],
+        ];
+    }
+
+    /**
+     * #2498: each queue row shows the owner's user ID, linked to the user's
+     * admin page. Two cars of one owner show the same ID.
+     */
+    #[DataProvider('queueViewerProvider')]
+    public function testQueueShowsTheOwnerUserIdWithALinkToTheUserPage(bool $asEditor): void
+    {
+        $this->seedNotHealthy();
+
+        $ownerId = $this->createTestUser([], true);
+        // Pending lists the longest-waiting car first, so a send time near the
+        // end of the link lifetime puts these two cars in the first rows.
+        $sentAt = date('Y-m-d H:i:s', time() - 59 * 86400);
+        $carIds = [];
+        for ($i = 0; $i < 2; $i++) {
+            $carIds[] = $this->createTestCar($ownerId, [
+                'vericode'         => bin2hex(random_bytes(16)),
+                'vericode_sent_at' => $sentAt,
+            ]);
+        }
+        // cars.user_id is nullable with no foreign key, so a row can have no owner.
+        $noOwnerCarId = $this->createTestCar($ownerId, [
+            'vericode'         => bin2hex(random_bytes(16)),
+            'vericode_sent_at' => $sentAt,
+        ]);
+        $this->db->query('UPDATE cars SET user_id = NULL WHERE id = ?', [$noOwnerCarId]);
+        $this->assertFalse($this->db->error(), 'Test setup: clear user_id: ' . $this->db->errorString());
+
+        $xpath = $this->getVerificationTab('pending', $asEditor ? $this->editorId : null);
+
+        $headers = [];
+        foreach ($xpath->query('//*[@id="verificationQueue"]//table/thead/tr/th') as $th) {
+            $headers[] = trim($th->textContent);
+        }
+        $this->assertSame(
+            ['Car', 'Chassis', 'Owner', 'User ID', 'Sent', 'Days', 'Status', 'Actions'],
+            $headers,
+            'User ID is the column directly after Owner'
+        );
+
+        foreach ($carIds as $carId) {
+            $rows = $xpath->query(sprintf(
+                '//*[@id="verificationQueue"]//table/tbody/tr[normalize-space(td[1]) = "%d"]',
+                $carId
+            ));
+            $this->assertSame(1, $rows->length, "Car {$carId} has one queue row");
+
+            $cell = $xpath->query('td[4]', $rows->item(0))->item(0);
+            $this->assertInstanceOf(DOMElement::class, $cell);
+            $links = $xpath->query('a', $cell);
+            $this->assertSame(1, $links->length, "The User ID cell of car {$carId} holds one link");
+
+            $link = $links->item(0);
+            $this->assertInstanceOf(DOMElement::class, $link);
+            $this->assertSame((string) $ownerId, trim($link->textContent), "Car {$carId} shows its owner's user ID");
+            $this->assertSame('/users/admin.php?view=user&id=' . $ownerId, $link->getAttribute('href'));
+            $this->assertSame('_blank', $link->getAttribute('target'));
+            $this->assertSame('noopener', $link->getAttribute('rel'));
+        }
+
+        $noOwnerCell = $xpath->query(sprintf(
+            '//*[@id="verificationQueue"]//table/tbody/tr[normalize-space(td[1]) = "%d"]/td[4]',
+            $noOwnerCarId
+        ))->item(0);
+        $this->assertInstanceOf(DOMElement::class, $noOwnerCell, "Car {$noOwnerCarId} with no owner has a queue row");
+        $this->assertSame(0, $xpath->query('a', $noOwnerCell)->length, 'A row with no owner has no user link');
+        $this->assertSame("\u{2014}", trim($noOwnerCell->textContent), 'A row with no owner shows a dash');
+    }
+
     /** @return array<string, array{0: string}> */
     public static function filterPillProvider(): array
     {

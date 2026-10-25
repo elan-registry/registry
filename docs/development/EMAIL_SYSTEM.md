@@ -575,7 +575,9 @@ Opted out counts cars whose owner has `email_opted_out = 1`. An owner with no
 `profiles` row gets no verification email, so the car is never Eligible.
 The rule lives once, in `CarRepository::countVerificationSummary()`.
 
-**Table columns:** Car, Chassis, Owner, Sent, Days, Status, Actions.
+**Table columns:** Car, Chassis, Owner, User ID, Sent, Days, Status, Actions.
+The User ID links to the user's admin page (`users/admin.php?view=user&id=N`)
+in a new tab. A row with no owner shows a dash.
 
 **URL state:** `?tab=verification&status=&window=&show=`. A view has its own
 bookmarkable URL. `app/admin/index.php` checks each value against a fixed
