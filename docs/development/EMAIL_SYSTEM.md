@@ -1867,9 +1867,10 @@ The event history therefore holds one row per address and cause. A new block
 after an admin clear that only the import sees sets the flag, but writes no
 second row. The Status chip still shows it, because the chip reads the
 profile flags before the event rows.
-A webhook row has the `car_id` of one car. On the owner's other cars, the
-Bounced chip then shows no reason text, because no owner-level row exists for
-that block.
+A webhook row for a verification send has the `car_id` of that car. On the
+owner's other cars, the Bounced chip then shows no reason text, because no
+owner-level row exists for that block. A webhook row for other mail has no
+`car_id` and shows on every car.
 The job passes the source `import` to the audit row. The reconciliation job
 passes `reconciliation`. The job runs with the verification switch off.
 
