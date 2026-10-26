@@ -64,6 +64,17 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
+        // Set before any skip or fail: tearDown deletes the log rows above this floor.
+        $this->logFloor = (int) $this->db->query('SELECT COALESCE(MAX(id), 0) AS m FROM logs')->first()->m;
+
+        $tableCheck = $this->db->query(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            ['er_deleted_user_addresses']
+        );
+        if ($tableCheck->count() === 0) {
+            $this->markTestSkipped('er_deleted_user_addresses does not exist. Run: composer migrate (20261023)');
+        }
+
         $this->originalRow = $this->db->query(
             'SELECT enabled, last_run_at, last_failure_at FROM er_cron_job_runs WHERE job_name = ?',
             [self::JOB_NAME]
@@ -86,13 +97,21 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
             $this->markTestSkipped('plg_sendinblue_messages holds rows that this test did not write. The job would purge them.');
         }
 
-        // A stale holding row that this test did not write would fail every run.
-        $foreignHolding = (int) $this->db->query('SELECT COUNT(*) AS cnt FROM er_deleted_user_addresses')->first()->cnt;
-        if ($foreignHolding > 0) {
-            $this->markTestSkipped('er_deleted_user_addresses holds rows that this test did not write. The backlog rule would fail the run.');
+        // A stale holding row that this test did not write would fail every
+        // run. A fresh one does not change the outcome. A stale one is a
+        // leaked fixture, so the test fails and does not skip.
+        $staleForeign = (string) $this->db->query(
+            'SELECT COALESCE(GROUP_CONCAT(user_id ORDER BY user_id), \'\') AS ids FROM er_deleted_user_addresses
+             WHERE deleted_at < NOW() - INTERVAL 24 HOUR AND user_id <> ?',
+            [self::HOLDING_USER_ID]
+        )->first()->ids;
+        if ($staleForeign !== '') {
+            $this->fail(
+                "er_deleted_user_addresses holds stale rows that this test did not write (user IDs {$staleForeign}). "
+                . 'The backlog rule would fail every run. Remove the leaked fixture rows: '
+                . "DELETE FROM er_deleted_user_addresses WHERE user_id IN ({$staleForeign})"
+            );
         }
-
-        $this->logFloor = (int) $this->db->query('SELECT COALESCE(MAX(id), 0) AS m FROM logs')->first()->m;
 
         // The pinger sends a ping only when both values are set.
         foreach (['HEALTHCHECKS_PING_KEY' => 'testkey', 'HEALTHCHECKS_SLUG_SUFFIX' => '-test'] as $name => $value) {

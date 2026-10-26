@@ -112,34 +112,74 @@ final class CarRepositoryBlockEventCausesTest extends IntegrationTestCase
         $this->seedEvent($userId, $email, 'spam', '2026-10-20 10:00:00', $untagged);
         $this->seedEvent($otherUserId, $email, 'unsubscribed', '2026-10-20 10:00:00', $untagged);
 
-        $changed = $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', $untagged, $tagged);
+        $result = $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', $untagged, $tagged);
 
-        $this->assertSame(1, $changed);
+        $this->assertSame(['retagged' => 1, 'removed' => 0], $result);
         $this->assertSame([$tagged], $this->messageIds($userId, 'unsubscribed'));
         $this->assertSame([$untagged], $this->messageIds($userId, 'spam'), 'A row with another event must not change');
         $this->assertSame([$untagged], $this->messageIds($otherUserId, 'unsubscribed'), 'Another owner\'s row must not change');
         $this->assertSame(['blocklist', 'spam'], self::sorted($this->repo->ownerBlockEventCauses($userId, $email, null)));
 
         $this->assertSame(
-            0,
+            ['retagged' => 0, 'removed' => 0],
             $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', $untagged, $tagged),
             'A second call finds no row'
         );
     }
 
-    /** The unique key stops a rename onto an existing row. The call must not fail. */
-    public function testRetagOntoAnExistingRowChangesNothingAndDoesNotThrow(): void
+    /**
+     * A failed retag lets apply() write the tagged row beside the old one.
+     * The next call deletes the old row, so the notice names no false
+     * unsubscribe. Rows of another event or another owner stay.
+     */
+    public function testRetagOntoAnExistingRowRemovesTheOldRowOnly(): void
     {
         $userId = $this->createOwner();
+        $otherUserId = $this->createOwner();
         $email = 'retag-dup-' . uniqid() . '@example.com';
         $hash = md5(uniqid());
         $untagged = 'suppression-import-' . $hash;
         $tagged = CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $untagged);
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $tagged);
+        $this->seedEvent($userId, $email, 'spam', '2026-10-20 10:00:00', $untagged);
+        $this->seedEvent($otherUserId, $email, 'unsubscribed', '2026-10-20 10:00:00', $untagged);
+        $this->assertSame(
+            ['blocklist', 'spam', 'unsubscribed'],
+            self::sorted($this->repo->ownerBlockEventCauses($userId, $email, null)),
+            'Test setup: the old row gives a false unsubscribe cause'
+        );
 
-        $this->assertSame(0, $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', $untagged, $tagged));
-        $this->assertSame(self::sorted([$tagged, $untagged]), self::sorted($this->messageIds($userId, 'unsubscribed')));
+        $this->assertSame(
+            ['retagged' => 0, 'removed' => 1],
+            $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', $untagged, $tagged)
+        );
+
+        $this->assertSame([$tagged], $this->messageIds($userId, 'unsubscribed'));
+        $this->assertSame([$untagged], $this->messageIds($userId, 'spam'), 'A row with another event must stay');
+        $this->assertSame([$untagged], $this->messageIds($otherUserId, 'unsubscribed'), 'Another owner\'s row must stay');
+        $this->assertSame(['blocklist', 'spam'], self::sorted($this->repo->ownerBlockEventCauses($userId, $email, null)));
+        $this->assertSame(
+            ['retagged' => 0, 'removed' => 0],
+            $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', $untagged, $tagged),
+            'A second call finds no row'
+        );
+    }
+
+    /** Without its spam row, the owner's only cause after the repair is blocklist. */
+    public function testRemovingTheOldRowLeavesOnlyTheBlocklistCause(): void
+    {
+        $userId = $this->createOwner();
+        $email = 'retag-only-' . uniqid() . '@example.com';
+        $hash = md5(uniqid());
+        $untagged = 'suppression-import-' . $hash;
+        $tagged = CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
+        $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $untagged);
+        $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $tagged);
+
+        $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', $untagged, $tagged);
+
+        $this->assertSame(['blocklist'], $this->repo->ownerBlockEventCauses($userId, $email, null));
     }
 
     public function testRetagMatchesTheIdExactlyAndSkipsNoUser(): void
@@ -151,8 +191,9 @@ final class CarRepositoryBlockEventCausesTest extends IntegrationTestCase
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $upper);
 
         $tagged = CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
-        $this->assertSame(0, $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', 'suppression-import-' . $hash, $tagged));
-        $this->assertSame(0, $this->repo->retagOwnerEmailEventMessageId(0, 'unsubscribed', $upper, $tagged));
+        $none = ['retagged' => 0, 'removed' => 0];
+        $this->assertSame($none, $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', 'suppression-import-' . $hash, $tagged));
+        $this->assertSame($none, $this->repo->retagOwnerEmailEventMessageId(0, 'unsubscribed', $upper, $tagged));
         $this->assertSame([$upper], $this->messageIds($userId, 'unsubscribed'));
     }
 

@@ -330,7 +330,8 @@ through `CarRepository::insertEmailEvent()`.
 - `BrevoSuppressionSyncJob` calls
   `CarRepository::retagOwnerEmailEventMessageId()` for an `adminBlocked`
   contact. It changes `brevo_message_id` of an old untagged admin-block row
-  to the `suppression-import-blocklist-` ID (#2500).
+  to the `suppression-import-blocklist-` ID (#2500). When the tagged row
+  already exists, it deletes the old untagged row.
 - A car transfer to a new owner changes no row. The previous owner's rows
   stay with the previous owner, and the new owner sees the car as not sent.
 - `usersc/scripts/after_user_deletion.php` runs a privacy step first, in its

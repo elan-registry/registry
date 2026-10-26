@@ -1901,12 +1901,15 @@ a tagged second row beside each one, and the old row still names an
 unsubscribe. So for an
 `adminBlocked` contact with a matched owner, the job first changes the ID of
 the owner's old row (event `unsubscribed`, the old prefix and the same hash)
-to the tagged ID (`CarRepository::retagOwnerEmailEventMessageId()`). After a
-full backfill, no untagged admin-block row remains for a contact that is still
-on Brevo's list. The job has no dry-run mode, so each run makes this change.
-`er_email_events` has no audit trigger, so the job writes one log line for
-each contact whose rows it changes, with the number of rows. A failed retag is logged with no address, and `apply()` still
-runs: the retag repairs only the notice text, and the next run tries it again.
+to the tagged ID (`CarRepository::retagOwnerEmailEventMessageId()`). When the
+owner already has the tagged row, the method deletes the old row instead.
+After a full backfill, no untagged admin-block row remains for a contact that
+is still on Brevo's list. The job has no dry-run mode, so each run makes this
+change. `er_email_events` has no audit trigger, so the job writes one log line
+for each contact whose rows it changes or deletes, with the number of rows. A
+failed retag is logged with no address, and `apply()` still runs: the retag
+repairs only the notice text. When `apply()` then writes the tagged row, the
+next run deletes the old row.
 In `MODE_STATE`, `apply()` writes no
 row when the owner already has a row for the same address and the same cause
 group. A cause group is a set of event names, one of these: all

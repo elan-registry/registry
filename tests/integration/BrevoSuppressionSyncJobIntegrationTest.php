@@ -1003,6 +1003,41 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertSame(['blocklist', 'spam'], $this->sortedCauses($userId, $email));
     }
 
+    /**
+     * A failed retag lets apply() write the tagged row beside the old one.
+     * The next run deletes the old row, so the notice names no false
+     * unsubscribe.
+     */
+    public function testAdminBlockedImportRemovesTheOldRowWhenTheTaggedRowExists(): void
+    {
+        [$carId, $email] = $this->createSuppressionCar();
+        $userId = (int) $this->ownerFlagsForCar($carId)->user_id;
+        $hash = md5($email . '|adminBlocked|' . self::BLOCKED_AT_BREVO);
+        $tagged = CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
+        foreach (['suppression-import-' . $hash, $tagged] as $messageId) {
+            $this->db->query(
+                "INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+                 VALUES (?, NULL, ?, 'unsubscribed', NULL, ?, '2026-09-08 03:00:00')",
+                [$userId, $email, $messageId]
+            );
+            $this->assertFalse($this->db->error(), 'Test setup: event row: ' . $this->db->errorString());
+        }
+        $this->assertSame(['blocklist', 'unsubscribed'], $this->sortedCauses($userId, $email), 'Test setup: the old row reads as an unsubscribe');
+
+        $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'adminBlocked', null, self::BLOCKED_AT_BREVO),
+            ]),
+        ])->runFullBackfill();
+
+        $ids = array_column(array_filter(
+            $this->eventRows($carId),
+            static fn (object $row): bool => $row->event === 'unsubscribed'
+        ), 'brevo_message_id');
+        $this->assertSame([$tagged], array_values($ids));
+        $this->assertSame(['blocklist'], $this->sortedCauses($userId, $email));
+    }
+
     /** @return list<string> */
     private function sortedCauses(int $userId, string $email): array
     {

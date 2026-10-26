@@ -10,8 +10,10 @@ use ElanRegistry\LogCategories;
  * RetentionPurgeException
  *
  * Thrown when a retention rule cannot purge its rows because of a database
- * error, and by RetentionPurgeJob after a run in which one or more rules
- * failed. A missing table is not an error: the rule returns a skip result.
+ * error, when an alarm rule finds its condition (then the step names the
+ * condition and the SQLSTATE is null), and by RetentionPurgeJob after a run
+ * in which one or more rules failed. A missing table is not an error: the
+ * rule returns a skip result.
  *
  * @package ElanRegistry
  * @subpackage Exceptions

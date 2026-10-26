@@ -35,6 +35,26 @@ final class CarRepositoryQueryFailureTest extends TestCase
     }
 
     /**
+     * The retag deletes the old row when the tagged row is there. A failed
+     * DELETE must throw, so the import logs it and the next run tries again.
+     */
+    public function testRetagThrowsWhenTheDeleteOfTheOldRowFails(): void
+    {
+        $stubDb = $this->createStub(DatabaseInterface::class);
+        $stubDb->method('query')->willReturnSelf();
+        $stubDb->method('count')->willReturn(1);
+        $stubDb->method('error')->willReturnOnConsecutiveCalls(false, true);
+        $stubDb->method('errorString')->willReturn('mock query failure');
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessage(
+            'CarRepository::retagOwnerEmailEventMessageId failed for user=7, event=unsubscribed: mock query failure'
+        );
+
+        (new CarRepository($stubDb))->retagOwnerEmailEventMessageId(7, 'unsubscribed', 'old', 'new');
+    }
+
+    /**
      * @return array<string, array{callable(CarRepository): mixed, string}>
      */
     public static function queryProvider(): array
@@ -55,6 +75,10 @@ final class CarRepositoryQueryFailureTest extends TestCase
             'getHistory' => [
                 static fn (CarRepository $repo) => $repo->getHistory(42),
                 'CarRepository::getHistory failed for car=42: mock query failure',
+            ],
+            'retagOwnerEmailEventMessageId' => [
+                static fn (CarRepository $repo) => $repo->retagOwnerEmailEventMessageId(7, 'unsubscribed', 'old', 'new'),
+                'CarRepository::retagOwnerEmailEventMessageId failed for user=7, event=unsubscribed: mock query failure',
             ],
         ];
     }

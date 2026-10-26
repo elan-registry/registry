@@ -227,11 +227,12 @@ trigger gives this warning.
 
 The rerun cannot find every address. The car cleanup runs after a failed
 privacy step. It takes the user's cars away from the user ID, so the rerun
-cannot read the addresses on those cars. The holding row stores only `users.email` and
-`users.email_new`. A `plg_sendinblue_messages` row sent to an address that was
-only on the user's cars, with no `er_email_events` row for the user, therefore
-remains. The page shows a note about this after each committed run. The
-nightly retention purge deletes those rows within 90 days.
+cannot read the addresses on those cars. The holding row stores only
+`users.email` and `users.email_new`. A `plg_sendinblue_messages` row sent to
+an address that was only on the user's cars, with no `er_email_events` row for
+the user, therefore remains. The page shows a note about this after each
+committed run. The nightly retention purge deletes those rows once they are
+older than 90 days.
 
 ### If the run fails again
 

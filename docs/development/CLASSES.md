@@ -43,7 +43,7 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 | --- | --- | --- | --- |
 | **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, Owner |
 | `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
-| `ElanRegistry\Retention` | Retention rules for the nightly purge | `/usersc/classes/Retention/` | RetentionRule, RetentionPolicy |
+| `ElanRegistry\Retention` | Retention rules for the nightly purge | `/usersc/classes/Retention/` | RetentionRule, RetentionPolicy, RetentionResult, SendinblueMessagesRetentionRule, DeletedUserAddressesBacklogRule |
 | `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/Reference/` | CarModel |
 
 ### Reference Data vs. Entity Classes
@@ -749,13 +749,13 @@ to provide a focused, testable data access layer wrapping the `cars`,
   rows give their event name. With `$after`, only rows with
   `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
   less than 1 or an empty address. `EmailNoticeBuilder` uses it for block causes (#2500).
-- `retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): int` -
-  Sets `brevo_message_id` to `$toId` on the user's rows with `$event` and
-  `$fromId` (both compared with `COLLATE utf8mb4_bin`). Returns the number of
-  rows changed. The statement is `UPDATE IGNORE`, so when the unique key
-  `(user_id, brevo_message_id, event)` already holds `$toId`, the row stays
-  unchanged and the call returns 0 with no error. A `$userId` less than 1
-  issues no query. Throws `CarDatabaseException` on a query error.
+- `retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): array{retagged: int, removed: int}` -
+  When the user already has a row with `$event` and `$toId`, deletes the
+  user's rows with `$event` and `$fromId` and returns the count in `removed`.
+  This repairs the state after a failed retag. Otherwise it sets
+  `brevo_message_id` to `$toId` on those rows (`UPDATE IGNORE`) and returns
+  the count in `retagged`. IDs compare with `COLLATE utf8mb4_bin`. A `$userId`
+  less than 1 issues no query. Throws `CarDatabaseException` on a query error.
   `BrevoSuppressionSyncJob` uses it to give an admin-block row from before
   #2500 the `ADMIN_BLOCK_MESSAGE_ID_PREFIX` tag
 - `findUserIdsByAddress(string $address): array` - Distinct IDs of the users
@@ -3639,9 +3639,11 @@ personal data.
 
 - `name(): string` — A stable name for log lines, for example
   `sendinblue_messages`.
-- `purge(\DateTimeImmutable $now): RetentionResult` — The rule computes its
-  own cutoff from its window. It throws `RetentionPurgeException` on a
-  database error. It returns `skipped()` only when its own table does not
+- `purge(\DateTimeImmutable $now): RetentionResult` — A purge rule computes
+  its cutoff from `$now` and its window. An alarm rule
+  (`DeletedUserAddressesBacklogRule`) changes no row and can use the database
+  clock. It throws `RetentionPurgeException` on a database error, and an
+  alarm rule also throws it when it finds its condition. It returns `skipped()` only when its own table does not
   exist (see `RetentionResult`).
 
 ### RetentionResult
@@ -3682,7 +3684,8 @@ A second run with the same cutoff changes no row. See
 `MAX_AGE_HOURS` is 24.
 
 The account-deletion privacy step deletes the user's
-`er_deleted_user_addresses` holding row in its own transaction. So a holding
+`er_deleted_user_addresses` holding row in the same transaction as its other
+privacy deletes. So a holding
 row older than 24 hours shows a privacy step that did not commit. The rule
 selects the `user_id` of each such row. The cutoff is MySQL `NOW()`, not the
 PHP `$now`, because the trigger writes `deleted_at` with MySQL `NOW()`.

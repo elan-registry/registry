@@ -30,11 +30,30 @@ final class DeletedUserAddressesBacklogRuleTest extends IntegrationTestCase
     {
         parent::setUp();
         $this->requireDatabase();
+
+        $tableCheck = $this->db->query(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            ['er_deleted_user_addresses']
+        );
+        if ($tableCheck->count() === 0) {
+            $this->markTestSkipped('er_deleted_user_addresses does not exist. Run: composer migrate (20261023)');
+        }
+
         $this->deleteFixtureRows();
 
-        $foreign = (int) $this->db->query('SELECT COUNT(*) AS cnt FROM er_deleted_user_addresses')->first()->cnt;
-        if ($foreign > 0) {
-            $this->markTestSkipped('er_deleted_user_addresses holds rows that this test did not write. The rule would report them.');
+        // Only a stale row changes the rule's result. A stale row that this
+        // test did not write is a leaked fixture, so the test fails and does not skip.
+        $staleForeign = (string) $this->db->query(
+            'SELECT COALESCE(GROUP_CONCAT(user_id ORDER BY user_id), \'\') AS ids FROM er_deleted_user_addresses
+             WHERE deleted_at < NOW() - INTERVAL 24 HOUR AND user_id NOT IN (?, ?)',
+            [self::OLD_ID, self::FRESH_ID]
+        )->first()->ids;
+        if ($staleForeign !== '') {
+            $this->fail(
+                "er_deleted_user_addresses holds stale rows that this test did not write (user IDs {$staleForeign}). "
+                . 'The rule would report them. Remove the leaked fixture rows: '
+                . "DELETE FROM er_deleted_user_addresses WHERE user_id IN ({$staleForeign})"
+            );
         }
     }
 
@@ -61,9 +80,13 @@ final class DeletedUserAddressesBacklogRuleTest extends IntegrationTestCase
         $this->assertFalse($this->db->error(), 'Test setup: holding row: ' . $this->db->errorString());
     }
 
+    /** Counts only this test's rows: a fresh foreign row can exist. */
     private function holdingRowCount(): int
     {
-        return (int) $this->db->query('SELECT COUNT(*) AS cnt FROM er_deleted_user_addresses')->first()->cnt;
+        return (int) $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM er_deleted_user_addresses WHERE user_id IN (?, ?)',
+            [self::OLD_ID, self::FRESH_ID]
+        )->first()->cnt;
     }
 
     public function testAnEmptyTablePasses(): void

@@ -15,16 +15,17 @@ use ElanRegistry\Retention\RetentionRule;
 /**
  * RetentionPurgeJob - Runs each data retention rule once a day (#2384)
  *
- * The rules come from {@see RetentionPolicy::rules()}. Each rule deletes or
- * clears the rows of one table that are older than its window.
+ * The rules come from {@see RetentionPolicy::rules()}. A purge rule deletes
+ * or clears the rows of one table that are older than its window. An alarm
+ * rule deletes nothing and throws when it finds its condition.
  *
  * RUNS WITH THE VERIFICATION SWITCH OFF. The job does not override
  * {@see AbstractCronJob::refusesWhileSwitchOff()}. The retention windows are
  * privacy promises, and they apply whether or not verification mail goes out.
  *
  * ONE RULE FAILS, THE OTHERS STILL RUN. Each rule runs in its own
- * `try/catch`. A rule result or failure gets one line under
- * `LOG_CATEGORY_RETENTION_PURGE`. After all rules ran, the job throws
+ * `try/catch`. The job logs one line for each rule result or failure under
+ * `LOG_CATEGORY_RETENTION_PURGE`. A rule can log more lines itself. After all rules ran, the job throws
  * {@see RetentionPurgeException} if one or more rules failed. Then
  * {@see AbstractCronJob::run()} stamps `last_failure_at` and pings `/fail`.
  *

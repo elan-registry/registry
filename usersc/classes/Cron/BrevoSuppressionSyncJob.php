@@ -943,7 +943,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * unsubscribe. Without the retag, apply() writes a tagged row beside
      * it, because the cause-group check in {@see EmailEventApplier} counts
      * only tagged rows for an admin block, and the old row still names an
-     * unsubscribe. After
+     * unsubscribe. When the tagged row is already there (for example, after
+     * a failed retag), the repository deletes the old row. After
      * a full backfill, no untagged admin-block row remains for a contact that
      * is still on Brevo's list. The notice drops the `blocklist` profile
      * cause for the other rows ({@see \ElanRegistry\Car\EmailNoticeBuilder}).
@@ -951,7 +952,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * A failure is logged and the caller continues to apply(). The retag is
      * only a repair of the notice text. The flag write is the important
      * step, and it must not stop because of a failed repair. The next run
-     * tries the retag again.
+     * repairs the old row: it changes the ID, or it deletes the old row
+     * when apply() wrote the tagged row.
      *
      * @param int    $userId Matched owner user ID
      * @param string $event  Event name of the row (`unsubscribed`)
@@ -961,7 +963,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     private function retagLegacyAdminBlockRow(int $userId, string $event, string $fromId, string $toId): void
     {
         try {
-            $retagged = $this->repo->retagOwnerEmailEventMessageId($userId, $event, $fromId, $toId);
+            $result = $this->repo->retagOwnerEmailEventMessageId($userId, $event, $fromId, $toId);
         } catch (CarDatabaseException $e) {
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
                 'Brevo suppression sync: retag of old admin-block row FAILED for owner %d'
@@ -972,12 +974,20 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             return;
         }
 
-        if ($retagged > 0) {
-            // er_email_events has no audit trigger, so this line is the
-            // only record of the changed ID.
+        // er_email_events has no audit trigger, so these lines are the only
+        // record of the changed or deleted rows.
+        if ($result['retagged'] > 0) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo suppression sync: retagged %d old admin-block row(s) for owner %d.',
-                $retagged,
+                $result['retagged'],
+                $userId
+            ));
+        }
+        if ($result['removed'] > 0) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo suppression sync: removed %d old admin-block row(s) for owner %d,'
+                . ' because the tagged row was already there.',
+                $result['removed'],
                 $userId
             ));
         }

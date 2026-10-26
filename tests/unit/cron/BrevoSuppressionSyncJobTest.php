@@ -119,6 +119,13 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->stubOwnerFlags([]);
     }
 
+    /** An adminBlocked contact calls the retag. Its owner has no old row. */
+    private function stubRetagFindsNoRow(): void
+    {
+        $this->mockRepo->method('retagOwnerEmailEventMessageId')
+            ->willReturn(['retagged' => 0, 'removed' => 0]);
+    }
+
     /**
      * Stub the profile read the pre-check makes for each owner.
      *
@@ -215,6 +222,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     public function testReasonCodeMapsToItsEventAndCause(string $code, string $expectedEvent, ?string $expectedCause): void
     {
         $this->matchEveryEmailTo(7);
+        $this->stubRetagFindsNoRow();
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', $code),
@@ -259,6 +267,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     public function testAdminBlockedIsASuppressionNotABounce(): void
     {
         $this->matchEveryEmailTo(1);
+        $this->stubRetagFindsNoRow();
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('admin@example.com', 'adminBlocked'),
@@ -1418,6 +1427,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     public function testOnlyAnAdminBlockGetsTheBlocklistMessageIdPrefix(string $code): void
     {
         $this->matchEveryEmailTo(1);
+        $this->stubRetagFindsNoRow();
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', $code),
@@ -1446,7 +1456,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             $repo->expects($this->once())
                 ->method('retagOwnerEmailEventMessageId')
                 ->with(7, 'unsubscribed', 'suppression-import-' . $hash, 'suppression-import-blocklist-' . $hash)
-                ->willReturn(1);
+                ->willReturn(['retagged' => 1, 'removed' => 0]);
         } else {
             $repo->expects($this->never())->method('retagOwnerEmailEventMessageId');
         }
@@ -1460,6 +1470,28 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             $code === 'adminBlocked' ? 1 : 0,
             $this->logsContaining('retagged 1 old admin-block row(s) for owner 7')
         );
+    }
+
+    /**
+     * After a failed retag, apply() writes the tagged row beside the old one.
+     * The next run deletes the old row, and the log says so with no address.
+     */
+    public function testRemovedOldAdminBlockRowIsLoggedWithNoAddress(): void
+    {
+        $this->matchEveryEmailTo(7);
+        $this->mockRepo->method('retagOwnerEmailEventMessageId')
+            ->willReturn(['retagged' => 0, 'removed' => 1]);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'adminBlocked'),
+        ])->runFullBackfill();
+
+        $this->assertCount(1, $this->applier->calls, 'The flag write still runs');
+        $this->assertCount(0, $this->logsContaining('retagged'));
+        $log = $this->logsContaining('removed 1 old admin-block row(s) for owner 7');
+        $this->assertCount(1, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
     }
 
     /** The retag only repairs the notice text, so a failure must not stop the flag write. */

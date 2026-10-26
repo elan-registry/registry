@@ -2968,27 +2968,60 @@ class CarRepository
      * ({@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX}), so
      * {@see ownerBlockEventCauses()} gives the cause `blocklist` for it.
      *
-     * The ID compare uses `COLLATE utf8mb4_bin`, because the column collation
-     * would match a case variant of the ID. The statement is `UPDATE IGNORE`:
-     * when the owner already has a row with `$toId` and `$event`, the unique
-     * key `(user_id, brevo_message_id, event)` stops the change. MySQL then
-     * keeps the row unchanged and gives a warning, not an error, so the caller
-     * does not stop. The table has no audit trigger.
+     * When the owner already has a row with `$toId` and `$event`, the method
+     * deletes the `$fromId` rows. A rename would break the unique key
+     * `(user_id, brevo_message_id, event)`, and the old row would stay and
+     * give a second, false cause. Otherwise the method changes the ID of the
+     * `$fromId` rows to `$toId`.
+     *
+     * The ID compares use `COLLATE utf8mb4_bin`, because the column collation
+     * would match a case variant of the ID. The table has no audit trigger.
      *
      * @param int $userId Owner user ID. A value less than 1 issues no query.
      * @param string $event Event name of the rows to change
      * @param string $fromId Current message ID of the rows to change
      * @param string $toId New message ID
-     * @return int Number of rows changed. 0 when no row matches, or when the
-     *             unique key stops the change.
-     * @throws CarDatabaseException If the query fails
+     * @return array{retagged: int, removed: int} Number of rows that got the new
+     *             ID, and number of old rows deleted because a row with the new
+     *             ID was already there. Both are 0 when no row matches.
+     * @throws CarDatabaseException If a query fails
      */
-    public function retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): int
+    public function retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): array
     {
+        $result = ['retagged' => 0, 'removed' => 0];
         if ($userId < 1) {
-            return 0;
+            return $result;
         }
 
+        $tagged = $this->db->query(
+            'SELECT 1 FROM er_email_events
+              WHERE user_id = ?
+                AND event = ? COLLATE utf8mb4_bin
+                AND brevo_message_id = ? COLLATE utf8mb4_bin
+              LIMIT 1',
+            [$userId, $event, $toId]
+        );
+        $this->throwIfRetagFailed($userId, $event);
+
+        if ($tagged->count() > 0) {
+            // No code path deletes the $toId row, so a concurrent run cannot
+            // remove it after this check, and the owner keeps one row.
+            $this->db->query(
+                'DELETE FROM er_email_events
+                  WHERE user_id = ?
+                    AND event = ? COLLATE utf8mb4_bin
+                    AND brevo_message_id = ? COLLATE utf8mb4_bin',
+                [$userId, $event, $fromId]
+            );
+            $this->throwIfRetagFailed($userId, $event);
+            $result['removed'] = $this->db->count();
+
+            return $result;
+        }
+
+        // IGNORE: when a concurrent run writes the $toId row after the check
+        // above, the unique key stops the rename with a warning, not an
+        // error. The next run then deletes the old row.
         $this->db->query(
             'UPDATE IGNORE er_email_events
                 SET brevo_message_id = ?
@@ -2997,15 +3030,25 @@ class CarRepository
                 AND brevo_message_id = ? COLLATE utf8mb4_bin',
             [$toId, $userId, $event, $fromId]
         );
+        $this->throwIfRetagFailed($userId, $event);
+        $result['retagged'] = $this->db->count();
 
+        return $result;
+    }
+
+    /**
+     * Throw when the last query of {@see retagOwnerEmailEventMessageId()} failed
+     *
+     * @throws CarDatabaseException If the last query failed
+     */
+    private function throwIfRetagFailed(int $userId, string $event): void
+    {
         if ($this->db->error()) {
             throw new CarDatabaseException(
                 "CarRepository::retagOwnerEmailEventMessageId failed for user={$userId}, event={$event}: "
                 . $this->db->errorString()
             );
         }
-
-        return $this->db->count();
     }
 
     /**
