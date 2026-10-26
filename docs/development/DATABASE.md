@@ -260,7 +260,7 @@ tables. `cars.user_id`'s own FK was dropped in
 | `email` | `varchar(155) NOT NULL` | Recipient address, stored normalized (trimmed, lower case) (INDEXED). The prune sets it to `''` on a car's latest `sent` row only when the row is older than 90 days. |
 | `event` | `varchar(32) NOT NULL` | Brevo event name (`hard_bounce`, `soft_bounce`, `blocked`, `invalid`, `spam`, `delivered`, `unique_opened`, …) or the local `sent` event |
 | `reason` | `text NULL` | Optional reason/detail text from the payload (e.g. why a bounce occurred). The applier cuts it to 255 characters. Absent for events like `spam`. |
-| `brevo_message_id` | `varchar(255) NOT NULL DEFAULT ''` | Brevo's message id for the send this event applies to. A `sent` row has the real Brevo message id, or a local id (`local:` followed by the SHA-256 of the new vericode) when the mailer gave no new id (#2359). A suppression-import row has a synthetic id (`suppression-import-` followed by an MD5 hash). **`NOT NULL DEFAULT ''`, not nullable, is correctness-critical**: MySQL treats every `NULL` as distinct in a unique index, so a nullable column would silently defeat the unique index below for exactly the rows that need dedup most. |
+| `brevo_message_id` | `varchar(255) NOT NULL DEFAULT ''` | Brevo's message id for the send this event applies to. A `sent` row has the real Brevo message id, or a local id (`local:` followed by the SHA-256 of the new vericode) when the mailer gave no new id (#2359). A suppression-import row has a synthetic id (`suppression-import-` followed by an MD5 hash). An `adminBlocked` import row uses the prefix `suppression-import-blocklist-` instead, so the account notice can give it the cause `blocklist` (#2500). An admin-block row from before #2500 has the old prefix until the import sees the contact again and retags it (`CarRepository::retagOwnerEmailEventMessageId()`). **`NOT NULL DEFAULT ''`, not nullable, is correctness-critical**: MySQL treats every `NULL` as distinct in a unique index, so a nullable column would silently defeat the unique index below for exactly the rows that need dedup most. |
 | `occurred_at` | `datetime NOT NULL` | When the event occurred, per the payload's `ts_event`/`ts` field. The receipt time replaces a missing or invalid value, and a value more than 5 minutes after receipt (#2359) |
 
 **Indexes:**
@@ -327,6 +327,10 @@ through `CarRepository::insertEmailEvent()`.
   owner and `car_id` becomes NULL.
 - `CarAdministrationService::merge()` calls
   `CarRepository::transferEmailEvents()`. It changes `car_id` only.
+- `BrevoSuppressionSyncJob` calls
+  `CarRepository::retagOwnerEmailEventMessageId()` for an `adminBlocked`
+  contact. It changes `brevo_message_id` of an old untagged admin-block row
+  to the `suppression-import-blocklist-` ID (#2500).
 - A car transfer to a new owner changes no row. The previous owner's rows
   stay with the previous owner, and the new owner sees the car as not sent.
 - `usersc/scripts/after_user_deletion.php` runs a privacy step first, in its

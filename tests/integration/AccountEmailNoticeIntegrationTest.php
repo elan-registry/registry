@@ -6,6 +6,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
+use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Car\EmailNoticeBuilder;
@@ -57,6 +58,14 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
             // The base class deletes the er_email_events rows of the test users (#2358).
             foreach ($this->loggedOwnerIds as $ownerId) {
                 $this->db->query("DELETE FROM logs WHERE logtype = 'EmailBounced' AND user_id = ?", [$ownerId]);
+                // Flag-change rows hold the owner in metadata, and their user_id is the acting user (0).
+                $this->db->query(
+                    "DELETE FROM logs
+                      WHERE logtype = 'EmailBounced'
+                        AND JSON_VALID(CONVERT(metadata USING utf8mb4))
+                        AND JSON_EXTRACT(CONVERT(metadata USING utf8mb4), '$.owner_id') = CAST(? AS UNSIGNED)",
+                    [(string) $ownerId]
+                );
             }
         }
         parent::tearDown();
@@ -179,6 +188,79 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
         return $notice;
     }
 
+    private int $eventSeq = 0;
+
+    /** Insert one er_email_events row for the owner. The unique key is (user, message, event). */
+    private function seedEvent(int $ownerId, string $address, string $event, string $occurredAt, ?string $messageId = null): void
+    {
+        $this->eventSeq++;
+        $this->db->query(
+            'INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, NULL, ?, ?, NULL, ?, ?)',
+            [$ownerId, $address, $event, $messageId ?? '<notice-' . uniqid() . '-' . $this->eventSeq . '@test>', $occurredAt]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: event row: ' . $this->db->errorString());
+    }
+
+    /** Write the admin Clear Block row, with the given clear time. */
+    private function seedAdminClearBlock(int $ownerId, string $clearedAt): void
+    {
+        $this->assertTrue(
+            (new DeliverabilityFlagLog())->record(
+                0,
+                $ownerId,
+                DeliverabilityFlagLog::FLAG_BLOCKED,
+                1,
+                0,
+                DeliverabilityFlagLog::SOURCE_ADMIN,
+                $clearedAt
+            ),
+            'Test setup: the Clear Block row must be written'
+        );
+    }
+
+    /**
+     * Write the flag-log row of a confirmed email change that clears the block
+     *
+     * CarVerificationManager::clearFlagsForConfirmedEmailChange() passes no
+     * clear time, so the row has no `cleared_at`, and `logdate` is now.
+     */
+    private function seedEmailChangeClearBlock(int $ownerId): void
+    {
+        $this->assertTrue(
+            (new DeliverabilityFlagLog())->record(
+                $ownerId,
+                $ownerId,
+                DeliverabilityFlagLog::FLAG_BLOCKED,
+                1,
+                0,
+                DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE
+            ),
+            'Test setup: the email change clear row must be written'
+        );
+    }
+
+    /**
+     * @return list<string> The class attribute of each notice line element (not the CSS text)
+     */
+    private function lineClasses(string $html): array
+    {
+        $doc = new DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="UTF-8"><html><body>' . $html . '</body></html>');
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        $nodes = (new DOMXPath($doc))->query('//*[contains(concat(" ", normalize-space(@class), " "), " er-email-notice__line ")]');
+        $this->assertNotFalse($nodes);
+        $classes = [];
+        foreach ($nodes as $node) {
+            $this->assertInstanceOf(DOMElement::class, $node);
+            $classes[] = $node->getAttribute('class');
+        }
+
+        return $classes;
+    }
+
     // ---- blocked --------------------------------------------------------------------------------
 
     /**
@@ -238,6 +320,219 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
         $notice = $this->noticeFor($ownerId);
 
         $this->assertSame("Email to {$email} is blocked.", $notice['message']);
+    }
+
+    // ---- problem styling (#2499) ----------------------------------------------------------------
+
+    /** #2499: opted-out used a class with no CSS rule, so it showed green. Every kind uses the problem class. */
+    #[Group('fast')]
+    public function testEveryKindOfNoticeLineHasTheProblemClass(): void
+    {
+        $optedOut = $this->createOwner();
+        $this->setOwnerOptedOut($optedOut);
+        $blockedEmail = 'cls-blocked-' . uniqid() . '@example.com';
+        $blocked = $this->createOwner($blockedEmail);
+        $this->setOwnerBlocked($blocked, $blockedEmail, '2026-03-10 09:30:00', 'spam');
+        $bouncedEmail = 'cls-bounced-' . uniqid() . '@example.com';
+        $bounced = $this->createOwner($bouncedEmail);
+        $this->setOwnerBounced($bounced, $bouncedEmail, '2026-05-06 07:08:09');
+
+        foreach (['opted out' => $optedOut, 'blocked' => $blocked, 'bounced' => $bounced] as $name => $ownerId) {
+            $classes = $this->lineClasses($this->renderNotice($ownerId));
+            $this->assertNotSame([], $classes, "The {$name} notice must have a line");
+            foreach ($classes as $class) {
+                $this->assertStringContainsString('er-email-notice__line--problem', $class, "The {$name} line");
+                $this->assertStringNotContainsString('--opted-out', $class, "The {$name} line");
+            }
+        }
+    }
+
+    // ---- several causes (#2500) -----------------------------------------------------------------
+
+    /** The owner unsubscribed, then a message was reported as spam. */
+    #[Group('fast')]
+    public function testBlockedNoticeNamesBothCausesInTheOrderProfileFirst(): void
+    {
+        $email = 'two-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        $this->setOwnerBlocked($ownerId, $email, '2026-10-22 09:00:00', 'unsubscribed');
+        $this->seedEvent($ownerId, $email, 'unsubscribed', '2026-10-22 08:59:00');
+        $this->seedEvent($ownerId, $email, 'spam', '2026-10-22 09:00:00');
+
+        $notice = $this->noticeFor($ownerId);
+
+        $this->assertSame(
+            "Email to {$email} is blocked because this address unsubscribed from registry email"
+            . ' and a message to this address was reported as spam.',
+            $notice['message']
+        );
+    }
+
+    #[Group('fast')]
+    public function testDuplicateSpamRowsNameTheSpamCauseOnce(): void
+    {
+        $email = 'dupspam-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        $this->setOwnerBlocked($ownerId, $email, '2026-10-22 09:00:00', 'spam');
+        $this->seedEvent($ownerId, $email, 'spam', '2026-10-22 08:00:00');
+        $this->seedEvent($ownerId, $email, 'spam', '2026-10-22 09:00:00');
+
+        $notice = $this->noticeFor($ownerId);
+
+        $this->assertSame(
+            "Email to {$email} is blocked because a message to this address was reported as spam.",
+            $notice['message']
+        );
+        $this->assertSame(1, substr_count($notice['message'], 'reported as spam'));
+    }
+
+    /** A spam row from before an admin Clear Block is old news. Only the later unsubscribe shows. */
+    #[Group('fast')]
+    public function testEventBeforeAnAdminClearBlockIsNotShown(): void
+    {
+        $email = 'cleared-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        $this->seedEvent($ownerId, $email, 'spam', '2026-10-10 08:00:00');
+        $this->seedAdminClearBlock($ownerId, '2026-10-12 12:00:00');
+        $this->seedEvent($ownerId, $email, 'unsubscribed', '2026-10-20 08:00:00');
+        $this->setOwnerBlocked($ownerId, $email, '2026-10-20 08:00:00', null);
+
+        $notice = $this->noticeFor($ownerId);
+
+        $this->assertSame(
+            "Email to {$email} is blocked because this address unsubscribed from registry email.",
+            $notice['message']
+        );
+        $this->assertStringNotContainsString('spam', $notice['message']);
+    }
+
+    /**
+     * A spam block on A, a change to B, then back to A and an unsubscribe.
+     * The email change cleared the spam block, so only the unsubscribe shows.
+     */
+    #[Group('fast')]
+    public function testEventBeforeAnEmailChangeClearIsNotShown(): void
+    {
+        $email = 'changed-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        // The clear row has logdate = now, so the event times are relative to now.
+        $this->seedEvent($ownerId, $email, 'spam', date('Y-m-d H:i:s', strtotime('-2 days')));
+        $this->seedEmailChangeClearBlock($ownerId);
+        $later = date('Y-m-d H:i:s', strtotime('+1 hour'));
+        $this->seedEvent($ownerId, $email, 'unsubscribed', $later);
+        $this->setOwnerBlocked($ownerId, $email, $later, 'unsubscribed');
+
+        $notice = $this->noticeFor($ownerId);
+
+        $this->assertSame(
+            "Email to {$email} is blocked because this address unsubscribed from registry email.",
+            $notice['message']
+        );
+        $this->assertStringNotContainsString('spam', $notice['message']);
+    }
+
+    /**
+     * A spam block, a tagged admin-block import row, then a later
+     * `unsubscribed` webhook event: three causes, joined as "A, B and C".
+     */
+    #[Group('fast')]
+    public function testBlockedNoticeNamesThreeCausesWithCommasAndAnd(): void
+    {
+        $email = 'three-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        $this->setOwnerBlocked($ownerId, $email, '2026-10-20 08:00:00', 'spam');
+        $this->seedEvent($ownerId, $email, 'spam', '2026-10-20 08:00:00');
+        $this->seedEvent(
+            $ownerId,
+            $email,
+            'unsubscribed',
+            '2026-10-21 08:00:00',
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid())
+        );
+        $this->seedEvent($ownerId, $email, 'unsubscribed', '2026-10-22 08:00:00');
+
+        $notice = $this->noticeFor($ownerId);
+
+        $this->assertSame(
+            "Email to {$email} is blocked because a message to this address was reported as spam,"
+            . ' this address unsubscribed from registry email and an administrator blocked this address.',
+            $notice['message']
+        );
+    }
+
+    /** An admin block also writes an unsubscribed event. The notice must not blame the owner. */
+    #[Group('fast')]
+    public function testBlocklistProfileCauseHidesTheUnsubscribedEvent(): void
+    {
+        $email = 'adminblock-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        $this->setOwnerBlocked($ownerId, $email, '2026-10-20 08:00:00', 'blocklist');
+        $this->seedEvent($ownerId, $email, 'unsubscribed', '2026-10-20 08:00:00');
+
+        $notice = $this->noticeFor($ownerId);
+
+        $this->assertSame("Email to {$email} is blocked because an administrator blocked this address.", $notice['message']);
+        $this->assertStringNotContainsString('unsubscribed', $notice['message']);
+    }
+
+    /**
+     * A spam block, then an admin block at Brevo. The import keeps the spam
+     * cause on the profile and writes a tagged `unsubscribed` row. The notice
+     * must not say that the owner unsubscribed.
+     */
+    #[Group('fast')]
+    public function testSpamProfileCauseWithATaggedAdminBlockRowNamesBothAndNoUnsubscribe(): void
+    {
+        $email = 'spamadmin-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        $this->setOwnerBlocked($ownerId, $email, '2026-10-20 08:00:00', 'spam');
+        $this->seedEvent($ownerId, $email, 'spam', '2026-10-20 08:00:00');
+        $this->seedEvent(
+            $ownerId,
+            $email,
+            'unsubscribed',
+            '2026-10-21 08:00:00',
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid())
+        );
+
+        $notice = $this->noticeFor($ownerId);
+
+        $this->assertSame(
+            "Email to {$email} is blocked because a message to this address was reported as spam"
+            . ' and an administrator blocked this address.',
+            $notice['message']
+        );
+        $this->assertStringNotContainsString('unsubscribed', $notice['message']);
+    }
+
+    /** A profile with no cause still names the cause that the events give. */
+    #[Group('fast')]
+    public function testBlockedWithNoProfileCauseUsesTheEventCause(): void
+    {
+        $email = 'eventonly-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        $this->setOwnerBlocked($ownerId, $email, '2026-10-20 08:00:00', null);
+        $this->seedEvent($ownerId, $email, 'spam', '2026-10-20 08:00:00');
+
+        $this->assertSame(
+            "Email to {$email} is blocked because a message to this address was reported as spam.",
+            $this->noticeFor($ownerId)['message']
+        );
+    }
+
+    /** An event for an address that is no longer the blocked one is not a cause. */
+    #[Group('fast')]
+    public function testEventForAnotherAddressIsNotACause(): void
+    {
+        $email = 'current-' . uniqid() . '@example.com';
+        $ownerId = $this->createOwner($email);
+        $this->setOwnerBlocked($ownerId, $email, '2026-10-20 08:00:00', 'unsubscribed');
+        $this->seedEvent($ownerId, 'old-' . uniqid() . '@example.com', 'spam', '2026-10-20 08:00:00');
+
+        $this->assertSame(
+            "Email to {$email} is blocked because this address unsubscribed from registry email.",
+            $this->noticeFor($ownerId)['message']
+        );
     }
 
     #[Group('fast')]

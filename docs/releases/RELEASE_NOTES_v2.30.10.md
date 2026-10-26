@@ -15,6 +15,7 @@ an owner's address no longer stays behind after account deletion or in logs.
 - The email service log no longer keeps a recipient address for more than 90 days. ([#2384](https://github.com/elan-registry/registry/issues/2384))
 - After an owner reports a car as sold, the page thanks them instead of saying the car is already sold.
 - When the join form stops a submit, it shows which fields to fix. Location must be selected from the list.
+- The account page shows an email opt-out as a yellow warning and names every reason that email is blocked.
 
 ## Admin-Facing Changes
 
@@ -72,8 +73,10 @@ an owner's address no longer stays behind after account deletion or in logs.
   Read Brevo's blocked-at dates as Paris time, so the suppression sync stores the real block date.
 - [#2502](https://github.com/elan-registry/registry/issues/2502) —
   Stop the suppression sync from adding a second event row for an owner that is already flagged.
-- WIP: [#2499](https://github.com/elan-registry/registry/issues/2499) — Show an opt-out as a warning in the paused-email notice.
-- WIP: [#2500](https://github.com/elan-registry/registry/issues/2500) — Show every block cause in the paused-email notice.
+- [#2499](https://github.com/elan-registry/registry/issues/2499) —
+  Show an opt-out as a warning in the paused-email notice.
+- [#2500](https://github.com/elan-registry/registry/issues/2500) —
+  Show every block cause in the paused-email notice.
 - [#2497](https://github.com/elan-registry/registry/issues/2497) —
   Thank the owner after a Sold report, not tell them the car is already sold.
 - [#2043](https://github.com/elan-registry/registry/issues/2043) —

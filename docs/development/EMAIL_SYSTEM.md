@@ -1031,11 +1031,13 @@ with no car sees it too (#2319). It links to the fix, so the owner does not
 need to know where to look.
 
 **Builder:** `EmailNoticeBuilder::buildForOwner(int $ownerId): ?array`
-(`usersc/classes/Car/EmailNoticeBuilder.php`). It calls only
-`CarRepository::effectiveEmailFlags()`, so a flag for an old address does not
-show (see [Address-Match Rule](#address-match-rule-2356)). It returns `null`
-when no flag applies. The array holds `kind`, `address`, `date`, `cause`,
-`alsoOptedOut`, `optedOutDate` and `contentHash`.
+(`usersc/classes/Car/EmailNoticeBuilder.php`). It calls
+`CarRepository::effectiveEmailFlags()` for every owner. A flag for an old
+address does not show (see [Address-Match Rule](#address-match-rule-2356)).
+For a block with an address, it also calls
+`CarRepository::ownerBlockEventCauses()` and `CarRepository::latestFlagClearAt()`.
+It returns `null` when no flag applies. The array holds `kind`, `address`,
+`date`, `causes`, `alsoOptedOut`, `optedOutDate` and `contentHash`.
 
 **States.** One state shows. The builder picks it in this order:
 
@@ -1050,21 +1052,64 @@ when no flag applies. The array holds `kind`, `address`, `date`, `cause`,
 - If a block or bounce has no stored address, `address` is the owner's current
   `users.email`. That flag applies to the current address.
 - A NULL `_at` column gives a null date. The notice then shows no date.
-- `cause` is one of `spam`, `unsubscribed` or `blocklist`. Any other stored
-  value, or none, gives no cause (#2318).
+- `causes` is a list of block causes. Each value is `spam`, `unsubscribed` or
+  `blocklist`, and each cause appears once. It is empty for a bounce, an
+  opt-out, and a block with no known cause.
+- The builder builds the list in this order:
+  - The profile cause, `email_blocked_cause`, comes first.
+  - Each other `spam` or `unsubscribed` event for the blocked address follows.
+    The builder counts only events after the latest clear of the block. An
+    admin Clear Block (source `admin`) and a confirmed email change (source
+    `email_change`) both clear it. The later of the two times applies.
+    Events follow the order of `CarRepository::BLOCKED_CAUSES`.
+- An `adminBlocked` import row has the event `unsubscribed` and a message ID
+  that starts with `suppression-import-blocklist-`. The repository gives the
+  cause `blocklist` for that row, not `unsubscribed`. So a profile cause
+  `spam` and a later admin block give `spam` and `blocklist` (#2500).
+- A `blocklist` profile cause ignores `unsubscribed` events. An admin-block
+  row from before #2500 has no tag, so the notice would otherwise say the
+  owner unsubscribed. The import retags such a row when it sees the contact
+  again (see [the import](#brevo-suppression-list-import-1923)). This rule stays for a
+  row that the import does not see again, for example when the contact is no
+  longer on Brevo's list.
+- The hard-bounce event `blocked` is not a block cause.
+- An unknown profile cause adds no profile cause. The builder writes a log
+  line. Event causes still apply (#2318).
+- With no address, the builder runs no event query. The list then holds only
+  the profile cause.
+- If the event lookup fails, the builder logs the failure with no exception
+  message and keeps the notice with the profile cause only. The flags already
+  show the block, so the owner still sees it.
 
 **Copy.** The partial `app/views/_email_paused_notice.php` shows this text. It
-never shows the word "Brevo".
+never shows the word "Brevo". The cause texts are in
+`EmailNoticeBuilder::CAUSE_TEXT`. The partial escapes them.
 
 | State | Message |
 | --- | --- |
 | Blocked, cause `spam` | "Email to `<address>` is blocked because a message to this address was reported as spam." |
 | Blocked, cause `unsubscribed` | "Email to `<address>` is blocked because this address unsubscribed from registry email." |
 | Blocked, cause `blocklist` | "Email to `<address>` is blocked because an administrator blocked this address." |
+| Blocked, two causes | "Email to `<address>` is blocked because `<A>` and `<B>`." `<A>` and `<B>` are cause texts from the rows above, in list order. |
+| Blocked, three causes | "Email to `<address>` is blocked because `<A>`, `<B>` and `<C>`." The texts are in list order. |
 | Blocked, no cause | "Email to `<address>` is blocked." |
 | Bounced | "Email to `<address>` bounced on `<date>`." The text "on `<date>`" is absent when the date is null. |
 | Opted out | "You opted out of registry email on `<date>`." The text "on `<date>`" is absent when the date is null. |
 
+- The partial keeps the list order. One cause text stands alone. Two texts
+  join with "and". Three texts join as "A, B and C". Three causes are rare.
+  For example, a message was reported as spam (profile cause `spam`). Then an
+  administrator blocked the address at Brevo, and the import wrote a tagged
+  admin-block row. Then the owner unsubscribed, and the webhook wrote an
+  `unsubscribed` row. The list is `spam`, `unsubscribed`, `blocklist`, in
+  `CarRepository::BLOCKED_CAUSES` order: "Email to `<address>` is blocked
+  because a message to this address was reported as spam, this address
+  unsubscribed from registry email and an administrator blocked this address."
+- Known limit (#2529): after an admin Clear Block, a later admin block that
+  the import finds as a duplicate writes no new row, so the notice does not
+  name it.
+- Every notice line uses the warning style, `er-email-notice__line--problem`.
+  The opted-out notice uses it too.
 - A blocked or bounced notice adds "Change your email address or contact an
   admin." It has two links: **Change email** (`usersc/user_settings.php#account-email`)
   and **Contact an admin** (`app/owner/contact/index.php`).
@@ -1845,7 +1890,22 @@ the message-ID steps do not apply. The user needs no car. An address that no
 user holds, or that two users hold, is counted as unmatched and sets no flag.
 The job calls `apply()` once for the matched user with `MODE_STATE`. It stores
 an owner-level row (`car_id` NULL) under a message ID that it builds from the
-address, the reason code and `blockedAt`. In `MODE_STATE`, `apply()` writes no
+address, the reason code and `blockedAt`. The ID is a prefix and an MD5 hash.
+The prefix is `suppression-import-blocklist-`
+(`CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX`) for `adminBlocked`
+and `suppression-import-` for all other codes. The paused-email notice reads
+the prefix to tell an admin block from an unsubscribe (#2500). Admin-block
+rows from before #2500 have the old prefix. A re-run writes no tagged second
+row for them, because the check below matches the event name. So for an
+`adminBlocked` contact with a matched owner, the job first changes the ID of
+the owner's old row (event `unsubscribed`, the old prefix and the same hash)
+to the tagged ID (`CarRepository::retagOwnerEmailEventMessageId()`). After a
+full backfill, no untagged admin-block row remains for a contact that is still
+on Brevo's list. The job has no dry-run mode, so each run makes this change.
+`er_email_events` has no audit trigger, so the job writes one log line for
+each contact whose rows it changes, with the number of rows. A failed retag is logged with no address, and `apply()` still
+runs: the retag repairs only the notice text, and the next run tries it again.
+In `MODE_STATE`, `apply()` writes no
 row when the owner already has a row for the same address and the same cause
 group. A cause group is a set of event names, one of these: all
 `HARD_BOUNCE_EVENTS` names, `spam`, or `unsubscribed`. The group is not the

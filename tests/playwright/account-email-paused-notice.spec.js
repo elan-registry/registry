@@ -113,6 +113,29 @@ test.describe('Email notice on account.php (#1899, #2356)', () => {
 
         await expect(notice).toBeVisible();
         await expect(notice).toContainText('You opted out of registry email on 1 April 2026.');
+        // #2499: the line used a class with no CSS rule, so it showed green.
+        await expect(notice.locator('.er-email-notice__line')).toHaveClass(/er-email-notice__line--problem/);
+        // The class alone does not prove the style: check that the CSS rule gives the warning colour.
+        const colours = await notice.locator('.er-email-notice__line').evaluate((line) => {
+            const resolve = (value) => {
+                const probe = document.createElement('span');
+                probe.style.color = value;
+                document.body.appendChild(probe);
+                const colour = getComputedStyle(probe).color;
+                probe.remove();
+                return colour;
+            };
+            return {
+                border: getComputedStyle(line).borderLeftColor,
+                warning: resolve('var(--er-warning)'),
+                primary: resolve('var(--er-primary)'),
+                text: getComputedStyle(line).color,
+            };
+        });
+        expect(colours.border).toBe(colours.warning);
+        // An undefined --er-warning falls back to the text colour on both sides, so also rule that out.
+        expect(colours.warning).not.toBe(colours.text);
+        expect(colours.border).not.toBe(colours.primary);
         await expect(notice.getByRole('link', { name: 'Resume' }))
             .toHaveAttribute('href', /usersc\/user_settings\.php#resume-emails$/);
         await expect(notice.getByRole('link', { name: 'Change email' })).toHaveCount(0);
