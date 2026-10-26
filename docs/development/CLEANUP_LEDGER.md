@@ -422,6 +422,10 @@ after an item is written.
 
 - [ ] Remove the pre-6.1.7 version guards after production runs UserSpice 6.1.7 (v2.30.9, #2088): `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)
 
+### `usersc/scripts/after_user_deletion.php`
+
+- [ ] The car-cleanup catch (~L48) and the `findByOwner` guard (~L97) log `$e->getMessage()`. `CarRepository` copies driver text into messages. Log `ExceptionLogSummary::of($e)`, as `AccountDeletionPrivacyStep` in the same flow does (found in /finish-milestone v2.30.10)
+
 ### `usersc/scripts/during_user_creation.php`
 
 - [ ] A failed automatic sign-in after sign-up (~L87) redirects with a message but writes no log row. Log it with the user id before `Redirect::to()` (found in #2378)

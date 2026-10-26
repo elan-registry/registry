@@ -43,6 +43,10 @@ files, except for the project-owned files listed below.
   `ini_set('session.use_strict_mode', '1')`. Upstream sets it in
   `init.example.php`, not in an existing `init.php`. Keep it after each
   upgrade.
+- An upgrade that rebuilds the `users` table drops the
+  `users_delete_capture_addresses` trigger. After each upgrade, run
+  `SHOW TRIGGERS LIKE 'users'`. If the trigger is missing, recreate it from
+  migration `20261023000000` (see `docs/development/DATABASE.md`).
 - A finding in a gitignored upstream file cannot be fixed in this repo (the
   fix does not deploy, and the next UserSpice update overwrites it). Report
   it upstream.
