@@ -999,7 +999,7 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
             $this->eventRows($carId),
             static fn (object $row): bool => $row->event === 'unsubscribed'
         ), 'brevo_message_id');
-        $this->assertSame([BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash], array_values($ids));
+        $this->assertSame([CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash], array_values($ids));
         $this->assertSame(['blocklist', 'spam'], $this->sortedCauses($userId, $email));
     }
 

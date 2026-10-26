@@ -6,7 +6,6 @@ namespace ElanRegistry\Car;
 
 use DateTimeImmutable;
 use ElanRegistry\AppConstants;
-use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
@@ -78,6 +77,17 @@ class CarRepository
         self::BLOCKED_CAUSE_UNSUBSCRIBED,
         self::BLOCKED_CAUSE_BLOCKLIST,
     ];
+
+    /**
+     * Message-ID prefix of a suppression-import row for an `adminBlocked` contact
+     *
+     * That row has the event `unsubscribed`, so the event name cannot show
+     * the admin block.
+     * {@see \ElanRegistry\Cron\BrevoSuppressionSyncJob} writes this prefix,
+     * and {@see ownerBlockEventCauses()} gives such a row the cause
+     * `blocklist`, not `unsubscribed`.
+     */
+    public const ADMIN_BLOCK_MESSAGE_ID_PREFIX = 'suppression-import-blocklist-';
 
     /**
      * SQL that normalizes a column the way
@@ -2894,7 +2904,7 @@ class CarRepository
      *
      * The suppression import records a Brevo admin block as an `unsubscribed`
      * row with the message-ID prefix
-     * {@see BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX}. Such a
+     * {@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX}. Such a
      * row gives the cause `blocklist`, because the owner did not unsubscribe.
      * An admin-block row from before #2500 has no prefix and gives
      * `unsubscribed` until the import retags it
@@ -2917,7 +2927,7 @@ class CarRepository
 
         $events = EmailEventApplier::SUPPRESSION_EVENTS;
         $placeholders = implode(', ', array_fill(0, count($events), '?'));
-        $prefix = BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX;
+        $prefix = self::ADMIN_BLOCK_MESSAGE_ID_PREFIX;
         // LEFT() and not LIKE, so a `_` or `%` in the prefix needs no escape.
         $sql = "SELECT DISTINCT
                        CASE WHEN event = ? AND LEFT(brevo_message_id, ?) = ? COLLATE utf8mb4_bin
@@ -2955,7 +2965,7 @@ class CarRepository
      *
      * The suppression import calls it to give an admin-block row from before
      * #2500 the tagged ID
-     * ({@see BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX}), so
+     * ({@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX}), so
      * {@see ownerBlockEventCauses()} gives the cause `blocklist` for it.
      *
      * The ID compare uses `COLLATE utf8mb4_bin`, because the column collation

@@ -745,7 +745,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
   Distinct block causes (`BLOCKED_CAUSE_*` values) from the `spam` and `unsubscribed`
   rows in `er_email_events` for the user and the normalized address (`COLLATE
   utf8mb4_bin`). An `unsubscribed` row whose message ID starts with
-  `BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX` gives `blocklist`. Other
+  `CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX` gives `blocklist`. Other
   rows give their event name. With `$after`, only rows with
   `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
   less than 1 or an empty address. `EmailNoticeBuilder` uses it for block causes (#2500).

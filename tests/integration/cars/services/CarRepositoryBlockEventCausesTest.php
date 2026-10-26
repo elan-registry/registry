@@ -5,7 +5,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
-use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -83,7 +82,7 @@ final class CarRepositoryBlockEventCausesTest extends IntegrationTestCase
     {
         $userId = $this->createOwner();
         $email = 'adminblock-' . uniqid() . '@example.com';
-        $tagged = BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid());
+        $tagged = CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid());
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $tagged);
 
         $this->assertSame(['blocklist'], $this->repo->ownerBlockEventCauses($userId, $email, null));
@@ -95,7 +94,7 @@ final class CarRepositoryBlockEventCausesTest extends IntegrationTestCase
         $email = 'untagged-' . uniqid() . '@example.com';
         // An import row from before #2500, and a tagged prefix on another event.
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', 'suppression-import-' . md5(uniqid()));
-        $this->seedEvent($userId, $email, 'spam', '2026-10-20 10:00:00', BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid()));
+        $this->seedEvent($userId, $email, 'spam', '2026-10-20 10:00:00', CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid()));
 
         $this->assertSame(['spam', 'unsubscribed'], self::sorted($this->repo->ownerBlockEventCauses($userId, $email, null)));
     }
@@ -108,7 +107,7 @@ final class CarRepositoryBlockEventCausesTest extends IntegrationTestCase
         $email = 'retag-' . uniqid() . '@example.com';
         $hash = md5(uniqid());
         $untagged = 'suppression-import-' . $hash;
-        $tagged = BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
+        $tagged = CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $untagged);
         $this->seedEvent($userId, $email, 'spam', '2026-10-20 10:00:00', $untagged);
         $this->seedEvent($otherUserId, $email, 'unsubscribed', '2026-10-20 10:00:00', $untagged);
@@ -135,7 +134,7 @@ final class CarRepositoryBlockEventCausesTest extends IntegrationTestCase
         $email = 'retag-dup-' . uniqid() . '@example.com';
         $hash = md5(uniqid());
         $untagged = 'suppression-import-' . $hash;
-        $tagged = BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
+        $tagged = CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $untagged);
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $tagged);
 
@@ -151,7 +150,7 @@ final class CarRepositoryBlockEventCausesTest extends IntegrationTestCase
         $upper = 'SUPPRESSION-IMPORT-' . $hash;
         $this->seedEvent($userId, $email, 'unsubscribed', '2026-10-20 10:00:00', $upper);
 
-        $tagged = BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
+        $tagged = CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash;
         $this->assertSame(0, $this->repo->retagOwnerEmailEventMessageId($userId, 'unsubscribed', 'suppression-import-' . $hash, $tagged));
         $this->assertSame(0, $this->repo->retagOwnerEmailEventMessageId(0, 'unsubscribed', $upper, $tagged));
         $this->assertSame([$upper], $this->messageIds($userId, 'unsubscribed'));

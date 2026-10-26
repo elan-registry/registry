@@ -1892,7 +1892,7 @@ The job calls `apply()` once for the matched user with `MODE_STATE`. It stores
 an owner-level row (`car_id` NULL) under a message ID that it builds from the
 address, the reason code and `blockedAt`. The ID is a prefix and an MD5 hash.
 The prefix is `suppression-import-blocklist-`
-(`BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX`) for `adminBlocked`
+(`CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX`) for `adminBlocked`
 and `suppression-import-` for all other codes. The paused-email notice reads
 the prefix to tell an admin block from an unsubscribe (#2500). Admin-block
 rows from before #2500 have the old prefix. A re-run writes no tagged second

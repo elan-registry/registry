@@ -10,7 +10,6 @@ use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Car\EmailNoticeBuilder;
-use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -448,7 +447,7 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
             $email,
             'unsubscribed',
             '2026-10-21 08:00:00',
-            BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid())
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid())
         );
         $this->seedEvent($ownerId, $email, 'unsubscribed', '2026-10-22 08:00:00');
 
@@ -493,7 +492,7 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
             $email,
             'unsubscribed',
             '2026-10-21 08:00:00',
-            BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid())
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . md5(uniqid())
         );
 
         $notice = $this->noticeFor($ownerId);

@@ -1427,7 +1427,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame($this->syntheticId('owner@example.com', $code), $id);
         $this->assertSame(
             $code === 'adminBlocked',
-            str_starts_with($id, BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX)
+            str_starts_with($id, CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX)
         );
     }
 

@@ -99,7 +99,7 @@ use ElanRegistry\LogCategories;
  * An import row has no Brevo message ID, so the job makes one: a prefix and
  * the MD5 of the raw address, the reason code and the raw `blockedAt`. The
  * same contact gets the same ID on each run. The prefix is
- * {@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX} for `adminBlocked` and
+ * {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX} for `adminBlocked` and
  * `suppression-import-` for all other codes (#2500). Admin-block rows from
  * before #2500 have the old prefix. A re-run does not write a tagged second
  * row for them, because the cause-group check matches the event name. So
@@ -154,17 +154,10 @@ use ElanRegistry\LogCategories;
 final class BrevoSuppressionSyncJob extends AbstractCronJob
 {
     /**
-     * Message-ID prefix of an import row for an `adminBlocked` contact
+     * Message-ID prefix of an import row for all codes other than `adminBlocked`
      *
-     * That row has the event `unsubscribed`, so the event name cannot show
-     * the admin block. The account notice uses this prefix to give the row
-     * the cause `blocklist`, not `unsubscribed`
-     * ({@see CarRepository::ownerBlockEventCauses()}). Other import rows use
-     * {@see self::MESSAGE_ID_PREFIX}.
+     * An `adminBlocked` row uses {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX}.
      */
-    public const ADMIN_BLOCK_MESSAGE_ID_PREFIX = 'suppression-import-blocklist-';
-
-    /** Message-ID prefix of an import row for all codes other than `adminBlocked`. */
     private const MESSAGE_ID_PREFIX = 'suppression-import-';
 
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
@@ -773,7 +766,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             // gives it the new prefix.
             $isAdminBlock = $code === self::REASON_CODE_ADMIN_BLOCKED;
             $messageIdHash = md5($rawEmail . '|' . $code . '|' . $this->messageIdDatePart($rawBlockedAt));
-            $messageId = ($isAdminBlock ? self::ADMIN_BLOCK_MESSAGE_ID_PREFIX : self::MESSAGE_ID_PREFIX)
+            $messageId = ($isAdminBlock ? CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX : self::MESSAGE_ID_PREFIX)
                 . $messageIdHash;
 
             // Brevo's read API is external input, so it gets the same bound
@@ -945,7 +938,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * Give an owner's admin-block import row from before #2500 the tagged message ID
      *
      * This repairs rows that the import wrote before the
-     * {@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX} tag. Such a row has the
+     * {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX} tag. Such a row has the
      * untagged prefix and the same hash, so the account notice reads it as an
      * unsubscribe. A re-run cannot write a tagged row for it, because the
      * cause-group check in {@see EmailEventApplier} finds the old row. After
