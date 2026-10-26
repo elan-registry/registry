@@ -39,7 +39,8 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
 
     private ?object $originalRow = null;
 
-    private bool $originalSwitch = false;
+    /** Null until setUp reads it, so tearDown restores only a saved value. */
+    private ?bool $originalSwitch = null;
 
     private int $logFloor = 0;
 
@@ -65,12 +66,15 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
         $this->requireDatabase();
 
         // Set before any skip or fail: tearDown deletes the log rows above this floor.
-        $this->logFloor = (int) $this->db->query('SELECT COALESCE(MAX(id), 0) AS m FROM logs')->first()->m;
+        $floorResult = $this->db->query('SELECT COALESCE(MAX(id), 0) AS m FROM logs');
+        $this->assertFalse($this->db->error(), 'Log floor query failed: ' . $this->db->errorString());
+        $this->logFloor = (int) $floorResult->first()->m;
 
         $tableCheck = $this->db->query(
             'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
             ['er_deleted_user_addresses']
         );
+        $this->assertFalse($this->db->error(), 'Table check failed: ' . $this->db->errorString());
         if ($tableCheck->count() === 0) {
             $this->markTestSkipped('er_deleted_user_addresses does not exist. Run: composer migrate (20261023)');
         }
@@ -100,11 +104,13 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
         // A stale holding row that this test did not write would fail every
         // run. A fresh one does not change the outcome. A stale one is a
         // leaked fixture, so the test fails and does not skip.
-        $staleForeign = (string) $this->db->query(
+        $staleResult = $this->db->query(
             'SELECT COALESCE(GROUP_CONCAT(user_id ORDER BY user_id), \'\') AS ids FROM er_deleted_user_addresses
              WHERE deleted_at < NOW() - INTERVAL 24 HOUR AND user_id <> ?',
             [self::HOLDING_USER_ID]
-        )->first()->ids;
+        );
+        $this->assertFalse($this->db->error(), 'Stale-row check failed: ' . $this->db->errorString());
+        $staleForeign = (string) $staleResult->first()->ids;
         if ($staleForeign !== '') {
             $this->fail(
                 "er_deleted_user_addresses holds stale rows that this test did not write (user IDs {$staleForeign}). "
@@ -148,7 +154,9 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
                     ]
                 );
             }
-            $this->setSwitch($this->originalSwitch);
+            if ($this->originalSwitch !== null) {
+                $this->setSwitch($this->originalSwitch);
+            }
             $this->db->query(
                 'DELETE FROM logs WHERE id > ? AND logtype IN (?, ?, ?)',
                 [

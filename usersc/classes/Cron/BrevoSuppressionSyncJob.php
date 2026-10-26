@@ -952,6 +952,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * A failure is logged and the caller continues to apply(). The retag is
      * only a repair of the notice text. The flag write is the important
      * step, and it must not stop because of a failed repair. The next run
+     * that still finds the contact on Brevo's list as `adminBlocked`
      * repairs the old row: it changes the ID, or it deletes the old row
      * when apply() wrote the tagged row.
      *

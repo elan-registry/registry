@@ -35,6 +35,7 @@ final class DeletedUserAddressesBacklogRuleTest extends IntegrationTestCase
             'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
             ['er_deleted_user_addresses']
         );
+        $this->assertFalse($this->db->error(), 'Table check failed: ' . $this->db->errorString());
         if ($tableCheck->count() === 0) {
             $this->markTestSkipped('er_deleted_user_addresses does not exist. Run: composer migrate (20261023)');
         }
@@ -43,11 +44,13 @@ final class DeletedUserAddressesBacklogRuleTest extends IntegrationTestCase
 
         // Only a stale row changes the rule's result. A stale row that this
         // test did not write is a leaked fixture, so the test fails and does not skip.
-        $staleForeign = (string) $this->db->query(
+        $staleResult = $this->db->query(
             'SELECT COALESCE(GROUP_CONCAT(user_id ORDER BY user_id), \'\') AS ids FROM er_deleted_user_addresses
              WHERE deleted_at < NOW() - INTERVAL 24 HOUR AND user_id NOT IN (?, ?)',
             [self::OLD_ID, self::FRESH_ID]
-        )->first()->ids;
+        );
+        $this->assertFalse($this->db->error(), 'Stale-row check failed: ' . $this->db->errorString());
+        $staleForeign = (string) $staleResult->first()->ids;
         if ($staleForeign !== '') {
             $this->fail(
                 "er_deleted_user_addresses holds stale rows that this test did not write (user IDs {$staleForeign}). "

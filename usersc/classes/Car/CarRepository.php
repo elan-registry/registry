@@ -3004,8 +3004,9 @@ class CarRepository
         $this->throwIfRetagFailed($userId, $event);
 
         if ($tagged->count() > 0) {
-            // No code path deletes the $toId row, so a concurrent run cannot
-            // remove it after this check, and the owner keeps one row.
+            // Only the nightly prune or a user delete removes the $toId row.
+            // Both also remove the $fromId row (same occurred_at, same user),
+            // so the owner never ends up with no row.
             $this->db->query(
                 'DELETE FROM er_email_events
                   WHERE user_id = ?
