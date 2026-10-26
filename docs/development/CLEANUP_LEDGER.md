@@ -91,6 +91,10 @@ after an item is written.
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
 
+### `docs/development/ERROR_HANDLING.md`
+
+- [ ] The exception table (~L127-157) lists `AdminVerificationException`, which has no file in `usersc/classes/Exceptions/`, and omits `VerificationConfigException`. Check the table against the directory and correct the count in the heading (found in /finish-milestone v2.30.10)
+
 ### `error/500.php`
 
 - [ ] Restore a unit pin: all nine status codes (400/401/403/404/405/408/500/502/504) have entries in both `$errorMessages` and `$logCategoryMap` (from #2169)
@@ -150,6 +154,7 @@ after an item is written.
 ### `tests/integration/UserDeletionPrivacyStepTest.php` + `tests/integration/admin/RerunDeletionPrivacyStepScriptTest.php`
 
 - [ ] `uniqueAddress`, `insertPluginRow`, `pluginRowExists`, `profileCount`, `deleteUsersRowOnly` and the holding-row reader are near-copies in both files (about 60 lines). Move them to a shared trait in `tests/Support/` (found in #2419)
+- [ ] No test runs the retention purge and the deletion privacy step on the same `plg_sendinblue_messages` rows. Add a case: purge clears an old row of user A and of user B, then delete A; A's row is gone by message ID, B's cleared row stays (found in /finish-milestone v2.30.10)
 
 ### `tests/integration/UserDeletionReassignmentTest.php`
 
@@ -236,6 +241,10 @@ after an item is written.
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
 
+### `tests/unit/scripts/AfterUserDeletionHookDecisionsTest.php` (test coverage)
+
+- [ ] The "findByOwner fails" path has only an integration test. Add a unit case with `failOnSql: 'SELECT id FROM cars WHERE user_id = ?'`: no `noowner` lookup runs and no transaction stays open (found in /finish-milestone v2.30.10)
+
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
 - [ ] Move `significantTokens()` / `tokensCallFunction()` into one `tests/Support/` helper, shared with the sibling pins from #2161 (from #2169)
@@ -246,9 +255,15 @@ after an item is written.
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
+### `usersc/classes/AccountDeletionPrivacyResult.php`
+
+- [ ] Match `RetentionResult`: make it `final readonly class`, reject negative counts in `committed()`, add `@since`, and replace the two bools plus nullable stage with one outcome enum (or add `isRolledBack()`) (found in /finish-milestone v2.30.10)
+
 ### `usersc/classes/AccountDeletionPrivacyStep.php`
 
 - [ ] The CRITICAL line for a failed stage, its rollback-failure part, and the rerun script's catch log only the class and `(code 0)`, so a lock wait and a schema fault look the same. Use `ExceptionLogSummary::of()` (class, code, SQLSTATE, throw site, no message). Put `$db->errorString()` in the profile-delete `OwnerDatabaseException` message, and update the pinned `(code 0)` assertions (found in #2419)
+- [ ] The profile delete (~L124-127) runs raw SQL while every other stage goes through `CarRepository`. Move it to a `CarRepository::deleteProfile()` method (found in /finish-milestone v2.30.10)
+- [ ] The rollback log line prints zero row counts, which reads as "0 rows deleted". Drop the counts from the rollback line and keep "personal data remains" (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/ApiResponse.php`
 
@@ -287,10 +302,22 @@ after an item is written.
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
 
+### `usersc/classes/Car/VerificationTabStatus.php`
+
+- [ ] `chip()` takes several positional bool and nullable-string flags that a caller can swap with no error. Pass one readonly owner-flags value object, shared with `SendPolicy::verificationReason()` and `EmailNoticeBuilder::buildForOwner()` (found in /finish-milestone v2.30.10)
+
+### `usersc/classes/Cron/BrevoSuppressionSyncJob.php`
+
+- [ ] `MESSAGE_ID_PREFIX` (~L161, `suppression-import-`) is a prefix of `CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX`. Move it next to that constant in `CarRepository` as a public constant, so a later `LIKE` filter sees both (found in /finish-milestone v2.30.10)
+
 ### `usersc/classes/Cron/HealthcheckPinger.php` + `usersc/classes/Cron/CurlHealthcheckTransport.php`
 
 - [ ] `HealthcheckPinger`: read the two env values in the constructor (or a config object), so tests need no `putenv` (found in /finish-milestone v2.30.9)
 - [ ] `CurlHealthcheckTransport`: set `CURLOPT_PROTOCOLS => CURLPROTO_HTTPS` and an explicit `CURLOPT_FOLLOWLOCATION => false` (defense in depth; the base URL is constant) (found in /finish-milestone v2.30.9)
+
+### `usersc/classes/Cron/RetentionPurgeJob.php`
+
+- [ ] The constructor does not check that each element of `$rules` is a `RetentionRule`. A wrong element fails later as a TypeError reported as "rule #N". Throw `InvalidArgumentException` in the constructor (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/Cron/SuppressionSyncSummary.php`
 
@@ -308,6 +335,10 @@ after an item is written.
 ### `usersc/classes/Exceptions/ProfileFlagValueException.php`
 
 - [ ] Mark the class `final`. It extends `CarDatabaseException` and nothing extends it (found in /finish-milestone v2.30.8)
+
+### `usersc/classes/Exceptions/RetentionPurgeException.php`
+
+- [ ] `forStep()` sets `step` and `sqlState` after construction on non-readonly properties. Make them `private readonly`, set through a constructor, and document why `forStep()` passes no previous exception (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/InputSanitizer.php` (est. −8)
 
@@ -343,6 +374,14 @@ after an item is written.
 ### `usersc/classes/RegistrationRecoveryNotifier.php`
 
 - [ ] Replace 2 inline header-injection `preg_replace` calls with `InputSanitizer::stripHeaderInjectionChars()` (from #1786)
+
+### `usersc/classes/Retention/RetentionPolicy.php`
+
+- [ ] `rules()` reads the global `RETENTION_SENDINBLUE_MESSAGES_DAYS` constant, so a missing `define()` is a fatal Error. Check `defined()` and throw a typed exception, or take the window as an argument (found in /finish-milestone v2.30.10)
+
+### `usersc/classes/Retention/SendinblueMessagesRetentionRule.php`
+
+- [ ] The missing-table skip reason is a long inline literal. Make it a class constant, so tests can assert it without a copy of the text (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/Transfer/CarTransferRepository.php`
 
