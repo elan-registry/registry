@@ -183,6 +183,7 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
         // The full page has inline JS that names TypeError, so assertNoPhpErrorText() would fire.
         $this->assertDoesNotMatchRegularExpression('/(Fatal error|Parse error|Warning|Notice|Deprecated): .* in \/.*\.php on line \d+/', $result['raw']);
         $this->assertStringContainsString('Committed. Rows deleted', $result['raw']);
+        $this->assertStringContainsString('The nightly retention purge deletes those rows within 90 days.', $result['raw']);
         $this->assertSame(0, $this->holdingRowCount($owner['id']));
         $this->assertSame(0, $this->profileCount($owner['id']));
         foreach ($owner['rows'] as $messageId) {

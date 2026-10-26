@@ -1135,9 +1135,25 @@ environment's `.env`.
 `RetentionPurgeJob` (`users/cron/retention_purge.php`) deletes old rows once a
 day. It runs a list of rules. Each rule owns one table and one window. The job
 runs with the verification switch off. The rule for
-`plg_sendinblue_messages` is the only rule now. See
+`plg_sendinblue_messages` deletes old plugin rows. See
 [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows) for what it does
 and [CLASSES.md](CLASSES.md#retention) for the classes.
+
+The rule `deleted_user_addresses_backlog` deletes nothing. It fails the run
+while an `er_deleted_user_addresses` row is older than 24 hours. Such a row
+shows that the account-deletion privacy step did not commit, so personal data
+of a deleted user stays. The run then stamps `last_failure_at` and pings
+`/fail` each night, but the other rules still run. To clear the alarm:
+
+1. In the `RetentionPurge` log, find the line that starts with
+   `Account-deletion privacy step not complete`. It names the user IDs.
+2. Run `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php` for
+   each user ID. See
+   [FIX_SCRIPTS.md](FIX_SCRIPTS.md#rerun-the-deletion-privacy-step-30-rerun-deletion-privacy-stepphp).
+3. The next nightly run passes when no holding row is older than 24 hours.
+
+Do not delete a holding row by hand: the rerun script reads the addresses
+from it.
 
 To add a rule, see [CLASSES.md, "Add a rule"](CLASSES.md#add-a-rule).
 

@@ -1896,8 +1896,9 @@ The prefix is `suppression-import-blocklist-`
 (`CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX`) for `adminBlocked`
 and `suppression-import-` for all other codes. The paused-email notice reads
 the prefix to tell an admin block from an unsubscribe (#2500). Admin-block
-rows from before #2500 have the old prefix. A re-run writes no tagged second
-row for them, because the check below matches the event name. So for an
+rows from before #2500 have the old prefix. Without a repair, a re-run writes
+a tagged second row beside each one, and the old row still names an
+unsubscribe. So for an
 `adminBlocked` contact with a matched owner, the job first changes the ID of
 the owner's old row (event `unsubscribed`, the old prefix and the same hash)
 to the tagged ID (`CarRepository::retagOwnerEmailEventMessageId()`). After a
@@ -1909,12 +1910,16 @@ runs: the retag repairs only the notice text, and the next run tries it again.
 In `MODE_STATE`, `apply()` writes no
 row when the owner already has a row for the same address and the same cause
 group. A cause group is a set of event names, one of these: all
-`HARD_BOUNCE_EVENTS` names, `spam`, or `unsubscribed`. The group is not the
-reason code, so an earlier `unsubscribed` row also stops the row for an
-`adminBlocked` import. When the flag is already set for the same address, the
+`HARD_BOUNCE_EVENTS` names, `spam`, or `unsubscribed`. An `adminBlocked`
+import (the tagged prefix) is a group of its own: only an earlier tagged
+admin-block row stops it. An earlier `unsubscribed` row from a real unsubscribe
+does not, so the notice names both causes. An untagged import of another
+reason code still counts a tagged admin-block row as `unsubscribed`. For an
+`adminBlocked` import, when the flag is already set for the same address, the
 flag step keeps the stored cause. Otherwise it sets the `blocklist` cause,
 unless a later admin Clear Block stops it. The check uses
-`CarRepository::hasOwnerEmailEventForAddress()`. It does not compare
+`CarRepository::hasOwnerEmailEventForAddress()`, or
+`CarRepository::ownerBlockEventCauses()` for an admin block. It does not compare
 `occurred_at` or the source, so a row from the webhook, the reconciliation job
 or an earlier import counts. A row from before an admin clear also counts. The result
 is not new. The address check and the flag step still run, so the import sets

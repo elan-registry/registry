@@ -191,7 +191,11 @@ class EmailEventApplier
      *    row and treat the event as not new
      *    ({@see CarRepository::hasOwnerEmailEventForAddress()}). The
      *    import's message ID never matches a webhook row (#2502). All hard
-     *    bounce names are one group ({@see self::causeGroup()}). The flag
+     *    bounce names are one group ({@see self::causeGroup()}). An admin
+     *    block (message-ID prefix
+     *    {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX}) is a group of
+     *    its own: only an earlier admin-block row stops it, not a plain
+     *    `unsubscribed` row ({@see self::hasSameCauseRow()}). The flag
      *    step still runs.
      * 5. No `profiles` row: keep the row, log the user ID, set no flag.
      * 6. The flag changes only when the event address is the current
@@ -374,9 +378,7 @@ class EmailEventApplier
 
         // The import's own message ID never matches a webhook row for the same
         // block, so the unique key alone would let it write a second row (#2502).
-        if ($mode === self::MODE_STATE
-            && $this->repo->hasOwnerEmailEventForAddress($userId, $address, self::causeGroup($event))
-        ) {
+        if ($mode === self::MODE_STATE && $this->hasSameCauseRow($userId, $address, $event, $messageId)) {
             $isNew = false;
         } else {
             $isNew = $this->repo->insertOwnerEmailEvent(
@@ -488,6 +490,32 @@ class EmailEventApplier
         }
 
         return strcmp($clear, $since) > 0;
+    }
+
+    /**
+     * Whether the owner already has a row of the same cause for the address (step 4 of {@see apply()})
+     *
+     * An admin-block row is an `unsubscribed` row with the
+     * {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX} prefix. It gives the
+     * notice the cause `blocklist`. A real unsubscribe for the same address
+     * must not stop that row, or the notice never names the admin block. So
+     * only an earlier admin-block row counts. Its hash can differ from
+     * `$messageId` (another `blockedAt`), so the unique key alone does not
+     * stop a second row (#2502).
+     *
+     * @throws CarDatabaseException If the query fails
+     */
+    private function hasSameCauseRow(int $userId, string $address, string $event, string $messageId): bool
+    {
+        if (str_starts_with($messageId, CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX)) {
+            return in_array(
+                CarRepository::BLOCKED_CAUSE_BLOCKLIST,
+                $this->repo->ownerBlockEventCauses($userId, $address, null),
+                true
+            );
+        }
+
+        return $this->repo->hasOwnerEmailEventForAddress($userId, $address, self::causeGroup($event));
     }
 
     /**

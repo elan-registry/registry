@@ -3631,7 +3631,9 @@ if ($result['valid']) {
 
 **Purpose**: Delete or clear old rows on a schedule. `RetentionPurgeJob`
 runs the rules. Each rule owns one table. Windows are `define()` constants in
-`usersc/includes/config.php`.
+`usersc/includes/config.php`. One rule, `DeletedUserAddressesBacklogRule`,
+deletes nothing: it fails the run while a failed deletion privacy step left
+personal data.
 
 ### RetentionRule (interface)
 
@@ -3673,13 +3675,37 @@ error on the delete or the clear, throws `RetentionPurgeException`.
 A second run with the same cutoff changes no row. See
 [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows).
 
+### DeletedUserAddressesBacklogRule
+
+`final` class that implements `RetentionRule` (#2419). Constructor:
+`(DatabaseInterface $db)`. `NAME` is `'deleted_user_addresses_backlog'`.
+`MAX_AGE_HOURS` is 24.
+
+The account-deletion privacy step deletes the user's
+`er_deleted_user_addresses` holding row in its own transaction. So a holding
+row older than 24 hours shows a privacy step that did not commit. The rule
+selects the `user_id` of each such row. The cutoff is MySQL `NOW()`, not the
+PHP `$now`, because the trigger writes `deleted_at` with MySQL `NOW()`.
+
+- No stale row: it returns `purged()` with zero counts.
+- One or more stale rows: it logs one `LOG_CATEGORY_RETENTION_PURGE` line with
+  the count, the user IDs and the remedy (run
+  `30-Rerun-Deletion-Privacy-Step.php` for each user ID). Then it throws
+  `RetentionPurgeException` from `forStep()` with step `stale holding rows`.
+  So the job fails the run each night until an admin runs the rerun.
+- It deletes nothing. The rerun script reads the addresses from the holding
+  row.
+- The table does not exist: it returns `skipped()`.
+
+The log line and the message hold user IDs and counts only, never an address.
+
 ### Add a rule
 
 1. Write a class in `usersc/classes/Retention/` that implements
    `RetentionRule`.
-2. Add a `RETENTION_<NAME>_DAYS` constant to `usersc/includes/config.php`.
-   Add the same `define()` to `tests/bootstrap-unit.php`, because the unit
-   tests do not load `config.php`.
+2. If the rule has a window, add a `RETENTION_<NAME>_DAYS` constant to
+   `usersc/includes/config.php`. Add the same `define()` to
+   `tests/bootstrap-unit.php`, because the unit tests do not load `config.php`.
 3. Add one line to `RetentionPolicy::rules()`.
 
 The job needs no new seed row, shim or healthcheck for a new rule.

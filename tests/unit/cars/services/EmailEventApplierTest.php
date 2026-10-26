@@ -434,6 +434,43 @@ final class EmailEventApplierTest extends TestCase
         $this->assertTrue($result->eventRowWritten, 'No row of the same cause: the row is written');
     }
 
+    private function applyAdminBlock(): EmailEventApplyResult
+    {
+        return $this->applier->apply(
+            EmailEventMatch::matched(42, null, self::MESSAGE_TIME),
+            self::ADDRESS,
+            'unsubscribed',
+            null,
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . 'hash',
+            self::EVENT_TIME,
+            'import',
+            EmailEventApplier::MODE_STATE,
+            CarRepository::BLOCKED_CAUSE_BLOCKLIST
+        );
+    }
+
+    public function testStateModeAdminBlockIsNotStoppedByAPlainUnsubscribeRow(): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->never())->method('hasOwnerEmailEventForAddress');
+        $this->mockRepo->expects($this->once())
+            ->method('ownerBlockEventCauses')
+            ->with(42, self::ADDRESS, null)
+            ->willReturn(['unsubscribed']);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent');
+
+        $this->assertTrue($this->applyAdminBlock()->eventRowWritten, 'A real unsubscribe does not stop the admin-block row');
+    }
+
+    public function testStateModeAdminBlockWithAnEarlierAdminBlockRowWritesNoRow(): void
+    {
+        $this->givenState();
+        $this->mockRepo->method('ownerBlockEventCauses')->willReturn(['unsubscribed', 'blocklist']);
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+
+        $this->assertFalse($this->applyAdminBlock()->eventRowWritten);
+    }
+
     public function testStateModeWithNoSameCauseRowInsertsTheRow(): void
     {
         $this->mockRepo->method('lockEventGuardState')->willReturn(self::guardState());

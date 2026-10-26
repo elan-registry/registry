@@ -12,7 +12,8 @@ use ElanRegistry\DatabaseInterface;
  *
  * To add a rule: write a {@see RetentionRule} class, add its window as a
  * `define()` constant in usersc/includes/config.php (and mirror it in
- * tests/bootstrap-unit.php), and add one line here.
+ * tests/bootstrap-unit.php), and add one line here. A rule with no window,
+ * such as {@see DeletedUserAddressesBacklogRule}, needs no constant.
  *
  * @package ElanRegistry\Retention
  * @since v2.30.10
@@ -30,6 +31,7 @@ final class RetentionPolicy
     {
         return [
             new SendinblueMessagesRetentionRule($db, RETENTION_SENDINBLUE_MESSAGES_DAYS),
+            new DeletedUserAddressesBacklogRule($db),
         ];
     }
 }

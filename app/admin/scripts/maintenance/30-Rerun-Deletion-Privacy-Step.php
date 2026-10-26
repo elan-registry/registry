@@ -56,7 +56,7 @@ $userIdRejected = $is_exec && $targetUserId === false;
                             </h2>
                         </div>
                         <div class="card-body">
-                            <p class="mb-3">Deletes the remaining personal data of one deleted user. Run it when the <code>UserDeletion</code> log shows <code>CRITICAL: privacy step failed for user N</code>.</p>
+                            <p class="mb-3">Deletes the remaining personal data of one deleted user that it can find. Addresses that were only on the user's cars are not found. Run it when the <code>UserDeletion</code> log shows <code>CRITICAL: privacy step failed for user N</code>.</p>
 
                             <div class="alert alert-primary">
                                 <h5><i class="fa fa-info-circle"></i> What this script does:</h5>
@@ -152,6 +152,9 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                                 <tr><th scope="row"><code>er_deleted_user_addresses</code></th><td><?= (int) $result->deletedHoldingRowCount ?></td></tr>
                                             </tbody>
                                         </table>
+                                        <div class="alert alert-primary mt-2 mb-0">
+                                            <i class="fa fa-info-circle"></i> Addresses that were only on the deleted user's cars cannot be found after the car cleanup, so their <code>plg_sendinblue_messages</code> rows can remain. The nightly retention purge deletes those rows within 90 days.
+                                        </div>
                                         <?php // With the trigger in place, a failed step leaves a holding row. None means a wrong ID, a second run, or a missing trigger. ?>
                                         <?php if ($result->deletedHoldingRowCount === 0): ?>
                                             <div class="alert alert-warning mt-2 mb-0">

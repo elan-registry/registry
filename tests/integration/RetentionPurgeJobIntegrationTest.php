@@ -17,7 +17,8 @@ use Tests\Support\SendinblueMessagesTable;
 
 /**
  * #2384: RetentionPurgeJob::run() with the real policy rules, the real
- * `retention_purge` guard row, and the real plugin table.
+ * `retention_purge` guard row, and the real plugin table. #2419: the
+ * er_deleted_user_addresses backlog rule fails the run.
  *
  * Snapshots and restores the seeded `retention_purge` row and the
  * verification switch. A class that makes the plugin table drops it.
@@ -30,6 +31,9 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
     private const PREFIX = 'ret2384job-';
 
     private const OLD_RUN = '2026-01-01 00:00:00';
+
+    /** Far above any real users.id. Not negative: the column can be unsigned. */
+    private const HOLDING_USER_ID = 2000241903;
 
     private static bool $madeTable = false;
 
@@ -80,6 +84,12 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
         $foreign = (int) $this->db->query('SELECT COUNT(*) AS cnt FROM plg_sendinblue_messages')->first()->cnt;
         if ($foreign > 0) {
             $this->markTestSkipped('plg_sendinblue_messages holds rows that this test did not write. The job would purge them.');
+        }
+
+        // A stale holding row that this test did not write would fail every run.
+        $foreignHolding = (int) $this->db->query('SELECT COUNT(*) AS cnt FROM er_deleted_user_addresses')->first()->cnt;
+        if ($foreignHolding > 0) {
+            $this->markTestSkipped('er_deleted_user_addresses holds rows that this test did not write. The backlog rule would fail the run.');
         }
 
         $this->logFloor = (int) $this->db->query('SELECT COALESCE(MAX(id), 0) AS m FROM logs')->first()->m;
@@ -136,6 +146,7 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
     private function deleteFixtureRows(): void
     {
         $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id LIKE ?', [self::PREFIX . '%']);
+        $this->db->query('DELETE FROM er_deleted_user_addresses WHERE user_id = ?', [self::HOLDING_USER_ID]);
     }
 
     private function setRow(bool $enabled): void
@@ -260,7 +271,11 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
             1,
             $this->newLogCount(LogCategories::LOG_CATEGORY_RETENTION_PURGE, "Retention rule 'sendinblue_messages' skipped:%")
         );
-        $this->assertSame(1, $this->newLogCount(LogCategories::LOG_CATEGORY_RETENTION_PURGE, '%'), 'One line in the category, and it is the skip line');
+        $this->assertSame(
+            1,
+            $this->newLogCount(LogCategories::LOG_CATEGORY_RETENTION_PURGE, "Retention rule 'deleted_user_addresses_backlog': 0 deleted, 0 cleared.")
+        );
+        $this->assertSame(2, $this->newLogCount(LogCategories::LOG_CATEGORY_RETENTION_PURGE, '%'), 'The skip line and the backlog line only');
         $state = $this->rowState();
         $this->assertNotSame(self::OLD_RUN, $state['last_run_at']);
         $this->assertNull($state['last_failure_at']);
@@ -297,6 +312,45 @@ final class RetentionPurgeJobIntegrationTest extends IntegrationTestCase
             ),
             'The line must name the failed step and SQLSTATE of the real rule'
         );
+    }
+
+    public function testAStaleHoldingRowFailsTheRunAndTheOtherRuleStillPurges(): void
+    {
+        $this->seedOldMessage('backlog');
+        // MySQL NOW(), as the trigger writes deleted_at with it.
+        $this->db->query(
+            "INSERT INTO er_deleted_user_addresses (user_id, email, email_new, deleted_at)
+             VALUES (?, 'held-2419@example.com', NULL, NOW() - INTERVAL 25 HOUR)",
+            [self::HOLDING_USER_ID]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: holding row: ' . $this->db->errorString());
+
+        $this->makeJob()->run();
+
+        $this->assertSame(0, $this->messageCount('backlog'), 'The sendinblue rule must still run');
+        $this->assertSame(
+            1,
+            (int) $this->db->query('SELECT COUNT(*) AS cnt FROM er_deleted_user_addresses WHERE user_id = ?', [self::HOLDING_USER_ID])->first()->cnt,
+            'The backlog rule must keep the holding row for the rerun script'
+        );
+        $this->assertNotNull($this->rowState()['last_failure_at'], 'The run must stamp last_failure_at');
+        $this->assertSame(['https://hc-ping.com/testkey/retention-purge-test/fail'], $this->transport->urls);
+        $this->assertSame(
+            1,
+            $this->newLogCount(
+                LogCategories::LOG_CATEGORY_RETENTION_PURGE,
+                '%user IDs ' . self::HOLDING_USER_ID . '. Run app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php for each user ID.'
+            ),
+            'The log must name the user ID and the remedy'
+        );
+        $this->assertSame(
+            1,
+            $this->newLogCount(
+                LogCategories::LOG_CATEGORY_RETENTION_PURGE,
+                "Retention rule 'deleted_user_addresses_backlog' failed:% (step: stale holding rows, SQLSTATE: none)"
+            )
+        );
+        $this->assertSame(0, $this->newLogCount(LogCategories::LOG_CATEGORY_RETENTION_PURGE, '%@%'), 'No log line may hold an address');
     }
 
     public function testADisabledJobPurgesNothing(): void

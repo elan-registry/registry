@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Retention\DeletedUserAddressesBacklogRule;
 use ElanRegistry\Retention\RetentionPolicy;
 use ElanRegistry\Retention\SendinblueMessagesRetentionRule;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -17,13 +18,15 @@ require_once __DIR__ . '/../../Support/FakeDatabase.php';
 #[Group('fast')]
 final class RetentionPolicyTest extends TestCase
 {
-    public function testRulesHoldOneSendinblueMessagesRule(): void
+    public function testRulesHoldTheSendinblueRuleAndTheBacklogRule(): void
     {
         $rules = RetentionPolicy::rules(new FakeDatabase());
 
-        $this->assertCount(1, $rules);
+        $this->assertCount(2, $rules);
         $this->assertInstanceOf(SendinblueMessagesRetentionRule::class, $rules[0]);
         $this->assertSame('sendinblue_messages', $rules[0]->name());
+        $this->assertInstanceOf(DeletedUserAddressesBacklogRule::class, $rules[1]);
+        $this->assertSame('deleted_user_addresses_backlog', $rules[1]->name());
     }
 
     public function testRuleNamesAreUnique(): void

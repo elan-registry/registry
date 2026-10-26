@@ -924,6 +924,32 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertCount(1, $this->eventRows($userId, 'unsubscribed'));
     }
 
+    public function testStateModeAdminBlockAfterAWebhookUnsubscribeWritesItsOwnRowOnce(): void
+    {
+        $userId = $this->makeOwner();
+        $address = $this->emailOf($userId);
+        $this->assertTrue($this->applyEvent($userId, 'unsubscribed', $this->id('<webhook'), '2026-10-01 00:00:00', '2026-10-01 00:01:00'));
+        $importAdminBlock = fn (string $hash): bool => $this->applyEvent(
+            $userId,
+            'unsubscribed',
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash,
+            '2026-10-14 09:00:00',
+            '2026-10-14 09:00:00',
+            mode: EmailEventApplier::MODE_STATE,
+            source: 'import',
+            blockedCause: CarRepository::BLOCKED_CAUSE_BLOCKLIST
+        );
+
+        $this->assertTrue($importAdminBlock(md5('first-' . $userId)), 'A real unsubscribe does not stop the admin-block row');
+        $causes = $this->repo->ownerBlockEventCauses($userId, $address, null);
+        sort($causes);
+        $this->assertSame(['blocklist', 'unsubscribed'], $causes);
+
+        $this->assertFalse($importAdminBlock(md5('first-' . $userId)), 'The same import again writes no row');
+        $this->assertFalse($importAdminBlock(md5('other-blockedAt-' . $userId)), 'An admin block with another hash writes no row (#2502)');
+        $this->assertCount(2, $this->eventRows($userId, 'unsubscribed'));
+    }
+
     public function testStateModeHardBounceUsesBlockedAtForTheClearBouncedGuard(): void
     {
         $userId = $this->makeOwner(['email_bounce_cleared_at' => '2026-10-10 00:00:00']);

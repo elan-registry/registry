@@ -168,6 +168,11 @@ failed, the line says `rollback failed: ExceptionClass (code C)` in place of
 user then remains: the plugin mail rows, the email events, the profile and the
 holding row in `er_deleted_user_addresses`. The log line holds no address.
 
+Also run it for each user ID that the nightly retention run names in the
+`RetentionPurge` log line "Account-deletion privacy step not complete". The
+run fails while an `er_deleted_user_addresses` row is older than 24 hours. It
+passes again after the rerun.
+
 For a "privacy step refused" line, read the reason in the line first:
 
 - `the ID is below 1` or `a users row still exists`: do not run the script.
@@ -217,6 +222,16 @@ event rows. It also logs a summary line to the `UserDeletion` log.
 If the page warns that it found no holding row for the ID, check the ID
 against the CRITICAL log line. A mistyped ID, a second run, or a missing
 trigger gives this warning.
+
+### Limits
+
+The rerun cannot find every address. The car cleanup runs after a failed
+privacy step. It takes the user's cars away from the user ID, so the rerun
+cannot read the addresses on those cars. The holding row stores only `users.email` and
+`users.email_new`. A `plg_sendinblue_messages` row sent to an address that was
+only on the user's cars, with no `er_email_events` row for the user, therefore
+remains. The page shows a note about this after each committed run. The
+nightly retention purge deletes those rows within 90 days.
 
 ### If the run fails again
 

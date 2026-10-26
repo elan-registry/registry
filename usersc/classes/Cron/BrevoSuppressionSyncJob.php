@@ -940,8 +940,10 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * This repairs rows that the import wrote before the
      * {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX} tag. Such a row has the
      * untagged prefix and the same hash, so the account notice reads it as an
-     * unsubscribe. A re-run cannot write a tagged row for it, because the
-     * cause-group check in {@see EmailEventApplier} finds the old row. After
+     * unsubscribe. Without the retag, apply() writes a tagged row beside
+     * it, because the cause-group check in {@see EmailEventApplier} counts
+     * only tagged rows for an admin block, and the old row still names an
+     * unsubscribe. After
      * a full backfill, no untagged admin-block row remains for a contact that
      * is still on Brevo's list. The notice drops the `blocklist` profile
      * cause for the other rows ({@see \ElanRegistry\Car\EmailNoticeBuilder}).

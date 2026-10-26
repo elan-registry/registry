@@ -52,7 +52,7 @@ final class AddDeletedUserAddressesCapture extends AbstractMigration
                 'engine' => 'InnoDB',
                 'collation' => 'utf8mb4_unicode_ci',
             ])
-                ->addColumn('user_id', 'integer', ['null' => false])
+                ->addColumn('user_id', 'integer', ['null' => false, 'signed' => true])
                 ->addColumn('email', 'string', ['limit' => 155, 'null' => true, 'default' => null])
                 ->addColumn('email_new', 'string', ['limit' => 155, 'null' => true, 'default' => null])
                 ->addColumn('deleted_at', 'datetime', ['null' => false])
