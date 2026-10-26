@@ -24,7 +24,6 @@ if (count(get_included_files()) == 1) {
  * The builder returns raw values. This file escapes every value it prints.
  */
 
-use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EmailNoticeBuilder;
 
 /**
@@ -54,22 +53,16 @@ $_enDate = static function (?string $date) use ($_en): ?string {
     return $parsed === false ? null : '<strong>' . $_en($parsed->format('j F Y')) . '</strong>';
 };
 
-$_enCauseText = [
-    CarRepository::BLOCKED_CAUSE_SPAM         => 'a message to this address was reported as spam',
-    CarRepository::BLOCKED_CAUSE_UNSUBSCRIBED => 'this address unsubscribed from registry email',
-    CarRepository::BLOCKED_CAUSE_BLOCKLIST    => 'an administrator blocked this address',
-];
-
 $_enKind      = $emailNotice['kind'];
 $_enAddress   = '<strong>' . $_en($emailNotice['address'] ?? '') . '</strong>';
 $_enWhen      = $_enDate($emailNotice['date']);
 $_enCauses    = [];
 foreach ($emailNotice['causes'] as $_enCauseKey) {
-    if (isset($_enCauseText[$_enCauseKey])) {
-        $_enCauses[] = $_en($_enCauseText[$_enCauseKey]);
+    if (isset(EmailNoticeBuilder::CAUSE_TEXT[$_enCauseKey])) {
+        $_enCauses[] = $_en(EmailNoticeBuilder::CAUSE_TEXT[$_enCauseKey]);
     }
 }
-// Join as "A" or "A and B". Commas come first if a third cause is added.
+// Join as "A", "A and B" or "A, B and C".
 $_enCause = match (count($_enCauses)) {
     0       => null,
     1       => $_enCauses[0],

@@ -962,6 +962,56 @@ final class BrevoSuppressionSyncJobIntegrationTest extends IntegrationTestCase
         $this->assertSame('unsubscribed', $this->eventRows($carId)[0]->event, 'The event row stays unsubscribed');
     }
 
+    /**
+     * An admin-block row from before #2500 has the untagged ID, and the
+     * duplicate check stops a tagged second row. So the import renames the
+     * old row. Otherwise a `spam` profile cause shows "…and this address
+     * unsubscribed".
+     */
+    public function testAdminBlockedImportRetagsTheOldUntaggedRow(): void
+    {
+        [$carId, $email] = $this->createSuppressionCar();
+        $userId = (int) $this->ownerFlagsForCar($carId)->user_id;
+
+        $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
+            ]),
+        ])->runFullBackfill();
+        $this->assertSame('spam', $this->ownerFlagsForCar($carId)->email_blocked_cause, 'Test setup: profile cause spam');
+
+        $hash = md5($email . '|adminBlocked|' . self::BLOCKED_AT_BREVO);
+        $this->db->query(
+            "INSERT INTO er_email_events (user_id, car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, NULL, ?, 'unsubscribed', NULL, ?, '2026-09-08 03:00:00')",
+            [$userId, $email, 'suppression-import-' . $hash]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: old admin-block row: ' . $this->db->errorString());
+        $this->assertSame(['spam', 'unsubscribed'], $this->sortedCauses($userId, $email), 'Test setup: the old row reads as an unsubscribe');
+
+        $this->makeJob([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($email, 'adminBlocked', null, self::BLOCKED_AT_BREVO),
+            ]),
+        ])->runFullBackfill();
+
+        $ids = array_column(array_filter(
+            $this->eventRows($carId),
+            static fn (object $row): bool => $row->event === 'unsubscribed'
+        ), 'brevo_message_id');
+        $this->assertSame([BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash], array_values($ids));
+        $this->assertSame(['blocklist', 'spam'], $this->sortedCauses($userId, $email));
+    }
+
+    /** @return list<string> */
+    private function sortedCauses(int $userId, string $email): array
+    {
+        $causes = $this->repo->ownerBlockEventCauses($userId, $email, null);
+        sort($causes);
+
+        return $causes;
+    }
+
     public function testUnrecognizedReasonCodeChangesNothing(): void
     {
         [$carId, $email] = $this->createSuppressionCar();

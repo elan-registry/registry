@@ -6,6 +6,7 @@ namespace ElanRegistry\Car;
 
 use DateTimeImmutable;
 use ElanRegistry\AppConstants;
+use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
@@ -2888,14 +2889,23 @@ class CarRepository
      *
      * The address is normalized and compared with `COLLATE utf8mb4_bin`, as
      * in {@see hasOwnerEmailEventForAddress()}. With `$after`, only rows with
-     * `occurred_at` after that time count, so an event from before an admin
-     * Clear Block does not show.
+     * `occurred_at` after that time count, so an event from before a clear
+     * of the block does not show.
+     *
+     * The suppression import records a Brevo admin block as an `unsubscribed`
+     * row with the message-ID prefix
+     * {@see BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX}. Such a
+     * row gives the cause `blocklist`, because the owner did not unsubscribe.
+     * An admin-block row from before #2500 has no prefix and gives
+     * `unsubscribed` until the import retags it
+     * ({@see retagOwnerEmailEventMessageId()}).
      *
      * @param int $userId Owner user ID. A value less than 1 issues no query.
      * @param string $email Recipient address. An empty address issues no query.
      * @param string|null $after Lower bound for `occurred_at` (exclusive), in
      *                           AppConstants::DATETIME_FORMAT. Null applies no bound.
-     * @return list<string> Each matching event once, in no set order
+     * @return list<string> Each matching cause once, as a {@see self::BLOCKED_CAUSES}
+     *                      value, in no set order
      * @throws CarDatabaseException If the query fails
      */
     public function ownerBlockEventCauses(int $userId, string $email, ?string $after): array
@@ -2907,12 +2917,24 @@ class CarRepository
 
         $events = EmailEventApplier::SUPPRESSION_EVENTS;
         $placeholders = implode(', ', array_fill(0, count($events), '?'));
-        $sql = "SELECT DISTINCT event
+        $prefix = BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX;
+        // LEFT() and not LIKE, so a `_` or `%` in the prefix needs no escape.
+        $sql = "SELECT DISTINCT
+                       CASE WHEN event = ? AND LEFT(brevo_message_id, ?) = ? COLLATE utf8mb4_bin
+                            THEN ? ELSE event END AS cause
                   FROM er_email_events
                  WHERE user_id = ?
                    AND email = ? COLLATE utf8mb4_bin
                    AND event IN ({$placeholders})";
-        $params = [$userId, $email, ...$events];
+        $params = [
+            self::BLOCKED_CAUSE_UNSUBSCRIBED,
+            strlen($prefix),
+            $prefix,
+            self::BLOCKED_CAUSE_BLOCKLIST,
+            $userId,
+            $email,
+            ...$events,
+        ];
         if ($after !== null) {
             $sql .= ' AND occurred_at > ?';
             $params[] = $after;
@@ -2925,7 +2947,55 @@ class CarRepository
             );
         }
 
-        return array_map(static fn (object $row): string => (string) $row->event, $result->results());
+        return array_map(static fn (object $row): string => (string) $row->cause, $result->results());
+    }
+
+    /**
+     * Change the message ID of one owner's er_email_events rows with a given event and ID
+     *
+     * The suppression import calls it to give an admin-block row from before
+     * #2500 the tagged ID
+     * ({@see BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX}), so
+     * {@see ownerBlockEventCauses()} gives the cause `blocklist` for it.
+     *
+     * The ID compare uses `COLLATE utf8mb4_bin`, because the column collation
+     * would match a case variant of the ID. The statement is `UPDATE IGNORE`:
+     * when the owner already has a row with `$toId` and `$event`, the unique
+     * key `(user_id, brevo_message_id, event)` stops the change. MySQL then
+     * keeps the row unchanged and gives a warning, not an error, so the caller
+     * does not stop. The table has no audit trigger.
+     *
+     * @param int $userId Owner user ID. A value less than 1 issues no query.
+     * @param string $event Event name of the rows to change
+     * @param string $fromId Current message ID of the rows to change
+     * @param string $toId New message ID
+     * @return int Number of rows changed. 0 when no row matches, or when the
+     *             unique key stops the change.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): int
+    {
+        if ($userId < 1) {
+            return 0;
+        }
+
+        $this->db->query(
+            'UPDATE IGNORE er_email_events
+                SET brevo_message_id = ?
+              WHERE user_id = ?
+                AND event = ? COLLATE utf8mb4_bin
+                AND brevo_message_id = ? COLLATE utf8mb4_bin',
+            [$toId, $userId, $event, $fromId]
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::retagOwnerEmailEventMessageId failed for user={$userId}, event={$event}: "
+                . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
     }
 
     /**

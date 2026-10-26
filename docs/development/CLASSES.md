@@ -742,10 +742,22 @@ to provide a focused, testable data access layer wrapping the `cars`,
   error.
   `EmailEventApplier::apply()` calls it in `MODE_STATE`
 - `ownerBlockEventCauses(int $userId, string $email, ?string $after): list<string>` -
-  Distinct `spam` and `unsubscribed` event names in `er_email_events` for the user and
-  the normalized address (`COLLATE utf8mb4_bin`). With `$after`, only rows with
+  Distinct block causes (`BLOCKED_CAUSE_*` values) from the `spam` and `unsubscribed`
+  rows in `er_email_events` for the user and the normalized address (`COLLATE
+  utf8mb4_bin`). An `unsubscribed` row whose message ID starts with
+  `BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX` gives `blocklist`. Other
+  rows give their event name. With `$after`, only rows with
   `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
   less than 1 or an empty address. `EmailNoticeBuilder` uses it for block causes (#2500).
+- `retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): int` -
+  Sets `brevo_message_id` to `$toId` on the user's rows with `$event` and
+  `$fromId` (both compared with `COLLATE utf8mb4_bin`). Returns the number of
+  rows changed. The statement is `UPDATE IGNORE`, so when the unique key
+  `(user_id, brevo_message_id, event)` already holds `$toId`, the row stays
+  unchanged and the call returns 0 with no error. A `$userId` less than 1
+  issues no query. Throws `CarDatabaseException` on a query error.
+  `BrevoSuppressionSyncJob` uses it to give an admin-block row from before
+  #2500 the `ADMIN_BLOCK_MESSAGE_ID_PREFIX` tag
 - `findUserIdsByAddress(string $address): array` - Distinct IDs of the users
   whose `users.email` equals the address under the matching rule (#2359). SQL
   selects candidates with the column collation. PHP keeps only a byte-equal
@@ -1618,6 +1630,8 @@ It returns a plain array and renders no HTML. The partial
   calls `CarRepository::effectiveEmailFlags()` for every owner. For a block with
   an address, it also calls `ownerBlockEventCauses()` and `latestFlagClearAt()`.
   A flag stored for an old address does not show.
+- `CAUSE_TEXT`: the raw notice text for each `CarRepository::BLOCKED_CAUSE_*` value.
+  `app/views/_email_paused_notice.php` reads and escapes it.
 - `kind` constants: `KIND_BLOCKED`, `KIND_BOUNCED`, `KIND_OPTED_OUT`. One state wins.
   A block wins over a bounce. An opt-out is the `kind` only when no block or bounce
   applies. With a block or bounce, `alsoOptedOut` is true when the owner also opted
@@ -1627,9 +1641,12 @@ It returns a plain array and renders no HTML. The partial
   `opted_out`.
 - `causes` is set only for `blocked`. Each value is a `CarRepository::BLOCKED_CAUSE_*`
   value, and each appears once. The profile cause (`email_blocked_cause`) comes first.
-  Then the `spam` and `unsubscribed` events after the latest admin Clear Block add
-  their causes, in `BLOCKED_CAUSES` order. A `blocklist` profile cause drops
-  `unsubscribed` events. An unknown profile cause adds nothing and writes a log
+  Then the `spam` and `unsubscribed` events after the latest clear of the block add
+  their causes, in `BLOCKED_CAUSES` order. The bound is the later of the latest admin
+  Clear Block and the latest confirmed email change clear (`BLOCK_CLEAR_SOURCES`:
+  `admin`, `email_change`). A tagged admin-block import row gives
+  `blocklist`. A `blocklist` profile cause drops `unsubscribed` events, for the
+  untagged admin-block rows from before the tag. An unknown profile cause adds nothing and writes a log
   line (#2318, #2500). If the event lookup throws `CarDatabaseException`, the
   builder logs it (`ExceptionLogSummary`, no message) and keeps the profile cause
   only. It is `[]` for `bounced` and `opted_out`.

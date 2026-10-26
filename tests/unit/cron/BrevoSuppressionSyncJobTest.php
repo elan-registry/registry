@@ -246,6 +246,12 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         ];
     }
 
+    /** @return array<string, array{string}> */
+    public static function mappedReasonCodes(): array
+    {
+        return array_map(static fn (array $row): array => [$row[0]], self::reasonCodeMappings());
+    }
+
     /**
      * `adminBlocked` is a human suppression decision, not a dead mailbox, so it
      * must not set the hard-bounce flag. A reader may want to "correct" this.
@@ -1404,6 +1410,88 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertStringStartsWith('suppression-import-', $firstId);
     }
 
+    /**
+     * The notice reads the prefix to tell an admin block from an unsubscribe,
+     * because both rows have the event `unsubscribed` (#2500).
+     */
+    #[DataProvider('mappedReasonCodes')]
+    public function testOnlyAnAdminBlockGetsTheBlocklistMessageIdPrefix(string $code): void
+    {
+        $this->matchEveryEmailTo(1);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', $code),
+        ])->runFullBackfill();
+        $id = $this->applier->messageIds()[0];
+
+        $this->assertSame($this->syntheticId('owner@example.com', $code), $id);
+        $this->assertSame(
+            $code === 'adminBlocked',
+            str_starts_with($id, BrevoSuppressionSyncJob::ADMIN_BLOCK_MESSAGE_ID_PREFIX)
+        );
+    }
+
+    /**
+     * An admin-block row from before #2500 has the untagged ID. The import
+     * renames it, because a re-run writes no second row for it.
+     */
+    #[DataProvider('mappedReasonCodes')]
+    public function testOnlyAnAdminBlockRetagsTheOldUntaggedRow(string $code): void
+    {
+        $repo = $this->expectRepoCalls();
+        $this->matchEveryEmailTo(7);
+        $hash = md5('owner@example.com|' . $code . '|' . self::BLOCKED_AT_BREVO);
+
+        if ($code === 'adminBlocked') {
+            $repo->expects($this->once())
+                ->method('retagOwnerEmailEventMessageId')
+                ->with(7, 'unsubscribed', 'suppression-import-' . $hash, 'suppression-import-blocklist-' . $hash)
+                ->willReturn(1);
+        } else {
+            $repo->expects($this->never())->method('retagOwnerEmailEventMessageId');
+        }
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', $code),
+        ])->runFullBackfill();
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertCount(
+            $code === 'adminBlocked' ? 1 : 0,
+            $this->logsContaining('retagged 1 old admin-block row(s) for owner 7')
+        );
+    }
+
+    /** The retag only repairs the notice text, so a failure must not stop the flag write. */
+    public function testRetagFailureIsLoggedWithNoAddressAndTheRunContinues(): void
+    {
+        $this->matchEveryEmailTo(7);
+        $this->mockRepo->method('retagOwnerEmailEventMessageId')->willThrowException(
+            new CarDatabaseException('retag failed for owner@example.com', 1205)
+        );
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'adminBlocked'),
+            FakeBrevoBlockedContact::withReason('next@example.com', 'adminBlocked'),
+        ])->runFullBackfill();
+
+        $this->assertSame(
+            ['owner@example.com', 'next@example.com'],
+            array_column($this->applier->calls, 'email'),
+            'A failed retag must not stop the flag write or the next contact'
+        );
+        $this->assertSame(2, $summary->matchedCount);
+        $this->assertSame(0, $summary->skippedCount);
+
+        $log = $this->logsContaining('retag of old admin-block row FAILED');
+        $this->assertCount(2, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+        $this->assertStringContainsString('owner 7', $log[0]['message']);
+        $this->assertStringContainsString('CarDatabaseException (code 1205)', $log[0]['message']);
+        $this->assertStringNotContainsString('retag failed', $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
+    }
+
     /** Built from the raw blockedAt: the run-time fallback date would change the id. */
     public function testUnparseableBlockedAtStillYieldsAStableId(): void
     {
@@ -1629,7 +1717,9 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     /** Mirrors the job's id scheme on purpose: a scheme change must break these tests. */
     private function syntheticId(string $email, string $code, string $datePart = self::BLOCKED_AT_BREVO): string
     {
-        return 'suppression-import-' . md5($email . '|' . $code . '|' . $datePart);
+        $prefix = $code === 'adminBlocked' ? 'suppression-import-blocklist-' : 'suppression-import-';
+
+        return $prefix . md5($email . '|' . $code . '|' . $datePart);
     }
 
     /** First 8 hex characters of the sha256 of the normalized address, as the job logs it. */

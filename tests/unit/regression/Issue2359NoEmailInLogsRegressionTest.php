@@ -86,7 +86,7 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
         'usersc/classes/Car/BrevoWebhookEventProcessor.php' => 3,
         'usersc/classes/Cron/AbstractCronJob.php' => 4,
         'usersc/classes/Cron/BrevoEventReconciliationJob.php' => 4,
-        'usersc/classes/Cron/BrevoSuppressionSyncJob.php' => 5,
+        'usersc/classes/Cron/BrevoSuppressionSyncJob.php' => 7,
         'app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php' => 1,
         'app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php' => 1,
         'usersc/classes/Car/EmailEventApplier.php' => 2,
@@ -719,9 +719,13 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
 
     /**
      * @param \Closure(CarRepository&\PHPUnit\Framework\MockObject\Stub): void|null $configureRepo
+     * @param string $reasonCode Brevo reason code of the one contact. Only `adminBlocked` reaches the retag.
      */
-    private function suppressionJob(SpyEmailEventApplier $applier, ?\Closure $configureRepo = null): BrevoSuppressionSyncJob
-    {
+    private function suppressionJob(
+        SpyEmailEventApplier $applier,
+        ?\Closure $configureRepo = null,
+        string $reasonCode = 'hardBounce'
+    ): BrevoSuppressionSyncJob {
         $repo = $this->createStub(CarRepository::class);
         $repo->method('findUserIdsByAddress')->willReturn([10]);
         $repo->method('effectiveEmailFlags')->willReturn(
@@ -738,7 +742,7 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
             $applier,
             new FakeBrevoSuppressionSyncClient([
                 FakeBrevoSuppressionSyncClient::page([
-                    FakeBrevoBlockedContact::withReason(self::ADDRESS, 'hardBounce', 'mailbox full'),
+                    FakeBrevoBlockedContact::withReason(self::ADDRESS, $reasonCode, 'mailbox full'),
                 ]),
             ]),
             new DateTimeImmutable(self::NOW)
@@ -911,5 +915,26 @@ final class Issue2359NoEmailInLogsRegressionTest extends TestCase
 
         $this->assertCount(1, $applier->calls, 'A failed pre-read must not stop the write');
         $this->assertLogsHoldNoAddress('could not read current flags');
+    }
+
+    /** The retag catch of the suppression import. The write still happens. */
+    #[DataProvider('nonThrowingEntryProvider')]
+    public function testSuppressionRetagFailureLogsNoAddress(string $entry): void
+    {
+        $applier = new SpyEmailEventApplier();
+        $job = $this->suppressionJob(
+            $applier,
+            static function ($repo): void {
+                $repo->method('retagOwnerEmailEventMessageId')->willThrowException(
+                    new CarDatabaseException('retag failed for ' . self::ADDRESS, 1205)
+                );
+            },
+            'adminBlocked'
+        );
+
+        $this->enter($job, $entry);
+
+        $this->assertCount(1, $applier->calls, 'A failed retag must not stop the write');
+        $this->assertLogsHoldNoAddress('retag of old admin-block row FAILED');
     }
 }

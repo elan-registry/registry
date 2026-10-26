@@ -28,8 +28,8 @@ use ElanRegistry\LogCategories;
  *   wins over a bounce. A block can have more than one cause (#2500), but
  *   the profile holds only one. So the builder also reads the suppression
  *   events for the address from {@see CarRepository::ownerBlockEventCauses()},
- *   after the last admin Clear Block
- *   ({@see CarRepository::latestFlagClearAt()}).
+ *   after the last clear of the block. An admin Clear Block and a confirmed
+ *   email change both clear it ({@see self::BLOCK_CLEAR_SOURCES}).
  * - `bounced`: `email_bounced_address`, dated `email_bounced_at`.
  * - `opted_out`: only when no block or bounce applies, dated
  *   `email_opted_out_at`.
@@ -50,6 +50,32 @@ final class EmailNoticeBuilder
     public const KIND_BOUNCED   = 'bounced';
     public const KIND_OPTED_OUT = 'opted_out';
 
+    /**
+     * The notice text for each block cause, keyed by `CarRepository::BLOCKED_CAUSE_*`
+     *
+     * The text is raw. app/views/_email_paused_notice.php escapes it.
+     *
+     * @var array<string, string>
+     */
+    public const CAUSE_TEXT = [
+        CarRepository::BLOCKED_CAUSE_SPAM         => 'a message to this address was reported as spam',
+        CarRepository::BLOCKED_CAUSE_UNSUBSCRIBED => 'this address unsubscribed from registry email',
+        CarRepository::BLOCKED_CAUSE_BLOCKLIST    => 'an administrator blocked this address',
+    ];
+
+    /**
+     * The flag-log sources that clear `email_blocked`
+     *
+     * An event from before the latest clear is not a cause of the block that
+     * applies now. {@see CarVerificationManager::clearBlockedForOwner()} writes
+     * `admin`. {@see CarVerificationManager::clearFlagsForConfirmedEmailChange()}
+     * writes `email_change`. No other writer clears the flag.
+     */
+    private const BLOCK_CLEAR_SOURCES = [
+        DeliverabilityFlagLog::SOURCE_ADMIN,
+        DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE,
+    ];
+
     public function __construct(private CarRepository $repo)
     {
     }
@@ -65,7 +91,7 @@ final class EmailNoticeBuilder
      * `CarRepository::BLOCKED_CAUSES` order. It is empty for `bounced`,
      * `opted_out`, and a block with no known cause.
      * `optedOutDate` is set only when `alsoOptedOut` is true. Each date is
-     * `Y-m-d`, or null when the profile has no time for the flag.
+     * `Y-m-d`, or null when the profile time is missing or invalid.
      * `contentHash` changes when any other field changes, so a dismissed
      * notice shows again when the state changes.
      *
@@ -121,9 +147,16 @@ final class EmailNoticeBuilder
      * Collect the causes of a block, each once
      *
      * The profile cause comes first. The event causes follow in
-     * `CarRepository::BLOCKED_CAUSES` order. An admin block writes an
-     * `unsubscribed` event, so a `blocklist` profile cause drops that event.
-     * Otherwise the notice tells the owner that they unsubscribed.
+     * `CarRepository::BLOCKED_CAUSES` order. The repository gives `blocklist`
+     * for a tagged admin-block import row. An admin-block row from before
+     * #2500 has no tag and gives `unsubscribed`, so a `blocklist` profile
+     * cause drops that event. Otherwise the notice tells the owner that they
+     * unsubscribed. The import retags such a row when it sees the contact
+     * again. The drop stays for a row that the import does not see again,
+     * for example when the contact is no longer on Brevo's list.
+     *
+     * Only events after the latest clear of the block count
+     * ({@see self::latestBlockClearAt()}).
      *
      * The profile flags already show the block. So when the event lookup
      * fails, the builder logs it and returns the profile cause only. The
@@ -151,11 +184,7 @@ final class EmailNoticeBuilder
         }
 
         try {
-            $eventCauses = $this->repo->ownerBlockEventCauses(
-                $ownerId,
-                $address,
-                $this->repo->latestFlagClearAt($ownerId, DeliverabilityFlagLog::FLAG_BLOCKED, DeliverabilityFlagLog::SOURCE_ADMIN)
-            );
+            $eventCauses = $this->repo->ownerBlockEventCauses($ownerId, $address, $this->latestBlockClearAt($ownerId));
         } catch (CarDatabaseException $e) {
             logger($ownerId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, sprintf(
                 'EmailNoticeBuilder: block cause lookup failed for owner %d: %s',
@@ -170,6 +199,29 @@ final class EmailNoticeBuilder
         }
         // array_intersect() keeps the BLOCKED_CAUSES order and drops unknown events.
         return array_values(array_unique([...$causes, ...array_intersect(CarRepository::BLOCKED_CAUSES, $eventCauses)]));
+    }
+
+    /**
+     * Find the latest clear of the owner's block, from any source
+     *
+     * Each value is in `AppConstants::DATETIME_FORMAT`, so a string compare
+     * orders them.
+     *
+     * @param int $ownerId Owner (users.id)
+     * @return string|null The latest clear time, or null when no clear is on record
+     * @throws CarDatabaseException If a query fails
+     */
+    private function latestBlockClearAt(int $ownerId): ?string
+    {
+        $latest = null;
+        foreach (self::BLOCK_CLEAR_SOURCES as $source) {
+            $clearedAt = $this->repo->latestFlagClearAt($ownerId, DeliverabilityFlagLog::FLAG_BLOCKED, $source);
+            if ($clearedAt !== null && ($latest === null || strcmp($clearedAt, $latest) > 0)) {
+                $latest = $clearedAt;
+            }
+        }
+
+        return $latest;
     }
 
     /**

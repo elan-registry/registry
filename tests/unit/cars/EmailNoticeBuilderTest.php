@@ -28,8 +28,9 @@ use ReflectionMethod;
  * - Event causes join the profile cause, each once (#2500).
  * - A flag with a NULL or empty address names the current `users.email`.
  * - A NULL or malformed `_at` gives a NULL date.
- * - The builder calls effectiveEmailFlags(), and for a block only, latestFlagClearAt()
- *   and ownerBlockEventCauses().
+ * - The builder calls effectiveEmailFlags(). Only for a block with an address,
+ *   it also calls latestFlagClearAt() and ownerBlockEventCauses().
+ * - The latest Clear Block of any source bounds the event lookup.
  */
 #[Group('fast')]
 final class EmailNoticeBuilderTest extends TestCase
@@ -74,6 +75,8 @@ final class EmailNoticeBuilderTest extends TestCase
     }
 
     /**
+     * The builder calls the two block lookups only for a block with an address.
+     *
      * @param list<string> $eventCauses What ownerBlockEventCauses() returns
      * @param string|null $clearedAt What latestFlagClearAt() returns
      */
@@ -305,6 +308,12 @@ final class EmailNoticeBuilderTest extends TestCase
         $this->assertSame(['blocklist', 'spam'], $this->blockCauses('blocklist', ['unsubscribed', 'spam']));
     }
 
+    public function testSpamProfileCauseKeepsATaggedAdminBlockEvent(): void
+    {
+        // The repository gives `blocklist` for a tagged admin-block import row.
+        $this->assertSame(['spam', 'blocklist'], $this->blockCauses('spam', ['blocklist']));
+    }
+
     public function testNoProfileCauseUsesTheEventCause(): void
     {
         $this->assertSame(['spam'], $this->blockCauses(null, ['spam']));
@@ -340,19 +349,39 @@ final class EmailNoticeBuilderTest extends TestCase
         $this->assertCount(0, $mockLogEntries);
     }
 
-    public function testTheClearBlockTimeBoundsTheEventLookup(): void
+    /**
+     * Admin Clear Block time, email-change clear time, expected `$after`.
+     *
+     * @return array<string, array{?string, ?string, ?string}>
+     */
+    public static function clearTimeProvider(): array
+    {
+        return [
+            'admin clear is later'        => ['2026-10-01 08:00:00', '2026-09-01 08:00:00', '2026-10-01 08:00:00'],
+            'email change clear is later' => ['2026-09-01 08:00:00', '2026-10-01 08:00:00', '2026-10-01 08:00:00'],
+            'admin clear only'            => ['2026-10-01 08:00:00', null, '2026-10-01 08:00:00'],
+            'email change clear only'     => [null, '2026-10-01 08:00:00', '2026-10-01 08:00:00'],
+            'no clear'                    => [null, null, null],
+        ];
+    }
+
+    /** An email change also clears a block, so the event lookup uses the later clear of the two sources. */
+    #[DataProvider('clearTimeProvider')]
+    public function testTheClearBlockTimeBoundsTheEventLookup(?string $adminClear, ?string $emailChangeClear, ?string $expected): void
     {
         $repo = $this->createMock(CarRepository::class);
         $repo->method('effectiveEmailFlags')->willReturn(
             self::flags(['blocked' => true, 'blockedAddress' => 'b@example.com'])
         );
-        $repo->expects($this->once())
+        $repo->expects($this->exactly(2))
             ->method('latestFlagClearAt')
-            ->with(7, DeliverabilityFlagLog::FLAG_BLOCKED, DeliverabilityFlagLog::SOURCE_ADMIN)
-            ->willReturn('2026-10-01 08:00:00');
+            ->willReturnMap([
+                [7, DeliverabilityFlagLog::FLAG_BLOCKED, DeliverabilityFlagLog::SOURCE_ADMIN, $adminClear],
+                [7, DeliverabilityFlagLog::FLAG_BLOCKED, DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE, $emailChangeClear],
+            ]);
         $repo->expects($this->once())
             ->method('ownerBlockEventCauses')
-            ->with(7, 'b@example.com', '2026-10-01 08:00:00')
+            ->with(7, 'b@example.com', $expected)
             ->willReturn(['spam']);
 
         $result = (new EmailNoticeBuilder($repo))->buildForOwner(7);
@@ -415,11 +444,34 @@ final class EmailNoticeBuilderTest extends TestCase
         $this->assertSame(self::CURRENT, $result['address']);
     }
 
+    /** A block with no stored address reads the events for the current address. */
+    #[DataProvider('emptyAddressProvider')]
+    public function testBlockWithNoAddressReadsTheEventsForTheCurrentEmail(?string $stored): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->method('effectiveEmailFlags')->willReturn(self::flags(['blocked' => true, 'blockedAddress' => $stored]));
+        $repo->method('latestFlagClearAt')->willReturn('2026-10-01 08:00:00');
+        $repo->expects($this->once())
+            ->method('ownerBlockEventCauses')
+            ->with(1, self::CURRENT, '2026-10-01 08:00:00')
+            ->willReturn(['spam']);
+
+        $result = (new EmailNoticeBuilder($repo))->buildForOwner(1);
+
+        $this->assertNotNull($result);
+        $this->assertSame(['spam'], $result['causes']);
+    }
+
     public function testNoAddressAnywhereGivesNullAddress(): void
     {
-        $flags = self::flags(['blocked' => true, 'blockedAddress' => null, 'currentEmail' => null]);
+        $repo = $this->createMock(CarRepository::class);
+        $repo->method('effectiveEmailFlags')->willReturn(
+            self::flags(['blocked' => true, 'blockedAddress' => null, 'currentEmail' => null])
+        );
+        $repo->expects($this->never())->method('ownerBlockEventCauses');
+        $repo->expects($this->never())->method('latestFlagClearAt');
 
-        $result = $this->builderFor($flags)->buildForOwner(1);
+        $result = (new EmailNoticeBuilder($repo))->buildForOwner(1);
 
         $this->assertNotNull($result);
         $this->assertNull($result['address']);
@@ -552,7 +604,8 @@ final class EmailNoticeBuilderTest extends TestCase
 
     /**
      * Every other public repository method throws, so a stray call fails the test.
-     * A block may also call latestFlagClearAt() and ownerBlockEventCauses().
+     * A block with an address may also call latestFlagClearAt() and
+     * ownerBlockEventCauses().
      *
      * @return array<string, array{array<string, mixed>, list<string>}>
      */
@@ -647,6 +700,16 @@ final class EmailNoticeBuilderTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $mockLogEntries[0]['category']);
         $this->assertStringContainsString('owner 7', $mockLogEntries[0]['message']);
         $this->assertStringNotContainsString('b@example.com', $mockLogEntries[0]['message'], 'No exception message in the log (#2420)');
+    }
+
+    /** The partial drops a cause with no text, so each cause must have one. */
+    public function testEveryBlockedCauseHasANoticeText(): void
+    {
+        foreach (CarRepository::BLOCKED_CAUSES as $cause) {
+            $this->assertArrayHasKey($cause, EmailNoticeBuilder::CAUSE_TEXT);
+            $this->assertNotSame('', trim(EmailNoticeBuilder::CAUSE_TEXT[$cause]), "{$cause} needs a notice text");
+        }
+        $this->assertSame([], array_diff(array_keys(EmailNoticeBuilder::CAUSE_TEXT), CarRepository::BLOCKED_CAUSES));
     }
 
     public function testRemovedConstantsAndPerCarShapeAreGone(): void
