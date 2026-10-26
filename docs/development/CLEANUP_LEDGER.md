@@ -142,6 +142,10 @@ after an item is written.
 
 - [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
 
+### `tests/integration/IntegrationTestCase.php` + `tests/integration/RetentionPurgeJobIntegrationTest.php` + `tests/integration/database/DeletedUserAddressesBacklogRuleTest.php`
+
+- [ ] The `er_deleted_user_addresses` table-exists query is copied three times (`deleteDeletedUserAddressRows()` and the two setUps). Add one protected helper in `IntegrationTestCase` and call it from all three (found in /finish-milestone v2.30.10)
+
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
 - [ ] Replace the hand-written DB proxy (~L55) with `PassThroughDatabase` (from #2169)
@@ -155,6 +159,7 @@ after an item is written.
 
 - [ ] `uniqueAddress`, `insertPluginRow`, `pluginRowExists`, `profileCount`, `deleteUsersRowOnly` and the holding-row reader are near-copies in both files (about 60 lines). Move them to a shared trait in `tests/Support/` (found in #2419)
 - [ ] No test runs the retention purge and the deletion privacy step on the same `plg_sendinblue_messages` rows. Add a case: purge clears an old row of user A and of user B, then delete A; A's row is gone by message ID, B's cleared row stays (found in /finish-milestone v2.30.10)
+- [ ] The rerun-page note about car-only addresses is asserted on the committed path only. Assert it is absent on the refused and failed paths (found in /finish-milestone v2.30.10)
 
 ### `tests/integration/UserDeletionReassignmentTest.php`
 
@@ -176,6 +181,10 @@ after an item is written.
 ### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 
 - [ ] The class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move it onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copy (found in #2167)
+
+### `tests/integration/database/AddDeletedUserAddressesSandboxTest.php` (test coverage)
+
+- [ ] No test fails without `'signed' => true` on `user_id`. Assert that `COLUMN_TYPE` is `int`, not `int unsigned` (found in /finish-milestone v2.30.10)
 
 ### `tests/integration/database/MigrationSandbox.php` + `tests/integration/database/MigrationSandboxTest.php` (test coverage)
 
@@ -374,6 +383,11 @@ after an item is written.
 ### `usersc/classes/RegistrationRecoveryNotifier.php`
 
 - [ ] Replace 2 inline header-injection `preg_replace` calls with `InputSanitizer::stripHeaderInjectionChars()` (from #1786)
+
+### `usersc/classes/Retention/DeletedUserAddressesBacklogRule.php`
+
+- [ ] Add a convention test that the rule file holds no `DELETE` or `UPDATE`, so "deletes nothing" is enforced, not only documented (found in /finish-milestone v2.30.10)
+- [ ] The alarm and a query failure both throw `RetentionPurgeException` and differ only by step text. Give the alarm its own step constant or subtype, so log triage can tell "run script 30" from "query failed" (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/Retention/RetentionPolicy.php`
 
