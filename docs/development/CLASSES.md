@@ -2663,7 +2663,7 @@ public function __construct(
 
 **Namespace**: `ElanRegistry\Cron`
 
-**Purpose**: Nightly job that runs the retention rules from
+**Purpose**: Daily job that runs the retention rules from
 `RetentionPolicy::rules()`. It extends `AbstractCronJob`.
 
 **Constants**: `JOB_NAME` is `'retention_purge'`. The guard interval is 20

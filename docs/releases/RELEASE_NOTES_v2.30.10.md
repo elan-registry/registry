@@ -13,7 +13,7 @@ keeps an address for at most 90 days.
 - The email service log keeps a recipient address for 90 days at most. ([#2384](https://github.com/elan-registry/registry/issues/2384))
 - The page thanks an owner after a Sold report. ([#2497](https://github.com/elan-registry/registry/issues/2497))
 - The join form names the fields that stop a submit, and location search errors are clearer. ([#2043](https://github.com/elan-registry/registry/issues/2043))
-- The paused-email notice shows every block cause, and a dismissed notice shows once more. ([#2500](https://github.com/elan-registry/registry/issues/2500))
+- The paused-email notice shows every block cause, and after this release a dismissed notice shows once more. ([#2500](https://github.com/elan-registry/registry/issues/2500))
 
 ## Admin-Facing Changes
 
